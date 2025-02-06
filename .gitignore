@@ -34,3 +34,10 @@ docs/
 config/
 .env.prod
 .env.dev
+backend/temp/
+backend/enterprises/__pycache__/
+backend/enterprises/migrations/__pycache__/
+backend/enterprises/migrations/versions/__pycache__/
+backend/enterprises/migrations/versions/*.pyc
+backend/enterprises/migrations/versions/*.pyo
+backend/enterprises/migrations/versions/*.pyd

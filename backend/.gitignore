@@ -7,3 +7,11 @@ uploads/
 .coverage
 coverage_html/
 htmlcov/
+temp/
+enterprises/__pycache__/
+enterprises/migrations/__pycache__/
+enterprises/migrations/versions/__pycache__/
+enterprises/migrations/versions/*.pyc
+enterprises/migrations/versions/*.pyo
+enterprises/migrations/versions/*.pyd
+enterprises/migrations/versions/*.pyw
