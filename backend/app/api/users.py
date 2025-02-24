@@ -35,6 +35,15 @@ from app.core.logger import get_logger
 from app.repositories.user import UserRepository
 from pydantic import BaseModel
 from app.models.role import Role
+from app.core.s3 import upload_file_to_s3, delete_file_from_s3
+from app.core.config import settings
+# Try to import enterprise modules
+try:
+    from app.enterprise.repositories.subscription import SubscriptionRepository
+
+    HAS_ENTERPRISE = True
+except ImportError:
+    HAS_ENTERPRISE = False
 
 logger = get_logger(__name__)
 router = APIRouter(
@@ -51,21 +60,28 @@ def get_file_extension(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
 async def save_upload_file(file: UploadFile, org_id: str, user_id: str) -> str:
-    # Create upload directory if it doesn't exist
-    user_upload_dir = os.path.join(UPLOAD_DIR, org_id, user_id)
-    os.makedirs(user_upload_dir, exist_ok=True)
-    
+    """Save uploaded file and return the file path"""
     # Generate unique filename
     file_extension = get_file_extension(file.filename)
     filename = f"profile{file_extension}"
-    file_path = os.path.join(user_upload_dir, filename)
     
-    # Save file
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
-    
-    return f"/uploads/user/{org_id}/{user_id}/{filename}"
+    if settings.S3_FILE_STORAGE:
+        folder = f"users/{org_id}/{user_id}"
+        return await upload_file_to_s3(file, folder, filename, content_type=file.content_type)
+    else:
+        # Local storage
+        # Create upload directory if it doesn't exist
+        user_upload_dir = os.path.join(UPLOAD_DIR, org_id, user_id)
+        os.makedirs(user_upload_dir, exist_ok=True)
+        
+        file_path = os.path.join(user_upload_dir, filename)
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        return f"/uploads/user/{org_id}/{user_id}/{filename}"
 
 @router.post("", response_model=UserResponse)
 async def create_user(
@@ -83,6 +99,35 @@ async def create_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
             )
+
+        # Check enterprise subscription limits if enterprise module is available
+        if HAS_ENTERPRISE:
+            # Get organization's subscription and plan
+            subscription_repo = SubscriptionRepository(db)
+            subscription = subscription_repo.get_by_organization(str(current_user.organization_id))
+            
+            if not subscription:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No active subscription found"
+                )
+
+            # Check subscription status
+            if not subscription.is_active() and not subscription.is_trial():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Subscription is not active"
+                )
+
+            # Get current active users count
+            active_users = user_repo.get_active_users_count(str(current_user.organization_id))
+
+            # Check against plan limits
+            if subscription.quantity is not None and active_users >= subscription.quantity:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Maximum number of users ({subscription.quantity}) reached for your plan"
+                )
         
         # Hash the password
         hashed_password = User.get_password_hash(user_data.password)
@@ -96,7 +141,7 @@ async def create_user(
             is_active=user_data.is_active,
             role_id=user_data.role_id
         )
-        
+
         return new_user.to_dict()
     except HTTPException:
         raise
@@ -151,20 +196,24 @@ async def delete_user(
     db: Session = Depends(get_db)
 ):
     """Delete a user"""
-    user_repo = UserRepository(db)
-    user = user_repo.get_user(user_id)
-    
-    if not user or user.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
-    # Prevent deleting yourself
-    if user_id == current_user.id:
+    try:
+        user_repo = UserRepository(db)
+        user = user_repo.get_user(user_id)
+        
+        if not user or user.organization_id != current_user.organization_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+        user_repo.delete_user(user_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete user: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete your own account"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete user"
         )
-    
-    user_repo.delete_user(user_id)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -176,7 +225,11 @@ async def login(
     """Authenticate user and set cookies"""
     try:
         # Verify credentials
-        user = db.query(User).filter(User.email == form_data.username and User.is_active == True).first()
+        user = db.query(User).filter(
+            User.email == form_data.username,
+            User.is_active == True
+        ).first()
+  
         if not user or not user.verify_password(form_data.password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -536,12 +589,38 @@ async def update_user(
                 detail="Email already registered"
             )
     
-    updated_user = user_repo.update_user(
-        user_id,
-        **user_data.dict(exclude_unset=True)
-    )
+
+    if HAS_ENTERPRISE and hasattr(user_data, 'is_active') and user_data.is_active != user.is_active:
+        subscription_repo = SubscriptionRepository(db)
+        
+        # Get current subscription
+        subscription = subscription_repo.get_by_organization(str(user.organization_id))
+        if subscription:
+            # Check subscription status when activating user
+            if user_data.is_active and not (subscription.is_active() or subscription.is_trial()):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Cannot activate user: Subscription is not active"
+                )
+
+            # When activating a user, check against subscription limit
+            if user_data.is_active:
+                active_users = user_repo.get_active_users_count(str(user.organization_id))
+                if subscription.quantity is not None and active_users >= subscription.quantity:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Cannot activate user: Maximum number of users ({subscription.quantity}) reached for your plan"
+                    )
     
-    return updated_user
+    try:
+        updated_user = user_repo.update_user(user_id, **user_data.dict(exclude_unset=True))
+        return updated_user
+    except Exception as e:
+        logger.error(f"Failed to update user: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user"
+        )
 
 
 @router.post("/{user_id}/status")
@@ -610,6 +689,15 @@ async def upload_profile_pic(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"File size too large. Maximum size: {MAX_FILE_SIZE/1024/1024}MB"
             )
+
+        # Delete old profile picture if it exists
+        if current_user.profile_pic:
+            if settings.S3_FILE_STORAGE:
+                await delete_file_from_s3(current_user.profile_pic)
+            else:
+                old_photo_path = current_user.profile_pic.lstrip('/')
+                if os.path.exists(old_photo_path):
+                    os.remove(old_photo_path)
         
         # Save file and update user
         file_path = await save_upload_file(
@@ -633,6 +721,37 @@ async def upload_profile_pic(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload profile picture"
+        )
+
+
+@router.delete("/me/profile-pic", response_model=UserResponse)
+async def delete_profile_pic(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete user profile picture"""
+    try:
+        if current_user.profile_pic:
+            if settings.S3_FILE_STORAGE:
+                await delete_file_from_s3(current_user.profile_pic)
+            else:
+                old_photo_path = current_user.profile_pic.lstrip('/')
+                if os.path.exists(old_photo_path):
+                    os.remove(old_photo_path)
+
+        user_repo = UserRepository(db)
+        updated_user = user_repo.update_user(
+            current_user.id,
+            profile_pic=None
+        )
+        
+        return updated_user
+        
+    except Exception as e:
+        logger.error(f"Profile picture deletion failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete profile picture"
         )
 
 

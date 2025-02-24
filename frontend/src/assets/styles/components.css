@@ -26,7 +26,7 @@
 
 .btn-primary {
   background: #f34611;
-  color: var(--text-color);
+  color: var(--text-color-muted);
 }
 
 .btn-secondary {

@@ -17,46 +17,21 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from app.models.knowledge import Knowledge, SourceType
-from app.database import Base
+from app.models.agent import Agent, AgentType
 from uuid import uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-@pytest.fixture(scope="function")
-def db():
-    # Create test database
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create a new session for testing
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def link_repo(db):
     return KnowledgeToAgentRepository(db)
 
 @pytest.fixture
-def test_knowledge(db):
+def test_knowledge(db, test_organization_id):
     """Create a test knowledge source"""
-    org_id = uuid4()
     knowledge = Knowledge(
-        organization_id=org_id,
+        organization_id=test_organization_id,
         source="/test/path/document.pdf",
         source_type=SourceType.FILE,
         schema="test_schema",
@@ -68,30 +43,45 @@ def test_knowledge(db):
     return knowledge
 
 @pytest.fixture
-def test_link(db, test_knowledge):
+def test_agent(db, test_organization_id):
+    """Create a test agent"""
+    agent = Agent(
+        name="Test Agent",
+        display_name="Test Agent",
+        description="A test agent",
+        agent_type=AgentType.GENERAL,
+        instructions="Test instructions",
+        organization_id=test_organization_id,
+        is_active=True
+    )
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+@pytest.fixture
+def test_link(db, test_knowledge, test_agent):
     """Create a test knowledge-to-agent link"""
-    agent_id = uuid4()
     link = KnowledgeToAgent(
         knowledge_id=test_knowledge.id,
-        agent_id=agent_id
+        agent_id=test_agent.id
     )
     db.add(link)
     db.commit()
     db.refresh(link)
     return link
 
-def test_create_link(link_repo, test_knowledge):
+def test_create_link(link_repo, test_knowledge, test_agent):
     """Test creating a new knowledge-to-agent link"""
-    agent_id = uuid4()
     link = KnowledgeToAgent(
         knowledge_id=test_knowledge.id,
-        agent_id=agent_id
+        agent_id=test_agent.id
     )
     
     created_link = link_repo.create(link)
     assert created_link is not None
     assert created_link.knowledge_id == test_knowledge.id
-    assert created_link.agent_id == agent_id
+    assert created_link.agent_id == test_agent.id
 
 def test_create_duplicate_link(link_repo, test_link):
     """Test creating a duplicate link returns existing link"""
@@ -116,11 +106,11 @@ def test_get_by_ids_nonexistent(link_repo):
     link = link_repo.get_by_ids(999, uuid4())
     assert link is None
 
-def test_get_by_agent(link_repo, test_link, db):
+def test_get_by_agent(link_repo, test_link, db, test_organization_id, test_agent):
     """Test retrieving all links for an agent"""
     # Create another link for the same agent
     another_knowledge = Knowledge(
-        organization_id=uuid4(),
+        organization_id=test_organization_id,
         source="/test/path/another.pdf",
         source_type=SourceType.FILE,
         schema="test_schema",
@@ -131,15 +121,15 @@ def test_get_by_agent(link_repo, test_link, db):
 
     another_link = KnowledgeToAgent(
         knowledge_id=another_knowledge.id,
-        agent_id=test_link.agent_id
+        agent_id=test_agent.id
     )
     db.add(another_link)
     db.commit()
 
     # Get links for agent
-    links = link_repo.get_by_agent(test_link.agent_id)
+    links = link_repo.get_by_agent(test_agent.id)
     assert len(links) == 2
-    assert all(link.agent_id == test_link.agent_id for link in links)
+    assert all(link.agent_id == test_agent.id for link in links)
 
 def test_delete_by_ids(link_repo, test_link):
     """Test deleting a link by knowledge_id and agent_id"""

@@ -99,7 +99,7 @@ describe('LoginView', () => {
     const submitButton = wrapper.find('button[type="submit"]')
     await submitButton.trigger('submit')
 
-    expect(submitButton.text()).toBe('Logging in...')
+    expect(submitButton.text()).toBe('Signing in...')
     expect(submitButton.attributes('disabled')).toBeDefined()
   })
 

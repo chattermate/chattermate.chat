@@ -61,6 +61,9 @@ const handleSubmit = async () => {
       </div>
 
       <div class="form-group">
+      
+        <p class="setup-description">Set up your AI provider to start using ChatterMate's intelligent features.</p>
+
         <label for="provider">AI Provider</label>
         <select 
           id="provider" 
@@ -106,7 +109,7 @@ const handleSubmit = async () => {
 
       <button 
         type="submit" 
-        class="submit-button"
+        class="btn btn-primary"
         :disabled="isLoading"
       >
         {{ isLoading ? 'Saving...' : 'Save Configuration' }}
@@ -120,19 +123,23 @@ const handleSubmit = async () => {
   width: 100%;
   max-width: 500px;
   margin: 0 auto;
-  padding: var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 15px rgb(131, 129, 129);
 }
 
 .setup-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+  
 }
 
 .form-group label {
@@ -199,5 +206,25 @@ const handleSubmit = async () => {
 @keyframes rotation {
   0% { transform: rotate(0deg) }
   100% { transform: rotate(360deg) }
+}
+
+.setup-header {
+  margin-bottom: var(--space-lg);
+  text-align: left;
+}
+
+.setup-header h3 {
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin-bottom: var(--space-sm);
+  line-height: 1.4;
+}
+
+.setup-description {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  margin-bottom: var(--space-lg);
 }
 </style>

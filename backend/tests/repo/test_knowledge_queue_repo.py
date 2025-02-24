@@ -17,47 +17,36 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
-from app.database import Base
+from app.models.user import User
 from uuid import uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-@pytest.fixture(scope="function")
-def db():
-    # Create test database
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create a new session for testing
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def queue_repo(db):
     return KnowledgeQueueRepository(db)
 
 @pytest.fixture
-def test_queue_item(db):
+def test_user(db, test_organization_id):
+    """Create a test user"""
+    user = User(
+        email="test@example.com",
+        hashed_password="hashed_password",
+        organization_id=test_organization_id,
+        is_active=True,
+        full_name="Test User"
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+@pytest.fixture
+def test_queue_item(db, test_organization_id, test_user):
     """Create a test queue item"""
-    org_id = uuid4()
-    user_id = uuid4()
     queue_item = KnowledgeQueue(
-        organization_id=org_id,
-        user_id=user_id,
+        organization_id=test_organization_id,
+        user_id=test_user.id,
         source_type="pdf_file",
         source="/test/path/document.pdf",
         status=QueueStatus.PENDING,
@@ -69,13 +58,11 @@ def test_queue_item(db):
     db.refresh(queue_item)
     return queue_item
 
-def test_create_queue_item(queue_repo, db):
+def test_create_queue_item(queue_repo, test_organization_id, test_user):
     """Test creating a new queue item"""
-    org_id = uuid4()
-    user_id = uuid4()
     queue_item = KnowledgeQueue(
-        organization_id=org_id,
-        user_id=user_id,
+        organization_id=test_organization_id,
+        user_id=test_user.id,
         source_type="pdf_file",
         source="/test/path/new.pdf",
         status=QueueStatus.PENDING,
@@ -101,14 +88,12 @@ def test_get_by_id_nonexistent(queue_repo):
     item = queue_repo.get_by_id(999)
     assert item is None
 
-def test_get_pending(queue_repo, test_queue_item, db):
+def test_get_pending(queue_repo, test_queue_item, db, test_organization_id, test_user):
     """Test retrieving pending queue items"""
     # Create another pending item
-    org_id = uuid4()
-    user_id = uuid4()
     another_item = KnowledgeQueue(
-        organization_id=org_id,
-        user_id=user_id,
+        organization_id=test_organization_id,
+        user_id=test_user.id,
         source_type="pdf_file",
         source="/test/path/another.pdf",
         status=QueueStatus.PENDING,
@@ -118,8 +103,8 @@ def test_get_pending(queue_repo, test_queue_item, db):
     
     # Create a completed item
     completed_item = KnowledgeQueue(
-        organization_id=org_id,
-        user_id=user_id,
+        organization_id=test_organization_id,
+        user_id=test_user.id,
         source_type="pdf_file",
         source="/test/path/completed.pdf",
         status=QueueStatus.COMPLETED,

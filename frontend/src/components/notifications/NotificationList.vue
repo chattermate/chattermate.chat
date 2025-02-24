@@ -92,7 +92,19 @@ onMounted(fetchNotifications)
     <div class="notification-drawer" :class="{ open: isOpen }">
         <div class="drawer-header">
             <h3>Notifications</h3>
-            <button class="close-button" @click="emit('close')">&times;</button>
+            <div class="header-actions">
+                <button 
+                    class="refresh-button" 
+                    @click="fetchNotifications"
+                    :disabled="isLoading"
+                    :class="{ 'loading': isLoading }"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
+                    </svg>
+                </button>
+                <button class="close-button" @click="emit('close')">&times;</button>
+            </div>
         </div>
 
         <div class="drawer-content">
@@ -157,6 +169,44 @@ onMounted(fetchNotifications)
 
 .drawer-header h3 {
     margin: 0;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.refresh-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-xs);
+    border-radius: var(--radius-full);
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.refresh-button:hover {
+    background-color: rgb(var(--background-mute-rgb));
+    transform: scale(1.1);
+}
+
+.refresh-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.refresh-button.loading svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .close-button {
@@ -233,7 +283,7 @@ onMounted(fetchNotifications)
 
 .notification-message {
     font-size: var(--text-sm);
-    color: var(--text-color-light);
+    color: var(--text-color);
     word-break: break-word;
 }
 

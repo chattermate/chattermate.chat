@@ -18,10 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base, get_db
+from app.database import get_db
 from fastapi import FastAPI
 from app.models.user import User
 from app.models.organization import Organization
@@ -31,17 +28,7 @@ from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from app.api import organizations as organizations_router
 from app.core.auth import get_current_user, require_permissions
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from tests.conftest import engine, TestingSessionLocal, create_tables, Base
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -54,7 +41,10 @@ app.include_router(
 @pytest.fixture(scope="function")
 def db():
     """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
+    # Drop all tables first
+    Base.metadata.drop_all(bind=engine)
+    # Create tables except enterprise ones
+    create_tables()
     db = TestingSessionLocal()
     try:
         yield db
@@ -162,7 +152,8 @@ def client(test_user) -> TestClient:
 # Test cases
 def test_create_organization(client, db):
     """Test creating a new organization"""
-    # Delete existing organization first since we only allow one
+    # Delete existing users and organization first since we only allow one
+    db.query(User).delete()
     db.query(Organization).delete()
     db.commit()
     

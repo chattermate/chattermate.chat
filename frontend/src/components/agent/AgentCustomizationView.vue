@@ -370,7 +370,7 @@ const handleFontSelect = (font: string) => {
     right: 0;
     max-height: 200px;
     overflow-y: auto;
-    background: var(--vt-c-black);
+    background: white;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     margin-top: var(--space-xs);

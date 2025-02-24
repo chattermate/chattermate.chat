@@ -17,45 +17,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base
 from app.models.customer import Customer
 from app.repositories.customer import CustomerRepository
 from uuid import UUID, uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture(scope="function")
-def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def customer_repo(db):
     """Create a customer repository instance"""
     return CustomerRepository(db)
-
-@pytest.fixture
-def test_organization_id() -> UUID:
-    """Create a consistent organization ID for all tests"""
-    return uuid4()
 
 def test_get_or_create_customer_new(customer_repo, test_organization_id):
     """Test creating a new customer when one doesn't exist"""
@@ -98,10 +67,20 @@ def test_get_or_create_customer_existing(customer_repo, test_organization_id):
     assert customer2.full_name == full_name  # Should keep original name
     assert customer2.organization_id == test_organization_id
 
-def test_get_or_create_customer_different_org(customer_repo, test_organization_id):
+def test_get_or_create_customer_different_org(customer_repo, test_organization_id, db):
     """Test creating customers with same email but different organizations"""
     email = "customer@example.com"
-    other_org_id = uuid4()
+    
+    # Create second test organization
+    from app.models.organization import Organization
+    other_org = Organization(
+        id=uuid4(),
+        name="Other Test Org",
+        domain="other-test-org.com",
+        timezone="UTC"
+    )
+    db.add(other_org)
+    db.commit()
 
     # Create customer in first organization
     customer1 = customer_repo.get_or_create_customer(
@@ -113,7 +92,7 @@ def test_get_or_create_customer_different_org(customer_repo, test_organization_i
     # Create customer with same email in different organization
     customer2 = customer_repo.get_or_create_customer(
         email=email,
-        organization_id=other_org_id,
+        organization_id=other_org.id,
         full_name="Customer Two"
     )
 

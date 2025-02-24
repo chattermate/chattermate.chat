@@ -18,11 +18,19 @@ export interface Customer {
 }
 
 export interface AgentCustomization {
-    chat_background_color?: string
-    chat_bubble_color?: string
-    accent_color?: string
-    font_family?: string
-    photo_url?: string
+    id?: number;
+    agent_id?: string;
+    photo_url?: string;
+    photo_url_signed?: string;
+    chat_background_color?: string;
+    chat_bubble_color?: string;
+    chat_text_color?: string;
+    icon_url?: string;
+    icon_color?: string;
+    accent_color?: string;
+    font_family?: string;
+    custom_css?: string;
+    customization_metadata?: Record<string, any>;
 }
 
 

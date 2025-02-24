@@ -18,51 +18,24 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base
 from app.models.widget import Widget
 from app.models.agent import Agent, AgentType
 from app.models.ai_config import AIConfig, AIModelType
+from app.models.customer import Customer
+from app.models.user import User
 from app.repositories.agent import AgentRepository
 from app.repositories.widget import create_widget
 from app.models.schemas.widget import WidgetCreate
 from app.core.security import encrypt_api_key
 from uuid import UUID, uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture(scope="function")
-def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+from tests.conftest import engine, TestingSessionLocal, create_tables, Base
+from app.models.session_to_agent import SessionStatus, SessionToAgent
 
 @pytest.fixture
-def test_organization_id() -> UUID:
-    """Create a consistent organization ID for all tests"""
-    return uuid4()
-
-@pytest.fixture
-def test_ai_config(db, test_organization_id) -> AIConfig:
+def test_ai_config(db, test_organization) -> AIConfig:
     """Create a test AI config"""
     ai_config = AIConfig(
-        organization_id=test_organization_id,
+        organization_id=test_organization.id,
         model_type=AIModelType.OPENAI,
         model_name="gpt-4",
         encrypted_api_key=encrypt_api_key("test_key"),
@@ -74,14 +47,14 @@ def test_ai_config(db, test_organization_id) -> AIConfig:
     return ai_config
 
 @pytest.fixture
-def test_agent(db, test_organization_id) -> Agent:
+def test_agent(db, test_organization) -> Agent:
     """Create a test agent"""
     agent_repo = AgentRepository(db)
     agent = agent_repo.create_agent(
         name="Test Agent",
         agent_type=AgentType.CUSTOMER_SUPPORT,
         instructions=["Test instructions"],
-        org_id=test_organization_id
+        org_id=test_organization.id
     )
     return agent
 
@@ -96,6 +69,36 @@ def test_widget(db, test_agent) -> Widget:
     return widget
 
 @pytest.fixture
+def test_customer(db, test_organization) -> Customer:
+    """Create a test customer"""
+    customer = Customer(
+        id=uuid4(),
+        organization_id=test_organization.id,
+        email="test.customer@example.com",
+        full_name="Test Customer"
+    )
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+    return customer
+
+@pytest.fixture
+def test_user(db, test_organization) -> User:
+    """Create a test user"""
+    user = User(
+        id=uuid4(),
+        organization_id=test_organization.id,
+        email="test.user@example.com",
+        full_name="Test User",
+        hashed_password=User.get_password_hash("test_password"),
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+@pytest.fixture
 def mock_sio():
     """Create a mock socket.io server"""
     mock = MagicMock()
@@ -107,52 +110,67 @@ def mock_sio():
     return mock
 
 @pytest.mark.asyncio
-async def test_widget_connect(db, test_widget, test_ai_config, mock_sio, monkeypatch):
+async def test_widget_connect(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch):
     """Test widget connection handler"""
     from app.api import widget_chat
-
+    
     # Mock dependencies
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
     monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
-
+    
     # Mock authentication
-    customer_id = uuid4()
-    mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(customer_id))
+    conversation_token = "test_token"
+    mock_auth_result = (
+        str(test_widget.id),
+        str(test_widget.organization_id),
+        str(test_customer.id),
+        conversation_token
+    )
     monkeypatch.setattr(
         widget_chat,
         "authenticate_socket_conversation_token",
         AsyncMock(return_value=mock_auth_result)
     )
-
+    
     # Mock get_widget to return our test widget
     monkeypatch.setattr(widget_chat, "get_widget", lambda db, widget_id: test_widget)
-
+    
     # Mock AIConfigRepository
     mock_ai_config_repo = MagicMock()
     mock_ai_config_repo.get_active_config.return_value = test_ai_config
     monkeypatch.setattr(widget_chat, "AIConfigRepository", lambda db: mock_ai_config_repo)
-
-    # Mock session creation
-    from app.repositories.session_to_agent import SessionToAgentRepository
-    session_repo = SessionToAgentRepository(db)
-    session_id = uuid4()
+    
+    # Mock get_active_customer_session to return None
     monkeypatch.setattr(
-        SessionToAgentRepository,
-        "create_session",
-        lambda self, **kwargs: MagicMock(
-            session_id=session_id,
-            status="open",
-            user_id=None
-        )
+        "app.repositories.session_to_agent.SessionToAgentRepository.get_active_customer_session",
+        lambda self, customer_id, agent_id=None: None
     )
-
+    
+    # Mock create_session to handle UUID conversion
+    def mock_create_session(self, session_id, agent_id, customer_id, organization_id, **kwargs):
+        session = SessionToAgent(
+            session_id=UUID(session_id),
+            agent_id=UUID(str(agent_id)),
+            customer_id=UUID(str(customer_id)),
+            organization_id=UUID(str(organization_id)),
+            status=SessionStatus.OPEN
+        )
+        self.db.add(session)
+        self.db.commit()
+        return session
+    
+    monkeypatch.setattr(
+        "app.repositories.session_to_agent.SessionToAgentRepository.create_session",
+        mock_create_session
+    )
+    
     # Test connection
     sid = "test_sid"
     environ = {}
     auth = {}
-
+    
     result = await widget_chat.widget_connect(sid, environ, auth)
-
+    
     assert result is True
     mock_sio.enter_room.assert_called_once()
     mock_sio.save_session.assert_called_once()
@@ -162,12 +180,13 @@ async def test_widget_connect(db, test_widget, test_ai_config, mock_sio, monkeyp
     assert session_data["widget_id"] == str(test_widget.id)
     assert session_data["org_id"] == str(test_widget.organization_id)
     assert session_data["agent_id"] == str(test_widget.agent_id)
-    assert session_data["customer_id"] == str(customer_id)
+    assert session_data["customer_id"] == str(test_customer.id)
     assert "session_id" in session_data
     assert session_data["ai_config"] == test_ai_config
+    assert session_data["conversation_token"] == conversation_token
 
 @pytest.mark.asyncio
-async def test_widget_chat_message(db, test_widget, test_ai_config, mock_sio, monkeypatch):
+async def test_widget_chat_message(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch):
     """Test widget chat message handler"""
     from app.api import widget_chat
     
@@ -177,10 +196,10 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, mock_sio, mo
     
     # Create a test session
     session_id = uuid4()
-    customer_id = uuid4()
     
     # Mock authentication
-    mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(customer_id))
+    conversation_token = "test_token"
+    mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), conversation_token)
     monkeypatch.setattr(
         widget_chat,
         "authenticate_socket_conversation_token",
@@ -193,7 +212,7 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, mock_sio, mo
     session_repo.create_session(
         session_id=session_id,
         agent_id=test_widget.agent_id,
-        customer_id=customer_id,
+        customer_id=test_customer.id,
         organization_id=test_widget.organization_id
     )
     
@@ -202,9 +221,10 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, mock_sio, mo
         "widget_id": str(test_widget.id),
         "org_id": str(test_widget.organization_id),
         "agent_id": str(test_widget.agent_id),
-        "customer_id": str(customer_id),
+        "customer_id": str(test_customer.id),
         "session_id": str(session_id),
-        "ai_config": test_ai_config
+        "ai_config": test_ai_config,
+        "conversation_token": conversation_token
     }
     
     # Mock get_environ to return empty dict
@@ -251,7 +271,7 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, mock_sio, mo
     )
 
 @pytest.mark.asyncio
-async def test_widget_chat_history(db, test_widget, mock_sio, monkeypatch):
+async def test_widget_chat_history(db, test_widget, test_customer, mock_sio, monkeypatch):
     """Test widget chat history handler"""
     from app.api import widget_chat
     
@@ -261,10 +281,10 @@ async def test_widget_chat_history(db, test_widget, mock_sio, monkeypatch):
     
     # Create a test session
     session_id = uuid4()
-    customer_id = uuid4()
     
     # Mock authentication
-    mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(customer_id))
+    conversation_token = "test_token"
+    mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), conversation_token)
     monkeypatch.setattr(
         widget_chat,
         "authenticate_socket_conversation_token",
@@ -277,7 +297,7 @@ async def test_widget_chat_history(db, test_widget, mock_sio, monkeypatch):
     session_repo.create_session(
         session_id=session_id,
         agent_id=test_widget.agent_id,
-        customer_id=customer_id,
+        customer_id=test_customer.id,
         organization_id=test_widget.organization_id
     )
     
@@ -286,8 +306,9 @@ async def test_widget_chat_history(db, test_widget, mock_sio, monkeypatch):
         "widget_id": str(test_widget.id),
         "org_id": str(test_widget.organization_id),
         "agent_id": str(test_widget.agent_id),
-        "customer_id": str(customer_id),
-        "session_id": str(session_id)
+        "customer_id": str(test_customer.id),
+        "session_id": str(session_id),
+        "conversation_token": conversation_token
     }
     
     # Mock get_environ to return empty dict
@@ -343,7 +364,7 @@ async def test_agent_connect(db, mock_sio, monkeypatch):
     assert session_data["organization_id"] == str(org_id)
 
 @pytest.mark.asyncio
-async def test_agent_message(db, mock_sio, monkeypatch):
+async def test_agent_message(db, test_widget, test_customer, test_user, mock_sio, monkeypatch):
     """Test agent message handler"""
     from app.api import widget_chat
     
@@ -351,11 +372,7 @@ async def test_agent_message(db, mock_sio, monkeypatch):
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
     monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
     
-    # Create test data
-    user_id = uuid4()
-    org_id = uuid4()
-    agent_id = uuid4()
-    customer_id = uuid4()
+    # Create a test session
     session_id = uuid4()
     
     # Create a test session
@@ -363,16 +380,16 @@ async def test_agent_message(db, mock_sio, monkeypatch):
     session_repo = SessionToAgentRepository(db)
     session_repo.create_session(
         session_id=session_id,
-        agent_id=agent_id,
-        customer_id=customer_id,
-        user_id=user_id,
-        organization_id=org_id
+        agent_id=test_widget.agent_id,
+        customer_id=test_customer.id,
+        user_id=test_user.id,
+        organization_id=test_widget.organization_id
     )
     
     # Mock session data
     mock_sio.get_session.return_value = {
-        "user_id": str(user_id),
-        "organization_id": str(org_id)
+        "user_id": str(test_user.id),
+        "organization_id": str(test_widget.organization_id)
     }
     
     # Test agent message
@@ -384,10 +401,10 @@ async def test_agent_message(db, mock_sio, monkeypatch):
     
     # Mock session repository
     mock_session = MagicMock()
-    mock_session.user_id = str(user_id)  # Match the session data
-    mock_session.agent_id = str(agent_id)
-    mock_session.customer_id = str(customer_id)
-    mock_session.organization_id = str(org_id)  # Match the session data
+    mock_session.user_id = str(test_user.id)
+    mock_session.agent_id = str(test_widget.agent_id)
+    mock_session.customer_id = str(test_customer.id)
+    mock_session.organization_id = str(test_widget.organization_id)
     
     with patch("app.repositories.session_to_agent.SessionToAgentRepository") as mock_repo:
         mock_repo.return_value.get_session.return_value = mock_session

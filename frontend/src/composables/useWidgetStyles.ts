@@ -39,9 +39,17 @@ export function useWidgetStyles(customization: { value: AgentCustomization }) {
     }))
 
     const photoUrl = computed(() => {
-        return customization.value.photo_url
-            ? `${widgetEnv.API_URL}${customization.value.photo_url}`
-            : ''
+
+        if (!customization.value.photo_url) {
+            return ''
+        }
+        // Use signed URL if available
+        if (customization.value.photo_url_signed) {
+            return customization.value.photo_url_signed
+        }
+        
+        // For local storage, prepend the API URL
+        return `${widgetEnv.API_URL}${customization.value.photo_url}`
     })
 
     const shadowStyle = computed(() => {

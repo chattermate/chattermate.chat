@@ -18,10 +18,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base, get_db
 from fastapi import FastAPI
 from app.models.user import User, UserGroup
 from app.models.chat_history import ChatHistory
@@ -34,17 +30,8 @@ from uuid import uuid4
 from datetime import datetime, timezone
 from app.api import chat as chat_router
 from app.core.auth import get_current_user, require_permissions
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from app.database import get_db
+from app.models.organization import Organization
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -53,17 +40,6 @@ app.include_router(
     prefix="/api/chats",
     tags=["chat"]
 )
-
-@pytest.fixture(scope="function")
-def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def test_permissions(db) -> list[Permission]:
@@ -82,12 +58,12 @@ def test_permissions(db) -> list[Permission]:
     return permissions
 
 @pytest.fixture
-def test_role(db, test_permissions) -> Role:
+def test_role(db, test_organization_id, test_permissions) -> Role:
     """Create a test role with required permissions"""
     role = Role(
-        id=1,
         name="Test Role",
         description="Test Role Description",
+        organization_id=test_organization_id,
         is_default=True
     )
     db.add(role)
@@ -106,14 +82,14 @@ def test_role(db, test_permissions) -> Role:
     return role
 
 @pytest.fixture
-def test_user(db, test_role) -> User:
+def test_user(db, test_organization_id, test_role) -> User:
     """Create a test user with required permissions"""
     user = User(
         id=uuid4(),
         email="test@example.com",
         hashed_password="hashed_password",
         is_active=True,
-        organization_id=uuid4(),
+        organization_id=test_organization_id,
         full_name="Test User",
         role_id=test_role.id
     )
@@ -208,13 +184,23 @@ def test_chat_messages(db, test_chat_session, test_user, test_customer) -> list[
     return messages
 
 @pytest.fixture
-def client(test_user) -> TestClient:
+def client(db, test_user) -> TestClient:
     """Create test client with mocked dependencies"""
     async def override_get_current_user():
         return test_user
 
+    async def override_require_permissions(*args, **kwargs):
+        return test_user
+
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+
     app.dependency_overrides[get_current_user] = override_get_current_user
-    app.dependency_overrides[get_db] = lambda: TestingSessionLocal()
+    app.dependency_overrides[require_permissions] = override_require_permissions
+    app.dependency_overrides[get_db] = override_get_db
     
     return TestClient(app)
 
@@ -304,8 +290,18 @@ def test_get_chat_detail_wrong_org(
     test_chat_session
 ):
     """Test getting chat detail from wrong organization"""
+    # Create a new organization first
+    new_org = Organization(
+        id=uuid4(),
+        name="Test Org 2",
+        domain="test2.com",
+        timezone="UTC"
+    )
+    db.add(new_org)
+    db.commit()
+    
     # Change session's organization
-    test_chat_session.organization_id = uuid4()
+    test_chat_session.organization_id = new_org.id
     db.commit()
 
     response = client.get(f"/api/chats/{test_chat_session.session_id}")

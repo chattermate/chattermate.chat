@@ -39,6 +39,30 @@ class AgentCustomizationResponse(BaseModel):
     font_family: Optional[str] = None
     photo_url: Optional[str] = None
 
+    @property
+    def photo_url_signed(self) -> Optional[str]:
+        """Get signed URL for photo if using S3"""
+        if not self.photo_url:
+            return None
+        
+        from app.core.config import settings
+        if settings.S3_FILE_STORAGE:
+            from app.core.s3 import get_s3_signed_url
+            import asyncio
+            return asyncio.run(get_s3_signed_url(self.photo_url))
+        return self.photo_url
+
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "properties": {
+                "photo_url_signed": {
+                    "type": "string",
+                    "description": "Signed URL for agent photo if using S3"
+                }
+            }
+        }
+
 
 class AgentResponse(BaseModel):
     id: UUID
@@ -51,6 +75,30 @@ class CustomerResponse(BaseModel):
     full_name: Optional[str] = None
     profile_pic: Optional[str] = None
 
+    @property
+    def profile_pic_url(self) -> Optional[str]:
+        """Get signed URL for profile picture if using S3"""
+        if not self.profile_pic:
+            return None
+        
+        from app.core.config import settings
+        if settings.S3_FILE_STORAGE:
+            from app.core.s3 import get_s3_signed_url
+            import asyncio
+            return asyncio.run(get_s3_signed_url(self.profile_pic))
+        return self.profile_pic
+
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "properties": {
+                "profile_pic_url": {
+                    "type": "string",
+                    "description": "Signed URL for profile picture if using S3"
+                }
+            }
+        }
+
 
 class WidgetResponse(BaseModel):
     id: str
@@ -59,6 +107,6 @@ class WidgetResponse(BaseModel):
     customer: Optional[CustomerResponse] = None
     # Include agent ID in response if set
     agent_id: Optional[UUID] = None
-
+    token: Optional[str] = None
     class Config:
         from_attributes = True

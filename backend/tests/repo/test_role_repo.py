@@ -17,36 +17,25 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from app.repositories.role import RoleRepository
 from app.models.role import Role
 from app.models.permission import Permission
 from app.models.user import User
-from app.database import Base
+from app.models.organization import Organization
 from uuid import uuid4, UUID
 
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-@pytest.fixture(scope="function")
-def db():
-    # Create test database
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+@pytest.fixture
+def test_organization(db):
+    """Create a test organization"""
+    org = Organization(
+        name="Test Organization",
+        domain="test.com",
+        timezone="UTC"
     )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create a new session for testing
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return org
 
 @pytest.fixture
 def role_repo(db):
@@ -62,13 +51,12 @@ def test_permission(db):
     return permission
 
 @pytest.fixture
-def test_role(db):
+def test_role(db, test_organization):
     """Create a test role"""
-    org_id = uuid4()
     role = Role(
         name="Test Role",
         description="Test Role Description",
-        organization_id=org_id,
+        organization_id=test_organization.id,
         is_default=False
     )
     db.add(role)
@@ -76,29 +64,27 @@ def test_role(db):
     db.refresh(role)
     return role
 
-def test_create_role(role_repo):
+def test_create_role(role_repo, test_organization):
     """Test creating a new role"""
-    org_id = uuid4()
     created = role_repo.create_role(
         name="New Role",
         description="New Role Description",
-        organization_id=org_id,
+        organization_id=test_organization.id,
         is_default=False
     )
     
     assert created is not None
     assert created.name == "New Role"
     assert created.description == "New Role Description"
-    assert created.organization_id == org_id
+    assert created.organization_id == test_organization.id
     assert created.is_default is False
 
-def test_create_role_with_permissions(role_repo, test_permission):
+def test_create_role_with_permissions(role_repo, test_organization, test_permission):
     """Test creating a role with permissions"""
-    org_id = uuid4()
     created = role_repo.create_role(
         name="Role With Permissions",
         description="Role With Permissions Description",
-        organization_id=org_id,
+        organization_id=test_organization.id,
         permission_ids=[test_permission.id]
     )
     
@@ -210,30 +196,29 @@ def test_get_roles_by_organization(role_repo, test_role):
     assert len(roles) == 1
     assert roles[0].id == test_role.id
 
-def test_get_default_role(role_repo, db):
+def test_get_default_role(role_repo, test_organization, db):
     """Test getting the default role for an organization"""
-    org_id = uuid4()
     default_role = Role(
         name="Default Role",
         description="Default Role Description",
-        organization_id=org_id,
+        organization_id=test_organization.id,
         is_default=True
     )
     db.add(default_role)
     db.commit()
     
-    role = role_repo.get_default_role(org_id)
+    role = role_repo.get_default_role(test_organization.id)
     assert role is not None
     assert role.is_default is True
     assert role.name == "Default Role"
 
-def test_is_role_in_use(role_repo, test_role, db):
+def test_is_role_in_use(role_repo, test_role, test_organization, db):
     """Test checking if a role is assigned to any users"""
     # Create a test user with the role
     user = User(
         email="test@example.com",
         hashed_password="hashed_password",
-        organization_id=test_role.organization_id,
+        organization_id=test_organization.id,
         role_id=test_role.id
     )
     db.add(user)

@@ -23,14 +23,16 @@ export function useWidgetSocket() {
     let onTakeoverCallback: ((data: { session_id: string, user_name: string }) => void) | null = null
 
     const initializeSocket = (sessionId: string) => {
+        const token = localStorage.getItem('ctid');
+        
         socket = io(`${widgetEnv.WS_URL}/widget`, {
             transports: ['websocket'],
             reconnection: true,
             reconnectionAttempts: MAX_RETRIES,
             reconnectionDelay: 1000,
-            auth: {
-                session_id: sessionId
-            }
+            auth: token ? {
+                conversation_token: token
+            } : undefined
         })
 
         // Set up event listeners

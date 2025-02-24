@@ -17,41 +17,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base
 from app.models.agent import Agent, AgentType
 from app.repositories.agent import AgentRepository
-from uuid import UUID, uuid4
 import json
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture(scope="function")
-def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
-
-@pytest.fixture
-def test_organization_id() -> UUID:
-    """Create a consistent organization ID for all tests"""
-    return uuid4()
 
 @pytest.fixture
 def agent_repo(db):

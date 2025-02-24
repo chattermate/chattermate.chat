@@ -40,15 +40,17 @@ export interface ChatMessage {
 export interface AgentCustomization {
   id: number
   agent_id: string // UUID
+  photo_url?: string
+  photo_url_signed?: string
   chat_background_color?: string
   chat_bubble_color?: string
   chat_text_color?: string
-  photo_url?: string
+  icon_url?: string
   icon_color?: string
   accent_color?: string
   font_family?: string
   custom_css?: string
-  customization_metadata?: Record<string, unknown>
+  customization_metadata?: Record<string, any>
 }
 
 export interface AgentWithCustomization extends AgentResponse {

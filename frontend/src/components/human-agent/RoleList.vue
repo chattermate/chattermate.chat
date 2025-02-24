@@ -191,6 +191,7 @@ onMounted(fetchRoles)
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  position: relative;
 }
 
 .role-details h3 {
@@ -332,11 +333,13 @@ onMounted(fetchRoles)
   content: 'Default';
   position: absolute;
   top: var(--space-sm);
-  right: var(--space-sm);
+  right: var(--space-lg);
   font-size: var(--text-xs);
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--primary-soft);
+  padding: 2px var(--space-sm);
+  background: var(--background-soft);
   color: var(--primary-color);
+  border: 1px solid var(--primary-color);
   border-radius: var(--radius-full);
+  font-weight: 500;
 }
 </style> 

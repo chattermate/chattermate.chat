@@ -1,0 +1,27 @@
+        <svg class="background-illustration" viewBox="0 0 800 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Background Elements -->
+          <path d="M0 0 L800 0 L800 600 L0 600 Z" fill="#FEF2F2"/>
+          <path d="M600 100 Q 750 150 700 300 T 600 500 L 800 600 L 800 0 L 600 100Z" fill="#FEE2E2" opacity="0.5"/>
+          <path d="M650 150 Q 800 200 750 350 T 650 550 L 850 650 L 850 50 L 650 150Z" fill="#FECACA" opacity="0.3"/>
+          
+          <!-- Chat Bubbles -->
+          <g transform="translate(100, 150) scale(0.8)">
+            <!-- AI Chat Bubble -->
+            <rect x="50" y="50" width="300" height="80" rx="20" fill="#f34611" opacity="0.9"/>
+            <text x="80" y="95" fill="white" font-family="Inter, sans-serif" font-size="16">Hello! How can I assist you today?</text>
+            
+            <!-- User Chat Bubble -->
+            <rect x="150" y="150" width="280" height="80" rx="20" fill="white" stroke="#f34611" stroke-width="2"/>
+            <text x="180" y="195" fill="#374151" font-family="Inter, sans-serif" font-size="16">I need help with my account</text>
+            
+            <!-- AI Response Bubble -->
+            <rect x="50" y="250" width="320" height="80" rx="20" fill="#f34611" opacity="0.9"/>
+            <text x="80" y="295" fill="white" font-family="Inter, sans-serif" font-size="16">I'll guide you through the process</text>
+          </g>
+          
+          <!-- Decorative Elements -->
+          <circle cx="600" cy="200" r="8" fill="#f34611" opacity="0.6"/>
+          <circle cx="650" cy="250" r="6" fill="#f34611" opacity="0.4"/>
+          <circle cx="700" cy="180" r="10" fill="#f34611" opacity="0.5"/>
+          <circle cx="580" cy="300" r="7" fill="#f34611" opacity="0.3"/>
+        </svg>

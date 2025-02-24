@@ -36,6 +36,15 @@ class UserRepository:
             .order_by(User.created_at.desc())\
             .all()
 
+    def get_active_users_count(self, organization_id: str | UUID) -> int:
+        """Get count of active users in an organization"""
+        if isinstance(organization_id, str):
+            organization_id = UUID(organization_id)
+        return self.db.query(User)\
+            .filter(User.organization_id == organization_id)\
+            .filter(User.is_active == True)\
+            .count()
+
     def get_user(self, user_id: str | UUID) -> User | None:
         """Get a user by ID"""
         if isinstance(user_id, str):

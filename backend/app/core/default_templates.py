@@ -29,6 +29,44 @@ BASE_INSTRUCTIONS = [
     "Use the knowledge search tool to provide accurate company information."
 ]
 
+DEFAULT_BUSINESS_HOURS = {
+    "monday": {
+        "start": "09:00",
+        "end": "17:00",
+        "enabled": True
+    },
+    "tuesday": {
+        "start": "09:00",
+        "end": "17:00",
+        "enabled": True
+    },
+    "wednesday": {
+        "start": "09:00",
+        "end": "17:00",
+        "enabled": True
+    },
+    "thursday": {
+        "start": "09:00",
+        "end": "17:00",
+        "enabled": True
+    },
+    "friday": {
+        "start": "09:00",
+        "end": "17:00",
+        "enabled": True
+    },
+    "saturday": {
+        "start": "09:00",
+        "end": "17:00",
+        "enabled": False
+    },
+    "sunday": {
+        "start": "09:00",
+        "end": "17:00",
+        "enabled": False
+    }
+}
+
 DEFAULT_TEMPLATES: Dict[AgentType, Dict] = {
     AgentType.CUSTOMER_SUPPORT: {
         "name": "Customer Support Agent",

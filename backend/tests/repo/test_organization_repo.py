@@ -17,35 +17,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base
 from app.models.organization import Organization
 from app.repositories.organization import OrganizationRepository
-from uuid import uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture(scope="function")
-def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def org_repo(db):
@@ -141,7 +114,7 @@ def test_update_organization(org_repo):
     assert updated_org.id == org.id
 
 def test_delete_organization(org_repo):
-    """Test soft deleting an organization"""
+    """Test deactivating an organization"""
     # Create test organization
     org = org_repo.create_organization(
         name="Test Organization",
@@ -149,13 +122,14 @@ def test_delete_organization(org_repo):
         timezone="UTC"
     )
 
-    # Delete organization
-    success = org_repo.delete_organization(org.id)
+    # Deactivate organization
+    success = org_repo.deactivate_organization(org.id)
     assert success is True
 
-    # Verify organization is deleted
-    deleted_org = org_repo.get_organization(org.id)
-    assert deleted_org is None
+    # Verify organization is deactivated
+    deactivated_org = org_repo.get_organization(org.id)
+    assert deactivated_org is not None
+    assert deactivated_org.is_active is False
 
 def test_get_active_organizations(org_repo):
     """Test retrieving only active organizations"""
@@ -170,7 +144,7 @@ def test_get_active_organizations(org_repo):
         domain="inactive.com",
         timezone="UTC"
     )
-    org_repo.delete_organization(inactive_org.id)
+    org_repo.deactivate_organization(inactive_org.id)
 
     # Get active organizations
     active_orgs = org_repo.get_active_organizations()

@@ -18,11 +18,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
+from unittest.mock import patch, MagicMock
+
 from app.database import Base, get_db
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from app.models.user import User, UserGroup
 from app.models.role import Role
 from app.models.permission import Permission, role_permissions
@@ -35,18 +35,7 @@ from app.core.security import get_password_hash, verify_password
 from datetime import datetime, timedelta
 import json
 from urllib.parse import unquote
-from fastapi import HTTPException
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from tests.conftest import engine, TestingSessionLocal, create_tables, test_organization
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -56,21 +45,22 @@ app.include_router(
     tags=["users"]
 )
 
+# Mock enterprise functionality
+users_router.HAS_ENTERPRISE = False
+
 @pytest.fixture(scope="function")
 def db():
     """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
+    # Drop all tables first
+    Base.metadata.drop_all(bind=engine)
+    # Create tables except enterprise ones
+    create_tables()
     db = TestingSessionLocal()
     try:
         yield db
     finally:
         db.close()
         Base.metadata.drop_all(bind=engine)
-
-@pytest.fixture
-def test_organization_id() -> UUID:
-    """Create a consistent organization ID for all tests"""
-    return uuid4()
 
 @pytest.fixture
 def test_permissions(db) -> list[Permission]:
@@ -89,12 +79,12 @@ def test_permissions(db) -> list[Permission]:
     return permissions
 
 @pytest.fixture
-def test_role(db, test_organization_id, test_permissions) -> Role:
+def test_role(db, test_organization, test_permissions) -> Role:
     """Create a test role with required permissions"""
     role = Role(
         id=1,
         name="Test Role",
-        organization_id=test_organization_id
+        organization_id=test_organization.id
     )
     db.add(role)
     db.commit()
@@ -112,13 +102,13 @@ def test_role(db, test_organization_id, test_permissions) -> Role:
     return role
 
 @pytest.fixture
-def test_user(db: Session, test_organization_id: UUID, test_role: Role) -> User:
+def test_user(db: Session, test_organization, test_role: Role) -> User:
     """Create a test user with required permissions"""
     user = User(
         id=uuid4(),
         email="test@test.com",
         hashed_password=get_password_hash("testpassword"),
-        organization_id=test_organization_id,
+        organization_id=test_organization.id,
         role_id=test_role.id,
         is_active=True,
         full_name="Test User"
@@ -181,16 +171,17 @@ def admin_client(test_user: User) -> TestClient:
     yield client
     app.dependency_overrides.clear()
 
-def test_create_user(client: TestClient, test_role: Role):
+def test_create_user(admin_client: TestClient, test_role: Role, test_organization):
     """Test creating a new user"""
     user_data = {
         "email": "newuser@test.com",
         "full_name": "New Test User",
         "password": "testpassword123",
         "is_active": True,
-        "role_id": test_role.id
+        "role_id": test_role.id,
+        "organization_id": str(test_organization.id)
     }
-    response = client.post("/api/v1/users", json=user_data)
+    response = admin_client.post("/api/v1/users", json=user_data)
     assert response.status_code == 200  # User creation should succeed
     data = response.json()
     assert data["email"] == user_data["email"]
@@ -239,14 +230,14 @@ def test_update_user(client: TestClient, test_user: User):
     assert data["full_name"] == update_data["full_name"]
     assert data["is_active"] == update_data["is_active"]
 
-def test_delete_user(client: TestClient, db: Session, test_organization_id: UUID, test_role: Role):
+def test_delete_user(client: TestClient, db: Session, test_organization, test_role: Role):
     """Test deleting a user"""
     # Create a user to delete
     user_to_delete = User(
         id=uuid4(),
         email="delete@test.com",
         hashed_password=get_password_hash("testpassword"),
-        organization_id=test_organization_id,
+        organization_id=test_organization.id,
         role_id=test_role.id,
         is_active=True
     )

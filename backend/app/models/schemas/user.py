@@ -67,8 +67,31 @@ class UserResponse(UserBase):
     is_active: Optional[bool] = None
     groups: Optional[List[UserGroupResponse]] = None    
     role: Optional[RoleResponse] = None
+
+    @property
+    def profile_pic_url(self) -> Optional[str]:
+        """Get signed URL for profile picture if using S3"""
+        if not self.profile_pic:
+            return None
+        
+        from app.core.config import settings
+        if settings.S3_FILE_STORAGE:
+            from app.core.s3 import get_s3_signed_url
+            import asyncio
+            # Run synchronously since this is a property
+            return asyncio.run(get_s3_signed_url(self.profile_pic))
+        return self.profile_pic
+
     class Config:
         from_attributes = True
+        json_schema_extra = {
+            "properties": {
+                "profile_pic_url": {
+                    "type": "string",
+                    "description": "Signed URL for profile picture if using S3"
+                }
+            }
+        }
 
 
 

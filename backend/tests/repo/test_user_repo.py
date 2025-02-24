@@ -17,45 +17,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base
 from app.models.user import User
 from app.repositories.user import UserRepository
 from uuid import UUID, uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture(scope="function")
-def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+from app.models.organization import Organization
 
 @pytest.fixture
 def user_repo(db):
     """Create a user repository instance"""
     return UserRepository(db)
-
-@pytest.fixture
-def test_organization_id() -> UUID:
-    """Create a consistent organization ID for all tests"""
-    return uuid4()
 
 def test_create_user(user_repo, test_organization_id):
     """Test creating a new user"""
@@ -126,16 +96,25 @@ def test_get_users_by_organization(user_repo, test_organization_id):
         organization_id=test_organization_id
     )
 
+    # Create another organization for testing
+    other_org = Organization(
+        name="Other Organization",
+        domain="other.com",
+        timezone="UTC"
+    )
+    user_repo.db.add(other_org)
+    user_repo.db.commit()
+    user_repo.db.refresh(other_org)
+
     # Create user in different organization
-    other_org_id = uuid4()
     user_repo.create_user(
         email="other@example.com",
         hashed_password=hashed_password,
         full_name="Other User",
-        organization_id=other_org_id
+        organization_id=other_org.id
     )
 
-    # Get users for organization
+    # Get users for test organization
     users = user_repo.get_users_by_organization(test_organization_id)
     assert len(users) == 2
     assert all(u.organization_id == test_organization_id for u in users)

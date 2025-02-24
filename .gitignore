@@ -34,3 +34,5 @@ docs/
 config/
 .env.prod
 .env.dev
+backend/app/enterprise/
+frontend/src/modules/

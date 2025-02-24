@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Body, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Body, Query, status
 from typing import List, Optional, Dict, Any
 from app.models.user import User
 from app.core.auth import get_current_user, require_permissions
@@ -37,6 +37,13 @@ from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from app.core.config import settings
 from phi.vectordb.pgvector import PgVector, SearchType
 from sqlalchemy.orm import Session
+
+# Try to import enterprise modules
+try:
+    from app.enterprise.repositories.subscription import SubscriptionRepository
+    HAS_ENTERPRISE = True
+except ImportError:
+    HAS_ENTERPRISE = False
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -77,6 +84,37 @@ async def upload_pdf_files(
         if current_user.organization_id != org_uuid:
             raise HTTPException(status_code=403, detail="Unauthorized access to organization")
 
+        # Check enterprise subscription limits if enterprise module is available
+        if HAS_ENTERPRISE:
+            subscription_repo = SubscriptionRepository(db)
+            knowledge_repo = KnowledgeRepository(db)
+
+            # Get current subscription
+            subscription = subscription_repo.get_by_organization(str(org_uuid))
+            if not subscription:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No active subscription found"
+                )
+
+            # Check subscription status
+            if not subscription.is_active() and not subscription.is_trial():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Subscription is not active"
+                )
+
+            # Get current knowledge sources count
+            current_count = knowledge_repo.count_by_organization(org_uuid)
+
+            # Check if adding these files would exceed the limit
+            new_count = current_count + len(files)
+            if subscription.plan.max_knowledge_sources is not None and new_count > subscription.plan.max_knowledge_sources:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cannot add files: Maximum number of knowledge sources ({subscription.plan.max_knowledge_sources}) would be exceeded"
+                )
+
         # Create temp directory if it doesn't exist
         os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -98,7 +136,10 @@ async def upload_pdf_files(
                 user_id=current_user.id,
                 source_type='pdf_file',
                 source=file_path,
-                status=QueueStatus.PENDING
+                status=QueueStatus.PENDING,
+                queue_metadata={
+                    "max_links": subscription.plan.max_sub_pages if HAS_ENTERPRISE and subscription else 10
+                }
             )
             queued_items.append(queue_repo.create(queue_item))
 
@@ -124,14 +165,47 @@ async def add_urls(
         if current_user.organization_id != request.org_id:
             raise HTTPException(status_code=403, detail="Unauthorized access to organization")
 
+        # Check enterprise subscription limits if enterprise module is available
+        if HAS_ENTERPRISE:
+            subscription_repo = SubscriptionRepository(db)
+            knowledge_repo = KnowledgeRepository(db)
+
+            # Get current subscription
+            subscription = subscription_repo.get_by_organization(str(request.org_id))
+            if not subscription:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No active subscription found"
+                )
+
+            # Check subscription status
+            if not subscription.is_active() and not subscription.is_trial():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Subscription is not active"
+                )
+
+            # Get current knowledge sources count
+            current_count = knowledge_repo.count_by_organization(request.org_id)
+
+            # Calculate total new URLs to be added
+            total_new_urls = len(request.pdf_urls) + len(request.websites)
+
+            # Check if adding these URLs would exceed the limit
+            new_count = current_count + total_new_urls
+            if subscription.plan.max_knowledge_sources is not None and new_count > subscription.plan.max_knowledge_sources:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cannot add URLs: Maximum number of knowledge sources ({subscription.plan.max_knowledge_sources}) would be exceeded"
+                )
+
         queue_repo = KnowledgeQueueRepository(db)
         knowledge_repo = KnowledgeRepository(db)
         queued_items = []
 
         # Check for duplicate URLs
         all_urls = request.pdf_urls + request.websites
-        existing_sources = knowledge_repo.get_by_sources(
-            request.org_id, all_urls)
+        existing_sources = knowledge_repo.get_by_sources(request.org_id, all_urls)
 
         if existing_sources:
             duplicate_urls = [source.source for source in existing_sources]
@@ -148,7 +222,10 @@ async def add_urls(
                 user_id=current_user.id,
                 source_type='pdf_url',
                 source=url,
-                status=QueueStatus.PENDING
+                status=QueueStatus.PENDING,
+                queue_metadata={
+                    "max_links": subscription.plan.max_sub_pages if HAS_ENTERPRISE and subscription else 10
+                }
             )
             queued_items.append(queue_repo.create(queue_item))
 
@@ -161,7 +238,9 @@ async def add_urls(
                 source_type='website',
                 source=url,
                 status=QueueStatus.PENDING,
-                queue_metadata={"max_links": 40}
+                queue_metadata={
+                    "max_links": subscription.plan.max_sub_pages if HAS_ENTERPRISE and subscription else 10
+                }
             )
             queued_items.append(queue_repo.create(queue_item))
 
@@ -434,7 +513,7 @@ async def get_knowledge_by_organization(
     org_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db)
 ):
     """Get knowledge sources and their data for an organization with pagination"""
@@ -623,18 +702,33 @@ async def delete_knowledge(
         # Verify knowledge exists and belongs to user's org
         knowledge = knowledge_repo.get_by_id(knowledge_id)
         if not knowledge:
-            return {"error": "Knowledge source not found"}
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge source not found"
+            )
 
         if knowledge.organization_id != current_user.organization_id:
-            return {"error": "Unauthorized access to knowledge source"}
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized access to knowledge source"
+            )
 
         # Delete knowledge and associated data
         success = knowledge_repo.delete_with_data(knowledge_id)
 
         if success:
             return {"message": "Knowledge source deleted successfully"}
-        return {"error": "Failed to delete knowledge source"}
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete knowledge source"
+        )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting knowledge: {str(e)}")
-        return {"error": str(e)}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

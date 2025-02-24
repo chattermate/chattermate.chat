@@ -18,29 +18,17 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base, get_db
+from app.database import get_db
 from fastapi import FastAPI
 from app.models.user import User
 from app.models.notification import Notification, NotificationType
 from app.models.role import Role
+from app.models.organization import Organization
 from datetime import datetime, timezone
 from uuid import uuid4
 from app.api import notification as notification_router
 from app.core.auth import get_current_user
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from tests.conftest import engine, TestingSessionLocal, create_tables, Base
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -53,7 +41,10 @@ app.include_router(
 @pytest.fixture(scope="function")
 def db():
     """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
+    # Drop all tables first
+    Base.metadata.drop_all(bind=engine)
+    # Create tables except enterprise ones
+    create_tables()
     db = TestingSessionLocal()
     try:
         yield db
@@ -76,14 +67,27 @@ def test_role(db) -> Role:
     return role
 
 @pytest.fixture
-def test_user(db, test_role) -> User:
+def test_organization(db) -> Organization:
+    """Create a test organization"""
+    org = Organization(
+        name="Test Organization",
+        domain="test.com",
+        timezone="UTC"
+    )
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return org
+
+@pytest.fixture
+def test_user(db, test_role, test_organization) -> User:
     """Create a test user"""
     user = User(
         id=uuid4(),
         email="test@example.com",
         hashed_password="hashed_password",
         is_active=True,
-        organization_id=uuid4(),
+        organization_id=test_organization.id,
         full_name="Test User",
         role_id=test_role.id
     )
@@ -182,9 +186,19 @@ def test_mark_as_read_wrong_user(
     test_user
 ):
     """Test marking another user's notification as read"""
+    # Create another user
+    other_user = User(
+        email="other@example.com",
+        full_name="Other User",
+        hashed_password="hashed_password",
+        organization_id=test_user.organization_id  # Use same org as test_user
+    )
+    db.add(other_user)
+    db.commit()
+    
     # Create notification for different user
     other_notification = Notification(
-        user_id=uuid4(),  # Different user
+        user_id=other_user.id,  # Use the other user's ID
         type="CHAT",
         title="Other Notification",
         message="Test message",

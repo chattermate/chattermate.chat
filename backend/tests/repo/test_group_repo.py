@@ -17,62 +17,22 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from app.repositories.group import GroupRepository
 from app.models.user import UserGroup, User
-from app.models.organization import Organization
-from app.database import Base
 from uuid import uuid4, UUID
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-@pytest.fixture(scope="function")
-def db():
-    # Create test database
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create a new session for testing
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def group_repo(db):
     return GroupRepository(db)
 
 @pytest.fixture
-def test_organization(db):
-    """Create a test organization"""
-    org = Organization(
-        id=uuid4(),
-        name="Test Organization",
-        domain="test.com",
-        timezone="UTC"
-    )
-    db.add(org)
-    db.commit()
-    db.refresh(org)
-    return org
-
-@pytest.fixture
-def test_group(db, test_organization):
+def test_group(db, test_organization_id):
     """Create a test group with users"""
     group = UserGroup(
         id=uuid4(),
         name="Test Group",
         description="A test group",
-        organization_id=test_organization.id
+        organization_id=test_organization_id
     )
     db.add(group)
     
@@ -85,7 +45,7 @@ def test_group(db, test_organization):
             full_name=f"Test User {i}",
             hashed_password="dummy_hash",
             is_active=True,
-            organization_id=test_organization.id
+            organization_id=test_organization_id
         )
         users.append(user)
         db.add(user)

@@ -7,3 +7,4 @@ uploads/
 .coverage
 coverage_html/
 htmlcov/
+app/enterprise/

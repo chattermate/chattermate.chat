@@ -23,6 +23,7 @@ from typing import Optional, List
 
 from app.database import get_db
 from app.models.user import User
+from app.models.organization import Organization
 from app.core.security import verify_token
 from app.core.logger import get_logger
 from app.models.role import Role
@@ -34,6 +35,9 @@ def check_permissions(user: User, required_permissions: List[str]) -> bool:
     if not user.role or not user.role.permissions:
         return False
     user_permissions = [p.name for p in user.role.permissions]
+    # If user has super_admin permission, they have access to everything
+    if "super_admin" in user_permissions:
+        return True
     return all(perm in user_permissions for perm in required_permissions)
 
 def require_permissions(*required_permissions: str):
@@ -110,3 +114,51 @@ async def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+async def get_current_organization(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Organization:
+    """Get current user's organization"""
+    if not current_user.organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not associated with any organization"
+        )
+    
+    organization = db.query(Organization).filter(
+        Organization.id == current_user.organization_id,
+        Organization.is_active == True
+    ).first()
+    
+    if not organization:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found or inactive"
+        )
+    
+    return organization
+
+def require_permission(permission: str):
+    """Dependency for checking if user has specific permission"""
+    async def permission_dependency(
+        current_user: User = Depends(get_current_user)
+    ) -> User:
+        if not current_user.role or not current_user.role.has_permission(permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"User does not have required permission: {permission}"
+            )
+        return current_user
+    return permission_dependency
+
+def require_subscription_management(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Dependency for checking if user can manage subscriptions"""
+    if not current_user.role or not current_user.role.can_manage_subscription():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have permission to manage subscriptions"
+        )
+    return current_user

@@ -18,10 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from app.database import Base, get_db
+from app.database import get_db
 from fastapi import FastAPI, status, HTTPException, Depends
 from app.models.user import User
 from app.models.role import Role
@@ -37,17 +34,8 @@ from typing import Generator
 from datetime import datetime
 from app.models.schemas.chat import ChatDetailResponse, CustomerInfo, AgentInfo, Message
 from sqlalchemy.orm import Session
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from tests.conftest import engine, TestingSessionLocal, create_tables, Base
+from app.models.organization import Organization
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -60,7 +48,10 @@ app.include_router(
 @pytest.fixture(scope="function")
 def db() -> Generator:
     """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
+    # Drop all tables first
+    Base.metadata.drop_all(bind=engine)
+    # Create tables except enterprise ones
+    create_tables()
     db = TestingSessionLocal()
     try:
         yield db
@@ -147,14 +138,29 @@ def test_role_without_permissions(db) -> Role:
     return role
 
 @pytest.fixture
-def user_with_manage_chats_permission(db, test_role_with_manage_chats) -> User:
+def test_organization(db) -> Organization:
+    """Create a test organization"""
+    organization = Organization(
+        id=uuid4(),
+        name="Test Organization",
+        domain="test.example.com",
+        business_hours={"monday": {"start": "09:00", "end": "17:00"}},
+        settings={"timezone": "UTC"}
+    )
+    db.add(organization)
+    db.commit()
+    db.refresh(organization)
+    return organization
+
+@pytest.fixture
+def user_with_manage_chats_permission(db, test_role_with_manage_chats, test_organization) -> User:
     """Create a test user with manage_chats permission"""
     user = User(
         id=uuid4(),
         email="manage_chats@example.com",
         hashed_password="hashed_password",
         is_active=True,
-        organization_id=uuid4(),
+        organization_id=test_organization.id,
         full_name="Manage Chats User",
         role_id=test_role_with_manage_chats.id
     )
@@ -164,14 +170,14 @@ def user_with_manage_chats_permission(db, test_role_with_manage_chats) -> User:
     return user
 
 @pytest.fixture
-def user_with_manage_assigned_chats(db, test_role_with_manage_assigned_chats, test_agent) -> User:
+def user_with_manage_assigned_chats(db, test_role_with_manage_assigned_chats, test_organization, test_agent) -> User:
     """Create a test user with manage_assigned_chats permission"""
     user = User(
         id=uuid4(),
         email="manage_assigned@example.com",
         hashed_password="hashed_password",
         is_active=True,
-        organization_id=test_agent.organization_id,
+        organization_id=test_organization.id,
         full_name="Manage Assigned Chats User",
         role_id=test_role_with_manage_assigned_chats.id
     )
@@ -181,14 +187,14 @@ def user_with_manage_assigned_chats(db, test_role_with_manage_assigned_chats, te
     return user
 
 @pytest.fixture
-def regular_user(db, test_role_without_permissions) -> User:
+def regular_user(db, test_role_without_permissions, test_organization) -> User:
     """Create a test user without special permissions"""
     user = User(
         id=uuid4(),
         email="regular@example.com",
         hashed_password="hashed_password",
         is_active=True,
-        organization_id=uuid4(),
+        organization_id=test_organization.id,
         full_name="Regular User",
         role_id=test_role_without_permissions.id
     )
@@ -198,7 +204,7 @@ def regular_user(db, test_role_without_permissions) -> User:
     return user
 
 @pytest.fixture
-def test_agent(db, user_with_manage_chats_permission) -> Agent:
+def test_agent(db, test_organization) -> Agent:
     """Create a test agent"""
     agent = Agent(
         id=uuid4(),
@@ -207,7 +213,7 @@ def test_agent(db, user_with_manage_chats_permission) -> Agent:
         agent_type=AgentType.CUSTOMER_SUPPORT,
         instructions=["Test instruction"],
         is_active=True,
-        organization_id=user_with_manage_chats_permission.organization_id
+        organization_id=test_organization.id
     )
     db.add(agent)
     db.commit()
@@ -215,11 +221,11 @@ def test_agent(db, user_with_manage_chats_permission) -> Agent:
     return agent
 
 @pytest.fixture
-def test_customer(db, user_with_manage_chats_permission) -> Customer:
+def test_customer(db, test_organization) -> Customer:
     """Create a test customer"""
     customer = Customer(
         id=uuid4(),
-        organization_id=user_with_manage_chats_permission.organization_id,
+        organization_id=test_organization.id,
         email="customer@example.com",
         full_name="Test Customer"
     )

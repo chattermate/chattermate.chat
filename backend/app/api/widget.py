@@ -54,7 +54,7 @@ def create_new_widget(
 async def get_widget_ui(
     widget_id: str,
     response: Response,
-    conversation_token: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
     """Get widget UI and handle customer authentication"""
@@ -69,16 +69,15 @@ async def get_widget_ui(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    
-
     # Check existing conversation token first
     customer_id = None
-    if conversation_token:
+    if authorization and authorization.startswith('Bearer '):
+        token = authorization.split(' ')[1]
         try:
-            token_data = verify_conversation_token(conversation_token)
+            token_data = verify_conversation_token(token)
             if token_data and token_data.get("widget_id") == widget_id:
                 customer_id = token_data.get("sub")
-                return HTMLResponse(get_widget_html(
+                return HTMLResponse(await get_widget_html(
                     widget_id=widget_id,
                     agent_name=agent.display_name or agent.name,
                     agent_customization=agent.customization,
@@ -91,34 +90,36 @@ async def get_widget_ui(
     # No valid token, create new one
     token = create_conversation_token(widget_id=widget_id)
     
-    response.set_cookie(
-        key="conversation_token",
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=3600 * 24 * 360  # 360 days
-    )
-
-    return get_widget_html(
+    return HTMLResponse(await get_widget_html(
         widget_id=widget_id,
         agent_name=agent.display_name or agent.name,
         agent_customization=agent.customization,
-        customer_id=customer_id
-    )
+        customer_id=customer_id,
+        initial_token=token
+    ))
 
-def get_widget_html(widget_id: str, agent_name: str, agent_customization: dict, customer_id: Optional[str] = None) -> str:
+async def get_widget_html(widget_id: str, agent_name: str, agent_customization: dict, customer_id: Optional[str] = None, initial_token: Optional[str] = None) -> str:
     """Generate widget HTML with embedded data"""
+    import html
     widget_url = settings.VITE_WIDGET_URL
     
     # Convert AgentCustomization to dict if it's a model instance
-    customization_dict = {
-        "chat_background_color": agent_customization.chat_background_color,
-        "chat_bubble_color": agent_customization.chat_bubble_color,
-        "accent_color": agent_customization.accent_color,
-        "font_family": agent_customization.font_family,
-        "photo_url": agent_customization.photo_url
-    } if agent_customization else {}
+    customization_dict = {}
+    if agent_customization:
+        # Get signed URL for photo if using S3
+        photo_url = agent_customization.photo_url
+        if settings.S3_FILE_STORAGE and photo_url:
+            from app.core.s3 import get_s3_signed_url
+            photo_url = await get_s3_signed_url(photo_url)
+
+        customization_dict = {
+            "chat_background_color": agent_customization.chat_background_color,
+            "chat_bubble_color": agent_customization.chat_bubble_color,
+            "accent_color": agent_customization.accent_color,
+            "font_family": agent_customization.font_family,
+            "photo_url": photo_url,
+            "photo_url_signed": photo_url
+        }
 
     return f"""
         <!DOCTYPE html>
@@ -131,10 +132,11 @@ def get_widget_html(widget_id: str, agent_name: str, agent_customization: dict, 
             <link rel="stylesheet" crossorigin href="{widget_url}/assets/widget.css">
             <script>
                 window.__INITIAL_DATA__ = {{
-                    widgetId: "{widget_id}",
-                    agentName: "{agent_name}",
+                    widgetId: "{html.escape(widget_id)}",
+                    agentName: "{html.escape(agent_name)}",
                     customization: {json.dumps(customization_dict)},
-                    customerId: "{customer_id or ''}"
+                    customerId: "{html.escape(customer_id or '')}",
+                    initialToken: "{html.escape(initial_token or '')}"
                 }};
             </script>
         </head>
@@ -150,22 +152,24 @@ async def get_widget_data(
     widget_id: str,
     response: Response,
     email: Optional[str] = None,
-    conversation_token: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
     """Get widget data including agent customization"""
-    logger.info(f"Getting widget data for widget_id {widget_id}")
+    logger.info(f"Getting widget data for widget_id {widget_id}, email {email}")
 
     # Check if token exists
-    if not conversation_token:
+    if not authorization or not authorization.startswith('Bearer '):
         raise HTTPException(
             status_code=401,
             detail="Unauthorized"
         )
+
+    token = authorization.split(' ')[1]
     widget = None
     # Verify conversation token and get widget_id from token
     try:
-        token_data = verify_conversation_token(conversation_token)
+        token_data = verify_conversation_token(token)
 
         if not token_data or token_data.get("widget_id") != widget_id:
             raise HTTPException(
@@ -178,31 +182,44 @@ async def get_widget_data(
         # Get customer_id from token if exists
         customer_id = token_data.get("sub")
 
+        agent_repo = AgentRepository(db)
+        agent = agent_repo.get_by_id(widget.agent_id)
+
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        
 
         # Fix the condition check
         should_create_customer = (customer_id == "None" or customer_id is None) and email
 
         # Updated condition
         if should_create_customer:
+     
             customer_repo = CustomerRepository(db)
             customer = customer_repo.get_or_create_customer(
                 email=email,
                 organization_id=widget.organization_id
             )
+
             # Generate new token with customer_id
             new_token = create_conversation_token(
                 customer_id=customer.id,
                 widget_id=widget_id
             )
-            # Set new cookie
-            response.set_cookie(
-                key="conversation_token",
-                value=new_token,
-                httponly=True,
-                secure=True,
-                samesite="none",
-                max_age=3600 * 24 * 360  # 360 days
-            )
+
+            return {
+                "id": widget.id,
+                "organization_id": widget.organization_id,
+                "customer_id": customer.id,
+                "customer": {},  # Empty dict for new customer
+                "agent": {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "display_name": agent.display_name,
+                    "customization": agent.customization
+                },
+                "token": new_token  # Include the new token in response
+            }
         else:
             if customer_id == "None" or customer_id is None:
                 raise HTTPException(
@@ -216,26 +233,23 @@ async def get_widget_data(
             detail="Unauthorized"
         )
 
-
-    agent_repo = AgentRepository(db)
-    agent = agent_repo.get_by_id(widget.agent_id)
-    logger.debug(f"Agent: {agent}")
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
     
     customer_info = {}
     if customer_id and customer_id != "None":
         session_repo = SessionToAgentRepository(db)
-
         session = session_repo.get_customer_sessions(customer_id, SessionStatus.OPEN)
 
         # Add customer info to the response
         if session and session[0].user_full_name:
+            profile_pic = session[0].user_profile_pic
+            if settings.S3_FILE_STORAGE and profile_pic:
+                from app.core.s3 import get_s3_signed_url
+                profile_pic = await get_s3_signed_url(profile_pic)
+
             customer_info = {
                 "full_name": session[0].user_full_name,
-                "profile_pic": session[0].user_profile_pic or None
+                "profile_pic": profile_pic
             }
-
 
     return {
         "id": widget.id,

@@ -54,5 +54,8 @@ class Permission(Base):
             ("view_all_chats", "Can view all chat history"),
             ("manage_all_chats", "Can manage all chat sessions"),
             ("manage_organization", "Can manage organization settings"),
-            ("view_organization", "Can view organization details")
+            ("view_organization", "Can view organization details"),
+            ("manage_subscription", "Can manage subscription plans and billing"),
+            ("view_subscription", "Can view subscription details"),
+            ("super_admin", "Has all permissions")
         ]

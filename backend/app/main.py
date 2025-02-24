@@ -1,5 +1,5 @@
 """
-ChatterMate - Main
+ChatterMate - Main Application
 Copyright (C) 2024 ChatterMate
 
 This program is free software: you can redistribute it and/or modify
@@ -19,32 +19,34 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 # Add users import
 from fastapi.staticfiles import StaticFiles
 import socketio
-from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_chat, user_groups, roles
+from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_chat, user_groups, roles, analytics
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.services.firebase import initialize_firebase
 from app.database import engine, Base
 import asyncio
-from app.workers.knowledge_processor import run_processor
 from app.core.logger import get_logger
 from contextlib import asynccontextmanager
 import os
 from app.core.socketio import socket_app, configure_socketio, sio
 from app.core.cors import get_cors_origins
+from app.core.application import app
 
 # Import models to ensure they're registered with SQLAlchemy
 from app.models import Organization, User, Customer
-from app.api import roles
+try:
+    from app.enterprise.models import OTP
+except ImportError:
+    print("Enterprise models not available")
 from app.api import session_to_agent
-logger = get_logger(__name__)
 
+logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     initialize_firebase()
-    asyncio.create_task(start_knowledge_processor())
     await startup_event()
     yield
     # Shutdown
@@ -52,19 +54,12 @@ async def lifespan(app: FastAPI):
 
 # Move the CORS setup before app instantiation
 cors_origins = get_cors_origins()
+logger.debug(f"CORS origins: {cors_origins}")
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    description="AI-powered customer service platform with role-based access and integrations",
-    lifespan=lifespan,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
-)
-
-# Add CORS middleware immediately after app instantiation
+# Add CORS middleware to FastAPI app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(cors_origins),  # Convert set to list
+    allow_origins=list(cors_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,6 +76,14 @@ app.include_router(
     prefix=f"{settings.API_V1_STR}/chats",
     tags=["chats"]
 )
+
+# Try to import enterprise module if available
+try:
+    from app.enterprise import router as enterprise_router
+    app.include_router(enterprise_router, prefix=f"{settings.API_V1_STR}/enterprise", tags=["enterprise"])
+except ImportError as e:
+    logger.info("Enterprise module not available - running in community edition mode")
+    logger.debug(f"Import error: {e}")
 
 app.include_router(
     organizations.router,
@@ -142,6 +145,11 @@ app.include_router(
     tags=["session_to_agent"]
 )
 
+app.include_router(
+    analytics.router,
+    prefix=f"{settings.API_V1_STR}/analytics",
+    tags=["analytics"]
+)
 
 @app.get("/")
 async def root():
@@ -151,26 +159,19 @@ async def root():
         "description": "Welcome to ChatterMate API"
     }
 
-
-@app.api_route("/health", methods=["GET", "HEAD"])
-async def health_check():
+@app.api_route("/health", methods=["GET"], operation_id="get_health_check")
+async def get_health_check():
     return {
         "status": "healthy",
         "version": settings.VERSION
     }
 
-
-async def start_knowledge_processor():
-    """Start the knowledge processor as a background task"""
-    try:
-        while True:
-            await run_processor()
-            await asyncio.sleep(60)  # Wait for 60 seconds before next run
-    except Exception as e:
-        logger.error(f"Knowledge processor error: {str(e)}")
-        # Restart the processor after error
-        await asyncio.sleep(5)
-        asyncio.create_task(start_knowledge_processor())
+@app.api_route("/health", methods=["HEAD"], operation_id="head_health_check")
+async def head_health_check():
+    return {
+        "status": "healthy",
+        "version": settings.VERSION
+    }
 
 # Create upload directories if they don't exist
 if not os.path.exists("uploads"):
@@ -181,5 +182,5 @@ if not os.path.exists("uploads/agents"):
 # Mount static files
 app.mount("/api/v1/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# Create SocketIO app
+# Create final ASGI app
 app = socketio.ASGIApp(sio, app)

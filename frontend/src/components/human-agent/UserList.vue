@@ -30,6 +30,9 @@ import { inject } from 'vue'
 
 const getUserAvatar = (user: User) => {
   if (user.profile_pic) {
+    if (user.profile_pic.includes('amazonaws.com')) {
+      return user.profile_pic
+    }
     return `${import.meta.env.VITE_API_URL}${user.profile_pic}`
   }
   return userAvatar
@@ -72,7 +75,7 @@ onMounted(async () => {
   <div class="user-list">
     <header class="page-header">
       <h1>Users</h1>
-      <button class="btn btn-small" @click="showCreateModal = true">
+      <button class="btn btn-primary"  @click="showCreateModal = true">
         <span>+</span>
         Add User
       </button>
@@ -284,7 +287,7 @@ onMounted(async () => {
   position: absolute;
   right: 0;
   margin-top: var(--space-xs);
-  background: var(--background-soft);
+  background: var(--background-mute);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--space-xs);

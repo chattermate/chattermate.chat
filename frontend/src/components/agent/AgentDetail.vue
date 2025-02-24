@@ -60,6 +60,10 @@ const baseUrl = computed(() => {
     return import.meta.env.VITE_API_URL
 })
 
+const widgetUrl = computed(() => {
+    return import.meta.env.VITE_WIDGET_URL
+})
+
 const emit = defineEmits<{
     (e: 'close'): void
 }>()
@@ -94,9 +98,17 @@ const handlePreview = (customization: AgentCustomization) => {
 }
 
 const photoUrl = computed(() => {
-    return agentData.value.customization?.photo_url
-        ? import.meta.env.VITE_API_URL + agentData.value.customization.photo_url
-        : getAvatarUrl(agentData.value.agent_type.toLowerCase())
+    if (!agentData.value.customization?.photo_url) {
+        return getAvatarUrl(agentData.value.agent_type.toLowerCase())
+    }
+    
+    // If it's an S3 URL (contains amazonaws.com), use it directly
+    if (agentData.value.customization.photo_url.includes('amazonaws.com')) {
+        return agentData.value.customization.photo_url
+    }
+    
+    // For local storage, prepend the API URL
+    return import.meta.env.VITE_API_URL + agentData.value.customization.photo_url
 })
 
 const handleClose = () => {
@@ -104,7 +116,7 @@ const handleClose = () => {
 }
 
 const copyWidgetCode = () => {
-    copyWidgetCodeFn(baseUrl.value)
+    copyWidgetCodeFn(widgetUrl.value)
 }
 
 // Computed property to handle instructions as text
@@ -266,7 +278,7 @@ onMounted(() => {
                         </div>
                         <div v-else-if="widget" class="widget-code">
                             <div class="code-container">
-                                <code>&lt;script&gt;window.chattermateId='{{ widget.id }}';&lt;/script&gt;&lt;script src="{{ baseUrl }}/webclient/chattermate.min.js"&gt;&lt;/script&gt;</code>
+                                <code>&lt;script&gt;window.chattermateId='{{ widget.id }}';&lt;/script&gt;&lt;script src="{{ widgetUrl }}/webclient/chattermate.min.js"&gt;&lt;/script&gt;</code>
                                 <button class="copy-button" @click="copyWidgetCode" title="Copy to clipboard">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                                         xmlns="http://www.w3.org/2000/svg">

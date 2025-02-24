@@ -46,9 +46,9 @@ def format_datetime(dt):
 @sio.on('connect', namespace='/widget')
 async def widget_connect(sid, environ, auth):
     try:
-        logger.info(f"Widget client connected: {sid}")
-        # Authenticate using conversation token
-        widget_id, org_id, customer_id = await authenticate_socket_conversation_token(sid, environ)
+        logger.info(f"Widget client connected: {auth}")
+        # Authenticate using conversation token from Authorization header
+        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, auth)
         
         if not widget_id or not org_id:
             raise ValueError("Widget authentication failed")
@@ -104,9 +104,10 @@ async def widget_connect(sid, environ, auth):
             'agent_id': str(widget.agent_id),
             'customer_id': customer_id,
             'session_id': session_id,
-            'ai_config': ai_config
+            'ai_config': ai_config,
+            'conversation_token': conversation_token
         }
-        logger.debug(f"ai_config: {ai_config.encrypted_api_key}")
+
         await sio.save_session(sid, session_data, namespace='/widget')
         logger.info(f"Widget client connected: {sid} joined room: {session_id}")
         return True
@@ -123,17 +124,23 @@ async def widget_connect(sid, environ, auth):
 
 @sio.on('chat', namespace='/widget')
 async def handle_widget_chat(sid, data):
+    """Handle widget chat messages"""
     try:
         # Authenticate using conversation token
-        environ = sio.get_environ(sid, namespace='/widget')
-        widget_id, org_id, customer_id = await authenticate_socket_conversation_token(sid, environ)
+        session = await sio.get_session(sid, namespace='/widget')
+        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
         
         if not widget_id or not org_id:
-            raise ValueError("Widget authentication failed")
+            logger.error(f"Widget authentication failed for sid {sid}")
+            await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
+            return
 
-        # Get session data
-        session = await sio.get_session(sid, namespace='/widget')
-        logger.debug(f"ai_config: {session['ai_config'].encrypted_api_key}")
+        # Process message
+        message = data.get('message', '').strip()
+        if not message:
+            return
+
+  
         session_id = session['session_id']
         # Verify session matches authenticated data
         if (session['widget_id'] != widget_id or 
@@ -168,7 +175,7 @@ async def handle_widget_chat(sid, data):
             )
             # Get response from ai agent
             response = await chat_agent.get_response(
-                message=data['message'],
+                message=message,
                 session_id=chat_agent.agent.session_id,
                 org_id=org_id,
                 agent_id=session['agent_id'],
@@ -177,7 +184,7 @@ async def handle_widget_chat(sid, data):
             # Get response from agent transfer ai agent
             chat_repo = ChatRepository(db)
             chat_repo.create_message({
-                "message": data['message'],
+                "message": message,
                 "message_type": "user",
                 "session_id": session_id,
                 "organization_id": org_id,
@@ -225,7 +232,7 @@ async def handle_widget_chat(sid, data):
         else:
             chat_repo = ChatRepository(db)
             chat_repo.create_message({
-                "message": data['message'],
+                "message": message,
                 "message_type": "user",
                 "session_id": session_id,
                 "organization_id": org_id,  
@@ -243,13 +250,23 @@ async def handle_widget_chat(sid, data):
                 # Also emit to user-specific room
                 user_room = f"user_{user_id}"
                 await sio.emit('chat_reply', {
-                    'message': data['message'],
+                    'message': message,
                     'type': 'user_message',
                     'transfer_to_human': False,
                     'session_id': session_id,
                     'created_at': timestamp
                 }, room=user_room, namespace='/agent')
- 
+
+
+            # Emit to both session room and user's personal room
+            await sio.emit('chat_reply', {
+                'message': message,
+                'type': 'user_message',
+                'transfer_to_human': False,
+                'session_id': session_id,
+                'timestamp': timestamp
+            }, room=session_id, namespace='/agent')    
+
             return # don't do anything if the session is closed or the user has already taken over
         
         # Emit response to the specific room
@@ -272,15 +289,16 @@ async def handle_widget_chat(sid, data):
 async def get_widget_chat_history(sid):
     try:
         logger.info(f"Getting chat history for sid {sid}")
-        # Authenticate using conversation token
-        environ = sio.get_environ(sid, namespace='/widget')
-        widget_id, org_id, customer_id = await authenticate_socket_conversation_token(sid, environ)
-        
-        if not widget_id or not org_id:
-            raise ValueError("Widget authentication failed")
-
         # Get session data
         session = await sio.get_session(sid, namespace='/widget')
+        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        
+        if not widget_id or not org_id:
+            logger.error(f"Widget authentication failed for sid {sid}")
+            await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
+            return
+
+
         
         # Verify session matches authenticated data
         if (session['widget_id'] != widget_id or 
@@ -327,7 +345,6 @@ async def get_widget_chat_history(sid):
         }, to=sid, namespace='/widget')
 
     except ValueError as e:
-        traceback.print_exc()
         logger.error(f"Widget authentication error for sid {sid}: {str(e)}")
         await sio.emit('error', {
             'error': 'Authentication failed',

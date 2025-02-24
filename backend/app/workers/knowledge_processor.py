@@ -108,8 +108,15 @@ async def run_processor():
         pending_items = queue_repo.get_pending()
 
         if pending_items:
-            # Process items concurrently
-            await asyncio.gather(*[process_queue_item(item.id) for item in pending_items])
+            # Create semaphore to limit concurrent processing to 3
+            semaphore = asyncio.Semaphore(3)
+
+            async def process_with_semaphore(item_id):
+                async with semaphore:
+                    await process_queue_item(item_id)
+
+            # Process items with semaphore control
+            await asyncio.gather(*[process_with_semaphore(item.id) for item in pending_items])
 
         PROCESSOR_STATUS["last_run"] = datetime.utcnow().isoformat()
 

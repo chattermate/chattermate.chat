@@ -94,11 +94,12 @@ describe('DashboardLayout', () => {
   })
 
   it('displays user information correctly', () => {
-    const userName = wrapper.find('.name')
-    const userRole = wrapper.find('.role')
+    const vm = wrapper.vm as unknown as DashboardLayoutInstance
+    expect(vm.userName).toBe('Test User')
+    expect(vm.userRole).toBe('Admin')
     
-    expect(userName.text()).toBe('Test User')
-    expect(userRole.text()).toBe('Admin')
+    // Find name element in the sidebar-open state
+    expect(wrapper.find('.user-info .name').text()).toBe('Test User')
   })
 
   it('shows user menu when clicking profile', async () => {

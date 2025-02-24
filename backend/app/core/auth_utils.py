@@ -104,41 +104,48 @@ async def authenticate_socket(sid: str, environ: dict) -> Tuple[Optional[str], O
         return None, None, None
 
 
-async def authenticate_socket_conversation_token(sid: str, environ: dict) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+async def authenticate_socket_conversation_token(sid: str, auth: dict) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
     Authenticate widget socket connection using conversation token
-    Returns: (widget_id, org_id, customer_id)
+    Returns: (widget_id, org_id, customer_id, conversation_token)
     """
     try:
-        # Extract cookies from environ
-        cookie_str = environ.get('HTTP_COOKIE', environ.get('headers', {}).get('Cookie', ''))
-        cookies = http.cookies.SimpleCookie()
-        cookies.load(cookie_str)
-
-        # Get conversation token from cookies
         conversation_token = None
-        if 'conversation_token' in cookies:
-            conversation_token = cookies['conversation_token'].value
+        
+        # Get token from Socket.IO auth data
+        conversation_token = auth.get('conversation_token', '')
+        
+                
         if not conversation_token:
-            logger.info("No conversation token found in cookies")
-            return None, None, None
+            logger.info("No conversation token found in auth data or cookies")
+            return None, None, None, None
 
         # Verify token and get info
         token_data = verify_conversation_token(conversation_token)
         if not token_data:
-            return None, None, None
+            return None, None, None, None
 
         widget_id = token_data.get('widget_id')
         customer_id = token_data.get('sub')
+        token_type = token_data.get('type')
+
+        # Verify token type
+        if token_type != "conversation":
+            logger.info(f"Invalid token type: {token_type}")
+            return None, None, None, None
+
+        logger.info(f"Authenticated widget {widget_id} for customer {customer_id}")
 
         # Get widget to verify and get org_id
         db = next(get_db())
         widget = db.query(Widget).filter(Widget.id == widget_id).first()
         if not widget:
-            return None, None, None
+            return None, None, None, None
 
-        return widget_id, widget.organization_id, customer_id
+        org_id = widget.organization_id
+        db.close()
+        return widget_id, org_id, customer_id, conversation_token
 
     except Exception as e:
         logger.error(f"Widget authentication error for sid {sid}: {str(e)}")
-        return None, None, None
+        return None, None, None, None

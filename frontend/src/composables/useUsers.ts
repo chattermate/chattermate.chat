@@ -16,9 +16,9 @@ export function useUsers() {
     try {
       loading.value = true
       users.value = await listUsers()
-    } catch (err) {
-      error.value = 'Failed to load users'
-      console.error('Error loading users:', err)
+    } catch (err: any) {
+      error.value = 'Failed to load users - ' + err.response.data.detail
+      console.error('Error loading users:', err.response.data.detail)
     } finally {
       loading.value = false
     }
@@ -50,11 +50,11 @@ export function useUsers() {
         duration: 4000,
         closeButton: true
       })
-    } catch (err) {
+    } catch (err: any) {
       error.value = 'Failed to update user'
-      console.error('Error updating user:', err)
+      console.error('Error updating user:', err.response.data.detail)
       toast.error('Error', {
-        description: 'Failed to update user',
+        description: 'Failed to update user - ' + err.response.data.detail,
         duration: 4000,
         closeButton: true
       })
@@ -86,11 +86,11 @@ export function useUsers() {
         duration: 4000,
         closeButton: true
       })
-    } catch (err) {
+    } catch (err: any) {
       error.value = 'Failed to delete user'
-      console.error('Error deleting user:', err)
+      console.error('Error deleting user:', err.response.data.detail)
       toast.error('Error', {
-        description: 'Failed to delete user',
+        description: 'Failed to delete user - ' + err.response.data.detail,
         duration: 4000,
         closeButton: true
       })
@@ -111,11 +111,11 @@ export function useUsers() {
         duration: 4000,
         closeButton: true
       })
-    } catch (err) {
+    } catch (err: any) {
       error.value = 'Failed to create user'
-      console.error('Error creating user:', err)
+      console.error('Error creating user:', err.response.data.detail)
       toast.error('Error', {
-        description: 'Failed to create user',
+        description: 'Failed to create user - ' + err.response.data.detail,
         duration: 4000,
         closeButton: true
       })

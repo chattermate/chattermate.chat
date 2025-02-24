@@ -18,9 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 from app.database import Base, get_db
 from fastapi import FastAPI
 from app.models.user import User, UserGroup
@@ -32,17 +30,7 @@ from app.core.auth import get_current_user, require_permissions
 from app.main import app
 from app.core.config import settings
 from app.core.security import get_password_hash
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from tests.conftest import engine, TestingSessionLocal, create_tables, test_organization
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -55,7 +43,10 @@ app.include_router(
 @pytest.fixture(scope="function")
 def db():
     """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
+    # Drop all tables first
+    Base.metadata.drop_all(bind=engine)
+    # Create tables except enterprise ones
+    create_tables()
     db = TestingSessionLocal()
     try:
         yield db
@@ -64,16 +55,11 @@ def db():
         Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
-def test_organization_id() -> UUID:
-    """Create a consistent organization ID for all tests"""
-    return uuid4()
-
-@pytest.fixture
-def test_role(db: Session, test_organization_id: UUID) -> Role:
+def test_role(db: Session, test_organization) -> Role:
     """Create a test role with required permissions"""
     role = Role(
         name="Test Role",
-        organization_id=test_organization_id
+        organization_id=test_organization.id
     )
     db.add(role)
     db.commit()
@@ -93,13 +79,13 @@ def test_role(db: Session, test_organization_id: UUID) -> Role:
     return role
 
 @pytest.fixture
-def test_user(db: Session, test_organization_id: UUID, test_role: Role) -> User:
+def test_user(db: Session, test_organization, test_role: Role) -> User:
     """Create a test user with required permissions"""
     user = User(
         id=uuid4(),
         email="test@test.com",
         hashed_password=get_password_hash("testpassword"),
-        organization_id=test_organization_id,
+        organization_id=test_organization.id,
         role_id=test_role.id,
         is_active=True
     )
@@ -108,12 +94,12 @@ def test_user(db: Session, test_organization_id: UUID, test_role: Role) -> User:
     return user
 
 @pytest.fixture
-def test_group(db: Session, test_organization_id: UUID) -> UserGroup:
+def test_group(db: Session, test_organization) -> UserGroup:
     """Create a test user group"""
     group = UserGroup(
         name="Test Group",
         description="Test group description",
-        organization_id=test_organization_id
+        organization_id=test_organization.id
     )
     db.add(group)
     db.commit()

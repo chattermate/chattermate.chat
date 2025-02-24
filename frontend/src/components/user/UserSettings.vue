@@ -22,6 +22,7 @@ import { useAuth } from '@/composables/useAuth'
 import { userService } from '@/services/user'
 import { validatePassword, type PasswordStrength } from '@/utils/validators'
 import userAvatar from '@/assets/user.svg'
+import type { User } from '@/types/user'
 
 const { user } = useAuth()
 
@@ -73,6 +74,11 @@ const hasChanges = computed(() => {
 const userAvatarSrc = computed(() => {
   if (profilePicPreview.value) return profilePicPreview.value
   if (user.value?.profile_pic) {
+    // If it's an S3 URL (contains amazonaws.com), use it directly
+    if (user.value.profile_pic.includes('amazonaws.com')) {
+      return user.value.profile_pic
+    }
+    // For local storage, prepend the API URL and add timestamp
     const timestamp = new Date().getTime()
     return `${import.meta.env.VITE_API_URL}${user.value.profile_pic}?t=${timestamp}`
   }
@@ -126,13 +132,25 @@ const uploadProfilePic = async () => {
     
     await userService.uploadProfilePic(formData)
     message.value = 'Profile picture updated successfully'
+    
+    // Update the current user data with new profile pic and force refresh
+    if (user.value) {
+      const updatedUser = userService.getCurrentUser() as User
+      if (updatedUser && updatedUser.profile_pic) {
+        user.value = {
+          ...updatedUser,
+          profile_pic: `${updatedUser.profile_pic}?t=${new Date().getTime()}`
+        }
+      }
+    }
+    
+    // Clear preview and file
     profilePicFile.value = null
     profilePicPreview.value = ''
+    
+    // Refresh user info in parent components
     refreshUserInfo()
-    // Force reload user data
-    if (user.value) {
-      user.value = userService.getCurrentUser()
-    }
+    
   } catch (err: any) {
     error.value = err.message || 'Failed to upload profile picture'
   } finally {

@@ -158,7 +158,7 @@ onMounted(async () => {
         <div class="form-actions">
           <button 
             type="submit" 
-            class="submit-button"
+            class="btn btn-primary"
             :disabled="loading || !hasChanges"
           >
             {{ loading ? 'Saving...' : 'Save Changes' }}
@@ -181,6 +181,7 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-lg);
   box-shadow: 0 4px 15px rgb(131, 129, 129);
+  padding: var(--space-lg);
 }
 
 .settings-content {

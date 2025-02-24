@@ -33,6 +33,8 @@ import os
 from uuid import uuid4
 from PIL import Image
 from uuid import UUID
+from app.core.s3 import upload_file_to_s3
+from app.core.config import settings
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -75,19 +77,24 @@ async def save_file(file: UploadFile, organization_id: UUID) -> str:
             detail="Invalid image file"
         )
 
-    upload_dir = f"uploads/agents/{organization_id}"
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-
     file_ext = os.path.splitext(file.filename)[1].lower()
     file_name = f"{uuid4()}{file_ext}"
-    file_path = os.path.join(upload_dir, file_name)
+    
+    if settings.S3_FILE_STORAGE:
+        folder = f"agents/{organization_id}"
+        return await upload_file_to_s3(file, folder, file_name, content_type=file.content_type)
+    else:
+        # Local storage
+        upload_dir = f"uploads/agents/{organization_id}"
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir)
 
-    async with aiofiles.open(file_path, 'wb') as f:
-        content = await file.read()
-        await f.write(content)
+        file_path = os.path.join(upload_dir, file_name)
+        async with aiofiles.open(file_path, 'wb') as f:
+            content = await file.read()
+            await f.write(content)
 
-    return f"/{file_path}"
+        return f"/{file_path}"
 
 
 @router.put("/{agent_id}", response_model=AgentWithCustomizationResponse)
@@ -265,9 +272,13 @@ async def upload_agent_photo(
 
         # Delete old photo if it exists
         if db_customization and db_customization.photo_url:
-            old_photo_path = db_customization.photo_url.lstrip('/')
-            if os.path.exists(old_photo_path):
-                os.remove(old_photo_path)
+            if settings.S3_FILE_STORAGE:
+                from app.core.s3 import delete_file_from_s3
+                await delete_file_from_s3(db_customization.photo_url)
+            else:
+                old_photo_path = db_customization.photo_url.lstrip('/')
+                if os.path.exists(old_photo_path):
+                    os.remove(old_photo_path)
 
         # Save new photo file
         photo_url = await save_file(photo, current_user.organization_id)

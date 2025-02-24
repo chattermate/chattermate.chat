@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from sqlalchemy import Column, Integer, String, JSON, ForeignKey, DateTime, func, UUID
+from sqlalchemy import Column, Integer, String, JSON, ForeignKey, DateTime, func, UUID, Interval
 from sqlalchemy.orm import relationship
 from app.database import Base
 

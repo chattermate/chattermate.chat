@@ -43,9 +43,17 @@ const handleAgentClose = () => {
 }
 
 const getAgentPhotoUrl = (agent: Agent) => {
-    return agent.customization?.photo_url
-        ? import.meta.env.VITE_API_URL + agent.customization.photo_url
-        : getAvatarUrl(agent.agent_type.toLowerCase())
+    if (!agent.customization?.photo_url) {
+        return getAvatarUrl(agent.agent_type.toLowerCase())
+    }
+    
+    // If it's an S3 URL (contains amazonaws.com), use it directly
+    if (agent.customization.photo_url.includes('amazonaws.com')) {
+        return agent.customization.photo_url
+    }
+    
+    // For local storage, prepend the API URL
+    return import.meta.env.VITE_API_URL + agent.customization.photo_url
 }
 </script>
 

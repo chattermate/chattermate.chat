@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 <script setup lang="ts">
 import { ref, onMounted, watch, provide, readonly, computed } from 'vue'
+import type { Ref } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import userAvatar from '@/assets/user.svg'
@@ -28,8 +29,11 @@ import type { User } from '@/types/user'
 import { useNotifications } from '@/composables/useNotifications'
 import { notificationService } from '@/services/notification'
 import UserSettings from '@/components/user/UserSettings.vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { updateUserStatus } from '@/services/users'
+import api from '@/services/api'
+import { useSubscription } from '@/composables/useSubscription'
+import type { SubscriptionStore } from '@/composables/useSubscription'
 
 const isSidebarOpen = ref(true)
 const showUserMenu = ref(false)
@@ -43,9 +47,29 @@ const statusUpdating = ref(false)
 const { logout } = useAuth()
 useNotifications()
 const route = useRoute()
+const router = useRouter()
+
+// Initialize subscription store
+const subscriptionStore = ref<SubscriptionStore>({
+    currentPlan: ref(null),
+    isLoadingPlan: ref(false),
+    isInTrial: ref(false),
+    trialDaysLeft: ref(0),
+    fetchCurrentPlan: async () => {}
+})
+
+// Load subscription store
+const initSubscriptionStore = async () => {
+    subscriptionStore.value = await useSubscription()
+}
 
 const userAvatarSrc = computed(() => {
   if (currentUser.value?.profile_pic) {
+    // If it's an S3 URL (contains amazonaws.com), use it directly
+    if (currentUser.value.profile_pic.includes('amazonaws.com')) {
+      return currentUser.value.profile_pic
+    }
+    // For local storage, prepend the API URL and add timestamp
     const timestamp = new Date().getTime()
     return `${import.meta.env.VITE_API_URL}${currentUser.value.profile_pic}?t=${timestamp}`
   }
@@ -94,8 +118,6 @@ const fetchUnreadCount = async () => {
     }
 }
 
-onMounted(fetchUnreadCount)
-
 const toggleSidebar = () => {
     isSidebarOpen.value = !isSidebarOpen.value
 }
@@ -113,13 +135,27 @@ const refreshUserInfo = () => {
   userName.value = userService.getUserName()
   userRole.value = userService.getUserRole()
   const user = userService.getCurrentUser() as User
-  currentUser.value = user
+  // Force a new reference to trigger reactivity
+  currentUser.value = { ...user }
+}
+
+const navigateToUpgrade = () => {
+    router.push('/settings/subscription')
 }
 
 // Provide both methods
 provide('refreshUserInfo', refreshUserInfo)
 provide('openSettings', openSettings)
 provide('showSettings', readonly(showSettings))
+
+onMounted(async () => {
+    fetchUnreadCount()
+    await initSubscriptionStore()
+    // Only call fetchCurrentPlan once since useSubscription already checks for enterprise availability
+    if (subscriptionStore.value) {
+        await subscriptionStore.value.fetchCurrentPlan()
+    }
+})
 </script>
 
 <template>
@@ -131,51 +167,74 @@ provide('showSettings', readonly(showSettings))
             <!-- Header -->
             <header class="header">
                 <div class="header-content">
-                    <div class="search">
-
+                    <div class="left-section">
+                        <!-- Any left section content -->
                     </div>
-                    <div class="user-menu">
-                        <button class="notification-button" @click="showNotifications = !showNotifications">
-                            <img :src="notificationIcon" alt="Notifications" class="notification-icon" />
-                            <span v-if="unreadCount > 0" class="notification-badge">
-                                {{ unreadCount > 99 ? '99+' : unreadCount }}
-                            </span>
-                        </button>
-
-                        <NotificationList :is-open="showNotifications" @close="showNotifications = false"
-                            @notification-read="fetchUnreadCount" />
-
-                        <div class="user-profile">
-                            <div class="profile-trigger" @click="showUserMenu = !showUserMenu">
-                                <div class="avatar-wrapper">
-                                    <img :src="userAvatarSrc" alt="User" class="avatar" />
+                    <div class="right-section">
+                        <div v-if="subscriptionStore" class="plan-display">
+                            <div v-if="subscriptionStore.isLoadingPlan" class="plan-loading">
+                                <span class="loading-spinner"></span>
+                                Loading...
+                            </div>
+                            <div v-else-if="subscriptionStore.currentPlan" class="plan-info">
+                                <div v-if="subscriptionStore.isInTrial" class="trial-info">
                                     <span 
-                                        class="status-indicator" 
-                                        :class="{ 'online': currentUser?.is_online }"
-                                    ></span>
-                                </div>
-                                <div class="user-info" v-if="isSidebarOpen">
-                                    <span class="name">{{ userName }}</span>
-                                    <span class="role">{{ userRole }}</span>
+                                        class="trial-badge clickable" 
+                                        @click="navigateToUpgrade"
+                                    >
+                                        Trial ({{ subscriptionStore.trialDaysLeft }} days left)
+                                    </span>
                                 </div>
                             </div>
-                            <div class="dropdown-menu" v-if="showUserMenu">
-                                <div class="status-menu-item">
-                                  <span class="status-label">Status:</span>
-                                  <button 
-                                    class="status-toggle" 
-                                    :class="{ 'online': currentUser?.is_online }"
-                                    @click="toggleOnlineStatus"
-                                    :disabled="statusUpdating"
-                                  >
-                                    {{ currentUser?.is_online ? 'Online' : 'Offline' }}
-                                  </button>
+                        </div>
+                        <div class="user-menu">
+                            <button class="notification-button" @click="showNotifications = !showNotifications">
+                                <img :src="notificationIcon" alt="Notifications" class="notification-icon" />
+                                <span v-if="unreadCount > 0" class="notification-badge">
+                                    {{ unreadCount > 99 ? '99+' : unreadCount }}
+                                </span>
+                            </button>
+
+                            <NotificationList :is-open="showNotifications" @close="showNotifications = false"
+                                @notification-read="fetchUnreadCount" />
+
+                            <div class="user-profile">
+                                <div class="profile-trigger" @click="showUserMenu = !showUserMenu">
+                                    <div class="avatar-wrapper">
+                                        <img :src="userAvatarSrc" alt="User" class="avatar" />
+                                        <span 
+                                            class="status-indicator" 
+                                            :class="{ 'online': currentUser?.is_online }"
+                                        ></span>
+                                    </div>
+                                    <div class="user-info" v-if="isSidebarOpen">
+                                        <span class="name">{{ userName }}</span>
+                                        <div class="plan-info">
+                                            <span class="plan-badge" :class="subscriptionStore?.currentPlan?.plan?.type">
+                                                <span class="plan-icon">⚡</span>
+                                                {{ subscriptionStore?.currentPlan?.plan?.name || '' }}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="menu-divider"></div>
-                                <button class="menu-item" @click="openSettings">
-                                    Settings
-                                </button>
-                                <button class="menu-item" @click="logout">Logout</button>
+                                <div class="dropdown-menu" v-if="showUserMenu">
+                                    <div class="status-menu-item">
+                                      <span class="status-label">Status:</span>
+                                      <button 
+                                        class="status-toggle" 
+                                        :class="{ 'online': currentUser?.is_online }"
+                                        @click="toggleOnlineStatus"
+                                        :disabled="statusUpdating"
+                                      >
+                                        {{ currentUser?.is_online ? 'Online' : 'Offline' }}
+                                      </button>
+                                    </div>
+                                    <div class="menu-divider"></div>
+                                    <button class="menu-item" @click="openSettings">
+                                        Settings
+                                    </button>
+                                    <button class="menu-item" @click="logout">Logout</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -269,13 +328,19 @@ provide('showSettings', readonly(showSettings))
 .header {
     background: var(--background-soft);
     border-bottom: 1px solid var(--border-color);
-    padding: var(--space-md) var(--space-xl);
 }
 
 .header-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: var(--space-md) var(--space-xl);
+}
+
+.right-section {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
 }
 
 .search input {
@@ -497,5 +562,116 @@ provide('showSettings', readonly(showSettings))
     height: 1px;
     background: var(--border-color);
     margin: var(--space-xs) 0;
+}
+
+.plan-display {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.plan-loading {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+.plan-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: 2px;
+}
+
+.plan-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    background-color: var(--background-mute);
+    color: var(--text-color);
+}
+
+.plan-badge.pro {
+    background: linear-gradient(45deg, #000000, #333333);
+    color: white;
+}
+
+.plan-badge.enterprise {
+    background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+    color: white;
+}
+
+.plan-icon {
+    font-size: var(--text-xs);
+}
+
+.upgrade-button.gradient {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: white;
+    background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.upgrade-button.gradient:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
+.upgrade-icon {
+    font-size: var(--text-xs);
+}
+
+.upgrade-button {
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.upgrade-button:hover {
+    background-color: var(--accent-color);
+    transform: translateY(-1px);
+}
+
+.trial-info {
+    display: flex;
+    align-items: center;
+    margin-right: 12px;
+}
+
+.trial-badge {
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.trial-badge:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
+.trial-badge.clickable {
+    cursor: pointer;
 }
 </style>

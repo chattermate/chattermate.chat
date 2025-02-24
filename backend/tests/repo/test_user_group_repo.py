@@ -17,93 +17,77 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.database import Base
 from app.repositories.user_group import UserGroupRepository
 from app.models.user import User, UserGroup
 from uuid import uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-@pytest.fixture(scope="function")
-def engine():
-    """Create a test database engine"""
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL,
-        connect_args={"check_same_thread": False}
-    )
-    Base.metadata.create_all(bind=engine)
-    yield engine
-    Base.metadata.drop_all(bind=engine)
-
-@pytest.fixture(scope="function")
-def db_session(engine):
-    """Create a test database session"""
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = TestingSessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
+from app.models.organization import Organization
 
 @pytest.fixture
-def user_group_repo(db_session):
+def user_group_repo(db):
     """Create a UserGroupRepository instance"""
-    return UserGroupRepository(db_session)
+    return UserGroupRepository(db)
 
 @pytest.fixture
-def test_org_id():
-    """Create a test organization ID"""
-    return uuid4()
-
-@pytest.fixture
-def test_user(db_session, test_org_id):
+def test_user(db, test_organization_id):
     """Create a test user"""
     user = User(
         id=uuid4(),
         email="test@example.com",
         hashed_password="hashed_password",
         is_active=True,
-        organization_id=test_org_id,
+        organization_id=test_organization_id,
         full_name="Test User"
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user
 
 @pytest.fixture
-def test_group(db_session, test_org_id):
+def test_group(db, test_organization_id):
     """Create a test group"""
     group = UserGroup(
         name="Test Group",
         description="Test group description",
-        organization_id=test_org_id
+        organization_id=test_organization_id
     )
-    db_session.add(group)
-    db_session.commit()
-    db_session.refresh(group)
+    db.add(group)
+    db.commit()
+    db.refresh(group)
     return group
 
-def test_get_groups_by_organization(user_group_repo, test_org_id, test_group):
+def test_get_groups_by_organization(user_group_repo, test_organization_id, test_group):
     """Test retrieving groups by organization"""
+    # Create another organization for testing
+    other_org = Organization(
+        name="Other Organization",
+        domain="other.com",
+        timezone="UTC"
+    )
+    user_group_repo.db.add(other_org)
+    user_group_repo.db.commit()
+    user_group_repo.db.refresh(other_org)
+
     # Create another group in a different organization
-    other_org_id = uuid4()
     other_group = UserGroup(
         name="Other Group",
         description="Other group description",
-        organization_id=other_org_id
+        organization_id=other_org.id
     )
     user_group_repo.db.add(other_group)
     user_group_repo.db.commit()
 
     # Get groups for test organization
-    groups = user_group_repo.get_groups_by_organization(test_org_id)
+    groups = user_group_repo.get_groups_by_organization(test_organization_id)
     assert len(groups) == 1
     assert groups[0].id == test_group.id
     assert groups[0].name == test_group.name
+
+    # Get groups for other organization
+    other_groups = user_group_repo.get_groups_by_organization(other_org.id)
+    assert len(other_groups) == 1
+    assert other_groups[0].name == other_group.name
+    assert other_groups[0].organization_id == other_org.id
 
 def test_get_group(user_group_repo, test_group):
     """Test retrieving a group by ID"""
@@ -117,16 +101,16 @@ def test_get_group(user_group_repo, test_group):
     non_existent_group = user_group_repo.get_group(uuid4())
     assert non_existent_group is None
 
-def test_create_group(user_group_repo, test_org_id):
+def test_create_group(user_group_repo, test_organization_id):
     """Test creating a new group"""
     name = "New Group"
     description = "New group description"
     
-    group = user_group_repo.create_group(name, description, test_org_id)
+    group = user_group_repo.create_group(name, description, test_organization_id)
     assert group is not None
     assert group.name == name
     assert group.description == description
-    assert group.organization_id == test_org_id
+    assert group.organization_id == test_organization_id
 
     # Verify group was saved to database
     saved_group = user_group_repo.get_group(group.id)

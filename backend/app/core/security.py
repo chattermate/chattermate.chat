@@ -37,22 +37,24 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Initialize encryption key from environment or generate a persistent one
-
-
 def get_or_create_key():
-    key_path = settings.ENCRYPTION_KEY_PATH
-    if os.path.exists(key_path):
-        with open(key_path, "rb") as key_file:
-            return key_file.read()
-    else:
-        key = Fernet.generate_key()
-        with open(key_path, "wb") as key_file:
-            key_file.write(key)
-        return key
+    """Get encryption key from environment variable or generate a new one"""
+    env_key = os.getenv('ENCRYPTION_KEY')
+    if env_key:
+        try:
+            # Try to decode the base64 key
+            return base64.b64decode(env_key)
+        except Exception as e:
+            logger.error(f"Invalid encryption key format: {str(e)}")
+    
+    # Generate new key if not found in env
+    key = Fernet.generate_key()
+    # Convert to base64 string for easy env var storage
+    env_key = base64.b64encode(key).decode()
+    logger.info(f"Generated new encryption key. Please set ENCRYPTION_KEY={env_key} in your environment")
+    return key
 
-
-# Initialize Fernet with persistent key
+# Initialize Fernet with key
 ENCRYPTION_KEY = get_or_create_key()
 fernet = Fernet(ENCRYPTION_KEY)
 

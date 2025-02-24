@@ -23,6 +23,7 @@ from app.database import Base
 import enum
 import json
 import uuid
+from typing import Optional
 
 
 class AgentType(str, enum.Enum):
@@ -51,6 +52,21 @@ class AgentCustomization(Base):
 
     # Relationship
     agent = relationship("Agent", back_populates="customization")
+
+    @property
+    def photo_url_signed(self) -> Optional[str]:
+        """Get signed URL for photo if using S3"""
+        if not self.photo_url:
+            return None
+        
+        from app.core.config import settings
+        if settings.S3_FILE_STORAGE:
+            from app.core.s3 import get_s3_signed_url
+            import asyncio
+            return asyncio.run(get_s3_signed_url(self.photo_url))
+        return self.photo_url
+
+
 
 
 # Association table for agent-usergroup relationship

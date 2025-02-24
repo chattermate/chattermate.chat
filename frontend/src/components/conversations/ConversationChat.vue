@@ -167,7 +167,7 @@ onMounted(() => {
   flex-direction: column;
   height: 70vh;
   width: 100%;
-  background: #1a1a1a;
+  background: var(--background-color);
   position: relative;
   overflow: hidden;
 }
@@ -175,8 +175,8 @@ onMounted(() => {
 .chat-header {
   flex: 0 0 auto;
   padding: 16px 24px;
-  border-bottom: 1px solid #2d2d2d;
-  background: #1a1a1a;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--background-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -207,20 +207,20 @@ onMounted(() => {
 .chat-input {
   flex: 0 0 auto;
   padding: 16px 24px;
-  border-top: 1px solid #2d2d2d;
-  background: #1a1a1a;
+  border-top: 1px solid var(--border-color);
+  background: var(--background-color);
   width: 100%;
 }
 
 .user-info h2 {
   font-size: 16px;
-  color: #ffffff;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
 .status {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .header-actions {
@@ -231,14 +231,14 @@ onMounted(() => {
 .action-btn {
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 8px;
   border-radius: 50%;
 }
 
 .action-btn:hover {
-  background: #2d2d2d;
+  background: var(--background-mute);
 }
 
 .message {
@@ -265,32 +265,33 @@ onMounted(() => {
 }
 
 .message-bubble {
-  background: #2d2d2d;
+  background: var(--background-soft);
   padding: 12px 16px;
   border-radius: 16px;
   border-bottom-left-radius: 4px;
-  color: white;
+  color: var(--text-primary);
   position: relative;
   max-width: 100%;
   word-wrap: break-word;
 }
 
 .message.user .message-bubble {
-  background: #E94E3C;
+  background: var(--primary-color);
+  color: var(--background-color);
   border-radius: 16px;
   border-bottom-right-radius: 4px;
 }
 
 .agent-name {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-muted);
   padding-left: 4px;
   margin-top: 2px;
 }
 
 .message-time {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-color-light);
   margin-top: 4px;
   display: block;
   text-align: right;
@@ -300,28 +301,29 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #2d2d2d;
+  background: var(--background-soft);
   padding: 8px 16px;
   border-radius: 24px;
+  border: 1px solid var(--border-color);
 }
 
 .input-container.disabled {
   opacity: 0.7;
-  background: #222;
+  background: var(--background-mute);
 }
 
 .message-input {
   flex: 1;
   background: none;
   border: none;
-  color: white;
+  color: var(--text-primary);
   font-size: 14px;
   padding: 8px 0;
   outline: none;
 }
 
 .message-input::placeholder {
-  color: #9ca3af;
+  color: var(--text-placeholder);
 }
 
 .emoji-btn,
@@ -360,8 +362,8 @@ onMounted(() => {
 }
 
 .takeover-btn {
-  background: #E94E3C;
-  color: white;
+  background: var(--primary-color);
+  color: var(--background-color);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -374,11 +376,11 @@ onMounted(() => {
 }
 
 .takeover-btn:hover {
-  background: #d44435;
+  background: var(--accent-color);
 }
 
 .takeover-btn:disabled {
-  background: #666;
+  background: var(--background-mute);
   cursor: not-allowed;
 }
 
@@ -388,7 +390,7 @@ onMounted(() => {
 
 .taken-over-status {
   font-size: 12px;
-  color: #E94E3C;
+  color: var(--primary-color);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -401,7 +403,7 @@ onMounted(() => {
 
 .input-message {
   text-align: center;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 12px;
   margin-top: 8px;
 }
@@ -412,7 +414,7 @@ onMounted(() => {
 
 .chat-closed-status {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -426,14 +428,14 @@ onMounted(() => {
 .chat-closed-footer {
   flex: 0 0 auto;
   padding: 16px 24px;
-  border-top: 1px solid #2d2d2d;
-  background: #1a1a1a;
+  border-top: 1px solid var(--border-color);
+  background: var(--background-color);
   width: 100%;
 }
 
 .chat-closed-message {
   text-align: center;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 14px;
   display: flex;
   align-items: center;

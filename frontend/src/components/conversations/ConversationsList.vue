@@ -54,7 +54,7 @@ const {
 
       <div v-else-if="error" class="error-state">
         {{ error }}
-        <button @click="emit('refresh')" class="retry-button">Retry</button>
+        <button @click="emit('refresh')" class="refresh-button">Retry</button>
       </div>
 
       <div v-else-if="conversations.length === 0" class="empty-state">
@@ -107,23 +107,23 @@ const {
 <style scoped>
 .conversations-container {
   display: grid;
-  grid-template-columns: 320px 1fr; /* Increased sidebar width */
+  grid-template-columns: 320px 1fr;
   gap: 0;
   height: 100%;
   width: 100%;
-  background: #1a1a1a;
-  color: #ffffff;
+  background: var(--background-color);
+  color: var(--text-primary);
   position: relative;
 }
 
 .conversations-sidebar {
-  border-right: 1px solid #2d2d2d;
-  background: #1a1a1a;
+  border-right: 1px solid var(--border-color);
+  background: var(--background-color);
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  min-width: 0; /* Allow shrinking */
+  min-width: 0;
 }
 
 .conversations-list {
@@ -138,12 +138,12 @@ const {
   width: 100%;
   overflow: hidden;
   position: relative;
-  min-width: 0; /* Allow content to shrink */
+  min-width: 0;
 }
 
 .sidebar-header {
   padding: 12px 16px;
-  border-bottom: 1px solid #2d2d2d;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -156,19 +156,19 @@ const {
 
 .conversation-item {
   padding: 12px 16px;
-  border-bottom: 1px solid #2d2d2d;
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
   min-height: 72px;
 }
 
 .conversation-item:hover {
-  background: #2d2d2d;
+  background: var(--background-soft);
 }
 
 .conversation-item.active {
-  background: #2d2d2d;
-  border-left: 2px solid #f06292;
+  background: var(--background-soft);
+  border-left: 2px solid var(--primary-color);
 }
 
 .conversation-item-header {
@@ -181,7 +181,7 @@ const {
 .conversation-item-header h3 {
   font-size: 13px;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -190,7 +190,7 @@ const {
 
 .timestamp {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .conversation-preview {
@@ -203,12 +203,12 @@ const {
 
 .agent-name {
   font-weight: 500;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .last-message {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -217,7 +217,7 @@ const {
 
 .message-count {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .no-chat-selected {
@@ -225,7 +225,7 @@ const {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-color);
+  color: var(--text-muted);
   opacity: 0.7;
 }
 
@@ -234,16 +234,16 @@ const {
 .empty-state {
   padding: 16px;
   text-align: center;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .refresh-button {
   padding: 4px 8px;
-  background: #2d2d2d;
+  background: var(--background-soft);
   border: none;
-  border-radius: 4px;
-  color: #9ca3af;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
 }
@@ -255,12 +255,12 @@ const {
 
 .unread-bubble {
   flex-shrink: 0;
-  background: #E94E3C;
-  color: white;
+  background: var(--primary-color);
+  color: var(--background-color);
   font-size: 12px;
   min-width: 20px;
   height: 20px;
-  border-radius: 10px;
+  border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;

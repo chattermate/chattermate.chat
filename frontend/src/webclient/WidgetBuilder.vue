@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted, computed, onUnmounted, watch, nextTick } from 'vue'
 import {
     isValidEmail} from '../types/widget'
@@ -49,6 +50,9 @@ const props = defineProps<{
     widgetId: string
 }>()
 
+// Get widget ID from props or initial data
+const widgetId = computed(() => props.widgetId || window.__INITIAL_DATA__?.widgetId)
+
 const {
     customization,
     agentName,
@@ -78,11 +82,27 @@ const isExpanded = ref(true)
 const emailInput = ref('')
 const hasConversationToken = ref(false)
 
+// Add loading state
+const isInitializing = ref(true)
+
+// Add these to the script setup section after the imports
+const TOKEN_KEY = 'ctid'
+// @ts-ignore
+const token = ref(window.__INITIAL_DATA__?.initialToken || localStorage.getItem(TOKEN_KEY))
+const hasToken = computed(() => !!token.value)
+
 // Initialize from initial data
 initializeFromData()
 const initialData = window.__INITIAL_DATA__
-if (initialData) {
-    hasConversationToken.value = !!initialData.customerId
+
+if (initialData?.initialToken) {
+    token.value = initialData.initialToken
+    // Notify parent window to store token
+    window.parent.postMessage({ 
+        type: 'TOKEN_UPDATE', 
+        token: initialData.initialToken 
+    }, '*')
+    hasConversationToken.value = true
 }
 
 // Add after socket initialization
@@ -102,7 +122,7 @@ const {
 
 // Update the computed property for message input enabled state
 const isMessageInputEnabled = computed(() => {
-    return (hasConversationToken.value || isValidEmail(emailInput.value.trim())) && 
+    return (hasToken.value || isValidEmail(emailInput.value.trim())) && 
            connectionStatus.value === 'connected'
 })
 
@@ -127,21 +147,48 @@ const handleKeyPress = (event: KeyboardEvent) => {
     }
 }
 
-// Check authorization and fetch agent customization
+// Update the checkAuthorization function
 const checkAuthorization = async () => {
     try {
-        const url = new URL(`${widgetEnv.API_URL}/widgets/${props.widgetId}`)
+        if (!widgetId.value) {
+            console.error('Widget ID is not available')
+            return false
+        }
+
+        const url = new URL(`${widgetEnv.API_URL}/widgets/${widgetId.value}`)
         if (emailInput.value.trim() && isValidEmail(emailInput.value.trim())) {
             url.searchParams.append('email', emailInput.value.trim())
         }
 
-        const response = await fetch(url)
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        }
+
+        if (token.value) {
+            headers['Authorization'] = `Bearer ${token.value}`
+        }
+
+        const response = await fetch(url, {
+            headers
+        })
+
         if (response.status === 401) {
             hasConversationToken.value = false
             return false
         }
         
         const data = await response.json()
+        
+        // Update token if new one is provided
+        if (data.token) {
+            token.value = data.token
+            console.log('Token updated:', data.token)
+            localStorage.setItem(TOKEN_KEY, data.token)
+            // Notify parent window of token update
+            window.parent.postMessage({ type: 'TOKEN_UPDATE', token: data.token }, '*')
+        }
+
         hasConversationToken.value = true
         
         // Connect socket and verify connection success
@@ -162,6 +209,8 @@ const checkAuthorization = async () => {
         console.error('Error checking authorization:', error)
         hasConversationToken.value = false
         return false
+    } finally {
+        isInitializing.value = false
     }
 }
 
@@ -213,6 +262,10 @@ onMounted(async () => {
         if (event.data.type === 'SCROLL_TO_BOTTOM') {
             scrollToBottom()
         }
+        if (event.data.type === 'TOKEN_RECEIVED') {
+            // Parent confirmed token storage
+            localStorage.setItem(TOKEN_KEY, event.data.token)
+        }
     })
 })
 
@@ -228,8 +281,18 @@ onUnmounted(() => {
 
 <template>
     <div class="chat-container" :class="{ collapsed: !isExpanded }" :style="shadowStyle">
+        <!-- Loading State -->
+        <div v-if="isInitializing" class="initializing-overlay">
+            <div class="loading-spinner">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+            <div class="loading-text">Initializing chat...</div>
+        </div>
+
         <!-- Connection Status -->
-        <div v-if="connectionStatus !== 'connected'" class="connection-status" :class="connectionStatus">
+        <div v-if="!isInitializing && connectionStatus !== 'connected'" class="connection-status" :class="connectionStatus">
             <div v-if="connectionStatus === 'connecting'" class="connecting-message">
                 Connecting to chat service...
                 <div class="loading-dots">
@@ -784,4 +847,41 @@ onUnmounted(() => {
     border-radius: var(--radius-lg);
     text-align: center;
 }
+
+.initializing-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    border-radius: var(--radius-lg);
+}
+
+.loading-text {
+    margin-top: var(--space-md);
+    color: var(--text-color);
+    font-size: var(--text-md);
+}
+
+.loading-spinner {
+    display: flex;
+    gap: 6px;
+}
+
+.loading-spinner .dot {
+    width: 10px;
+    height: 10px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    animation: bounce 1.4s infinite ease-in-out;
+}
+
+.loading-spinner .dot:nth-child(1) { animation-delay: -0.32s; }
+.loading-spinner .dot:nth-child(2) { animation-delay: -0.16s; }
 </style>

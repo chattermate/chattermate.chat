@@ -252,6 +252,7 @@ const handleSubmit = () => {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+
 }
 
 .form-group {

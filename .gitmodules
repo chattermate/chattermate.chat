@@ -1,4 +1,8 @@
 [submodule "backend/app/enterprise"]
 	path = backend/app/enterprise
-	url = ./backend/app/enterprise
+	url = git@github.com-chattermate:chattermate/enterprise_backend.git
+	branch = main
+[submodule "frontend/src/modules/enterprise"]
+	path = frontend/src/modules/enterprise
+	url = git@github.com-chattermate:chattermate/enterprise_frontend.git
 	branch = main

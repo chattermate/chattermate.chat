@@ -17,11 +17,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import uuid
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, func, event
 from sqlalchemy.orm import relationship
 from app.database import Base
 from app.models.role import Role
 from sqlalchemy.dialects.postgresql import UUID
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -60,5 +63,31 @@ class Organization(Base):
         "Knowledge", back_populates="organization")
     widgets = relationship("Widget", back_populates="organization")
     groups = relationship("UserGroup", back_populates="organization")
+
     class Config:
         orm_mode = True
+
+# Try to set up enterprise relationships after mapper configuration
+@event.listens_for(Organization, 'mapper_configured')
+def setup_enterprise_relationships(mapper, class_):
+    try:
+        from app.enterprise.models.subscription import Subscription
+        from app.enterprise.models.order import PayPalOrder
+        
+        if not hasattr(class_, 'subscription'):
+            class_.subscription = relationship(
+                Subscription,
+                back_populates="organization",
+                uselist=False
+            )
+            
+        if not hasattr(class_, 'paypal_orders'):
+            class_.paypal_orders = relationship(
+                PayPalOrder,
+                back_populates="organization",
+                cascade="all, delete-orphan"
+            )
+            logger.info("Enterprise subscription and paypal_orders relationships configured")
+    except ImportError:
+        logger.info("Enterprise module not available - subscription relationship not configured")
+        class_.subscription = None

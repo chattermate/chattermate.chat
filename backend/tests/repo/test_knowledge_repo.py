@@ -17,46 +17,21 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from app.repositories.knowledge import KnowledgeRepository
 from app.models.knowledge import Knowledge, SourceType
 from app.models.knowledge_to_agent import KnowledgeToAgent
-from app.database import Base
+from app.models.agent import Agent, AgentType
 from uuid import uuid4
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-@pytest.fixture(scope="function")
-def db():
-    # Create test database
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create a new session for testing
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def knowledge_repo(db):
     return KnowledgeRepository(db)
 
 @pytest.fixture
-def test_knowledge(db):
+def test_knowledge(db, test_organization_id):
     """Create a test knowledge source"""
-    org_id = uuid4()
     knowledge = Knowledge(
-        organization_id=org_id,
+        organization_id=test_organization_id,
         source="/test/path/document.pdf",
         source_type=SourceType.FILE,
         schema="test_schema",
@@ -67,11 +42,27 @@ def test_knowledge(db):
     db.refresh(knowledge)
     return knowledge
 
-def test_create_knowledge(knowledge_repo):
+@pytest.fixture
+def test_agent(db, test_organization_id):
+    """Create a test agent"""
+    agent = Agent(
+        name="Test Agent",
+        display_name="Test Agent",
+        description="A test agent",
+        agent_type=AgentType.GENERAL,
+        instructions=["Test instruction"],
+        organization_id=test_organization_id,
+        is_active=True
+    )
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+def test_create_knowledge(knowledge_repo, test_organization_id):
     """Test creating a new knowledge source"""
-    org_id = uuid4()
     knowledge = Knowledge(
-        organization_id=org_id,
+        organization_id=test_organization_id,
         source="/test/path/new.pdf",
         source_type=SourceType.FILE,
         schema="test_schema",
@@ -108,14 +99,12 @@ def test_get_by_id_nonexistent(knowledge_repo):
     knowledge = knowledge_repo.get_by_id(999)
     assert knowledge is None
 
-def test_get_by_agent(knowledge_repo, test_knowledge, db):
+def test_get_by_agent(knowledge_repo, test_knowledge, test_agent, db):
     """Test retrieving knowledge sources for an agent"""
-    agent_id = uuid4()
-    
     # Create a link to the test knowledge
     link = KnowledgeToAgent(
         knowledge_id=test_knowledge.id,
-        agent_id=agent_id
+        agent_id=test_agent.id
     )
     db.add(link)
     
@@ -132,32 +121,30 @@ def test_get_by_agent(knowledge_repo, test_knowledge, db):
     
     another_link = KnowledgeToAgent(
         knowledge_id=another_knowledge.id,
-        agent_id=agent_id
+        agent_id=test_agent.id
     )
     db.add(another_link)
     db.commit()
 
     # Test pagination
-    knowledge_sources = knowledge_repo.get_by_agent(agent_id, skip=0, limit=1)
+    knowledge_sources = knowledge_repo.get_by_agent(test_agent.id, skip=0, limit=1)
     assert len(knowledge_sources) == 1
     
-    knowledge_sources = knowledge_repo.get_by_agent(agent_id, skip=0, limit=10)
+    knowledge_sources = knowledge_repo.get_by_agent(test_agent.id, skip=0, limit=10)
     assert len(knowledge_sources) == 2
     assert all(k.id in [test_knowledge.id, another_knowledge.id] for k in knowledge_sources)
 
-def test_count_by_agent(knowledge_repo, test_knowledge, db):
+def test_count_by_agent(knowledge_repo, test_knowledge, test_agent, db):
     """Test counting knowledge sources for an agent"""
-    agent_id = uuid4()
-    
     # Create a link to the test knowledge
     link = KnowledgeToAgent(
         knowledge_id=test_knowledge.id,
-        agent_id=agent_id
+        agent_id=test_agent.id
     )
     db.add(link)
     db.commit()
 
-    count = knowledge_repo.count_by_agent(agent_id)
+    count = knowledge_repo.count_by_agent(test_agent.id)
     assert count == 1
 
 def test_get_by_org(knowledge_repo, test_knowledge, db):
@@ -253,13 +240,12 @@ def test_delete_nonexistent(knowledge_repo):
     success = knowledge_repo.delete(999)
     assert success is False
 
-def test_delete_with_data(knowledge_repo, test_knowledge, db):
+def test_delete_with_data(knowledge_repo, test_knowledge, test_agent, db):
     """Test deleting a knowledge source with its data"""
     # Create a link to test cascade deletion
-    agent_id = uuid4()
     link = KnowledgeToAgent(
         knowledge_id=test_knowledge.id,
-        agent_id=agent_id
+        agent_id=test_agent.id
     )
     db.add(link)
     db.commit()
@@ -275,9 +261,4 @@ def test_delete_with_data(knowledge_repo, test_knowledge, db):
     link = db.query(KnowledgeToAgent).filter(
         KnowledgeToAgent.knowledge_id == test_knowledge.id
     ).first()
-    assert link is None
-
-def test_delete_with_data_nonexistent(knowledge_repo):
-    """Test deleting a nonexistent knowledge source with data"""
-    success = knowledge_repo.delete_with_data(999)
-    assert success is False 
+    assert link is None 

@@ -31,3 +31,8 @@ coverage
 
 test-results/
 playwright-report/
+
+# Module specific ignores
+src/modules/**/node_modules/
+src/modules/**/*.log
+src/modules/**/.DS_Store

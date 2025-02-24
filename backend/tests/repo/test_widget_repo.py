@@ -23,6 +23,8 @@ from app.database import Base
 from app.models.widget import Widget
 from app.models.schemas.widget import WidgetCreate
 from app.repositories import widget as widget_repo
+from app.models.agent import Agent, AgentType
+from app.models.organization import Organization
 from uuid import UUID, uuid4
 
 # Test database URL
@@ -50,47 +52,66 @@ def db_session(engine):
         session.close()
 
 @pytest.fixture
-def test_org_id():
-    """Create a test organization ID"""
-    return uuid4()
+def test_organization_id(db):
+    """Create a test organization and return its ID"""
+    organization = Organization(
+        name="Test Organization",
+        domain="test.com",
+        timezone="UTC"
+    )
+    db.add(organization)
+    db.commit()
+    db.refresh(organization)
+    return organization.id
 
 @pytest.fixture
-def test_agent_id():
-    """Create a test agent ID"""
-    return uuid4()
+def test_agent(db, test_organization_id):
+    """Create a test agent"""
+    agent = Agent(
+        name="Test Agent",
+        organization_id=test_organization_id,
+        description="Test agent description",
+        agent_type=AgentType.GENERAL,
+        _instructions="Test instructions",
+        is_active=True
+    )
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+    return agent
 
 @pytest.fixture
-def test_widget(db_session, test_org_id, test_agent_id):
+def test_widget(db, test_organization_id, test_agent):
     """Create a test widget"""
     widget_data = WidgetCreate(
         name="Test Widget",
-        agent_id=test_agent_id
+        agent_id=test_agent.id
     )
-    widget = widget_repo.create_widget(db_session, widget_data, test_org_id)
+    widget = widget_repo.create_widget(db, widget_data, test_organization_id)
     return widget
 
-def test_create_widget(db_session, test_org_id, test_agent_id):
+def test_create_widget(db, test_organization_id, test_agent):
     """Test creating a new widget"""
     widget_data = WidgetCreate(
         name="New Widget",
-        agent_id=test_agent_id
+        agent_id=test_agent.id
     )
     
-    widget = widget_repo.create_widget(db_session, widget_data, test_org_id)
+    widget = widget_repo.create_widget(db, widget_data, test_organization_id)
     assert widget is not None
     assert widget.name == widget_data.name
-    assert widget.agent_id == test_agent_id
-    assert widget.organization_id == test_org_id
+    assert widget.agent_id == test_agent.id
+    assert widget.organization_id == test_organization_id
 
     # Verify widget was saved to database
-    saved_widget = widget_repo.get_widget(db_session, str(widget.id))
+    saved_widget = widget_repo.get_widget(db, str(widget.id))
     assert saved_widget is not None
     assert saved_widget.name == widget_data.name
 
-def test_get_widget(db_session, test_widget):
+def test_get_widget(db, test_widget):
     """Test retrieving a widget by ID"""
     # Get existing widget
-    widget = widget_repo.get_widget(db_session, str(test_widget.id))
+    widget = widget_repo.get_widget(db, str(test_widget.id))
     assert widget is not None
     assert widget.id == test_widget.id
     assert widget.name == test_widget.name
@@ -98,40 +119,62 @@ def test_get_widget(db_session, test_widget):
     assert widget.organization_id == test_widget.organization_id
 
     # Try to get non-existent widget
-    non_existent_widget = widget_repo.get_widget(db_session, str(uuid4()))
+    non_existent_widget = widget_repo.get_widget(db, str(uuid4()))
     assert non_existent_widget is None
 
-def test_get_widgets(db_session, test_org_id, test_widget):
+def test_get_widgets(db, test_organization_id, test_widget):
     """Test retrieving widgets by organization"""
+    # Create another organization for testing
+    other_org = Organization(
+        name="Other Organization",
+        domain="other.com",
+        timezone="UTC"
+    )
+    db.add(other_org)
+    db.commit()
+    db.refresh(other_org)
+
+    # Create an agent for the other organization
+    other_agent = Agent(
+        name="Other Agent",
+        organization_id=other_org.id,
+        description="Other agent description",
+        agent_type=AgentType.GENERAL,
+        _instructions="Other instructions",
+        is_active=True
+    )
+    db.add(other_agent)
+    db.commit()
+    db.refresh(other_agent)
+
     # Create another widget in a different organization
-    other_org_id = uuid4()
     other_widget_data = WidgetCreate(
         name="Other Widget",
-        agent_id=uuid4()
+        agent_id=other_agent.id
     )
-    widget_repo.create_widget(db_session, other_widget_data, other_org_id)
+    widget_repo.create_widget(db, other_widget_data, other_org.id)
 
     # Get widgets for test organization
-    widgets = widget_repo.get_widgets(db_session, test_org_id)
+    widgets = widget_repo.get_widgets(db, test_organization_id)
     assert len(widgets) == 1
     assert widgets[0].id == test_widget.id
     assert widgets[0].name == test_widget.name
-    assert widgets[0].organization_id == test_org_id
+    assert widgets[0].organization_id == test_organization_id
 
     # Get widgets for other organization
-    other_widgets = widget_repo.get_widgets(db_session, other_org_id)
+    other_widgets = widget_repo.get_widgets(db, other_org.id)
     assert len(other_widgets) == 1
     assert other_widgets[0].name == other_widget_data.name
-    assert other_widgets[0].organization_id == other_org_id
+    assert other_widgets[0].organization_id == other_org.id
 
-def test_delete_widget(db_session, test_widget):
+def test_delete_widget(db, test_widget):
     """Test deleting a widget"""
     # Delete existing widget
-    widget_repo.delete_widget(db_session, str(test_widget.id))
+    widget_repo.delete_widget(db, str(test_widget.id))
 
     # Verify widget was deleted
-    deleted_widget = widget_repo.get_widget(db_session, str(test_widget.id))
+    deleted_widget = widget_repo.get_widget(db, str(test_widget.id))
     assert deleted_widget is None
 
     # Try to delete non-existent widget (should not raise error)
-    widget_repo.delete_widget(db_session, str(uuid4())) 
+    widget_repo.delete_widget(db, str(uuid4()))

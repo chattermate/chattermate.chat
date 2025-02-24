@@ -161,4 +161,26 @@ class RoleRepository:
         return self.db.query(Role)\
             .filter(Role.organization_id == organization_id)\
             .filter(Role.is_default == True)\
-            .first() 
+            .first()
+
+    def get_admin_role(self, organization_id: UUID) -> Role:
+        """Get or create the admin role for an organization"""
+        admin_role = self.db.query(Role)\
+            .filter(Role.organization_id == organization_id)\
+            .filter(Role.name == "Admin")\
+            .first()
+        
+        if not admin_role:
+            # Get all permissions
+            all_permissions = self.db.query(Permission).all()
+            
+            # Create admin role with all permissions
+            admin_role = self.create_role(
+                name="Admin",
+                description="Administrator role with full permissions",
+                organization_id=organization_id,
+                is_default=False,
+                permission_ids=[p.id for p in all_permissions]
+            )
+        
+        return admin_role 

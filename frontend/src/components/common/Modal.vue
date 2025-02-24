@@ -57,7 +57,7 @@ defineEmits<{
 }
 
 .modal-content {
-  background: var(--background-default);
+  background: var(--background-color);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
   min-width: 400px;
@@ -77,6 +77,7 @@ defineEmits<{
   font-size: var(--text-xl);
   font-weight: 600;
   margin: 0;
+ 
 }
 
 .close-button {

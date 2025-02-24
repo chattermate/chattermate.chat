@@ -99,7 +99,7 @@ const activeTab = ref('users') // users, groups, roles
 
 .content-area {
   flex: 1;
-  background: var(--background-soft);
+  background: var(--background);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
 }

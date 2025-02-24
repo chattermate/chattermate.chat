@@ -18,9 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 from app.database import Base, get_db
 from fastapi import FastAPI
 from app.models.widget import Widget
@@ -32,20 +30,7 @@ from app.api import widget as widget_router
 from app.core.auth import get_current_user
 from app.main import app
 from app.core.config import settings
-from app.repositories.agent import AgentRepository
-from app.models.schemas.widget import WidgetCreate
-from app.repositories.widget import create_widget
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from tests.conftest import engine, TestingSessionLocal
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -65,49 +50,6 @@ def db():
     finally:
         db.close()
         Base.metadata.drop_all(bind=engine)
-
-@pytest.fixture
-def test_organization_id() -> UUID:
-    """Create a consistent organization ID for all tests"""
-    return uuid4()
-
-@pytest.fixture
-def test_agent(db: Session, test_organization_id: UUID) -> Agent:
-    """Create a test agent"""
-    agent_repo = AgentRepository(db)
-    agent = agent_repo.create_agent(
-        name="Test Agent",
-        agent_type=AgentType.CUSTOMER_SUPPORT,
-        instructions=["Test instructions"],
-        org_id=test_organization_id
-    )
-    return agent
-
-@pytest.fixture
-def test_user(db: Session, test_organization_id: UUID) -> User:
-    """Create a test user"""
-    user = User(
-        id=uuid4(),
-        email="test@test.com",
-        hashed_password="hashed_password",
-        organization_id=test_organization_id,
-        is_active=True,
-        full_name="Test User"
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-@pytest.fixture
-def test_widget(db: Session, test_agent: Agent) -> Widget:
-    """Create a test widget"""
-    widget = create_widget(
-        db=db,
-        widget=WidgetCreate(name="Test Widget", agent_id=test_agent.id),
-        organization_id=test_agent.organization_id
-    )
-    return widget
 
 @pytest.fixture
 def client(test_user: User) -> TestClient:
@@ -184,19 +126,22 @@ def test_get_widget_ui(client: TestClient, test_widget: Widget):
 
 def test_get_widget_data(client: TestClient, test_widget: Widget):
     """Test getting widget data with conversation token"""
-    # First get the widget UI to set the conversation token
+    # First get the widget UI to get the initial token
     ui_response = client.get(f"/api/v1/widgets/{test_widget.id}/data")
     assert ui_response.status_code == 200
-
-    # Get the conversation token from cookie
-    conversation_token = ui_response.cookies.get("conversation_token")
-    assert conversation_token is not None
+    
+    # Extract the initial token from the HTML response
+    import re
+    html_content = ui_response.text
+    match = re.search(r'initialToken: "([^"]+)"', html_content)
+    assert match is not None, "Initial token not found in HTML response"
+    conversation_token = match.group(1)
 
     # Test getting widget data with token and email to create customer
     response = client.get(
         f"/api/v1/widgets/{test_widget.id}",
         params={"email": "test@example.com"},
-        cookies={"conversation_token": conversation_token}
+        headers={"Authorization": f"Bearer {conversation_token}"}
     )
     assert response.status_code == 200
     data = response.json()
@@ -204,6 +149,7 @@ def test_get_widget_data(client: TestClient, test_widget: Widget):
     assert data["organization_id"] == str(test_widget.organization_id)
     assert data["agent"]["id"] == str(test_widget.agent_id)
     assert "customer" in data  # Verify customer info is present
+    assert "token" in data  # Verify new token is present in response
 
 def test_get_widget_data_without_token(client: TestClient, test_widget: Widget):
     """Test getting widget data without conversation token"""

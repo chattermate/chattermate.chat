@@ -193,9 +193,22 @@ const messageNameStyles = computed(() => ({
 }))
 
 const photoUrl = computed(() => {
-    return props.customization.photo_url
-        ? import.meta.env.VITE_API_URL + props.customization.photo_url
-        : getAvatarUrl(props.agentType.toLowerCase())
+    if (!props.customization.photo_url) {
+        return getAvatarUrl(props.agentType.toLowerCase())
+    }
+    
+    // Use signed URL if available (for S3)
+    if (props.customization.photo_url_signed) {
+        return props.customization.photo_url_signed
+    }
+    
+    // If it's an S3 URL, use it directly
+    if (props.customization.photo_url.includes('amazonaws.com')) {
+        return props.customization.photo_url
+    }
+    
+    // For local storage, prepend the API URL
+    return import.meta.env.VITE_API_URL + props.customization.photo_url
 })
 
 // Add new computed property
@@ -345,7 +358,7 @@ const isMessageInputEnabled = computed(() => {
 <style scoped>
 .chat-container {
     width: 400px;
-    height: 100%;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     background: transparent;

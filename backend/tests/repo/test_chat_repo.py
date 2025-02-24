@@ -18,52 +18,26 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from datetime import datetime
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from app.repositories.chat import ChatRepository
 from app.models.chat_history import ChatHistory
 from app.models.customer import Customer
 from app.models.agent import Agent, AgentType
 from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.models.user import User, UserGroup
-from app.database import Base
 from uuid import uuid4, UUID
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-@pytest.fixture(scope="function")
-def db():
-    # Create test database
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create a new session for testing
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def chat_repo(db):
     return ChatRepository(db)
 
 @pytest.fixture
-def test_data(db):
+def test_data(db, test_organization_id):
     """Create test data including customer, agent, user, and session"""
-    org_id = uuid4()
     customer = Customer(
         id=uuid4(),
         email="customer@test.com",
         full_name="Test Customer",
-        organization_id=org_id
+        organization_id=test_organization_id
     )
     db.add(customer)
 
@@ -71,7 +45,7 @@ def test_data(db):
         id=uuid4(),
         name="test-agent",
         display_name="Test Agent",
-        organization_id=org_id,
+        organization_id=test_organization_id,
         description="Test agent description",
         agent_type=AgentType.CUSTOMER_SUPPORT,
         instructions=["Be helpful"],
@@ -85,7 +59,7 @@ def test_data(db):
         full_name="Test User",
         hashed_password="dummy_hash",
         is_active=True,
-        organization_id=org_id
+        organization_id=test_organization_id
     )
     db.add(user)
 
@@ -94,7 +68,7 @@ def test_data(db):
         id=uuid4(),
         name="Test Group",
         description="Test group description",
-        organization_id=org_id
+        organization_id=test_organization_id
     )
     db.add(group)
     db.flush()
@@ -102,7 +76,7 @@ def test_data(db):
     session_id = uuid4()
     session = SessionToAgent(
         session_id=session_id,
-        organization_id=org_id,
+        organization_id=test_organization_id,
         agent_id=agent.id,
         user_id=user.id,
         customer_id=customer.id,
@@ -115,7 +89,7 @@ def test_data(db):
     messages = []
     for i in range(3):
         message = ChatHistory(
-            organization_id=org_id,
+            organization_id=test_organization_id,
             session_id=session_id,
             customer_id=customer.id,
             agent_id=agent.id,
@@ -130,7 +104,7 @@ def test_data(db):
     db.commit()
     
     return {
-        "org_id": org_id,
+        "org_id": test_organization_id,
         "customer": customer,
         "agent": agent,
         "user": user,

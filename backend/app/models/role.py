@@ -16,16 +16,19 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from sqlalchemy import Column, DateTime, Integer, String, ForeignKey, Boolean, func
+from sqlalchemy import Column, DateTime, Integer, String, ForeignKey, Boolean, func, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
 class Role(Base):
     __tablename__ = "roles"
+    __table_args__ = (
+        UniqueConstraint('name', 'organization_id', name='uq_role_name_org'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
     description = Column(String)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"))
     is_default = Column(Boolean, default=False)
@@ -44,3 +47,19 @@ class Role(Base):
             "name": self.name,
             "description": self.description
         }
+
+    def has_permission(self, permission_name: str) -> bool:
+        """Check if role has a specific permission"""
+        return any(p.name == permission_name for p in self.permissions)
+
+    def is_super_admin(self) -> bool:
+        """Check if role has super admin permission"""
+        return self.has_permission("super_admin")
+
+    def can_manage_subscription(self) -> bool:
+        """Check if role can manage subscriptions"""
+        return self.is_super_admin() or self.has_permission("manage_subscription")
+
+    def can_view_subscription(self) -> bool:
+        """Check if role can view subscription details"""
+        return self.is_super_admin() or self.has_permission("view_subscription")

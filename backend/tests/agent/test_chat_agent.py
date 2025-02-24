@@ -18,32 +18,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
-from app.database import Base, get_db
-from app.agents.chat_agent import ChatAgent, ChatResponse, TransferReasonType
-from app.models.agent import Agent, AgentType
-from app.models.organization import Organization
-from app.models.user import User, UserGroup
+from app.models.user import User
 from app.models.role import Role
-from app.models.permission import Permission
+from app.models.permission import Permission, role_permissions
+from app.models.session_to_agent import SessionToAgent, SessionStatus
+from app.models.chat_history import ChatHistory
+from app.models.customer import Customer
+from app.models.agent import Agent, AgentType
+from app.agents.chat_agent import ChatAgent, ChatResponse, TransferReasonType
 from app.repositories.ai_config import AIConfigRepository
 from uuid import uuid4
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 from phi.storage.agent.base import AgentStorage
-
-# Test database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-# Create test engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create a mock storage class that inherits from AgentStorage
 class MockAgentStorage(AgentStorage):
@@ -86,62 +73,74 @@ class MockAgentStorage(AgentStorage):
     async def upgrade_schema(self, *args, **kwargs):
         return None
 
-@pytest.fixture(scope="function")
-def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+@pytest.fixture
+def test_role(db, test_organization_id) -> Role:
+    """Create a test role with required permissions"""
+    role = Role(
+        name="Test Role",
+        organization_id=test_organization_id
+    )
+    db.add(role)
+    db.commit()
+
+    # Add required permissions
+    permission = Permission(
+        name="manage_chats",
+        description="Can manage chats"
+    )
+    db.add(permission)
+    db.commit()
+
+    # Associate permission with role
+    db.execute(
+        role_permissions.insert().values(
+            role_id=role.id,
+            permission_id=permission.id
+        )
+    )
+    db.commit()
+    return role
 
 @pytest.fixture
-def test_organization(db) -> Organization:
-    """Create a test organization"""
-    org = Organization(
+def test_user(db, test_organization_id, test_role) -> User:
+    """Create a test user with required permissions"""
+    user = User(
         id=uuid4(),
-        name="Test Organization",
-        domain="test.com",
-        timezone="UTC",
-        business_hours={},
-        settings={},
+        email="test@test.com",
+        hashed_password="testpassword",
+        organization_id=test_organization_id,
+        role_id=test_role.id,
         is_active=True
     )
-    db.add(org)
+    db.add(user)
     db.commit()
-    db.refresh(org)
-    return org
+    db.refresh(user)
+    return user
 
 @pytest.fixture
-def test_group(db, test_organization) -> UserGroup:
-    """Create a test group"""
-    group = UserGroup(
+def test_customer(db, test_organization_id) -> Customer:
+    """Create a test customer"""
+    customer = Customer(
         id=uuid4(),
-        name="Test Group",
-        description="Test Group Description",
-        organization_id=test_organization.id
+        organization_id=test_organization_id,
+        email="customer@example.com",
+        full_name="Test Customer"
     )
-    db.add(group)
+    db.add(customer)
     db.commit()
-    db.refresh(group)
-    return group
+    db.refresh(customer)
+    return customer
 
 @pytest.fixture
-def test_agent(db, test_organization, test_group) -> Agent:
+def test_agent(db, test_organization_id) -> Agent:
     """Create a test agent"""
     agent = Agent(
         id=uuid4(),
+        organization_id=test_organization_id,
         name="Test Agent",
-        display_name="Test Display Name",
-        organization_id=test_organization.id,
-        instructions=["Be helpful", "Be concise"],
-        transfer_to_human=True,
-        groups=[test_group],
-        is_active=True,
+        display_name="Test Agent Display",
         agent_type=AgentType.CUSTOMER_SUPPORT,
-        description="A test agent"
+        instructions="Test instructions"
     )
     db.add(agent)
     db.commit()
@@ -149,20 +148,31 @@ def test_agent(db, test_organization, test_group) -> Agent:
     return agent
 
 @pytest.fixture
-def test_user(db, test_organization) -> User:
-    """Create a test user"""
-    user = User(
-        id=uuid4(),
-        email="test@example.com",
-        hashed_password="hashed_password",
-        is_active=True,
-        organization_id=test_organization.id,
-        full_name="Test User"
+def test_session(db, test_organization_id, test_customer, test_agent) -> SessionToAgent:
+    """Create a test session"""
+    session = SessionToAgent(
+        session_id=uuid4(),
+        organization_id=test_organization_id,
+        customer_id=test_customer.id,
+        agent_id=test_agent.id,
+        status=SessionStatus.OPEN
     )
-    db.add(user)
+    db.add(session)
     db.commit()
-    db.refresh(user)
-    return user
+
+    # Add a test chat message
+    chat = ChatHistory(
+        organization_id=test_organization_id,
+        customer_id=test_customer.id,
+        agent_id=test_agent.id,
+        session_id=session.session_id,
+        message="Test message",
+        message_type="agent"
+    )
+    db.add(chat)
+    db.commit()
+    db.refresh(session)
+    return session
 
 @pytest.fixture
 def mock_db_session(db):
@@ -175,7 +185,7 @@ def mock_db_session(db):
         yield db
 
 @pytest.mark.asyncio
-async def test_chat_agent_initialization(test_organization, test_agent, mock_db_session):
+async def test_chat_agent_initialization(test_organization_id, test_agent, mock_db_session):
     """Test ChatAgent initialization"""
     # Mock the AI config repository and use MockAgentStorage
     with patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo, \
@@ -186,19 +196,19 @@ async def test_chat_agent_initialization(test_organization, test_agent, mock_db_
             api_key="test_key",
             model_name="gpt-4",
             model_type="OPENAI",
-            org_id=str(test_organization.id),
+            org_id=str(test_organization_id),
             agent_id=str(test_agent.id)
         )
         
         assert chat_agent.agent_data is not None
         assert chat_agent.agent_data.name == "Test Agent"
-        assert chat_agent.agent_data.display_name == "Test Display Name"
+        assert chat_agent.agent_data.display_name == "Test Agent Display"
         assert chat_agent.api_key == "test_key"
         assert chat_agent.model_name == "gpt-4"
         assert chat_agent.model_type == "OPENAI"
 
 @pytest.mark.asyncio
-async def test_chat_agent_get_response(test_organization, test_agent, test_user, mock_db_session):
+async def test_chat_agent_get_response(test_organization_id, test_agent, test_user, mock_db_session):
     """Test ChatAgent get_response method"""
     # Mock the AI config repository and use MockAgentStorage
     with patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo, \
@@ -209,7 +219,7 @@ async def test_chat_agent_get_response(test_organization, test_agent, test_user,
             api_key="test_key",
             model_name="gpt-4",
             model_type="OPENAI",
-            org_id=str(test_organization.id),
+            org_id=str(test_organization_id),
             agent_id=str(test_agent.id),
             customer_id=str(test_user.id)
         )
@@ -226,7 +236,7 @@ async def test_chat_agent_get_response(test_organization, test_agent, test_user,
         response = await chat_agent.get_response(
             message="Hello",
             session_id=session_id,
-            org_id=str(test_organization.id),
+            org_id=str(test_organization_id),
             agent_id=str(test_agent.id),
             customer_id=str(test_user.id)
         )
@@ -249,7 +259,7 @@ async def test_chat_agent_api_key_validation():
         )
 
 @pytest.mark.asyncio
-async def test_chat_agent_error_handling(test_organization, test_agent, test_user, mock_db_session):
+async def test_chat_agent_error_handling(test_organization_id, test_agent, test_user, mock_db_session):
     """Test ChatAgent error handling"""
     # Mock the AI config repository and use MockAgentStorage
     with patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo, \
@@ -260,7 +270,7 @@ async def test_chat_agent_error_handling(test_organization, test_agent, test_use
             api_key="invalid_key",  # Invalid key to trigger error
             model_name="gpt-4",
             model_type="OPENAI",
-            org_id=str(test_organization.id),
+            org_id=str(test_organization_id),
             agent_id=str(test_agent.id),
             customer_id=str(test_user.id)
         )
@@ -272,7 +282,7 @@ async def test_chat_agent_error_handling(test_organization, test_agent, test_use
         response = await chat_agent.get_response(
             message="Hello",
             session_id=session_id,
-            org_id=str(test_organization.id),
+            org_id=str(test_organization_id),
             agent_id=str(test_agent.id),
             customer_id=str(test_user.id)
         )

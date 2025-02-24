@@ -20,8 +20,8 @@
   --vt-c-text-dark-1: var(--vt-c-white);
   --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
 
-  --background-base-rgb: 0, 0, 0;  
-  --background-soft-rgb: 0, 0, 0; 
+  --background-base-rgb: 255, 255, 255;  
+  --background-soft-rgb: 255, 255, 255; 
   --background-dark-rgb: 0, 0, 0;  
 }
 
@@ -52,8 +52,8 @@
     --color-heading: var(--vt-c-text-dark-1);
     --color-text: var(--vt-c-text-dark-2);
 
-    --background-base-rgb: 15, 23, 42;     /* Dark blue */
-    --background-soft-rgb: 30, 41, 59;     /* Slate */
+    --background-base-rgb: 255, 255, 255;     /* Dark blue */
+    --background-soft-rgb: 255, 255, 255;     /* Slate */
   }
 }
 
