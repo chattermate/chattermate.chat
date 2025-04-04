@@ -71,3 +71,5 @@ groq
 sentence-transformers
 
 fastembed
+
+razorpay
