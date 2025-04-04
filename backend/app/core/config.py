@@ -99,12 +99,6 @@ class Settings(BaseSettings):
     KB_OPTIMIZE_ON: int = int(os.getenv("KB_OPTIMIZE_ON", "1000"))
 
 
-    # RazorPay  
-    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
-    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
-    RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
-    RAZORPAY_TEST_MODE: bool = os.getenv("RAZORPAY_TEST_MODE", "true").lower() == "true"
-
     model_config = {
         "case_sensitive": True,
         "env_file": ".env",
