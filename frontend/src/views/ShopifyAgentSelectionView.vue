@@ -94,7 +94,6 @@ const route = useRoute()
 
 const agents = ref<Agent[]>([])
 const selectedAgent = ref<string | null>(null)
-const widgetId = ref<string | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const error = ref<string | null>(null)
@@ -126,12 +125,10 @@ const loadAgents = async () => {
     if (activeAgents.length > 0) {
       selectedAgent.value = activeAgents[0].id
       console.log('Auto-selected first agent:', selectedAgent.value)
-      await loadWidgetForAgent(activeAgents[0].id)
     } else if (agents.value.length > 0) {
       // If no active agents, select the first one anyway
       selectedAgent.value = agents.value[0].id
       console.log('Auto-selected first agent (no active filter):', selectedAgent.value)
-      await loadWidgetForAgent(agents.value[0].id)
     }
     
   } catch (err: any) {
@@ -142,41 +139,21 @@ const loadAgents = async () => {
   }
 }
 
-// Load widget for selected agent
-const loadWidgetForAgent = async (agentId: string) => {
-  try {
-    const response = await api.get(`/widgets/agent/${agentId}`)
-    const widgets = response.data
-    
-    if (widgets && widgets.length > 0) {
-      widgetId.value = widgets[0].id
-      console.log('Widget ID loaded:', widgetId.value)
-    } else {
-      widgetId.value = null
-      console.log('No widget found for agent:', agentId)
-    }
-  } catch (err: any) {
-    console.error('Failed to load widget:', err)
-    widgetId.value = null
-  }
-}
 
 // Called when agent selection changes
-const onAgentChange = async (agentId: string) => {
+const onAgentChange = (agentId: string) => {
   console.log('🔵 Agent changed to:', agentId)
   console.log('🔵 Type of agentId:', typeof agentId)
   console.log('🔵 selectedAgent.value before:', selectedAgent.value)
-  // v-model already updates selectedAgent, just load widget
-  await loadWidgetForAgent(agentId)
+  // v-model already updates selectedAgent
   console.log('🔵 selectedAgent.value after:', selectedAgent.value)
 }
 
 // Select agent (radio button behavior) - keeping for backward compatibility
-const selectAgent = async (agentId: string) => {
+const selectAgent = (agentId: string) => {
   console.log('🟢 Selecting agent:', agentId)
   selectedAgent.value = agentId
   console.log('🟢 Selected agent is now:', selectedAgent.value)
-  await loadWidgetForAgent(agentId)
 }
 
 // Save configuration
@@ -191,7 +168,7 @@ const saveConfiguration = async () => {
     await enableShopifyForAgents([selectedAgent.value], shopId.value)
     
     // Build success URL
-    const successUrl = `/shopify/agent-management?shop=${shopDomain.value}&shop_id=${shopId.value}&agents_connected=1${widgetId.value ? `&widget_id=${widgetId.value}` : ''}`
+    const successUrl = `/shopify/agent-management?shop=${shopDomain.value}&shop_id=${shopId.value}&agents_connected=1`
     
     // For embedded apps, use App Bridge redirect
     if (isEmbedded.value && shopifyApp) {
@@ -204,8 +181,7 @@ const saveConfiguration = async () => {
         query: {
           shop: shopDomain.value,
           shop_id: shopId.value,
-          agents_connected: '1',
-          widget_id: widgetId.value || ''
+          agents_connected: '1'
         }
       })
     }
