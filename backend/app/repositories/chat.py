@@ -30,6 +30,8 @@ from app.models.user import User
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 from pydantic import BaseModel
+from app.core.s3 import get_s3_signed_url
+from app.core.config import settings
 
 logger = get_logger(__name__)
 
@@ -113,21 +115,38 @@ class ChatRepository:
             self.db.rollback()
             raise
 
-    def get_session_history(self, session_id: str | UUID) -> List[ChatHistory]:
+    async def get_session_history(self, session_id: str | UUID) -> List[ChatHistory]:
         """Get chat history for a session with joined relationships"""
         if isinstance(session_id, str):
             session_id = UUID(session_id)
         
-        return (
+        messages = (
             self.db.query(ChatHistory)
             .options(
                 joinedload(ChatHistory.user),
-                joinedload(ChatHistory.agent)
+                joinedload(ChatHistory.agent),
+                joinedload(ChatHistory.attachments)
             )
             .filter(ChatHistory.session_id == session_id)
             .order_by(ChatHistory.created_at.asc())
             .all()
         )
+        
+        # Generate signed URLs for S3 attachments
+        if settings.S3_FILE_STORAGE:
+            for message in messages:
+                if message.attachments:
+                    for attachment in message.attachments:
+                        if attachment.file_url:
+                            try:
+                                signed_url = await get_s3_signed_url(attachment.file_url)
+                                # Store the signed URL in a temporary attribute
+                                attachment.file_url = signed_url
+                            except Exception as e:
+                                logger.error(f"Error generating signed URL for attachment {attachment.id}: {str(e)}")
+                                
+        
+        return messages
 
     def get_user_history(self, user_id: str | UUID) -> List[ChatHistory]:
         """Get chat history for a user"""
@@ -359,7 +378,33 @@ class ChatRepository:
             return None
 
         # Get messages for the session
-        messages = self.get_session_history(session_id)
+        messages = await self.get_session_history(session_id)
+        
+        # Build messages list with attachments
+        messages_list = []
+        for msg in messages:
+            msg_dict = {
+                'message': msg.message,
+                'message_type': msg.message_type,
+                'created_at': msg.created_at,
+                'attributes': msg.attributes
+            }
+            
+            # Add attachments with file info if they exist
+            if msg.attachments:
+                attachments = []
+                for attachment in msg.attachments:
+                    att_dict = {
+                        'id': attachment.id,
+                        'filename': attachment.filename,
+                        'file_url': attachment.file_url,
+                        'content_type': attachment.content_type,
+                        'file_size': attachment.file_size
+                    }
+                    attachments.append(att_dict)
+                msg_dict['attachments'] = attachments
+            
+            messages_list.append(msg_dict)
         
         # Convert result to dict
         return {
@@ -380,13 +425,5 @@ class ChatRepository:
             'user_name': result.user_name,
             'created_at': result.created_at,
             'updated_at': result.updated_at,
-            'messages': [
-                {
-                    'message': msg.message,
-                    'message_type': msg.message_type,
-                    'created_at': msg.created_at,
-                    'attributes': msg.attributes
-                }
-                for msg in messages
-            ]
+            'messages': messages_list
         }

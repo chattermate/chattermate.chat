@@ -573,7 +573,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             is_workflow_transfer = False
         
         # Get chat history
-        chat_history = chat_repo.get_session_history(session_id)
+        chat_history = await chat_repo.get_session_history(session_id)
         
         # Update session with transfer details
         session_repo = SessionToAgentRepository(db)

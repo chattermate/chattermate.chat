@@ -112,7 +112,9 @@ async def save_file(file: UploadFile, organization_id: UUID) -> str:
     
     if settings.S3_FILE_STORAGE:
         folder = f"agents/{organization_id}"
-        return await upload_file_to_s3(file, folder, file_name, content_type=file.content_type)
+        file.file.seek(0)
+        content = await file.read()
+        return await upload_file_to_s3(content, folder, file_name, content_type=file.content_type)
     else:
         # Local storage
         upload_dir = f"uploads/agents/{organization_id}"
@@ -219,6 +221,7 @@ async def create_agent(
             requests_per_sec=agent.requests_per_sec or 1.0,
             use_workflow=agent.use_workflow or False,
             active_workflow_id=agent.active_workflow_id,
+            allow_attachments=agent.allow_attachments or False,
             knowledge=[],
             groups=[]
         )
@@ -312,6 +315,7 @@ async def update_agent(
             enable_rate_limiting=agent.enable_rate_limiting,
             overall_limit_per_ip=agent.overall_limit_per_ip,
             requests_per_sec=agent.requests_per_sec,
+            allow_attachments=agent.allow_attachments,
             knowledge=[{
                 "id": k.id,
                 "name": k.source,
@@ -371,6 +375,7 @@ async def get_organization_agents(
                 active_workflow_id=agent.active_workflow_id,
                 created_at=agent.created_at,
                 updated_at=agent.updated_at,
+                allow_attachments=agent.allow_attachments or False,
                 knowledge=[{
                     "id": k.id,
                     "name": k.source,
@@ -558,6 +563,7 @@ async def update_agent_groups(
             enable_rate_limiting=agent.enable_rate_limiting,
             overall_limit_per_ip=agent.overall_limit_per_ip,
             requests_per_sec=agent.requests_per_sec,
+            allow_attachments=agent.allow_attachments,
             groups=agent.groups,
             knowledge=[{
                 "id": k.id,

@@ -37,7 +37,6 @@ from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from typing import List, Optional, Dict, Union
 import os
-import tempfile
 import requests
 import asyncio
 from urllib.parse import urlparse
@@ -169,9 +168,11 @@ class KnowledgeManager:
                                 filename = parsed_url.netloc
                             temp_filename = filename + ".pdf"  # Add extension for the temp file
                             filename = os.path.splitext(filename)[0]  # Remove extension for knowledge base name
-                        
+
                         # Create a temporary file with a meaningful name
-                        temp_dir = tempfile.gettempdir()
+                        # Use /app/temp instead of system temp to ensure it's accessible in Docker
+                        temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "temp")
+                        os.makedirs(temp_dir, exist_ok=True)
                         temp_path = os.path.join(temp_dir, temp_filename)
                         temp_file = open(temp_path, 'wb')
                         temp_file.close()
@@ -276,8 +277,14 @@ class KnowledgeManager:
             for file_path in files:
                 temp_file = None
                 path_to_use = file_path
-                
-                
+
+                # Check if file exists before processing
+                if not os.path.exists(path_to_use):
+                    logger.error(f"PDF file not found: {path_to_use}")
+                    raise FileNotFoundError(f"PDF file not found: {path_to_use}")
+
+                logger.info(f"Processing PDF file: {path_to_use} (size: {os.path.getsize(path_to_use)} bytes)")
+
                 try:
                     # First try with regular PDFReader
                     try:

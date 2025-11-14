@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -U crawl4ai
+RUN crawl4ai-setup
 
 # Copy application code
 COPY backend/app ./app
@@ -23,12 +25,14 @@ COPY backend/assets ./assets
 
 # Create required directories including cache directories
 RUN mkdir -p uploads/agents && \
+    mkdir -p temp && \
     mkdir -p .cache/huggingface/transformers && \
     mkdir -p .cache/huggingface/sentence_transformers && \
     mkdir -p .cache/huggingface/hub && \
     mkdir -p .cache/torch && \
     mkdir -p .cache/pytorch_transformers && \
-    chmod -R 755 .cache
+    chmod -R 755 .cache && \
+    chmod -R 755 temp
 
 # Make startup script executable
 RUN chmod +x ./scripts/start.sh

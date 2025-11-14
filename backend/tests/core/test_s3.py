@@ -103,10 +103,8 @@ async def test_get_s3_signed_url_with_exception():
 @pytest.mark.asyncio
 async def test_upload_file_to_s3_success():
     """Test successful file upload to S3"""
-    # Mock file content
+    # File content as bytes (the function now expects bytes directly)
     file_content = b"test file content"
-    mock_file = MagicMock(spec=UploadFile)
-    mock_file.read = AsyncMock(return_value=file_content)
     
     folder = "test-folder"
     filename = "test-file.txt"
@@ -118,10 +116,7 @@ async def test_upload_file_to_s3_success():
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         
-        result = await upload_file_to_s3(mock_file, folder, filename, content_type)
-        
-        # Verify file was read
-        mock_file.read.assert_called_once()
+        result = await upload_file_to_s3(file_content, folder, filename, content_type)
         
         # Verify S3 client was called correctly
         mock_client.put_object.assert_called_once_with(
@@ -138,8 +133,6 @@ async def test_upload_file_to_s3_success():
 async def test_upload_file_to_s3_without_content_type():
     """Test file upload to S3 without specifying content type"""
     file_content = b"test file content"
-    mock_file = MagicMock(spec=UploadFile)
-    mock_file.read = AsyncMock(return_value=file_content)
     
     folder = "test-folder"
     filename = "test-file.txt"
@@ -148,7 +141,7 @@ async def test_upload_file_to_s3_without_content_type():
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         
-        await upload_file_to_s3(mock_file, folder, filename)
+        await upload_file_to_s3(file_content, folder, filename)
         
         # Verify S3 client was called without ContentType
         mock_client.put_object.assert_called_once_with(
@@ -160,41 +153,41 @@ async def test_upload_file_to_s3_without_content_type():
 
 @pytest.mark.asyncio
 async def test_upload_file_to_s3_client_error():
-    """Test file upload to S3 with ClientError"""
-    mock_file = MagicMock(spec=UploadFile)
-    mock_file.read = AsyncMock(return_value=b"test content")
+    """Test file upload to S3 with ClientError - should fallback to local storage"""
+    file_content = b"test content"
     
-    with patch('app.core.s3.get_s3_client') as mock_get_client:
+    with patch('app.core.s3.get_s3_client') as mock_get_client, \
+         patch('app.core.s3._save_file_locally') as mock_save_locally:
         mock_client = MagicMock()
         mock_client.put_object.side_effect = ClientError(
             {'Error': {'Code': 'TestException', 'Message': 'Test error message'}},
             'PutObject'
         )
         mock_get_client.return_value = mock_client
+        mock_save_locally.return_value = "/uploads/folder/file.txt"
         
-        with pytest.raises(HTTPException) as excinfo:
-            await upload_file_to_s3(mock_file, "folder", "file.txt")
+        result = await upload_file_to_s3(file_content, "folder", "file.txt")
         
-        assert excinfo.value.status_code == 500
-        assert excinfo.value.detail == "Failed to upload file to S3"
+        # Should fallback to local storage and return local URL
+        assert result == "/uploads/folder/file.txt"
 
 
 @pytest.mark.asyncio
 async def test_upload_file_to_s3_general_exception():
-    """Test file upload to S3 with a general exception"""
-    mock_file = MagicMock(spec=UploadFile)
-    mock_file.read = AsyncMock(return_value=b"test content")
+    """Test file upload to S3 with a general exception - should fallback to local storage"""
+    file_content = b"test content"
     
-    with patch('app.core.s3.get_s3_client') as mock_get_client:
+    with patch('app.core.s3.get_s3_client') as mock_get_client, \
+         patch('app.core.s3._save_file_locally') as mock_save_locally:
         mock_client = MagicMock()
         mock_client.put_object.side_effect = Exception("Test exception")
         mock_get_client.return_value = mock_client
+        mock_save_locally.return_value = "/uploads/folder/file.txt"
         
-        with pytest.raises(HTTPException) as excinfo:
-            await upload_file_to_s3(mock_file, "folder", "file.txt")
+        result = await upload_file_to_s3(file_content, "folder", "file.txt")
         
-        assert excinfo.value.status_code == 500
-        assert excinfo.value.detail == "Failed to upload file"
+        # Should fallback to local storage and return local URL
+        assert result == "/uploads/folder/file.txt"
 
 
 @pytest.mark.asyncio

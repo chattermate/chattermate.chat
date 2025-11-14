@@ -535,10 +535,13 @@ class EnhancedWebsiteReader(WebsiteReader):
                 logger.info(f"HTML length: {len(response.text)} characters")
                 
                 # Check if the page is JavaScript-heavy
+                # Modern sites use many external scripts, so count both inline and external
                 script_tags = soup.find_all('script')
-                total_script_length = sum(len(str(script)) for script in script_tags)
-                logger.info(f"Found {len(script_tags)} script tags, total script content: {total_script_length} characters")
-                
+                inline_script_length = sum(len(str(script)) for script in script_tags)
+                external_scripts = [script for script in script_tags if script.get('src')]
+
+                logger.info(f"Found {len(script_tags)} script tags ({len(external_scripts)} external, {len(script_tags) - len(external_scripts)} inline), inline content: {inline_script_length} characters")
+
                 # Log page structure for debugging
                 body = soup.find('body')
                 if body:
@@ -552,19 +555,69 @@ class EnhancedWebsiteReader(WebsiteReader):
                     logger.info(f"Body children types: {child_types}")
                 else:
                     logger.warning(f"No body tag found in HTML for {current_url}")
-                
-                # Detect JavaScript-heavy pages
-                is_javascript_heavy = total_script_length > len(response.text) * 0.3
+
+                # Detect JavaScript-heavy pages using multiple criteria:
+                # 1. High ratio of inline script content (>30% of HTML)
+                # 2. Many external script files (>15 scripts typically indicates a JS framework)
+                # 3. High script tag density (>10 scripts per 10KB of HTML)
+                script_content_ratio = inline_script_length / len(response.text) if response.text else 0
+                html_size_kb = len(response.text) / 10000  # Convert to 10KB units
+                script_density = len(script_tags) / max(html_size_kb, 1)  # Scripts per 10KB
+
+                is_javascript_heavy = (
+                    script_content_ratio > 0.3 or  # >30% inline scripts
+                    len(external_scripts) >= 15 or  # Many external scripts (React/Vue apps)
+                    script_density > 10  # High density of scripts
+                )
+
                 if is_javascript_heavy:
-                    logger.warning(f"⚠️  JavaScript-heavy website detected ({total_script_length}/{len(response.text)} = {total_script_length/len(response.text)*100:.1f}% scripts)")
+                    detection_reason = []
+                    if script_content_ratio > 0.3:
+                        detection_reason.append(f"high inline script ratio ({script_content_ratio*100:.1f}%)")
+                    if len(external_scripts) >= 15:
+                        detection_reason.append(f"many external scripts ({len(external_scripts)})")
+                    if script_density > 10:
+                        detection_reason.append(f"high script density ({script_density:.1f} per 10KB)")
+                    logger.warning(f"⚠️  JavaScript-heavy website detected: {', '.join(detection_reason)}")
                 
                 # Set current URL for link resolution
                 self._current_url = current_url
                 content = self._extract_main_content(soup)
-                
+
                 # Log extracted content length for debugging
                 logger.info(f"Extracted content length: {len(content) if content else 0} characters from {current_url}")
-                
+
+                # For JavaScript-heavy sites, always try Crawl4AI for better content
+                # Even if we extracted some content, it might just be static elements
+                if is_javascript_heavy:
+                    logger.info(f"🔄 JavaScript-heavy site detected - attempting Crawl4AI for better content extraction")
+                    crawl4ai = get_crawl4ai_fallback(timeout=self.timeout, verify_ssl=self.verify_ssl)
+
+                    if crawl4ai.is_available:
+                        logger.info(f"🔄 Using Crawl4AI for JavaScript rendering: {current_url}")
+                        # Note: fetch_with_browser returns (content, soup, screenshot)
+                        crawl4ai_content, crawl4ai_soup, _ = crawl4ai.fetch_with_browser(current_url, take_screenshot=False)
+
+                        if crawl4ai_content and len(crawl4ai_content) >= self.min_content_length:
+                            logger.info(f"✓ Crawl4AI extracted {len(crawl4ai_content)} chars (vs {len(content) if content else 0} from BeautifulSoup)")
+                            content = crawl4ai_content
+                            soup = crawl4ai_soup if crawl4ai_soup else soup
+                        elif crawl4ai_soup:
+                            # Try to extract from crawl4ai soup
+                            self._current_url = current_url
+                            crawl4ai_extracted = self._extract_main_content(crawl4ai_soup)
+                            if crawl4ai_extracted and len(crawl4ai_extracted) >= self.min_content_length:
+                                logger.info(f"✓ Extracted {len(crawl4ai_extracted)} chars from Crawl4AI HTML")
+                                content = crawl4ai_extracted
+                                soup = crawl4ai_soup
+                            else:
+                                logger.warning(f"Crawl4AI didn't improve content extraction, keeping BeautifulSoup result")
+                        else:
+                            logger.warning(f"Crawl4AI extraction failed, keeping BeautifulSoup result")
+                    else:
+                        logger.warning(f"⚠️  Crawl4AI not available for JS-heavy site. Install with: pip install crawl4ai>=0.7.0")
+                        logger.warning(f"   Falling back to BeautifulSoup (may have incomplete content)")
+
                 # Check content quality
                 if not content or len(content) < self.min_content_length:
                     logger.warning(f"Content too short or empty ({len(content) if content else 0} chars) for {current_url}. Min required: {self.min_content_length}")

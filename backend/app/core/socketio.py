@@ -32,6 +32,7 @@ sio: AsyncServer = socketio.AsyncServer(
     async_handlers=True,
     ping_timeout=60,
     ping_interval=25,
+    max_http_buffer_size=15 * 1024 * 1024,  # 15MB to handle base64-encoded files (5MB image = ~6.7MB base64)
     cors_allowed_origins=list(get_cors_origins())  # Use the same CORS origins as FastAPI
 )
 

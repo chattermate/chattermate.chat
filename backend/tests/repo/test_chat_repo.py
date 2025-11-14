@@ -132,9 +132,10 @@ def test_create_message(chat_repo, test_data):
     assert message.message_type == "text"
     assert message.attributes == {"test": "value"}
 
-def test_get_session_history(chat_repo, test_data):
+@pytest.mark.asyncio
+async def test_get_session_history(chat_repo, test_data):
     """Test retrieving chat history for a session"""
-    history = chat_repo.get_session_history(test_data["session_id"])
+    history = await chat_repo.get_session_history(test_data["session_id"])
     
     assert len(history) == 3
     for i, msg in enumerate(history):

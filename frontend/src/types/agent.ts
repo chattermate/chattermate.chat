@@ -16,6 +16,7 @@ export interface Agent {
   requests_per_sec: number
   use_workflow: boolean
   active_workflow_id: string | null
+  allow_attachments: boolean
   knowledge: Array<{
     id: number
     name: string
@@ -39,6 +40,7 @@ export interface AgentUpdate {
   requests_per_sec?: number
   use_workflow?: boolean
   active_workflow_id?: string | null
+  allow_attachments?: boolean
   customization?: AgentCustomization
 }
 

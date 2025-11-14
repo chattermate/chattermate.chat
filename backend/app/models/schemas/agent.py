@@ -47,6 +47,7 @@ class AgentBase(BaseModel):
     use_workflow: bool = False
     active_workflow_id: Optional[UUID] = None
     display_name: Optional[str] = None
+    allow_attachments: bool = False
 
 
 class AgentCreate(AgentBase):
@@ -64,6 +65,7 @@ class AgentUpdate(BaseModel):
     requests_per_sec: Optional[float] = None
     use_workflow: Optional[bool] = None
     active_workflow_id: Optional[UUID] = None
+    allow_attachments: Optional[bool] = None
 
 
 
@@ -90,6 +92,7 @@ class AgentResponse(BaseModel):
     requests_per_sec: Optional[float] = None
     use_workflow: Optional[bool] = False
     active_workflow_id: Optional[UUID] = None
+    allow_attachments: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

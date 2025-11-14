@@ -29,7 +29,6 @@ from app.models.schemas.ai_config import AIConfigCreate, AIConfigResponse, AISet
 from sqlalchemy.orm import Session
 import os
 from enum import Enum
-from pydantic import Field, validator
 
 from app.models.ai_config import AIModelType
 

@@ -440,6 +440,39 @@ const handleToggleUseWorkflow = async () => {
 
 // Handle save agent changes
 
+// Handle advanced tab updates
+const handleAdvancedTabUpdate = async (updatedAgent: AgentWithCustomization) => {
+    try {
+        // Extract only the fields that advanced tab can update
+        const updateData: Record<string, any> = {}
+        
+        // Check if allow_attachments was updated
+        if (updatedAgent.allow_attachments !== agentData.value.allow_attachments) {
+            updateData.allow_attachments = updatedAgent.allow_attachments
+        }
+        
+        // If there are changes to save, call the API
+        if (Object.keys(updateData).length > 0) {
+            const savedAgent = await agentService.updateAgent(agentData.value.id, updateData)
+            // Update the agent data to trigger reactivity
+            Object.assign(agentData.value, savedAgent)
+            // Update storage to keep data in sync
+            agentStorage.updateAgent(savedAgent)
+            
+            toast.success('Settings updated successfully', {
+                duration: 3000,
+                closeButton: true
+            })
+        }
+    } catch (error) {
+        console.error('Error updating advanced settings:', error)
+        toast.error('Failed to update settings', {
+            duration: 3000,
+            closeButton: true
+        })
+    }
+}
+
 // Handle customization save
 const handleCustomizationSave = (updatedAgent: AgentWithCustomization) => {
     // Update the agent data to trigger reactivity
@@ -908,7 +941,7 @@ onMounted(async () => {
                         <div v-if="activeTab === 'advanced'" class="tab-content">
                             <AgentAdvancedTab
                                 :agent="agentData"
-                                @update="(updatedAgent) => { agentData = updatedAgent }"
+                                @update="handleAdvancedTabUpdate"
                             />
                         </div>
 

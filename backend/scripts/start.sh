@@ -16,6 +16,8 @@ if [ ! -z "$FIREBASE_CREDENTIALS" ] && [ ! -f "$FIREBASE_CREDENTIALS" ]; then
     echo "Warning: Firebase credentials file not found at $FIREBASE_CREDENTIALS. Continuing without Firebase credentials..."
 fi
 
+
+
 # Preload embedding models to avoid runtime issues
 echo "Preloading embedding models..."
 python scripts/preload_models.py
@@ -43,4 +45,4 @@ gunicorn app.main:app \
     --log-level info \
     --access-logfile - \
     --error-logfile - \
-    --preload 
+    --preload

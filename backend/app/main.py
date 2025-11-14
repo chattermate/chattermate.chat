@@ -23,7 +23,7 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 # Add users import
 from fastapi.staticfiles import StaticFiles
 import socketio
-from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_chat, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool
+from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, widget_chat
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -196,6 +196,12 @@ app.include_router(
     workflow_node.router,
     prefix=f"{settings.API_V1_STR}/workflow",
     tags=["workflow_node"]
+)
+
+app.include_router(
+    file_upload.router,
+    prefix=f"{settings.API_V1_STR}/files",
+    tags=["files"]
 )
 
 @app.get("/")

@@ -523,7 +523,7 @@ class WorkflowExecutionService:
             if not user_message or user_message.strip() == "":
                 # Check if there's any meaningful chat history or workflow history
                 chat_repo = ChatRepository(self.db)
-                chat_history = chat_repo.get_session_history(session_id)
+                chat_history = await chat_repo.get_session_history(session_id)
                 workflow_history = self.session_repo.get_workflow_history(session_id)
                 
                 # If both message and history are empty, skip LLM execution
@@ -583,7 +583,7 @@ class WorkflowExecutionService:
             # Handle empty or null user message by creating structured context
             processed_user_message = user_message
             if not user_message or user_message.strip() == "":
-                processed_user_message = self._build_context_message(session_id, workflow_state)
+                processed_user_message = await self._build_context_message(session_id, workflow_state)
             
             # Create chat agent with custom system prompt
             chat_agent = await ChatAgent.create_async(
@@ -1402,7 +1402,7 @@ class WorkflowExecutionService:
         except Exception as e:
             logger.error(f"Error updating session workflow state: {str(e)}")
     
-    def _build_context_message(self, session_id: str, workflow_state: Dict[str, Any]) -> str:
+    async def _build_context_message(self, session_id: str, workflow_state: Dict[str, Any]) -> str:
         """
         Build a structured context message when user_message is empty or null.
         Includes chat history and workflow history formatted as instructions for LLM.
@@ -1412,7 +1412,7 @@ class WorkflowExecutionService:
             chat_repo = ChatRepository(self.db)
             
             # Get chat history for the session
-            chat_history = chat_repo.get_session_history(session_id)
+            chat_history = await chat_repo.get_session_history(session_id)
             
             # Get workflow history for the session
             workflow_history = self.session_repo.get_workflow_history(session_id)

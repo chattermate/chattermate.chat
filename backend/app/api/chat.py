@@ -184,7 +184,7 @@ async def get_chat_detail(
                 org_id=organization_id
             )
         
-        logger.debug(f"Chat detail: {chat_detail}")
+        
         if not chat_detail:
             raise HTTPException(
                 status_code=404,
@@ -244,7 +244,7 @@ async def get_chat_detail(
                             message['shopify_data'] = attrs['shopify_data']
                         
                         # Handle shopify_output for backward compatibility
-                        if 'shopify_output' in attrs:
+                        if 'shopify_output' in attrs and attrs['shopify_output'] is not None:
                             message['message_type'] = 'product'
                             message['shopify_output'] = attrs['shopify_output']
                         

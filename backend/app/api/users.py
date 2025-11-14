@@ -71,7 +71,8 @@ async def save_upload_file(file: UploadFile, org_id: str, user_id: str) -> str:
     
     if settings.S3_FILE_STORAGE:
         folder = f"users/{org_id}/{user_id}"
-        return await upload_file_to_s3(file, folder, filename, content_type=file.content_type)
+        content = await file.read()
+        return await upload_file_to_s3(content, folder, filename, content_type=file.content_type)
     else:
         # Local storage
         # Create upload directory if it doesn't exist

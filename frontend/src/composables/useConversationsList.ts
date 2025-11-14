@@ -33,6 +33,7 @@ export function useConversationsList(props: {
     created_at: string
     session_id: string
     attributes?: any
+    attachments?: any[]
   }) => {
     // Create unique message identifier
     const messageKey = `${data.session_id}-${data.created_at}`;
@@ -59,7 +60,8 @@ export function useConversationsList(props: {
         created_at,
         session_id: data.session_id,
         attributes: data.attributes || {},
-        agent_name: data.agent_name
+        agent_name: data.agent_name,
+        attachments: data.attachments || undefined
       }
 
       // Check if message has Shopify data in attributes
@@ -135,6 +137,16 @@ export function useConversationsList(props: {
         chatLoading.value = true
         selectedId.value = sessionId
         const detail = await chatService.getChatDetail(sessionId)
+        
+        // Debug: Log if messages have attachments
+        if (detail && detail.messages) {
+          detail.messages.forEach((msg, idx) => {
+            if (msg.attachments && msg.attachments.length > 0) {
+              console.log(`[API Response] Message ${idx} has ${msg.attachments.length} attachments`)
+            }
+          })
+        }
+        
         selectedChat.value = detail
         
         // Clear unread messages for this chat

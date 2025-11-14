@@ -239,7 +239,8 @@ async def upload_pdf_files(
             if settings.S3_FILE_STORAGE:
                 # Upload to S3
                 folder = f"knowledge/{org_uuid}"
-                file_url = await upload_file_to_s3(file, folder, file.filename, content_type="application/pdf")
+                file_content = await file.read()
+                file_url = await upload_file_to_s3(file_content, folder, file.filename, content_type="application/pdf")
                 logger.debug(f"Uploaded PDF to S3: {file_url}")
                 file_path = await get_s3_signed_url(file_url)
                 source_type = "pdf_url"

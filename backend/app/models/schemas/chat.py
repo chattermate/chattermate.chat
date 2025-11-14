@@ -127,6 +127,7 @@ class Message(BaseModel):
     end_chat_description: Optional[str] = None
     agent_name: Optional[str] = None
     user_name: Optional[str] = None
+    attachments: Optional[list] = None  # List of file attachments with signed URLs
     
     @model_validator(mode='before')
     @classmethod

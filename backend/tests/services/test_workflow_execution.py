@@ -99,13 +99,13 @@ class TestWorkflowExecutionService:
         
         # Mock repositories
         mock_chat_repo = Mock()
-        mock_chat_repo.get_session_history.return_value = sample_chat_history
+        mock_chat_repo.get_session_history = AsyncMock(return_value=sample_chat_history)
         
         with patch('app.services.workflow_execution.ChatRepository', return_value=mock_chat_repo), \
              patch.object(workflow_service.session_repo, 'get_workflow_history', return_value=[]):
             
             # Build context message
-            context_message = workflow_service._build_context_message("test-session", {})
+            context_message = await workflow_service._build_context_message("test-session", {})
             
             # Verify context message contains expected structure and chat history
             assert "CONTEXT on previous workflow messages" in context_message
@@ -121,13 +121,13 @@ class TestWorkflowExecutionService:
         
         # Mock repositories with empty history
         mock_chat_repo = Mock()
-        mock_chat_repo.get_session_history.return_value = []
+        mock_chat_repo.get_session_history = AsyncMock(return_value=[])
         
         with patch('app.services.workflow_execution.ChatRepository', return_value=mock_chat_repo), \
              patch.object(workflow_service.session_repo, 'get_workflow_history', return_value=[]):
             
             # Build context message
-            context_message = workflow_service._build_context_message("test-session", {})
+            context_message = await workflow_service._build_context_message("test-session", {})
             
             # Verify context message structure for empty history
             assert "CONTEXT on previous workflow messages" in context_message
@@ -141,13 +141,13 @@ class TestWorkflowExecutionService:
         
         # Mock repositories to raise exception
         mock_chat_repo = Mock()
-        mock_chat_repo.get_session_history.side_effect = Exception("Test error")
+        mock_chat_repo.get_session_history = AsyncMock(side_effect=Exception("Test error"))
         
         with patch('app.services.workflow_execution.ChatRepository', return_value=mock_chat_repo), \
              patch.object(workflow_service.session_repo, 'get_workflow_history', return_value=[]):
             
             # Build context message
-            context_message = workflow_service._build_context_message("test-session", {})
+            context_message = await workflow_service._build_context_message("test-session", {})
             
             # Verify fallback context message on error
             assert "Please analyze the current conversation context" in context_message
@@ -174,7 +174,7 @@ class TestWorkflowExecutionService:
         
         # Mock repositories
         mock_chat_repo = Mock()
-        mock_chat_repo.get_session_history.return_value = sample_chat_history
+        mock_chat_repo.get_session_history = AsyncMock(return_value=sample_chat_history)
         
         with patch('app.services.workflow_execution.ChatAgent') as mock_chat_agent_class:
             mock_chat_agent_class.create_async = AsyncMock(return_value=mock_chat_agent)

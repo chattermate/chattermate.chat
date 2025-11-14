@@ -26,6 +26,10 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      - PYTHONUNBUFFERED=1
+      # Development mode
+      - DEBUG=True
+      - ENVIRONMENT=development
       # HuggingFace caching configuration
       - HF_HOME=/app/.cache/huggingface
       - TRANSFORMERS_CACHE=/app/.cache/huggingface/transformers
@@ -42,6 +46,11 @@ services:
       - EMBEDDING_SINGLE_THREADED=true
       - EMBEDDING_SEQUENTIAL_FALLBACK=true
     volumes:
+      # Hot reload: mount source code over the built code
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/requirements.txt:/app/requirements.txt
       - ./uploads:/app/uploads
       - ./config:/app/config
       - backend_assets:/app/assets
@@ -61,6 +70,11 @@ services:
       start_period: 10s
     networks:
       - app-network
+    # Use watchdog for file change detection and auto-reload
+    command: bash -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    # Keep container running
+    stdin_open: true
+    tty: true
 
   knowledge_processor:
     build: 
@@ -71,6 +85,8 @@ services:
       - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - DEBUG=True
+      - ENVIRONMENT=development
       # HuggingFace caching configuration (shared with backend)
       - HF_HOME=/app/.cache/huggingface
       - TRANSFORMERS_CACHE=/app/.cache/huggingface/transformers
@@ -146,7 +162,7 @@ services:
 networks:
   app-network:
     driver: bridge
-
+      
 volumes:
   postgres_data:
   redis_data:

@@ -241,10 +241,19 @@ export function useConversationChat(
   }
 
   const formattedMessages = computed(() => {
-    return chat.value.messages.map(msg => ({
+    const formatted = chat.value.messages.map(msg => ({
       ...msg,
       timeAgo: formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })
     }))
+    
+    // Debug: Log messages with attachments
+    formatted.forEach((msg, idx) => {
+      if (msg.attachments && msg.attachments.length > 0) {
+        console.log(`[Message ${idx}] Has ${msg.attachments.length} attachments:`, msg.attachments)
+      }
+    })
+    
+    return formatted
   })
 
   return {

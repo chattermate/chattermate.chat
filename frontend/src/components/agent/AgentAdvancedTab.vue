@@ -19,6 +19,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Agent } from '@/types/agent'
+import { agentService } from '@/services/agent'
+import { toast } from 'vue-sonner'
 
 const props = defineProps<{
   agent: Agent
@@ -78,6 +80,32 @@ const handleSaveSettings = async () => {
     handleUpdate(updatedAgent)
   } catch (err) {
     // Error is handled in the composable
+  }
+}
+
+// Handle attachments setting toggle
+const updateAttachmentsSetting = async (enabled: boolean) => {
+  try {
+    // Call API to save the setting
+    const updatedAgent = await agentService.updateAgent(agentRef.value.id, {
+      allow_attachments: enabled
+    })
+    
+    // Update local reference
+    agentRef.value.allow_attachments = updatedAgent.allow_attachments
+    
+    // Emit update to parent
+    emit('update', updatedAgent)
+    
+    // Show success toast
+    toast.success('Attachment setting updated', {
+      duration: 2000
+    })
+  } catch (err) {
+    console.error('Failed to update attachments setting:', err)
+    toast.error('Failed to update attachment setting', {
+      duration: 2000
+    })
   }
 }
 </script>
@@ -193,6 +221,44 @@ const handleSaveSettings = async () => {
           </p>
         </div>
       </div>
+
+      <!-- File Attachments Section -->
+      <div class="attachments-section">
+        <div class="section-header">
+          <h4 class="subsection-title">File Attachments</h4>
+          <div class="toggle-switch">
+            <span class="toggle-label">
+              Allow Attachments
+            </span>
+            <label class="switch">
+              <input 
+                type="checkbox" 
+                :checked="agentRef.allow_attachments" 
+                @change="(e) => updateAttachmentsSetting((e.target as HTMLInputElement).checked)"
+                :disabled="isLoading"
+              >
+              <span class="slider" :class="{ 'enabled': agentRef.allow_attachments }"></span>
+            </label>
+          </div>
+        </div>
+        
+        <hr class="divider">
+        
+        <div class="attachments-info">
+          <p v-if="agentRef.allow_attachments" class="helper-text success-text">
+            <i class="fas fa-check-circle"></i>
+            File attachments are enabled for this agent. Users can upload and attach files to their messages when the chat is handed over to a human agent.
+          </p>
+          <p v-else class="helper-text warning-text">
+            <i class="fas fa-ban"></i>
+            File attachments are disabled for this agent. Users cannot upload files.
+          </p>
+          <p class="helper-text info-text" style="margin-top: 8px;">
+            <i class="fas fa-info-circle"></i>
+            <strong>Note:</strong> Attachments are only available when the chat is handed over to a human agent, not during AI agent conversations.
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -237,6 +303,16 @@ const handleSaveSettings = async () => {
   padding: var(--space-lg);
   margin-bottom: var(--space-xl);
   transition: opacity 0.3s ease;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  width: 100%;
+}
+
+.attachments-section {
+  background: var(--background-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
   border: 1px solid var(--border-color);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   width: 100%;
@@ -478,5 +554,48 @@ input:checked + .slider:before {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.attachments-info {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--background-mute);
+}
+
+.success-text {
+  color: #2ecc71;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.success-text i {
+  color: #27ae60;
+  flex-shrink: 0;
+}
+
+.warning-text {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.warning-text i {
+  color: #e67e22;
+  flex-shrink: 0;
+}
+
+.info-text {
+  color: #3498db;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.info-text i {
+  color: #2980b9;
+  flex-shrink: 0;
 }
 </style> 

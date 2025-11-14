@@ -11,7 +11,7 @@ if (!window.process) {
 
 // Extract widget ID from URL
 const url = new URL(window.location.href)
-const widgetId = url.searchParams.get('widget_id')
+const widgetId = url.searchParams.get('widget_id') || undefined
 
 const app = createApp(WidgetBuilder, {
   widgetId: widgetId,

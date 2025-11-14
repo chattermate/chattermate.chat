@@ -35,6 +35,7 @@ from app.models.workflow import Workflow
 from app.models.workflow_node import WorkflowNode, ExitCondition
 from app.models.workflow_connection import WorkflowConnection
 from app.models.mcp_tool import MCPTool, MCPToolToAgent, MCPTransportType
+from app.models.file_attachment import FileAttachment
 
 
 
@@ -63,5 +64,5 @@ __all__ = [
     "MCPTool",
     "MCPToolToAgent",
     "MCPTransportType",
-
+    "FileAttachment",
 ]

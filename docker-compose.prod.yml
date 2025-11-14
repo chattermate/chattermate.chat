@@ -50,6 +50,7 @@ services:
     restart: unless-stopped
     volumes:
       - backend_data:/app/uploads
+      - temp_data:/app/temp
       - ./config:/app/config
       # Add caching volumes for models
       - huggingface_cache:/app/.cache/huggingface
@@ -96,6 +97,7 @@ services:
     restart: always
     volumes:
       - backend_data:/app/uploads
+      - temp_data:/app/temp
       - ./config:/app/config
       # Share the same caching volumes with backend
       - huggingface_cache:/app/.cache/huggingface
@@ -153,6 +155,7 @@ volumes:
   postgres_data:
   redis_data:
   backend_data:
+  temp_data:
   # Add new volumes for model caching
   huggingface_cache:
-  torch_cache: 
+  torch_cache:

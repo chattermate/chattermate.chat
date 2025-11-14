@@ -5,6 +5,7 @@ export interface CustomerInfo {
 }
 
 export interface Message {
+  id?: number
   message?: string
   message_type: string
   created_at: string
@@ -15,6 +16,13 @@ export interface Message {
   end_chat?: boolean
   end_chat_reason?: string
   end_chat_description?: string
+  attachments?: Array<{
+    id: number
+    filename: string
+    file_url: string
+    content_type: string
+    file_size: number
+  }>
   
   // Updated shopify_output to match Conversation structure
   shopify_output?: {

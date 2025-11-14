@@ -486,7 +486,8 @@ class TestGetWidgetChatHistory:
                             'timestamp': '2024-01-01T00:00:00Z',
                             'attributes': {},
                             'user_name': None,
-                            'agent_name': None
+                            'agent_name': None,
+                            'attachments': []
                         },
                         {
                             'message': 'Hi there!',
@@ -494,7 +495,8 @@ class TestGetWidgetChatHistory:
                             'timestamp': '2024-01-01T00:00:00Z',
                             'attributes': {},
                             'user_name': None,
-                            'agent_name': None
+                            'agent_name': None,
+                            'attachments': []
                         }
                     ]
                     
