@@ -262,25 +262,27 @@ const formatMessageTime = (timestamp: string): string => {
 
 .conversations-grid {
   display: grid;
-  grid-template-columns: 380px 1fr;
-  gap: 16px;
+  grid-template-columns: 420px 1fr;
+  gap: 20px;
   margin-top: 0;
+  max-width: 100%;
 }
 
 .conversations-list {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow-y: auto;
-  height: 550px;
+  height: calc(100vh - 280px);
+  min-height: 550px;
   background: var(--background-color);
 }
 
 .conversation-item {
-  padding: 12px 16px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   transition: all var(--transition-fast);
-  min-height: 72px;
+  min-height: 85px;
 }
 
 .conversation-item:hover {
@@ -300,25 +302,25 @@ const formatMessageTime = (timestamp: string): string => {
 }
 
 .conv-title {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 170px;
+  max-width: 220px;
 }
 
 .conv-time {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
 .conv-preview {
   display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
-  font-size: 12px;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
   align-items: center;
 }
 
@@ -329,12 +331,12 @@ const formatMessageTime = (timestamp: string): string => {
 }
 
 .conv-message {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 200px;
 }
 
 .conv-footer {
@@ -380,7 +382,8 @@ const formatMessageTime = (timestamp: string): string => {
   background: var(--background-color);
   display: flex;
   flex-direction: column;
-  height: 550px;
+  height: calc(100vh - 280px);
+  min-height: 550px;
   overflow: hidden;
 }
 
@@ -431,10 +434,10 @@ const formatMessageTime = (timestamp: string): string => {
 }
 
 .message-bubble {
-  padding: 10px 12px;
+  padding: 12px 16px;
   border-radius: 12px;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 15px;
+  line-height: 1.5;
   word-wrap: break-word;
 }
 
@@ -468,13 +471,15 @@ const formatMessageTime = (timestamp: string): string => {
   .conversations-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .conversations-list {
-    height: 350px;
+    height: 400px;
+    min-height: 350px;
   }
-  
+
   .conversation-detail {
-    height: 450px;
+    height: 500px;
+    min-height: 450px;
   }
 }
 

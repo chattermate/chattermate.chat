@@ -1,4 +1,10 @@
 <template>
+  <s-app-nav>
+    <s-link href="/shopify/agent-management" rel="home">Home</s-link>
+    <s-link href="/shopify/inbox">Inbox</s-link>
+    <s-link href="/shopify/pricing">Pricing</s-link>
+  </s-app-nav>
+
   <s-page>
     <!-- Loading State -->
     <s-section v-if="isInitializing">
@@ -106,63 +112,44 @@
       <div class="tabs-container">
         <div class="tabs-header">
           <div class="tabs-left">
-            <button 
-              class="tab-button" 
+            <button
+              class="tab-button"
               :class="{ active: activeTab === 'setup' }"
               @click="switchTab('setup')"
             >
               Setup Instructions
             </button>
-            <button 
-              class="tab-button" 
+            <button
+              class="tab-button"
               :class="{ active: activeTab === 'customization' }"
               @click="switchTab('customization')"
             >
               Agent Customization
             </button>
-            <button 
-              class="tab-button" 
-              :class="{ active: activeTab === 'inbox' }"
-              @click="switchTab('inbox')"
-            >
-              Inbox
-            </button>
           </div>
-          
+
           <div class="tabs-right">
             <s-button @click="goToDashboard" class="dashboard-button">
               Go to ChatterMate
             </s-button>
           </div>
         </div>
-        
+
         <div class="tab-content">
           <!-- Setup Tab -->
-          <SetupTab 
+          <SetupTab
             v-if="activeTab === 'setup'"
             :agents-connected="agentsConnected"
             :widget-id="widgetId || undefined"
             @open-theme-editor="openShopifyThemeEditor"
           />
           <!-- Customization Tab -->
-          <CustomizationTab 
+          <CustomizationTab
             v-if="activeTab === 'customization'"
             :agent="selectedAgent"
             :loading="loadingAgent"
             :saving="savingAgent"
             @save="saveAgentChanges"
-          />
-
-          <!-- Inbox Tab -->
-          <InboxTab 
-            v-if="activeTab === 'inbox'"
-            :conversations="conversations"
-            :loading="loadingConversations"
-            :status="conversationStatus"
-            :selected-id="selectedConversationId"
-            :selected-conversation="selectedConversation"
-            @update:status="handleStatusChange"
-            @select-conversation="selectConversation"
           />
         </div>
       </div>
@@ -171,17 +158,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { agentService } from '@/services/agent'
-import { chatService } from '@/services/chat'
 import type { Agent, AgentWithCustomization, ChatStyle } from '@/types/agent'
-import type { Conversation, ChatDetail } from '@/types/chat'
 import { toast } from 'vue-sonner'
 import api from '@/services/api'
 import SetupTab from '@/components/shopify/SetupTab.vue'
 import CustomizationTab from '@/components/shopify/CustomizationTab.vue'
-import InboxTab from '@/components/shopify/InboxTab.vue'
 import { useShopifySession } from '@/composables/useShopifySession'
 
 const route = useRoute()
@@ -224,13 +208,6 @@ const editingAgentName = ref(false)
 const tempAgentName = ref('')
 const agentNameInput = ref<HTMLInputElement | null>(null)
 
-// Conversations
-const conversations = ref<Conversation[]>([])
-const selectedConversationId = ref<string | null>(null)
-const selectedConversation = ref<ChatDetail | null>(null)
-const loadingConversations = ref(false)
-const conversationStatus = ref<'open' | 'closed'>('open')
-
 // Computed
 const currentPhotoUrl = computed(() => {
   if (!selectedAgent.value?.customization?.photo_url) {
@@ -251,16 +228,14 @@ const currentPhotoUrl = computed(() => {
 // Methods
 const switchTab = (tab: string) => {
   activeTab.value = tab
-  
+
   // Update URL query params
   const query = { ...route.query, tab }
   router.replace({ query })
-  
+
   // Load data based on tab
   if (tab === 'customization' && !selectedAgent.value) {
     loadSelectedAgent()
-  } else if (tab === 'inbox' && conversations.value.length === 0) {
-    loadConversations()
   }
 }
 
@@ -465,20 +440,20 @@ const handleStatusToggle = async (event: Event) => {
 const handlePhotoChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
-  
+
   if (!file) return
-  
+
   // For simplicity, upload directly without cropper
   if (!selectedAgent.value) return
-  
+
   uploadingPhoto.value = true
   try {
     const updatedCustomization = await agentService.uploadAgentPhoto(selectedAgent.value.id, file)
-    
+
     if (selectedAgent.value.customization) {
       selectedAgent.value.customization.photo_url = updatedCustomization.photo_url
     }
-    
+
     toast.success('Photo updated successfully')
   } catch (error) {
     console.error('Error uploading photo:', error)
@@ -486,38 +461,6 @@ const handlePhotoChange = async (event: Event) => {
   } finally {
     uploadingPhoto.value = false
   }
-}
-
-const loadConversations = async () => {
-  loadingConversations.value = true
-  try {
-    const params: any = {
-      status: conversationStatus.value === 'open' ? 'open,transferred' : conversationStatus.value,
-      limit: 50
-    }
-    
-    conversations.value = await chatService.getRecentChats(params)
-  } catch (error) {
-    console.error('Error loading conversations:', error)
-    toast.error('Failed to load conversations')
-  } finally {
-    loadingConversations.value = false
-  }
-}
-
-const selectConversation = async (sessionId: string) => {
-  selectedConversationId.value = sessionId
-  try {
-    selectedConversation.value = await chatService.getChatDetail(sessionId)
-  } catch (error) {
-    console.error('Error loading conversation detail:', error)
-    toast.error('Failed to load conversation')
-  }
-}
-
-const handleStatusChange = (status: 'open' | 'closed') => {
-  conversationStatus.value = status
-  loadConversations()
 }
 
 const goToDashboard = () => {
@@ -532,28 +475,26 @@ const openShopifyThemeEditor = () => {
   }
 }
 
-// Watch for conversation status changes
-watch(conversationStatus, () => {
-  loadConversations()
-})
-
 // Handle connect account popup
 const handleConnectAccount = () => {
   if (!shopInfo.value) return
-  
-  const loginUrl = `/login?shopify_flow=1&shop=${shopInfo.value.shop_domain}&shop_id=${shopInfo.value.shop_id}`
-  const popup = window.open(loginUrl, 'shopify-connect', 'width=600,height=700')
-  
-  const handleMessage = (event: MessageEvent) => {
-    if (event.data.type === 'shopify-connect-complete') {
-      popup?.close()
-      window.removeEventListener('message', handleMessage)
-      // Reload to get fresh organization data
-      window.location.reload()
-    }
+
+  // Build full login URL with return_to parameter
+  const baseUrl = window.location.origin
+  const returnTo = encodeURIComponent(window.location.pathname + window.location.search)
+  const loginUrl = `${baseUrl}/login?shopify_flow=1&shop=${shopInfo.value.shop_domain}&shop_id=${shopInfo.value.shop_id}&return_to=${returnTo}`
+
+  console.log('🪟 Redirecting to login page:', loginUrl)
+
+  // For embedded context, redirect the top-level window (breaks out of iframe)
+  // For non-embedded context, just redirect normally
+  if (isEmbedded.value && window.top) {
+    console.log('📱 Redirecting top-level window (embedded context)')
+    window.top.location.href = loginUrl
+  } else {
+    console.log('🖥️ Redirecting current window (non-embedded context)')
+    window.location.href = loginUrl
   }
-  
-  window.addEventListener('message', handleMessage)
 }
 
 // Initialize
@@ -624,15 +565,10 @@ onMounted(async () => {
     
     // Check if there's a tab in query params
     const tabParam = route.query.tab as string
-    if (tabParam && ['setup', 'customization', 'inbox'].includes(tabParam)) {
+    if (tabParam && ['setup', 'customization'].includes(tabParam)) {
       activeTab.value = tabParam
     }
-    
-    // Load data for active tab
-    if (activeTab.value === 'inbox') {
-      await loadConversations()
-    }
-    
+
     console.log('✅ Agent management view loaded successfully')
     console.log('📊 Final state:', {
       shopInfo: shopInfo.value,

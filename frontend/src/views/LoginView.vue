@@ -92,32 +92,23 @@ const handleLogin = async () => {
         error.value = ''
 
         await authService.login(email.value, password.value)
-       
+
         // Check if this is Shopify flow (new managed installation)
         const urlParams = new URLSearchParams(window.location.search)
         const isShopifyFlow = urlParams.get('shopify_flow') === '1'
         const shopId = urlParams.get('shop_id')
-        
+        const returnTo = urlParams.get('return_to')
+
         if (isShopifyFlow && shopId) {
             console.log('🔗 Shopify flow detected, linking organization')
-            
+
             try {
-                // Link shop to user's organization
-                await api.post('/shopify/link-organization', { shop_id: shopId })
-                console.log('✅ Organization linked successfully')
-                
-                // If opened in popup, notify parent window
-                if (window.opener && !window.opener.closed) {
-                    console.log('📤 Notifying parent window of success')
-                    window.opener.postMessage(
-                        { type: 'shopify-connect-complete' },
-                        window.location.origin
-                    )
-                    
-                    // Close popup after brief delay
-                    setTimeout(() => {
-                        window.close()
-                    }, 300)
+
+
+                // If return_to is specified, redirect there
+                if (returnTo) {
+                    console.log('📍 Redirecting to return_to:', returnTo)
+                    window.location.href = returnTo
                     return
                 }
             } catch (linkError: any) {

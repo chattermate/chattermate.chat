@@ -66,84 +66,50 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/services/api'
-import { useShopifyRedirect } from '@/plugins/shopifyAppBridge'
-import { Redirect } from '@shopify/app-bridge/actions'
 
-const router = useRouter()
 const route = useRoute()
+const router = useRouter()
 
 const isConnecting = ref(false)
 const errorMessage = ref<string | null>(null)
-const redirect = useShopifyRedirect()
 
 const shopDomain = computed(() => route.query.shop as string)
 const shopId = computed(() => route.query.shop_id as string)
-const host = computed(() => route.query.host as string)
 
-// Check if we're in an embedded context
-const isEmbedded = computed(() => {
-  return !!(host.value || window.self !== window.top)
-})
-
-// Open login in popup window
+// Navigate to login page
 const openLoginPopup = () => {
   if (isConnecting.value) return
-  
+
   errorMessage.value = null
   isConnecting.value = true
-  
+
   try {
     const shop = shopDomain.value
     const shop_id = shopId.value
-    
+
     if (!shop || !shop_id) {
       errorMessage.value = 'Missing shop information'
       isConnecting.value = false
       return
     }
-    
-    // Build login URL with shopify_flow flag
-    const loginUrl = `/login?shopify_flow=1&shop=${encodeURIComponent(shop)}&shop_id=${shop_id}`
-    
-    console.log('🪟 Opening login popup:', loginUrl)
-    
-    // Open popup window
-    const popup = window.open(loginUrl, 'shopify-connect', 'width=600,height=700')
-    
-    if (!popup) {
-      errorMessage.value = 'Failed to open popup. Please allow popups for this site.'
-      isConnecting.value = false
-      return
-    }
-    
-    // Listen for completion message
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'shopify-connect-complete') {
-        console.log('✅ Connection complete, closing popup')
-        popup?.close()
-        window.removeEventListener('message', handleMessage)
-        
-        // Redirect to agent selection
-        router.push({
-          name: 'shopify-agent-selection',
-          query: { shop, shop_id }
-        })
+
+    console.log('🪟 Navigating to login page')
+
+    // Navigate to login page using Vue Router
+    router.push({
+      path: '/login',
+      query: {
+        shopify_flow: '1',
+        shop,
+        shop_id,
+        return_to: `/shopify/agent-selection?shop=${shop}&shop_id=${shop_id}`
       }
-    }
-    
-    window.addEventListener('message', handleMessage)
-    
-    // Reset connecting state after a delay (in case user closes popup)
-    setTimeout(() => {
-      if (!popup.closed) {
-        isConnecting.value = false
-      }
-    }, 1000)
-    
+    })
+
   } catch (err) {
-    console.error('❌ Failed to open login popup:', err)
+    console.error('❌ Failed to navigate to login:', err)
     errorMessage.value = 'Failed to open login. Please try again.'
     isConnecting.value = false
   }

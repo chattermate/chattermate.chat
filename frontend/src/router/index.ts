@@ -63,6 +63,18 @@ const baseRoutes = [
     meta: { requiresAuth: false }, // Session token auth instead
   },
   {
+    path: '/shopify/inbox',
+    name: 'shopify-inbox',
+    component: () => import('@/views/ShopifyInboxView.vue'),
+    meta: { requiresAuth: false }, // Session token auth instead
+  },
+  {
+    path: '/shopify/pricing',
+    name: 'shopify-pricing',
+    component: () => import('@/views/ShopifyPricingView.vue'),
+    meta: { requiresAuth: false }, // Session token auth instead
+  },
+  {
     path: '/ai-agents',
     name: 'ai-agents',
     component: () => import('@/views/AIAgentView.vue'),
