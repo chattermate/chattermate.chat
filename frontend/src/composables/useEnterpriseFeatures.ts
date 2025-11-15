@@ -59,7 +59,14 @@ const moduleImports = {
   billingSetupView: '/src/modules/enterprise/views/BillingSetupView.vue',
   subscriptionStore: '/src/modules/enterprise/composables/useSubscriptionStore.ts',
   subscriptionGuard: '/src/modules/enterprise/router/guards/subscription.ts',
-  exploreView: '/src/modules/enterprise/views/ExploreView.vue'
+  exploreView: '/src/modules/enterprise/views/ExploreView.vue',
+  shopifySessionTokenBounce: '/src/modules/enterprise/views/ShopifySessionTokenBouncePage.vue',
+  shopifyConnect: '/src/modules/enterprise/views/ShopifyConnectAccountView.vue',
+  shopifyAuthComplete: '/src/modules/enterprise/views/ShopifyAuthCompleteView.vue',
+  shopifyAgentSelection: '/src/modules/enterprise/views/ShopifyAgentSelectionView.vue',
+  shopifyAgentManagement: '/src/modules/enterprise/views/ShopifyAgentManagementView.vue',
+  shopifyInbox: '/src/modules/enterprise/views/ShopifyInboxView.vue',
+  shopifyPricing: '/src/modules/enterprise/views/ShopifyPricingView.vue'
 }
 
 // Default subscription state

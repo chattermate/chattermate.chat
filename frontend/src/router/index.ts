@@ -12,7 +12,8 @@ import UserSettingsView from '@/views/UserSettingsView.vue'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 // Initialize enterprise features
-const { hasEnterpriseModule, loadModule, moduleImports, NotAvailableComponent } = useEnterpriseFeatures()
+const { hasEnterpriseModule, loadModule, moduleImports, NotAvailableComponent } =
+  useEnterpriseFeatures()
 
 // Base routes
 const baseRoutes = [
@@ -33,48 +34,6 @@ const baseRoutes = [
     meta: { requiresAuth: false },
   },
   {
-    path: '/shopify/session-token-bounce',
-    name: 'shopify-session-token-bounce',
-    component: () => import('@/views/ShopifySessionTokenBouncePage.vue'),
-    meta: { requiresAuth: false },
-  },
-  {
-    path: '/shopify/connect',
-    name: 'shopify-connect',
-    component: () => import('@/views/ShopifyConnectAccountView.vue'),
-    meta: { requiresAuth: false }, // Session token auth instead
-  },
-  {
-    path: '/shopify/auth-complete',
-    name: 'shopify-auth-complete',
-    component: () => import('@/views/ShopifyAuthCompleteView.vue'),
-    meta: { requiresAuth: false },
-  },
-  {
-    path: '/shopify/agent-selection',
-    name: 'shopify-agent-selection',
-    component: () => import('@/views/ShopifyAgentSelectionView.vue'),
-    meta: { requiresAuth: false }, // Session token auth instead
-  },
-  {
-    path: '/shopify/agent-management',
-    name: 'shopify-agent-management',
-    component: () => import('@/views/ShopifyAgentManagementView.vue'),
-    meta: { requiresAuth: false }, // Session token auth instead
-  },
-  {
-    path: '/shopify/inbox',
-    name: 'shopify-inbox',
-    component: () => import('@/views/ShopifyInboxView.vue'),
-    meta: { requiresAuth: false }, // Session token auth instead
-  },
-  {
-    path: '/shopify/pricing',
-    name: 'shopify-pricing',
-    component: () => import('@/views/ShopifyPricingView.vue'),
-    meta: { requiresAuth: false }, // Session token auth instead
-  },
-  {
     path: '/ai-agents',
     name: 'ai-agents',
     component: () => import('@/views/AIAgentView.vue'),
@@ -88,8 +47,8 @@ const baseRoutes = [
       requiresAuth: true,
       layout: 'dashboard',
       title: 'Analytics Dashboard',
-      permissions: ['view_analytics']
-    }
+      permissions: ['view_analytics'],
+    },
   },
   {
     path: '/widget/:id',
@@ -116,8 +75,8 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      permissions: ['manage_organization', 'view_organization']
-    }
+      permissions: ['manage_organization', 'view_organization'],
+    },
   },
   {
     path: '/settings/ai-config',
@@ -126,8 +85,8 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      permissions: ['manage_ai_config', 'view_ai_config']
-    }
+      permissions: ['manage_ai_config', 'view_ai_config'],
+    },
   },
   {
     path: '/settings/integrations',
@@ -136,8 +95,8 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      permissions: ['manage_organization']
-    }
+      permissions: ['manage_organization'],
+    },
   },
   {
     path: '/settings/user',
@@ -145,8 +104,8 @@ const baseRoutes = [
     component: UserSettingsView,
     meta: {
       requiresAuth: true,
-      layout: 'dashboard'
-    }
+      layout: 'dashboard',
+    },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -166,41 +125,85 @@ const loadEnterpriseComponent = (path: string) => {
 }
 
 // Combine routes based on module availability
-const allRoutes = hasEnterpriseModule ? [
-  ...baseRoutes,
-  {
-    path: '/signup',
-    name: 'signup',
-    component: loadEnterpriseComponent(moduleImports.signupView),
-    meta: { requiresAuth: false }
-  },
-  {
-    path: '/explore',
-    name: 'explore',
-    component: loadEnterpriseComponent(moduleImports.exploreView),
-    meta: { requiresAuth: false }
-  },
-  {
-    path: '/settings/subscription',
-    name: 'subscription',
-    component: loadEnterpriseComponent(moduleImports.subscriptionView),
-    meta: {
-      requiresAuth: true,
-      layout: 'dashboard',
-      title: 'Subscription Plans'
-    }
-  },
-  {
-    path: '/settings/subscription/setup/:planId',
-    name: 'billing-setup',
-    component: loadEnterpriseComponent(moduleImports.billingSetupView),
-    meta: { requiresAuth: true }
-  }
-] : baseRoutes
+const allRoutes = hasEnterpriseModule
+  ? [
+      ...baseRoutes,
+      {
+        path: '/signup',
+        name: 'signup',
+        component: loadEnterpriseComponent(moduleImports.signupView),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/explore',
+        name: 'explore',
+        component: loadEnterpriseComponent(moduleImports.exploreView),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/settings/subscription',
+        name: 'subscription',
+        component: loadEnterpriseComponent(moduleImports.subscriptionView),
+        meta: {
+          requiresAuth: true,
+          layout: 'dashboard',
+          title: 'Subscription Plans',
+        },
+      },
+      {
+        path: '/settings/subscription/setup/:planId',
+        name: 'billing-setup',
+        component: loadEnterpriseComponent(moduleImports.billingSetupView),
+        meta: { requiresAuth: true },
+      },
+      {
+        path: '/shopify/session-token-bounce',
+        name: 'shopify-session-token-bounce',
+        component: loadEnterpriseComponent(moduleImports.shopifySessionTokenBounce),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/shopify/connect',
+        name: 'shopify-connect',
+        component: loadEnterpriseComponent(moduleImports.shopifyConnect),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/shopify/auth-complete',
+        name: 'shopify-auth-complete',
+        component: loadEnterpriseComponent(moduleImports.shopifyAuthComplete),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/shopify/agent-selection',
+        name: 'shopify-agent-selection',
+        component: loadEnterpriseComponent(moduleImports.shopifyAgentSelection),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/shopify/agent-management',
+        name: 'shopify-agent-management',
+        component: loadEnterpriseComponent(moduleImports.shopifyAgentManagement),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/shopify/inbox',
+        name: 'shopify-inbox',
+        component: loadEnterpriseComponent(moduleImports.shopifyInbox),
+        meta: { requiresAuth: false },
+      },
+      {
+        path: '/shopify/pricing',
+        name: 'shopify-pricing',
+        component: loadEnterpriseComponent(moduleImports.shopifyPricing),
+        meta: { requiresAuth: false },
+      },
+    ]
+  : baseRoutes
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: allRoutes
+  routes: allRoutes,
 })
 
 // Add subscription guard only if enterprise module is available

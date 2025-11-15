@@ -36,9 +36,16 @@
 
     <!-- Empty state -->
     <div v-else-if="conversations.length === 0" class="empty-state-container">
-      <s-empty-state heading="No conversations">
-        <s-text>No {{ localStatus }} conversations yet.</s-text>
-      </s-empty-state>
+      <div class="empty-state">
+        <div class="empty-icon">💬</div>
+        <h3 class="empty-title">No {{ localStatus }} conversations</h3>
+        <p class="empty-description">
+          {{ localStatus === 'open'
+            ? 'When customers start chatting with your AI agents, their conversations will appear here.'
+            : 'No closed conversations yet. Resolved conversations will be shown here.'
+          }}
+        </p>
+      </div>
     </div>
 
     <!-- Conversations grid -->
@@ -257,7 +264,37 @@ const formatMessageTime = (timestamp: string): string => {
 }
 
 .empty-state-container {
-  padding: 40px 0;
+  padding: 80px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+}
+
+.empty-state {
+  text-align: center;
+  max-width: 400px;
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.empty-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 12px 0;
+  font-family: var(--font-family);
+}
+
+.empty-description {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
 }
 
 .conversations-grid {

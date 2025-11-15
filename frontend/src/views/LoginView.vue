@@ -157,11 +157,17 @@ const handleLogin = async () => {
             const shop = router.currentRoute.value.query.shop as string
             const shopId = router.currentRoute.value.query.shop_id as string
             const host = router.currentRoute.value.query.host as string
-            
+            const returnTo = router.currentRoute.value.query.return_to as string
+
             // Redirect to auth complete page
+            const query: any = { shop, shop_id: shopId, host }
+            if (returnTo) {
+                query.return_to = returnTo
+            }
+
             router.push({
                 path: '/shopify/auth-complete',
-                query: { shop, shop_id: shopId, host }
+                query
             })
             return
         }
@@ -212,17 +218,24 @@ const handleLogin = async () => {
 }
 
 const navigateToSignup = () => {
-    // Preserve embedded and shop_id query params if present
+    // Preserve embedded, shop_id, and return_to query params if present
     const isEmbedded = router.currentRoute.value.query.embedded
     const shopId = router.currentRoute.value.query.shop_id
-    
-    if (isEmbedded && shopId) {
+    const returnTo = router.currentRoute.value.query.return_to
+    const shopifyFlow = router.currentRoute.value.query.shopify_flow
+
+    const query: any = {}
+
+    if (isEmbedded) query.embedded = isEmbedded
+    if (shopId) query.shop_id = shopId
+    if (returnTo) query.return_to = returnTo
+    if (shopifyFlow) query.shopify_flow = shopifyFlow
+
+    if (Object.keys(query).length > 0) {
+        console.log('Navigating to signup with params:', query)
         router.push({
             path: '/signup',
-            query: {
-                embedded: isEmbedded,
-                shop_id: shopId
-            }
+            query
         })
     } else {
         router.push('/signup')

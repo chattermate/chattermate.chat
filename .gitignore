@@ -99,3 +99,4 @@ chattermate-cli/templates/backend/scripts/init-vector.sql
 chattermate-cli/templates/backend/scripts/preload_models.py
 chattermate-cli/templates/backend/scripts/start.sh
 chattermate-cli/templates/frontend/nginx.conf
+.claude/settings.local.json

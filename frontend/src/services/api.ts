@@ -2,8 +2,22 @@ import axios, { AxiosError } from 'axios'
 import router from '@/router'
 import { getApiUrl } from '@/config/api'
 import { userService } from '@/services/user'
-import { getSessionToken } from '@shopify/app-bridge/utilities'
-import { initShopifyApp } from '@/plugins/shopifyAppBridge'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+
+const { hasEnterpriseModule } = useEnterpriseFeatures()
+
+// Lazy load Shopify dependencies only if enterprise module is available
+let getSessionToken: any = null
+let initShopifyApp: any = null
+
+if (hasEnterpriseModule) {
+  import('@shopify/app-bridge/utilities').then(module => {
+    getSessionToken = module.getSessionToken
+  })
+  import('@/modules/enterprise/plugins/shopifyAppBridge').then(module => {
+    initShopifyApp = module.initShopifyApp
+  })
+}
 
 const api = axios.create({
   baseURL: getApiUrl(),
@@ -26,7 +40,7 @@ api.interceptors.request.use(
                              config.url?.includes('/agent/') && hasShopParam ||
                              config.url?.includes('/chats/') && hasShopParam
     
-    if (hasShopParam && isShopifyEndpoint) {
+    if (hasShopParam && isShopifyEndpoint && hasEnterpriseModule && initShopifyApp && getSessionToken) {
       try {
         const app = initShopifyApp()
         if (app) {
