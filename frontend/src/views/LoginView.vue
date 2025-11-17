@@ -92,32 +92,23 @@ const handleLogin = async () => {
         error.value = ''
 
         await authService.login(email.value, password.value)
-       
+
         // Check if this is Shopify flow (new managed installation)
         const urlParams = new URLSearchParams(window.location.search)
         const isShopifyFlow = urlParams.get('shopify_flow') === '1'
         const shopId = urlParams.get('shop_id')
-        
+        const returnTo = urlParams.get('return_to')
+
         if (isShopifyFlow && shopId) {
             console.log('🔗 Shopify flow detected, linking organization')
-            
+
             try {
-                // Link shop to user's organization
-                await api.post('/shopify/link-organization', { shop_id: shopId })
-                console.log('✅ Organization linked successfully')
-                
-                // If opened in popup, notify parent window
-                if (window.opener && !window.opener.closed) {
-                    console.log('📤 Notifying parent window of success')
-                    window.opener.postMessage(
-                        { type: 'shopify-connect-complete' },
-                        window.location.origin
-                    )
-                    
-                    // Close popup after brief delay
-                    setTimeout(() => {
-                        window.close()
-                    }, 300)
+
+
+                // If return_to is specified, redirect there
+                if (returnTo) {
+                    console.log('📍 Redirecting to return_to:', returnTo)
+                    window.location.href = returnTo
                     return
                 }
             } catch (linkError: any) {
@@ -166,11 +157,17 @@ const handleLogin = async () => {
             const shop = router.currentRoute.value.query.shop as string
             const shopId = router.currentRoute.value.query.shop_id as string
             const host = router.currentRoute.value.query.host as string
-            
+            const returnTo = router.currentRoute.value.query.return_to as string
+
             // Redirect to auth complete page
+            const query: any = { shop, shop_id: shopId, host }
+            if (returnTo) {
+                query.return_to = returnTo
+            }
+
             router.push({
                 path: '/shopify/auth-complete',
-                query: { shop, shop_id: shopId, host }
+                query
             })
             return
         }
@@ -221,17 +218,24 @@ const handleLogin = async () => {
 }
 
 const navigateToSignup = () => {
-    // Preserve embedded and shop_id query params if present
+    // Preserve embedded, shop_id, and return_to query params if present
     const isEmbedded = router.currentRoute.value.query.embedded
     const shopId = router.currentRoute.value.query.shop_id
-    
-    if (isEmbedded && shopId) {
+    const returnTo = router.currentRoute.value.query.return_to
+    const shopifyFlow = router.currentRoute.value.query.shopify_flow
+
+    const query: any = {}
+
+    if (isEmbedded) query.embedded = isEmbedded
+    if (shopId) query.shop_id = shopId
+    if (returnTo) query.return_to = returnTo
+    if (shopifyFlow) query.shopify_flow = shopifyFlow
+
+    if (Object.keys(query).length > 0) {
+        console.log('Navigating to signup with params:', query)
         router.push({
             path: '/signup',
-            query: {
-                embedded: isEmbedded,
-                shop_id: shopId
-            }
+            query
         })
     } else {
         router.push('/signup')

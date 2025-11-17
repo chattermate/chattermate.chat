@@ -159,10 +159,11 @@ async def require_shopify_session(
     # Add shop info to decoded token for easy access
     decoded['db_shop'] = db_shop
     decoded['shop_id'] = str(db_shop.id)
+    decoded['shop_domain'] = shop_domain
     decoded['organization_id'] = db_shop.organization_id if db_shop.organization_id else None
-    
+
     logger.info(f"Session token validated for shop: {shop_domain}, org: {decoded['organization_id']}")
-    
+
     return decoded
 
 

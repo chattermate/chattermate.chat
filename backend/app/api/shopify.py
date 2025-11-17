@@ -570,7 +570,8 @@ async def save_agent_shopify_config(
         # Session token valid - verify shop is linked to organization
         if not shopify_session['organization_id']:
             raise HTTPException(status_code=403, detail="Shop not linked to organization")
-        org_id_str = shopify_session['organization_id']
+        # Ensure org_id_str is always a string
+        org_id_str = str(shopify_session['organization_id'])
         # For session token, we don't have user_id - use None (optional for knowledge queue)
         logger.info(f"POST agent-config using session token for org: {org_id_str}")
     except HTTPException:
@@ -957,14 +958,14 @@ async def shopify_shop_redact_webhook(
 ):
     """
     GDPR Compliance Webhook: Shop Data Erasure
-    
+
     This webhook is called 48 hours after a shop owner uninstalls your app.
     You must delete all shop-related data.
-    
+
     Shopify sends the following information:
     - shop_id: The ID of the shop
     - shop_domain: The shop's domain
-    
+
     Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
     """
     try:

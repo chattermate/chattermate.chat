@@ -43,7 +43,7 @@ export default defineConfig(({ command, mode }) => {
   
   // Also load standard Vite env files
   const env = loadEnv(mode, process.cwd(), '')
-  
+
   return {
   plugins: [
     vue({
@@ -53,9 +53,19 @@ export default defineConfig(({ command, mode }) => {
           isCustomElement: (tag) => tag.startsWith('s-')
         }
       }
-    }), 
-    vueJsx(), 
-    vueDevTools()
+    }),
+    vueJsx(),
+    vueDevTools(),
+    // Plugin to inject environment variables into HTML
+    {
+      name: 'html-transform',
+      transformIndexHtml(html) {
+        return html.replace(
+          /<%= VITE_SHOPIFY_API_KEY %>/g,
+          process.env.VITE_SHOPIFY_API_KEY || env.VITE_SHOPIFY_API_KEY || ''
+        )
+      }
+    }
   ],
   resolve: {
     alias: {

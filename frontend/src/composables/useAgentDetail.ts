@@ -8,7 +8,25 @@ import type { UserGroup } from '@/types/user'
 import { listGroups } from '@/services/groups'
 import { agentStorage } from '@/utils/storage'
 import { useJiraIntegration } from './useJiraIntegration'
-import { useShopifyIntegration } from './useShopifyIntegration'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+
+const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
+
+// Lazy load Shopify integration only if enterprise module is available
+let useShopifyIntegration: any = null
+if (hasEnterpriseModule) {
+  // Load Shopify integration asynchronously
+  ;(async () => {
+    try {
+      const shopifyIntegrationModule = await loadModule(moduleImports.shopifyIntegration)
+      if (shopifyIntegrationModule?.useShopifyIntegration) {
+        useShopifyIntegration = shopifyIntegrationModule.useShopifyIntegration
+      }
+    } catch (error) {
+      console.warn('Failed to load Shopify integration:', error)
+    }
+  })()
+}
 
 export function useAgentDetail(agentData: { value: AgentWithCustomization }, emit: (e: 'close') => void) {
   const fileInput = ref<HTMLInputElement | null>(null)
@@ -21,12 +39,23 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
   const userGroups = ref<UserGroup[]>([])
   const selectedGroupIds = ref<string[]>([])
   const loadingGroups = ref(false)
-  
+
   // Initialize Jira integration
   const jiraIntegration = useJiraIntegration(agentData.value.id)
-  
-  // Initialize Shopify integration
-  const shopifyIntegration = useShopifyIntegration(agentData.value.id)
+
+  // Initialize Shopify integration only if enterprise module is available
+  const shopifyIntegration = hasEnterpriseModule && useShopifyIntegration
+    ? useShopifyIntegration(agentData.value.id)
+    : {
+        shopifyConnected: ref(false),
+        shopifyShopDomain: ref(''),
+        shopifyLoading: ref(false),
+        shopifyIntegrationEnabled: ref(false),
+        checkShopifyStatus: () => Promise.resolve(),
+        fetchAgentShopifyConfig: () => Promise.resolve(),
+        toggleShopifyIntegration: () => Promise.resolve(),
+        saveShopifyConfig: () => Promise.resolve()
+      }
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']

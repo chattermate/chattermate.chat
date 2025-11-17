@@ -155,17 +155,25 @@ async def test_add_pdf_files_success(knowledge_manager, mock_knowledge):
     """Test successful addition of PDF files"""
     # Setup
     files = ["/path/to/test.pdf"]
-    
+
     with patch('app.knowledge.knowledge_base.EnhancedPDFKnowledgeBase') as mock_pdf_kb, \
          patch('app.knowledge.knowledge_base.PDFImageReader') as mock_pdf_reader, \
+         patch('os.path.exists') as mock_exists, \
+         patch('os.path.getsize') as mock_getsize, \
+         patch('os.path.basename') as mock_basename, \
+         patch('os.path.splitext') as mock_splitext, \
          patch.object(knowledge_manager, '_add_knowledge_source', return_value=mock_knowledge) as mock_add_source:
         # Configure mocks
         mock_pdf_kb_instance = MagicMock()
         mock_pdf_kb.return_value = mock_pdf_kb_instance
-        
+        mock_exists.return_value = True
+        mock_getsize.return_value = 1024
+        mock_basename.return_value = "test.pdf"
+        mock_splitext.return_value = ("test", ".pdf")
+
         # Execute
         result = await knowledge_manager.add_pdf_files(files)
-        
+
         # Assert
         assert result is True
         mock_pdf_kb.assert_called_once()

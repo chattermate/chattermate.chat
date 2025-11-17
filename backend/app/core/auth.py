@@ -183,10 +183,20 @@ def get_auth_info_from_request(request: Request) -> dict:
 async def get_unified_auth(request: Request, db: Session = Depends(get_db)) -> dict:
     """Unified authentication that handles both regular JWT and Shopify session tokens"""
     from app.services.shopify_session import require_shopify_or_jwt_auth
-    
+
     try:
-        if "/shopify" in str(request.url):
-            # For Shopify endpoints, use the shopify auth
+        # Check if this is a Shopify-related endpoint or has query params indicating Shopify context
+        url_str = str(request.url)
+        query_params = dict(request.query_params)
+        is_shopify_context = (
+            "/shopify" in url_str or
+            url_str.endswith("/shopify") or
+            "shop" in query_params or
+            "host" in query_params
+        )
+
+        if is_shopify_context:
+            # For Shopify endpoints or context, use the shopify/JWT auth
             auth_result = await require_shopify_or_jwt_auth(request, db)
             return {
                 "auth_type": auth_result.get("auth_type", "shopify"),

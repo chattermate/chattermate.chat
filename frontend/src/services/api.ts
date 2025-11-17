@@ -2,8 +2,34 @@ import axios, { AxiosError } from 'axios'
 import router from '@/router'
 import { getApiUrl } from '@/config/api'
 import { userService } from '@/services/user'
-import { getSessionToken } from '@shopify/app-bridge/utilities'
-import { initShopifyApp } from '@/plugins/shopifyAppBridge'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+
+const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
+
+// Lazy load Shopify dependencies only if enterprise module is available
+let getSessionToken: any = null
+let initShopifyApp: any = null
+
+if (hasEnterpriseModule) {
+  // Load Shopify dependencies asynchronously
+  ;(async () => {
+    try {
+      // Load Shopify App Bridge utilities via wrapper module
+      const appBridgeUtilitiesModule = await loadModule(moduleImports.shopifyAppBridgeUtilities)
+      if (appBridgeUtilitiesModule?.getSessionToken) {
+        getSessionToken = appBridgeUtilitiesModule.getSessionToken
+      }
+
+      // Load Shopify app bridge plugin
+      const shopifyAppBridgeModule = await loadModule(moduleImports.shopifyAppBridge)
+      if (shopifyAppBridgeModule?.initShopifyApp) {
+        initShopifyApp = shopifyAppBridgeModule.initShopifyApp
+      }
+    } catch (error) {
+      console.warn('Failed to load Shopify dependencies:', error)
+    }
+  })()
+}
 
 const api = axios.create({
   baseURL: getApiUrl(),
@@ -19,14 +45,21 @@ api.interceptors.request.use(
     // Check if we're in embedded Shopify context
     const urlParams = new URLSearchParams(window.location.search)
     const hasShopParam = urlParams.has('shop') || urlParams.has('host')
-    
+
     // Check if this is a Shopify-related endpoint
-    const isShopifyEndpoint = config.url?.includes('/shopify/') || 
-                             config.url?.endsWith('/shopify') ||
-                             config.url?.includes('/agent/') && hasShopParam ||
-                             config.url?.includes('/chats/') && hasShopParam
-    
-    if (hasShopParam && isShopifyEndpoint) {
+    const isShopifyEndpoint =
+      config.url?.includes('/shopify/') ||
+      config.url?.endsWith('/shopify') ||
+      (config.url?.includes('/agent/') && hasShopParam) ||
+      (config.url?.includes('/chats/') && hasShopParam)
+
+    if (
+      hasShopParam &&
+      isShopifyEndpoint &&
+      hasEnterpriseModule &&
+      initShopifyApp &&
+      getSessionToken
+    ) {
       try {
         const app = initShopifyApp()
         if (app) {
@@ -40,10 +73,10 @@ api.interceptors.request.use(
         console.error('❌ Failed to add session token:', error)
       }
     }
-    
+
     return config
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 )
 
 // Response interceptor
