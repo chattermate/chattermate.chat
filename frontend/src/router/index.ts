@@ -118,35 +118,9 @@ const loadEnterpriseComponent = (path: string) => {
   if (!hasEnterpriseModule) {
     return NotAvailableComponent
   }
-  // Use explicit imports with switch - Vite will process these and resolve the @ alias
-  return () => {
-    switch (path) {
-      case '@/modules/enterprise/views/SignupView.vue':
-        return import('@/modules/enterprise/views/SignupView.vue')
-      case '@/modules/enterprise/views/SubscriptionView.vue':
-        return import('@/modules/enterprise/views/SubscriptionView.vue')
-      case '@/modules/enterprise/views/BillingSetupView.vue':
-        return import('@/modules/enterprise/views/BillingSetupView.vue')
-      case '@/modules/enterprise/views/ExploreView.vue':
-        return import('@/modules/enterprise/views/ExploreView.vue')
-      case '@/modules/enterprise/views/ShopifySessionTokenBouncePage.vue':
-        return import('@/modules/enterprise/views/ShopifySessionTokenBouncePage.vue')
-      case '@/modules/enterprise/views/ShopifyConnectAccountView.vue':
-        return import('@/modules/enterprise/views/ShopifyConnectAccountView.vue')
-      case '@/modules/enterprise/views/ShopifyAuthCompleteView.vue':
-        return import('@/modules/enterprise/views/ShopifyAuthCompleteView.vue')
-      case '@/modules/enterprise/views/ShopifyAgentSelectionView.vue':
-        return import('@/modules/enterprise/views/ShopifyAgentSelectionView.vue')
-      case '@/modules/enterprise/views/ShopifyAgentManagementView.vue':
-        return import('@/modules/enterprise/views/ShopifyAgentManagementView.vue')
-      case '@/modules/enterprise/views/ShopifyInboxView.vue':
-        return import('@/modules/enterprise/views/ShopifyInboxView.vue')
-      case '@/modules/enterprise/views/ShopifyPricingView.vue':
-        return import('@/modules/enterprise/views/ShopifyPricingView.vue')
-      default:
-        console.warn(`Unknown enterprise component: ${path}`)
-        return Promise.resolve({ default: NotAvailableComponent })
-    }
+  return async () => {
+    const module = await loadModule(path)
+    return module?.default || NotAvailableComponent
   }
 }
 
@@ -192,7 +166,7 @@ const allRoutes = hasEnterpriseModule
         path: '/shopify/connect',
         name: 'shopify-connect',
         component: loadEnterpriseComponent(moduleImports.shopifyConnect),
-        meta: { requiresAuth: false },
+        meta: { requiresAuth: false }, // Session token auth instead
       },
       {
         path: '/shopify/auth-complete',
@@ -204,13 +178,13 @@ const allRoutes = hasEnterpriseModule
         path: '/shopify/agent-selection',
         name: 'shopify-agent-selection',
         component: loadEnterpriseComponent(moduleImports.shopifyAgentSelection),
-        meta: { requiresAuth: false },
+        meta: { requiresAuth: false }, // Session token auth instead
       },
       {
         path: '/shopify/agent-management',
         name: 'shopify-agent-management',
         component: loadEnterpriseComponent(moduleImports.shopifyAgentManagement),
-        meta: { requiresAuth: false },
+        meta: { requiresAuth: false }, // Session token auth instead
       },
       {
         path: '/shopify/inbox',
@@ -248,7 +222,7 @@ if (hasEnterpriseModule) {
 }
 
 // Navigation guard
-router.beforeEach(async (to, _from, next) => {
+router.beforeEach(async (to, from, next) => {
   // Skip auth check for Shopify routes (they use session tokens)
   if (to.path.startsWith('/shopify/')) {
     return next()
