@@ -20,12 +20,14 @@ const hasEnterpriseModule = Object.keys(enterpriseModules).length > 0
 interface Plan {
   type: string
   name: string
+  [key: string]: any
 }
 
 interface SubscriptionPlan {
   plan: Plan
   message_count?: number
   message_limit?: number
+  [key: string]: any
 }
 
 interface SubscriptionStore {
@@ -183,7 +185,7 @@ export const useEnterpriseFeatures = () => {
           console.warn(`Unknown enterprise module: ${modulePath}`)
           return null
       }
-      return module
+      return module as EnterpriseModule
     } catch (error) {
       console.warn(`Failed to load enterprise module: ${modulePath}`, error)
       return null
