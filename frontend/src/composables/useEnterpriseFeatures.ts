@@ -52,6 +52,9 @@ type EnterpriseModule = {
   default?: Component
   subscriptionStore?: SubscriptionStore
   subscriptionGuard?: (to: any, from: any, next: any) => void
+  initShopifyApp?: () => any
+  getSessionToken?: (app: any) => Promise<string>
+  useShopifyIntegration?: (agentId: string) => any
 }
 
 // Create a mapping of module paths to their direct imports
@@ -70,6 +73,9 @@ const moduleImports = {
   shopifyAgentManagement: '/src/modules/enterprise/views/ShopifyAgentManagementView.vue',
   shopifyInbox: '/src/modules/enterprise/views/ShopifyInboxView.vue',
   shopifyPricing: '/src/modules/enterprise/views/ShopifyPricingView.vue',
+  shopifyAppBridge: '/src/modules/enterprise/plugins/shopifyAppBridge.ts',
+  shopifyAppBridgeUtilities: '/src/modules/enterprise/plugins/shopifyAppBridgeUtilities.ts',
+  shopifyIntegration: '/src/modules/enterprise/composables/useShopifyIntegration.ts',
 }
 
 // Default subscription state

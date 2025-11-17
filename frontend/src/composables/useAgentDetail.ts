@@ -10,14 +10,22 @@ import { agentStorage } from '@/utils/storage'
 import { useJiraIntegration } from './useJiraIntegration'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
-const { hasEnterpriseModule } = useEnterpriseFeatures()
+const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 
 // Lazy load Shopify integration only if enterprise module is available
 let useShopifyIntegration: any = null
 if (hasEnterpriseModule) {
-  import('@/modules/enterprise/composables/useShopifyIntegration').then(module => {
-    useShopifyIntegration = module.useShopifyIntegration
-  })
+  // Load Shopify integration asynchronously
+  ;(async () => {
+    try {
+      const shopifyIntegrationModule = await loadModule(moduleImports.shopifyIntegration)
+      if (shopifyIntegrationModule?.useShopifyIntegration) {
+        useShopifyIntegration = shopifyIntegrationModule.useShopifyIntegration
+      }
+    } catch (error) {
+      console.warn('Failed to load Shopify integration:', error)
+    }
+  })()
 }
 
 export function useAgentDetail(agentData: { value: AgentWithCustomization }, emit: (e: 'close') => void) {
