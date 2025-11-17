@@ -19,14 +19,15 @@
       </s-banner>
 
       <!-- Widget Configuration Section -->
-      <s-section v-if="widgetId" heading="Widget Configuration">
+      <s-section heading="Widget Configuration">
         <s-stack gap="base">
           <s-text>Your Widget ID for Shopify:</s-text>
-          
-          <s-box 
-            padding="base" 
-            background="surface-secondary" 
-            border="base" 
+
+          <s-box
+            v-if="widgetId"
+            padding="base"
+            background="surface-secondary"
+            border="base"
             borderRadius="base"
             class="widget-id-box"
           >
@@ -34,8 +35,20 @@
               {{ widgetId }}
             </s-text>
           </s-box>
-          
-          <s-banner tone="info">
+
+          <s-box
+            v-else
+            padding="base"
+            background="surface-warning"
+            border="base"
+            borderRadius="base"
+          >
+            <s-text>
+              ⚠️ Widget ID not found. Please connect an agent first.
+            </s-text>
+          </s-box>
+
+          <s-banner v-if="widgetId" tone="info">
             <s-text>
               💡 Use this Widget ID in your Shopify theme settings to display the chat widget on your store.
             </s-text>

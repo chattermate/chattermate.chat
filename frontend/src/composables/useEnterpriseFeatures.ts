@@ -52,21 +52,22 @@ type EnterpriseModule = {
   subscriptionGuard?: (to: any, from: any, next: any) => void
 }
 
-// Create a mapping of module paths to their glob imports
+// Create a mapping of module paths to their direct imports
+// These should be used with dynamic import() directly, not with glob
 const moduleImports = {
-  signupView: '/src/modules/enterprise/views/SignupView.vue',
-  subscriptionView: '/src/modules/enterprise/views/SubscriptionView.vue',
-  billingSetupView: '/src/modules/enterprise/views/BillingSetupView.vue',
-  subscriptionStore: '/src/modules/enterprise/composables/useSubscriptionStore.ts',
-  subscriptionGuard: '/src/modules/enterprise/router/guards/subscription.ts',
-  exploreView: '/src/modules/enterprise/views/ExploreView.vue',
-  shopifySessionTokenBounce: '/src/modules/enterprise/views/ShopifySessionTokenBouncePage.vue',
-  shopifyConnect: '/src/modules/enterprise/views/ShopifyConnectAccountView.vue',
-  shopifyAuthComplete: '/src/modules/enterprise/views/ShopifyAuthCompleteView.vue',
-  shopifyAgentSelection: '/src/modules/enterprise/views/ShopifyAgentSelectionView.vue',
-  shopifyAgentManagement: '/src/modules/enterprise/views/ShopifyAgentManagementView.vue',
-  shopifyInbox: '/src/modules/enterprise/views/ShopifyInboxView.vue',
-  shopifyPricing: '/src/modules/enterprise/views/ShopifyPricingView.vue'
+  signupView: '@/modules/enterprise/views/SignupView.vue',
+  subscriptionView: '@/modules/enterprise/views/SubscriptionView.vue',
+  billingSetupView: '@/modules/enterprise/views/BillingSetupView.vue',
+  subscriptionStore: '@/modules/enterprise/composables/useSubscriptionStore.ts',
+  subscriptionGuard: '@/modules/enterprise/router/guards/subscription.ts',
+  exploreView: '@/modules/enterprise/views/ExploreView.vue',
+  shopifySessionTokenBounce: '@/modules/enterprise/views/ShopifySessionTokenBouncePage.vue',
+  shopifyConnect: '@/modules/enterprise/views/ShopifyConnectAccountView.vue',
+  shopifyAuthComplete: '@/modules/enterprise/views/ShopifyAuthCompleteView.vue',
+  shopifyAgentSelection: '@/modules/enterprise/views/ShopifyAgentSelectionView.vue',
+  shopifyAgentManagement: '@/modules/enterprise/views/ShopifyAgentManagementView.vue',
+  shopifyInbox: '@/modules/enterprise/views/ShopifyInboxView.vue',
+  shopifyPricing: '@/modules/enterprise/views/ShopifyPricingView.vue'
 }
 
 // Default subscription state
@@ -136,13 +137,53 @@ export const useEnterpriseFeatures = () => {
     }
 
     try {
-      if (modules[modulePath]) {
-        const module = await modules[modulePath]()
-        return module
+      // Use direct dynamic import - Vite will process this and resolve the @ alias
+      let module
+      switch (modulePath) {
+        case '@/modules/enterprise/views/SignupView.vue':
+          module = await import('@/modules/enterprise/views/SignupView.vue')
+          break
+        case '@/modules/enterprise/views/SubscriptionView.vue':
+          module = await import('@/modules/enterprise/views/SubscriptionView.vue')
+          break
+        case '@/modules/enterprise/views/BillingSetupView.vue':
+          module = await import('@/modules/enterprise/views/BillingSetupView.vue')
+          break
+        case '@/modules/enterprise/composables/useSubscriptionStore.ts':
+          module = await import('@/modules/enterprise/composables/useSubscriptionStore.ts')
+          break
+        case '@/modules/enterprise/router/guards/subscription.ts':
+          module = await import('@/modules/enterprise/router/guards/subscription.ts')
+          break
+        case '@/modules/enterprise/views/ExploreView.vue':
+          module = await import('@/modules/enterprise/views/ExploreView.vue')
+          break
+        case '@/modules/enterprise/views/ShopifySessionTokenBouncePage.vue':
+          module = await import('@/modules/enterprise/views/ShopifySessionTokenBouncePage.vue')
+          break
+        case '@/modules/enterprise/views/ShopifyConnectAccountView.vue':
+          module = await import('@/modules/enterprise/views/ShopifyConnectAccountView.vue')
+          break
+        case '@/modules/enterprise/views/ShopifyAuthCompleteView.vue':
+          module = await import('@/modules/enterprise/views/ShopifyAuthCompleteView.vue')
+          break
+        case '@/modules/enterprise/views/ShopifyAgentSelectionView.vue':
+          module = await import('@/modules/enterprise/views/ShopifyAgentSelectionView.vue')
+          break
+        case '@/modules/enterprise/views/ShopifyAgentManagementView.vue':
+          module = await import('@/modules/enterprise/views/ShopifyAgentManagementView.vue')
+          break
+        case '@/modules/enterprise/views/ShopifyInboxView.vue':
+          module = await import('@/modules/enterprise/views/ShopifyInboxView.vue')
+          break
+        case '@/modules/enterprise/views/ShopifyPricingView.vue':
+          module = await import('@/modules/enterprise/views/ShopifyPricingView.vue')
+          break
+        default:
+          console.warn(`Unknown enterprise module: ${modulePath}`)
+          return null
       }
-      
-      console.warn(`Enterprise module not found: ${modulePath}`)
-      return null
+      return module
     } catch (error) {
       console.warn(`Failed to load enterprise module: ${modulePath}`, error)
       return null
