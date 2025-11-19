@@ -182,7 +182,7 @@ class ShopifyService:
         """
         query = """
         query GetProducts($limit: Int!) {
-          products(first: $limit, query: "status:active") {
+          products(first: $limit, query: "status:active AND inventory_total:>0") {
             edges {
               node {
                 id

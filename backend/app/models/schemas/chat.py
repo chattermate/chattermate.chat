@@ -91,14 +91,29 @@ class ShopifyProduct(BaseModel):
         }
         from_attributes = True
 
-# Define the structure for the shopify_output field
+# LLM Response Model - ONLY cache key and product IDs (ultra-minimal)
+class ShopifyOutputDataLLM(BaseModel):
+    """Shopify output model for LLM responses - ONLY cache key and product IDs to minimize tokens"""
+    product_cache_key: str = Field(description="Redis cache key - REQUIRED when Shopify tools return products")
+    product_ids: List[str] = Field(description="List of product IDs - REQUIRED when Shopify tools return products")
+
+    class Config:
+        json_encoders = {
+            UUID: str
+        }
+        from_attributes = True
+
+# Socket/Frontend Response Model - WITH products field (what frontend receives)
 class ShopifyOutputData(BaseModel):
+    """Shopify output model for socket/frontend responses - includes full product data"""
     products: Optional[List[ShopifyProduct]] = Field(default_factory=list)
     search_query: Optional[str] = Field(default=None)
     search_type: Optional[str] = Field(default=None)
     total_count: Optional[int] = Field(default=None)
     has_more: Optional[bool] = Field(default=None)
     shop_domain: Optional[str] = Field(default=None, description="Shopify shop domain for constructing product URLs")
+    product_cache_key: Optional[str] = Field(default=None, description="Redis cache key for backend reference")
+    product_ids: Optional[List[str]] = Field(default=None, description="List of product IDs for backend reference")
 
     class Config:
         json_encoders = {
@@ -185,7 +200,7 @@ class ChatResponse(BaseModel):
     end_chat_reason: Optional[EndChatReasonType] = Field(default=None, description="End chat reason Type should be one of the following: ISSUE_RESOLVED, CUSTOMER_REQUEST, CONFIRMATION_RECEIVED, FAREWELL, THANK_YOU, NATURAL_CONCLUSION, TASK_COMPLETED")
     end_chat_description: Optional[str] = Field(default=None, description="Detailed description for ending the chat")
     request_rating: bool = Field(description="Whether to request a rating from the customer")
-    
+
     # Ticket creation fields
     create_ticket: bool = Field(description="Whether to create a ticket in the integrated system (Jira, Zendesk, etc.)")
     ticket_summary: Optional[str] = Field(default=None, description="Summary/title for the ticket to be created")
@@ -194,9 +209,9 @@ class ChatResponse(BaseModel):
     ticket_id: Optional[str] = Field(default=None, description="ID of the created ticket (filled after creation)")
     ticket_status: Optional[str] = Field(default=None, description="Status of the created ticket (filled after creation)")
     ticket_priority: Optional[str] = Field(default=None, description="Priority level for the ticket (e.g., 'High', 'Medium', 'Low')")
-    
-    # Shopify Output Field (Updated)
-    shopify_output: Optional[ShopifyOutputData] = Field(default=None, description="Structured Shopify product data including a list of products.")
+
+    # Shopify Output Field - Uses LLM model (no products field)
+    shopify_output: Optional[ShopifyOutputDataLLM] = Field(default=None, description="Shopify product cache info. ONLY include: product_cache_key, product_ids, shop_domain, total_count. DO NOT include products array.")
 
     class Config:
         from_attributes = True

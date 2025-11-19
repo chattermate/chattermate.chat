@@ -27,6 +27,7 @@ import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
+import { useCurrency } from '../composables/useCurrency'
 import { formatDistanceToNow } from 'date-fns'
 // Add marked configuration before the props definition
 marked.setOptions({
@@ -60,6 +61,8 @@ const {
     applyCustomization,
     initializeFromData
 } = useWidgetCustomization()
+
+const { formatCurrency } = useCurrency()
 
 const {
     messages,
@@ -937,7 +940,7 @@ const handleViewDetails = (product, shopDomain) => {
 const removeUrls = (text) => {
     if (!text) return '';
 
-    console.log('removeUrls - Input text:', text);
+   
 
     // First, remove markdown images: ![alt text](url)
     let processedText = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '');
@@ -968,7 +971,7 @@ const removeUrls = (text) => {
     // Clean up extra whitespace and newlines left after removing images
     processedText = processedText.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
-    console.log('removeUrls - Final output:', processedText);
+    
 
     return processedText;
 }
@@ -1903,7 +1906,7 @@ const shouldShowWelcomeMessage = computed(() => {
                                                     <div class="product-text-area">
                                                         <div class="product-title-compact">{{ product.title }}</div>
                                                         <div class="product-variant-compact" v-if="product.variant_title && product.variant_title !== 'Default Title'">{{ product.variant_title }}</div>
-                                                        <div class="product-price-compact">{{ product.price_formatted || `₹${product.price}` }}</div>
+                                                        <div class="product-price-compact">{{ product.price_formatted || formatCurrency(product.price, product.currency) }}</div>
                                                     </div>
                                                     <div class="product-actions-compact">
                                                         <button
