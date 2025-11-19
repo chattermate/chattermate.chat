@@ -48,7 +48,8 @@ window.APP_CONFIG = {
   
   // Node Environment
   NODE_ENV: "production",
-  HOST: "${process.env.VITE_HOST || '0.0.0.0'}"
+  HOST: "${process.env.VITE_HOST || '0.0.0.0'}",
+  VITE_SHOPIFY_API_KEY: "${process.env.VITE_SHOPIFY_API_KEY || ''}",
 };
 `
 

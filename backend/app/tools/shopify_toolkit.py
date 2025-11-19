@@ -31,8 +31,27 @@ from uuid import UUID
 import json
 import traceback
 from app.core.config import settings
+from app.core.redis import get_redis
+import time
 
 logger = get_logger(__name__)
+
+def create_minimal_product(product: dict) -> dict:
+    """
+    Create minimal product object for LLM (remove unnecessary fields to reduce tokens).
+    Only includes fields needed for LLM reasoning.
+    """
+    return {
+        "id": product.get("id"),
+        "title": product.get("title"),
+        "price": product.get("price"),
+        "price_max": product.get("price_max"),
+        "currency": product.get("currency"),
+        "vendor": product.get("vendor"),
+        "product_type": product.get("product_type"),
+        "total_inventory": product.get("total_inventory"),
+        "tags": product.get("tags", [])
+    }
 
 class ShopifyTools(Toolkit):
     def __init__(self, agent_id: str, org_id: str, session_id: str):
@@ -114,26 +133,57 @@ class ShopifyTools(Toolkit):
                 result = shopify_service.get_products(shop, limit)
                 
                 # Convert to more LLM-friendly text format
-                if result.get("success") and result.get("shopify_output", {}).get("products"):
-                    products = result["shopify_output"]["products"]
-                    product_summaries = []
-                    for idx, product in enumerate(products, 1):
-                        tags_str = ", ".join(product.get("tags", [])) if product.get("tags") else "None"
-                        summary = (
-                            f"{idx}. {product['title']}\n"
-                            f"   - Price: {product.get('currency', 'USD')} {product['price']}\n"
-                            f"   - Vendor: {product['vendor']}\n"
-                            f"   - Type: {product.get('product_type', 'N/A')}\n"
-                            f"   - In Stock: {product.get('total_inventory', 'N/A')} units\n"
-                            f"   - Tags: {tags_str}"
-                        )
-                        product_summaries.append(summary)
-                    
-                    result["message"] = (
-                        f"Here are {len(products)} products from the store:\n\n"
-                        + "\n\n".join(product_summaries)
-                    )
-                
+                if result.get("success") and result.get("products"):
+                    products = result["products"]
+
+                    # Try to cache products in Redis
+                    redis_client = get_redis()
+                    product_cache_key = None
+
+                    if redis_client:
+                        try:
+                            # Delete old cache entries for this session
+                            old_cache_pattern = f"shopify_products:{self.session_id}:*"
+                            old_keys = redis_client.keys(old_cache_pattern)
+                            if old_keys:
+                                redis_client.delete(*old_keys)
+                                logger.debug(f"Deleted {len(old_keys)} old cache entries for session {self.session_id}")
+
+                            # Create cache key with session and timestamp
+                            timestamp = int(time.time())
+                            product_cache_key = f"shopify_products:{self.session_id}:{timestamp}"
+
+                            # Store full products in Redis with 5-minute TTL
+                            redis_client.setex(
+                                product_cache_key,
+                                300,  # 5 minutes
+                                json.dumps({
+                                    "products": products,
+                                    "shop_domain": shop.shop_domain
+                                })
+                            )
+                            logger.debug(f"Cached {len(products)} listed products with key: {product_cache_key}")
+                        except Exception as e:
+                            logger.error(f"Failed to cache listed products in Redis: {str(e)}")
+                            product_cache_key = None
+
+                    # Return minimal products to LLM (reduce tokens while allowing reasoning)
+                    # Full products are in Redis cache
+                    product_ids = [p.get("id") for p in products]
+                    minimal_products = [create_minimal_product(p) for p in products]
+
+                    return json.dumps({
+                        "success": True,
+                        "message": f"Here are {len(products)} products from the store.",
+                        "shopify_output": {
+                            "products": minimal_products,
+                            "product_cache_key": product_cache_key,
+                            "product_ids": product_ids,
+                            "total_count": len(products),
+                            "shop_domain": shop.shop_domain
+                        }
+                    })
+
                 return json.dumps(result)
             
         except Exception as e:
@@ -205,17 +255,20 @@ class ShopifyTools(Toolkit):
                 "message": f"Error getting product: {str(e)}"
             })
     
-    def search_products(self, query: str, limit: int = 5, cursor: Optional[str] = None) -> str:
+    def search_products(self, query: str, limit: int = 8, cursor: Optional[str] = None, min_price: Optional[float] = None, max_price: Optional[float] = None, vendor: Optional[str] = None) -> str:
         """
         Search for products in the Shopify store using a query string with GraphQL.
         Supports Shopify's search syntax including field specifiers (e.g., 'title:snowboard', 'tag:beginner', 'product_type:skate'),
         operators ('AND', 'OR'), and suffix wildcards ('skate*'). Supports pagination using a cursor.
-        
+
         Args:
             query: The search query string using Shopify syntax.
-            limit: Maximum number of products to return (default: 5)
+            limit: Maximum number of products to return (default: 8)
             cursor: The pagination cursor (endCursor from previous pageInfo) to fetch the next page.
-            
+            min_price: Optional minimum price filter (e.g., 100.00 for products >= $100)
+            max_price: Optional maximum price filter (e.g., 500.00 for products <= $500)
+            vendor: Optional vendor/brand filter (e.g., 'Nike', 'Adidas')
+
         Returns:
             str: JSON string. If products are found, includes 'shopify_output' with the list of products,
                  'search_query', 'total_count', and 'pageInfo'. If no products are found, returns a success message.
@@ -277,8 +330,19 @@ class ShopifyTools(Toolkit):
             """
             
             # Add status:active filter to only return active products (exclude archived and draft)
-            filtered_query = f"({query}) AND status:active"
-            
+            # Add inventory_total:>0 to only return in-stock products
+            filtered_query = f"({query}) AND status:active AND inventory_total:>0"
+
+            # Add price filters if provided
+            if min_price is not None:
+                filtered_query += f" AND price:>={min_price}"
+            if max_price is not None:
+                filtered_query += f" AND price:<={max_price}"
+
+            # Add vendor filter if provided
+            if vendor:
+                filtered_query += f" AND vendor:'{vendor}'"
+
             variables = {
                 "searchTerm": filtered_query,
                 "limit": limit,
@@ -362,35 +426,57 @@ class ShopifyTools(Toolkit):
             
             # Check if search was successful
             if products:
-                # Create a text summary for the LLM
-                product_summaries = []
-                for idx, product in enumerate(products, 1):
-                    tags_str = ", ".join(product.get("tags", [])) if product.get("tags") else "None"
-                    summary = (
-                        f"{idx}. {product['title']}\n"
-                        f"   - Price: {product['currency']} {product['price']}\n"
-                        f"   - Vendor: {product['vendor']}\n"
-                        f"   - Type: {product['product_type']}\n"
-                        f"   - In Stock: {product['total_inventory']} units\n"
-                        f"   - Tags: {tags_str}"
-                    )
-                    product_summaries.append(summary)
-                
-                text_message = (
-                    f"Found {len(products)} product(s) matching '{query}':\n\n"
-                    + "\n\n".join(product_summaries)
-                )
-                
-                # Create a response with text for LLM and structured data for frontend
+                # Try to cache products in Redis
+                redis_client = get_redis()
+                product_cache_key = None
+
+                if redis_client:
+                    try:
+                        # Delete old cache entries for this session
+                        old_cache_pattern = f"shopify_products:{self.session_id}:*"
+                        old_keys = redis_client.keys(old_cache_pattern)
+                        if old_keys:
+                            redis_client.delete(*old_keys)
+                            logger.debug(f"Deleted {len(old_keys)} old cache entries for session {self.session_id}")
+
+                        # Create cache key with session and timestamp
+                        timestamp = int(time.time())
+                        product_cache_key = f"shopify_products:{self.session_id}:{timestamp}"
+
+                        # Store full products in Redis with 5-minute TTL
+                        redis_client.setex(
+                            product_cache_key,
+                            300,  # 5 minutes
+                            json.dumps({
+                                "products": products,
+                                "search_query": query,
+                                "total_count": len(products),
+                                "pageInfo": page_info,
+                                "shop_domain": shop.shop_domain
+                            })
+                        )
+                        logger.debug(f"Cached {len(products)} products with key: {product_cache_key}")
+                    except Exception as e:
+                        logger.error(f"Failed to cache products in Redis: {str(e)}")
+                        product_cache_key = None
+
+                # Return minimal products to LLM (reduce tokens while allowing reasoning)
+                # Full products are in Redis cache
+                text_message = f"Found {len(products)} product(s) matching your search."
+                product_ids = [p.get("id") for p in products]
+                minimal_products = [create_minimal_product(p) for p in products]
+
                 return json.dumps({
                     "success": True,
                     "message": text_message,
-                    "shopify_output": { # Nest products under shopify_output
-                         "products": products,
-                         "search_query": query,
-                         "total_count": len(products), 
-                         "pageInfo": page_info, # Include full pageInfo
-                         "shop_domain": shop.shop_domain # Add shop domain for frontend URL construction
+                    "shopify_output": {
+                        "products": minimal_products,  # Minimal products for LLM reasoning
+                        "product_cache_key": product_cache_key,  # Cache key for backend optimization
+                        "product_ids": product_ids,  # Product IDs for reference
+                        "search_query": query,
+                        "total_count": len(products),
+                        "pageInfo": page_info,
+                        "shop_domain": shop.shop_domain
                     }
                 })
             else:
@@ -845,21 +931,24 @@ class ShopifyTools(Toolkit):
                 "message": f"Error getting order status: {str(e)}"
             })
     
-    def recommend_products(self, product_id: Optional[str] = None, product_type: Optional[str] = None, tags: Optional[str] = None, limit: int = 3, cursor: Optional[str] = None) -> str:
+    def recommend_products(self, product_id: Optional[str] = None, product_type: Optional[str] = None, tags: Optional[str] = None, limit: int = 8, cursor: Optional[str] = None, min_price: Optional[float] = None, max_price: Optional[float] = None, vendor: Optional[str] = None) -> str:
         """
         Recommend products based on similarity to a reference product ID, product type, or tags.
         Constructs a Shopify search query based on the provided criteria using GraphQL. Supports pagination.
-        
+
         Use this when a user asks for recommendations (e.g., "suggest something similar", "show me beginner skateboards").
         Translate the user's request into relevant product_type or tags if possible.
-        
+
         Args:
             product_id: ID of a reference product. Recommendations will be based on this product's type and tags.
             product_type: Product type to base recommendations on (e.g., 'skateboard', 'snowboard').
             tags: Comma-separated list of tags to base recommendations on (e.g., 'beginner,skate', 'winter,accessory').
-            limit: Maximum number of recommendations to return (default: 3).
+            limit: Maximum number of recommendations to return (default: 8).
             cursor: The pagination cursor (endCursor from previous pageInfo) to fetch the next page.
-            
+            min_price: Optional minimum price filter (e.g., 100.00 for products >= $100)
+            max_price: Optional maximum price filter (e.g., 500.00 for products <= $500)
+            vendor: Optional vendor/brand filter (e.g., 'Nike', 'Adidas')
+
         Returns:
             str: JSON string. If recommendations are found, includes 'shopify_output' with the list of products,
                  'search_type', 'total_count', and 'pageInfo'. If none found, returns a relevant message.
@@ -950,14 +1039,25 @@ class ShopifyTools(Toolkit):
             if not search_query_parts:
                 # Fallback: Get recent products if no criteria specified
                 logger.info("No specific criteria for recommendations, fetching recent products.")
-                
+
+                # Build fallback query with price and vendor filters
+                fallback_filters = ["status:active", "inventory_total:>0"]
+                if min_price is not None:
+                    fallback_filters.append(f"price:>={min_price}")
+                if max_price is not None:
+                    fallback_filters.append(f"price:<={max_price}")
+                if vendor:
+                    fallback_filters.append(f"vendor:'{vendor}'")
+
+                fallback_query = " AND ".join(fallback_filters)
+
                 # Use GraphQL to get recent products with pagination
-                # Filter to only return active products (exclude archived and draft)
-                graphql_query = """
-                query GetProducts($limit: Int!, $cursor: String) {
-                  products(first: $limit, query: "status:active", sortKey: CREATED_AT, reverse: true, after: $cursor) {
-                    edges {
-                      node {
+                # Filter to only return active, in-stock products
+                graphql_query = f"""
+                query GetProducts($limit: Int!, $cursor: String) {{
+                  products(first: $limit, query: "{fallback_query}", sortKey: CREATED_AT, reverse: true, after: $cursor) {{
+                    edges {{
+                      node {{
                         id
                         title
                         description
@@ -965,36 +1065,36 @@ class ShopifyTools(Toolkit):
                         productType
                         vendor
                         totalInventory
-                        priceRangeV2 {
-                          minVariantPrice {
+                        priceRangeV2 {{
+                          minVariantPrice {{
                             amount
                             currencyCode
-                          }
-                          maxVariantPrice {
+                          }}
+                          maxVariantPrice {{
                             amount
                             currencyCode
-                          }
-                        }
-                        images(first: 1) {
-                          edges {
-                            node {
+                          }}
+                        }}
+                        images(first: 1) {{
+                          edges {{
+                            node {{
                               id
                               url
                               altText
-                            }
-                          }
-                        }
+                            }}
+                          }}
+                        }}
                         tags
                         createdAt
                         updatedAt
-                      }
-                    }
-                    pageInfo {
+                      }}
+                    }}
+                    pageInfo {{
                       hasNextPage
                       endCursor
-                    }
-                  }
-                }
+                    }}
+                  }}
+                }}
                 """
                 
                 variables = {
@@ -1006,7 +1106,19 @@ class ShopifyTools(Toolkit):
             else:
                 # Construct final query: Join parts with OR for broader recommendations
                 # Add status:active filter to only return active products (exclude archived and draft)
-                search_query = f"({' OR '.join(search_query_parts)}) AND status:active"
+                # Add inventory_total:>0 to only return in-stock products
+                search_query = f"({' OR '.join(search_query_parts)}) AND status:active AND inventory_total:>0"
+
+                # Add price filters if provided
+                if min_price is not None:
+                    search_query += f" AND price:>={min_price}"
+                if max_price is not None:
+                    search_query += f" AND price:<={max_price}"
+
+                # Add vendor filter if provided
+                if vendor:
+                    search_query += f" AND vendor:'{vendor}'"
+
                 logger.info(f"Constructed recommendation search query: {search_query}")
                 
                 # Use GraphQL to search products with pagination
@@ -1144,40 +1256,65 @@ class ShopifyTools(Toolkit):
 
             # Process results
             if products:
-                # Create a text summary for the LLM
-                product_summaries = []
-                for idx, product in enumerate(products, 1):
-                    tags_str = ", ".join(product.get("tags", [])) if product.get("tags") else "None"
-                    summary = (
-                        f"{idx}. {product['title']}\n"
-                        f"   - Price: {product['currency']} {product['price']}\n"
-                        f"   - Vendor: {product['vendor']}\n"
-                        f"   - Type: {product['product_type']}\n"
-                        f"   - In Stock: {product['total_inventory']} units\n"
-                        f"   - Tags: {tags_str}"
-                    )
-                    product_summaries.append(summary)
-                
+                # Try to cache products in Redis
+                redis_client = get_redis()
+                product_cache_key = None
+
+                if redis_client:
+                    try:
+                        # Delete old cache entries for this session
+                        old_cache_pattern = f"shopify_products:{self.session_id}:*"
+                        old_keys = redis_client.keys(old_cache_pattern)
+                        if old_keys:
+                            redis_client.delete(*old_keys)
+                            logger.debug(f"Deleted {len(old_keys)} old cache entries for session {self.session_id}")
+
+                        # Create cache key with session and timestamp
+                        timestamp = int(time.time())
+                        product_cache_key = f"shopify_products:{self.session_id}:{timestamp}"
+
+                        # Store full products in Redis with 5-minute TTL
+                        redis_client.setex(
+                            product_cache_key,
+                            300,  # 5 minutes
+                            json.dumps({
+                                "products": products,
+                                "search_type": search_type,
+                                "total_count": len(products),
+                                "pageInfo": page_info,
+                                "shop_domain": shop.shop_domain
+                            })
+                        )
+                        logger.debug(f"Cached {len(products)} recommended products with key: {product_cache_key}")
+                    except Exception as e:
+                        logger.error(f"Failed to cache recommended products in Redis: {str(e)}")
+                        product_cache_key = None
+
+                # Return minimal products to LLM (reduce tokens while allowing reasoning)
+                # Full products are in Redis cache
+                product_ids = [p.get("id") for p in products]
+                minimal_products = [create_minimal_product(p) for p in products]
+
                 # Customize message header based on initial criteria
-                recommendation_header = f"Here are {len(products)} recommendations for you:"
+                recommendation_header = f"Here are {len(products)} recommendations for you."
                 if product_type and not product_id:
-                    recommendation_header = f"Here are recommendations in the {product_type} category:"
+                    recommendation_header = f"Here are recommendations in the {product_type} category."
                 elif tags and not product_id:
-                    recommendation_header = f"Here are products tagged with {tags}:"
+                    recommendation_header = f"Here are products tagged with {tags}."
                 elif product_id:
-                    recommendation_header = f"Based on the product you viewed, you might like:"
-                
-                text_message = recommendation_header + "\n\n" + "\n\n".join(product_summaries)
-                
+                    recommendation_header = f"Based on the product you viewed, you might like these options."
+
                 return json.dumps({
                     "success": True,
-                    "message": text_message,
-                    "shopify_output": { # Nest products under shopify_output
-                        "products": products,
-                        "search_type": search_type, # Optional context
+                    "message": recommendation_header,
+                    "shopify_output": {
+                        "products": minimal_products,  # Minimal products for LLM reasoning
+                        "product_cache_key": product_cache_key,  # Cache key for backend optimization
+                        "product_ids": product_ids,  # Product IDs for reference
+                        "search_type": search_type,
                         "total_count": len(products),
-                        "pageInfo": page_info, # Include full pageInfo
-                        "shop_domain": shop.shop_domain # Add shop domain for frontend URL construction
+                        "pageInfo": page_info,
+                        "shop_domain": shop.shop_domain
                     }
                 })
 

@@ -66,22 +66,23 @@ def mock_shopify_service():
     service = MagicMock()
     service.get_products.return_value = {
         "success": True,
-        "shopify_output": {
-            "products": [
-                {
-                    "id": "123456789",
-                    "title": "Test Product",
-                    "description": "This is a test product",
-                    "price": "19.99",
-                    "currency": "USD",
-                    "vendor": "Test Vendor",
-                    "product_type": "Test Type",
-                    "total_inventory": 10,
-                    "tags": ["tag1", "tag2"],
-                    "image": {"src": "https://example.com/image.jpg"}
-                }
-            ]
-        }
+        "products": [
+            {
+                "id": "123456789",
+                "title": "Test Product",
+                "description": "This is a test product",
+                "price": "19.99",
+                "currency": "USD",
+                "vendor": "Test Vendor",
+                "product_type": "Test Type",
+                "total_inventory": 10,
+                "tags": ["tag1", "tag2"],
+                "image": {"src": "https://example.com/image.jpg"}
+            }
+        ],
+        "count": 1,
+        "has_next_page": False,
+        "end_cursor": None
     }
     service.get_product.return_value = {
         "success": True,
@@ -131,30 +132,37 @@ def shopify_tools(mock_db, mock_agent, mock_org, mock_shopify_config, mock_shop,
     agent_id = "00000000-0000-0000-0000-000000000001"
     org_id = "00000000-0000-0000-0000-000000000002"
     session_id = "test_session_id"
-    
+
     with patch('app.tools.shopify_toolkit.SessionLocal') as mock_session_local, \
          patch('app.tools.shopify_toolkit.ShopifyService') as mock_service_class, \
          patch('app.tools.shopify_toolkit.ShopifyShopRepository') as mock_shop_repo_class, \
-         patch('app.tools.shopify_toolkit.AgentShopifyConfigRepository') as mock_config_repo_class:
-        
+         patch('app.tools.shopify_toolkit.AgentShopifyConfigRepository') as mock_config_repo_class, \
+         patch('app.tools.shopify_toolkit.get_redis') as mock_get_redis:
+
         # Configure session to return our mock db
         mock_session_local.return_value.__enter__.return_value = mock_db
-        
+
         # Configure mocks
         mock_service_class.return_value = mock_shopify_service
-        
+
+        # Mock Redis
+        mock_redis = MagicMock()
+        mock_redis.keys.return_value = []
+        mock_redis.setex.return_value = True
+        mock_get_redis.return_value = mock_redis
+
         # Create mock repository instances
         mock_shop_repo = MagicMock()
         mock_shop_repo_class.return_value = mock_shop_repo
         mock_shop_repo.get_shop.return_value = mock_shop
-        
+
         mock_config_repo = MagicMock()
         mock_config_repo_class.return_value = mock_config_repo
         mock_config_repo.get_agent_shopify_config.return_value = mock_shopify_config
-        
+
         # Create tool instance
         tool = ShopifyTools(agent_id=agent_id, org_id=org_id, session_id=session_id)
-        
+
         # Mock the _get_shop_for_agent method directly to avoid database operations
         with patch.object(tool, '_get_shop_for_agent', return_value=mock_shop):
             yield tool

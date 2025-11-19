@@ -41,6 +41,7 @@ from app.utils.response_parser import parse_response_content
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 import re
 import asyncio
+import json
 
 logger = get_logger(__name__)
 
@@ -73,6 +74,76 @@ def remove_urls_from_message(message: str) -> str:
         message = message.replace(f'__IMAGE_PLACEHOLDER_{i}__', image)
     
     return message
+
+def enrich_shopify_response(response_content: ChatResponse, session_id: str) -> ChatResponse:
+    """
+    Enrich ChatResponse by converting ShopifyOutputDataLLM to ShopifyOutputData with full product data from Redis.
+
+    This function:
+    1. Takes ChatResponse with shopify_output (ShopifyOutputDataLLM - no products)
+    2. Retrieves full products from Redis using product_cache_key
+    3. Converts to ShopifyOutputData (with products) for socket/frontend
+
+    Args:
+        response_content: The ChatResponse object from the LLM
+        session_id: The current session ID (for logging)
+
+    Returns:
+        Enriched ChatResponse with shopify_output converted to ShopifyOutputData
+    """
+    from app.core.redis import get_redis
+    from app.models.schemas.chat import ShopifyOutputData
+
+    # Check if shopify_output exists and has a cache key
+    if not response_content.shopify_output:
+        return response_content
+
+    if not hasattr(response_content.shopify_output, 'product_cache_key') or not response_content.shopify_output.product_cache_key:
+        return response_content
+
+    cache_key = response_content.shopify_output.product_cache_key
+    logger.debug(f"Enriching response with cache key: {cache_key}")
+
+    try:
+        redis_client = get_redis()
+        if not redis_client:
+            logger.warning("Redis client not available for enrichment, using cached data as-is")
+            return response_content
+
+        # Retrieve full product data from Redis
+        cached_data = redis_client.get(cache_key)
+        if not cached_data:
+            logger.warning(f"Cache key {cache_key} not found or expired")
+            return response_content
+
+        # Parse cached data
+        product_data = json.loads(cached_data)
+
+        # Convert ShopifyOutputDataLLM to ShopifyOutputData with ALL fields from Redis
+        # LLM only provides cache_key + product_ids, everything else comes from Redis
+        pageInfo = product_data.get("pageInfo", {})
+
+        enriched_output = ShopifyOutputData(
+            products=product_data.get("products", []),
+            search_query=product_data.get("search_query"),
+            search_type=product_data.get("search_type"),
+            total_count=product_data.get("total_count"),
+            has_more=pageInfo.get("hasNextPage", False),
+            shop_domain=product_data.get("shop_domain"),
+            product_cache_key=cache_key,
+            product_ids=response_content.shopify_output.product_ids
+        )
+
+        # Replace LLM output with enriched output (type change: ShopifyOutputDataLLM → ShopifyOutputData)
+        response_content.shopify_output = enriched_output
+        logger.debug(f"Enriched response with {len(enriched_output.products)} products")
+
+    except Exception as e:
+        logger.error(f"Failed to enrich response from Redis: {str(e)}")
+        traceback.print_exc()
+        # Continue with non-enriched response
+
+    return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
     def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None):
@@ -265,102 +336,37 @@ Keep your responses concise and focused. Provide clear, actionable information i
             
             # Add Shopify instructions if Shopify is enabled
             if shopify_config and shopify_config.enabled and not self.transfer_to_human:
-                # UPDATED Shopify Instructions (v3)
+                # Simplified Shopify Instructions for faster LLM processing
                 shopify_instructions = """
-                You have access to Shopify tools (`search_products`, `get_product`, `recommend_products`, `search_orders`, `get_order_status`, etc.). 
-                When using `search_products` or `recommend_products`, use a `limit` of 5 unless the user specifies otherwise.
-                
-                **Order Status & Tracking - User-Friendly Communication:**
-                - **BEFORE using order tools (`search_orders`, `get_order_status`):**
-                  * Check if you have the required information (order number OR email address) from the current user message
-                  * If the user asks about order status but doesn't provide order number or email, **IMMEDIATELY respond** (don't call any tools): "To check your order status, could you please provide your order number or the email address you used for the order?"
-                  * **DO NOT** call order tools with empty parameters
-                  * **DO NOT** call `get_chat_history` to look for order information - just ask the user directly
-                  * **DO NOT** repeatedly call any tools when user information is missing
-                  * If a tool returns an error saying "requires_user_input", stop calling tools and ask the user directly
-                
-                - Use natural, conversational language when providing order status.
-                - Translate technical statuses into customer-friendly terms:
-                  * FULFILLED = "Your order has been shipped" or "Your order is on its way"
-                  * PAID = Order is confirmed (no need to mention this separately if shipped)
-                  * IN_TRANSIT = "Your order is on its way"
-                  * DELIVERED = "Your order has been delivered"
-                  * PENDING = "We're preparing your order for shipment"
-                
-                - **Format tracking information naturally:**
-                  * Good: "Your order has been shipped! Track it here: [tracking_number](tracking_url)"
-                  * Bad: "The status of order #1002 remains PAID and it is FULFILLED"
-                
-                - **Be concise and helpful:**
-                  * Focus on what matters to the customer: shipment status and tracking
-                  * Include shipping address only if relevant to the query
-                  * Always make tracking numbers clickable links
-                  
-                - **Example good responses:**
-                  * "Great news! Your order has been shipped. Track your package: [123456](url)"
-                  * "Your order is on its way! Track it here: [123456](url). Expected delivery to Bengaluru by [date]."
-                  * "Your order has been delivered to your address in Bengaluru on [date]."
-                
-                **Search Query Construction (`search_products`):**
-                - When the user mentions multiple characteristics (e.g., "kids snowboard"), construct the `searchTerm` to combine them using `OR` and wildcards.
-                - Example: If the user asks "recommend a snowboard for my son", a good `searchTerm` would be `(title:*kids snowboard*) OR (title:*snowboard*)`. Always use OR conditions and wrap terms in wildcards (`*term*`) for broader matching.
-                - When the user specifies price constraints (e.g., "snowboard below 500 rs"), add a price range condition:
-                  - Example: For "snowboard below 500", use `(title:*snowboard*) AND price:<=500`
-                  - Example: For "snowboard between 200 and 500", use `(title:*snowboard*) AND price:>200 AND price:<=500`
-                - Following Shopify's search syntax, you can combine multiple conditions using AND/OR operators and parentheses for grouping.
+                You have access to Shopify tools for products and orders. Use `limit` of 8 for product searches.
 
-                **❗❗ CRITICAL DISPLAY RULES - STRICTLY ENFORCED ❗❗:**
-                - 🚫 **ABSOLUTELY NEVER** include product images, image URLs, or hyperlinks in the message field
-                - 🚫 **ABSOLUTELY NEVER** include product details like prices, vendor names, dimensions, or specifications in the message field
-                - 🚫 **ABSOLUTELY NEVER** use numbered lists or bullet points to display products with details in the message field
-                - 🚫 **ABSOLUTELY NEVER** include HTML tags, markdown image syntax, or any form of image embedding in the message field
-                
-                - ✅ The message field must ONLY contain simple conversational text such as:
-                  - "Here are some snowboard options that might work for your son."
-                  - "I found several products matching your search. What do you think?"
-                  - "Would you like more information about any of these options?"
-                
-                - ✅ ALL product information, without exception, must ONLY be included in the `shopify_output` field structure
-                - ✅ The system has a dedicated display component that will automatically render all products from the `shopify_output` field
-                
-                This is critically important: The UI automatically displays all product details and images from the `shopify_output` field separately from your message. Your message should ONLY contain simple conversational text like you're referring to products that are being shown separately.
+                **CRITICAL RESPONSE RULES:**
+                - Your message must ONLY contain simple conversational text (under 50 words)
+                - NEVER include product details, prices, images, or URLs in your message
+                - Examples: "Here are some options for you.", "I found several products.", "Your order has been shipped."
 
-                **Pagination:**
-                - These tools support pagination. The output will include `pageInfo` containing `hasNextPage` (boolean) and `endCursor` (string).
-                - If `hasNextPage` is true, it means there are more results available.
-                - You should inform the user if more results are available (e.g., "I found 5 products matching your search. There might be more available. Would you like to see the next set?").
-                - **Do not** automatically fetch the next page unless the user asks for it.
-                - If the user asks for more results, call the *same* tool again, passing the `endCursor` value from the previous response as the `cursor` argument in the new tool call.
+                **Product Search Filters:**
+                Both `search_products` and `recommend_products` support these optional filters:
+                - `min_price`: Minimum price (e.g., 100.00 for products >= $100)
+                - `max_price`: Maximum price (e.g., 500.00 for products <= $500)
+                - `vendor`: Brand/vendor name (e.g., 'Nike', 'Burton')
 
-                **Output Formatting:**
-                - When a Shopify tool returns product data, you MUST populate the `shopify_output` field in your final JSON response.
-                - The `shopify_output` field expects a specific JSON structure containing a list of products and optionally pageInfo.
-                - Copy the **entire relevant JSON output** from the tool directly into the `shopify_output` field. 
-                  - If the tool output contains a `shopify_output` key with a nested `products` list like `{"shopify_output": {"products": [...], "pageInfo": {...}}}` , copy that entire inner `shopify_output` object.
-                  - If the tool output contains just `shopify_product` for a single item (e.g., from `get_product`), structure it as `{"products": [ ...the_single_product... ]}` within your response's `shopify_output` field.
-                  - **CRITICAL**: If the tool returns `shop_domain` in its response, you MUST include it in the `shopify_output` field as well.
-                
-                - **When displaying order information with products (from `search_orders` or `get_order_status`):**
-                  - If you want to show products from order line items, transform them into the products array
-                  - **ALWAYS** include `shop_domain` from the tool response in your `shopify_output`
-                  - Example: If tool returns `{"orders": [...], "shop_domain": "store.myshopify.com"}`, your `shopify_output` must include `"shop_domain": "store.myshopify.com"`
-                
-                - Example Structure for your `shopify_output` field (when multiple products with pagination info):
-                  ```json
-                  "shopify_output": {
-                    "products": [
-                      { "id": "...", "title": "Product A", "price": "...", "image": {"src": "..."}, ... },
-                      { "id": "...", "title": "Product B", "price": "...", "image": {"src": "..."}, ... }
-                    ],
-                    "search_query": "optional search term",
-                    "total_count": 5, // Example count from the first page
-                    "shop_domain": "store.myshopify.com", // ALWAYS include this from tool response
-                    "pageInfo": {
-                        "hasNextPage": true,
-                        "endCursor": "CURSOR_STRING_FROM_TOOL" 
-                    }
-                  }
-                  ```
+                Examples:
+                - "snowboard under $600" → use `max_price=600`
+                - "shoes between $50 and $200" → use `min_price=50, max_price=200`
+                - "Nike products" → use `vendor='Nike'`
+
+                **Product Tools Response:**
+                When Shopify tools return products, you MUST include ONLY these 2 fields in your `shopify_output`:
+                - `product_cache_key`: Copy this from the tool response (REQUIRED)
+                - `product_ids`: Copy this array from the tool response (REQUIRED)
+
+                DO NOT include any other fields (shop_domain, total_count, products, etc.) - backend will populate everything from cache
+
+                **Order Tools:**
+                - Ask for order number or email if not provided
+                - Use customer-friendly language: "Your order has been shipped" not "FULFILLED"
+                - Make tracking numbers clickable links
                 """
                 system_message += "\n\n" + shopify_instructions
                 self.shopify_instructions_added = True
@@ -451,10 +457,13 @@ Keep your responses concise and focused. Provide clear, actionable information i
             response_content = parse_response_content(response)
 
             logger.debug(f"Response content: {response_content}")
-            
+
+            # Enrich Shopify response with full product data from Redis
+            response_content = enrich_shopify_response(response_content, session_id)
+
             # If shopify_output has products, remove URLs from message
             # (URLs should only be removed when products are being displayed separately)
-            if response_content.shopify_output and response_content.shopify_output.products:
+            if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
                 response_content.message = remove_urls_from_message(response_content.message)
                 logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
             
@@ -739,10 +748,13 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 response_content = parse_response_content(response)
 
                 logger.debug(f"Response content: {response_content}")
-                
+
+                # Enrich Shopify response with full product data from Redis
+                response_content = enrich_shopify_response(response_content, session_id)
+
                 # If shopify_output has products, remove URLs from message
                 # (URLs should only be removed when products are being displayed separately)
-                if response_content.shopify_output and response_content.shopify_output.products:
+                if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
                     response_content.message = remove_urls_from_message(response_content.message)
                     logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
                 
