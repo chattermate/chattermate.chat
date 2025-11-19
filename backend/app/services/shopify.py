@@ -269,16 +269,16 @@ class ShopifyService:
                 "created_at": node.get("createdAt"),
                 "updated_at": node.get("updatedAt")
             }
-            
+
             transformed_products.append(transformed_product)
-            
-            return {
-                "success": True,
+
+        return {
+            "success": True,
             "products": transformed_products,
             "count": len(transformed_products),
             "has_next_page": result.get("data", {}).get("products", {}).get("pageInfo", {}).get("hasNextPage", False),
             "end_cursor": result.get("data", {}).get("products", {}).get("pageInfo", {}).get("endCursor")
-            }
+        }
     
     def get_product(self, shop: ShopifyShop, product_id: str) -> Dict[str, Any]:
         """

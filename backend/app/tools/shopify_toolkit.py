@@ -32,7 +32,6 @@ import json
 import traceback
 from app.core.config import settings
 from app.core.redis import get_redis
-import time
 
 logger = get_logger(__name__)
 
@@ -142,18 +141,12 @@ class ShopifyTools(Toolkit):
 
                     if redis_client:
                         try:
-                            # Delete old cache entries for this session
-                            old_cache_pattern = f"shopify_products:{self.session_id}:*"
-                            old_keys = redis_client.keys(old_cache_pattern)
-                            if old_keys:
-                                redis_client.delete(*old_keys)
-                                logger.debug(f"Deleted {len(old_keys)} old cache entries for session {self.session_id}")
-
-                            # Create cache key with session and timestamp
-                            timestamp = int(time.time())
-                            product_cache_key = f"shopify_products:{self.session_id}:{timestamp}"
+                            # Use fixed cache key per session with org_id for multi-tenant isolation
+                            # Format: {org_id}:shopify_products:{session_id}
+                            product_cache_key = f"{self.org_id}:shopify_products:{self.session_id}"
 
                             # Store full products in Redis with 5-minute TTL
+                            # setex will overwrite any previous value automatically
                             redis_client.setex(
                                 product_cache_key,
                                 300,  # 5 minutes
@@ -432,18 +425,12 @@ class ShopifyTools(Toolkit):
 
                 if redis_client:
                     try:
-                        # Delete old cache entries for this session
-                        old_cache_pattern = f"shopify_products:{self.session_id}:*"
-                        old_keys = redis_client.keys(old_cache_pattern)
-                        if old_keys:
-                            redis_client.delete(*old_keys)
-                            logger.debug(f"Deleted {len(old_keys)} old cache entries for session {self.session_id}")
-
-                        # Create cache key with session and timestamp
-                        timestamp = int(time.time())
-                        product_cache_key = f"shopify_products:{self.session_id}:{timestamp}"
+                        # Use fixed cache key per session with org_id for multi-tenant isolation
+                        # Format: {org_id}:shopify_products:{session_id}
+                        product_cache_key = f"{self.org_id}:shopify_products:{self.session_id}"
 
                         # Store full products in Redis with 5-minute TTL
+                        # setex will overwrite any previous value automatically
                         redis_client.setex(
                             product_cache_key,
                             300,  # 5 minutes
@@ -1262,18 +1249,12 @@ class ShopifyTools(Toolkit):
 
                 if redis_client:
                     try:
-                        # Delete old cache entries for this session
-                        old_cache_pattern = f"shopify_products:{self.session_id}:*"
-                        old_keys = redis_client.keys(old_cache_pattern)
-                        if old_keys:
-                            redis_client.delete(*old_keys)
-                            logger.debug(f"Deleted {len(old_keys)} old cache entries for session {self.session_id}")
-
-                        # Create cache key with session and timestamp
-                        timestamp = int(time.time())
-                        product_cache_key = f"shopify_products:{self.session_id}:{timestamp}"
+                        # Use fixed cache key per session with org_id for multi-tenant isolation
+                        # Format: {org_id}:shopify_products:{session_id}
+                        product_cache_key = f"{self.org_id}:shopify_products:{self.session_id}"
 
                         # Store full products in Redis with 5-minute TTL
+                        # setex will overwrite any previous value automatically
                         redis_client.setex(
                             product_cache_key,
                             300,  # 5 minutes

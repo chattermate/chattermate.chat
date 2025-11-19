@@ -147,7 +147,6 @@ def shopify_tools(mock_db, mock_agent, mock_org, mock_shopify_config, mock_shop,
 
         # Mock Redis
         mock_redis = MagicMock()
-        mock_redis.keys.return_value = []
         mock_redis.setex.return_value = True
         mock_get_redis.return_value = mock_redis
 
