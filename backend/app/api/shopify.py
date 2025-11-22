@@ -49,6 +49,8 @@ from app.models.knowledge import SourceType
 from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from uuid import UUID
+from app.core.cors import update_cors_middleware
+from app.core.application import app
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -183,18 +185,49 @@ async def link_shop_to_org(
         # Get shop from database
         shop_repo = ShopifyShopRepository(db)
         db_shop = shop_repo.get_shop(shop_id)
-            
+
         if not db_shop:
             raise HTTPException(status_code=404, detail="Shop not found")
-            
+
         # Update shop with organization_id
         org_id_str = str(current_user.organization_id)
         shop_update = ShopifyShopUpdate(organization_id=org_id_str)
         shop_repo.update_shop(shop_id, shop_update)
+
+        # Update organization domain with shop domain
+        try:
+            from app.repositories.organization import OrganizationRepository
+            org_repo = OrganizationRepository(db)
+            organization = org_repo.get_organization(org_id_str)
+
+            if organization and db_shop.shop_domain:
+                # Only update if domain is different
+                if organization.domain != db_shop.shop_domain:
+                    # Check if domain is already used by another organization
+                    existing_org = org_repo.get_organization_by_domain(db_shop.shop_domain)
+                    if not existing_org or str(existing_org.id) == str(organization.id):
+                        # Update organization domain to shop domain
+                        organization.domain = db_shop.shop_domain
+                        db.add(organization)
+                        logger.info(f"Updated organization {org_id_str} domain to {db_shop.shop_domain}")
+                    else:
+                        logger.warning(f"Domain {db_shop.shop_domain} is already used by organization {existing_org.id}, skipping update")
+        except Exception as domain_error:
+            logger.error(f"Error updating organization domain: {str(domain_error)}")
+            # Don't fail the linking if domain update fails
+
         db.commit()
-        
+
+        # Update CORS middleware to include new domain
+        try:
+            update_cors_middleware(app)
+            logger.info("Updated CORS middleware after linking shop to organization")
+        except Exception as cors_error:
+            logger.error(f"Error updating CORS middleware: {str(cors_error)}")
+            # Don't fail the linking if CORS update fails
+
         logger.info(f"Successfully linked shop {shop_id} to organization {org_id_str}")
-        
+
         return {
             "success": True,
             "shop_id": shop_id,
@@ -434,12 +467,12 @@ async def get_shop_config_status(
     try:
         # Shop info already validated by session token
         db_shop = shopify_session['db_shop']
-        
+
         # Check if any agents are configured for this shop
         agent_config_repository = AgentShopifyConfigRepository(db)
         configs = agent_config_repository.get_configs_by_shop(str(db_shop.id), enabled_only=True)
         agents_connected = len(configs) if configs else 0
-        
+
         # Get widget ID if agents are configured
         widget_id = None
         if configs and len(configs) > 0:
@@ -447,7 +480,7 @@ async def get_shop_config_status(
             widgets = widget_repo.get_widgets_by_agent(configs[0].agent_id)
             if widgets and len(widgets) > 0:
                 widget_id = str(widgets[0].id)
-        
+
         return {
             "shop_id": str(db_shop.id),
             "shop_domain": db_shop.shop_domain,
@@ -456,7 +489,7 @@ async def get_shop_config_status(
             "widget_id": widget_id,
             "organization_id": str(db_shop.organization_id) if db_shop.organization_id else None
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -464,6 +497,114 @@ async def get_shop_config_status(
         raise HTTPException(
             status_code=500,
             detail="Error retrieving shop configuration status"
+        )
+
+@router.get("/organization-domain")
+async def get_organization_domain(
+    shopify_session: dict = Depends(require_shopify_session),
+    db: Session = Depends(get_db)
+):
+    """
+    Get organization domain from the organization table.
+    Uses session token authentication for embedded apps.
+    """
+    try:
+        # Shop info already validated by session token
+        db_shop = shopify_session['db_shop']
+
+        if not db_shop.organization_id:
+            raise HTTPException(status_code=400, detail="Shop not linked to organization")
+
+        # Get organization
+        from app.repositories.organization import OrganizationRepository
+        org_repo = OrganizationRepository(db)
+        organization = org_repo.get_organization(str(db_shop.organization_id))
+
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+
+        return {
+            "organization_id": str(organization.id),
+            "domain": organization.domain,
+            "name": organization.name
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting organization domain: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error retrieving organization domain"
+        )
+
+@router.put("/update-domain")
+async def update_organization_domain(
+    request: Request,
+    shopify_session: dict = Depends(require_shopify_session),
+    db: Session = Depends(get_db)
+):
+    """
+    Update organization domain.
+    Uses session token authentication for embedded apps.
+    """
+    try:
+        # Shop info already validated by session token
+        db_shop = shopify_session['db_shop']
+
+        # Get domain from request body
+        body = await request.json()
+        new_domain = body.get('domain')
+
+        if not new_domain:
+            raise HTTPException(status_code=400, detail="domain is required")
+
+        # Validate domain format (basic validation)
+        new_domain = new_domain.strip()
+        if not new_domain:
+            raise HTTPException(status_code=400, detail="domain cannot be empty")
+
+        # Get organization
+        if not db_shop.organization_id:
+            raise HTTPException(status_code=400, detail="Shop not linked to organization")
+
+        from app.repositories.organization import OrganizationRepository
+        org_repo = OrganizationRepository(db)
+        organization = org_repo.get_organization(str(db_shop.organization_id))
+
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+
+        # Update organization domain
+        organization.domain = new_domain
+        db.add(organization)
+        db.commit()
+
+        logger.info(f"Updated organization {organization.id} domain to {new_domain}")
+
+        # Update CORS middleware to include new domain
+        update_cors_middleware(app)
+        logger.info("Updated CORS middleware after domain update")
+
+        return {
+            "success": True,
+            "domain": new_domain,
+            "organization_id": str(organization.id)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating organization domain: {str(e)}")
+        # Check if it's a unique constraint violation
+        if "duplicate key" in str(e).lower() or "unique constraint" in str(e).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Domain is already connected to another organization"
+            )
+        raise HTTPException(
+            status_code=500,
+            detail="Error updating organization domain"
         )
 
 @router.get("/connected-agents")
