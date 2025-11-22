@@ -40,6 +40,8 @@ from app.core.s3 import get_s3_signed_url, upload_file_to_s3, delete_file_from_s
 from app.core.config import settings
 from app.repositories.shopify_shop_repository import ShopifyShopRepository
 from app.models.schemas.shopify.shopify_shop import ShopifyShopUpdate
+from app.core.cors import update_cors_middleware
+from app.core.application import app
 # Try to import enterprise modules
 try:
     from app.enterprise.repositories.subscription import SubscriptionRepository
@@ -318,14 +320,46 @@ async def login(
             try:
                 shop_repository = ShopifyShopRepository(db)
                 db_shop = shop_repository.get_shop(shop_id)
-                
+
                 if db_shop:
                     # Update shop with user's organization_id
                     shop_update = ShopifyShopUpdate(
                         organization_id=str(user.organization_id)
                     )
                     shop_repository.update_shop(db_shop.id, shop_update)
+
+                    # Update organization domain with shop domain
+                    try:
+                        from app.repositories.organization import OrganizationRepository
+                        org_repo = OrganizationRepository(db)
+                        organization = org_repo.get_organization(str(user.organization_id))
+
+                        if organization and db_shop.shop_domain:
+                            # Only update if domain is different
+                            if organization.domain != db_shop.shop_domain:
+                                # Check if domain is already used by another organization
+                                existing_org = org_repo.get_organization_by_domain(db_shop.shop_domain)
+                                if not existing_org or str(existing_org.id) == str(organization.id):
+                                    # Update organization domain to shop domain
+                                    organization.domain = db_shop.shop_domain
+                                    db.add(organization)
+                                    logger.info(f"Updated organization {user.organization_id} domain to {db_shop.shop_domain}")
+                                else:
+                                    logger.warning(f"Domain {db_shop.shop_domain} is already used by organization {existing_org.id}, skipping update")
+                    except Exception as domain_error:
+                        logger.error(f"Error updating organization domain during login: {str(domain_error)}")
+                        # Don't fail login if domain update fails
+
                     db.commit()
+
+                    # Update CORS middleware to include new domain
+                    try:
+                        update_cors_middleware(app)
+                        logger.info("Updated CORS middleware after linking shop during login")
+                    except Exception as cors_error:
+                        logger.error(f"Error updating CORS middleware: {str(cors_error)}")
+                        # Don't fail login if CORS update fails
+
                     logger.info(f"Updated shop {db_shop.shop_domain} with organization_id {user.organization_id} after login")
                 else:
                     logger.warning(f"Shop {shop_id} not found during login")
