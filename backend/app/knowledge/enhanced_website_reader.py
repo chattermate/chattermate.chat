@@ -33,6 +33,7 @@ from agno.document.base import Document
 from agno.document.reader.website_reader import WebsiteReader
 from app.core.logger import get_logger
 from app.knowledge.crawl4ai_fallback import get_crawl4ai_fallback
+from app.knowledge.content_summarizer import get_content_summarizer
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -931,22 +932,23 @@ class EnhancedWebsiteReader(WebsiteReader):
     def _create_document_from_content(self, page_url: str, content: str, source_url: str, index: int) -> Document:
         """
         Create a Document object from page content with proper metadata.
-        
+        Optionally summarizes content to reduce token usage.
+
         :param page_url: The URL of the page
         :param content: The page content
-        :param source_url: Original source URL 
+        :param source_url: Original source URL
         :param index: The document index
         :return: Document object
         """
         # Extract page identifier without protocol and domain for ID
         parsed_url = urlparse(page_url)
         path = parsed_url.path
-        
+
         # Handle fragment identifiers (#section)
         fragment = parsed_url.fragment
         if fragment:
             path = f"{path}#{fragment}"
-        
+
         # Clean up path for ID generation
         if not path or path == "/":
             path = "index"
@@ -954,27 +956,39 @@ class EnhancedWebsiteReader(WebsiteReader):
             # Remove leading/trailing slashes and replace special chars
             path = path.strip("/")
             path = re.sub(r'[^\w\-]', '_', path)
-        
+
+        # Summarize content if enabled to reduce token usage
+        original_length = len(content)
+        try:
+            summarizer = get_content_summarizer()
+            content = summarizer.summarize(content, page_url)
+            if len(content) < original_length:
+                logger.info(f"Content summarized: {original_length} -> {len(content)} chars ({100*len(content)/original_length:.1f}%)")
+        except Exception as e:
+            logger.error(f"Error during content summarization: {str(e)}")
+            # Continue with original content if summarization fails
+
         # Create metadata with relevant information
         metadata = {
             "url": page_url,
             "chunk": index,
-            "chunk_size": len(content)
+            "chunk_size": len(content),
+            "original_size": original_length
         }
-        
+
         # Create document with content and metadata
         document = Document(
             content=content,
             meta_data=metadata
         )
-        
+
         # Set document ID and name
         document.id = page_url
         # Set name to full page URL for matching with knowledge_queue
         document.name = source_url
-        
 
-        
+
+
         return document
 
     def read(self, url: str, vector_db_callback: Optional[Callable[[Document], None]] = None, url_crawled_callback: Optional[Callable[[str], None]] = None) -> List[Document]:

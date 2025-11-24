@@ -160,13 +160,16 @@ class ChatAgent(ChatAgentMCPMixin):
             
             # Base knowledge tool prompt
             knowledge_tool_prompt = """
-            You have access to the knowledge search tool. You can use this tool to search for information about the customer's query on product, services, policies, etc. Only use the tool if required, dont use it for general greeting. Dont hallucinate information. For all other queries other than general always search tools before answering."""
-            
+            You have access to the knowledge search tool. You can use this tool to search for information about the customer's query on product, services, policies, etc. Only use the tool if required, dont use it for general greeting. Dont hallucinate information. For all other queries other than general always search tools before answering.
+
+            **IMPORTANT - Include URLs in Responses:**
+            When tools return information that includes URLs, product links, documentation links, or reference URLs, you MUST include these URLs in your response to the customer. URLs provide valuable references and allow customers to access more detailed information. Always preserve and share URLs that are relevant to the customer's query."""
+
             # For non-Groq models, add the search limit instruction
             # For Groq, skip this to avoid discouraging tool usage
             if model_type.upper() != 'GROQ':
                 knowledge_tool_prompt += """
-            
+
             IMPORTANT: If you attempt to search for information but cannot find relevant results after a few tries, or if you've already searched multiple times without success, respond with a helpful message like "I apologize, but I don't have specific information about that in our knowledge base at the moment. Is there anything else I can help you with?" Do not keep searching indefinitely."""
             
 
