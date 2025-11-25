@@ -61,8 +61,23 @@ class JiraRepository:
             tools_list = []
             if agent.tools:
                 try:
-                    tools_list = json.loads(agent.tools) if isinstance(agent.tools, str) else agent.tools
-                except (json.JSONDecodeError, TypeError):
+                    if isinstance(agent.tools, str):
+                        # Parse JSON string
+                        parsed = json.loads(agent.tools)
+                        tools_list = parsed if isinstance(parsed, list) else []
+                    elif isinstance(agent.tools, list):
+                        # Already a list
+                        tools_list = agent.tools
+                    elif isinstance(agent.tools, dict):
+                        # If it's a dict (empty or not), convert to empty list
+                        logger.warning(f"Agent {agent.id} has tools as dict instead of list, converting to empty list")
+                        tools_list = []
+                    else:
+                        # Unknown type
+                        logger.warning(f"Agent {agent.id} has tools of unexpected type: {type(agent.tools)}")
+                        tools_list = []
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Error parsing tools for agent {agent.id}: {str(e)}")
                     tools_list = []
             
             # Create an AgentWithJiraConfig object
