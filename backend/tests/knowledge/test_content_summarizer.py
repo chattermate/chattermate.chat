@@ -267,17 +267,27 @@ class TestChatAgentURLInstructions:
         from app.agents.chat_agent import ChatAgent
         from uuid import uuid4
 
+        # Mock all database and external dependencies
         with patch('app.agents.chat_agent.SessionLocal') as mock_session_local, \
+             patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_knowledge_session_local, \
              patch('app.agents.chat_agent.JiraRepository') as mock_jira_repo, \
              patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_repo, \
              patch('app.agents.chat_agent.PostgresAgentStorage') as mock_storage, \
              patch('app.agents.chat_agent.create_model') as mock_create_model, \
-             patch('app.agents.chat_agent.Agent') as mock_agent_class:
+             patch('app.agents.chat_agent.Agent') as mock_agent_class, \
+             patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo:
 
             # Mock database session
             mock_db = MagicMock()
             mock_session_local.return_value.__enter__.return_value = mock_db
             mock_session_local.return_value.__exit__.return_value = None
+
+            # Mock knowledge search database session
+            mock_knowledge_session_local.return_value.__enter__.return_value = mock_db
+            mock_knowledge_session_local.return_value.__exit__.return_value = None
+
+            # Mock AI config repository
+            mock_ai_config_repo.return_value.get_active_config.return_value = None
 
             # Mock Jira repository
             from app.models.schemas.jira import AgentWithJiraConfig

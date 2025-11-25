@@ -349,4 +349,262 @@ def test_get_chat_detail_no_permission(
 
     response = client.get(f"/api/chats/{test_chat_session.session_id}")
     assert response.status_code == 403
-    assert response.json()["detail"] == "Not enough permissions" 
+    assert response.json()["detail"] == "Not enough permissions"
+
+def test_get_chat_history_endpoint(client):
+    """Test the basic chat history endpoint"""
+    response = client.get("/api/chats/")
+    assert response.status_code == 200
+    assert response.json() == {"message": "Chat history endpoint"}
+
+def test_get_recent_chats_with_filters(
+    client,
+    db,
+    test_user,
+    test_agent,
+    test_customer
+):
+    """Test getting recent chats with various filters"""
+    # Create multiple sessions with different statuses
+    open_session = SessionToAgent(
+        session_id=uuid4(),
+        user_id=test_user.id,
+        agent_id=test_agent.id,
+        customer_id=test_customer.id,
+        organization_id=test_user.organization_id,
+        status=SessionStatus.OPEN,
+        assigned_at=datetime.now(timezone.utc)
+    )
+    db.add(open_session)
+
+    closed_session = SessionToAgent(
+        session_id=uuid4(),
+        user_id=test_user.id,
+        agent_id=test_agent.id,
+        customer_id=test_customer.id,
+        organization_id=test_user.organization_id,
+        status=SessionStatus.CLOSED,
+        assigned_at=datetime.now(timezone.utc)
+    )
+    db.add(closed_session)
+    db.commit()
+
+    # Test with status filter
+    response = client.get("/api/chats/recent?status=open")
+    assert response.status_code == 200
+    chats = response.json()
+    assert all(chat["status"] == "OPEN" for chat in chats)
+
+    # Test with agent_id filter
+    response = client.get(f"/api/chats/recent?agent_id={test_agent.id}")
+    assert response.status_code == 200
+    chats = response.json()
+    assert all(chat["agent"]["id"] == str(test_agent.id) for chat in chats)
+
+    # Test with limit and skip
+    response = client.get("/api/chats/recent?limit=1&skip=0")
+    assert response.status_code == 200
+    chats = response.json()
+    assert len(chats) <= 1
+
+def test_get_recent_chats_invalid_uuid(client, db, test_user):
+    """Test getting recent chats with invalid UUID format"""
+    response = client.get("/api/chats/recent?user_id=invalid-uuid")
+    assert response.status_code == 400
+    assert "Invalid UUID format" in response.json()["detail"]
+
+def test_get_chat_detail_invalid_uuid(client, db, test_user):
+    """Test getting chat detail with invalid session_id format"""
+    response = client.get("/api/chats/invalid-uuid")
+    assert response.status_code == 400
+    assert "Invalid UUID format" in response.json()["detail"]
+
+def test_get_chat_detail_with_shopify_output(
+    client,
+    db,
+    test_user,
+    test_chat_session,
+    test_customer
+):
+    """Test getting chat detail with Shopify output in attributes"""
+    import json
+
+    # Create message with shopify_output in attributes
+    shopify_data = {
+        "products": [{"id": "123", "title": "Test Product"}],
+        "search_query": "test"
+    }
+
+    message = ChatHistory(
+        organization_id=test_user.organization_id,
+        user_id=test_user.id,
+        customer_id=test_customer.id,
+        agent_id=test_chat_session.agent_id,
+        session_id=test_chat_session.session_id,
+        message="Here are some products",
+        message_type="bot",
+        attributes={
+            "shopify_output": shopify_data,
+            "end_chat": False
+        },
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(message)
+    db.commit()
+
+    response = client.get(f"/api/chats/{test_chat_session.session_id}")
+    assert response.status_code == 200
+    chat = response.json()
+
+    # Check that shopify_output was processed
+    messages = chat["messages"]
+    shopify_message = next((m for m in messages if m.get("shopify_output")), None)
+    assert shopify_message is not None
+    assert shopify_message["message_type"] == "product"
+
+def test_get_chat_detail_with_end_chat_reason(
+    client,
+    db,
+    test_user,
+    test_chat_session,
+    test_customer
+):
+    """Test getting chat detail with end_chat_reason in attributes"""
+    # Create message with valid end_chat_reason
+    message = ChatHistory(
+        organization_id=test_user.organization_id,
+        user_id=test_user.id,
+        customer_id=test_customer.id,
+        agent_id=test_chat_session.agent_id,
+        session_id=test_chat_session.session_id,
+        message="Thank you!",
+        message_type="bot",
+        attributes={
+            "end_chat": True,
+            "end_chat_reason": "ISSUE_RESOLVED",  # Valid enum value
+            "end_chat_description": "Issue resolved"
+        },
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(message)
+    db.commit()
+
+    response = client.get(f"/api/chats/{test_chat_session.session_id}")
+    assert response.status_code == 200
+    chat = response.json()
+
+    messages = chat["messages"]
+    end_chat_message = next((m for m in messages if m.get("end_chat")), None)
+    assert end_chat_message is not None
+    assert end_chat_message["end_chat_reason"] == "ISSUE_RESOLVED"
+    assert end_chat_message["end_chat_description"] == "Issue resolved"
+
+def test_get_chat_detail_with_invalid_end_chat_reason(
+    client,
+    db,
+    test_user,
+    test_chat_session,
+    test_customer
+):
+    """Test getting chat detail with invalid end_chat_reason (should be set to None)"""
+    # Create message with invalid end_chat_reason
+    message = ChatHistory(
+        organization_id=test_user.organization_id,
+        user_id=test_user.id,
+        customer_id=test_customer.id,
+        agent_id=test_chat_session.agent_id,
+        session_id=test_chat_session.session_id,
+        message="Thank you!",
+        message_type="bot",
+        attributes={
+            "end_chat": True,
+            "end_chat_reason": "INVALID_REASON",
+            "end_chat_description": "Issue resolved"
+        },
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(message)
+    db.commit()
+
+    response = client.get(f"/api/chats/{test_chat_session.session_id}")
+    assert response.status_code == 200
+    chat = response.json()
+
+    messages = chat["messages"]
+    end_chat_message = next((m for m in messages if m.get("end_chat")), None)
+    assert end_chat_message is not None
+    # Invalid reason should be set to None
+    assert end_chat_message["end_chat_reason"] is None
+
+def test_get_chat_detail_assigned_access_denied(
+    client,
+    db,
+    test_user,
+    test_customer,
+    test_agent
+):
+    """Test that user with view_assigned permission cannot access unassigned chats"""
+    # Remove view_all permission
+    view_all_perm = db.query(Permission).filter_by(name="view_all_chats").first()
+    db.execute(
+        role_permissions.delete().where(
+            role_permissions.c.permission_id == view_all_perm.id
+        )
+    )
+    db.commit()
+
+    # Create a session not assigned to test_user
+    other_user = User(
+        id=uuid4(),
+        email="other@example.com",
+        hashed_password="hashed",
+        is_active=True,
+        organization_id=test_user.organization_id,
+        full_name="Other User",
+        role_id=test_user.role_id
+    )
+    db.add(other_user)
+    db.commit()
+
+    other_session = SessionToAgent(
+        session_id=uuid4(),
+        user_id=other_user.id,
+        agent_id=test_agent.id,
+        customer_id=test_customer.id,
+        organization_id=test_user.organization_id,
+        status=SessionStatus.OPEN,
+        assigned_at=datetime.now(timezone.utc)
+    )
+    db.add(other_session)
+    db.commit()
+
+    response = client.get(f"/api/chats/{other_session.session_id}")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Chat session not found"
+
+def test_get_recent_chats_with_user_name_filter(
+    client,
+    db,
+    test_user,
+    test_chat_session
+):
+    """Test getting recent chats with user_name filter"""
+    # Test with user_name filter
+    response = client.get(f"/api/chats/recent?user_name={test_user.full_name}")
+    assert response.status_code == 200
+    # Filter parameters are passed to repository, endpoint should handle it
+    assert isinstance(response.json(), list)
+
+def test_get_recent_chats_shopify_endpoint(client, db, test_user, test_chat_session):
+    """Test the Shopify-specific endpoint"""
+    response = client.get("/api/chats/recent/shopify")
+    assert response.status_code == 200
+    chats = response.json()
+    assert isinstance(chats, list)
+
+def test_get_chat_detail_shopify_endpoint(client, db, test_user, test_chat_session, test_chat_messages):
+    """Test the Shopify-specific chat detail endpoint"""
+    response = client.get(f"/api/chats/{test_chat_session.session_id}/shopify")
+    assert response.status_code == 200
+    chat = response.json()
+    assert chat["session_id"] == str(test_chat_session.session_id) 
