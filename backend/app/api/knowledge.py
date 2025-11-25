@@ -846,7 +846,99 @@ async def get_knowledge_by_agent(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/queue/agent/{agent_id}")
+async def get_agent_queue_items(
+    agent_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all queue items (pending, processing, failed) for an agent"""
+    try:
+        # Convert agent_id to UUID
+        try:
+            agent_uuid = UUID(agent_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid agent ID format")
+
+        logger.debug(f"Getting queue items for agent {agent_uuid}")
+        queue_repo = KnowledgeQueueRepository(db)
+
+        # Get queue items for this agent (excluding completed ones)
+        queue_items = db.query(KnowledgeQueue).filter(
+            KnowledgeQueue.agent_id == agent_uuid,
+            KnowledgeQueue.organization_id == current_user.organization_id,
+            KnowledgeQueue.status.in_([QueueStatus.PENDING, QueueStatus.PROCESSING, QueueStatus.FAILED])
+        ).order_by(KnowledgeQueue.created_at.desc()).all()
+
+        result = []
+        for item in queue_items:
+            # Safely get enum values
+            def get_enum_value(enum_field):
+                if enum_field is None:
+                    return None
+                return enum_field.value if hasattr(enum_field, 'value') else str(enum_field)
+
+            result.append({
+                "id": item.id,
+                "source": item.source,
+                "source_type": item.source_type,
+                "status": get_enum_value(item.status),
+                "error": item.error,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+                "processing_stage": get_enum_value(item.processing_stage),
+                "progress_percentage": item.progress_percentage or 0
+            })
+
+        return {"queue_items": result}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting queue items for agent: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/queue/{queue_id}")
+async def delete_queue_item(
+    queue_id: int,
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Delete a queue item (only if failed or pending)"""
+    try:
+        queue_repo = KnowledgeQueueRepository(db)
+        item = queue_repo.get_by_id(queue_id)
+        
+        if not item:
+            raise HTTPException(status_code=404, detail="Queue item not found")
+            
+        if item.organization_id != current_user.organization_id:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+            
+        # Only allow deleting failed or pending items
+        # We might want to allow deleting processing items if they are stuck, but let's be safe for now
+        if item.status not in [QueueStatus.FAILED, QueueStatus.PENDING]:
+            raise HTTPException(
+                status_code=400, 
+                detail="Only failed or pending items can be removed from queue"
+            )
+            
+        db.delete(item)
+        db.commit()
+        
+        return {"message": "Queue item deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting queue item: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.get("/organization/{org_id}")
+
 async def get_knowledge_by_organization(
     org_id: str,
     page: int = Query(default=1, ge=1),
@@ -1070,3 +1162,396 @@ async def delete_knowledge(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/{knowledge_id}/content")
+async def get_knowledge_content(
+    knowledge_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get knowledge content chunks from vector database"""
+    try:
+        knowledge_repo = KnowledgeRepository(db)
+        
+        # Verify knowledge exists and belongs to user's org
+        knowledge = knowledge_repo.get_by_id(knowledge_id)
+        if not knowledge:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge source not found"
+            )
+        
+        if knowledge.organization_id != current_user.organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized access to knowledge source"
+            )
+        
+        # Query the vector database for content chunks
+        if not knowledge.table_name or not knowledge.schema:
+            return {
+                "knowledge_id": knowledge_id,
+                "source": knowledge.source,
+                "chunks": []
+            }
+        
+        try:
+            # Get all chunks for this knowledge source
+            query = text(f"""
+                SELECT 
+                    id,
+                    content,
+                    meta_data,
+                    created_at
+                FROM {knowledge.schema}."{knowledge.table_name}"
+                WHERE name = :source
+                ORDER BY created_at ASC
+            """)
+
+            
+            rows = db.execute(query, {"source": knowledge.source}).fetchall()
+            
+            chunks = []
+            for row in rows:
+                chunks.append({
+                    "id": row.id,
+                    "content": row.content,
+                    "metadata": row.meta_data,
+                    "created_at": row.created_at.isoformat() if row.created_at else None
+                })
+            
+            return {
+                "knowledge_id": knowledge_id,
+                "source": knowledge.source,
+                "source_type": knowledge.source_type.value,
+                "chunks": chunks
+            }
+            
+        except Exception as e:
+            logger.error(f"Error querying content for knowledge {knowledge_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error accessing content: {str(e)}"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting knowledge content: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.put("/{knowledge_id}/chunk/{chunk_id:path}")
+async def update_chunk_content(
+    knowledge_id: int,
+    chunk_id: str,
+    content: str = Body(..., embed=True),
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Update a single chunk's content in vector database"""
+    try:
+        knowledge_repo = KnowledgeRepository(db)
+        
+        # Verify knowledge exists and belongs to user's org
+        knowledge = knowledge_repo.get_by_id(knowledge_id)
+        if not knowledge:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge source not found"
+            )
+        
+        if knowledge.organization_id != current_user.organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized access to knowledge source"
+            )
+        
+        if not knowledge.table_name or not knowledge.schema:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Knowledge source has no vector database table"
+            )
+        
+        try:
+            # Get existing chunk to preserve metadata
+            query = text(f"""
+                SELECT meta_data
+                FROM {knowledge.schema}."{knowledge.table_name}"
+                WHERE id = :chunk_id
+            """)
+            row = db.execute(query, {"chunk_id": chunk_id}).fetchone()
+            
+            if not row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Chunk not found"
+                )
+            
+            # Re-embed the updated content
+            from app.knowledge.knowledge_base import KnowledgeManager
+            from agno.document import Document
+            
+            # Initialize KnowledgeManager for re-embedding
+            manager = KnowledgeManager(
+                org_id=knowledge.organization_id,
+                agent_id=None
+            )
+            
+            # Create document with new content
+            doc = Document(
+                name=knowledge.source,
+                id=chunk_id,
+                content=content,
+                meta_data=row.meta_data
+            )
+            
+            # Embed the document using the vector_db's embedder
+            doc.embed(embedder=manager.vector_db.embedder)
+            
+            # Update the chunk in the database
+            update_query = text(f"""
+                UPDATE {knowledge.schema}."{knowledge.table_name}"
+                SET content = :content,
+                    embedding = :embedding
+                WHERE id = :chunk_id
+            """)
+            
+            db.execute(update_query, {
+                "content": content,
+                "embedding": doc.embedding,
+                "chunk_id": chunk_id
+            })
+            db.commit()
+            
+            logger.info(f"Updated chunk {chunk_id} for knowledge {knowledge_id}")
+            
+            return {"message": "Chunk updated successfully"}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error updating chunk {chunk_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error updating chunk: {str(e)}"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating chunk: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.delete("/{knowledge_id}/chunk/{chunk_id:path}")
+async def delete_chunk(
+    knowledge_id: int,
+    chunk_id: str,
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Delete a single chunk from vector database"""
+    try:
+        knowledge_repo = KnowledgeRepository(db)
+        
+        # Verify knowledge exists and belongs to user's org
+        knowledge = knowledge_repo.get_by_id(knowledge_id)
+        if not knowledge:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge source not found"
+            )
+        
+        if knowledge.organization_id != current_user.organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized access to knowledge source"
+            )
+        
+        if not knowledge.table_name or not knowledge.schema:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Knowledge source has no vector database table"
+            )
+        
+        try:
+            # Delete the chunk from the database
+            delete_query = text(f"""
+                DELETE FROM {knowledge.schema}."{knowledge.table_name}"
+                WHERE id = :chunk_id
+            """)
+            
+            result = db.execute(delete_query, {"chunk_id": chunk_id})
+            db.commit()
+            
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Chunk not found"
+                )
+            
+            logger.info(f"Deleted chunk {chunk_id} from knowledge {knowledge_id}")
+            
+            return {"message": "Chunk deleted successfully"}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error deleting chunk {chunk_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error deleting chunk: {str(e)}"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting chunk: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.post("/{knowledge_id}/subpage")
+async def add_subpage(
+    knowledge_id: int,
+    subpage_name: str = Body(..., embed=True),
+    content: str = Body(..., embed=True),
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Add a new subpage to existing knowledge"""
+    try:
+        knowledge_repo = KnowledgeRepository(db)
+        
+        # Verify knowledge exists and belongs to user's org
+        knowledge = knowledge_repo.get_by_id(knowledge_id)
+        if not knowledge:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge source not found"
+            )
+        
+        if knowledge.organization_id != current_user.organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized access to knowledge source"
+            )
+        
+        if not knowledge.table_name or not knowledge.schema:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Knowledge source has no vector database table"
+            )
+        
+        # Check subscription limits if enterprise module is available
+        if HAS_ENTERPRISE:
+            try:
+                from app.enterprise.repositories.subscription import SubscriptionRepository
+
+                subscription_repo = SubscriptionRepository(db)
+                subscription = subscription_repo.get_active_subscription(str(knowledge.organization_id))
+
+                if subscription and subscription.plan:
+                    # Count existing subpages for this knowledge source
+                    count_query = text(f"""
+                        SELECT COUNT(*) as count
+                        FROM {knowledge.schema}."{knowledge.table_name}"
+                        WHERE name = :source
+                    """)
+                    result = db.execute(count_query, {"source": knowledge.source}).fetchone()
+                    current_count = result.count if result else 0
+
+                    # Check against max_sub_pages limit from the plan
+                    subpages_limit = subscription.plan.max_sub_pages
+
+                    if current_count >= subpages_limit:
+                        raise HTTPException(
+                            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                            detail=f"Subpage limit reached. Your plan allows {subpages_limit} subpages per knowledge source. Please upgrade your plan."
+                        )
+            except ImportError:
+                # Enterprise module not available, skip limit check
+                pass
+        
+        try:
+            # Check if subpage name already exists
+            check_query = text(f"""
+                SELECT id FROM {knowledge.schema}."{knowledge.table_name}"
+                WHERE id = :subpage_name
+            """)
+            existing = db.execute(check_query, {"subpage_name": subpage_name}).fetchone()
+            
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Subpage name already exists. Please use a unique name."
+                )
+            
+            # Create and embed the new subpage
+            from app.knowledge.knowledge_base import KnowledgeManager
+            from agno.document import Document
+            
+            # Initialize KnowledgeManager for embedding
+            manager = KnowledgeManager(
+                org_id=knowledge.organization_id,
+                agent_id=None
+            )
+            
+            # Get agent_ids for metadata
+            agent_ids = [str(link.agent_id) for link in knowledge.agent_links]
+            
+            # Create document with new content
+            doc = Document(
+                name=knowledge.source,
+                id=subpage_name,
+                content=content,
+                meta_data={"agent_id": agent_ids}
+            )
+            
+            # Embed the document using the vector_db's embedder
+            doc.embed(embedder=manager.vector_db.embedder)
+            
+            # Insert into vector database
+            filters = {
+                "name": knowledge.source,
+                "agent_id": agent_ids,
+                "org_id": str(knowledge.organization_id)
+            }
+            
+            manager.vector_db.insert([doc], filters=filters)
+            
+            logger.info(f"Added new subpage '{subpage_name}' to knowledge {knowledge_id}")
+            
+            return {"message": "Subpage added successfully", "subpage_id": subpage_name}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error adding subpage: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error adding subpage: {str(e)}"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding subpage: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+

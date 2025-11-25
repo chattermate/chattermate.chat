@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { KnowledgeItem, KnowledgePage } from '@/types/knowledge'
+import type { KnowledgeItem, KnowledgePage, QueueItem, KnowledgeContent } from '@/types/knowledge'
 import { knowledgeService } from '@/services/knowledge'
 
 export function useKnowledgeManagement(agentId: string, organizationId: string) {
@@ -10,6 +10,19 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
   const totalPages = ref(0)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+
+  // Queue state
+  const queueItems = ref<QueueItem[]>([])
+  const isLoadingQueue = ref(false)
+
+  // Content viewing/editing state
+  const selectedKnowledge = ref<number | null>(null)
+  const knowledgeContent = ref<KnowledgeContent | null>(null)
+  const isLoadingContent = ref(false)
+  const isEditingContent = ref(false)
+  const editedContent = ref('')
+  const isSavingContent = ref(false)
+  const showContentModal = ref(false)
 
   // Modal and upload state
   const showKnowledgeModal = ref(false)
@@ -39,6 +52,8 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
   // Add upload error state
   const uploadError = ref<string | null>(null)
 
+
+
   // Fetch knowledge data
   const fetchKnowledge = async () => {
     try {
@@ -46,14 +61,15 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
       isLoadingOrg.value = true
       error.value = null
 
-      // Fetch both agent and org knowledge in parallel
-      const [agentResponse, orgResponse] = await Promise.all([
+      // Fetch agent knowledge, org knowledge, and queue items in parallel
+      const [agentResponse, orgResponse, queueResponse] = await Promise.all([
         knowledgeService.getKnowledgeByAgent(agentId, currentPage.value, pageSize.value),
         knowledgeService.getKnowledgeByOrganization(
           organizationId,
           orgCurrentPage.value,
           pageSize.value,
         ),
+        fetchQueueItems(),
       ])
 
       // Update agent knowledge
@@ -71,6 +87,34 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
       isLoadingOrg.value = false
     }
   }
+
+  // Fetch queue items
+  const fetchQueueItems = async () => {
+    try {
+      isLoadingQueue.value = true
+      const response = await knowledgeService.getAgentQueueItems(agentId)
+      queueItems.value = response.queue_items || []
+      return response
+    } catch (err) {
+      console.error('Failed to load queue items:', err)
+      queueItems.value = []
+      return { queue_items: [] }
+    } finally {
+      isLoadingQueue.value = false
+    }
+  }
+
+  const deleteQueueItem = async (queueId: number) => {
+    try {
+      await knowledgeService.deleteQueueItem(queueId)
+      await fetchQueueItems() // Refresh queue
+    } catch (err) {
+      console.error('Failed to delete queue item:', err)
+      error.value = 'Failed to delete queue item'
+    }
+  }
+
+
 
   // Pagination handler
   const handlePageChange = (page: number) => {
@@ -286,6 +330,61 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
     knowledgeToDelete.value = null
   }
 
+  // Content management methods
+  const viewKnowledgeContent = async (knowledgeId: number) => {
+    try {
+      selectedKnowledge.value = knowledgeId
+      isLoadingContent.value = true
+      showContentModal.value = true
+      
+      const response = await knowledgeService.getKnowledgeContent(knowledgeId)
+      knowledgeContent.value = response
+      
+      // Do not combine chunks - keep them separate for individual editing
+      editedContent.value = ''
+    } catch (err) {
+      console.error('Error loading knowledge content:', err)
+      error.value = 'Failed to load knowledge content'
+    } finally {
+      isLoadingContent.value = false
+    }
+  }
+
+  const enableContentEditing = () => {
+    isEditingContent.value = true
+  }
+
+  const cancelContentEditing = () => {
+    isEditingContent.value = false
+  }
+
+  const saveChunkContent = async (chunkId: string, content: string) => {
+    if (!selectedKnowledge.value) return
+
+    try {
+      isSavingContent.value = true
+      await knowledgeService.updateChunkContent(selectedKnowledge.value, chunkId, content)
+      
+      successMessage.value = 'Chunk updated successfully'
+      
+      // Reload the content to show updated chunk
+      await viewKnowledgeContent(selectedKnowledge.value)
+    } catch (err: any) {
+      console.error('Error saving chunk content:', err)
+      error.value = err.message || 'Failed to save chunk content'
+    } finally {
+      isSavingContent.value = false
+    }
+  }
+
+  const closeContentModal = () => {
+    showContentModal.value = false
+    selectedKnowledge.value = null
+    knowledgeContent.value = null
+    isEditingContent.value = false
+    editedContent.value = ''
+  }
+
   return {
     // State
     knowledgeItems,
@@ -312,11 +411,23 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
     knowledgeToDelete,
     urlFormError,
     uploadError,
+    queueItems,
+    isLoadingQueue,
+    selectedKnowledge,
+    knowledgeContent,
+    isLoadingContent,
+    isEditingContent,
+    editedContent,
+    isSavingContent,
+    showContentModal,
 
     // Methods
     fetchKnowledge,
+    fetchQueueItems,
+    deleteQueueItem,
     handlePageChange,
     formatDate,
+
     getFirstCreated,
     isValidUrl,
     triggerFileInput,
@@ -332,5 +443,11 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
     confirmDelete,
     handleDelete,
     cancelDelete,
+    viewKnowledgeContent,
+    enableContentEditing,
+    cancelContentEditing,
+    saveChunkContent,
+    closeContentModal,
   }
 }
+

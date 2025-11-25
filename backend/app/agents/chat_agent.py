@@ -338,7 +338,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 self.jira_instructions_added = True
             
             # Add Shopify instructions if Shopify is enabled
-            if shopify_config and shopify_config.enabled and not self.transfer_to_human:
+            if shopify_config and shopify_config.enabled:
                 # Simplified Shopify Instructions for faster LLM processing
                 shopify_instructions = """
                 You have access to Shopify tools for products and orders. Use `limit` of 8 for product searches.

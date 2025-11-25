@@ -17,15 +17,22 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
+import { knowledgeService } from '@/services/knowledge'
 import DeleteIcon from '@/assets/delete.svg'
+import EditIcon from '@/assets/edit.svg'
 import mitt from '@/utils/emitter'
 
 const props = defineProps<{
-    agentId: string
-    organizationId: string
+    agentId?: string
+    organizationId?: string
 }>()
+
+const componentData = {
+    DeleteIcon,
+    EditIcon
+}
 
 const {
     knowledgeItems,
@@ -43,8 +50,11 @@ const {
     successMessage,
     fileInput,
     fetchKnowledge,
+    fetchQueueItems,
+    deleteQueueItem,
     handlePageChange,
     formatDate,
+
     getFirstCreated,
     isValidUrl,
     triggerFileInput,
@@ -67,22 +77,75 @@ const {
     cancelDelete,
     urlFormError,
     uploadError,
-} = useKnowledgeManagement(props.agentId, props.organizationId)
+    queueItems,
+    isLoadingQueue,
+    selectedKnowledge,
+    knowledgeContent,
+    isLoadingContent,
+    isEditingContent,
+    editedContent,
+    isSavingContent,
+    showContentModal,
+    viewKnowledgeContent,
+    enableContentEditing,
+    cancelContentEditing,
+    saveChunkContent,
+    closeContentModal,
+} = useKnowledgeManagement(props.agentId || '', props.organizationId || '')
 
 // Handle knowledge update notifications
 const handleKnowledgeUpdate = () => {
     fetchKnowledge()
+    fetchQueueItems()
 }
+
+// Polling interval for queue updates
+let queuePollingInterval: ReturnType<typeof setInterval> | null = null
+
+const startQueuePolling = () => {
+    // Only poll if there are pending or processing items
+    const hasPendingItems = queueItems.value.some(
+        item => item.status === 'pending' || item.status === 'processing'
+    )
+
+    if (!hasPendingItems && queuePollingInterval) {
+        stopQueuePolling()
+        return
+    }
+
+    if (hasPendingItems && !queuePollingInterval) {
+        // Poll every 10 seconds
+        queuePollingInterval = setInterval(() => {
+            fetchQueueItems()
+        }, 10000)
+    }
+}
+
+const stopQueuePolling = () => {
+    if (queuePollingInterval) {
+        clearInterval(queuePollingInterval)
+        queuePollingInterval = null
+    }
+}
+
+// Watch for queue items changes to start/stop polling
+watch(queueItems, () => {
+    startQueuePolling()
+}, { deep: true })
 
 onMounted(() => {
     fetchKnowledge()
     // Subscribe to knowledge update events
     mitt.on('knowledge-updated', handleKnowledgeUpdate)
+    // Start polling for queue updates
+    startQueuePolling()
 })
 
 onUnmounted(() => {
     // Clean up event listener
     mitt.off('knowledge-updated', handleKnowledgeUpdate)
+    // Stop polling
+    stopQueuePolling()
 })
 
 const isKnowledgeLinked = (knowledgeId: number): boolean => {
@@ -95,6 +158,100 @@ const handleLink = async (knowledgeId: number) => {
 
 const handleUnlink = async (knowledgeId: number) => {
     await unlinkKnowledge(knowledgeId)
+}
+
+// Subpage editing state
+const editingSubpageId = ref<string | null>(null)
+const editingSubpageContent = ref('')
+const showEditSubpageModal = ref(false)
+
+const editSubpage = (subpageId: string) => {
+    const subpage = knowledgeContent.value?.chunks.find((c: any) => c.id === subpageId)
+    if (subpage) {
+        editingSubpageId.value = subpageId
+        editingSubpageContent.value = subpage.content
+        showEditSubpageModal.value = true
+    }
+}
+
+const saveEditedSubpage = async () => {
+    if (editingSubpageId.value) {
+        await saveChunkContent(editingSubpageId.value, editingSubpageContent.value)
+        showEditSubpageModal.value = false
+        editingSubpageId.value = null
+        editingSubpageContent.value = ''
+    }
+}
+
+const cancelEditSubpage = () => {
+    showEditSubpageModal.value = false
+    editingSubpageId.value = null
+    editingSubpageContent.value = ''
+}
+
+// Subpage deletion
+const subpageToDelete = ref<string | null>(null)
+const showDeleteSubpageConfirm = ref(false)
+
+const confirmDeleteSubpage = (subpageId: string) => {
+    subpageToDelete.value = subpageId
+    showDeleteSubpageConfirm.value = true
+}
+
+const deleteSubpage = async () => {
+    if (subpageToDelete.value && selectedKnowledge.value) {
+        try {
+            await knowledgeService.deleteChunk(selectedKnowledge.value, subpageToDelete.value)
+            showDeleteSubpageConfirm.value = false
+            subpageToDelete.value = null
+            // Reload content
+            await viewKnowledgeContent(selectedKnowledge.value)
+        } catch (err) {
+            console.error('Error deleting subpage:', err)
+        }
+    }
+}
+
+const cancelDeleteSubpage = () => {
+    showDeleteSubpageConfirm.value = false
+    subpageToDelete.value = null
+}
+
+// Add new subpage
+const showAddSubpageModal = ref(false)
+const newSubpageName = ref('')
+const newSubpageContent = ref('')
+
+const addNewSubpage = async () => {
+    if (!selectedKnowledge.value || !newSubpageName.value.trim() || !newSubpageContent.value.trim()) {
+        return
+    }
+
+    try {
+        error.value = null // Clear any previous errors
+        await knowledgeService.addSubpage(
+            selectedKnowledge.value,
+            newSubpageName.value.trim(),
+            newSubpageContent.value.trim()
+        )
+        showAddSubpageModal.value = false
+        newSubpageName.value = ''
+        newSubpageContent.value = ''
+        // Reload content
+        await viewKnowledgeContent(selectedKnowledge.value)
+    } catch (err: any) {
+        console.error('Error adding subpage:', err)
+        // Show error message to user
+        const errorMessage = err.response?.data?.detail || 'Failed to add subpage'
+        error.value = errorMessage
+    }
+}
+
+const cancelAddSubpage = () => {
+    showAddSubpageModal.value = false
+    newSubpageName.value = ''
+    newSubpageContent.value = ''
+    error.value = null
 }
 
 // Add closeKnowledgeModal function
@@ -132,6 +289,49 @@ const closeKnowledgeModal = () => {
             </div>
         </div>
 
+        <!-- Queue Status Section -->
+        <div v-if="queueItems && queueItems.length > 0" class="queue-section">
+            <h4 class="queue-header">Processing Queue</h4>
+            <div class="queue-items">
+                <div v-for="item in queueItems" :key="item.id" class="queue-item">
+                    <div class="queue-item-content">
+                        <div class="queue-item-header">
+                            <div class="queue-info">
+                                <span class="queue-source" :title="item.source">{{ item.source }}</span>
+                                <span class="queue-meta">
+                                    <span class="queue-type">{{ item.source_type }}</span>
+                                    <span class="queue-time">• {{ formatDate(item.created_at) }}</span>
+                                </span>
+                            </div>
+                            <div class="queue-status-container">
+                                <span :class="['status-badge', item.status]">
+                                    {{ item.status }}
+                                </span>
+                                <button v-if="item.status === 'failed' || item.status === 'pending'"
+                                    class="delete-queue-btn" @click="deleteQueueItem(item.id)"
+                                    title="Remove from queue">
+                                    <img :src="DeleteIcon" alt="Delete" class="delete-icon-sm" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div v-if="item.status === 'processing' && item.progress_percentage"
+                            class="progress-bar-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" :style="{ width: item.progress_percentage + '%' }"></div>
+                            </div>
+                            <span class="progress-text">{{ item.progress_percentage }}%</span>
+                        </div>
+
+                        <div v-if="item.error" class="queue-error">
+                            <span class="error-icon">⚠️</span>
+                            <span class="error-text">{{ item.error }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div v-if="isLoading" class="loading-state">
             Loading knowledge sources...
         </div>
@@ -161,25 +361,33 @@ const closeKnowledgeModal = () => {
 
             <template v-for="item in knowledgeItems" :key="item.id">
                 <div class="knowledge-grid-row">
-                    <div class="grid-cell">{{ item.name }}</div>
+                    <div class="grid-cell source-cell" :title="item.name">{{ item.name }}</div>
                     <div class="grid-cell">{{ item.type }}</div>
                     <div class="grid-cell pages-cell">
-                        <div v-for="page in item.pages" :key="page.subpage" class="page-item">
-                            <a v-if="isValidUrl(page.subpage)" :href="page.subpage" target="_blank"
-                                rel="noopener noreferrer" class="page-url page-link">
-                                {{ page.subpage }}
-                            </a>
-                            <span v-else class="page-url">
-                                {{ page.subpage }}
-                            </span>
+                        <div class="pages-list">
+                            <div v-for="page in item.pages.slice(0, 3)" :key="page.subpage" class="page-item">
+                                <a v-if="isValidUrl(page.subpage)" :href="page.subpage" target="_blank"
+                                    rel="noopener noreferrer" class="page-url page-link" :title="page.subpage">
+                                    {{ page.subpage }}
+                                </a>
+                                <span v-else class="page-url" :title="page.subpage">
+                                    {{ page.subpage }}
+                                </span>
+                            </div>
+                            <div v-if="item.pages.length > 3" class="more-pages">
+                                +{{ item.pages.length - 3 }} more
+                            </div>
                         </div>
                     </div>
                     <div class="grid-cell">
                         {{ item.pages.length ? formatDate(getFirstCreated(item.pages)) : 'N/A' }}
                     </div>
                     <div class="grid-cell actions-cell">
+                        <button class="view-button" @click="viewKnowledgeContent(item.id)" title="View content">
+                            <img :src="EditIcon" alt="View" class="action-icon" />
+                        </button>
                         <button class="delete-button" @click="confirmDelete(item.id)" title="Delete knowledge source">
-                            <img :src="DeleteIcon" alt="Delete" class="delete-icon" />
+                            <img :src="DeleteIcon" alt="Delete" class="action-icon" />
                         </button>
                     </div>
                 </div>
@@ -236,7 +444,7 @@ const closeKnowledgeModal = () => {
                     <div v-if="uploadError" class="upload-error">
                         {{ uploadError }}
                     </div>
-                    
+
                     <div v-if="urls.length" class="url-list">
                         <div v-for="(url, index) in urls" :key="index" class="url-item">
                             <span>{{ url }}</span>
@@ -327,6 +535,153 @@ const closeKnowledgeModal = () => {
                         <button class="cancel-button" @click="cancelDelete">Cancel</button>
                         <button class="delete-button" @click="handleDelete">Delete</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Viewing/Editing Modal -->
+        <div v-if="showContentModal" class="modal-overlay">
+            <div class="modal-content content-modal">
+                <div class="modal-header">
+                    <h3>Knowledge Content</h3>
+                    <button class="close-button" @click="closeContentModal">×</button>
+                </div>
+
+                <div v-if="isLoadingContent" class="loading-state">
+                    Loading content...
+                </div>
+
+                <div v-else-if="knowledgeContent" class="content-body">
+                    <div class="content-header">
+                        <div class="content-info">
+                            <span class="content-source">{{ knowledgeContent.source }}</span>
+                            <span class="content-type">{{ knowledgeContent.source_type }}</span>
+                            <span class="content-subpages-count">{{ knowledgeContent.chunks.length }} subpages</span>
+                        </div>
+                        <button class="add-subpage-btn" @click="showAddSubpageModal = true" title="Add new subpage">
+                            + Add Subpage
+                        </button>
+                    </div>
+
+                    <div class="content-table-container">
+                        <table class="content-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-url">Subpage Name</th>
+                                    <th class="col-content">Content</th>
+                                    <th class="col-actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(subpage, index) in knowledgeContent.chunks" :key="subpage.id"
+                                    class="subpage-row" :data-subpage-id="subpage.id">
+                                    <td class="cell-url">
+                                        <a v-if="subpage.metadata && subpage.metadata.url" :href="subpage.metadata.url"
+                                            target="_blank" rel="noopener noreferrer" class="subpage-url"
+                                            :title="subpage.metadata.url">
+                                            {{ subpage.metadata.url }}
+                                        </a>
+                                        <span v-else class="subpage-id">
+                                            {{ subpage.id }}
+                                        </span>
+                                    </td>
+                                    <td class="cell-content">
+                                        <div class="subpage-content-wrapper">
+                                            <p class="subpage-text">{{ subpage.content }}</p>
+                                        </div>
+                                    </td>
+                                    <td class="cell-actions">
+                                        <div class="actions-buttons">
+                                            <button class="edit-subpage-btn" @click="() => editSubpage(subpage.id)"
+                                                title="Edit this subpage">
+                                                <img :src="EditIcon" alt="Edit" class="action-icon-sm" />
+                                            </button>
+                                            <button class="delete-subpage-btn"
+                                                @click="() => confirmDeleteSubpage(subpage.id)"
+                                                title="Delete this subpage">
+                                                <img :src="DeleteIcon" alt="Delete" class="action-icon-sm" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Subpage Edit Modal -->
+        <div v-if="showEditSubpageModal" class="modal-overlay">
+            <div class="modal-content subpage-edit-modal">
+                <div class="modal-header">
+                    <h3>Edit Subpage Content</h3>
+                    <button class="close-button" @click="cancelEditSubpage">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <textarea v-model="editingSubpageContent" class="subpage-edit-textarea"
+                        placeholder="Edit subpage content..."></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="cancel-button" @click="cancelEditSubpage">Cancel</button>
+                    <button class="save-button" @click="saveEditedSubpage" :disabled="isSavingContent">
+                        {{ isSavingContent ? 'Saving...' : 'Save' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Subpage Delete Confirmation Modal -->
+        <div v-if="showDeleteSubpageConfirm" class="modal-overlay">
+            <div class="modal-content confirm-modal">
+                <div class="modal-header">
+                    <h3>Confirm Delete</h3>
+                    <button class="close-button" @click="cancelDeleteSubpage">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <p>Are you sure you want to delete this subpage? This action cannot be undone.</p>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="cancel-button" @click="cancelDeleteSubpage">Cancel</button>
+                    <button class="delete-button" @click="deleteSubpage">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Subpage Modal -->
+        <div v-if="showAddSubpageModal" class="modal-overlay">
+            <div class="modal-content subpage-edit-modal">
+                <div class="modal-header">
+                    <h3>Add New Subpage</h3>
+                    <button class="close-button" @click="cancelAddSubpage">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <div v-if="error" class="error-message">
+                        {{ error }}
+                    </div>
+                    <div class="form-group">
+                        <label for="subpage-name">Subpage Name (must be unique)</label>
+                        <input id="subpage-name" v-model="newSubpageName" type="text" class="subpage-name-input"
+                            placeholder="Enter unique subpage name..." />
+                    </div>
+                    <div class="form-group">
+                        <label for="subpage-content">Content</label>
+                        <textarea id="subpage-content" v-model="newSubpageContent" class="subpage-edit-textarea"
+                            placeholder="Enter subpage content..."></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="cancel-button" @click="cancelAddSubpage">Cancel</button>
+                    <button class="save-button" @click="addNewSubpage"
+                        :disabled="!newSubpageName.trim() || !newSubpageContent.trim()">
+                        Add Subpage
+                    </button>
                 </div>
             </div>
         </div>
@@ -798,7 +1153,541 @@ const closeKnowledgeModal = () => {
 
 .confirm-content {
     padding: var(--space-lg) 0;
+}
+
+/* Queue Section Styles */
+.queue-section {
+    margin: var(--space-lg) 0;
+    padding: var(--space-md);
+    background: var(--background-soft);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+}
+
+.queue-header {
+    margin: 0 0 var(--space-md) 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.queue-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.queue-item {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    transition: all 0.2s ease;
+}
+
+.queue-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+}
+
+.queue-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.queue-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.queue-source {
+    font-weight: 500;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-badge {
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.pending {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-badge.processing {
+    background: #fef3c7;
+    color: #92400e;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.status-badge.failed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-badge.completed {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.progress-bar-container {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--background-soft);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    border-radius: var(--radius-full);
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-width: 40px;
+}
+
+.queue-error {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    background: #fee2e2;
+    border-radius: var(--radius-sm);
+}
+
+.error-icon {
+    font-size: 1rem;
+}
+
+.error-text {
+    color: #991b1b;
+    font-size: 0.875rem;
+    flex: 1;
+}
+
+.queue-item-meta {
+    display: flex;
+    gap: var(--space-md);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.queue-type,
+.queue-time {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+
+/* Action Buttons in Grid */
+.view-button,
+.delete-button {
+    padding: 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.view-button:hover,
+.delete-button:hover {
+    background: var(--background-soft);
+}
+
+.action-icon {
+    width: 18px;
+    height: 18px;
+    opacity: 0.8;
+    filter: invert(37%) sepia(89%) saturate(3207%) hue-rotate(352deg) brightness(98%) contrast(93%);
+}
+
+.view-button:hover .action-icon,
+.delete-button:hover .action-icon {
+    opacity: 1;
+}
+
+/* Content Modal Styles */
+.content-modal {
+    max-width: 900px;
+    width: 90%;
+    max-height: 85vh;
+}
+
+.content-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md) 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: var(--space-md);
+}
+
+.content-info {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+}
+
+.add-subpage-btn {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.add-subpage-btn:hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+}
+
+.content-source {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.content-type,
+.content-chunks-count {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.content-actions {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.edit-button,
+.save-button {
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.edit-button:hover,
+.save-button:hover:not(:disabled) {
+    background: var(--primary-color-dark, #0056b3);
+    transform: translateY(-1px);
+}
+
+.save-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.content-display {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.content-editor {
+    width: 100%;
+    min-height: 400px;
+    padding: var(--space-md);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    font-family: monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+.content-editor:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.content-viewer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.content-chunk {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.chunk-header {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--background-soft);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.chunk-number {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.chunk-content {
+    padding: var(--space-md);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Content Table Styles */
+.content-table-container {
+    max-height: 60vh;
+    overflow: auto;
+    padding-right: var(--space-md);
+}
+
+.content-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.content-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--background-soft);
+    z-index: 1;
+}
+
+.content-table th {
+    padding: var(--space-sm) var(--space-md);
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.content-table .col-url {
+    width: 25%;
+}
+
+.content-table .col-content {
+    width: 65%;
+}
+
+.content-table .col-actions {
+    width: 10%;
     text-align: center;
+}
+
+.subpage-row {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.subpage-row:hover {
+    background: var(--background-soft);
+}
+
+.cell-url,
+.cell-content,
+.cell-actions {
+    padding: var(--space-md);
+    vertical-align: top;
+}
+
+.subpage-url {
+    color: var(--primary-color);
+    text-decoration: none;
+    word-break: break-all;
+    display: block;
+    font-size: 0.8rem;
+}
+
+.subpage-url:hover {
+    text-decoration: underline;
+}
+
+.subpage-id {
+    color: var(--text-muted);
+    font-family: monospace;
+    font-size: 0.75rem;
+}
+
+.subpage-content-wrapper {
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.subpage-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
+.edit-subpage-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    transition: all 0.2s ease;
+}
+
+.edit-subpage-btn:hover {
+    background: var(--background-soft);
+}
+
+.delete-subpage-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    transition: all 0.2s ease;
+}
+
+.delete-subpage-btn:hover {
+    background: var(--background-soft);
+}
+
+.actions-buttons {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: center;
+    justify-content: center;
+}
+
+.form-group {
+    margin-bottom: var(--space-md);
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+.subpage-name-input {
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+}
+
+.subpage-name-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.action-icon-sm {
+    width: 16px;
+    height: 16px;
+    opacity: 0.8;
+    filter: invert(37%) sepia(89%) saturate(3207%) hue-rotate(352deg) brightness(98%) contrast(93%);
+}
+
+.edit-subpage-btn:hover .action-icon-sm {
+    opacity: 1;
+}
+
+/* Subpage Edit Modal */
+.subpage-edit-modal {
+    max-width: 700px;
+    width: 90%;
+}
+
+.modal-body {
+    padding: var(--space-lg);
+}
+
+.subpage-edit-textarea {
+    width: 100%;
+    min-height: 300px;
+    padding: var(--space-md);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    font-family: monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+.subpage-edit-textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Update actions cell width to accommodate view button */
+.actions-cell {
+    width: 100px;
+    text-align: center;
+    display: flex;
+    gap: var(--space-xs);
+    align-items: center;
+    justify-content: center;
 }
 
 .confirm-actions {
@@ -864,14 +1753,16 @@ const closeKnowledgeModal = () => {
 
 /* Responsive design for knowledge grid */
 @media (max-width: 1024px) {
+
     .knowledge-grid-header,
     .knowledge-grid-row {
         grid-template-columns: 2fr 1fr 1fr 80px;
     }
-    
+
     .header-cell:nth-child(3),
     .grid-cell:nth-child(3) {
-        display: none; /* Hide subpages column on medium screens */
+        display: none;
+        /* Hide subpages column on medium screens */
     }
 }
 
@@ -879,76 +1770,175 @@ const closeKnowledgeModal = () => {
     .knowledge-grid-container {
         padding: var(--space-sm);
     }
-    
+
     .knowledge-header {
         flex-direction: column;
         gap: var(--space-sm);
         align-items: stretch;
     }
-    
+
     .header-left {
         flex-direction: column;
         gap: var(--space-sm);
         align-items: stretch;
     }
-    
+
     .header-actions {
         justify-content: center;
     }
-    
+
     .knowledge-grid-header,
     .knowledge-grid-row {
         grid-template-columns: 1fr 80px;
     }
-    
+
     .header-cell:nth-child(2),
     .header-cell:nth-child(3),
     .header-cell:nth-child(4),
     .grid-cell:nth-child(2),
     .grid-cell:nth-child(3),
     .grid-cell:nth-child(4) {
-        display: none; /* Hide type, subpages, and created columns on mobile */
+        display: none;
+        /* Hide type, subpages, and created columns on mobile */
     }
-    
+
     .grid-cell:first-child {
         white-space: normal;
         word-break: break-word;
     }
-    
+
     .pagination {
         flex-direction: column;
         gap: var(--space-xs);
     }
-    
+
     .pagination-button {
         width: 100%;
     }
 }
 
+/* Improved Queue Styles */
+.queue-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-md);
+}
+
+.queue-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    /* Allow truncation */
+}
+
+.queue-source {
+    font-weight: 500;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.queue-meta {
+    display: flex;
+    gap: var(--space-xs);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.queue-status-container {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+}
+
+.delete-queue-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+}
+
+.delete-queue-btn:hover {
+    opacity: 1;
+    background: var(--background-soft);
+}
+
+.delete-icon-sm {
+    width: 14px;
+    height: 14px;
+}
+
+/* Grid Improvements */
+.source-cell {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 250px;
+}
+
+.pages-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.page-item {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.more-pages {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+    padding-left: var(--space-xs);
+}
+
+.page-url {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 @media (max-width: 480px) {
+
     .modal-content {
         width: 95%;
         padding: var(--space-md);
         max-height: 95vh;
     }
-    
+
     .knowledge-tabs {
         flex-direction: column;
     }
-    
+
     .url-input-group {
         flex-direction: column;
     }
-    
+
     .url-input-group input {
         margin-bottom: var(--space-sm);
     }
-    
+
     .confirm-actions {
         flex-direction: column;
         gap: var(--space-sm);
     }
-    
+
     .cancel-button,
     .confirm-modal .delete-button {
         width: 100%;
@@ -957,21 +1947,23 @@ const closeKnowledgeModal = () => {
 
 /* Responsive design for org knowledge grid */
 @media (max-width: 768px) {
+
     .org-knowledge-grid .knowledge-grid-header,
     .org-knowledge-grid .knowledge-grid-row {
         grid-template-columns: 1fr 120px;
     }
-    
+
     .type-cell {
-        display: none; /* Hide type column on mobile */
+        display: none;
+        /* Hide type column on mobile */
     }
-    
+
     .source-cell {
         padding-left: var(--space-sm);
         white-space: normal;
         word-break: break-word;
     }
-    
+
     .action-cell {
         padding-right: var(--space-sm);
     }

@@ -417,8 +417,170 @@ def test_link_nonexistent_knowledge(client: TestClient, test_agent):
 def test_get_nonexistent_queue(client: TestClient):
     """Test getting nonexistent queue status"""
     response = client.get("/api/v1/knowledge/queue/999999")
-    
+
     assert response.status_code == 200  # API returns 200 with error message
     data = response.json()
     assert "error" in data
-    assert data["error"] == "Queue item not found" 
+    assert data["error"] == "Queue item not found"
+
+
+# Test cases for add_subpage endpoint
+def test_add_subpage_knowledge_not_found(client: TestClient):
+    """Test adding subpage to non-existent knowledge source"""
+    response = client.post(
+        "/api/v1/knowledge/999999/subpage",
+        json={
+            "subpage_name": "test_subpage",
+            "content": "Test content for subpage"
+        }
+    )
+
+    assert response.status_code == 404
+    assert "Knowledge source not found" in response.json()["detail"]
+
+
+def test_add_subpage_unauthorized(client: TestClient, test_knowledge):
+    """Test adding subpage to knowledge from different organization"""
+    # Create a knowledge source with different org_id
+    from uuid import uuid4
+    from app.models.organization import Organization
+    from tests.conftest import TestingSessionLocal
+
+    db = TestingSessionLocal()
+    try:
+        # Create a different organization
+        other_org = Organization(
+            id=uuid4(),
+            name="Other Org",
+            domain="other.com",
+            timezone="UTC"
+        )
+        db.add(other_org)
+
+        # Create knowledge for different org
+        other_knowledge = Knowledge(
+            source="other.pdf",
+            source_type=SourceType.FILE,
+            organization_id=other_org.id,
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(other_knowledge)
+        db.commit()
+        db.refresh(other_knowledge)
+
+        response = client.post(
+            f"/api/v1/knowledge/{other_knowledge.id}/subpage",
+            json={
+                "subpage_name": "test_subpage",
+                "content": "Test content"
+            }
+        )
+
+        assert response.status_code == 403
+        assert "Unauthorized access to knowledge source" in response.json()["detail"]
+    finally:
+        db.close()
+
+
+def test_add_subpage_no_table_name(client: TestClient, test_knowledge):
+    """Test adding subpage when knowledge has no vector database table"""
+    # test_knowledge by default has no table_name set
+    response = client.post(
+        f"/api/v1/knowledge/{test_knowledge.id}/subpage",
+        json={
+            "subpage_name": "test_subpage",
+            "content": "Test content for subpage"
+        }
+    )
+
+    assert response.status_code == 400
+    assert "Knowledge source has no vector database table" in response.json()["detail"]
+
+
+def test_add_subpage_integration_logic():
+    """Test that add_subpage endpoint has correct integration points"""
+    # This test verifies the endpoint exists and has the expected logic flow
+    # Actual database operations with pgvector are tested in integration tests
+
+    # Verify the endpoint is registered
+    from app.api.knowledge import router
+    route_found = False
+    for route in router.routes:
+        if hasattr(route, 'path') and '/{knowledge_id}/subpage' in route.path:
+            route_found = True
+            break
+
+    assert route_found, "add_subpage endpoint should be registered"
+
+
+def test_add_subpage_with_enterprise_limits_mocked():
+    """Test that enterprise limits are checked in add_subpage endpoint"""
+    from unittest.mock import patch, MagicMock, AsyncMock
+    from app.api.knowledge import add_subpage
+    from app.models.user import User
+    from app.models.knowledge import Knowledge, SourceType
+    from fastapi import HTTPException
+    import pytest
+    from uuid import uuid4
+
+    # Create mock objects
+    mock_db = MagicMock()
+    mock_user = User(
+        id=uuid4(),
+        email="test@test.com",
+        hashed_password="hashed",
+        organization_id=uuid4(),
+        role_id=1,
+        is_active=True,
+        full_name="Test User"
+    )
+
+    # Create mock knowledge with table_name and schema set
+    mock_knowledge = Knowledge(
+        id=1,
+        source="test.pdf",
+        source_type=SourceType.FILE,
+        organization_id=mock_user.organization_id,
+        table_name="test_table",
+        schema="public"
+    )
+    mock_knowledge.agent_links = []
+
+    # Mock repository
+    with patch('app.api.knowledge.KnowledgeRepository') as mock_repo_class:
+        mock_repo = MagicMock()
+        mock_repo.get_by_id.return_value = mock_knowledge
+        mock_repo_class.return_value = mock_repo
+
+        # Mock subscription check with limit reached
+        with patch('app.api.knowledge.HAS_ENTERPRISE', True):
+            with patch('app.enterprise.repositories.subscription.SubscriptionRepository') as mock_sub_repo_class:
+                # Create subscription with plan at limit
+                mock_subscription = MagicMock()
+                mock_plan = MagicMock()
+                mock_plan.max_sub_pages = 2
+                mock_subscription.plan = mock_plan
+
+                mock_sub_repo = MagicMock()
+                mock_sub_repo.get_active_subscription.return_value = mock_subscription
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                # Mock the database count query to return 2 (at limit)
+                mock_result = MagicMock()
+                mock_result.count = 2
+                mock_db.execute.return_value.fetchone.return_value = mock_result
+
+                # Should raise 402 error
+                with pytest.raises(HTTPException) as exc_info:
+                    # Call the endpoint function directly
+                    import asyncio
+                    result = asyncio.run(add_subpage(
+                        knowledge_id=1,
+                        subpage_name="test",
+                        content="test content",
+                        current_user=mock_user,
+                        db=mock_db
+                    ))
+
+                assert exc_info.value.status_code == 402
+                assert "Subpage limit reached" in exc_info.value.detail 

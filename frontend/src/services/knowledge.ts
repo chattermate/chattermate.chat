@@ -113,4 +113,39 @@ export const knowledgeService = {
     const response = await api.delete(`/knowledge/${knowledgeId}`)
     return response.data
   },
+
+  async getAgentQueueItems(agentId: string) {
+    const response = await api.get(`/knowledge/queue/agent/${agentId}`)
+    return response.data
+  },
+
+  async deleteQueueItem(queueId: number) {
+    const response = await api.delete(`/knowledge/queue/${queueId}`)
+    return response.data
+  },
+
+  async getKnowledgeContent(knowledgeId: number) {
+    const response = await api.get(`/knowledge/${knowledgeId}/content`)
+    return response.data
+  },
+
+  async updateChunkContent(knowledgeId: number, chunkId: string, content: string) {
+    // Don't encode chunkId here - axios will handle it
+    const response = await api.put(`/knowledge/${knowledgeId}/chunk/${encodeURIComponent(chunkId)}`, { content })
+    return response.data
+  },
+
+  async deleteChunk(knowledgeId: number, chunkId: string) {
+    const response = await api.delete(`/knowledge/${knowledgeId}/chunk/${chunkId}`)
+    return response.data
+  },
+
+  async addSubpage(knowledgeId: number, subpageName: string, content: string) {
+    const response = await api.post(`/knowledge/${knowledgeId}/subpage`, { 
+      subpage_name: subpageName,
+      content 
+    })
+    return response.data
+  },
 }
+
