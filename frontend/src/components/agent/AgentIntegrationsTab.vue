@@ -19,6 +19,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue'
 import { checkShopifyConnection } from '@/services/shopify'
+import {
+  checkSlackConnection,
+  getSlackChannels,
+  getAgentSlackConfig,
+  createAgentSlackConfig,
+  updateAgentSlackConfig,
+  deleteAgentSlackConfig,
+  type SlackChannel,
+  type AgentSlackConfig
+} from '@/services/slack'
 
 interface JiraProject {
   id: string;
@@ -34,6 +44,11 @@ interface JiraIssueType {
 
 
 const props = defineProps({
+  // Agent ID - required for Slack config
+  agentId: {
+    type: String,
+    required: true
+  },
   // Jira props
   jiraConnected: {
     type: Boolean,
@@ -93,6 +108,25 @@ const shopifyLoading = ref(true)
 const localShopifyEnabled = ref(props.shopifyIntegrationEnabled)
 const shopifyToggleInProgress = ref(false)
 const shopifyError = ref('')
+
+// Local state for Slack integration
+const slackConnected = ref(false)
+const slackTeamName = ref('')
+const slackLoading = ref(true)
+const slackChannels = ref<SlackChannel[]>([])
+const slackConfigs = ref<AgentSlackConfig[]>([])
+const slackSaving = ref(false)
+const slackError = ref('')
+
+// Slack new channel config form
+const showSlackChannelForm = ref(false)
+const newSlackChannel = ref({
+  channel_id: '',
+  channel_name: '',
+  enabled: true,
+  respond_to_mentions: true,
+  respond_to_commands: true
+})
 
 const emit = defineEmits([
   'toggle-create-ticket',
@@ -217,9 +251,152 @@ const fetchShopifyStatus = async () => {
   }
 }
 
+// Fetch Slack connection status
+const fetchSlackStatus = async () => {
+  try {
+    slackLoading.value = true
+    const data = await checkSlackConnection()
+    console.log('Slack connection status:', data)
+    slackConnected.value = data.connected
+    slackTeamName.value = data.team_name || ''
+
+    if (data.connected) {
+      // Fetch channels
+      try {
+        const channels = await getSlackChannels()
+        console.log('Slack channels:', channels)
+        slackChannels.value = channels
+      } catch (channelError) {
+        console.error('Error fetching Slack channels:', channelError)
+        slackError.value = 'Failed to load Slack channels'
+      }
+
+      // Fetch agent configs if agentId available
+      if (props.agentId) {
+        try {
+          const configs = await getAgentSlackConfig(props.agentId)
+          console.log('Slack configs:', configs)
+          slackConfigs.value = configs
+        } catch (configError) {
+          console.error('Error fetching Slack configs:', configError)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error checking Slack connection:', error)
+    slackConnected.value = false
+  } finally {
+    slackLoading.value = false
+  }
+}
+
+// Add a new Slack channel config
+const addSlackChannelConfig = async () => {
+  if (!newSlackChannel.value.channel_id) {
+    slackError.value = 'Please select a channel'
+    return
+  }
+
+  try {
+    slackSaving.value = true
+    slackError.value = ''
+
+    const config = await createAgentSlackConfig(props.agentId, {
+      channel_id: newSlackChannel.value.channel_id,
+      channel_name: newSlackChannel.value.channel_name,
+      enabled: newSlackChannel.value.enabled,
+      respond_to_mentions: newSlackChannel.value.respond_to_mentions,
+      respond_to_reactions: false,
+      respond_to_commands: newSlackChannel.value.respond_to_commands
+    })
+
+    slackConfigs.value.push(config)
+
+    // Reset form
+    newSlackChannel.value = {
+      channel_id: '',
+      channel_name: '',
+      enabled: true,
+      respond_to_mentions: true,
+      respond_to_commands: true
+    }
+    showSlackChannelForm.value = false
+  } catch (error: any) {
+    console.error('Error adding Slack channel config:', error)
+    slackError.value = error.response?.data?.detail || 'Failed to add channel configuration'
+  } finally {
+    slackSaving.value = false
+  }
+}
+
+// Update a Slack channel config
+const updateSlackConfig = async (config: AgentSlackConfig, field: string, value: boolean) => {
+  try {
+    slackSaving.value = true
+    slackError.value = ''
+
+    const updateData: Record<string, boolean> = {}
+    updateData[field] = value
+
+    const updatedConfig = await updateAgentSlackConfig(props.agentId, config.id, updateData)
+
+    // Update local state
+    const index = slackConfigs.value.findIndex(c => c.id === config.id)
+    if (index !== -1) {
+      slackConfigs.value[index] = updatedConfig
+    }
+  } catch (error: any) {
+    console.error('Error updating Slack config:', error)
+    slackError.value = error.response?.data?.detail || 'Failed to update configuration'
+  } finally {
+    slackSaving.value = false
+  }
+}
+
+// Remove a Slack channel config
+const removeSlackChannelConfig = async (config: AgentSlackConfig) => {
+  if (!confirm(`Remove Slack channel "${config.channel_name}" configuration?`)) {
+    return
+  }
+
+  try {
+    slackSaving.value = true
+    slackError.value = ''
+
+    await deleteAgentSlackConfig(props.agentId, config.channel_id)
+
+    // Remove from local state
+    slackConfigs.value = slackConfigs.value.filter(c => c.id !== config.id)
+  } catch (error: any) {
+    console.error('Error removing Slack config:', error)
+    slackError.value = error.response?.data?.detail || 'Failed to remove configuration'
+  } finally {
+    slackSaving.value = false
+  }
+}
+
+// Handle channel selection in form
+const handleChannelSelect = (event: Event) => {
+  const select = event.target as HTMLSelectElement
+  const channel = slackChannels.value.find(c => c.id === select.value)
+  if (channel) {
+    newSlackChannel.value.channel_id = channel.id
+    newSlackChannel.value.channel_name = channel.name
+  }
+}
+
+// Computed: available channels (not already configured and bot is a member)
+const availableSlackChannels = computed(() => {
+  const configuredIds = slackConfigs.value.map(c => c.channel_id)
+  return slackChannels.value.filter(ch => ch.is_member && !configuredIds.includes(ch.id))
+})
+
 // Fetch connection status on component mount
 onMounted(async () => {
-  await fetchShopifyStatus()
+  await Promise.all([
+    fetchShopifyStatus(),
+    fetchSlackStatus()
+  ])
 })
 </script>
 
@@ -363,6 +540,154 @@ onMounted(async () => {
         <div v-if="shopifyError" class="shopify-error">
           <span class="error-icon">❌</span>
           {{ shopifyError }}
+        </div>
+      </div>
+
+      <!-- Slack Integration -->
+      <div class="integration-section">
+        <h4 class="integration-title">Slack Integration</h4>
+
+        <!-- Slack Connection Status -->
+        <div v-if="slackLoading" class="jira-status loading">
+          Checking Slack connection...
+        </div>
+        <div v-else-if="!slackConnected" class="jira-status not-connected">
+          <span class="status-icon">⚠️</span>
+          Slack is not connected
+          <router-link to="/settings/integrations" class="connect-link">
+            Connect Slack
+          </router-link>
+        </div>
+        <div v-else class="jira-status connected">
+          <span class="status-icon">✓</span>
+          Connected to {{ slackTeamName }}
+        </div>
+
+        <!-- Slack Channel Configuration -->
+        <div v-if="slackConnected" class="slack-config">
+          <p class="helper-text">
+            Configure which Slack channels this agent responds to. The agent can respond to @mentions and the /chattermate command.
+          </p>
+
+          <!-- Error display -->
+          <div v-if="slackError" class="slack-error">
+            <span class="error-icon">❌</span>
+            {{ slackError }}
+          </div>
+
+          <!-- Configured Channels List -->
+          <div v-if="slackConfigs.length > 0" class="slack-channels-list">
+            <div v-for="config in slackConfigs" :key="config.id" class="slack-channel-item">
+              <div class="channel-header">
+                <span class="channel-name">#{{ config.channel_name }}</span>
+                <button class="remove-btn" @click="removeSlackChannelConfig(config)" :disabled="slackSaving">
+                  ×
+                </button>
+              </div>
+              <div class="channel-options">
+                <label class="option-item">
+                  <input
+                    type="checkbox"
+                    :checked="config.enabled"
+                    @change="updateSlackConfig(config, 'enabled', !config.enabled)"
+                    :disabled="slackSaving"
+                  />
+                  <span>Enabled</span>
+                </label>
+                <label class="option-item">
+                  <input
+                    type="checkbox"
+                    :checked="config.respond_to_mentions"
+                    @change="updateSlackConfig(config, 'respond_to_mentions', !config.respond_to_mentions)"
+                    :disabled="slackSaving"
+                  />
+                  <span>@mentions</span>
+                </label>
+                <label class="option-item">
+                  <input
+                    type="checkbox"
+                    :checked="config.respond_to_commands"
+                    @change="updateSlackConfig(config, 'respond_to_commands', !config.respond_to_commands)"
+                    :disabled="slackSaving"
+                  />
+                  <span>/chattermate</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- No channels configured message -->
+          <div v-else class="no-channels-message">
+            No Slack channels configured for this agent. Add a channel below.
+          </div>
+
+          <!-- Add Channel Button -->
+          <button
+            v-if="!showSlackChannelForm && availableSlackChannels.length > 0"
+            class="add-channel-btn"
+            @click="showSlackChannelForm = true"
+          >
+            + Add Channel
+          </button>
+
+          <!-- No more channels available message -->
+          <div v-else-if="!showSlackChannelForm && slackChannels.filter(ch => ch.is_member).length > 0" class="no-channels-available">
+            All available channels have been configured.
+          </div>
+
+          <!-- No channels where bot is member -->
+          <div v-else-if="!showSlackChannelForm && slackChannels.length > 0 && slackChannels.filter(ch => ch.is_member).length === 0" class="no-channels-available">
+            The bot is not a member of any channels. Add the bot to a channel in Slack first.
+          </div>
+
+          <!-- Add Channel Form -->
+          <div v-if="showSlackChannelForm" class="add-channel-form">
+            <div class="form-group">
+              <label for="slack-channel">Select Channel</label>
+              <select
+                id="slack-channel"
+                @change="handleChannelSelect"
+                :value="newSlackChannel.channel_id"
+              >
+                <option value="">Select a channel</option>
+                <option
+                  v-for="channel in availableSlackChannels"
+                  :key="channel.id"
+                  :value="channel.id"
+                >
+                  #{{ channel.name }} {{ channel.is_private ? '(private)' : '' }}
+                </option>
+              </select>
+            </div>
+
+            <div class="channel-options-form">
+              <label class="option-item">
+                <input type="checkbox" v-model="newSlackChannel.respond_to_mentions" />
+                <span>Respond to @mentions</span>
+              </label>
+              <label class="option-item">
+                <input type="checkbox" v-model="newSlackChannel.respond_to_commands" />
+                <span>Respond to /chattermate command</span>
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button
+                class="cancel-btn"
+                @click="showSlackChannelForm = false"
+                :disabled="slackSaving"
+              >
+                Cancel
+              </button>
+              <button
+                class="save-config-btn"
+                @click="addSlackChannelConfig"
+                :disabled="!newSlackChannel.channel_id || slackSaving"
+              >
+                {{ slackSaving ? 'Saving...' : 'Add Channel' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -680,5 +1005,159 @@ input:checked + .slider:before {
   100% {
     background-position: 20px 0;
   }
+}
+
+/* Slack Integration Styles */
+.slack-config {
+  margin-top: var(--space-md);
+}
+
+.slack-error {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background-color: var(--error-light, #FEEAEA);
+  color: var(--error, #EF4444);
+  font-size: var(--text-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.slack-channels-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.slack-channel-item {
+  background-color: var(--background-alt);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.channel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+
+.channel-name {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.remove-btn:hover {
+  color: var(--error);
+}
+
+.remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.channel-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.option-item input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.no-channels-message,
+.no-channels-available {
+  padding: var(--space-md);
+  background-color: var(--background-mute);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+  margin-top: var(--space-md);
+}
+
+.add-channel-btn {
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.add-channel-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.add-channel-form {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  background-color: var(--background-alt);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.channel-options-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background-color: var(--background-soft);
+  border-radius: var(--radius-md);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+
+.cancel-btn {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--background-mute);
+  color: var(--text-color);
+  border: none;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.cancel-btn:hover {
+  background: var(--background-alt);
+}
+
+.cancel-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 </style> 

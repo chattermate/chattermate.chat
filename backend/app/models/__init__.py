@@ -31,6 +31,7 @@ from .session_to_agent import SessionToAgent, SessionStatus
 from .rating import Rating
 from app.models.jira import JiraToken
 from app.models.shopify import ShopifyShop
+from app.models.slack import SlackToken, SlackWorkspaceConfig, AgentSlackConfig, SlackConversation, StorageMode
 from app.models.workflow import Workflow
 from app.models.workflow_node import WorkflowNode, ExitCondition
 from app.models.workflow_connection import WorkflowConnection
@@ -57,6 +58,11 @@ __all__ = [
     "Rating",
     "JiraToken",
     "ShopifyShop",
+    "SlackToken",
+    "SlackWorkspaceConfig",
+    "AgentSlackConfig",
+    "SlackConversation",
+    "StorageMode",
     "Workflow",
     "WorkflowNode",
     "ExitCondition",

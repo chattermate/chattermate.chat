@@ -898,6 +898,7 @@ onMounted(async () => {
                         <!-- Integrations Tab -->
                         <div v-if="activeTab === 'integrations'" class="tab-content">
                             <AgentIntegrationsTab
+                                :agent-id="agentData.id"
                                 :jira-connected="jiraConnected"
                                 :jira-loading="jiraLoading"
                                 :create-ticket-enabled="createTicketEnabled"
