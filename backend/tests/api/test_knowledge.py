@@ -515,13 +515,19 @@ def test_add_subpage_integration_logic():
 
 def test_add_subpage_with_enterprise_limits_mocked():
     """Test that enterprise limits are checked in add_subpage endpoint"""
-    from unittest.mock import patch, MagicMock, AsyncMock
-    from app.api.knowledge import add_subpage
+    import pytest
+    from unittest.mock import patch, MagicMock
     from app.models.user import User
     from app.models.knowledge import Knowledge, SourceType
-    from fastapi import HTTPException
-    import pytest
     from uuid import uuid4
+    import app.api.knowledge as knowledge_module
+
+    # Skip this test if enterprise module is not available
+    if not knowledge_module.HAS_ENTERPRISE:
+        pytest.skip("Enterprise module not available")
+
+    from app.api.knowledge import add_subpage
+    from fastapi import HTTPException
 
     # Create mock objects
     mock_db = MagicMock()
@@ -553,34 +559,33 @@ def test_add_subpage_with_enterprise_limits_mocked():
         mock_repo_class.return_value = mock_repo
 
         # Mock subscription check with limit reached
-        with patch('app.api.knowledge.HAS_ENTERPRISE', True):
-            with patch('app.enterprise.repositories.subscription.SubscriptionRepository') as mock_sub_repo_class:
-                # Create subscription with plan at limit
-                mock_subscription = MagicMock()
-                mock_plan = MagicMock()
-                mock_plan.max_sub_pages = 2
-                mock_subscription.plan = mock_plan
+        with patch('app.enterprise.repositories.subscription.SubscriptionRepository') as mock_sub_repo_class:
+            # Create subscription with plan at limit
+            mock_subscription = MagicMock()
+            mock_plan = MagicMock()
+            mock_plan.max_sub_pages = 2
+            mock_subscription.plan = mock_plan
 
-                mock_sub_repo = MagicMock()
-                mock_sub_repo.get_active_subscription.return_value = mock_subscription
-                mock_sub_repo_class.return_value = mock_sub_repo
+            mock_sub_repo = MagicMock()
+            mock_sub_repo.get_active_subscription.return_value = mock_subscription
+            mock_sub_repo_class.return_value = mock_sub_repo
 
-                # Mock the database count query to return 2 (at limit)
-                mock_result = MagicMock()
-                mock_result.count = 2
-                mock_db.execute.return_value.fetchone.return_value = mock_result
+            # Mock the database count query to return 2 (at limit)
+            mock_result = MagicMock()
+            mock_result.count = 2
+            mock_db.execute.return_value.fetchone.return_value = mock_result
 
-                # Should raise 402 error
-                with pytest.raises(HTTPException) as exc_info:
-                    # Call the endpoint function directly
-                    import asyncio
-                    result = asyncio.run(add_subpage(
-                        knowledge_id=1,
-                        subpage_name="test",
-                        content="test content",
-                        current_user=mock_user,
-                        db=mock_db
-                    ))
+            # Should raise 402 error
+            with pytest.raises(HTTPException) as exc_info:
+                # Call the endpoint function directly
+                import asyncio
+                result = asyncio.run(add_subpage(
+                    knowledge_id=1,
+                    subpage_name="test",
+                    content="test content",
+                    current_user=mock_user,
+                    db=mock_db
+                ))
 
-                assert exc_info.value.status_code == 402
-                assert "Subpage limit reached" in exc_info.value.detail 
+            assert exc_info.value.status_code == 402
+            assert "Subpage limit reached" in exc_info.value.detail 

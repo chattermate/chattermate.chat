@@ -378,21 +378,492 @@ def test_search_knowledge_base_error(knowledge_search_tool):
     """Test knowledge base search with an error during search"""
     # Setup
     query = "test query"
-    
+
     # Mock the knowledge repository's get_by_agent method
     mock_knowledge = MagicMock()
     mock_knowledge.source = "test_document.pdf"
     mock_knowledge.source_type = SourceType.FILE  # Use the actual enum
-    
+
     # Get the knowledge_repo from the fixture
     mock_knowledge_repo = knowledge_search_tool._mock_knowledge_repo
     mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
-    
+
     # Make the search method raise an exception
     knowledge_search_tool.agent_knowledge.search.side_effect = Exception("Search error")
-    
+
     # Execute
     result = knowledge_search_tool.search_knowledge_base(query)
-    
+
     # Assert
     assert "Error searching knowledge base" in result
+
+
+# Tests for real implementation
+def test_real_search_knowledge_base_with_results():
+    """Test real search_knowledge_base implementation with mocked dependencies"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
+         patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
+         patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
+
+        # Setup mocks for initialization
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = "encrypted_key"
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        mock_decrypt.return_value = "decrypted_key"
+
+        # Create the tool
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        # Setup mocks for search
+        mock_knowledge = MagicMock()
+        mock_knowledge.source = "test.pdf"
+        mock_knowledge.source_type = SourceType.FILE
+        mock_knowledge.table_name = "test_table"
+        mock_knowledge.schema = "test_schema"
+
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        # Mock vector db and agent knowledge for search
+        mock_vector_db = MagicMock()
+        mock_pg_vector.return_value = mock_vector_db
+
+        mock_doc = MagicMock()
+        mock_doc.name = "test.pdf"
+        mock_doc.content = "Test content"
+        mock_doc.score = 0.9
+
+        mock_agent_knowledge = MagicMock()
+        mock_agent_knowledge.search.return_value = [mock_doc]
+        mock_agent_knowledge_class.return_value = mock_agent_knowledge
+
+        # Execute search
+        result = tool.search_knowledge_base("test query")
+
+        # Assert
+        assert "test.pdf" in result
+        assert "Test content" in result
+
+
+def test_real_search_knowledge_base_no_ai_config():
+    """Test initialization when no AI config exists"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class:
+
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        # No AI config available
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = None
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        # Should not raise an error
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        assert tool.agent_id == agent_id
+        assert tool.org_id == org_id
+
+
+def test_real_search_knowledge_base_with_source_filter():
+    """Test search with source filter"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+    source_filter = "specific_doc.pdf"
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
+         patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
+         patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
+
+        # Setup mocks for initialization
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = "encrypted_key"
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        mock_decrypt.return_value = "decrypted_key"
+
+        # Create tool with source filter
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id, source=source_filter)
+
+        assert tool.source == source_filter
+
+        # Setup mocks for search
+        mock_knowledge = MagicMock()
+        mock_knowledge.source = source_filter
+        mock_knowledge.source_type = SourceType.FILE
+        mock_knowledge.table_name = "test_table"
+        mock_knowledge.schema = "test_schema"
+
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        # Mock vector db and agent knowledge
+        mock_vector_db = MagicMock()
+        mock_pg_vector.return_value = mock_vector_db
+
+        mock_doc = MagicMock()
+        mock_doc.name = source_filter
+        mock_doc.content = "Filtered content"
+        mock_doc.score = 0.85
+
+        mock_agent_knowledge = MagicMock()
+        mock_agent_knowledge.search.return_value = [mock_doc]
+        mock_agent_knowledge_class.return_value = mock_agent_knowledge
+
+        # Execute search
+        result = tool.search_knowledge_base("test query")
+
+        # Verify source filter was applied
+        search_call = mock_agent_knowledge.search.call_args
+        assert search_call is not None
+        filters = search_call.kwargs.get('filters', {})
+        assert 'name' in filters
+        assert filters['name'] == source_filter
+
+
+def test_real_search_knowledge_base_no_content_docs():
+    """Test search when documents have no content"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
+         patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
+         patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
+
+        # Setup mocks
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = None
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        # Setup search mocks
+        mock_knowledge = MagicMock()
+        mock_knowledge.source = "test.pdf"
+        mock_knowledge.source_type = SourceType.FILE
+        mock_knowledge.table_name = "test_table"
+        mock_knowledge.schema = "test_schema"
+
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        mock_vector_db = MagicMock()
+        mock_pg_vector.return_value = mock_vector_db
+
+        # Documents with no content
+        mock_doc1 = MagicMock()
+        mock_doc1.name = "test.pdf"
+        mock_doc1.content = None
+        mock_doc1.score = 0.9
+
+        mock_doc2 = MagicMock()
+        mock_doc2.name = "test2.pdf"
+        mock_doc2.content = ""
+        mock_doc2.score = 0.8
+
+        mock_agent_knowledge = MagicMock()
+        mock_agent_knowledge.search.return_value = [mock_doc1, mock_doc2]
+        mock_agent_knowledge_class.return_value = mock_agent_knowledge
+
+        # Execute search
+        result = tool.search_knowledge_base("test query")
+
+        # When all documents have no content, should return no results found
+        assert "No relevant information found" in result
+
+
+def test_real_search_knowledge_base_unknown_source_type():
+    """Test search with unknown source type"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
+         patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
+         patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
+
+        # Setup mocks
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = "key"
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        mock_decrypt.return_value = "key"
+
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        # Setup search with mismatched source name
+        mock_knowledge = MagicMock()
+        mock_knowledge.source = "known_source.pdf"
+        mock_knowledge.source_type = SourceType.FILE
+        mock_knowledge.table_name = "test_table"
+        mock_knowledge.schema = "test_schema"
+
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        mock_vector_db = MagicMock()
+        mock_pg_vector.return_value = mock_vector_db
+
+        # Document with name that doesn't match any knowledge source
+        mock_doc = MagicMock()
+        mock_doc.name = "unknown_source.pdf"
+        mock_doc.content = "Content from unknown source"
+        mock_doc.score = 0.9
+
+        mock_agent_knowledge = MagicMock()
+        mock_agent_knowledge.search.return_value = [mock_doc]
+        mock_agent_knowledge_class.return_value = mock_agent_knowledge
+
+        # Execute search
+        result = tool.search_knowledge_base("test query")
+
+        # Should fallback to 'unknown' source type
+        assert "UNKNOWN" in result or "unknown_source.pdf" in result
+
+
+def test_real_search_knowledge_base_document_without_score():
+    """Test search with documents that don't have score attribute"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
+         patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
+         patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
+
+        # Setup mocks
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = "key"
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        mock_decrypt.return_value = "key"
+
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        # Setup search
+        mock_knowledge = MagicMock()
+        mock_knowledge.source = "test.pdf"
+        mock_knowledge.source_type = SourceType.WEBSITE
+        mock_knowledge.table_name = "test_table"
+        mock_knowledge.schema = "test_schema"
+
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        mock_vector_db = MagicMock()
+        mock_pg_vector.return_value = mock_vector_db
+
+        # Document without score attribute
+        mock_doc = MagicMock(spec=['name', 'content'])
+        mock_doc.name = "test.pdf"
+        mock_doc.content = "Test content"
+        # Don't set score attribute - hasattr will return False
+
+        mock_agent_knowledge = MagicMock()
+        mock_agent_knowledge.search.return_value = [mock_doc]
+        mock_agent_knowledge_class.return_value = mock_agent_knowledge
+
+        # Execute search
+        result = tool.search_knowledge_base("test query")
+
+        # Should handle missing score gracefully (default to 0.0)
+        assert "test.pdf" in result
+        assert "Test content" in result
+
+
+def test_real_search_knowledge_base_exception_handling():
+    """Test exception handling in real search_knowledge_base"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class:
+
+        # Setup mocks for initialization
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = None
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        # Make the repository raise an exception during search
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.side_effect = Exception("Database connection error")
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        # Execute search - should catch exception and return error message
+        result = tool.search_knowledge_base("test query")
+
+        # Assert error message is returned
+        assert "Error searching knowledge base" in result
+
+
+def test_real_search_knowledge_base_lazy_init():
+    """Test lazy initialization of agent_knowledge during search"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
+         patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
+         patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class, \
+         patch('app.tools.knowledge_search_byagent.FastEmbedEmbedder') as mock_embedder_class:
+
+        # Setup mocks for initialization
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = "key"
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        mock_decrypt.return_value = "key"
+
+        # Create tool - agent_knowledge should be None initially
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        # Explicitly set agent_knowledge to None to test lazy initialization
+        tool.agent_knowledge = None
+
+        # Setup mocks for search
+        mock_knowledge = MagicMock()
+        mock_knowledge.source = "test.pdf"
+        mock_knowledge.source_type = SourceType.FILE
+        mock_knowledge.table_name = "test_table"
+        mock_knowledge.schema = "test_schema"
+
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        # Mock embedder
+        mock_embedder = MagicMock()
+        mock_embedder_class.return_value = mock_embedder
+
+        # Mock vector db
+        mock_vector_db = MagicMock()
+        mock_pg_vector.return_value = mock_vector_db
+
+        # Mock agent knowledge
+        mock_doc = MagicMock()
+        mock_doc.name = "test.pdf"
+        mock_doc.content = "Lazy init content"
+        mock_doc.score = 0.9
+
+        mock_agent_knowledge = MagicMock()
+        mock_agent_knowledge.search.return_value = [mock_doc]
+        mock_agent_knowledge_class.return_value = mock_agent_knowledge
+
+        # Execute search - should initialize agent_knowledge
+        result = tool.search_knowledge_base("test query")
+
+        # Verify initialization occurred
+        mock_embedder_class.assert_called_once()
+        mock_pg_vector.assert_called_once()
+        mock_agent_knowledge_class.assert_called_once()
+
+        # Verify search was successful
+        assert "test.pdf" in result
+        assert "Lazy init content" in result
+
+
+def test_real_search_knowledge_base_no_sources_real():
+    """Test real implementation when no knowledge sources are available"""
+    agent_id = str(uuid4())
+    org_id = uuid4()
+
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
+         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class:
+
+        # Setup mocks for initialization
+        mock_db = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.encrypted_api_key = None
+        mock_ai_config_repo = MagicMock()
+        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
+        mock_ai_config_repo_class.return_value = mock_ai_config_repo
+
+        tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
+
+        # Return empty list for knowledge sources
+        mock_knowledge_repo = MagicMock()
+        mock_knowledge_repo.get_by_agent.return_value = []
+        mock_knowledge_repo_class.return_value = mock_knowledge_repo
+
+        # Execute search
+        result = tool.search_knowledge_base("test query")
+
+        # Should return no sources message
+        assert "No knowledge sources available for this agent" in result
