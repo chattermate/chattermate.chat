@@ -95,7 +95,7 @@ REMEMBER: URLs are the most critical element to preserve. Users need these links
 
 Format your response as a concise summary that maintains all URLs and critical information.""",
                     markdown=False,
-                    debug_mode=True
+                    debug_mode=settings.ENVIRONMENT == "development"
                 )
                 logger.info(f"Initialized content summarizer with model: {self.model_type}/{self.model_name}")
             except Exception as e:
