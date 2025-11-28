@@ -138,6 +138,8 @@ async def process_slack_event(event_payload: Dict[str, Any], db: Session):
                 await handle_assistant_thread_started(event, team_id, db)
             elif event_type == "assistant_thread_context_changed":
                 await handle_assistant_context_changed(event, team_id, db)
+            elif event_type == "app_home_opened":
+                await handle_app_home_opened(event, team_id, db)
             else:
                 logger.debug(f"Unhandled event type: {event_type}")
         finally:
@@ -327,6 +329,145 @@ async def handle_assistant_context_changed(event: Dict[str, Any], team_id: str, 
     # For now, we just log the context change
     # Future enhancement: Could update suggested prompts or provide channel-specific help
     pass
+
+
+async def handle_app_home_opened(event: Dict[str, Any], team_id: str, db: Session):
+    """Handle when user opens the App Home tab."""
+    from app.core.config import settings
+
+    slack_repo = SlackRepository(db)
+    token = slack_repo.get_token_by_team(team_id)
+    if not token:
+        logger.error(f"No token found for team {team_id}")
+        return
+
+    user_id = event.get("user")
+    tab = event.get("tab")
+
+    # Only handle the home tab
+    if tab != "home":
+        return
+
+    logger.info(f"App Home opened by user {user_id} in team {team_id}")
+
+    # Get organization agents
+    agent_repo = AgentRepository(db)
+    agents = agent_repo.get_org_agents(token.organization_id)
+
+    # Build agent blocks - each agent as a card with status and instructions
+    agent_blocks = []
+    if agents:
+        agent_blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Your AI Agents*"
+            }
+        })
+
+        for agent in agents[:10]:
+            status_emoji = ":large_green_circle:" if agent.is_active else ":white_circle:"
+            status_text = "Online" if agent.is_active else "Offline"
+
+            # Use display_name if available, otherwise name
+            agent_name = agent.display_name or agent.name
+
+            # Get first instruction (truncated to 100 chars)
+            instructions = agent.instructions if hasattr(agent, 'instructions') else []
+            if instructions and len(instructions) > 0:
+                first_instruction = instructions[0]
+                if len(first_instruction) > 100:
+                    first_instruction = first_instruction[:97] + "..."
+                instruction_text = f"_{first_instruction}_"
+            else:
+                instruction_text = "_No instructions set_"
+
+            agent_blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"{status_emoji}  *{agent_name}*  •  {status_text}\n{instruction_text}"
+                }
+            })
+    else:
+        agent_blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*No agents configured yet*\nCreate your first AI agent in the ChatterMate dashboard."
+            }
+        })
+
+    # Build the home view
+    home_view = {
+        "type": "home",
+        "blocks": [
+            # Header with logo feel
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "ChatterMate",
+                    "emoji": True
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "AI-powered support & sales assistant for your team"
+                    }
+                ]
+            },
+            {"type": "divider"},
+
+            # Agents section
+            *agent_blocks,
+            {"type": "divider"},
+
+            # Quick start guide
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*Quick Start*"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": ":speech_balloon:  *@mention* me in any channel\n"
+                            ":zap:  Use */chattermate [question]*\n"
+                            ":robot_face:  Open *Agents & AI Apps* sidebar"
+                }
+            },
+            {"type": "divider"},
+
+            # Footer
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": ":gear: Manage agents, prompts & settings in the <" + settings.FRONTEND_URL + "|ChatterMate Dashboard>"
+                    }
+                ]
+            }
+        ]
+    }
+
+    # Publish the home view
+    try:
+        await slack_service.publish_home_view(
+            access_token=token.access_token,
+            user_id=user_id,
+            view=home_view
+        )
+        logger.info(f"Published App Home view for user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to publish App Home view: {e}")
 
 
 async def handle_mention(event: Dict[str, Any], team_id: str, db: Session):

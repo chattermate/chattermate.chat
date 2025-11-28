@@ -596,6 +596,45 @@ class SlackService:
 
             return data
 
+    async def publish_home_view(
+        self,
+        access_token: str,
+        user_id: str,
+        view: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Publish App Home view for a user.
+
+        Args:
+            access_token: Bot OAuth token
+            user_id: Slack user ID to publish the view for
+            view: View object with type "home" and blocks
+
+        Returns:
+            Slack API response
+        """
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.API_BASE_URL}/views.publish",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "user_id": user_id,
+                    "view": view
+                }
+            )
+
+            data = response.json()
+
+            if not data.get("ok"):
+                error = data.get("error", "unknown_error")
+                logger.error(f"Slack views.publish failed: {error}")
+                raise SlackAPIError(f"Failed to publish home view: {error}")
+
+            return data
+
     async def auth_revoke(self, access_token: str) -> bool:
         """
         Revoke the access token and uninstall the app from the workspace.
