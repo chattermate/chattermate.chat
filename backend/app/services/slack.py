@@ -504,6 +504,98 @@ class SlackService:
 
             return data
 
+    async def set_assistant_status(
+        self,
+        access_token: str,
+        channel: str,
+        thread_ts: str,
+        status: str
+    ) -> Dict[str, Any]:
+        """
+        Set assistant status in an AI assistant thread (e.g., 'is thinking...').
+
+        This is used for Slack's Agents & AI Apps feature to show
+        a status indicator while the bot is processing.
+
+        Args:
+            access_token: Bot OAuth token
+            channel: Channel ID of the assistant thread
+            thread_ts: Thread timestamp
+            status: Status text to display (e.g., "is thinking...")
+
+        Returns:
+            Slack API response
+        """
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.API_BASE_URL}/assistant.threads.setStatus",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "channel_id": channel,
+                    "thread_ts": thread_ts,
+                    "status": status
+                }
+            )
+
+            data = response.json()
+
+            if not data.get("ok"):
+                error = data.get("error", "unknown_error")
+                logger.debug(f"Slack assistant.threads.setStatus: {error}")
+                # Don't raise - status is optional functionality
+
+            return data
+
+    async def set_suggested_prompts(
+        self,
+        access_token: str,
+        channel: str,
+        thread_ts: str,
+        prompts: list,
+        title: str = None
+    ) -> Dict[str, Any]:
+        """
+        Set suggested prompts in an AI assistant thread.
+
+        Args:
+            access_token: Bot OAuth token
+            channel: Channel ID of the assistant thread
+            thread_ts: Thread timestamp
+            prompts: List of prompt objects with 'title' and 'message' keys (max 4)
+            title: Optional title for the prompt list
+
+        Returns:
+            Slack API response
+        """
+        async with httpx.AsyncClient() as client:
+            payload = {
+                "channel_id": channel,
+                "thread_ts": thread_ts,
+                "prompts": prompts[:4]  # Max 4 prompts
+            }
+            if title:
+                payload["title"] = title
+
+            response = await client.post(
+                f"{self.API_BASE_URL}/assistant.threads.setSuggestedPrompts",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload
+            )
+
+            data = response.json()
+
+            if not data.get("ok"):
+                error = data.get("error", "unknown_error")
+                logger.debug(f"Slack assistant.threads.setSuggestedPrompts: {error}")
+
+            return data
+
     async def auth_revoke(self, access_token: str) -> bool:
         """
         Revoke the access token and uninstall the app from the workspace.

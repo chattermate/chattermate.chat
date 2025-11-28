@@ -134,6 +134,10 @@ async def process_slack_event(event_payload: Dict[str, Any], db: Session):
                 await handle_direct_message(event, team_id, db)
             elif event_type == "member_joined_channel":
                 await handle_bot_joined_channel(event, team_id, event_payload, db)
+            elif event_type == "assistant_thread_started":
+                await handle_assistant_thread_started(event, team_id, db)
+            elif event_type == "assistant_thread_context_changed":
+                await handle_assistant_context_changed(event, team_id, db)
             else:
                 logger.debug(f"Unhandled event type: {event_type}")
         finally:
@@ -222,6 +226,109 @@ async def handle_bot_joined_channel(event: Dict[str, Any], team_id: str, event_p
         logger.error(f"Failed to send setup message: {e}")
 
 
+async def handle_assistant_thread_started(event: Dict[str, Any], team_id: str, db: Session):
+    """Handle when user opens AI assistant sidebar (Agents & AI Apps feature)."""
+    slack_repo = SlackRepository(db)
+    token = slack_repo.get_token_by_team(team_id)
+    if not token:
+        logger.error(f"No token found for team {team_id}")
+        return
+
+    # The assistant_thread event contains assistant_thread object
+    assistant_thread = event.get("assistant_thread", {})
+    channel_id = assistant_thread.get("channel_id")
+    thread_ts = assistant_thread.get("thread_ts")
+
+    if not channel_id or not thread_ts:
+        logger.error("Missing channel_id or thread_ts in assistant_thread_started event")
+        return
+
+    logger.info(f"Assistant thread started in channel {channel_id}, thread {thread_ts}")
+
+    # Set thinking status
+    try:
+        await slack_service.set_assistant_status(
+            access_token=token.access_token,
+            channel=channel_id,
+            thread_ts=thread_ts,
+            status="is getting ready..."
+        )
+    except Exception as e:
+        logger.debug(f"Could not set assistant status: {e}")
+
+    # Get organization agents for context
+    agent_repo = AgentRepository(db)
+    agents = agent_repo.get_org_agents(token.organization_id)
+
+    # Build dynamic suggested prompts from available agents
+    prompts = []
+    if agents:
+        for agent in agents[:4]:  # Max 4 prompts
+            prompts.append({
+                "title": f"Ask {agent.name}",
+                "message": f"Hi! I'd like to chat with {agent.name}"
+            })
+
+    # Set suggested prompts via API
+    if prompts:
+        try:
+            await slack_service.set_suggested_prompts(
+                access_token=token.access_token,
+                channel=channel_id,
+                thread_ts=thread_ts,
+                prompts=prompts,
+                title="Choose an agent to chat with:"
+            )
+            logger.info(f"Set {len(prompts)} suggested prompts for thread {thread_ts}")
+        except Exception as e:
+            logger.debug(f"Could not set suggested prompts: {e}")
+
+    # Build welcome message
+    if agents:
+        agent_names = [agent.name for agent in agents[:4]]
+        agent_list = ", ".join(agent_names)
+        welcome_text = (
+            f"Hi! I'm ChatterMate. 👋\n\n"
+            f"I have {len(agents)} agent{'s' if len(agents) > 1 else ''} available: {agent_list}.\n\n"
+            f"Select a prompt above to chat with a specific agent, or just ask me anything!"
+        )
+    else:
+        welcome_text = (
+            "Hi! I'm ChatterMate. 👋\n\n"
+            "No agents are configured yet. Please set up an agent in ChatterMate first."
+        )
+
+    # Send welcome message
+    try:
+        await slack_service.send_message(
+            access_token=token.access_token,
+            channel=channel_id,
+            text=welcome_text,
+            thread_ts=thread_ts
+        )
+        logger.info(f"Sent assistant welcome message to thread {thread_ts}")
+    except Exception as e:
+        logger.error(f"Failed to send assistant welcome message: {e}")
+
+
+async def handle_assistant_context_changed(event: Dict[str, Any], team_id: str, db: Session):
+    """Handle when user switches channel while in assistant sidebar."""
+    # This event fires when the user navigates to a different channel
+    # while the assistant sidebar is open. We can use this to provide
+    # context-aware suggestions or update the conversation.
+
+    assistant_thread = event.get("assistant_thread", {})
+    channel_id = assistant_thread.get("channel_id")
+    context = assistant_thread.get("context", {})
+    new_channel_id = context.get("channel_id")
+
+    logger.info(f"Assistant context changed: thread channel {channel_id}, viewing channel {new_channel_id}")
+
+    # For now, we just log the context change
+    # Future enhancement: Could update suggested prompts or provide channel-specific help
+    pass
+
+
 async def handle_mention(event: Dict[str, Any], team_id: str, db: Session):
     """Handle @mention events."""
     slack_repo = SlackRepository(db)
@@ -293,7 +400,7 @@ async def handle_mention(event: Dict[str, Any], team_id: str, db: Session):
 
 
 async def handle_direct_message(event: Dict[str, Any], team_id: str, db: Session):
-    """Handle direct messages to the bot."""
+    """Handle direct messages to the bot (including AI assistant sidebar)."""
     slack_repo = SlackRepository(db)
 
     token = slack_repo.get_token_by_team(team_id)
@@ -311,16 +418,83 @@ async def handle_direct_message(event: Dict[str, Any], team_id: str, db: Session
 
     # Get workspace config
     workspace_config = slack_repo.get_workspace_config_by_team(team_id)
-    if not workspace_config or not workspace_config.default_agent_id:
-        logger.debug("No default agent configured for DMs")
+    if not workspace_config:
+        logger.debug("No workspace config found for DMs")
         return
+
+    # Check for agent selection from AI assistant prompts
+    # Format: "Hi! I'd like to chat with {agent_name}"
+    selected_agent_id = None
+    agent_selection_match = re.match(r"Hi!\s*I'd like to chat with (.+)", text, re.IGNORECASE)
+    if agent_selection_match:
+        requested_agent_name = agent_selection_match.group(1).strip()
+        # Find agent by name
+        agent_repo = AgentRepository(db)
+        agents = agent_repo.get_org_agents(token.organization_id)
+        for agent in agents:
+            if agent.name.lower() == requested_agent_name.lower():
+                selected_agent_id = str(agent.id)
+                text = f"Hello! I'm ready to help."  # Replace with greeting
+                logger.info(f"Agent '{agent.name}' selected via prompt")
+                break
+
+    # Determine which agent to use
+    if selected_agent_id:
+        # User selected specific agent via AI assistant prompt
+        agent_id = selected_agent_id
+    elif workspace_config.default_agent_id:
+        # Use default agent
+        agent_id = str(workspace_config.default_agent_id)
+    else:
+        # No default agent - try to find any available agent for this org
+        agent_repo = AgentRepository(db)
+        agents = agent_repo.get_org_agents(token.organization_id)
+        if agents:
+            agent_id = str(agents[0].id)
+            logger.info(f"Using first available agent {agent_id} for DM (no default set)")
+        else:
+            logger.debug("No agents available for DMs")
+            try:
+                await slack_service.send_message(
+                    access_token=token.access_token,
+                    channel=channel_id,
+                    text="No agents are configured yet. Please set up an agent in ChatterMate first.",
+                    thread_ts=thread_ts
+                )
+            except Exception:
+                pass
+            return
+
+    # If message is empty after removing prefix, send help text
+    if not text:
+        try:
+            await slack_service.send_message(
+                access_token=token.access_token,
+                channel=channel_id,
+                text="How can I help you today? Just type your question!",
+                thread_ts=thread_ts
+            )
+        except Exception as e:
+            logger.error(f"Failed to send help message: {e}")
+        return
+
+    # Set "thinking" status for AI assistant threads
+    try:
+        await slack_service.set_assistant_status(
+            access_token=token.access_token,
+            channel=channel_id,
+            thread_ts=thread_ts,
+            status="is thinking..."
+        )
+    except Exception:
+        pass  # Status is optional, don't fail if it doesn't work
 
     await process_slack_chat(
         db=db,
         slack_repo=slack_repo,
         token=token,
         workspace_config=workspace_config,
-        agent_id=str(workspace_config.default_agent_id),
+        agent_id=agent_id,
         team_id=team_id,
         channel_id=channel_id,
         thread_ts=thread_ts,

@@ -45,6 +45,7 @@ from app.models.schemas.slack import (
     StorageModeEnum,
 )
 from app.repositories.slack import SlackRepository
+from app.repositories.agent import AgentRepository
 from app.services.slack import slack_service, SlackAuthError, SlackAPIError
 
 router = APIRouter()
@@ -244,6 +245,64 @@ async def get_slack_channels(
     except SlackAPIError as e:
         logger.error(f"Failed to get Slack channels: {e}")
         raise HTTPException(status_code=500, detail="Failed to get Slack channels")
+
+
+# ==================== AI Assistant Prompts Endpoint ====================
+
+@router.post("/suggested-prompts")
+async def get_suggested_prompts(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Slack calls this endpoint to get dynamic suggested prompts for the AI assistant.
+    Returns all organization agents as selectable options.
+    Configure URL in: Agents & AI Apps > Suggested Prompts > Dynamic
+    """
+    raw_body = await request.body()
+    body = json.loads(raw_body.decode('utf-8'))
+
+    # Verify Slack signature
+    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = request.headers.get("X-Slack-Signature", "")
+
+    if not slack_service.verify_signature(raw_body, timestamp, signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    team_id = body.get("team_id")
+    channel_context = body.get("context", {}).get("channel_id")
+
+    slack_repo = SlackRepository(db)
+    token = slack_repo.get_token_by_team(team_id)
+
+    if not token:
+        return {"prompts": []}
+
+    # Get all agents for this organization
+    agent_repo = AgentRepository(db)
+    agents = agent_repo.get_org_agents(token.organization_id)
+
+    # Build prompts - one per agent (max 4)
+    prompts = []
+    for agent in agents[:4]:
+        prompts.append({
+            "title": f"Ask {agent.name}",
+            "message": f"[agent:{agent.id}] "
+        })
+
+    # If user is viewing a channel with a configured agent, prioritize it
+    if channel_context:
+        agent_config = slack_repo.get_config_by_channel(team_id, channel_context)
+        if agent_config:
+            # Move this agent to the front
+            prompts = [p for p in prompts if str(agent_config.agent_id) not in p.get("message", "")]
+            prompts.insert(0, {
+                "title": f"Ask {agent_config.channel_name} Agent",
+                "message": f"[agent:{agent_config.agent_id}] "
+            })
+
+    logger.info(f"Returning {len(prompts)} suggested prompts for team {team_id}")
+    return {"prompts": prompts[:4]}
 
 
 # ==================== Workspace Configuration Endpoints ====================
