@@ -411,3 +411,281 @@ class TestSlackServiceViews:
 
             # Should return False but not raise
             assert result is False
+
+
+class TestSlackServiceAdditionalMethods:
+    """Additional tests for Slack service methods"""
+
+    @pytest.mark.asyncio
+    async def test_exchange_code_non_200_status(self, slack_service):
+        """Test token exchange with non-200 status code"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.post.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            with pytest.raises(SlackAuthError) as exc_info:
+                await slack_service.exchange_code_for_token("test_code")
+
+            assert "Failed to exchange code" in str(exc_info.value)
+
+    def test_verify_signature_missing_signing_secret(self):
+        """Test signature verification with missing signing secret"""
+        with patch('app.services.slack.settings') as mock_settings:
+            mock_settings.SLACK_CLIENT_ID = "test_client_id"
+            mock_settings.SLACK_CLIENT_SECRET = "test_client_secret"
+            mock_settings.SLACK_SIGNING_SECRET = None
+            mock_settings.BACKEND_URL = "https://test.example.com"
+
+            service = SlackService()
+            result = service.verify_signature(b'test', '12345', 'v0=signature')
+            assert result is False
+
+    def test_verify_signature_invalid_timestamp(self, slack_service):
+        """Test signature verification with invalid timestamp"""
+        result = slack_service.verify_signature(b'test', 'invalid', 'v0=signature')
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_respond_to_response_url_success(self, slack_service):
+        """Test responding to response URL"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.post.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await slack_service.respond_to_response_url(
+                response_url="https://hooks.slack.com/response",
+                text="Test message",
+                response_type="ephemeral"
+            )
+
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_respond_to_response_url_with_blocks(self, slack_service):
+        """Test responding to response URL with blocks"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "Test"}}]
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.post.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await slack_service.respond_to_response_url(
+                response_url="https://hooks.slack.com/response",
+                text="Test message",
+                blocks=blocks,
+                replace_original=True
+            )
+
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_respond_to_response_url_failure(self, slack_service):
+        """Test responding to response URL failure"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.post.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await slack_service.respond_to_response_url(
+                response_url="https://hooks.slack.com/response",
+                text="Test message"
+            )
+
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_info_success(self, slack_service):
+        """Test getting conversation info"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": True,
+            "channel": {
+                "id": "C12345",
+                "name": "general",
+                "is_channel": True
+            }
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.get.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await slack_service.get_conversation_info(
+                access_token="xoxb-test-token",
+                channel_id="C12345"
+            )
+
+            assert result["id"] == "C12345"
+            assert result["name"] == "general"
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_info_failure(self, slack_service):
+        """Test getting conversation info failure"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": False,
+            "error": "channel_not_found"
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.get.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            with pytest.raises(SlackAPIError) as exc_info:
+                await slack_service.get_conversation_info(
+                    access_token="xoxb-test-token",
+                    channel_id="invalid"
+                )
+
+            assert "channel_not_found" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_get_conversations_list_failure(self, slack_service):
+        """Test getting conversations list failure"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": False,
+            "error": "invalid_auth"
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.get.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            with pytest.raises(SlackAPIError) as exc_info:
+                await slack_service.get_conversations_list("invalid_token")
+
+            assert "invalid_auth" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_open_view_failure(self, slack_service):
+        """Test opening view failure"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": False,
+            "error": "trigger_expired"
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.post.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            with pytest.raises(SlackAPIError) as exc_info:
+                await slack_service.open_view(
+                    access_token="xoxb-test-token",
+                    trigger_id="12345",
+                    view={"type": "modal"}
+                )
+
+            assert "trigger_expired" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_get_permalink_success(self, slack_service):
+        """Test getting message permalink"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": True,
+            "permalink": "https://team.slack.com/archives/C12345/p1234567890"
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.get.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await slack_service.get_permalink(
+                access_token="xoxb-test-token",
+                channel="C12345",
+                message_ts="1234567890.123456"
+            )
+
+            assert result == "https://team.slack.com/archives/C12345/p1234567890"
+
+    @pytest.mark.asyncio
+    async def test_get_permalink_failure(self, slack_service):
+        """Test getting message permalink failure"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": False,
+            "error": "message_not_found"
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.get.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await slack_service.get_permalink(
+                access_token="xoxb-test-token",
+                channel="C12345",
+                message_ts="invalid"
+            )
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_set_assistant_status_failure(self, slack_service):
+        """Test setting assistant status failure (should not raise)"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": False,
+            "error": "not_in_assistant_channel"
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.post.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            # Should not raise, just return the response
+            result = await slack_service.set_assistant_status(
+                access_token="xoxb-test-token",
+                channel="C12345",
+                thread_ts="12345",
+                status="thinking"
+            )
+
+            assert result["ok"] is False
+
+    @pytest.mark.asyncio
+    async def test_set_suggested_prompts_failure(self, slack_service):
+        """Test setting suggested prompts failure"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "ok": False,
+            "error": "invalid_prompts"
+        }
+
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.post.return_value = mock_response
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await slack_service.set_suggested_prompts(
+                access_token="xoxb-test-token",
+                channel="C12345",
+                thread_ts="12345",
+                prompts=[],
+                title="Test"
+            )
+
+            assert result["ok"] is False
