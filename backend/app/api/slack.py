@@ -47,12 +47,57 @@ from app.models.schemas.slack import (
 from app.repositories.slack import SlackRepository
 from app.repositories.agent import AgentRepository
 from app.services.slack import slack_service, SlackAuthError, SlackAPIError
+from app.core.redis import get_redis
 
 router = APIRouter()
 logger = get_logger(__name__)
 
-# In-memory store for OAuth states (use Redis in production)
-oauth_states = {}
+# OAuth state TTL in seconds (10 minutes)
+OAUTH_STATE_TTL = 600
+
+# Fallback in-memory store for OAuth states (only used if Redis is unavailable)
+_oauth_states_fallback = {}
+
+
+def store_oauth_state(state: str, org_id: str) -> None:
+    """Store OAuth state with organization ID in Redis (or fallback to memory)."""
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            redis_client.setex(f"slack_oauth_state:{state}", OAUTH_STATE_TTL, org_id)
+            logger.debug(f"Stored OAuth state in Redis: {state}")
+            return
+        except Exception as e:
+            logger.warning(f"Failed to store OAuth state in Redis: {e}")
+    # Fallback to in-memory storage
+    _oauth_states_fallback[state] = org_id
+    logger.debug(f"Stored OAuth state in memory (fallback): {state}")
+
+
+def get_oauth_state(state: str) -> Optional[str]:
+    """Get organization ID for OAuth state from Redis (or fallback)."""
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            org_id = redis_client.get(f"slack_oauth_state:{state}")
+            if org_id:
+                return org_id
+        except Exception as e:
+            logger.warning(f"Failed to get OAuth state from Redis: {e}")
+    # Fallback to in-memory storage
+    return _oauth_states_fallback.get(state)
+
+
+def delete_oauth_state(state: str) -> None:
+    """Delete OAuth state from Redis (and fallback)."""
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            redis_client.delete(f"slack_oauth_state:{state}")
+        except Exception as e:
+            logger.warning(f"Failed to delete OAuth state from Redis: {e}")
+    # Also clean up fallback storage
+    _oauth_states_fallback.pop(state, None)
 
 
 # ==================== OAuth & Connection Endpoints ====================
@@ -95,9 +140,9 @@ async def authorize_slack(
     # Generate a random state for CSRF protection
     state = secrets.token_urlsafe(32)
 
-    # Store state in memory with organization ID
-    oauth_states[state] = str(organization.id)
-    logger.info(f"Stored OAuth state in memory: {state}")
+    # Store state in Redis with organization ID
+    store_oauth_state(state, str(organization.id))
+    logger.info(f"Stored OAuth state: {state}")
 
     # Get authorization URL
     auth_url = slack_service.get_authorization_url(state)
@@ -117,13 +162,13 @@ async def slack_oauth_callback(
     # Handle cancellation or error from Slack
     if error or not code or not state:
         logger.warning(f"Slack OAuth flow cancelled or error: {error} - {error_description}")
-        if state and state in oauth_states:
-            del oauth_states[state]
+        if state:
+            delete_oauth_state(state)
         redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=failure&reason={error or 'cancelled'}"
         return RedirectResponse(url=redirect_url)
 
     # Get organization ID from state
-    org_id = oauth_states.get(state)
+    org_id = get_oauth_state(state)
 
     if not org_id:
         logger.error(f"Invalid or expired state parameter: {state}")
@@ -170,8 +215,7 @@ async def slack_oauth_callback(
             )
 
         # Clean up the state
-        if state in oauth_states:
-            del oauth_states[state]
+        delete_oauth_state(state)
 
         redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=success&integration=slack"
         return RedirectResponse(url=redirect_url)
@@ -179,8 +223,7 @@ async def slack_oauth_callback(
     except Exception as e:
         logger.error(f"Error during Slack OAuth callback: {e}")
         traceback.print_exc()
-        if state in oauth_states:
-            del oauth_states[state]
+        delete_oauth_state(state)
         error_message = str(e).replace(" ", "_")[:100]
         redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=failure&reason={error_message}"
         return RedirectResponse(url=redirect_url)
