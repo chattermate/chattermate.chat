@@ -381,7 +381,8 @@ class SlackService:
         response_url: str,
         text: str,
         response_type: str = "ephemeral",
-        replace_original: bool = False
+        replace_original: bool = False,
+        blocks: Optional[List[Dict[str, Any]]] = None
     ) -> bool:
         """
         Respond to a slash command or interaction using response_url.
@@ -391,6 +392,7 @@ class SlackService:
             text: Message text
             response_type: 'ephemeral' or 'in_channel'
             replace_original: Whether to replace original message
+            blocks: Optional Block Kit blocks for rich formatting
 
         Returns:
             True if successful
@@ -400,6 +402,9 @@ class SlackService:
             "response_type": response_type,
             "replace_original": replace_original,
         }
+
+        if blocks:
+            payload["blocks"] = blocks
 
         async with httpx.AsyncClient() as client:
             response = await client.post(response_url, json=payload)

@@ -566,7 +566,7 @@ onMounted(async () => {
         <!-- Slack Channel Configuration -->
         <div v-if="slackConnected" class="slack-config">
           <p class="helper-text">
-            Configure which Slack channels this agent responds to. The agent can respond to @mentions and the /chattermate command.
+            Configure which Slack channels this agent responds to. The agent can respond to @mentions and the /chattermate command. Slack won't work with the workflow mode.
           </p>
 
           <!-- Error display -->
