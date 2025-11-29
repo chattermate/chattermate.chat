@@ -52,11 +52,14 @@ class SlackService:
     # Required OAuth scopes (privacy-focused for App Store approval)
     SCOPES = [
         "app_mentions:read",  # Receive @mentions
+        "assistant:write",  # AI Assistant features (status, suggested prompts)
         "channels:read",  # List public channels bot is in
         "chat:write",  # Send messages (bot must be added to channel)
         "commands",  # Slash commands
         "groups:read",  # List private channels bot is in
         "im:history",  # Read DM history (for context in DMs only)
+        "im:write",  # Write to DMs for assistant responses
+        "mpim:read"
     ]
 
     def __init__(self):
