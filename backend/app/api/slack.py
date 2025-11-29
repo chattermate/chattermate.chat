@@ -150,6 +150,55 @@ async def authorize_slack(
     return RedirectResponse(url=auth_url)
 
 
+# Pending Slack installation TTL in seconds (30 minutes)
+PENDING_INSTALL_TTL = 1800
+
+
+def store_pending_slack_install(install_key: str, token_data: dict) -> None:
+    """Store pending Slack installation data in Redis."""
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            redis_client.setex(
+                f"slack_pending_install:{install_key}",
+                PENDING_INSTALL_TTL,
+                json.dumps(token_data)
+            )
+            logger.debug(f"Stored pending Slack install in Redis: {install_key}")
+            return
+        except Exception as e:
+            logger.warning(f"Failed to store pending Slack install in Redis: {e}")
+    # Fallback to in-memory storage
+    _oauth_states_fallback[f"pending:{install_key}"] = token_data
+    logger.debug(f"Stored pending Slack install in memory (fallback): {install_key}")
+
+
+def get_pending_slack_install(install_key: str) -> Optional[dict]:
+    """Get pending Slack installation data from Redis."""
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            data = redis_client.get(f"slack_pending_install:{install_key}")
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            logger.warning(f"Failed to get pending Slack install from Redis: {e}")
+    # Fallback to in-memory storage
+    return _oauth_states_fallback.get(f"pending:{install_key}")
+
+
+def delete_pending_slack_install(install_key: str) -> None:
+    """Delete pending Slack installation from Redis."""
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            redis_client.delete(f"slack_pending_install:{install_key}")
+        except Exception as e:
+            logger.warning(f"Failed to delete pending Slack install from Redis: {e}")
+    # Also clean up fallback storage
+    _oauth_states_fallback.pop(f"pending:{install_key}", None)
+
+
 @router.get("/callback")
 async def slack_oauth_callback(
     code: Optional[str] = None,
@@ -160,14 +209,65 @@ async def slack_oauth_callback(
 ):
     """Handle the OAuth callback from Slack."""
     # Handle cancellation or error from Slack
-    if error or not code or not state:
+    if error or not code:
         logger.warning(f"Slack OAuth flow cancelled or error: {error} - {error_description}")
         if state:
             delete_oauth_state(state)
         redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=failure&reason={error or 'cancelled'}"
         return RedirectResponse(url=redirect_url)
 
-    # Get organization ID from state
+    # Handle Slack Marketplace installation (no state parameter)
+    # This happens when someone installs directly from Slack App Directory
+    if not state:
+        logger.info("Slack Marketplace installation detected (no state)")
+        try:
+            # Exchange code for token
+            token_data = await slack_service.exchange_code_for_token(code)
+            team_id = token_data["team_id"]
+            team_name = token_data["team_name"]
+
+            slack_repo = SlackRepository(db)
+
+            # Check if this Slack workspace is already connected to an organization
+            existing_token = slack_repo.get_token_by_team(team_id)
+            if existing_token:
+                # Workspace already connected - update the token
+                slack_repo.update_token(
+                    existing_token.id,
+                    access_token=token_data["access_token"],
+                    bot_user_id=token_data["bot_user_id"],
+                    team_id=team_id,
+                    team_name=team_name,
+                    authed_user_id=token_data.get("authed_user_id"),
+                    scope=token_data.get("scope")
+                )
+                logger.info(f"Updated existing Slack token for team {team_id}")
+                redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=success&integration=slack&redirect=/settings/integrations"
+                return RedirectResponse(url=redirect_url)
+
+            # New installation - store pending and redirect to login
+            install_key = secrets.token_urlsafe(32)
+            store_pending_slack_install(install_key, token_data)
+
+            logger.info(f"Stored pending Slack install for team {team_name} ({team_id})")
+
+            # Redirect to login with pending install key
+            redirect_url = (
+                f"{settings.FRONTEND_URL}/login"
+                f"?slack_install={install_key}"
+                f"&slack_team={team_name}"
+                f"&redirect=/settings/integrations"
+            )
+            return RedirectResponse(url=redirect_url)
+
+        except Exception as e:
+            logger.error(f"Error during Slack Marketplace installation: {e}")
+            traceback.print_exc()
+            error_message = str(e).replace(" ", "_")[:100]
+            redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=failure&reason={error_message}"
+            return RedirectResponse(url=redirect_url)
+
+    # Normal OAuth flow (with state from our /authorize endpoint)
     org_id = get_oauth_state(state)
 
     if not org_id:
@@ -217,7 +317,9 @@ async def slack_oauth_callback(
         # Clean up the state
         delete_oauth_state(state)
 
-        redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=success&integration=slack"
+        # Redirect to integrations page with success status
+        # Include redirect param so if user is logged out, they'll be redirected back after login
+        redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=success&integration=slack&redirect=/settings/integrations"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
@@ -227,6 +329,85 @@ async def slack_oauth_callback(
         error_message = str(e).replace(" ", "_")[:100]
         redirect_url = f"{settings.FRONTEND_URL}/settings/integrations?status=failure&reason={error_message}"
         return RedirectResponse(url=redirect_url)
+
+
+@router.post("/complete-install")
+async def complete_slack_install(
+    install_key: str,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db)
+):
+    """
+    Complete a pending Slack installation from marketplace.
+    Called after user logs in to link Slack workspace to their organization.
+    """
+    # Get pending installation data
+    token_data = get_pending_slack_install(install_key)
+
+    if not token_data:
+        raise HTTPException(
+            status_code=404,
+            detail="Installation not found or expired. Please install the app again from Slack."
+        )
+
+    slack_repo = SlackRepository(db)
+
+    try:
+        # Check if organization already has Slack connected
+        existing_org_token = slack_repo.get_token_by_org(organization.id)
+        if existing_org_token:
+            # Delete the pending install and return error
+            delete_pending_slack_install(install_key)
+            raise HTTPException(
+                status_code=400,
+                detail="Your organization already has a Slack workspace connected. Disconnect it first to connect a new one."
+            )
+
+        # Check if this Slack workspace is already connected to another organization
+        existing_team_token = slack_repo.get_token_by_team(token_data["team_id"])
+        if existing_team_token:
+            delete_pending_slack_install(install_key)
+            raise HTTPException(
+                status_code=400,
+                detail=f"This Slack workspace ({token_data['team_name']}) is already connected to another organization."
+            )
+
+        # Create new token for this organization
+        slack_repo.create_token(
+            organization_id=organization.id,
+            access_token=token_data["access_token"],
+            bot_user_id=token_data["bot_user_id"],
+            team_id=token_data["team_id"],
+            team_name=token_data["team_name"],
+            authed_user_id=token_data.get("authed_user_id"),
+            scope=token_data.get("scope")
+        )
+
+        # Create default workspace config
+        slack_repo.create_workspace_config(
+            organization_id=organization.id,
+            team_id=token_data["team_id"],
+            storage_mode=StorageMode.FULL_CONTENT
+        )
+
+        # Clean up pending installation
+        delete_pending_slack_install(install_key)
+
+        logger.info(f"Completed Slack installation for team {token_data['team_name']} -> org {organization.id}")
+
+        return {
+            "message": "Slack connected successfully",
+            "team_id": token_data["team_id"],
+            "team_name": token_data["team_name"]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing Slack installation: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to complete installation: {str(e)}")
 
 
 @router.delete("/disconnect")
@@ -328,8 +509,9 @@ async def get_suggested_prompts(
     # Build prompts - one per agent (max 4)
     prompts = []
     for agent in agents[:4]:
+        agent_name = agent.display_name or agent.name
         prompts.append({
-            "title": f"Ask {agent.name}",
+            "title": f"Ask {agent_name}",
             "message": f"[agent:{agent.id}] "
         })
 
@@ -571,7 +753,6 @@ async def slack_commands(
     parsed = parse_qs(raw_body.decode('utf-8'))
     form_data = {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
 
-    command = form_data.get("command")
     text = (form_data.get("text") or "").strip()
 
     # Handle 'help' synchronously (fast response)
@@ -580,8 +761,22 @@ async def slack_commands(
             "response_type": "ephemeral",
             "text": "*Chattermate Commands*\n"
                     "• `/chattermate [question]` - Ask Chattermate a question\n"
+                    "• `/chattermate config` - Configure which agent responds in this channel\n"
                     "• `/chattermate help` - Show this help message\n\n"
                     "You can also @mention Chattermate to ask questions."
+        }
+
+    # Handle 'config' command - open agent selection modal
+    if text.lower() == "config":
+        from app.services.slack_chat import process_config_command
+        background_tasks.add_task(
+            process_config_command,
+            dict(form_data),
+            db
+        )
+        return {
+            "response_type": "ephemeral",
+            "text": "Opening configuration..."
         }
 
     # Process question in background, respond via response_url

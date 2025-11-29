@@ -270,9 +270,10 @@ async def handle_assistant_thread_started(event: Dict[str, Any], team_id: str, d
     prompts = []
     if agents:
         for agent in agents[:4]:  # Max 4 prompts
+            agent_name = agent.display_name or agent.name
             prompts.append({
-                "title": f"Ask {agent.name}",
-                "message": f"Hi! I'd like to chat with {agent.name}"
+                "title": f"Ask {agent_name}",
+                "message": f"Hi! I'd like to chat with {agent_name}"
             })
 
     # Set suggested prompts via API
@@ -291,7 +292,7 @@ async def handle_assistant_thread_started(event: Dict[str, Any], team_id: str, d
 
     # Build welcome message
     if agents:
-        agent_names = [agent.name for agent in agents[:4]]
+        agent_names = [(agent.display_name or agent.name) for agent in agents[:4]]
         agent_list = ", ".join(agent_names)
         welcome_text = (
             f"Hi! I'm ChatterMate. 👋\n\n"
@@ -356,9 +357,9 @@ async def handle_app_home_opened(event: Dict[str, Any], team_id: str, db: Sessio
 
     # Get organization agents
     agent_repo = AgentRepository(db)
-    agents = agent_repo.get_org_agents(token.organization_id)
+    agents = agent_repo.get_org_agents(token.organization_id, active_only=False)
 
-    # Build agent blocks - each agent as a card with status and instructions
+    # Build agent blocks - each agent as a card with photo and details
     agent_blocks = []
     if agents:
         agent_blocks.append({
@@ -370,29 +371,92 @@ async def handle_app_home_opened(event: Dict[str, Any], team_id: str, db: Sessio
         })
 
         for agent in agents[:10]:
-            status_emoji = ":large_green_circle:" if agent.is_active else ":white_circle:"
-            status_text = "Online" if agent.is_active else "Offline"
-
             # Use display_name if available, otherwise name
             agent_name = agent.display_name or agent.name
 
-            # Get first instruction (truncated to 100 chars)
+            # Get instructions (show more text)
             instructions = agent.instructions if hasattr(agent, 'instructions') else []
             if instructions and len(instructions) > 0:
                 first_instruction = instructions[0]
-                if len(first_instruction) > 100:
-                    first_instruction = first_instruction[:97] + "..."
-                instruction_text = f"_{first_instruction}_"
+                if len(first_instruction) > 250:
+                    first_instruction = first_instruction[:247] + "..."
+                instruction_text = first_instruction
             else:
-                instruction_text = "_No instructions set_"
+                instruction_text = "No instructions configured"
 
+            # Get photo URL if available
+            photo_url = None
+            if hasattr(agent, 'customization') and agent.customization and agent.customization.photo_url:
+                from app.core.config import settings
+                if settings.S3_FILE_STORAGE:
+                    from app.core.s3 import get_s3_signed_url
+                    try:
+                        photo_url = await get_s3_signed_url(agent.customization.photo_url)
+                    except Exception as e:
+                        logger.debug(f"Could not get signed URL: {e}")
+                        photo_url = agent.customization.photo_url
+                else:
+                    photo_url = agent.customization.photo_url
+
+            # Build agent header with image on the LEFT using context block
+            header_elements = []
+            if photo_url:
+                header_elements.append({
+                    "type": "image",
+                    "image_url": photo_url,
+                    "alt_text": agent_name
+                })
+            header_elements.append({
+                "type": "mrkdwn",
+                "text": f"*{agent_name}*"
+            })
+
+            agent_blocks.append({
+                "type": "context",
+                "elements": header_elements
+            })
+
+            # Status on separate line with green/gray indicator
+            status_indicator = ":large_green_circle: Online" if agent.is_active else ":white_circle: Offline"
+            agent_blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": status_indicator
+                }]
+            })
+
+            # Add description if available
+            if agent.description:
+                desc = agent.description.replace("\n", " ")
+                if len(desc) > 150:
+                    desc = desc[:147] + "..."
+                agent_blocks.append({
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f"_{desc}_"}]
+                })
+
+            # Add instruction block with title and border-like formatting
             agent_blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"{status_emoji}  *{agent_name}*  •  {status_text}\n{instruction_text}"
+                    "text": f"📋 *Instructions*\n```{instruction_text}```"
                 }
             })
+
+            # Add "View more" link to dashboard
+            agent_blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": f"<{settings.FRONTEND_URL}/agents/{agent.id}|View more →>"
+                }]
+            })
+
+            # Add divider between agents
+            agent_blocks.append({"type": "divider"})
+
     else:
         agent_blocks.append({
             "type": "section",
@@ -401,41 +465,57 @@ async def handle_app_home_opened(event: Dict[str, Any], team_id: str, db: Sessio
                 "text": "*No agents configured yet*\nCreate your first AI agent in the ChatterMate dashboard."
             }
         })
+        agent_blocks.append({"type": "divider"})
+
+    # ChatterMate logo URL
+    logo_url = "https://s3.us-east-1.amazonaws.com/app.chattermate.chat/avatars/logo_dark.png"
 
     # Build the home view
     home_view = {
         "type": "home",
         "blocks": [
-            # Header with logo feel
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "ChatterMate",
-                    "emoji": True
-                }
-            },
+            # Header with logo and title aligned on same line
             {
                 "type": "context",
                 "elements": [
                     {
+                        "type": "image",
+                        "image_url": logo_url,
+                        "alt_text": "ChatterMate"
+                    },
+                    {
                         "type": "mrkdwn",
-                        "text": "AI-powered support & sales assistant for your team"
+                        "text": "*ChatterMate*"
                     }
                 ]
             },
-            {"type": "divider"},
-
-            # Agents section
-            *agent_blocks,
-            {"type": "divider"},
-
-            # Quick start guide
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*Quick Start*"
+                    "text": "*Your 24/7 AI Assistant*\n_AI-powered support & sales assistant for your team_"
+                }
+            },
+            # Feature highlights with better spacing
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": ":mag:  *Get instant answers* to all your queries\n\n"
+                            ":ticket:  *Raise tickets* with Jira integration\n\n"
+                            ":wrench:  *Connect MCP tools* to supercharge your agents\n\n"
+                            ":clock3:  *Available 24/7* — always ready to help"
+                }
+            },
+            {"type": "divider"},
+
+            # Quick start guide (moved above agents)
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Quick Start",
+                    "emoji": True
                 }
             },
             {
@@ -443,11 +523,14 @@ async def handle_app_home_opened(event: Dict[str, Any], team_id: str, db: Sessio
                 "text": {
                     "type": "mrkdwn",
                     "text": ":speech_balloon:  *@mention* me in any channel\n"
-                            ":zap:  Use */chattermate [question]*\n"
+                            ":zap:  Use */chattermate [question]* command\n"
                             ":robot_face:  Open *Agents & AI Apps* sidebar"
                 }
             },
             {"type": "divider"},
+
+            # Agents section
+            *agent_blocks,
 
             # Footer
             {
@@ -455,7 +538,7 @@ async def handle_app_home_opened(event: Dict[str, Any], team_id: str, db: Sessio
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": ":gear: Manage agents, prompts & settings in the <" + settings.FRONTEND_URL + "|ChatterMate Dashboard>"
+                        "text": ":gear: <" + settings.FRONTEND_URL + "|Open ChatterMate Dashboard> to manage agents, knowledge base & settings"
                     }
                 ]
             }
@@ -626,14 +709,15 @@ async def handle_direct_message(event: Dict[str, Any], team_id: str, db: Session
     agent_selection_match = re.match(r"Hi!\s*I'd like to chat with (.+)", text, re.IGNORECASE)
     if agent_selection_match:
         requested_agent_name = agent_selection_match.group(1).strip()
-        # Find agent by name
+        # Find agent by name or display_name
         agent_repo = AgentRepository(db)
         agents = agent_repo.get_org_agents(token.organization_id)
         for agent in agents:
-            if agent.name.lower() == requested_agent_name.lower():
+            agent_display = agent.display_name or agent.name
+            if agent_display.lower() == requested_agent_name.lower() or agent.name.lower() == requested_agent_name.lower():
                 selected_agent_id = str(agent.id)
                 text = f"Hello! I'm ready to help."  # Replace with greeting
-                logger.info(f"Agent '{agent.name}' selected via prompt")
+                logger.info(f"Agent '{agent_display}' selected via prompt")
                 break
 
     # Determine which agent to use
@@ -1005,6 +1089,129 @@ async def process_slash_command(form_data: Dict[str, str], db: Session):
             pass
 
 
+async def process_config_command(form_data: Dict[str, str], db: Session):
+    """Process the /chattermate config command - open agent selection modal or show DM options."""
+    try:
+        db = SessionLocal()
+
+        try:
+            team_id = form_data.get("team_id")
+            channel_id = form_data.get("channel_id")
+            channel_name = form_data.get("channel_name", "")
+            trigger_id = form_data.get("trigger_id")
+            response_url = form_data.get("response_url")
+
+            slack_repo = SlackRepository(db)
+            token = slack_repo.get_token_by_team(team_id)
+
+            if not token:
+                await slack_service.respond_to_response_url(
+                    response_url=response_url,
+                    text="ChatterMate is not configured for this workspace."
+                )
+                return
+
+            # Get agents for this organization
+            agent_repo = AgentRepository(db)
+            agents = agent_repo.get_org_agents(token.organization_id)
+
+            if not agents:
+                await slack_service.respond_to_response_url(
+                    response_url=response_url,
+                    text="No agents available. Please create an agent in ChatterMate first."
+                )
+                return
+
+            # Check if this is a DM (channel starts with D)
+            is_dm = channel_id.startswith("D")
+
+            if is_dm:
+                # For DMs, show an ephemeral message with agent selection buttons
+                workspace_config = slack_repo.get_workspace_config_by_team(team_id)
+                current_agent_id = str(workspace_config.default_agent_id) if workspace_config and workspace_config.default_agent_id else None
+
+                # Find current agent name
+                current_agent_name = "None selected"
+                for agent in agents:
+                    if current_agent_id and str(agent.id) == current_agent_id:
+                        current_agent_name = agent.display_name or agent.name
+                        break
+
+                # Build agent selection buttons (max 5 due to Slack limits)
+                agent_buttons = []
+                for agent in agents[:5]:
+                    agent_name = agent.display_name or agent.name
+                    is_current = current_agent_id and str(agent.id) == current_agent_id
+                    agent_buttons.append({
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": f"{'✓ ' if is_current else ''}{agent_name[:20]}",
+                            "emoji": True
+                        },
+                        "value": str(agent.id),
+                        "action_id": f"dm_select_agent_{agent.id}"
+                    })
+
+                blocks = [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Current Agent:* {current_agent_name}\n\nSelect an agent to chat with:"
+                        }
+                    },
+                    {
+                        "type": "actions",
+                        "block_id": "dm_agent_selection",
+                        "elements": agent_buttons
+                    }
+                ]
+
+                await slack_service.respond_to_response_url(
+                    response_url=response_url,
+                    text="Select an agent",
+                    blocks=blocks,
+                    response_type="ephemeral"
+                )
+
+                logger.info(f"Showed agent selection for DM {channel_id}")
+            else:
+                # For channels, open the modal
+                try:
+                    channel_info = await slack_service.get_conversation_info(token.access_token, channel_id)
+                    channel_name = channel_info.get("name", "this channel")
+                except Exception:
+                    channel_name = channel_name or "this channel"
+
+                # Build and open the modal
+                modal = build_agent_selection_modal(channel_id, channel_name, agents)
+
+                await slack_service.open_view(
+                    access_token=token.access_token,
+                    trigger_id=trigger_id,
+                    view=modal
+                )
+
+                logger.info(f"Opened config modal for channel {channel_id} via /chattermate config")
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error processing config command: {e}")
+        import traceback
+        traceback.print_exc()
+
+        try:
+            await slack_service.respond_to_response_url(
+                response_url=form_data.get("response_url"),
+                text="Sorry, I couldn't open the configuration. Please try again."
+            )
+        except Exception:
+            pass
+
+
 async def process_message_shortcut(payload: Dict[str, Any], db: Session):
     """Process a message shortcut (right-click menu action)."""
     try:
@@ -1121,7 +1328,7 @@ def build_agent_selection_modal(channel_id: str, channel_name: str, agents: List
     """Build the modal view for agent selection."""
     agent_options = [
         {
-            "text": {"type": "plain_text", "text": agent.name[:75]},  # Slack limit
+            "text": {"type": "plain_text", "text": (agent.display_name or agent.name)[:75]},  # Slack limit
             "value": str(agent.id)
         }
         for agent in agents
@@ -1270,6 +1477,48 @@ async def handle_block_action(payload: Dict[str, Any], team_id: str, db: Session
                 import traceback
                 traceback.print_exc()
 
+        # Handle DM agent selection button clicks
+        elif action_id.startswith("dm_select_agent_"):
+            try:
+                agent_id = action.get("value")
+                response_url = payload.get("response_url")
+                channel_id = payload.get("channel", {}).get("id")
+
+                slack_repo = SlackRepository(db)
+                token = slack_repo.get_token_by_team(team_id)
+
+                if not token:
+                    logger.error(f"No token found for team {team_id}")
+                    return
+
+                # Update workspace default agent
+                workspace_config = slack_repo.get_workspace_config_by_team(team_id)
+                if workspace_config:
+                    slack_repo.update_workspace_config(
+                        workspace_config.id,
+                        default_agent_id=uuid.UUID(agent_id)
+                    )
+
+                # Get agent name for confirmation
+                agent_repo = AgentRepository(db)
+                agent = agent_repo.get_by_id(agent_id)
+                agent_name = (agent.display_name or agent.name) if agent else "Selected agent"
+
+                # Send confirmation
+                await slack_service.respond_to_response_url(
+                    response_url=response_url,
+                    text=f"✅ Now chatting with *{agent_name}*",
+                    response_type="ephemeral",
+                    replace_original=True
+                )
+
+                logger.info(f"DM agent changed to {agent_id} for team {team_id}")
+
+            except Exception as e:
+                logger.error(f"Error selecting DM agent: {e}")
+                import traceback
+                traceback.print_exc()
+
 
 async def handle_view_submission(payload: Dict[str, Any], team_id: str, db: Session) -> Optional[Dict]:
     """Handle modal form submissions."""
@@ -1334,7 +1583,7 @@ async def handle_view_submission(payload: Dict[str, Any], team_id: str, db: Sess
             # Send confirmation message to the channel
             agent_repo = AgentRepository(db)
             agent = agent_repo.get_by_id(agent_id)
-            agent_name = agent.name if agent else "the selected agent"
+            agent_name = (agent.display_name or agent.name) if agent else "the selected agent"
 
             await slack_service.send_message(
                 access_token=token.access_token,

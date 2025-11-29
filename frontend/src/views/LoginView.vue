@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '@/services/auth'
 import { permissionChecks } from '@/utils/permissions'
@@ -42,6 +42,10 @@ const { hasEnterpriseModule } = useEnterpriseFeatures()
 // Forgot password composable - only initialize if enterprise module is available
 const showForgotPasswordModal = ref(false)
 const forgotPassword = hasEnterpriseModule ? useForgotPassword() : null
+
+// Check for pending Slack installation from marketplace
+const pendingSlackTeam = computed(() => router.currentRoute.value.query.slack_team as string || null)
+const hasPendingSlackInstall = computed(() => !!router.currentRoute.value.query.slack_install)
 
 // Destructure with fallbacks for when enterprise module is not available
 const isForgotPasswordLoading = forgotPassword?.isLoading ?? ref(false)
@@ -196,10 +200,34 @@ const handleLogin = async () => {
             }
         }
 
-        // Check for redirect query parameter
-        const redirectUrl = router.currentRoute.value.query.redirect as string
-        if (redirectUrl) {
-            window.location.href = `${import.meta.env.VITE_API_URL}${redirectUrl}`
+        // Check for Slack marketplace installation pending
+        const slackInstallKey = router.currentRoute.value.query.slack_install as string
+        if (slackInstallKey) {
+            console.log('🔗 Slack marketplace installation detected, completing install...')
+            try {
+                const response = await api.post(`/slack/complete-install?install_key=${slackInstallKey}`)
+                console.log('✅ Slack installation completed:', response.data)
+                // Redirect to integrations with success
+                router.push('/settings/integrations?status=success&integration=slack')
+                return
+            } catch (slackError: any) {
+                console.error('❌ Failed to complete Slack installation:', slackError)
+                const errorMsg = slackError.response?.data?.detail || 'Failed to complete Slack installation'
+                router.push(`/settings/integrations?status=failure&reason=${encodeURIComponent(errorMsg)}`)
+                return
+            }
+        }
+
+        // Check for redirect query parameter (internal frontend route)
+        const redirectPath = router.currentRoute.value.query.redirect as string
+        if (redirectPath) {
+            // If it's an internal route (starts with /), use router.push
+            if (redirectPath.startsWith('/')) {
+                router.push(redirectPath)
+                return
+            }
+            // Otherwise treat as API redirect (legacy behavior)
+            window.location.href = `${import.meta.env.VITE_API_URL}${redirectPath}`
             return
         }
 
@@ -218,11 +246,14 @@ const handleLogin = async () => {
 }
 
 const navigateToSignup = () => {
-    // Preserve embedded, shop_id, and return_to query params if present
+    // Preserve embedded, shop_id, return_to, redirect, slack_install query params if present
     const isEmbedded = router.currentRoute.value.query.embedded
     const shopId = router.currentRoute.value.query.shop_id
     const returnTo = router.currentRoute.value.query.return_to
     const shopifyFlow = router.currentRoute.value.query.shopify_flow
+    const redirect = router.currentRoute.value.query.redirect
+    const slackInstall = router.currentRoute.value.query.slack_install
+    const slackTeam = router.currentRoute.value.query.slack_team
 
     const query: any = {}
 
@@ -230,6 +261,9 @@ const navigateToSignup = () => {
     if (shopId) query.shop_id = shopId
     if (returnTo) query.return_to = returnTo
     if (shopifyFlow) query.shopify_flow = shopifyFlow
+    if (redirect) query.redirect = redirect
+    if (slackInstall) query.slack_install = slackInstall
+    if (slackTeam) query.slack_team = slackTeam
 
     if (Object.keys(query).length > 0) {
         console.log('Navigating to signup with params:', query)
@@ -282,6 +316,20 @@ const handleVerifyAndResetPassword = async () => {
 
                     <h1 class="title">Welcome Back</h1>
                     <p class="subtitle">Sign in to your account to continue</p>
+
+                    <!-- Slack Installation Banner -->
+                    <div v-if="hasPendingSlackInstall" class="slack-install-banner">
+                        <div class="slack-icon">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                            </svg>
+                        </div>
+                        <div class="slack-message">
+                            <strong>Connect Slack Workspace</strong>
+                            <span v-if="pendingSlackTeam">Sign in to connect <em>{{ pendingSlackTeam }}</em> to your organization</span>
+                            <span v-else>Sign in to complete your Slack installation</span>
+                        </div>
+                    </div>
 
                     <form @submit.prevent="handleLogin" class="login-form">
                         <div class="form-group">
@@ -525,6 +573,46 @@ const handleVerifyAndResetPassword = async () => {
 .subtitle {
     color: var(--text-muted);
     margin-bottom: 2rem;
+}
+
+/* Slack Installation Banner */
+.slack-install-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #4A154B10, #36C5F010);
+    border: 1px solid #4A154B30;
+    border-radius: var(--radius-md);
+    margin-bottom: 1.5rem;
+}
+
+.slack-icon {
+    flex-shrink: 0;
+    color: #4A154B;
+    margin-top: 2px;
+}
+
+.slack-message {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.slack-message strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.slack-message span {
+    color: var(--text-secondary);
+}
+
+.slack-message em {
+    color: #4A154B;
+    font-style: normal;
+    font-weight: 500;
 }
 
 .login-form {

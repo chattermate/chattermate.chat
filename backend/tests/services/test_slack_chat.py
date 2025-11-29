@@ -74,8 +74,8 @@ class TestBuildAgentSelectionModal:
     def test_build_modal_with_agents(self):
         """Test building modal with agents"""
         mock_agents = [
-            MagicMock(id=uuid4(), name="Sales Agent"),
-            MagicMock(id=uuid4(), name="Support Agent")
+            MagicMock(id=uuid4(), name="Sales Agent", display_name=None),
+            MagicMock(id=uuid4(), name="Support Agent", display_name=None)
         ]
 
         modal = build_agent_selection_modal(
@@ -95,10 +95,12 @@ class TestBuildAgentSelectionModal:
         agent1 = MagicMock()
         agent1.id = uuid4()
         agent1.name = "Agent One"
+        agent1.display_name = None  # Falls back to name
 
         agent2 = MagicMock()
         agent2.id = uuid4()
         agent2.name = "Agent Two"
+        agent2.display_name = None  # Falls back to name
 
         mock_agents = [agent1, agent2]
 
@@ -239,6 +241,7 @@ class TestHandleAssistantThreadStarted:
 
         mock_agent = MagicMock()
         mock_agent.name = "Sales Agent"
+        mock_agent.display_name = None  # Will fall back to name
         mock_agent.id = uuid4()
 
         event = {
