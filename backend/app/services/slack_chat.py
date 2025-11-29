@@ -788,8 +788,7 @@ async def process_slack_chat(
             org_id=organization_id,
             agent_id=agent_id,
             customer_id=customer_id,
-            session_id=session_id,
-            source='slack'
+            session_id=session_id
         )
 
         response = await chat_agent.get_response(
@@ -957,7 +956,6 @@ async def process_slash_command(form_data: Dict[str, str], db: Session):
                 agent_id=agent_id,
                 customer_id=customer_id,
                 session_id=session_id,
-                source='slack'
             )
 
             response = await chat_agent.get_response(
@@ -1085,7 +1083,6 @@ async def process_message_shortcut(payload: Dict[str, Any], db: Session):
                 agent_id=agent_id,
                 customer_id=customer_id,
                 session_id=session_id,
-                source='slack'
             )
 
             response = await chat_agent.get_response(
