@@ -140,6 +140,10 @@ async def process_slack_event(event_payload: Dict[str, Any], db: Session):
                 await handle_assistant_context_changed(event, team_id, db)
             elif event_type == "app_home_opened":
                 await handle_app_home_opened(event, team_id, db)
+            elif event_type == "app_uninstalled":
+                await handle_app_uninstalled(team_id, db)
+            elif event_type == "tokens_revoked":
+                await handle_tokens_revoked(event, team_id, db)
             else:
                 logger.debug(f"Unhandled event type: {event_type}")
         finally:
@@ -468,6 +472,59 @@ async def handle_app_home_opened(event: Dict[str, Any], team_id: str, db: Sessio
         logger.info(f"Published App Home view for user {user_id}")
     except Exception as e:
         logger.error(f"Failed to publish App Home view: {e}")
+
+
+async def handle_app_uninstalled(team_id: str, db: Session):
+    """
+    Handle app_uninstalled event - clean up all data for this workspace.
+
+    Sent when the app is uninstalled from a Slack workspace.
+    This is different from the data-deletion endpoint which is for GDPR compliance.
+    """
+    logger.info(f"App uninstalled from team {team_id}")
+
+    slack_repo = SlackRepository(db)
+
+    try:
+        # Delete all workspace data (tokens, configs, conversations)
+        results = slack_repo.delete_workspace_data(team_id)
+        logger.info(f"Cleaned up workspace data for team {team_id}: {results}")
+    except Exception as e:
+        logger.error(f"Error cleaning up workspace data for team {team_id}: {e}")
+
+
+async def handle_tokens_revoked(event: Dict[str, Any], team_id: str, db: Session):
+    """
+    Handle tokens_revoked event - clean up revoked tokens.
+
+    Sent when:
+    - Bot tokens are revoked (tokens.oauth field contains bot token IDs)
+    - User tokens are revoked (tokens.bot field is empty, check tokens.oauth)
+
+    This can happen when:
+    - A workspace admin removes the app
+    - A user de-authorizes the app
+    - Slack rotates tokens for security reasons
+    """
+    tokens = event.get("tokens", {})
+    oauth_tokens = tokens.get("oauth", [])
+    bot_tokens = tokens.get("bot", [])
+
+    logger.info(f"Tokens revoked for team {team_id}: oauth={oauth_tokens}, bot={bot_tokens}")
+
+    slack_repo = SlackRepository(db)
+
+    # If bot tokens are revoked, the app is essentially uninstalled
+    if bot_tokens:
+        try:
+            results = slack_repo.delete_workspace_data(team_id)
+            logger.info(f"Cleaned up workspace data due to bot token revocation for team {team_id}: {results}")
+        except Exception as e:
+            logger.error(f"Error cleaning up workspace data for team {team_id}: {e}")
+    elif oauth_tokens:
+        # User tokens revoked - for now just log it
+        # In the future, could clean up user-specific data
+        logger.info(f"User OAuth tokens revoked for team {team_id}")
 
 
 async def handle_mention(event: Dict[str, Any], team_id: str, db: Session):
