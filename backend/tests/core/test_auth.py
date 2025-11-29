@@ -469,11 +469,354 @@ async def test_require_subscription_management_without_permission(mock_user):
     """Test require_subscription_management with insufficient permissions"""
     # Mock the role's can_manage_subscription method
     mock_user.role.can_manage_subscription = MagicMock(return_value=False)
-    
+
     # Call the function and expect an exception
     with pytest.raises(HTTPException) as exc_info:
         require_subscription_management(mock_user)
-    
+
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "User does not have permission to manage subscriptions"
-    mock_user.role.can_manage_subscription.assert_called_once() 
+    mock_user.role.can_manage_subscription.assert_called_once()
+
+
+# ==================== Tests for get_auth_info_from_request ====================
+
+from app.core.auth import get_auth_info_from_request
+
+def test_get_auth_info_from_request_shopify_url():
+    """Test get_auth_info_from_request with Shopify URL"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/shopify/products"
+
+    result = get_auth_info_from_request(request)
+    assert result["is_shopify"] is True
+
+
+def test_get_auth_info_from_request_non_shopify_url():
+    """Test get_auth_info_from_request with non-Shopify URL"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/users"
+
+    result = get_auth_info_from_request(request)
+    assert result["is_shopify"] is False
+
+
+# ==================== Tests for get_unified_auth ====================
+
+from app.core.auth import get_unified_auth
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_jwt_success(mock_db, mock_user):
+    """Test get_unified_auth with valid JWT token"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    # Add manage_agents permission
+    manage_agents_perm = Permission(id=2, name="manage_agents")
+    mock_user.role.permissions = [manage_agents_perm]
+
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        result = await get_unified_auth(request, mock_db)
+
+    assert result["auth_type"] == "jwt"
+    assert result["organization_id"] == mock_user.organization_id
+    assert result["current_user"] == mock_user
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_jwt_no_token(mock_db):
+    """Test get_unified_auth without token"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = None
+    request.headers.get.return_value = None
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_unified_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_jwt_invalid_token(mock_db):
+    """Test get_unified_auth with invalid JWT token"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = "invalid_token"
+    request.headers.get.return_value = None
+
+    with patch('app.core.auth.verify_token', return_value=None):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_unified_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid authentication token"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_jwt_user_not_found(mock_db):
+    """Test get_unified_auth when user not found"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    payload = {"sub": str(uuid4())}
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_unified_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User not found"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_jwt_inactive_user(mock_db, mock_user):
+    """Test get_unified_auth with inactive user"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    mock_user.is_active = False
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_unified_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User is inactive"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_jwt_no_permissions(mock_db, mock_user):
+    """Test get_unified_auth without manage_agents permission"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    # Remove manage_agents permission
+    view_only_perm = Permission(id=1, name="view_only")
+    mock_user.role.permissions = [view_only_perm]
+
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_unified_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Not enough permissions"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_shopify_context(mock_db):
+    """Test get_unified_auth with Shopify context"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/shopify/agents"
+    request.query_params = {}
+
+    mock_auth_result = {
+        "auth_type": "shopify",
+        "organization_id": uuid4(),
+        "user_id": uuid4(),
+        "current_user": None
+    }
+
+    with patch('app.services.shopify_session.require_shopify_or_jwt_auth', new_callable=AsyncMock) as mock_shopify_auth:
+        mock_shopify_auth.return_value = mock_auth_result
+        result = await get_unified_auth(request, mock_db)
+
+    assert result["auth_type"] == "shopify"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_with_auth_header(mock_db, mock_user):
+    """Test get_unified_auth with Authorization header"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = None
+    request.headers.get.return_value = "Bearer valid_token"
+
+    manage_agents_perm = Permission(id=2, name="manage_agents")
+    mock_user.role.permissions = [manage_agents_perm]
+
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        result = await get_unified_auth(request, mock_db)
+
+    assert result["auth_type"] == "jwt"
+    assert result["current_user"] == mock_user
+
+
+# ==================== Tests for get_unified_chat_auth ====================
+
+from app.core.auth import get_unified_chat_auth
+
+@pytest.mark.asyncio
+async def test_get_unified_chat_auth_jwt_success(mock_db, mock_user):
+    """Test get_unified_chat_auth with valid JWT token"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/chats"
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    # Add chat permissions
+    view_all_chats = Permission(id=10, name="view_all_chats")
+    mock_user.role.permissions = [view_all_chats]
+
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        result = await get_unified_chat_auth(request, mock_db)
+
+    assert result["auth_type"] == "jwt"
+    assert result["can_view_all"] is True
+    assert result["can_view_assigned"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_unified_chat_auth_view_assigned(mock_db, mock_user):
+    """Test get_unified_chat_auth with view_assigned_chats permission"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/chats"
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    # Add assigned chats permission only
+    view_assigned_chats = Permission(id=11, name="view_assigned_chats")
+    mock_user.role.permissions = [view_assigned_chats]
+
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        result = await get_unified_chat_auth(request, mock_db)
+
+    assert result["auth_type"] == "jwt"
+    assert result["can_view_all"] is False
+    assert result["can_view_assigned"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_unified_chat_auth_no_permissions(mock_db, mock_user):
+    """Test get_unified_chat_auth without chat permissions"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/chats"
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    # No chat permissions
+    other_perm = Permission(id=1, name="other_permission")
+    mock_user.role.permissions = [other_perm]
+
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_unified_chat_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Not enough permissions"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_chat_auth_shopify_context(mock_db):
+    """Test get_unified_chat_auth with Shopify context"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/shopify/chats"
+
+    mock_auth_result = {
+        "auth_type": "shopify",
+        "organization_id": uuid4(),
+        "user_id": uuid4(),
+        "current_user": None
+    }
+
+    with patch('app.services.shopify_session.require_shopify_or_jwt_auth', new_callable=AsyncMock) as mock_shopify_auth:
+        mock_shopify_auth.return_value = mock_auth_result
+        result = await get_unified_chat_auth(request, mock_db)
+
+    assert result["auth_type"] == "shopify"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_chat_auth_no_token(mock_db):
+    """Test get_unified_chat_auth without token"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/chats"
+    request.cookies.get.return_value = None
+    request.headers.get.return_value = None
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_unified_chat_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_unified_chat_auth_exception(mock_db):
+    """Test get_unified_chat_auth with exception"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/chats"
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    with patch('app.core.auth.verify_token', side_effect=Exception("Test error")):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_unified_chat_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_unified_auth_exception(mock_db):
+    """Test get_unified_auth with unexpected exception"""
+    request = MagicMock(spec=Request)
+    request.url = "https://example.com/api/agents"
+    request.query_params = {}
+    request.cookies.get.return_value = "valid_token"
+    request.headers.get.return_value = None
+
+    with patch('app.core.auth.verify_token', side_effect=Exception("Unexpected error")):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_unified_auth(request, mock_db)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_from_cookie_directly(mock_db, mock_user):
+    """Test get_current_user when token is read directly from cookies"""
+    request = MagicMock(spec=Request)
+    request.cookies = {"access_token": "valid_cookie_token"}
+    request.headers.get.return_value = None
+
+    payload = {"sub": str(mock_user.id)}
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+
+    with patch('app.core.auth.verify_token', return_value=payload):
+        result = await get_current_user(request, None, mock_db)
+        assert result == mock_user
