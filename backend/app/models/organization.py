@@ -68,6 +68,10 @@ class Organization(Base):
  
     jira_tokens = relationship("JiraToken", back_populates="organization", cascade="all, delete-orphan")
     shopify_shops = relationship("ShopifyShop", back_populates="organization", cascade="all, delete-orphan")
+    slack_tokens = relationship("SlackToken", back_populates="organization", cascade="all, delete-orphan")
+    slack_workspace_configs = relationship("SlackWorkspaceConfig", back_populates="organization", cascade="all, delete-orphan")
+    agent_slack_configs = relationship("AgentSlackConfig", back_populates="organization", cascade="all, delete-orphan")
+    slack_conversations = relationship("SlackConversation", back_populates="organization", cascade="all, delete-orphan")
     
     class Config:
         orm_mode = True

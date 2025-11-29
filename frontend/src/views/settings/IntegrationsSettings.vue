@@ -23,6 +23,7 @@ import { toast } from 'vue-sonner'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
+import { checkSlackConnection, getSlackAuthUrl, disconnectSlack } from '@/services/slack'
 
 // Import logos
 import jiraLogo from '@/assets/jira-logo.svg'
@@ -42,6 +43,11 @@ interface ShopifyShop {
 const shopifyConnected = ref(false)
 const shopifyShopDomain = ref('')
 const shopifyLoading = ref(true)
+
+// Slack state variables
+const slackConnected = ref(false)
+const slackTeamName = ref('')
+const slackLoading = ref(true)
 
 
 const route = useRoute()
@@ -156,11 +162,11 @@ const handleDisconnectShopify = () => {
     // Close the modal
     showDisconnectConfirm.value = false
     disconnectingIntegration.value = null
-    
+
     // Open Shopify admin apps page in a new tab where user can uninstall the app
     const shopifyAdminUrl = `https://${shopifyShopDomain.value}/admin/apps`
     window.open(shopifyAdminUrl, '_blank')
-    
+
     // Show a helpful toast message
     toast.info('Please uninstall the ChatterMate app from your Shopify admin to complete the disconnection.')
   } catch (error: any) {
@@ -171,6 +177,55 @@ const handleDisconnectShopify = () => {
   }
 }
 
+// Check if Slack is connected
+const fetchSlackStatus = async () => {
+  try {
+    slackLoading.value = true
+    const data = await checkSlackConnection()
+    slackConnected.value = data.connected
+    slackTeamName.value = data.team_name || ''
+  } catch (error) {
+    console.error('Error checking Slack connection:', error)
+    slackConnected.value = false
+  } finally {
+    slackLoading.value = false
+  }
+}
+
+// Connect to Slack directly (agent selection happens in Slack when bot joins channel)
+const connectSlack = () => {
+  try {
+    lastConnectionError.value = null
+    window.location.href = getSlackAuthUrl()
+  } catch (error) {
+    console.error('Error connecting to Slack:', error)
+    toast.error('Error connecting to Slack')
+  }
+}
+
+// Disconnect from Slack
+const handleDisconnectSlack = async () => {
+  try {
+    slackLoading.value = true
+    await disconnectSlack()
+    slackConnected.value = false
+    slackTeamName.value = ''
+    toast.success('Slack disconnected successfully')
+  } catch (error: any) {
+    console.error('Error disconnecting from Slack:', error)
+    let errorMessage = 'Error disconnecting from Slack'
+
+    if (error.response && error.response.data && error.response.data.detail) {
+      errorMessage = error.response.data.detail
+    }
+
+    toast.error(errorMessage)
+  } finally {
+    slackLoading.value = false
+    showDisconnectConfirm.value = false
+    disconnectingIntegration.value = null
+  }
+}
 
 // Define interface for IntegrationCard
 interface IntegrationCard {
@@ -182,6 +237,7 @@ interface IntegrationCard {
   isLoading?: boolean;
   siteUrl?: string;
   shopDomain?: string;
+  teamName?: string;
   comingSoon?: boolean;
   connectAction?: () => void;
   disconnectAction?: () => void;
@@ -210,15 +266,18 @@ const availableIntegrations = computed(() => [
     isLoading: shopifyLoading.value,
     disconnectAction: handleDisconnectShopify
   },
-  // Future integrations
   {
     id: 'slack',
     name: 'Slack',
-    description: 'Connect to Slack to send notifications and interact with channels.',
+    description: 'Connect to Slack to allow users to chat with your AI agent directly from Slack channels.',
     logo: slackLogo,
-    connected: false,
-    comingSoon: true
+    connected: slackConnected.value,
+    teamName: slackTeamName.value,
+    isLoading: slackLoading.value,
+    connectAction: connectSlack,
+    disconnectAction: handleDisconnectSlack
   },
+  // Future integrations
   {
     id: 'zendesk',
     name: 'Zendesk',
@@ -232,7 +291,8 @@ const availableIntegrations = computed(() => [
 onMounted(async () => {
   await Promise.all([
     fetchJiraStatus(),
-    fetchShopifyStatus()
+    fetchShopifyStatus(),
+    fetchSlackStatus()
   ])
   
   // Check if we're returning from an OAuth flow
@@ -240,7 +300,11 @@ onMounted(async () => {
     if (route.query.status === 'success') {
       if (route.query.integration === 'shopify') {
         toast.success('Shopify connected successfully!')
-      } else {
+      } 
+      else if (route.query.integration === 'slack') {
+        toast.success('Slack connected successfully! Add the bot to a channel to configure an agent.')
+      }
+      else {
         toast.success('Jira connected successfully!')
       }
       lastConnectionError.value = null
@@ -325,6 +389,11 @@ onMounted(async () => {
                 <span class="loading-spinner"></span>
                 Loading...
               </span>
+              <!-- Slack loading state -->
+              <span v-else-if="integration.id === 'slack' && integration.isLoading" class="loading-indicator">
+                <span class="loading-spinner"></span>
+                Loading...
+              </span>
               <template v-else>
                 <!-- Connected status for Jira -->
                 <div v-if="integration.id === 'jira' && integration.connected" class="connected-info">
@@ -371,6 +440,22 @@ onMounted(async () => {
                     Not Connected
                   </span>
                 </div>
+                <!-- Connected status for Slack -->
+                <div v-else-if="integration.id === 'slack' && integration.connected" class="connected-info">
+                  <span class="status-badge connected">
+                    <span class="status-icon">✓</span>
+                    Connected
+                  </span>
+                  <div class="team-info">
+                    <span class="team-name">{{ integration.teamName }}</span>
+                  </div>
+                </div>
+                <!-- Not connected status for Slack -->
+                <div v-else-if="integration.id === 'slack'" class="not-connected-info">
+                  <span class="status-badge not-connected">
+                    Not Connected
+                  </span>
+                </div>
                 <!-- Coming soon status -->
                 <span v-else-if="integration.comingSoon" class="status-badge coming-soon">
                   Coming Soon
@@ -404,18 +489,18 @@ onMounted(async () => {
               
               <!-- Shopify install/disconnect buttons -->
               <template v-else-if="integration.id === 'shopify'">
-                <button 
-                  v-if="!integration.connected" 
-                  @click="openShopifyInstallation" 
+                <button
+                  v-if="!integration.connected"
+                  @click="openShopifyInstallation"
                   class="btn btn-primary"
                   :disabled="integration.isLoading"
                 >
                   <span class="btn-icon">↗</span>
                   Install
                 </button>
-                <button 
-                  v-else 
-                  @click="showDisconnectConfirmation(integration.id)" 
+                <button
+                  v-else
+                  @click="showDisconnectConfirmation(integration.id)"
                   class="btn btn-danger"
                   :disabled="integration.isLoading"
                 >
@@ -423,7 +508,29 @@ onMounted(async () => {
                   Disconnect
                 </button>
               </template>
-              
+
+              <!-- Slack connect/disconnect buttons -->
+              <template v-else-if="integration.id === 'slack'">
+                <button
+                  v-if="!integration.connected"
+                  @click="integration.connectAction"
+                  class="btn btn-primary"
+                  :disabled="integration.isLoading"
+                >
+                  <span class="btn-icon">+</span>
+                  Connect
+                </button>
+                <button
+                  v-else
+                  @click="showDisconnectConfirmation(integration.id)"
+                  class="btn btn-danger"
+                  :disabled="integration.isLoading"
+                >
+                  <span class="btn-icon">×</span>
+                  Disconnect
+                </button>
+              </template>
+
               <!-- Coming soon button -->
               <button 
                 v-else-if="integration.comingSoon" 
@@ -472,6 +579,16 @@ onMounted(async () => {
             <li>You'll need to reinstall the app if you want to use it again</li>
           </ul>
         </div>
+
+        <div v-if="disconnectingIntegration === 'slack'" class="integration-specific-warning">
+          <p>Disconnecting Slack will:</p>
+          <ul>
+            <li>Remove all Slack channel configurations</li>
+            <li>Disable chat functionality in Slack</li>
+            <li>Delete stored conversation data for GDPR compliance</li>
+            <li>Require you to reconnect and reconfigure if you want to use it again</li>
+          </ul>
+        </div>
       </div>
       <div class="disconnect-modal-actions">
         <button class="btn-cancel" @click="cancelDisconnect">Cancel</button>
@@ -484,17 +601,27 @@ onMounted(async () => {
           <span v-if="isLoading" class="loading-spinner"></span>
           <span v-else>Disconnect Jira</span>
         </button>
-        <button 
-          v-if="disconnectingIntegration === 'shopify'" 
-          class="btn-disconnect" 
+        <button
+          v-if="disconnectingIntegration === 'shopify'"
+          class="btn-disconnect"
           @click="handleDisconnectShopify"
         >
           <span class="btn-icon">↗</span>
           <span>Open Shopify Admin</span>
         </button>
+        <button
+          v-if="disconnectingIntegration === 'slack'"
+          class="btn-disconnect"
+          @click="handleDisconnectSlack"
+          :disabled="slackLoading"
+        >
+          <span v-if="slackLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect Slack</span>
+        </button>
       </div>
     </div>
   </div>
+
 </template>
 
 <style scoped>
@@ -1027,6 +1154,19 @@ onMounted(async () => {
 }
 
 .shop-domain {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.team-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.team-name {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   font-weight: 500;

@@ -140,9 +140,14 @@ class Agent(Base):
         backref="active_agents"
     )
     workflows = relationship(
-        "Workflow", 
+        "Workflow",
         foreign_keys="[Workflow.agent_id]",
         back_populates="agent"
+    )
+    slack_configs = relationship(
+        "AgentSlackConfig",
+        back_populates="agent",
+        cascade="all, delete-orphan"
     )
 
     @property
