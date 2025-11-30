@@ -418,6 +418,37 @@ class SlackRepository:
             logger.error(f"Error getting conversation by thread: {str(e)}")
             return None
 
+    def update_conversation_agent(
+        self,
+        conversation_id: int,
+        agent_id: UUID,
+        session_id: Optional[UUID] = None
+    ) -> bool:
+        """Update the agent (and optionally session) for an existing conversation."""
+        try:
+            if isinstance(agent_id, str):
+                agent_id = UUID(agent_id)
+            if session_id and isinstance(session_id, str):
+                session_id = UUID(session_id)
+
+            conversation = self.db.query(SlackConversation).filter(
+                SlackConversation.id == conversation_id
+            ).first()
+
+            if not conversation:
+                return False
+
+            conversation.agent_id = agent_id
+            if session_id:
+                conversation.session_id = session_id
+            self.db.commit()
+            logger.info(f"Updated conversation {conversation_id} to agent {agent_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating conversation agent: {str(e)}")
+            self.db.rollback()
+            return False
+
     def get_conversations_by_session(self, session_id: UUID) -> List[SlackConversation]:
         """Get all Slack conversations for a session."""
         try:

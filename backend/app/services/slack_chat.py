@@ -703,6 +703,9 @@ async def handle_direct_message(event: Dict[str, Any], team_id: str, db: Session
         logger.debug("No workspace config found for DMs")
         return
 
+    # Check for existing conversation FIRST - to maintain agent selection across messages
+    existing_conversation = slack_repo.get_conversation_by_thread(team_id, channel_id, thread_ts)
+
     # Check for agent selection from AI assistant prompts
     # Format: "Hi! I'd like to chat with {agent_name}"
     selected_agent_id = None
@@ -718,17 +721,26 @@ async def handle_direct_message(event: Dict[str, Any], team_id: str, db: Session
                 selected_agent_id = str(agent.id)
                 text = f"Hello! I'm ready to help."  # Replace with greeting
                 logger.info(f"Agent '{agent_display}' selected via prompt")
+
+                # Update existing conversation with new agent if user is switching
+                if existing_conversation and str(existing_conversation.agent_id) != selected_agent_id:
+                    slack_repo.update_conversation_agent(existing_conversation.id, agent.id)
+                    logger.info(f"Updated conversation {existing_conversation.id} to new agent {agent.id}")
                 break
 
-    # Determine which agent to use
+    # Determine which agent to use (priority order)
     if selected_agent_id:
-        # User selected specific agent via AI assistant prompt
+        # 1. User explicitly selected agent via prompt
         agent_id = selected_agent_id
+    elif existing_conversation:
+        # 2. Use agent from existing conversation (maintains selection across messages)
+        agent_id = str(existing_conversation.agent_id)
+        logger.debug(f"Using agent {agent_id} from existing conversation")
     elif workspace_config.default_agent_id:
-        # Use default agent
+        # 3. Use default agent from workspace config
         agent_id = str(workspace_config.default_agent_id)
     else:
-        # No default agent - try to find any available agent for this org
+        # 4. Fall back to first available agent
         agent_repo = AgentRepository(db)
         agents = agent_repo.get_org_agents(token.organization_id)
         if agents:
