@@ -452,6 +452,7 @@ class TestHandleDirectMessage:
             mock_slack_repo = MagicMock()
             mock_slack_repo.get_token_by_team.return_value = mock_token
             mock_slack_repo.get_workspace_config_by_team.return_value = mock_workspace_config
+            mock_slack_repo.get_conversation_by_thread.return_value = None  # No existing conversation
             mock_slack_repo_class.return_value = mock_slack_repo
 
             mock_agent_repo = MagicMock()
