@@ -22,7 +22,7 @@ from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
-from app.database import get_db, SessionLocal
+from app.database import get_db, SessionLocal, engine
 from agno.storage.agent.postgres import PostgresAgentStorage
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
@@ -398,7 +398,9 @@ Keep your responses concise and focused. Provide clear, actionable information i
             # response_format={"type": "json_object"} if model_type.upper() != 'GROQ' else {"type": "text"}
         )
 
-        storage = PostgresAgentStorage(table_name="agent_sessions", db_url=settings.DATABASE_URL)
+        # Use shared database engine to avoid connection leaks
+        # Previously this created a new engine per ChatAgent instance, exhausting connections
+        storage = PostgresAgentStorage(table_name="agent_sessions", db_engine=engine)
         
        
         # Combine all tools
