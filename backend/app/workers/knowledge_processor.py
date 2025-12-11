@@ -70,94 +70,97 @@ def get_user_friendly_filename(source: str, source_type: str) -> str:
 
 async def process_queue_item(queue_item_id: int):
     """Process a single queue item"""
-    db = None
-    try:
-        db = SessionLocal()
-        queue_repo = KnowledgeQueueRepository(db)
-        queue_item = queue_repo.get_by_id(queue_item_id)
+    with SessionLocal() as db:
+        try:
+            queue_repo = KnowledgeQueueRepository(db)
+            queue_item = queue_repo.get_by_id(queue_item_id)
 
-        if not queue_item:
-            logger.error(f"Queue item {queue_item_id} not found")
-            return
+            if not queue_item:
+                logger.error(f"Queue item {queue_item_id} not found")
+                return
 
-        # Get knowledge manager instance
-        knowledge = KnowledgeManager(
-            org_id=queue_item.organization_id,
-            agent_id=queue_item.agent_id
-        )
-
-        # Process if status is pending
-        if queue_item.status == QueueStatus.PENDING:
-            # Update to processing
-            queue_item.status = QueueStatus.PROCESSING
-            queue_item.processing_stage = ProcessingStage.NOT_STARTED
-            queue_item.progress_percentage = 0.0
-            db.commit()
-
-            await knowledge.process_knowledge(queue_item)
-
-            # Create notification for successful processing
-            user_friendly_name = get_user_friendly_filename(queue_item.source, queue_item.source_type)
-            notification = Notification(
-                user_id=queue_item.user_id,
-                type=NotificationType.KNOWLEDGE_PROCESSED,
-                title="Knowledge Processing Complete",
-                message=f"Successfully processed {user_friendly_name}",
-                metadata={"queue_id": queue_item.id}
+            # Get knowledge manager instance
+            knowledge = KnowledgeManager(
+                org_id=queue_item.organization_id,
+                agent_id=queue_item.agent_id
             )
-            db.add(notification)
+
+            # Process if status is pending
+            if queue_item.status == QueueStatus.PENDING:
+                # Update to processing
+                queue_item.status = QueueStatus.PROCESSING
+                queue_item.processing_stage = ProcessingStage.NOT_STARTED
+                queue_item.progress_percentage = 0.0
+                db.commit()
+
+                await knowledge.process_knowledge(queue_item)
+
+                # Create notification for successful processing
+                user_friendly_name = get_user_friendly_filename(queue_item.source, queue_item.source_type)
+                notification = Notification(
+                    user_id=queue_item.user_id,
+                    type=NotificationType.KNOWLEDGE_PROCESSED,
+                    title="Knowledge Processing Complete",
+                    message=f"Successfully processed {user_friendly_name}",
+                    metadata={"queue_id": queue_item.id}
+                )
+                db.add(notification)
+                db.commit()
+
+                # Send FCM notification
+                await send_fcm_notification(queue_item.user_id, notification, db)
+
+            queue_item.status = QueueStatus.COMPLETED
             db.commit()
 
-            # Send FCM notification
-            await send_fcm_notification(queue_item.user_id, notification, db)
+        except Exception as e:
+            logger.error(f"Error processing queue item {queue_item_id}: {str(e)}")
+            try:
+                queue_item.status = QueueStatus.FAILED
 
-        queue_item.status = QueueStatus.COMPLETED
-        db.commit()
+                # Create notification for failed processing
+                user_friendly_name = get_user_friendly_filename(queue_item.source, queue_item.source_type)
+                notification = Notification(
+                    user_id=queue_item.user_id,
+                    type=NotificationType.KNOWLEDGE_FAILED,
+                    title="Knowledge Processing Failed",
+                    message=f"Failed to process {user_friendly_name}: {str(e)}",
+                    metadata={"queue_id": queue_item.id}
+                )
+                db.add(notification)
+                db.commit()
 
-    except Exception as e:
-        logger.error(f"Error processing queue item {queue_item_id}: {str(e)}")
-        if db:
-            queue_item.status = QueueStatus.FAILED
+                # Send FCM notification for failure
+                await send_fcm_notification(queue_item.user_id, notification, db)
+            except Exception as notify_err:
+                logger.error(f"Error creating failure notification: {notify_err}")
 
-            # Create notification for failed processing
-            user_friendly_name = get_user_friendly_filename(queue_item.source, queue_item.source_type)
-            notification = Notification(
-                user_id=queue_item.user_id,
-                type=NotificationType.KNOWLEDGE_FAILED,
-                title="Knowledge Processing Failed",
-                message=f"Failed to process {user_friendly_name}: {str(e)}",
-                metadata={"queue_id": queue_item.id}
-            )
-            db.add(notification)
-            db.commit()
-
-            # Send FCM notification for failure
-            await send_fcm_notification(queue_item.user_id, notification, db)
-
-        raise
+            raise
 
 
 async def run_processor():
     """Single run of the processor"""
-    db = None
     try:
         PROCESSOR_STATUS["is_running"] = True
         PROCESSOR_STATUS["error"] = None
 
-        db = SessionLocal()
-        queue_repo = KnowledgeQueueRepository(db)
-        pending_items = queue_repo.get_pending()
+        # Get pending items with proper connection handling
+        with SessionLocal() as db:
+            queue_repo = KnowledgeQueueRepository(db)
+            pending_items = queue_repo.get_pending()
+            # Extract IDs before closing the session
+            pending_item_ids = [item.id for item in pending_items] if pending_items else []
 
-        if pending_items:
-            # Create semaphore to limit concurrent processing to 3
-            semaphore = asyncio.Semaphore(3)
+        if pending_item_ids:
+            # Reduce concurrent processing to 2 to conserve connections on t3.micro
+            semaphore = asyncio.Semaphore(2)
 
             async def process_with_semaphore(item_id):
                 async with semaphore:
                     await process_queue_item(item_id)
 
             # Process items with semaphore control
-            await asyncio.gather(*[process_with_semaphore(item.id) for item in pending_items])
+            await asyncio.gather(*[process_with_semaphore(item_id) for item_id in pending_item_ids])
 
         PROCESSOR_STATUS["last_run"] = datetime.utcnow().isoformat()
 
@@ -167,8 +170,6 @@ async def run_processor():
         raise
 
     finally:
-        if db:
-            db.close()
         PROCESSOR_STATUS["is_running"] = False
 
 
