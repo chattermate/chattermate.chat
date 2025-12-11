@@ -74,9 +74,12 @@ class KnowledgeManager:
         
         # Dimensions will be automatically set by the model
 
+        # Import the shared engine to avoid creating separate connection pools
+        from app.database import engine as shared_engine
+
         self.vector_db = OptimizedPgVector(
             table_name=table_name,
-            db_url=settings.DATABASE_URL,
+            db_engine=shared_engine,
             schema="ai",
             search_type=SearchType.vector,
             embedder=embedder,

@@ -23,14 +23,15 @@ from app.core.config import settings
 from sqlalchemy.pool import QueuePool
 
 # Create SQLAlchemy engine with Unicode support
+# t3.micro RDS has ~45-65 max connections, reserve some for admin and other services
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
     poolclass=QueuePool,
-    pool_size=20,  # Increase from default 5
-    max_overflow=30,  # Increase from default 10
-    pool_timeout=60,  # Increase from default 30
-    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_size=5,  # Conservative pool size for t3.micro
+    max_overflow=10,  # Allow up to 15 total connections from this pool
+    pool_timeout=30,  # Timeout waiting for connection
+    pool_recycle=1800,  # Recycle connections after 30 minutes
     # Ensure proper Unicode handling
     connect_args={"options": "-c client_encoding=utf8"} if "postgresql" in settings.DATABASE_URL else {},
     json_serializer=lambda obj: __import__('json').dumps(obj, ensure_ascii=False),
