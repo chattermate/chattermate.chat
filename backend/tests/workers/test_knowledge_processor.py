@@ -61,7 +61,12 @@ def mock_knowledge_manager():
 @pytest_asyncio.fixture
 async def mock_dependencies(mock_db, mock_queue_repo, mock_knowledge_manager):
     """Set up all mock dependencies"""
-    with patch('app.workers.knowledge_processor.SessionLocal', return_value=mock_db), \
+    # Create a context manager mock that returns mock_db
+    mock_session_local = MagicMock()
+    mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_db)
+    mock_session_local.return_value.__exit__ = MagicMock(return_value=False)
+
+    with patch('app.workers.knowledge_processor.SessionLocal', mock_session_local), \
          patch('app.workers.knowledge_processor.KnowledgeQueueRepository', return_value=mock_queue_repo), \
          patch('app.workers.knowledge_processor.KnowledgeManager', return_value=mock_knowledge_manager), \
          patch('app.workers.knowledge_processor.send_fcm_notification', new_callable=AsyncMock) as mock_fcm:
