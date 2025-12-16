@@ -267,17 +267,15 @@ def revoke_user_sessions(email: str) -> bool:
                 # Delete the email mapping
                 redis_client.delete(f"user_sessions:{email}")
                 
-                # Also delete all widget-specific mappings
-                # Find all widget-specific keys for this email
-                cursor = 0
-                pattern = f"user_sessions:{email}:widget:*"
-                
-                while True:
-                    cursor, keys = redis_client.scan(cursor, match=pattern)
-                    for key in keys:
-                        redis_client.delete(key)
-                    if cursor == 0:
-                        break
+                # Also delete all widget-specific mappings using the reverse index set
+                widget_keys_set = f"user_sessions:{email}:widget_keys"
+                widget_keys = redis_client.smembers(widget_keys_set)
+                if widget_keys:
+                    for key in widget_keys:
+                        redis_client.delete(key.decode() if isinstance(key, bytes) else key)
+                    redis_client.delete(widget_keys_set)
+                # NOTE: When creating or deleting widget-specific session keys elsewhere,
+                # be sure to add/remove the key from the widget_keys_set for this user.
                 
                 logger.info(f"Revoked {len(jti_set)} sessions for user: {email}")
                 return True
