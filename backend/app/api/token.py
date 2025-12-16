@@ -254,9 +254,9 @@ async def generate_widget_token(
         # Check for existing valid token for this customer/widget combination
         # This prevents token multiplication when user refreshes page
         customer_email = body.customer_email or customer.email
-        from app.core.security import get_existing_valid_token, verify_conversation_token
+        from app.core.security import get_existing_valid_token_jti, verify_conversation_token
         
-        existing_jti = get_existing_valid_token(customer_email, body.widget_id, str(customer.id))
+        existing_jti = get_existing_valid_token_jti(customer_email, body.widget_id, str(customer.id))
         
         # Always generate a new token with a new JTI and expiration
         now = datetime.utcnow()

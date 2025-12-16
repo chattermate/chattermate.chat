@@ -391,10 +391,11 @@ def get_all_active_sessions() -> Dict[str, list]:
     return {}
 
 
-def get_existing_valid_token(email: str, widget_id: str, customer_id: str) -> Optional[str]:
+def get_existing_valid_token_jti(email: str, widget_id: str, customer_id: str) -> Optional[str]:
     """
-    Check if there's an existing valid token for this customer/widget combination.
+    Check if there's an existing valid token JTI for this customer/widget combination.
     
+    Returns the JTI (JWT ID) of an existing valid token, not the token itself.
     This prevents token multiplication when the same user refreshes the page multiple times.
     
     Args:
