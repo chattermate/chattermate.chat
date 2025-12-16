@@ -275,6 +275,9 @@ async def get_widget_data(
     customer_repo = CustomerRepository(db)
     human_agent_info = {}
     
+    # Flag to track if we generated a new token
+    token_was_generated = False
+    
     if should_create_customer:
         logger.debug(f"Creating new customer for email: {email}")
         # Generate unique email if no email provided
@@ -308,6 +311,7 @@ async def get_widget_data(
             widget_id=widget_id,
             **new_token_extra_data
         )
+        token_was_generated = True
         
         # Create a copy of customization to modify photo_url
         customization = agent.customization
@@ -362,7 +366,7 @@ async def get_widget_data(
     # 🔐 SECURITY: Include token in response if:
     # 1. We're in the new customer path (new_token was generated), OR
     # 2. We have a valid existing token from the request (token auth required)
-    if 'new_token' in locals():
+    if token_was_generated:
         response_data["token"] = new_token
     elif token and require_token_auth:
         # Return the existing token provided by the client (already validated)

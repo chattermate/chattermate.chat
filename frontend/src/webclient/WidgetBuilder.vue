@@ -261,19 +261,19 @@ const isInitializing = ref(true)
 // Add these to the script setup section after the imports
 const TOKEN_KEY = 'ctid'
 
-// Helper to validate token - reject "undefined" strings
-const validateToken = (tokenValue: any): string | null => {
+// Helper to sanitize token - reject "undefined" and "null" strings
+const sanitizeToken = (tokenValue: any): string | null => {
   if (!tokenValue || tokenValue === 'undefined' || tokenValue === 'null') {
     return null
   }
   if (typeof tokenValue === 'string' && tokenValue.trim() === '') {
     return null
   }
-  return tokenValue || null
+  return tokenValue
 }
 
 // @ts-ignore
-const token = ref(validateToken(window.__INITIAL_DATA__?.initialToken || localStorage.getItem(TOKEN_KEY)))
+const token = ref(sanitizeToken(window.__INITIAL_DATA__?.initialToken || localStorage.getItem(TOKEN_KEY)))
 const hasToken = computed(() => !!token.value)
 
 // Authentication error state
@@ -292,7 +292,7 @@ initializeFromData()
 const initialData = window.__INITIAL_DATA__
 
 if (initialData?.initialToken) {
-    const validatedToken = validateToken(initialData.initialToken)
+    const validatedToken = sanitizeToken(initialData.initialToken)
     if (validatedToken) {
       token.value = validatedToken
       // Notify parent window to store token
@@ -505,10 +505,10 @@ const checkAuthorization = async () => {
         hasConversationToken.value = true
         authError.value = null
         showAuthError.value = false
-        
+
         // 🔐 SECURITY: Pass token to WebSocket before connecting
         setToken(token.value || undefined)
-        
+
         // Connect socket and verify connection success
         const connected = await connect()
         if (!connected) {
@@ -1034,7 +1034,7 @@ const handleViewDetails = (product, shopDomain) => {
 const removeUrls = (text) => {
     if (!text) return '';
 
-   
+
 
     // First, remove markdown images: ![alt text](url)
     let processedText = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '');
@@ -1065,7 +1065,7 @@ const removeUrls = (text) => {
     // Clean up extra whitespace and newlines left after removing images
     processedText = processedText.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
-    
+
 
     return processedText;
 }

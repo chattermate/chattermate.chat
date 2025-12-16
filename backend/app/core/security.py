@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 from datetime import datetime, timedelta
 from typing import Optional, Dict
+import uuid
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
@@ -119,8 +120,6 @@ def create_conversation_token(widget_id: str, customer_id: Optional[str] = None,
         customer_email: Optional customer email for session management
         **extra_data: Additional data to include in token
     """
-    import uuid
-    
     jti = str(uuid.uuid4())
     data = {
         "sub": customer_id,  # Keep as None if not provided, don't convert to string "None"
@@ -406,7 +405,7 @@ def get_existing_valid_token(email: str, widget_id: str, customer_id: str) -> Op
         customer_id: Customer ID
     
     Returns:
-        Existing valid token if found, None otherwise
+        The JTI (JWT ID) string of an existing valid token if found, None otherwise
     """
     try:
         from app.core.redis import redis_client

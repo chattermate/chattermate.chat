@@ -19,10 +19,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-import uuid
 import jwt
 import logging
+import time
 from typing import Optional, Dict, Any
+import uuid
 
 from app.database import get_db
 from app.models.widget import Widget
@@ -247,7 +248,7 @@ async def generate_widget_token(
         if ttl < 60 or ttl > 86400:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ttl_seconds must be between 60 and 86400 (1 minute to 24 hours)"
+                detail="ttl_seconds must be between 60 and 86400 (1 minute to 24 hours) for security and performance reasons"
             )
         
         # Check for existing valid token for this customer/widget combination
@@ -257,23 +258,12 @@ async def generate_widget_token(
         
         existing_jti = get_existing_valid_token(customer_email, body.widget_id, str(customer.id))
         
-        if existing_jti:
-            # Try to retrieve the existing token from the database or cache
-            # Since we only store JTI in Redis, we need to reconstruct the token scenario
-            # But we can return the same JTI and create a token with same data
-            logger.info(f"Found existing valid token for customer {customer.id} in widget {body.widget_id}, reusing JTI")
-            jti = existing_jti
-            now = datetime.utcnow()
-            # Recalculate expiration based on TTL
-            expires_at = now + timedelta(seconds=ttl)
-        else:
-            # No existing valid token, generate new one
-            now = datetime.utcnow()
-            expires_at = now + timedelta(seconds=ttl)
-            
-            # Generate JTI for token tracking and revocation
-            import uuid
-            jti = str(uuid.uuid4())
+        # Always generate a new token with a new JTI and expiration
+        now = datetime.utcnow()
+        expires_at = now + timedelta(seconds=ttl)
+        
+        # Generate JTI for token tracking and revocation
+        jti = str(uuid.uuid4())
         
         token_payload = {
             "sub": str(customer.id),  # Sub is now always the customer_id

@@ -866,7 +866,7 @@ async def handle_end_chat(sid, data):
             logger.error(f"No session found for sid {sid}")
             return
         
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session.get('auth'))
         
         if not widget_id or not org_id:
             logger.error(f"Widget authentication failed for sid {sid}")

@@ -25,7 +25,6 @@ from app.models.user import User
 from sqlalchemy.orm import Session
 from app.core.socketio import sio
 from app.models.widget import Widget
-from app.models.agent import Agent
 
 logger = get_logger(__name__)
 
