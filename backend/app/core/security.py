@@ -209,8 +209,14 @@ def _store_token_in_redis(jti: str, ttl_seconds: int, email: Optional[str] = Non
                 
                 # If widget_id provided, also store widget-specific sessions
                 if widget_id:
-                    redis_client.sadd(f"user_sessions:{email}:widget:{widget_id}", jti)
-                    redis_client.expire(f"user_sessions:{email}:widget:{widget_id}", ttl_seconds)
+                    widget_key = f"user_sessions:{email}:widget:{widget_id}"
+                    redis_client.sadd(widget_key, jti)
+                    redis_client.expire(widget_key, ttl_seconds)
+                    
+                    # Maintain reverse index: track all widget keys for this email
+                    # for efficient bulk deletion without scanning
+                    redis_client.sadd(f"user_sessions:{email}:widget_keys", widget_key)
+                    redis_client.expire(f"user_sessions:{email}:widget_keys", ttl_seconds)
             
             return True
     except Exception as e:
@@ -356,6 +362,11 @@ def get_all_active_sessions() -> Dict[str, list]:
     """
     Get all active sessions across all users.
     
+    Note: This function uses SCAN for pattern matching user_sessions keys.
+    For better performance with many users, consider maintaining a master set
+    of all active user emails (e.g., "all_active_users") updated alongside
+    token storage operations.
+    
     Returns:
         Dictionary with email as key and list of JTI strings as value
     """
@@ -363,6 +374,7 @@ def get_all_active_sessions() -> Dict[str, list]:
         from app.core.redis import redis_client
         if redis_client:
             # Find all keys matching the user_sessions pattern
+            # Filters out widget-specific and widget_keys sets (pattern: user_sessions:EMAIL)
             all_sessions = {}
             cursor = 0
             pattern = "user_sessions:*"
@@ -372,6 +384,11 @@ def get_all_active_sessions() -> Dict[str, list]:
                 
                 for key in keys:
                     key_str = key.decode() if isinstance(key, bytes) else key
+                    
+                    # Skip widget-specific and metadata keys (contain ':widget:' or end with ':widget_keys')
+                    if ":widget:" in key_str or key_str.endswith(":widget_keys"):
+                        continue
+                    
                     # Extract email from key (user_sessions:email@example.com)
                     email = key_str.replace("user_sessions:", "", 1)
                     
