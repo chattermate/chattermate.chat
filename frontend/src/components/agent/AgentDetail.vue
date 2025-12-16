@@ -219,7 +219,7 @@ const handleClose = () => {
 }
 
 const copyWidgetCode = () => {
-    copyWidgetCodeFn(widgetUrl.value)
+    copyWidgetCodeFn(widgetUrl.value, agentData.value.require_token_auth)
 }
 
 const copyIframeCode = () => {
@@ -443,33 +443,16 @@ const handleToggleUseWorkflow = async () => {
 // Handle advanced tab updates
 const handleAdvancedTabUpdate = async (updatedAgent: AgentWithCustomization) => {
     try {
-        // Extract only the fields that advanced tab can update
-        const updateData: Record<string, any> = {}
+        // The AgentAdvancedTab component already saves the setting via API
+        // This handler updates the local agentData to ensure reactivity across all tabs
         
-        // Check if allow_attachments was updated
-        if (updatedAgent.allow_attachments !== agentData.value.allow_attachments) {
-            updateData.allow_attachments = updatedAgent.allow_attachments
-        }
+        // Update the agent data to trigger reactivity
+        Object.assign(agentData.value, updatedAgent)
         
-        // If there are changes to save, call the API
-        if (Object.keys(updateData).length > 0) {
-            const savedAgent = await agentService.updateAgent(agentData.value.id, updateData)
-            // Update the agent data to trigger reactivity
-            Object.assign(agentData.value, savedAgent)
-            // Update storage to keep data in sync
-            agentStorage.updateAgent(savedAgent)
-            
-            toast.success('Settings updated successfully', {
-                duration: 3000,
-                closeButton: true
-            })
-        }
+        // Update storage to keep data in sync
+        agentStorage.updateAgent(updatedAgent)
     } catch (error) {
-        console.error('Error updating advanced settings:', error)
-        toast.error('Failed to update settings', {
-            duration: 3000,
-            closeButton: true
-        })
+        console.error('Error handling advanced settings update:', error)
     }
 }
 
@@ -932,7 +915,7 @@ onMounted(async () => {
                                 :widget="widget"
                                 :widget-url="widgetUrl"
                                 :widget-loading="widgetLoading"
-                                :agent="agent"
+                                :agent="agentData"
                                 @copy-widget-code="copyWidgetCode"
                                 @copy-iframe-code="copyIframeCode"
                             />

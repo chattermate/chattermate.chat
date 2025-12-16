@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     TRIAL_DAYS: int = 7  # 7-day trial period
 
+    # Widget API Key (for portal backend to generate tokens)
+    WIDGET_API_KEY: str = os.getenv("WIDGET_API_KEY", "your-widget-api-key-change-in-production")
+
     # S3 Configuration
     S3_FILE_STORAGE: bool = os.getenv("S3_FILE_STORAGE", "false").lower() == "true"
     S3_BUCKET: str = os.getenv("S3_BUCKET", "chattermate-uploads")

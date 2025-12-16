@@ -48,6 +48,7 @@ from app.repositories.rating import RatingRepository
 from app.repositories.jira import JiraRepository
 from app.models.ai_config import AIModelType
 from app.services.workflow_execution import WorkflowExecutionService
+from app.core.config import settings
 
 
 # Try to import enterprise modules
@@ -252,6 +253,14 @@ async def widget_connect(sid, environ, auth):
         logger.debug(f"Session data: {session_data['ai_config'].encrypted_api_key}")
         await sio.save_session(sid, session_data, namespace='/widget')
         logger.info(f"Widget client connected: {sid} joined room: {session_id}")
+        
+        # Send session_id back to client immediately so it can be used for end_chat
+        await sio.emit('session_initialized', {
+            'session_id': session_id,
+            'customer_id': customer_id,
+            'agent_id': str(widget.agent_id)
+        }, to=sid, namespace='/widget')
+        
         return True
 
     except Exception as e:
@@ -717,6 +726,20 @@ async def handle_widget_chat(sid, data):
                          logger.warning(f"Unexpected type for shopify_output: {type(response.shopify_output)}")
 
             await sio.emit('chat_response', response_payload, room=session_id, namespace='/widget')
+            
+            # If end_chat is true, close the session
+            if response.end_chat:
+                try:
+                    session_repo = SessionToAgentRepository(db)
+                    # Close the session with end_chat reason and description
+                    session_repo.close_session(
+                        session_id=session_id,
+                        reason=response.end_chat_reason.value if response.end_chat_reason else None,
+                        description=response.end_chat_description
+                    )
+                    logger.info(f"Session {session_id} closed due to end_chat with reason: {response.end_chat_reason}")
+                except Exception as close_error:
+                    logger.error(f"Error closing session {session_id}: {str(close_error)}")
 
     except Exception as e:
         logger.error(f"Widget chat error for sid {sid}: {str(e)}")
@@ -796,9 +819,15 @@ async def get_widget_chat_history(sid):
                         'file_size': attachment.file_size
                     }
                     
-                    # Use signed URL as file_url for S3 files
-                    if hasattr(attachment, 'signed_url'):
-                        att_dict['file_url'] = attachment.signed_url
+                    # Generate signed URL for S3 files
+                    if settings.S3_FILE_STORAGE and attachment.file_url:
+                        try:
+                            from app.core.s3 import get_s3_signed_url
+                            signed_url = await get_s3_signed_url(attachment.file_url)
+                            att_dict['file_url'] = signed_url
+                        except Exception as e:
+                            logger.error(f"Error generating signed URL for attachment {attachment.id}: {str(e)}")
+                            # Use original file_url if signing fails
                     
                     attachments.append(att_dict)
                 msg_dict['attachments'] = attachments
@@ -822,6 +851,69 @@ async def get_widget_chat_history(sid):
         await sio.emit('error', {
             'error': 'Failed to get chat history',
             'type': 'chat_history_error'
+        }, to=sid, namespace='/widget')
+
+
+@sio.on('end_chat', namespace='/widget')
+async def handle_end_chat(sid, data):
+    """Handle end chat event from widget client"""
+    try:
+        logger.info(f"End chat requested for sid {sid}")
+        
+        # Get session data
+        session = await sio.get_session(sid, namespace='/widget')
+        if not session:
+            logger.error(f"No session found for sid {sid}")
+            return
+        
+        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        
+        if not widget_id or not org_id:
+            logger.error(f"Widget authentication failed for sid {sid}")
+            await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
+            return
+
+        # Get session id and optional end reason/description
+        session_id = session.get('session_id')
+        reason = data.get('reason') if isinstance(data, dict) else None
+        description = data.get('description') if isinstance(data, dict) else None
+        
+        if not session_id:
+            logger.error(f"No session_id in session data for sid {sid}")
+            return
+
+        db = next(get_db())
+        try:
+            # Close the session immediately
+            session_repo = SessionToAgentRepository(db)
+            session_repo.close_session(
+                session_id=session_id,
+                reason=reason,
+                description=description
+            )
+            logger.info(f"Session {session_id} closed by client with reason: {reason}")
+            
+            # Confirm to client that chat has ended
+            await sio.emit('chat_ended', {
+                'session_id': session_id,
+                'message': 'Chat session closed'
+            }, room=sid, namespace='/widget')
+            
+        except Exception as close_error:
+            logger.error(f"Error closing session {session_id}: {str(close_error)}")
+            await sio.emit('error', {
+                'error': 'Failed to end chat session',
+                'type': 'end_chat_error'
+            }, to=sid, namespace='/widget')
+        finally:
+            db.close()
+    
+    except Exception as e:
+        logger.error(f"Error in end_chat handler for sid {sid}: {str(e)}")
+        logger.error(traceback.format_exc())
+        await sio.emit('error', {
+            'error': 'Failed to process end chat request',
+            'type': 'end_chat_error'
         }, to=sid, namespace='/widget')
 
 

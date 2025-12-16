@@ -17,6 +17,7 @@ export interface Agent {
   use_workflow: boolean
   active_workflow_id: string | null
   allow_attachments: boolean
+  require_token_auth: boolean
   knowledge: Array<{
     id: number
     name: string
@@ -41,6 +42,7 @@ export interface AgentUpdate {
   use_workflow?: boolean
   active_workflow_id?: string | null
   allow_attachments?: boolean
+  require_token_auth?: boolean
   customization?: AgentCustomization
 }
 
