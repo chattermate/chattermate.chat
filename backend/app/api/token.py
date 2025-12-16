@@ -258,12 +258,17 @@ async def generate_widget_token(
         
         existing_jti = get_existing_valid_token_jti(customer_email, body.widget_id, str(customer.id))
         
-        # Always generate a new token with a new JTI and expiration
         now = datetime.utcnow()
         expires_at = now + timedelta(seconds=ttl)
-        
-        # Generate JTI for token tracking and revocation
-        jti = str(uuid.uuid4())
+        if existing_jti:
+            # Try to retrieve the existing token from the database or cache
+            # Since we only store JTI in Redis, we need to reconstruct the token scenario
+            # But we can return the same JTI and create a token with same data
+            logger.info(f"Found existing valid token for customer {customer.id} in widget {body.widget_id}, reusing JTI")
+            jti = existing_jti
+        else:
+            # No existing valid token, generate new one
+            jti = str(uuid.uuid4())
         
         token_payload = {
             "sub": str(customer.id),  # Sub is now always the customer_id
@@ -288,18 +293,19 @@ async def generate_widget_token(
             algorithm=ALGORITHM
         )
         
-        # Store token in Redis for revocation support with email and widget_id (only if new)
+        # Always store/update Redis to ensure TTL is extended for reused JTIs
+        from app.core.security import _store_token_in_redis
+        _store_token_in_redis(
+            jti, 
+            ttl, 
+            email=customer_email,
+            widget_id=body.widget_id
+        )
+        
         if not existing_jti:
-            from app.core.security import _store_token_in_redis
-            _store_token_in_redis(
-                jti, 
-                ttl, 
-                email=customer_email,
-                widget_id=body.widget_id
-            )
             logger.info(f"Generated new widget token for widget_id={body.widget_id}, customer_email={customer_email}, expires_in={ttl}s")
         else:
-            logger.info(f"Reused existing widget token for widget_id={body.widget_id}, customer_email={customer_email}, jti={jti[:8]}...")
+            logger.info(f"Reused JTI and refreshed Redis TTL for widget_id={body.widget_id}, customer_email={customer_email}, jti={jti[:8]}...")
         
         return GenerateTokenResponse(
             success=True,
