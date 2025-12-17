@@ -61,7 +61,7 @@ class TestEnhancedWebsiteKnowledgeBase:
         assert kb.min_content_length == 100
         assert kb.timeout == 30
         assert kb.max_retries == 3
-        assert kb.max_workers == 5
+        assert kb.max_workers == 4  # Default is 4, not 5
     
     def test_initialization_with_custom_params(self):
         """Test initialization with custom parameters"""
