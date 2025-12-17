@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import pytest
+import os
 from unittest.mock import MagicMock, patch, call, ANY
 from agno.document.base import Document
 from app.knowledge.enhanced_website_kb import EnhancedWebsiteKnowledgeBase
@@ -54,6 +55,9 @@ class TestEnhancedWebsiteKnowledgeBase:
         """Test initialization with default values"""
         kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS)
         
+        # Get expected max_workers from environment (5 by default, can be overridden)
+        expected_max_workers = int(os.getenv("KB_MAX_WORKERS", "5"))
+        
         assert kb.urls == TEST_URLS
         assert isinstance(kb.reader, EnhancedWebsiteReader)
         assert kb.max_depth == 5
@@ -61,7 +65,7 @@ class TestEnhancedWebsiteKnowledgeBase:
         assert kb.min_content_length == 100
         assert kb.timeout == 30
         assert kb.max_retries == 3
-        assert kb.max_workers == 5  # Default from KB_MAX_WORKERS env var in container
+        assert kb.max_workers == expected_max_workers
     
     def test_initialization_with_custom_params(self):
         """Test initialization with custom parameters"""
