@@ -109,6 +109,62 @@ const updateAttachmentsSetting = async (enabled: boolean) => {
   }
 }
 
+// Allowed file type categories
+const fileTypeCategories = [
+  { value: 'images', label: 'Images', description: 'JPG, PNG, GIF, WebP' },
+  { value: 'documents', label: 'PDF Documents', description: 'PDF files' },
+  { value: 'office', label: 'Office Files', description: 'DOC, DOCX, XLS, XLSX' },
+  { value: 'text', label: 'Text Files', description: 'TXT, CSV' }
+]
+
+// Check if a category is selected
+const isCategorySelected = (category: string): boolean => {
+  const types = agentRef.value.allowed_attachment_types
+  // If null or empty, all types are allowed
+  if (!types || types.length === 0) return true
+  return types.includes(category)
+}
+
+// Toggle a file type category
+const toggleFileTypeCategory = async (category: string) => {
+  try {
+    let currentTypes = agentRef.value.allowed_attachment_types || []
+    
+    // If currently empty (all allowed), start with all categories
+    if (currentTypes.length === 0) {
+      currentTypes = fileTypeCategories.map(c => c.value)
+    }
+    
+    let newTypes: string[]
+    if (currentTypes.includes(category)) {
+      // Remove category (but ensure at least one remains)
+      newTypes = currentTypes.filter(t => t !== category)
+      if (newTypes.length === 0) {
+        toast.error('At least one file type must be allowed', { duration: 2000 })
+        return
+      }
+    } else {
+      // Add category
+      newTypes = [...currentTypes, category]
+    }
+    
+    // If all categories selected, set to null (allow all)
+    const finalTypes = newTypes.length === fileTypeCategories.length ? null : newTypes
+    
+    const updatedAgent = await agentService.updateAgent(agentRef.value.id, {
+      allowed_attachment_types: finalTypes
+    })
+    
+    agentRef.value.allowed_attachment_types = updatedAgent.allowed_attachment_types
+    emit('update', updatedAgent)
+    
+    toast.success('Allowed file types updated', { duration: 2000 })
+  } catch (err) {
+    console.error('Failed to update allowed file types:', err)
+    toast.error('Failed to update allowed file types', { duration: 2000 })
+  }
+}
+
 // Handle token authentication setting toggle
 const updateTokenAuthSetting = async (enabled: boolean) => {
   try {
@@ -282,6 +338,38 @@ const updateTokenAuthSetting = async (enabled: boolean) => {
           <p class="helper-text info-text" style="margin-top: 8px;">
             <i class="fas fa-info-circle"></i>
             <strong>Note:</strong> Attachments are only available when the chat is handed over to a human agent, not during AI agent conversations.
+          </p>
+        </div>
+
+        <!-- Allowed File Types Section (only shown when attachments enabled) -->
+        <div v-if="agentRef.allow_attachments" class="file-types-section">
+          <div class="subsection-divider"></div>
+          <h5 class="subsection-subtitle">Allowed File Types</h5>
+          <p class="helper-text info-text" style="margin-bottom: 12px;">
+            <i class="fas fa-shield-alt"></i>
+            Select which file types users can upload. All files are validated for security (MIME type and content verification).
+          </p>
+          <div class="file-type-grid">
+            <div 
+              v-for="category in fileTypeCategories" 
+              :key="category.value"
+              class="file-type-option"
+              :class="{ 'selected': isCategorySelected(category.value) }"
+              @click="toggleFileTypeCategory(category.value)"
+            >
+              <div class="file-type-checkbox">
+                <i v-if="isCategorySelected(category.value)" class="fas fa-check-circle"></i>
+                <i v-else class="far fa-circle"></i>
+              </div>
+              <div class="file-type-info">
+                <span class="file-type-label">{{ category.label }}</span>
+                <span class="file-type-desc">{{ category.description }}</span>
+              </div>
+            </div>
+          </div>
+          <p v-if="!agentRef.allowed_attachment_types || agentRef.allowed_attachment_types.length === 0" class="helper-text info-text" style="margin-top: 8px;">
+            <i class="fas fa-info-circle"></i>
+            All file types are currently allowed.
           </p>
         </div>
 
@@ -732,5 +820,65 @@ input:checked + .slider:before {
   border-radius: 4px;
   font-size: 0.85em;
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+/* File Types Section */
+.file-types-section {
+  margin-top: var(--space-lg);
+}
+
+.file-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-sm);
+}
+
+.file-type-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--background-soft);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.file-type-option:hover {
+  border-color: var(--accent-color);
+  background: var(--background-mute);
+}
+
+.file-type-option.selected {
+  border-color: var(--accent-color);
+  background: rgba(243, 70, 17, 0.08);
+}
+
+.file-type-checkbox {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+
+.file-type-option.selected .file-type-checkbox {
+  color: var(--accent-color);
+}
+
+.file-type-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-type-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.file-type-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 </style> 

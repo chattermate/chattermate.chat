@@ -48,6 +48,10 @@ class AgentBase(BaseModel):
     active_workflow_id: Optional[UUID] = None
     display_name: Optional[str] = None
     allow_attachments: bool = False
+    allowed_attachment_types: Optional[List[str]] = Field(
+        default=None,
+        description="List of allowed attachment type categories: 'images', 'documents', 'office', 'text'. If null/empty, all types allowed."
+    )
     require_token_auth: bool = False
 
 
@@ -67,8 +71,11 @@ class AgentUpdate(BaseModel):
     use_workflow: Optional[bool] = None
     active_workflow_id: Optional[UUID] = None
     allow_attachments: Optional[bool] = None
+    allowed_attachment_types: Optional[List[str]] = Field(
+        default=None,
+        description="List of allowed attachment type categories: 'images', 'documents', 'office', 'text'. If null/empty, all types allowed."
+    )
     require_token_auth: Optional[bool] = None
-
 
 
 class AgentKnowledge(BaseModel):
@@ -95,10 +102,10 @@ class AgentResponse(BaseModel):
     use_workflow: Optional[bool] = False
     active_workflow_id: Optional[UUID] = None
     allow_attachments: bool = False
+    allowed_attachment_types: Optional[List[str]] = None
     require_token_auth: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
 
     class Config:
         from_attributes = True

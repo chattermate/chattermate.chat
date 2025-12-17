@@ -222,6 +222,7 @@ async def create_agent(
             use_workflow=agent.use_workflow or False,
             active_workflow_id=agent.active_workflow_id,
             allow_attachments=agent.allow_attachments or False,
+            allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth or False,
             knowledge=[],
             groups=[]
@@ -317,6 +318,7 @@ async def update_agent(
             overall_limit_per_ip=agent.overall_limit_per_ip,
             requests_per_sec=agent.requests_per_sec,
             allow_attachments=agent.allow_attachments,
+            allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth,
             knowledge=[{
                 "id": k.id,
@@ -378,6 +380,7 @@ async def get_organization_agents(
                 created_at=agent.created_at,
                 updated_at=agent.updated_at,
                 allow_attachments=agent.allow_attachments or False,
+                allowed_attachment_types=agent.allowed_attachment_types,
                 require_token_auth=agent.require_token_auth or False,
                 knowledge=[{
                     "id": k.id,
@@ -567,6 +570,7 @@ async def update_agent_groups(
             overall_limit_per_ip=agent.overall_limit_per_ip,
             requests_per_sec=agent.requests_per_sec,
             allow_attachments=agent.allow_attachments,
+            allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth,
             groups=agent.groups,
             knowledge=[{

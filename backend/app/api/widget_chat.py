@@ -316,6 +316,12 @@ async def handle_widget_chat(sid, data):
                     }, room=sid, namespace='/widget')
                     return
                 
+                # Get allowed attachment types for this agent
+                allowed_types = FileUploadService.get_allowed_types_for_agent(
+                    agent.allowed_attachment_types if agent else None
+                )
+                friendly_types = FileUploadService.get_friendly_allowed_types_message(allowed_types)
+                
                 # Check if chat is handed over to human agent
                 # Check if there's any agent message in the conversation
                 from app.models import ChatHistory
@@ -331,13 +337,14 @@ async def handle_widget_chat(sid, data):
                     }, room=sid, namespace='/widget')
                     return
                 
-                # Upload each file
+                # Upload each file with security validation
                 for file_data in files:
                     try:
                         uploaded_file = await FileUploadService.upload_file(
                             file_data=file_data,
                             org_id=org_id,
-                            customer_id=customer_id
+                            customer_id=customer_id,
+                            allowed_types=allowed_types
                         )
                         uploaded_files.append(uploaded_file)
                     except ValueError as val_err:
@@ -345,7 +352,8 @@ async def handle_widget_chat(sid, data):
                         logger.error(f"File validation error: {str(val_err)}")
                         await sio.emit('error', {
                             'error': str(val_err),
-                            'type': 'validation_error'
+                            'type': 'validation_error',
+                            'allowed_types': friendly_types
                         }, room=sid, namespace='/widget')
                         return
                     except Exception as upload_err:
@@ -969,12 +977,20 @@ async def handle_agent_message(sid, data):
             org_id = session.get('organization_id')
             user_id = session.get('user_id')
             
+            # Get agent and allowed attachment types
+            agent_repo = AgentRepository(db)
+            agent = agent_repo.get_agent(session_data.agent_id) if session_data.agent_id else None
+            allowed_types = FileUploadService.get_allowed_types_for_agent(
+                agent.allowed_attachment_types if agent else None
+            )
+            
             for file_data in files:
                 try:
                     uploaded_file = await FileUploadService.upload_file(
                         file_data=file_data,
                         org_id=org_id,
-                        user_id=user_id
+                        user_id=user_id,
+                        allowed_types=allowed_types
                     )
                     uploaded_files.append(uploaded_file)
                 except ValueError as val_err:

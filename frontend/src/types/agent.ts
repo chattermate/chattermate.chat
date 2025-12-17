@@ -17,6 +17,8 @@ export interface Agent {
   use_workflow: boolean
   active_workflow_id: string | null
   allow_attachments: boolean
+  // Allowed attachment type categories: 'images', 'documents', 'office', 'text'
+  allowed_attachment_types: string[] | null
   require_token_auth: boolean
   knowledge: Array<{
     id: number
@@ -42,6 +44,7 @@ export interface AgentUpdate {
   use_workflow?: boolean
   active_workflow_id?: string | null
   allow_attachments?: boolean
+  allowed_attachment_types?: string[] | null
   require_token_auth?: boolean
   customization?: AgentCustomization
 }

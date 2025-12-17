@@ -114,6 +114,9 @@ class Agent(Base):
     use_workflow = Column(Boolean, default=False, nullable=True)
     active_workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id"), nullable=True)
     allow_attachments = Column(Boolean, default=False, nullable=False)
+    # JSON array of allowed attachment type categories: ['images', 'documents', 'office', 'text']
+    # If empty or null, all types are allowed when attachments are enabled
+    allowed_attachment_types = Column(JSON, default=None, nullable=True)
     require_token_auth = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
