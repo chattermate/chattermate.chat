@@ -253,7 +253,18 @@ const handleNativeKeyDown = (event: KeyboardEvent) => {
     }
 }
 
+// Close header dropdown menu when clicking outside
+const closeHeaderMenu = (event: Event) => {
+    const target = event.target as HTMLElement
+    const headerMenuContainer = document.querySelector('.header-menu-container')
+    const headerMenuBtn = document.querySelector('.header-menu-btn')
+    const headerDropdownMenu = document.querySelector('.header-dropdown-menu')
 
+    // If click is outside the header menu container, close the dropdown
+    if (headerDropdownMenu && !headerMenuContainer?.contains(target)) {
+        headerDropdownMenu.style.display = 'none'
+    }
+}
 
 // Add loading state
 const isInitializing = ref(true)
