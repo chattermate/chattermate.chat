@@ -18,6 +18,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 import uuid
+import asyncio
+import sys
 from sqlalchemy import create_engine, event, DDL
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -48,6 +50,26 @@ from app.models.permission import Permission
 
 # Test database URL
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+
+# Configure asyncio event loop policy to prevent "Event loop is closed" errors
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an event loop for the test session."""
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    yield loop
+    
+    # Properly close the event loop
+    pending = asyncio.all_tasks(loop)
+    for task in pending:
+        task.cancel()
+    
+    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    loop.close()
 
 # Create test engine
 engine = create_engine(
