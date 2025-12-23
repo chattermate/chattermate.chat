@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { Agent } from '@/types/agent'
 
 interface Widget {
   id: string;
@@ -38,12 +39,17 @@ const props = defineProps({
     required: true
   },
   agent: {
-    type: Object,
+    type: Object as () => Agent,
     required: true
   }
 })
 
 const emit = defineEmits(['copy-widget-code', 'copy-iframe-code'])
+
+// Check if token authentication is required
+const requiresTokenAuth = computed(() => {
+  return props.agent?.require_token_auth ?? false
+})
 
 const copyWidgetCode = () => {
   emit('copy-widget-code')
@@ -86,29 +92,101 @@ const iframeEmbedCode = computed(() => {
           Loading widget info...
         </div>
         <div v-else-if="widget" class="widget-code-section">
-          <p class="code-description">Add this code snippet to your website's HTML, just before the closing <code>&lt;/body&gt;</code> tag:</p>
-          <div class="code-container">
-            <code>&lt;script&gt;window.chattermateId='{{ widget.id }}';&lt;/script&gt;&lt;script src="{{ widgetUrl }}/webclient/chattermate.min.js"&gt;&lt;/script&gt;</code>
-            <button class="copy-button" @click="copyWidgetCode" title="Copy to clipboard">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V7.41421C20 6.88378 19.7893 6.37507 19.4142 6L16 2.58579C15.6249 2.21071 15.1162 2 14.5858 2H10C8.89543 2 8 2.89543 8 4Z"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round" />
-                <path
-                  d="M16 18V20C16 21.1046 15.1046 22 14 22H6C4.89543 22 4 21.1046 4 20V8C4 6.89543 4.89543 6 6 6H8"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round" />
-              </svg>
-            </button>
-          </div>
-          <div class="info-box">
-            <div class="info-icon">ℹ️</div>
-            <div class="info-content">
-              <p>The widget will appear as a chat button in the bottom right corner of your website.</p>
+          <!-- Token-based authentication (when require_token_auth is enabled) -->
+          <template v-if="requiresTokenAuth">
+            <p class="code-description">Add this code snippet to your website's HTML, just before the closing <code>&lt;/body&gt;</code> tag. The widget requires a token from your backend API. The widget ID is cryptographically bound to the token:</p>
+            <div class="code-container">
+              <code>
+              &lt;!-- Get token from your backend: POST /api/v1/generate-token with API key --&gt;
+              &lt;!-- Security Note: Widget ID and token are cryptographically bound in the JWT. --&gt;
+              (function() {
+                fetch('/api/chattermate')
+                  .then(r =&gt; r.json())
+                  .then(d =&gt; {
+                    let token, widget_id;
+                    
+                    if (d.data &amp;&amp; d.data.token &amp;&amp; d.data.widget_id) {
+                      // Direct path from Wappler response
+                      token = d.data.token;
+                      widget_id = d.data.widget_id;
+                    } else if (d.token &amp;&amp; d.token.data &amp;&amp; d.token.data.data) {
+                      token = d.token.data.data.token;
+                      widget_id = d.token.data.data.widget_id;
+                    } else if (d.token &amp;&amp; d.widget_id) {
+                      // Flat path
+                      token = d.token;
+                      widget_id = d.widget_id;
+                    }
+                    if (!token || !widget_id) {
+                      throw new Error('Failed to extract token or widget_id from response');
+                    }
+                    window.chattermateId = widget_id;
+
+                    localStorage.setItem('ctid', token);
+                    
+                    // Load the chattermate.min.js script
+                    const script = document.createElement('script');
+                    script.src = '{{ widgetUrl }}/webclient/chattermate.min.js';
+                    script.onload = () =&gt; {
+                      console.log('[ChatterMate] chattermate.min.js loaded and executed successfully');
+                    };
+                    script.onerror = (err) =&gt; {
+                      console.error('[ChatterMate] Failed to load chattermate.min.js:', err);
+                    };
+                    document.head.appendChild(script);
+                  })
+                  .catch(e =&gt; {
+                    console.error('[ChatterMate] Initialization failed:', e);
+                  });
+              })();
+              &lt;/script&gt;
+              </code>
+              <button class="copy-button" @click="copyWidgetCode" title="Copy to clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V7.41421C20 6.88378 19.7893 6.37507 19.4142 6L16 2.58579C15.6249 2.21071 15.1162 2 14.5858 2H10C8.89543 2 8 2.89543 8 4Z"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                  <path
+                    d="M16 18V20C16 21.1046 15.1046 22 14 22H6C4.89543 22 4 21.1046 4 20V8C4 6.89543 4.89543 6 6 6H8"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                </svg>
+              </button>
             </div>
-          </div>
+            <div class="info-box warning">
+              <div class="info-icon">⚠️</div>
+              <div class="info-content">
+                <p><strong>Token Authentication Enabled:</strong> Replace <code>/api/chattermate</code> with your portal backend endpoint that generates the token using the <code>/api/v1/generate-token</code> API with your API key. See documentation for setup instructions.</p>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <p class="code-description">Add this code snippet to your website's HTML, just before the closing <code>&lt;/body&gt;</code> tag. The widget will automatically handle authentication:</p>
+            <div class="code-container">
+              <code>&lt;script&gt;window.chattermateId='{{ widget.id }}';&lt;/script&gt;&lt;script src="{{ widgetUrl }}/webclient/chattermate.min.js"&gt;&lt;/script&gt;</code>
+              <button class="copy-button" @click="copyWidgetCode" title="Copy to clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V7.41421C20 6.88378 19.7893 6.37507 19.4142 6L16 2.58579C15.6249 2.21071 15.1162 2 14.5858 2H10C8.89543 2 8 2.89543 8 4Z"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                  <path
+                    d="M16 18V20C16 21.1046 15.1046 22 14 22H6C4.89543 22 4 21.1046 4 20V8C4 6.89543 4.89543 6 6 6H8"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+            <div class="info-box">
+              <div class="info-icon">ℹ️</div>
+              <div class="info-content">
+                <p>The widget will appear as a chat button in the bottom right corner of your website.</p>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -313,6 +391,11 @@ const iframeEmbedCode = computed(() => {
   border-radius: var(--radius-md);
   border-left: 3px solid var(--primary-color);
   gap: var(--space-sm);
+}
+
+.info-box.warning {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
 }
 
 .info-content p {

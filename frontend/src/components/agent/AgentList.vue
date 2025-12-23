@@ -113,7 +113,7 @@ const copyWidgetCode = async (agent: Agent) => {
                 agent_id: agent.id
             })
             widgetMap.value[agent.id] = newWidget
-            await copyWidgetCodeToClipboard(newWidget)
+            await copyWidgetCodeToClipboard(newWidget, agent.require_token_auth)
         } catch (error) {
             console.error('Failed to create widget:', error)
             toast.error('Failed to create widget')
@@ -121,13 +121,64 @@ const copyWidgetCode = async (agent: Agent) => {
             widgetLoadingMap.value[agent.id] = false
         }
     } else {
-        await copyWidgetCodeToClipboard(widget)
+        await copyWidgetCodeToClipboard(widget, agent.require_token_auth)
     }
 }
 
-const copyWidgetCodeToClipboard = async (widget: Widget) => {
+const copyWidgetCodeToClipboard = async (widget: Widget, requireTokenAuth?: boolean) => {
     const widgetUrl = getWidgetUrl()
-    const code = `<script>window.chattermateId='${widget.id}';<\/script><script src="${widgetUrl}/webclient/chattermate.min.js"><\/script>`
+    
+    let code: string
+    
+    if (requireTokenAuth) {
+        // Token-based authentication code (for secure portal integrations)
+        code = `<!-- Get token from your backend: POST /api/v1/generate-token with API key -->
+<!-- Security Note: Widget ID and token are cryptographically bound in the JWT. -->
+    <script>
+    (function() {
+    fetch('/api/chattermate')
+        .then(r => r.json())
+        .then(d => {
+        let token, widget_id;
+        
+        if (d.data && d.data.token && d.data.widget_id) {
+            // Direct path from Wappler response
+            token = d.data.token;
+            widget_id = d.data.widget_id;
+        } else if (d.token && d.token.data && d.token.data.data) {
+            token = d.token.data.data.token;
+            widget_id = d.token.data.data.widget_id;
+        } else if (d.token && d.widget_id) {
+            // Flat path
+            token = d.token;
+            widget_id = d.widget_id;
+        }
+        if (!token || !widget_id) {
+            throw new Error('Failed to extract token or widget_id from response');
+        }
+        window.chattermateId = widget_id;
+
+        localStorage.setItem('ctid', token);
+        
+        // Load the chattermate.min.js script
+        const script = document.createElement('script');
+        script.src = '${widgetUrl}/webclient/chattermate.min.js';
+        script.onload = () => {
+            console.log('[ChatterMate] chattermate.min.js loaded and executed successfully');
+        };
+        script.onerror = (err) => {
+            console.error('[ChatterMate] Failed to load chattermate.min.js:', err);
+        };
+        document.head.appendChild(script);
+        })
+        .catch(e => {
+        console.error('[ChatterMate] Initialization failed:', e);
+        });
+    })();
+    <\/script>`
+    } else {
+        code = `<script>window.chattermateId='${widget.id}';<\/script><script src="${widgetUrl}/webclient/chattermate.min.js"><\/script>`
+    }
     
     try {
         await navigator.clipboard.writeText(code)
