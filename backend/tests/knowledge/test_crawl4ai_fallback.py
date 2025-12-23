@@ -315,12 +315,18 @@ class TestCrawl4AIFallback:
             mock_thread.start.assert_called_once()
             mock_thread.join.assert_called_once()
     
-    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    @patch('app.knowledge.crawl4ai_fallback. CRAWL4AI_AVAILABLE', True)
     @patch('asyncio.get_event_loop')
-    def test_run_async_safely_exception(self, mock_get_loop):
+    @patch('asyncio.run')
+    def test_run_async_safely_exception(self, mock_asyncio_run, mock_get_loop):
         """Test _run_async_safely handles exceptions"""
         # Arrange
-        mock_get_loop.side_effect = RuntimeError("No event loop")
+        mock_loop = MagicMock()
+        mock_loop.is_running.return_value = False
+        mock_get_loop.return_value = mock_loop
+        
+        # Simulate exception in asyncio.run
+        mock_asyncio_run.side_effect = RuntimeError("Async execution failed")
         
         fallback = Crawl4AIFallback()
         fallback._is_available = True
@@ -328,9 +334,10 @@ class TestCrawl4AIFallback:
         # Act
         html, markdown, screenshot = fallback._run_async_safely("https://example.com", False)
         
-        # Assert - should handle exception gracefully
-        # The method will try asyncio.run as fallback
-        assert html is None or isinstance(html, str)
+        # Assert - should handle exception gracefully and return None
+        assert html is None
+        assert markdown is None
+        assert screenshot is None
 
 
 class TestGetCrawl4AIFallback:
