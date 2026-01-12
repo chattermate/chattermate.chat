@@ -80,13 +80,15 @@ def sanitize_message(message: Optional[str]) -> Optional[str]:
             message = re.sub(pattern, '', message, flags=re.IGNORECASE)
     
     # Remove all dangerous HTML tags (comprehensive list)
+    # SECURITY: Including <a> and <img> to prevent any external resource loading or clickable links
     dangerous_tags = [
         'script', 'iframe', 'frame', 'frameset', 'object', 'embed', 
         'applet', 'base', 'link', 'meta', 'style', 'svg', 'math',
         'form', 'input', 'button', 'textarea', 'select', 'option',
         'xml', 'xss', 'import', 'video', 'audio', 'track', 'source',
         'canvas', 'details', 'template', 'slot', 'noscript',
-        'marquee', 'bgsound', 'keygen', 'command'
+        'marquee', 'bgsound', 'keygen', 'command',
+        'a', 'img', 'area', 'map'  # Block links and images to prevent external resource loading
     ]
     
     for tag in dangerous_tags:
@@ -149,11 +151,13 @@ def sanitize_message(message: Optional[str]) -> Optional[str]:
         message = re.sub(rf'{handler}\s*=\s*`[^`]*`', '', message, flags=re.IGNORECASE)
     
     # Remove dangerous attributes
+    # SECURITY: Including src, href, and all attributes that can load external resources
     dangerous_attrs = [
         'formaction', 'action', 'form', 'srcdoc', 'srcset', 'dynsrc', 'lowsrc',
         'ping', 'poster', 'background', 'code', 'codebase', 'archive', 'profile',
         'xmlns', 'xlink:href', 'attributename', 'from', 'to', 'values', 'begin',
-        'autofocus', 'autoplay', 'controls', 'manifest', 'sandbox'
+        'autofocus', 'autoplay', 'controls', 'manifest', 'sandbox',
+        'src', 'href', 'data', 'icon', 'usemap'  # Block all resource-loading attributes
     ]
     
     for attr in dangerous_attrs:

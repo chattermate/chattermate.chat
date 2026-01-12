@@ -1,9 +1,41 @@
 """
 Test backend message sanitization
 """
+from app.utils.sanitize import sanitize_message
 
 class TestSanitizeMessage:
     """Test message sanitization to prevent XSS"""
+    
+    def test_sanitize_link_tag(self):
+        """Test that <a> tags are completely removed"""
+        malicious = '<a href="https://evil.com">Click me</a>'
+        result = sanitize_message(malicious)
+        assert '<a' not in result.lower()
+        assert 'href' not in result.lower()
+        assert 'Click me' in result  # Text content should remain
+    
+    def test_sanitize_image_tag(self):
+        """Test that <img> tags are completely removed"""
+        malicious = '<img src="https://tracker.com/pixel.gif" alt="Hidden" />'
+        result = sanitize_message(malicious)
+        assert '<img' not in result.lower()
+        assert 'src' not in result.lower()
+    
+    def test_sanitize_s3_link(self):
+        """Test that S3 links in anchor tags are stripped"""
+        malicious = '<a href="https://nps-assets-dev.s3.ap-south-1.amazonaws.com/file.svg">Visit</a>'
+        result = sanitize_message(malicious)
+        assert '<a' not in result.lower()
+        assert 'href' not in result.lower()
+        assert 'Visit' in result  # Text should remain
+    
+    def test_sanitize_s3_image(self):
+        """Test that S3 images are stripped"""
+        malicious = '<img src="https://nps-assets-dev.s3.ap-south-1.amazonaws.com/file.svg" alt="SVG" />'
+        result = sanitize_message(malicious)
+        assert '<img' not in result.lower()
+        assert 'src' not in result.lower()
+        assert 's3' not in result.lower()
     
     def test_sanitize_iframe_tag(self):
         """Test that iframe tags are removed"""

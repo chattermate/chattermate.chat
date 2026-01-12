@@ -210,18 +210,19 @@ export function sanitizeHtml(html: string): string {
     // Only allow safe protocols
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
 
-    // Keep safe HTML elements for markdown
+    // SECURITY: Strip ALL HTML tags to prevent rendering exploits
+    // Only allow basic text formatting for markdown (no links, images, or any potentially dangerous tags)
     ALLOWED_TAGS: [
-      'a', 'b', 'i', 'u', 'strong', 'em', 'p', 'br', 'ul', 'ol', 'li',
+      'b', 'i', 'u', 'strong', 'em', 'p', 'br', 'ul', 'ol', 'li',
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div', 'img',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div',
       'del', 'hr', 'sup', 'sub', 'abbr', 'cite', 'dfn', 'kbd', 'mark',
       'q', 'samp', 'small', 'time', 'var'
     ],
 
+    // SECURITY: No href, src, or any attributes that can load external resources
     ALLOWED_ATTR: [
-      'href', 'title', 'target', 'rel', 'src', 'alt', 'class', 'id',
-      'width', 'height', 'align', 'colspan', 'rowspan'
+      'title', 'class', 'id', 'align', 'colspan', 'rowspan'
     ],
 
     // Return a string instead of a document
