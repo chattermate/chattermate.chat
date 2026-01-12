@@ -22,6 +22,7 @@ import { ref, onMounted, computed, onUnmounted, watch, nextTick } from 'vue'
 import {
     isValidEmail} from '../types/widget'
 import { marked } from 'marked'
+import { sanitizeHtml } from '../utils/sanitize'
 import { widgetEnv } from './widget-env'
 import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
@@ -47,6 +48,11 @@ renderer.link = (href, title, text) => {
 };
 
 marked.use({ renderer })
+
+// Create helper function to render and sanitize markdown
+const renderMarkdown = (text: string) => {
+    return sanitizeHtml(marked(text, { renderer }))
+}
 
 const props = defineProps<{
     widgetId?: string | null
@@ -434,6 +440,7 @@ const checkAuthorization = async () => {
         })
 
         if (response.status === 401) {
+            // Token is invalid or expired
             hasConversationToken.value = false
             return false
         }
@@ -940,7 +947,7 @@ const handleViewDetails = (product, shopDomain) => {
 const removeUrls = (text) => {
     if (!text) return '';
 
-   
+
 
     // First, remove markdown images: ![alt text](url)
     let processedText = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '');
@@ -971,7 +978,7 @@ const removeUrls = (text) => {
     // Clean up extra whitespace and newlines left after removing images
     processedText = processedText.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
-    
+
 
     return processedText;
 }
@@ -1892,7 +1899,7 @@ const shouldShowWelcomeMessage = computed(() => {
                             <template v-else-if="message.shopify_output || message.message_type === 'product'">
                                 <div class="product-message-container">
                                     <!-- Display the message text, removing images if products are present -->
-                                    <div v-if="message.message" v-html="marked(message.shopify_output?.products?.length > 0 ? removeUrls(message.message) : message.message, { renderer })" class="product-message-text"></div>
+                                    <div v-if="message.message" v-html="renderMarkdown(message.shopify_output?.products?.length > 0 ? removeUrls(message.message) : message.message)" class="product-message-text"></div>
 
                                     <!-- Always use carousel/list display -->
                                     <div v-if="message.shopify_output?.products && message.shopify_output.products.length > 0" class="products-carousel">
@@ -1932,7 +1939,7 @@ const shouldShowWelcomeMessage = computed(() => {
                                 </div>
                             </template>
                             <template v-else>
-                                <div v-html="marked(message.message, { renderer })"></div>
+                                <div v-html="renderMarkdown(message.message)"></div>
 
                                 <!-- Display attachments if present -->
                                 <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
