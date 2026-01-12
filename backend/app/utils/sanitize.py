@@ -32,7 +32,7 @@ def decode_entities(text: str) -> str:
     for _ in range(3):
         try:
             text = urllib.parse.unquote(text)
-        except:
+        except Exception:
             break
     
     return text

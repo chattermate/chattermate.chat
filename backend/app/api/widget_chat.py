@@ -290,7 +290,7 @@ async def handle_widget_chat(sid, data):
         files = data.get('files', [])  # List of file objects with base64 content
         
         # If message was stripped to empty but had content before, it was malicious
-        if original_message and not message and not files:
+        if original_message and not message.strip() and not files:
             logger.warning(f"Blocked malicious message from customer {customer_id}")
             await sio.emit('error', {
                 'error': 'Your message contains unsafe content and cannot be sent.',
@@ -298,7 +298,7 @@ async def handle_widget_chat(sid, data):
             }, room=sid, namespace='/widget')
             return
         
-        if not message and not files:
+        if not message.strip() and not files:
             return
 
         session_id = session['session_id']
@@ -924,7 +924,7 @@ async def handle_agent_message(sid, data):
         agent_message = sanitize_message(original_agent_message)
         
         # If message was stripped to empty but had content before, it was malicious
-        if original_agent_message and not agent_message:
+        if original_agent_message and not agent_message.strip():
             logger.warning(f"Blocked malicious message from agent {session.get('user_id')}")
             await sio.emit('error', {
                 'error': 'Your message contains unsafe content and cannot be sent.',

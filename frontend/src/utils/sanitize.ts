@@ -18,6 +18,136 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import DOMPurify from 'dompurify'
 
+// Register DOMPurify hooks once on module load to prevent duplicate registrations
+DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+  // Block SVG elements entirely
+  if (data.tagName === 'svg') {
+    node.parentNode?.removeChild(node)
+    return
+  }
+
+  // Block math elements
+  if (data.tagName === 'math') {
+    node.parentNode?.removeChild(node)
+    return
+  }
+
+  // Block any foreign objects
+  if (data.tagName === 'foreignobject') {
+    node.parentNode?.removeChild(node)
+    return
+  }
+})
+
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  // Block javascript: URIs (including encoded variants)
+  if (node.hasAttribute('href')) {
+    const href = node.getAttribute('href') || ''
+    try {
+      const decodedHref = decodeURIComponent(href.toLowerCase())
+
+      if (
+        decodedHref.includes('javascript:') ||
+        decodedHref.includes('data:text/html') ||
+        decodedHref.includes('vbscript:') ||
+        decodedHref.includes('about:') ||
+        decodedHref.includes('file:')
+      ) {
+        node.removeAttribute('href')
+      }
+    } catch {
+      // If decoding fails, use original value for comparison
+      if (
+        href.toLowerCase().includes('javascript:') ||
+        href.toLowerCase().includes('data:text/html') ||
+        href.toLowerCase().includes('vbscript:') ||
+        href.toLowerCase().includes('about:') ||
+        href.toLowerCase().includes('file:')
+      ) {
+        node.removeAttribute('href')
+      }
+    }
+  }
+
+  // Block javascript: and malicious data: URIs in src
+  if (node.hasAttribute('src')) {
+    const src = node.getAttribute('src') || ''
+    try {
+      const decodedSrc = decodeURIComponent(src.toLowerCase())
+
+      if (
+        decodedSrc.includes('javascript:') ||
+        decodedSrc.includes('data:text/html') ||
+        decodedSrc.includes('vbscript:') ||
+        decodedSrc.includes('about:') ||
+        decodedSrc.includes('file:')
+      ) {
+        node.removeAttribute('src')
+      }
+    } catch {
+      // If decoding fails, use original value for comparison
+      if (
+        src.toLowerCase().includes('javascript:') ||
+        src.toLowerCase().includes('data:text/html') ||
+        src.toLowerCase().includes('vbscript:') ||
+        src.toLowerCase().includes('about:') ||
+        src.toLowerCase().includes('file:')
+      ) {
+        node.removeAttribute('src')
+      }
+    }
+  }
+
+  // Check for CSS expressions in style attribute
+  if (node.hasAttribute('style')) {
+    const style = node.getAttribute('style') || ''
+    try {
+      const decodedStyle = decodeURIComponent(style.toLowerCase())
+
+      if (
+        decodedStyle.includes('expression(') ||
+        decodedStyle.includes('behavior:') ||
+        decodedStyle.includes('-moz-binding') ||
+        decodedStyle.includes('import') ||
+        decodedStyle.includes('javascript:') ||
+        decodedStyle.includes('vbscript:')
+      ) {
+        node.removeAttribute('style')
+      }
+    } catch {
+      // If decoding fails, use original value for comparison
+      if (
+        style.toLowerCase().includes('expression(') ||
+        style.toLowerCase().includes('behavior:') ||
+        style.toLowerCase().includes('-moz-binding') ||
+        style.toLowerCase().includes('import') ||
+        style.toLowerCase().includes('javascript:') ||
+        style.toLowerCase().includes('vbscript:')
+      ) {
+        node.removeAttribute('style')
+      }
+    }
+  }
+
+  // Remove any attribute that starts with "on" (event handlers)
+  Array.from(node.attributes).forEach((attr) => {
+    if (attr.name.toLowerCase().startsWith('on')) {
+      node.removeAttribute(attr.name)
+    }
+  })
+
+  // Ensure external links have proper security attributes
+  if (node.tagName === 'A' && node.hasAttribute('href')) {
+    const href = node.getAttribute('href') || ''
+
+    // Only add security attributes for external links
+    if (href.startsWith('http://') || href.startsWith('https://')) {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'nofollow noopener noreferrer')
+    }
+  }
+})
+
 /**
  * Comprehensive HTML sanitization to prevent all XSS attacks including:
  * - Encoded payloads (HTML entities, URL encoding, Unicode)
@@ -39,7 +169,7 @@ export function sanitizeHtml(html: string): string {
       'video', 'audio', 'track', 'source', 'canvas', 'details', 'template',
       'slot', 'noscript', 'marquee', 'bgsound', 'keygen', 'command'
     ],
-    
+
     // Block dangerous attributes
     FORBID_ATTR: [
       // Event handlers
@@ -69,17 +199,17 @@ export function sanitizeHtml(html: string): string {
       'onmoveend', 'onmovestart', 'onpropertychange', 'onresizeend',
       'onresizestart', 'onrowenter', 'onrowexit', 'onrowsdelete', 'onrowsinserted',
       'onselectionchange', 'onselectstart', 'onshow', 'onsort', 'onpointerrawupdate',
-      
+
       // Dangerous attributes
       'formaction', 'action', 'form', 'srcdoc', 'srcset', 'dynsrc', 'lowsrc',
       'ping', 'poster', 'background', 'code', 'codebase', 'archive', 'profile',
       'xmlns', 'xlink:href', 'attributename', 'from', 'to', 'values', 'begin',
       'autofocus', 'autoplay', 'controls', 'manifest', 'sandbox'
     ],
-    
+
     // Only allow safe protocols
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-    
+
     // Keep safe HTML elements for markdown
     ALLOWED_TAGS: [
       'a', 'b', 'i', 'u', 'strong', 'em', 'p', 'br', 'ul', 'ol', 'li',
@@ -88,113 +218,23 @@ export function sanitizeHtml(html: string): string {
       'del', 'hr', 'sup', 'sub', 'abbr', 'cite', 'dfn', 'kbd', 'mark',
       'q', 'samp', 'small', 'time', 'var'
     ],
-    
+
     ALLOWED_ATTR: [
       'href', 'title', 'target', 'rel', 'src', 'alt', 'class', 'id',
       'width', 'height', 'align', 'colspan', 'rowspan'
     ],
-    
+
     // Return a string instead of a document
     RETURN_DOM: false,
     RETURN_DOM_FRAGMENT: false,
-    
+
     // Keep HTML comments removed
     ALLOW_DATA_ATTR: false,
-    
+
     // Forbid unknown protocols
     USE_PROFILES: { html: true }
   }
 
-  // Add custom hooks for additional security
-  DOMPurify.addHook('uponSanitizeElement', (node, data) => {
-    // Block SVG elements entirely
-    if (data.tagName === 'svg') {
-      node.remove()
-      return
-    }
-    
-    // Block math elements
-    if (data.tagName === 'math') {
-      node.remove()
-      return
-    }
-    
-    // Block any foreign objects
-    if (data.tagName === 'foreignobject') {
-      node.remove()
-      return
-    }
-  })
-
-  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-    // Block javascript: URIs (including encoded variants)
-    if (node.hasAttribute('href')) {
-      const href = node.getAttribute('href') || ''
-      const decodedHref = decodeURIComponent(href.toLowerCase())
-      
-      if (
-        decodedHref.includes('javascript:') ||
-        decodedHref.includes('data:text/html') ||
-        decodedHref.includes('vbscript:') ||
-        decodedHref.includes('about:') ||
-        decodedHref.includes('file:')
-      ) {
-        node.removeAttribute('href')
-      }
-    }
-    
-    // Block javascript: and malicious data: URIs in src
-    if (node.hasAttribute('src')) {
-      const src = node.getAttribute('src') || ''
-      const decodedSrc = decodeURIComponent(src.toLowerCase())
-      
-      if (
-        decodedSrc.includes('javascript:') ||
-        decodedSrc.includes('data:text/html') ||
-        decodedSrc.includes('vbscript:') ||
-        decodedSrc.includes('about:') ||
-        decodedSrc.includes('file:')
-      ) {
-        node.removeAttribute('src')
-      }
-    }
-    
-    // Check for CSS expressions in style attribute
-    if (node.hasAttribute('style')) {
-      const style = node.getAttribute('style') || ''
-      const decodedStyle = decodeURIComponent(style.toLowerCase())
-      
-      if (
-        decodedStyle.includes('expression(') ||
-        decodedStyle.includes('behavior:') ||
-        decodedStyle.includes('-moz-binding') ||
-        decodedStyle.includes('import') ||
-        decodedStyle.includes('javascript:') ||
-        decodedStyle.includes('vbscript:')
-      ) {
-        node.removeAttribute('style')
-      }
-    }
-    
-    // Remove any attribute that starts with "on" (event handlers)
-    Array.from(node.attributes).forEach((attr) => {
-      if (attr.name.toLowerCase().startsWith('on')) {
-        node.removeAttribute(attr.name)
-      }
-    })
-    
-    // Ensure external links have proper security attributes
-    if (node.tagName === 'A' && node.hasAttribute('href')) {
-      const href = node.getAttribute('href') || ''
-      
-      // Only add security attributes for external links
-      if (href.startsWith('http://') || href.startsWith('https://')) {
-        node.setAttribute('target', '_blank')
-        node.setAttribute('rel', 'nofollow noopener noreferrer')
-      }
-    }
-  })
-
-  // Sanitize the HTML
+  // Sanitize the HTML using the pre-configured hooks
   return DOMPurify.sanitize(html, config)
 }

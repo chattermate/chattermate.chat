@@ -1,9 +1,6 @@
 """
 Test backend message sanitization
 """
-import pytest
-from app.utils.sanitize import sanitize_message
-
 
 class TestSanitizeMessage:
     """Test message sanitization to prevent XSS"""
