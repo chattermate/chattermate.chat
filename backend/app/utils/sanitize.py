@@ -62,7 +62,21 @@ def sanitize_message(message: Optional[str]) -> Optional[str]:
     if not message:
         return message
     
-    # First, decode any encoded content to catch obfuscated attacks
+    # SECURITY LAYER 1: Remove markdown link and image syntax to prevent injection
+    # This must happen BEFORE marked.js processes it on the frontend
+    # Pattern matches: [text](url) including nested brackets
+    message = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', message)
+    
+    # SECURITY: Remove markdown image syntax ![alt](url) - capture alt text without the !
+    message = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', r'\1', message)
+    
+    # SECURITY: Remove reference-style markdown links [text][ref]
+    message = re.sub(r'\[([^\]]+)\]\[[^\]]+\]', r'\1', message)
+    
+    # SECURITY: Remove link reference definitions [ref]: url
+    message = re.sub(r'^\[[^\]]+\]:\s*.+$', '', message, flags=re.MULTILINE)
+    
+    # SECURITY LAYER 2: Decode any encoded content to catch obfuscated attacks
     decoded_message = decode_entities(message)
     
     # Check for encoded javascript: or data: URIs in decoded content

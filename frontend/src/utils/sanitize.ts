@@ -136,16 +136,24 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     }
   })
 
-  // Ensure external links have proper security attributes
-  if (node.tagName === 'A' && node.hasAttribute('href')) {
-    const href = node.getAttribute('href') || ''
-
-    // Only add security attributes for external links
-    if (href.startsWith('http://') || href.startsWith('https://')) {
-      node.setAttribute('target', '_blank')
-      node.setAttribute('rel', 'nofollow noopener noreferrer')
+  // SECURITY: Remove any remaining <a> and <img> tags completely
+  DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+    const element = node as HTMLElement
+    if (element.tagName === 'A' || element.tagName === 'IMG' || element.tagName === 'AREA' || element.tagName === 'MAP') {
+      // For links, keep the text content if it exists
+      if (element.tagName === 'A') {
+        const textContent = element.textContent
+        if (textContent) {
+          element.replaceWith(textContent)
+        } else {
+          element.parentNode?.removeChild(element)
+        }
+      } else {
+        // For images and maps, just remove them
+        element.parentNode?.removeChild(element)
+      }
     }
-  }
+  })
 })
 
 /**
@@ -161,13 +169,14 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 export function sanitizeHtml(html: string): string {
   // Configure DOMPurify with strict security settings
   const config = {
-    // Block all dangerous tags including SVG and form elements
+    // Block all dangerous tags including SVG, form elements, links and images
     FORBID_TAGS: [
       'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'script',
       'base', 'link', 'meta', 'style', 'svg', 'math', 'form', 'input',
       'button', 'textarea', 'select', 'option', 'xml', 'xss', 'import',
       'video', 'audio', 'track', 'source', 'canvas', 'details', 'template',
-      'slot', 'noscript', 'marquee', 'bgsound', 'keygen', 'command'
+      'slot', 'noscript', 'marquee', 'bgsound', 'keygen', 'command',
+      'a', 'img', 'area', 'map'  // SECURITY: Remove link and image tags completely
     ],
 
     // Block dangerous attributes
@@ -204,7 +213,8 @@ export function sanitizeHtml(html: string): string {
       'formaction', 'action', 'form', 'srcdoc', 'srcset', 'dynsrc', 'lowsrc',
       'ping', 'poster', 'background', 'code', 'codebase', 'archive', 'profile',
       'xmlns', 'xlink:href', 'attributename', 'from', 'to', 'values', 'begin',
-      'autofocus', 'autoplay', 'controls', 'manifest', 'sandbox'
+      'autofocus', 'autoplay', 'controls', 'manifest', 'sandbox',
+      'href', 'src', 'data'  // SECURITY: Block resource loading attributes
     ],
 
     // Only allow safe protocols
