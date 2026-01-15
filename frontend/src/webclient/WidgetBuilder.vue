@@ -290,6 +290,7 @@ const hasToken = computed(() => !!token.value)
 // Authentication error state
 const authError = ref<string | null>(null)
 const showAuthError = ref(false)
+const isApiKeyAuthRequired = ref(false) // Specific error for missing API key configuration
 
 // Check if there's an initial auth error from widget.ts
 if (props.initialAuthError) {
@@ -481,7 +482,15 @@ const checkAuthorization = async () => {
             hasConversationToken.value = false
             try {
                 const errorData = await response.json()
-                authError.value = errorData.detail || 'Authentication failed. Your token has expired or is invalid. Please refresh the page.'
+                const errorDetail = errorData.detail || ''
+
+                // Check if this is specifically an API key authentication error
+                if (errorDetail.includes('generate-token') || errorDetail.includes('API key')) {
+                    isApiKeyAuthRequired.value = true
+                    authError.value = 'Widget authentication not configured. Please contact the website administrator.'
+                } else {
+                    authError.value = errorDetail || 'Authentication failed. Your token has expired or is invalid. Please refresh the page.'
+                }
             } catch {
                 authError.value = 'Authentication required. Your token has expired or is invalid. Please refresh the page.'
             }
@@ -1393,7 +1402,30 @@ const shouldShowWelcomeMessage = computed(() => {
 </script>
 
 <template>
-    <div v-if="showAuthError" class="auth-error-overlay">
+    <!-- API Key Not Configured Error (Widget not set up) -->
+    <div v-if="showAuthError && isApiKeyAuthRequired" class="widget-unavailable-overlay">
+        <div class="widget-unavailable-card">
+            <div class="widget-unavailable-icon-wrapper">
+                <svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M9 12l2 2 4-4"/>
+                </svg>
+            </div>
+            <h2 class="widget-unavailable-title">Chat Unavailable</h2>
+            <p class="widget-unavailable-message">
+                This chat widget is not currently configured. Please contact the website administrator to enable chat support.
+            </p>
+            <div class="widget-unavailable-footer">
+                <svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="currentColor" opacity="0.6"/>
+                </svg>
+                <span>Powered by ChatterMate</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Auth Error (Token expired/invalid) -->
+    <div v-else-if="showAuthError" class="auth-error-overlay">
         <div class="auth-error-card">
             <div class="auth-error-header">
                 <svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -5331,6 +5363,120 @@ const shouldShowWelcomeMessage = computed(() => {
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+/* Widget Unavailable / API Key Not Configured State */
+.widget-unavailable-overlay {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: relative;
+}
+
+.widget-unavailable-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.widget-unavailable-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  max-width: 90%;
+}
+
+.widget-unavailable-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  border-radius: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+}
+
+.widget-unavailable-icon {
+  width: 36px;
+  height: 36px;
+  color: #6366f1;
+}
+
+.widget-unavailable-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.01em;
+}
+
+.widget-unavailable-message {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #64748b;
+  margin: 0 0 24px 0;
+  max-width: 280px;
+}
+
+.widget-unavailable-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  opacity: 0.8;
+}
+
+.chattermate-logo-small {
+  opacity: 0.6;
+}
+
+/* Mobile responsive for unavailable state */
+@media (max-width: 768px) {
+  .widget-unavailable-card {
+    padding: 24px 20px;
+  }
+
+  .widget-unavailable-icon-wrapper {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+  }
+
+  .widget-unavailable-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .widget-unavailable-title {
+    font-size: 18px;
+  }
+
+  .widget-unavailable-message {
+    font-size: 13px;
+    max-width: 260px;
   }
 }
 </style>

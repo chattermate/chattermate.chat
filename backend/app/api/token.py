@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import jwt
 import logging
 import time
@@ -29,7 +29,7 @@ from app.database import get_db
 from app.models.widget import Widget
 from app.models.customer import Customer
 from app.core.config import settings
-from app.core.security import CONVERSATION_SECRET_KEY, ALGORITHM
+from app.core.security import CONVERSATION_SECRET_KEY, ALGORITHM, verify_conversation_token
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -102,35 +102,47 @@ class GenerateTokenResponse(BaseModel):
 # DEPENDENCIES
 # ============================================================================
 
-async def validate_api_key(request: Request):
-    """Validate API key from Authorization header (Bearer token)"""
+async def validate_api_key(request: Request, db: Session = Depends(get_db)):
+    """
+    Validate API key from Authorization header (Bearer token).
+
+    Now validates against widget_apps table instead of hardcoded WIDGET_API_KEY.
+    Uses Redis caching for performance.
+    """
     auth_header = request.headers.get("Authorization", "")
-    
+
     if not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid Authorization header. Use 'Bearer YOUR_API_KEY'",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     api_key = auth_header[len("Bearer "):]
-    
+
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key cannot be empty",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Validate API key against settings
-    if api_key != settings.WIDGET_API_KEY:
+
+    # Validate against database (with Redis caching)
+    from app.repositories.widget_app import WidgetAppRepository
+    repo = WidgetAppRepository(db)
+    widget_app = repo.validate_api_key(api_key)
+
+    if not widget_app:
         logger.warning(f"Invalid API key attempt")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Store widget_app in request state for downstream use
+    request.state.widget_app = widget_app
+
     return api_key
 
 # ============================================================================
@@ -140,30 +152,32 @@ async def validate_api_key(request: Request):
 @router.post("/generate-token", response_model=GenerateTokenResponse, status_code=status.HTTP_201_CREATED)
 async def generate_widget_token(
     body: GenerateTokenRequest,
+    request: Request,
     db: Session = Depends(get_db),
     api_key: str = Depends(validate_api_key)
 ):
     """
     Generate a JWT token for widget authentication.
-    
+
     Only calls with valid API key (in Authorization header) will succeed.
     Frontend receives this token and must pass it to the widget.
-    
+
     The token is signed with CONVERSATION_SECRET_KEY and can be verified by the widget.
-    
+
     Args:
         body: GenerateTokenRequest with widget_id, customer_email, customer_name, ttl_seconds
+        request: FastAPI request object (contains widget_app from API key validation)
         db: Database session
         api_key: Validated API key from Authorization header
-    
+
     Returns:
         GenerateTokenResponse with JWT token
-    
+
     Raises:
         HTTPException 401: Invalid or missing API key
         HTTPException 404: Widget not found
         HTTPException 400: Invalid widget_id
-    
+
     Example:
         POST /api/v1/generate-token
         Authorization: Bearer YOUR_API_KEY
@@ -173,7 +187,7 @@ async def generate_widget_token(
             "customer_name": "John Doe",
             "ttl_seconds": 3600
         }
-        
+
         Response:
         {
             "success": true,
@@ -187,13 +201,18 @@ async def generate_widget_token(
         }
     """
     try:
-        # Validate widget exists
+        # Get widget_app from request state (set by validate_api_key)
+        widget_app = request.state.widget_app
+
+        # SECURITY: Validate widget exists AND belongs to same organization as the API key
+        # This prevents cross-organization token generation
         widget = db.query(Widget).filter(
-            Widget.id == body.widget_id
+            Widget.id == body.widget_id,
+            Widget.organization_id == widget_app.organization_id
         ).first()
-        
+
         if not widget:
-            logger.error(f"Widget not found: {body.widget_id}")
+            logger.error(f"Widget not found or access denied: {body.widget_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Widget '{body.widget_id}' not found"
@@ -258,7 +277,7 @@ async def generate_widget_token(
         
         existing_jti = get_existing_valid_token_jti(customer_email, body.widget_id, str(customer.id))
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=ttl)
         if existing_jti:
             # Try to retrieve the existing token from the database or cache
@@ -352,39 +371,31 @@ async def verify_widget_token(
         Authorization: Bearer YOUR_API_KEY
     """
     try:
-        # Verify JWT signature
-        payload = jwt.decode(
-            token,
-            CONVERSATION_SECRET_KEY,
-            algorithms=[ALGORITHM]
-        )
-        
+        # Verify JWT signature AND check Redis revocation status
+        # This ensures revoked tokens are rejected
+        payload = verify_conversation_token(token)
+
+        if not payload:
+            logger.warning(f"Token invalid or revoked for widget_id={widget_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Token is invalid or has been revoked"
+            )
+
         # Verify widget_id matches
         if payload.get("widget_id") != widget_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Token widget_id does not match provided widget_id"
             )
-        
+
         logger.info(f"Token verified successfully for widget_id={widget_id}")
-        
+
         return {
             "valid": True,
             "token_data": payload
         }
-        
-    except jwt.ExpiredSignatureError:
-        logger.warning(f"Token expired for widget_id={widget_id}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token has expired"
-        )
-    except jwt.InvalidTokenError as e:
-        logger.warning(f"Invalid token: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid token"
-        )
+
     except HTTPException:
         raise
     except Exception as e:

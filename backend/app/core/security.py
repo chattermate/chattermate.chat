@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 import uuid
 from jose import JWTError, jwt
@@ -62,14 +62,14 @@ fernet = Fernet(ENCRYPTION_KEY)
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire, "type": "access"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -136,13 +136,14 @@ def create_conversation_token(widget_id: str, customer_id: Optional[str] = None,
     data.update(extra_data)
     
     # Set expiration to 30 days
-    expire = datetime.utcnow() + timedelta(days=30)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=30)
     data.update({"exp": expire})
 
     token = jwt.encode(data, CONVERSATION_SECRET_KEY, algorithm=ALGORITHM)
-    
+
     # Store token JTI in Redis with TTL and optional email mapping (with widget_id)
-    _store_token_in_redis(jti, int((expire - datetime.utcnow()).total_seconds()), customer_email, widget_id)
+    _store_token_in_redis(jti, int((expire - now).total_seconds()), customer_email, widget_id)
     
     return token
 
@@ -150,22 +151,23 @@ def create_conversation_token(widget_id: str, customer_id: Optional[str] = None,
 def verify_conversation_token(token: str) -> Optional[dict]:
     """
     Verify conversation token signature and check if revoked
-    
+
     Returns:
         Token payload dict if valid and not revoked, None otherwise
     """
     try:
         payload = jwt.decode(token, CONVERSATION_SECRET_KEY,
                              algorithms=[ALGORITHM])
+
         if payload.get("type") != "conversation":
             return None
-        
+
         # Check if token JTI exists in Redis (if revoked, it won't exist)
         jti = payload.get("jti")
         if jti and not _is_token_in_redis(jti):
             logger.warning(f"Token revoked or expired: jti={jti[:8]}...")
             return None
-        
+
         return payload
     except JWTError:
         return None
@@ -188,7 +190,7 @@ def get_password_hash(password: str) -> str:
 def _store_token_in_redis(jti: str, ttl_seconds: int, email: Optional[str] = None, widget_id: Optional[str] = None) -> bool:
     """
     Store token JTI in Redis with TTL and optionally store email/widget_id mapping
-    
+
     Args:
         jti: JWT ID for the token
         ttl_seconds: Time to live in seconds
@@ -200,7 +202,7 @@ def _store_token_in_redis(jti: str, ttl_seconds: int, email: Optional[str] = Non
         if redis_client:
             # Store the token JTI
             redis_client.setex(f"token:{jti}", ttl_seconds, "1")
-            
+
             # Store email mapping if provided (key: user_sessions:email, value: set of JTIs)
             if email:
                 redis_client.sadd(f"user_sessions:{email}", jti)
@@ -450,4 +452,140 @@ def get_existing_valid_token_jti(email: str, widget_id: str, customer_id: str) -
     except Exception as e:
         logger.error(f"Error checking existing tokens: {str(e)}")
         return None
+
+
+# ============================================================================
+# WIDGET API KEY MANAGEMENT
+# ============================================================================
+
+def generate_widget_api_key() -> str:
+    """
+    Generate a secure random API key with 'wak_' prefix.
+
+    Format: wak_<base64url> (e.g., wak_Xu8f3kLp9mN2...)
+    Entropy: 256 bits (32 random bytes)
+    Length: ~47 characters total (4 + 43)
+
+    Returns:
+        str: API key in format 'wak_<base64url>'
+    """
+    import secrets
+    import base64
+
+    # Generate 32 random bytes (256 bits of entropy)
+    random_bytes = secrets.token_bytes(32)
+    # Encode as URL-safe base64 without padding
+    key_suffix = base64.urlsafe_b64encode(random_bytes).decode('utf-8').rstrip('=')
+    return f"wak_{key_suffix}"
+
+
+def hash_widget_api_key(api_key: str) -> str:
+    """
+    Hash API key using bcrypt (same as password hashing).
+
+    Args:
+        api_key: Plain text API key
+
+    Returns:
+        str: bcrypt hash of the API key
+    """
+    return get_password_hash(api_key)
+
+
+def verify_widget_api_key(plain_key: str, hashed_key: str) -> bool:
+    """
+    Verify API key against its hash.
+
+    Args:
+        plain_key: Plain text API key from request
+        hashed_key: Stored bcrypt hash
+
+    Returns:
+        bool: True if key matches hash
+    """
+    return verify_password(plain_key, hashed_key)
+
+
+# ============================================================================
+# WIDGET API KEY CACHING (Redis)
+# ============================================================================
+
+def cache_widget_api_key(api_key: str, app_id: str, organization_id: str, ttl: int = 3600) -> bool:
+    """
+    Cache valid API key in Redis for fast lookup.
+
+    Args:
+        api_key: Plain text API key (first 20 chars used as cache key)
+        app_id: Widget app UUID
+        organization_id: Organization UUID
+        ttl: Time to live in seconds (default 1 hour)
+
+    Returns:
+        bool: True if cached successfully, False otherwise
+    """
+    try:
+        from app.core.redis import redis_client
+        import json
+
+        if redis_client:
+            # Use first 20 chars of key as cache key (enough to be unique)
+            cache_key = f"widget_api_key:{api_key[:20]}"
+            cache_value = json.dumps({
+                "app_id": str(app_id),
+                "organization_id": str(organization_id)
+            })
+            redis_client.setex(cache_key, ttl, cache_value)
+            logger.debug(f"Cached API key for app: {app_id}")
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to cache API key: {str(e)}")
+    return False
+
+
+def get_cached_widget_api_key(api_key: str) -> Optional[dict]:
+    """
+    Get cached API key data from Redis.
+
+    Args:
+        api_key: Plain text API key
+
+    Returns:
+        dict: {"app_id": "...", "organization_id": "..."} or None
+    """
+    try:
+        from app.core.redis import redis_client
+        import json
+
+        if redis_client:
+            cache_key = f"widget_api_key:{api_key[:20]}"
+            cached = redis_client.get(cache_key)
+            if cached:
+                logger.debug(f"Cache HIT for API key")
+                return json.loads(cached)
+    except Exception as e:
+        logger.debug(f"Cache miss or error: {str(e)}")
+    return None
+
+
+def invalidate_widget_api_key_cache(api_key_prefix: str) -> bool:
+    """
+    Invalidate cached API key (on regeneration/deactivation).
+
+    Args:
+        api_key_prefix: First 20 chars of the API key
+
+    Returns:
+        bool: True if invalidated successfully, False otherwise
+    """
+    try:
+        from app.core.redis import redis_client
+
+        if redis_client:
+            cache_key = f"widget_api_key:{api_key_prefix}"
+            redis_client.delete(cache_key)
+            logger.info(f"Invalidated API key cache: {cache_key}")
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to invalidate cache: {str(e)}")
+    return False
 

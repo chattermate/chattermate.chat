@@ -473,6 +473,122 @@ window.ChatterMate;
           display: none !important;
         }
       }
+
+      /* Error UI Styles */
+      .chattermate-error-ui {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-radius: 24px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .chattermate-error-ui::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background:
+          radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+          radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
+        pointer-events: none;
+      }
+
+      .chattermate-error-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 24px;
+        text-align: center;
+        position: relative;
+        z-index: 1;
+        max-width: 90%;
+      }
+
+      .chattermate-error-icon-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 72px;
+        height: 72px;
+        background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+        border-radius: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+      }
+
+      .chattermate-error-icon {
+        width: 36px;
+        height: 36px;
+        color: #6366f1;
+      }
+
+      .chattermate-error-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0 0 12px 0;
+        letter-spacing: -0.01em;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+
+      .chattermate-error-message {
+        font-size: 14px;
+        line-height: 1.6;
+        color: #64748b;
+        margin: 0 0 24px 0;
+        max-width: 280px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+
+      .chattermate-error-footer {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #94a3b8;
+        opacity: 0.8;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+
+      @media (max-width: 768px) {
+        .chattermate-error-ui {
+          border-radius: 0;
+        }
+
+        .chattermate-error-card {
+          padding: 24px 20px;
+        }
+
+        .chattermate-error-icon-wrapper {
+          width: 64px;
+          height: 64px;
+          border-radius: 16px;
+        }
+
+        .chattermate-error-icon {
+          width: 32px;
+          height: 32px;
+        }
+
+        .chattermate-error-title {
+          font-size: 18px;
+        }
+
+        .chattermate-error-message {
+          font-size: 13px;
+          max-width: 260px;
+        }
+      }
     `
     // Remove existing style if it exists
     const existingStyle = document.getElementById('chattermate-styles')
@@ -482,9 +598,10 @@ window.ChatterMate;
     document.head.appendChild(style)
   }
 
-  // Get stored token
+  // Get stored token - check window.chattermateToken first (set by developer),
+  // then fall back to localStorage (persisted from previous sessions)
   function getStoredToken() {
-    return localStorage.getItem(config.tokenKey);
+    return window.chattermateToken || localStorage.getItem(config.tokenKey);
   }
 
   // Save token
@@ -734,26 +851,109 @@ window.ChatterMate;
       }
     }
 
+    // Create error UI for authentication failures using safe DOM methods
+    function createErrorUI(message) {
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'chattermate-error-ui';
+
+      const card = document.createElement('div');
+      card.className = 'chattermate-error-card';
+
+      // Icon wrapper
+      const iconWrapper = document.createElement('div');
+      iconWrapper.className = 'chattermate-error-icon-wrapper';
+      const iconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      iconSvg.setAttribute('class', 'chattermate-error-icon');
+      iconSvg.setAttribute('viewBox', '0 0 24 24');
+      iconSvg.setAttribute('fill', 'none');
+      iconSvg.setAttribute('stroke', 'currentColor');
+      iconSvg.setAttribute('stroke-width', '1.5');
+      const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path1.setAttribute('d', 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z');
+      const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path2.setAttribute('d', 'M9 12l2 2 4-4');
+      iconSvg.appendChild(path1);
+      iconSvg.appendChild(path2);
+      iconWrapper.appendChild(iconSvg);
+
+      // Title
+      const title = document.createElement('h2');
+      title.className = 'chattermate-error-title';
+      title.textContent = 'Chat Unavailable';
+
+      // Message
+      const messageEl = document.createElement('p');
+      messageEl.className = 'chattermate-error-message';
+      messageEl.textContent = message;
+
+      // Footer
+      const footer = document.createElement('div');
+      footer.className = 'chattermate-error-footer';
+      const logoSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      logoSvg.setAttribute('width', '14');
+      logoSvg.setAttribute('height', '14');
+      logoSvg.setAttribute('viewBox', '0 0 60 60');
+      logoSvg.setAttribute('fill', 'none');
+      const logoPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      logoPath.setAttribute('d', 'M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z');
+      logoPath.setAttribute('fill', 'currentColor');
+      logoPath.setAttribute('opacity', '0.6');
+      logoSvg.appendChild(logoPath);
+      const footerText = document.createElement('span');
+      footerText.textContent = 'Powered by ChatterMate';
+      footer.appendChild(logoSvg);
+      footer.appendChild(footerText);
+
+      // Assemble card
+      card.appendChild(iconWrapper);
+      card.appendChild(title);
+      card.appendChild(messageEl);
+      card.appendChild(footer);
+      errorDiv.appendChild(card);
+
+      return errorDiv;
+    }
+
     // Start prefetching the widget data
     async function prefetchWidget() {
       if (isLoading || iframe) return
-      
+
       try {
         isLoading = true
         button.classList.add('loading')
-        
+
         const token = getStoredToken();
-        
-        iframe = document.createElement('iframe')
-        iframe.className = 'chattermate-iframe'
-        
+
         // Fetch widget data with Authorization header if token exists
         const url = `${config.baseUrl}/widgets/${window.chattermateId}/data?widget_id=${window.chattermateId}`;
-        const options = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
-        
+        const options = {
+          method: 'GET',
+          mode: 'cors',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        };
+
         fetch(url, options)
-          .then(response => response.text())
+          .then(response => {
+            // Handle 401 Unauthorized - widget requires token authentication
+            if (response.status === 401) {
+              button.classList.remove('loading')
+              // Remove stored token if it was invalid
+              removeToken();
+              // Show error UI in the container
+              const errorUI = createErrorUI('This chat widget is not currently configured. Please contact the website administrator to enable chat support.');
+              container.appendChild(errorUI);
+              return null;
+            }
+            if (!response.ok) {
+              throw new Error('HTTP error! status: ' + response.status);
+            }
+            return response.text();
+          })
           .then(html => {
+            if (html === null) return; // Error was already handled
+
+            iframe = document.createElement('iframe')
+            iframe.className = 'chattermate-iframe'
             iframe.srcdoc = html;
             container.appendChild(iframe)
             button.classList.remove('loading')
@@ -762,16 +962,19 @@ window.ChatterMate;
           .catch(error => {
             console.error('Failed to load widget:', error)
             button.classList.remove('loading')
+            // Show generic error UI
+            const errorUI = createErrorUI('Unable to load chat. Please try again later.');
+            container.appendChild(errorUI);
           });
 
         // Listen for token updates from iframe
         window.addEventListener('message', function(event) {
-          if (event.data.type === 'TOKEN_UPDATE') {
+          if (event.data.type === 'TOKEN_UPDATE' && iframe) {
             saveToken(event.data.token);
             // Confirm token storage to iframe
-            iframe.contentWindow.postMessage({ 
-              type: 'TOKEN_RECEIVED', 
-              token: event.data.token 
+            iframe.contentWindow.postMessage({
+              type: 'TOKEN_RECEIVED',
+              token: event.data.token
             }, '*');
           }
         });

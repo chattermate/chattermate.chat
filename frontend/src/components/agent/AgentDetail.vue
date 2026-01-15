@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { ref, defineEmits, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getAvatarUrl } from '@/utils/avatars'
 
@@ -230,6 +230,31 @@ const copyIframeCode = () => {
         console.log('Iframe code copied to clipboard')
     }).catch(err => {
         console.error('Failed to copy iframe code: ', err)
+    })
+}
+
+const copyBackendCode = () => {
+    if (!widget.value?.id) return
+    const backendCode = `// Your backend endpoint (e.g., /api/chat-token)
+const response = await fetch('${widgetUrl.value}/api/v1/generate-token', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'  // From Widget Apps
+  },
+  body: JSON.stringify({
+    widget_id: '${widget.value.id}',
+    customer_email: 'user@example.com',  // Optional
+    ttl_seconds: 3600  // Token validity (1 hour)
+  })
+});
+
+const { data } = await response.json();
+// Return data.token to your frontend`
+    navigator.clipboard.writeText(backendCode).then(() => {
+        console.log('Backend code copied to clipboard')
+    }).catch(err => {
+        console.error('Failed to copy backend code: ', err)
     })
 }
 
@@ -842,8 +867,25 @@ onMounted(async () => {
                                     </p>
                                 </div>
                                 <div class="preview-wrapper" :style="previewWrapperStyles">
-                                    <iframe 
-                                        v-if="widget?.id"
+                                    <!-- Token auth required notice -->
+                                    <div v-if="agentData.require_token_auth" class="preview-unavailable">
+                                        <div class="preview-unavailable-icon">
+                                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M12 15V17M6 21H18C19.1046 21 20 20.1046 20 19V13C20 11.8954 19.1046 11 18 11H6C4.89543 11 4 11.8954 4 13V19C4 20.1046 4.89543 21 6 21ZM16 11V7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7V11H16Z"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                        </div>
+                                        <h4 class="preview-unavailable-title">Preview Unavailable</h4>
+                                        <p class="preview-unavailable-description">
+                                            This agent requires Widget App authentication. The preview cannot be shown because token authentication is enabled.
+                                        </p>
+                                        <p class="preview-unavailable-hint">
+                                            To test this agent, use the external widget with a valid API key from a Widget App, or temporarily disable "Require Token Authentication" in the Settings tab.
+                                        </p>
+                                    </div>
+                                    <!-- Normal preview iframe -->
+                                    <iframe
+                                        v-else-if="widget?.id"
                                         :src="iframeUrl"
                                         class="widget-preview"
                                         frameborder="0"
@@ -918,6 +960,7 @@ onMounted(async () => {
                                 :agent="agentData"
                                 @copy-widget-code="copyWidgetCode"
                                 @copy-iframe-code="copyIframeCode"
+                                @copy-backend-code="copyBackendCode"
                             />
                         </div>
 
@@ -1936,6 +1979,58 @@ input:checked + .slider:before {
     to {
         transform: rotate(360deg);
     }
+}
+
+/* Preview unavailable state (when token auth is required) */
+.preview-unavailable {
+    text-align: center;
+    padding: var(--space-xl);
+    background: var(--background-soft);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+}
+
+.preview-unavailable-icon {
+    width: 80px;
+    height: 80px;
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--warning-color);
+}
+
+.preview-unavailable-title {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.preview-unavailable-description {
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+    font-size: var(--text-sm);
+}
+
+.preview-unavailable-hint {
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+    font-size: var(--text-xs);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--background-mute);
+    border-radius: var(--radius-md);
+    max-width: 350px;
 }
 
 .rating-toggle {

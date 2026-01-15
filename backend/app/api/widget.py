@@ -64,7 +64,7 @@ async def get_widget_ui(
     db: Session = Depends(get_db)
 ):
     """Get widget UI and handle customer authentication"""
-    
+
     widget = db.query(Widget).filter(Widget.id == widget_id).first()
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
@@ -74,7 +74,7 @@ async def get_widget_ui(
     agent = agent_repo.get_by_id(widget.agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
     require_token_auth = getattr(agent, 'require_token_auth', False)
     customer_id = None
     token = None
@@ -82,7 +82,7 @@ async def get_widget_ui(
     # Try to validate existing token if provided
     if authorization and authorization.startswith('Bearer '):
         token = authorization.split(' ')[1]
-        
+
         try:
             token_data = verify_conversation_token(token)
             if token_data and token_data.get("widget_id") == widget_id:
@@ -299,13 +299,13 @@ async def get_widget_data(
         
         # Get session info for existing customer
         if customer:
-            human_agent_info = await get_human_agent_session_info(db, customer.id)
+            human_agent_info = await get_human_agent_session_info(db, str(customer.id))
         
         # Generate new token with customer_id and preserve source if applicable
         new_token_extra_data = {}
         if widget_id == settings.EXPLORE_WIDGET_ID and old_token_source:
             new_token_extra_data["source"] = old_token_source
-        
+
         new_token = create_conversation_token(
             customer_id=str(customer.id),
             widget_id=widget_id,

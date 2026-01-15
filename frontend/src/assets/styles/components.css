@@ -35,6 +35,11 @@
   border: 1px solid var(--border-color);
 }
 
+.btn-danger {
+  background: var(--error-color);
+  color: white;
+}
+
 /* Loading state */
 .btn.loading {
   position: relative;
