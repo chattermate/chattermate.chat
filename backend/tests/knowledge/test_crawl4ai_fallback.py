@@ -315,7 +315,7 @@ class TestCrawl4AIFallback:
             mock_thread.start.assert_called_once()
             mock_thread.join.assert_called_once()
     
-    @patch('app.knowledge.crawl4ai_fallback. CRAWL4AI_AVAILABLE', True)
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
     @patch('asyncio.get_event_loop')
     @patch('asyncio.run')
     def test_run_async_safely_exception(self, mock_asyncio_run, mock_get_loop):
