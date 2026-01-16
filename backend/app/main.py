@@ -23,7 +23,9 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 # Add users import
 from fastapi.staticfiles import StaticFiles
 import socketio
-from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, user_groups, roles, analytics, jira, shopify, slack, workflow, workflow_node, mcp_tool, file_upload, widget_chat
+from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_apps, user_groups, roles, analytics, jira, shopify, slack, workflow, workflow_node, mcp_tool, file_upload, token
+# Import widget_chat to register socket.io event handlers for /widget namespace
+from app.api import widget_chat  # noqa: F401 - imported for side effects (socket.io handlers registration)
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -177,6 +179,18 @@ app.include_router(
     jira.router,
     prefix=f"{settings.API_V1_STR}/jira",
     tags=["jira"]
+)
+
+app.include_router(
+    token.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["token"]
+)
+
+app.include_router(
+    widget_apps.router,
+    prefix=f"{settings.API_V1_STR}/widget-apps",
+    tags=["widget-apps"]
 )
 
 app.include_router(

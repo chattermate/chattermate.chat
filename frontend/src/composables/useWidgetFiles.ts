@@ -19,6 +19,138 @@
 import { ref, type Ref } from 'vue'
 import { widgetEnv } from '../webclient/widget-env'
 
+// Allowed file types configuration (matching backend)
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'])
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/csv',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+])
+const ALLOWED_FILE_TYPES = new Set([...ALLOWED_IMAGE_TYPES, ...ALLOWED_DOCUMENT_TYPES])
+
+// Extension to MIME type mapping
+const EXTENSION_TO_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.txt': 'text/plain',
+  '.csv': 'text/csv',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+}
+
+// Magic byte signatures for client-side validation
+const MAGIC_BYTES: Record<string, { bytes: number[]; offset: number }[]> = {
+  'image/jpeg': [
+    { bytes: [0xff, 0xd8, 0xff, 0xe0], offset: 0 },
+    { bytes: [0xff, 0xd8, 0xff, 0xe1], offset: 0 },
+    { bytes: [0xff, 0xd8, 0xff, 0xe2], offset: 0 },
+    { bytes: [0xff, 0xd8, 0xff, 0xdb], offset: 0 },
+    { bytes: [0xff, 0xd8, 0xff, 0xee], offset: 0 }
+  ],
+  'image/png': [{ bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], offset: 0 }],
+  'image/gif': [
+    { bytes: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61], offset: 0 }, // GIF87a
+    { bytes: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61], offset: 0 }  // GIF89a
+  ],
+  'image/webp': [{ bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 }], // RIFF
+  'application/pdf': [{ bytes: [0x25, 0x50, 0x44, 0x46, 0x2d], offset: 0 }] // %PDF-
+}
+
+// Validate file magic bytes
+async function validateMagicBytes(file: File): Promise<{ valid: boolean; error?: string }> {
+  const mimeType = file.type
+  
+  // Text files don't have magic bytes
+  if (mimeType === 'text/plain' || mimeType === 'text/csv') {
+    return { valid: true }
+  }
+  
+  // Office files (ZIP-based) start with PK
+  if (mimeType.includes('openxmlformats') || mimeType === 'application/msword') {
+    const buffer = await file.slice(0, 4).arrayBuffer()
+    const bytes = new Uint8Array(buffer)
+    // PK signature for ZIP-based or OLE for old Office
+    if ((bytes[0] === 0x50 && bytes[1] === 0x4b) || 
+        (bytes[0] === 0xd0 && bytes[1] === 0xcf)) {
+      return { valid: true }
+    }
+    return { valid: false, error: 'File content does not match Office document format' }
+  }
+  
+  const signatures = MAGIC_BYTES[mimeType]
+  if (!signatures) {
+    // Unknown type, will be validated server-side
+    return { valid: true }
+  }
+  
+  // Read first 16 bytes
+  const buffer = await file.slice(0, 16).arrayBuffer()
+  const fileBytes = new Uint8Array(buffer)
+  
+  // WebP special check
+  if (mimeType === 'image/webp') {
+    if (fileBytes[0] === 0x52 && fileBytes[1] === 0x49 && 
+        fileBytes[2] === 0x46 && fileBytes[3] === 0x46 &&
+        fileBytes[8] === 0x57 && fileBytes[9] === 0x45 &&
+        fileBytes[10] === 0x42 && fileBytes[11] === 0x50) {
+      return { valid: true }
+    }
+    return { valid: false, error: 'File content does not match WebP format' }
+  }
+  
+  // Check signatures
+  for (const sig of signatures) {
+    let match = true
+    for (let i = 0; i < sig.bytes.length; i++) {
+      if (fileBytes[sig.offset + i] !== sig.bytes[i]) {
+        match = false
+        break
+      }
+    }
+    if (match) return { valid: true }
+  }
+  
+  return { valid: false, error: `File content does not match ${mimeType} format` }
+}
+
+// Validate file extension matches MIME type
+function validateExtension(filename: string, mimeType: string): { valid: boolean; error?: string } {
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
+  
+  if (!ext || ext === '.') {
+    return { valid: false, error: 'File must have an extension' }
+  }
+  
+  if (!(ext in EXTENSION_TO_MIME)) {
+    const allowed = Object.keys(EXTENSION_TO_MIME).map(e => e.toUpperCase().replace('.', '')).join(', ')
+    return { valid: false, error: `File type not allowed. Allowed: ${allowed}` }
+  }
+  
+  const expectedMime = EXTENSION_TO_MIME[ext]
+  
+  // Handle jpg/jpeg equivalence
+  if ((mimeType === 'image/jpeg' || mimeType === 'image/jpg') && 
+      (expectedMime === 'image/jpeg' || expectedMime === 'image/jpg')) {
+    return { valid: true }
+  }
+  
+  if (expectedMime !== mimeType) {
+    return { valid: false, error: `File extension ${ext} does not match content type` }
+  }
+  
+  return { valid: true }
+}
+
 export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTMLInputElement | null>) {
   // File handling state
   const uploadedAttachments = ref<Array<{
@@ -66,7 +198,7 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
     if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
       return fileUrl
     }
-    
+
     // For local storage paths, prepend the API URL
     return `${widgetEnv.API_URL}${fileUrl}`
   }

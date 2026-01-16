@@ -127,6 +127,55 @@
             box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
         }
 
+        .demo-button.auth-button {
+            background: #28a745;
+        }
+
+        .demo-button.auth-button:hover {
+            background: #218838;
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+        }
+
+        .auth-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+
+        .auth-section h3 {
+            font-size: 1.1rem;
+            color: #555;
+            margin: 0 0 10px 0;
+        }
+
+        .auth-section p {
+            font-size: 0.9rem;
+            color: #666;
+            margin: 0 0 15px 0;
+        }
+
+        .auth-status {
+            font-size: 0.9rem;
+            padding: 8px 12px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .auth-status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .auth-status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .auth-status.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+
         /* Responsive styles */
         @media (max-width: 768px) {
             body {
@@ -217,6 +266,33 @@
             .widget-input:focus {
                 border-color: #f34611;
             }
+
+            .auth-section {
+                border-top-color: #444;
+            }
+
+            .auth-section h3 {
+                color: #ccc;
+            }
+
+            .auth-section p {
+                color: #aaa;
+            }
+
+            .auth-status.success {
+                background: #1e4620;
+                color: #8fdf94;
+            }
+
+            .auth-status.error {
+                background: #4a1c1c;
+                color: #f5a5a5;
+            }
+
+            .auth-status.loading {
+                background: #4a3c00;
+                color: #ffd966;
+            }
         }
 
         /* Accessibility improvements */
@@ -246,9 +322,9 @@
         <h2>Widget Controls</h2>
         <p>Enter your widget ID and click initialize to load the chat widget.</p>
         <div class="widget-controls">
-            <input 
-                type="text" 
-                id="widgetIdInput" 
+            <input
+                type="text"
+                id="widgetIdInput"
                 placeholder="Enter Widget ID"
                 value=""
                 class="widget-input"
@@ -260,6 +336,32 @@
                 Clear Widget
             </button>
         </div>
+
+        <!-- API Key Authentication Section -->
+        <div class="auth-section">
+            <h3>Token Authentication (Optional)</h3>
+            <p>For agents with "Require Token Auth" enabled, provide an API key to authenticate.</p>
+            <div class="widget-controls">
+                <input
+                    type="password"
+                    id="apiKeyInput"
+                    placeholder="Enter API Key (from Widget Apps)"
+                    class="widget-input"
+                >
+                <input
+                    type="email"
+                    id="customerEmailInput"
+                    placeholder="Customer Email (optional)"
+                    class="widget-input"
+                >
+            </div>
+            <div class="widget-controls" style="margin-top: 10px;">
+                <button class="demo-button auth-button" id="authButton" onclick="authenticateAndInitialize()">
+                    Authenticate & Initialize
+                </button>
+                <span id="authStatus" class="auth-status"></span>
+            </div>
+        </div>
     </div>
 
     <div class="content">
@@ -267,9 +369,38 @@
         <p>To add the ChatterMate widget to your website, add the following code before the closing
             <code>&lt;/body&gt;</code> tag:
         </p>
+
+        <h3 style="margin-top: 20px; font-size: 1rem;">Basic (No Authentication)</h3>
         <pre><code>
 &lt;script&gt;
     window.chattermateId = 'YOUR_WIDGET_ID';
+&lt;/script&gt;
+&lt;script src="http://localhost:5173/webclient/chattermate.min.js"&gt;&lt;/script&gt;
+        </code></pre>
+
+        <h3 style="margin-top: 20px; font-size: 1rem;">With Token Authentication</h3>
+        <p style="font-size: 0.9em; color: #666;">For agents with "Require Token Auth" enabled, generate a token server-side:</p>
+        <pre><code>
+// Server-side: Generate token using your API key
+const response = await fetch('http://localhost:8000/api/v1/generate-token', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_KEY'
+    },
+    body: JSON.stringify({
+        widget_id: 'YOUR_WIDGET_ID',
+        customer_email: 'user@example.com',  // optional
+        ttl_seconds: 3600
+    })
+});
+const { data } = await response.json();
+// Pass data.token to frontend
+
+// Client-side: Initialize widget with token
+&lt;script&gt;
+    window.chattermateId = 'YOUR_WIDGET_ID';
+    window.chattermateToken = 'TOKEN_FROM_SERVER';
 &lt;/script&gt;
 &lt;script src="http://localhost:5173/webclient/chattermate.min.js"&gt;&lt;/script&gt;
         </code></pre>
@@ -306,7 +437,14 @@
         function autoInitializeWidget() {
             const savedWidgetId = localStorage.getItem(WIDGET_ID_KEY);
             const wasInitialized = localStorage.getItem(WIDGET_INITIALIZED_KEY) === 'true';
-            
+            const hasApiKey = localStorage.getItem('chattermate_api_key');
+
+            // Don't auto-initialize if we have an API key saved (requires token auth)
+            if (hasApiKey) {
+                console.log('Skipping auto-initialize: API key detected, use Authenticate & Initialize button');
+                return;
+            }
+
             if (savedWidgetId && wasInitialized) {
                 console.log('Auto-initializing widget with saved ID:', savedWidgetId);
                 performWidgetInitialization(savedWidgetId);
@@ -470,14 +608,140 @@
                 const savedWidgetId = localStorage.getItem(WIDGET_ID_KEY);
                 const currentValue = this.value;
                 const widgetButton = document.getElementById('widgetButton');
-                
+
                 if (savedWidgetId && currentValue === savedWidgetId) {
                     widgetButton.textContent = 'Re-initialize Widget';
                 } else {
                     widgetButton.textContent = 'Initialize Widget';
                 }
             });
+
+            // Load saved API key
+            const savedApiKey = localStorage.getItem('chattermate_api_key');
+            if (savedApiKey) {
+                document.getElementById('apiKeyInput').value = savedApiKey;
+            }
         });
+
+        // Authenticate with API key and initialize widget
+        async function authenticateAndInitialize() {
+            const widgetId = document.getElementById('widgetIdInput').value;
+            const apiKey = document.getElementById('apiKeyInput').value;
+            const customerEmail = document.getElementById('customerEmailInput').value;
+            const authStatus = document.getElementById('authStatus');
+
+            if (!widgetId) {
+                alert('Please enter a widget ID');
+                return;
+            }
+
+            if (!apiKey) {
+                alert('Please enter an API key');
+                return;
+            }
+
+            // Show loading state
+            authStatus.textContent = 'Authenticating...';
+            authStatus.className = 'auth-status loading';
+
+            try {
+                // Call the generate-token endpoint
+                const response = await fetch('http://localhost:8000/api/v1/generate-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        widget_id: widgetId,
+                        customer_email: customerEmail || undefined,
+                        ttl_seconds: 3600
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success && data.data?.token) {
+                    // Save API key for future use
+                    localStorage.setItem('chattermate_api_key', apiKey);
+                    localStorage.setItem(WIDGET_ID_KEY, widgetId);
+                    localStorage.setItem(WIDGET_INITIALIZED_KEY, 'true');
+
+                    // Set the token for the widget
+                    window.chattermateToken = data.data.token;
+                    window.chattermateId = widgetId;
+
+                    // Show success
+                    authStatus.textContent = `Authenticated! Token expires: ${new Date(data.data.expires_at).toLocaleString()}`;
+                    authStatus.className = 'auth-status success';
+
+                    console.log('Token generated successfully:', {
+                        widget_id: data.data.widget_id,
+                        expires_at: data.data.expires_at,
+                        expires_in: data.data.expires_in
+                    });
+
+                    // Initialize the widget with the token
+                    performAuthenticatedWidgetInitialization(widgetId, data.data.token);
+                    updateButtonStates(true);
+                } else {
+                    throw new Error('Invalid response from server');
+                }
+            } catch (error) {
+                console.error('Authentication error:', error);
+                authStatus.textContent = `Error: ${error.message}`;
+                authStatus.className = 'auth-status error';
+            }
+        }
+
+        function performAuthenticatedWidgetInitialization(widgetId, token) {
+            // Set widget configuration - widget loader checks window.chattermateToken first
+            window.chattermateId = widgetId;
+            window.chattermateToken = token;
+
+            // Remove existing script if any
+            const existingScript = document.getElementById('chattermate-script');
+            if (existingScript) {
+                existingScript.remove();
+            }
+
+            // Also remove any existing widget elements to ensure fresh initialization
+            const existingContainer = document.getElementById('chattermate-container');
+            const existingButton = document.getElementById('chattermate-button');
+            const existingClose = document.getElementById('chattermate-mobile-close');
+            const existingTopbar = document.getElementById('chattermate-mobile-topbar');
+            if (existingContainer) existingContainer.remove();
+            if (existingButton) existingButton.remove();
+            if (existingClose) existingClose.remove();
+            if (existingTopbar) existingTopbar.remove();
+
+            // Clear ChatterMate instance
+            if (window.ChatterMate) {
+                delete window.ChatterMate;
+            }
+
+            // Wait a moment for cleanup
+            setTimeout(() => {
+                // Create and add new script
+                const script = document.createElement('script');
+                script.id = 'chattermate-script';
+                script.src = 'http://localhost:5173/webclient/chattermate.min.js';
+
+                script.onload = function() {
+                    if (window.ChatterMate) {
+                        window.ChatterMate.init({
+                            id: widgetId
+                        });
+                    }
+                };
+                document.body.appendChild(script);
+            }, 200);
+        }
     </script>
 </body>
 

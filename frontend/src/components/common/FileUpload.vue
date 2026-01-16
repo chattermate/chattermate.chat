@@ -20,6 +20,70 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { ref, computed } from 'vue'
 import { widgetEnv } from '../../webclient/widget-env'
 
+// Security: Allowed file types (matching backend)
+const ALLOWED_FILE_TYPES = new Set([
+  'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain', 'text/csv', 'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+])
+
+const EXTENSION_TO_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.txt': 'text/plain', '.csv': 'text/csv', '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+}
+
+// Validate extension matches MIME type
+function validateExtension(filename: string, mimeType: string): { valid: boolean; error?: string } {
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
+  if (!ext || ext === '.') return { valid: false, error: 'File must have an extension' }
+  if (!(ext in EXTENSION_TO_MIME)) {
+    return { valid: false, error: `File type not allowed. Allowed: ${Object.keys(EXTENSION_TO_MIME).map(e => e.replace('.', '').toUpperCase()).join(', ')}` }
+  }
+  const expectedMime = EXTENSION_TO_MIME[ext]
+  if ((mimeType === 'image/jpeg' || mimeType === 'image/jpg') && (expectedMime === 'image/jpeg' || expectedMime === 'image/jpg')) return { valid: true }
+  if (expectedMime !== mimeType) return { valid: false, error: `File extension ${ext} does not match content type` }
+  return { valid: true }
+}
+
+// Validate magic bytes
+async function validateMagicBytes(file: File): Promise<{ valid: boolean; error?: string }> {
+  const mimeType = file.type
+  if (mimeType === 'text/plain' || mimeType === 'text/csv') return { valid: true }
+  if (mimeType.includes('openxmlformats') || mimeType === 'application/msword') {
+    const buffer = await file.slice(0, 4).arrayBuffer()
+    const bytes = new Uint8Array(buffer)
+    if ((bytes[0] === 0x50 && bytes[1] === 0x4b) || (bytes[0] === 0xd0 && bytes[1] === 0xcf)) return { valid: true }
+    return { valid: false, error: 'File content does not match Office document format' }
+  }
+  const MAGIC_BYTES: Record<string, number[][]> = {
+    'image/jpeg': [[0xff, 0xd8, 0xff, 0xe0], [0xff, 0xd8, 0xff, 0xe1], [0xff, 0xd8, 0xff, 0xdb]],
+    'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+    'image/gif': [[0x47, 0x49, 0x46, 0x38, 0x37, 0x61], [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]],
+    'application/pdf': [[0x25, 0x50, 0x44, 0x46, 0x2d]]
+  }
+  const signatures = MAGIC_BYTES[mimeType]
+  if (!signatures) return { valid: true }
+  const buffer = await file.slice(0, 16).arrayBuffer()
+  const fileBytes = new Uint8Array(buffer)
+  if (mimeType === 'image/webp') {
+    if (fileBytes[0] === 0x52 && fileBytes[1] === 0x49 && fileBytes[2] === 0x46 && fileBytes[3] === 0x46 &&
+        fileBytes[8] === 0x57 && fileBytes[9] === 0x45 && fileBytes[10] === 0x42 && fileBytes[11] === 0x50) return { valid: true }
+    return { valid: false, error: 'File content does not match WebP format' }
+  }
+  for (const sig of signatures) {
+    let match = true
+    for (let i = 0; i < sig.length; i++) { if (fileBytes[i] !== sig[i]) { match = false; break } }
+    if (match) return { valid: true }
+  }
+  return { valid: false, error: `File content does not match ${mimeType} format` }
+}
+
 const props = defineProps<{
   token?: string
   authorization?: string
@@ -186,6 +250,27 @@ const uploadFiles = async (files: File[]) => {
         continue
       }
       
+      // SECURITY: Validate file type is allowed
+      if (!ALLOWED_FILE_TYPES.has(file.type)) {
+        const allowed = Object.keys(EXTENSION_TO_MIME).map(e => e.toUpperCase().replace('.', '')).join(', ')
+        emit('error', `File type "${file.type}" is not allowed. Allowed: ${allowed}`)
+        continue
+      }
+      
+      // SECURITY: Validate extension matches MIME type
+      const extValidation = validateExtension(file.name, file.type)
+      if (!extValidation.valid) {
+        emit('error', `Security check failed: ${extValidation.error}`)
+        continue
+      }
+      
+      // SECURITY: Validate magic bytes
+      const magicValidation = await validateMagicBytes(file)
+      if (!magicValidation.valid) {
+        emit('error', `Security check failed: ${magicValidation.error}`)
+        continue
+      }
+      
       const isImage = file.type.startsWith('image/')
       
       if (isImage) {
@@ -318,6 +403,11 @@ const getPreviewUrl = (file: {url: string, file_url: string}): string => {
   
   // If file_url is already a full URL (S3), return as-is
   if (file.file_url.startsWith('http://') || file.file_url.startsWith('https://')) {
+    return file.file_url
+  }
+  
+  // If it's already an API path with /api/v1/files/download, return as-is
+  if (file.file_url.startsWith('/api/v1/files/download/')) {
     return file.file_url
   }
   

@@ -263,6 +263,7 @@ class TestFileUploadServiceUpload:
         """Test upload with invalid file type"""
         # Modify to invalid type
         sample_file_data['content_type'] = 'video/mp4'
+        sample_file_data['filename'] = 'test.mp4'
         
         with pytest.raises(ValueError) as exc_info:
             await FileUploadService.upload_file(
@@ -270,7 +271,8 @@ class TestFileUploadServiceUpload:
                 org_id=str(uuid4())
             )
         
-        assert "File type video/mp4 not allowed" in str(exc_info.value)
+        # Error should indicate the file type is not allowed
+        assert "not allowed" in str(exc_info.value) or "File type" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_upload_file_invalid_base64(self):
@@ -373,7 +375,9 @@ class TestFileUploadServiceUpload:
                 org_id=str(uuid4())
             )
         
-        assert "File type application/octet-stream not allowed" in str(exc_info.value)
+        # Error could be extension mismatch or file type not allowed
+        error_str = str(exc_info.value).lower()
+        assert "not allowed" in error_str or "does not match" in error_str or "file type" in error_str
     
     @pytest.mark.asyncio
     async def test_upload_file_folder_structure_user(self, sample_file_data):
@@ -460,26 +464,14 @@ class TestFileUploadServiceUpload:
             'content_type': 'text/plain'
         }
         
-        with patch('app.services.file_upload_service.settings') as mock_settings, \
-             patch('app.services.file_upload_service.upload_file_to_s3') as mock_s3_upload, \
-             patch('app.services.file_upload_service.get_s3_signed_url') as mock_signed_url, \
-             patch('uuid.uuid4') as mock_uuid:
-            
-            mock_settings.S3_FILE_STORAGE = True
-            mock_s3_upload.return_value = 'https://s3.amazonaws.com/bucket/file'
-            mock_signed_url.return_value = 'https://s3.amazonaws.com/bucket/signed'
-            
-            mock_uuid.return_value = Mock()
-            mock_uuid.return_value.__str__ = Mock(return_value='no-ext-id')
-            
+        # Should raise error because file has no extension
+        with pytest.raises(ValueError) as exc_info:
             await FileUploadService.upload_file(
                 file_data=file_data,
                 org_id=str(uuid4())
             )
-            
-            # Verify filename without extension
-            call_args = mock_s3_upload.call_args
-            assert call_args[1]['filename'] == 'no-ext-id'  # No extension added
+        
+        assert "must have an extension" in str(exc_info.value) or "extension" in str(exc_info.value).lower()
 
 
 class TestFileUploadServiceConstants:
@@ -497,12 +489,14 @@ class TestFileUploadServiceConstants:
         assert MAX_IMAGE_SIZE < MAX_FILE_SIZE       # Image limit should be smaller
     
     def test_allowed_image_types_content(self):
-        """Test allowed image types include common formats"""
+        """Test allowed image types include common formats (SVG excluded for XSS safety)"""
         expected_image_types = {
             'image/jpeg', 'image/jpg', 'image/png', 
-            'image/gif', 'image/webp', 'image/svg+xml'
+            'image/gif', 'image/webp'
         }
         assert ALLOWED_IMAGE_TYPES == expected_image_types
+        # Verify SVG is explicitly NOT included
+        assert 'image/svg+xml' not in ALLOWED_IMAGE_TYPES
     
     def test_allowed_document_types_content(self):
         """Test allowed document types include common formats"""

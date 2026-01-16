@@ -8,6 +8,7 @@ import HumanAgentView from '@/views/HumanAgentView.vue'
 import OrganizationSettings from '@/views/settings/OrganizationSettings.vue'
 import AIConfigSettings from '@/views/settings/AIConfigSettings.vue'
 import IntegrationsSettings from '@/views/settings/IntegrationsSettings.vue'
+import WidgetAppsSettings from '@/views/settings/WidgetAppsSettings.vue'
 import UserSettingsView from '@/views/UserSettingsView.vue'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
@@ -92,6 +93,16 @@ const baseRoutes = [
     path: '/settings/integrations',
     name: 'integrations-settings',
     component: IntegrationsSettings,
+    meta: {
+      requiresAuth: true,
+      layout: 'dashboard',
+      permissions: ['manage_organization'],
+    },
+  },
+  {
+    path: '/settings/widget-apps',
+    name: 'widget-apps',
+    component: WidgetAppsSettings,
     meta: {
       requiresAuth: true,
       layout: 'dashboard',

@@ -106,10 +106,16 @@ async def authenticate_socket(sid: str, environ: dict) -> Tuple[Optional[str], O
 
 async def authenticate_socket_conversation_token(sid: str, auth: dict) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
-    Authenticate widget socket connection using conversation token
+    Authenticate widget socket connection using conversation token.
+    Supports both token-required and optional-token authentication modes.
+    
     Returns: (widget_id, org_id, customer_id, conversation_token)
+    Returns (None, None, None, None) if authentication fails
     """
     try:
+        if not auth or not isinstance(auth, dict):
+            logger.warning(f"Socket auth failed: No auth data for sid {sid}")
+            return None, None, None, None
         conversation_token = None
         
         # Get token from Socket.IO auth data
