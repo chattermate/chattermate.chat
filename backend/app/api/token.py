@@ -29,7 +29,19 @@ from app.database import get_db
 from app.models.widget import Widget
 from app.models.customer import Customer
 from app.core.config import settings
-from app.core.security import CONVERSATION_SECRET_KEY, ALGORITHM, verify_conversation_token
+from app.core.security import (
+    CONVERSATION_SECRET_KEY,
+    ALGORITHM,
+    verify_conversation_token,
+    get_existing_valid_token_jti,
+    _store_token_in_redis,
+    revoke_token as security_revoke_token,
+    revoke_user_sessions as security_revoke_user_sessions,
+    revoke_user_sessions_by_widget as security_revoke_user_sessions_by_widget,
+    get_user_active_sessions as security_get_user_active_sessions,
+    get_all_active_sessions as security_get_all_active_sessions
+)
+from app.repositories.widget_app import WidgetAppRepository
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -128,7 +140,6 @@ async def validate_api_key(request: Request, db: Session = Depends(get_db)):
         )
 
     # Validate against database (with Redis caching)
-    from app.repositories.widget_app import WidgetAppRepository
     repo = WidgetAppRepository(db)
     widget_app = repo.validate_api_key(api_key)
 
@@ -273,8 +284,6 @@ async def generate_widget_token(
         # Check for existing valid token for this customer/widget combination
         # This prevents token multiplication when user refreshes page
         customer_email = body.customer_email or customer.email
-        from app.core.security import get_existing_valid_token_jti, verify_conversation_token
-        
         existing_jti = get_existing_valid_token_jti(customer_email, body.widget_id, str(customer.id))
         
         now = datetime.now(timezone.utc)
@@ -313,7 +322,6 @@ async def generate_widget_token(
         )
         
         # Always store/update Redis to ensure TTL is extended for reused JTIs
-        from app.core.security import _store_token_in_redis
         _store_token_in_redis(
             jti, 
             ttl, 
@@ -481,8 +489,7 @@ async def revoke_widget_token(
             )
         
         # Revoke the token
-        from app.core.security import revoke_token
-        revoke_token(jti)
+        security_revoke_token(jti)
         
         revoked_at = datetime.utcnow()
         
@@ -582,18 +589,16 @@ async def revoke_user_sessions(
             )
         
         # Revoke sessions for this email
-        from app.core.security import revoke_user_sessions, revoke_user_sessions_by_widget, get_user_active_sessions
-        
         # Get count before revocation
-        active_sessions = get_user_active_sessions(email, widget_id=widget_id)
+        active_sessions = security_get_user_active_sessions(email, widget_id=widget_id)
         revoked_count = len(active_sessions)
-        
+
         # Revoke sessions based on whether widget_id is specified
         if widget_id:
-            revoke_user_sessions_by_widget(email, widget_id)
+            security_revoke_user_sessions_by_widget(email, widget_id)
             scope_message = f"in widget '{widget_id}'"
         else:
-            revoke_user_sessions(email)
+            security_revoke_user_sessions(email)
             scope_message = "across all widgets"
         
         revoked_at = datetime.utcnow()
@@ -663,10 +668,8 @@ async def get_all_active_sessions(
         }
     """
     try:
-        from app.core.security import get_all_active_sessions
-        
         # Get all active sessions
-        all_sessions = get_all_active_sessions()
+        all_sessions = security_get_all_active_sessions()
         
         # Build response with user details
         total_sessions = 0
