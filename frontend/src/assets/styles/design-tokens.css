@@ -13,9 +13,21 @@
   --warning-color: #F59E0B;
   --info-color: #3B82F6;
 
+  /* Semantic Background Colors (for messages, badges, alerts, etc.) */
+  --success-bg: rgba(16, 185, 129, 0.1);
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --info-bg: rgba(59, 130, 246, 0.1);
+
   /* Background Variations */
   --background-soft: #f8f5f5;
   --background-mute: #f3f2f2;
+
+  /* Interaction States */
+  --hover-bg: var(--background-mute);
+
+  /* Code/Monospace Backgrounds */
+  --code-bg: var(--background-mute);
 
   /* Border Colors */
   --border-color: #E5E7EB;

@@ -50,6 +50,8 @@ marked.use({ renderer })
 
 const props = defineProps<{
     widgetId?: string | null
+    token?: string | null
+    initialAuthError?: string | null
 }>()
 
 // Get widget ID from props or initial data
@@ -87,7 +89,9 @@ const {
     proceedWorkflow,
     onWorkflowState,
     onWorkflowProceeded,
-    currentSessionId
+    currentSessionId,
+    setToken,
+    setWidgetId
 } = useWidgetSocket()
 
 const newMessage = ref('')
@@ -249,29 +253,67 @@ const handleNativeKeyDown = (event: KeyboardEvent) => {
     }
 }
 
+// Close header dropdown menu when clicking outside
+const closeHeaderMenu = (event: Event) => {
+    const target = event.target as HTMLElement
+    const headerMenuContainer = document.querySelector('.header-menu-container')
+    const headerMenuBtn = document.querySelector('.header-menu-btn')
+    const headerDropdownMenu = document.querySelector('.header-dropdown-menu')
 
+    // If click is outside the header menu container, close the dropdown
+    if (headerDropdownMenu && !headerMenuContainer?.contains(target)) {
+        headerDropdownMenu.style.display = 'none'
+    }
+}
 
 // Add loading state
 const isInitializing = ref(true)
 
 // Add these to the script setup section after the imports
 const TOKEN_KEY = 'ctid'
+
+// Helper to sanitize token - reject "undefined" and "null" strings
+const sanitizeToken = (tokenValue: any): string | null => {
+  if (!tokenValue || tokenValue === 'undefined' || tokenValue === 'null') {
+    return null
+  }
+  if (typeof tokenValue === 'string' && tokenValue.trim() === '') {
+    return null
+  }
+  return tokenValue
+}
+
 // @ts-ignore
-const token = ref(window.__INITIAL_DATA__?.initialToken || localStorage.getItem(TOKEN_KEY))
+const token = ref(sanitizeToken(window.__INITIAL_DATA__?.initialToken || localStorage.getItem(TOKEN_KEY)))
 const hasToken = computed(() => !!token.value)
+
+// Authentication error state
+const authError = ref<string | null>(null)
+const showAuthError = ref(false)
+const isApiKeyAuthRequired = ref(false) // Specific error for missing API key configuration
+
+// Check if there's an initial auth error from widget.ts
+if (props.initialAuthError) {
+    authError.value = props.initialAuthError
+    showAuthError.value = true
+    isInitializing.value = false
+}
 
 // Initialize from initial data
 initializeFromData()
 const initialData = window.__INITIAL_DATA__
 
 if (initialData?.initialToken) {
-    token.value = initialData.initialToken
-    // Notify parent window to store token
-    window.parent.postMessage({
-        type: 'TOKEN_UPDATE',
-        token: initialData.initialToken
-    }, '*')
-    hasConversationToken.value = true
+    const validatedToken = sanitizeToken(initialData.initialToken)
+    if (validatedToken) {
+      token.value = validatedToken
+      // Notify parent window to store token
+      window.parent.postMessage({
+          type: 'TOKEN_UPDATE',
+          token: validatedToken
+      }, '*')
+      hasConversationToken.value = true
+    }
 }
 
 // Initialize allowAttachments from __INITIAL_DATA__
@@ -412,6 +454,8 @@ const checkAuthorization = async () => {
     try {
         if (!widgetId.value) {
             console.error('Widget ID is not available')
+            authError.value = 'Widget ID is not available. Please refresh and try again.'
+            showAuthError.value = true
             return false
         }
 
@@ -434,7 +478,42 @@ const checkAuthorization = async () => {
         })
 
         if (response.status === 401) {
+            // Check the error detail to determine the type of 401
             hasConversationToken.value = false
+            try {
+                const errorData = await response.json()
+                const errorDetail = errorData.detail || ''
+
+                // Check if this is specifically an API key/token authentication error
+                // These indicate the widget requires token auth (require_token_auth=true)
+                if (errorDetail.includes('generate-token') || errorDetail.includes('API key') || errorDetail.includes('Token required')) {
+                    isApiKeyAuthRequired.value = true
+                    authError.value = 'Widget authentication not configured. Please contact the website administrator.'
+                    showAuthError.value = true
+                    localStorage.removeItem(TOKEN_KEY)
+                    token.value = null
+                }
+                // For plain "Unauthorized" - this is a regular non-auth agent waiting for email
+                // Don't show auth error, just let the email input display
+            } catch {
+                // If we can't parse the error, assume it's a token issue
+                authError.value = 'Authentication required. Your token has expired or is invalid. Please refresh the page.'
+                showAuthError.value = true
+                localStorage.removeItem(TOKEN_KEY)
+                token.value = null
+            }
+            return false
+        }
+
+        if (!response.ok) {
+            // Other error status
+            try {
+                const errorData = await response.json()
+                authError.value = errorData.detail || `Error: ${response.statusText}`
+            } catch {
+                authError.value = `Error: ${response.statusText}. Please try again.`
+            }
+            showAuthError.value = true
             return false
         }
 
@@ -449,11 +528,18 @@ const checkAuthorization = async () => {
         }
 
         hasConversationToken.value = true
+        authError.value = null
+        showAuthError.value = false
+
+        // 🔐 SECURITY: Pass token to WebSocket before connecting
+        setToken(token.value || undefined)
 
         // Connect socket and verify connection success
         const connected = await connect()
         if (!connected) {
             console.error('Failed to connect to chat service')
+            authError.value = 'Failed to connect to chat service. Please try again.'
+            showAuthError.value = true
             return false
         }
 
@@ -488,6 +574,8 @@ const checkAuthorization = async () => {
         return true
     } catch (error) {
         console.error('Error checking authorization:', error)
+        authError.value = 'An unexpected error occurred. Please try again.'
+        showAuthError.value = true
         hasConversationToken.value = false
         return false
     } finally {
@@ -609,8 +697,39 @@ const humanAgentPhotoUrl = computed(() => {
 })
 
 // Add this after other methods
-const handleEndChat = (message) => {
+const handleEndChat = async (message) => {
+    // Call backend API to acknowledge end_chat and close the session
+    try {
+        if (message.session_id && token.value && widgetId.value) {
+            const url = new URL(`${widgetEnv.API_URL}/widgets/${widgetId.value}/end-chat`)
+            url.searchParams.append('session_id', message.session_id)
+            if (message.attributes?.end_chat_reason) {
+                url.searchParams.append('reason', message.attributes.end_chat_reason)
+            }
+            if (message.attributes?.end_chat_description) {
+                url.searchParams.append('description', message.attributes.end_chat_description)
+            }
 
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token.value}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                console.info(`✓ Chat session closed on backend: ${data.session_id}`)
+            } else {
+                console.warn(`Failed to close session on backend: ${response.status}`)
+            }
+        }
+    } catch (error) {
+        console.error('Error calling end-chat API:', error)
+    }
+
+    // Show rating if requested
     if (message.attributes?.end_chat && message.attributes?.request_rating) {
         // Determine the agent name with proper fallbacks
         const displayAgentName = message.agent_name || humanAgent.value?.human_agent_name || agentName.value || 'our agent'
@@ -940,7 +1059,7 @@ const handleViewDetails = (product, shopDomain) => {
 const removeUrls = (text) => {
     if (!text) return '';
 
-   
+
 
     // First, remove markdown images: ![alt text](url)
     let processedText = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '');
@@ -971,7 +1090,7 @@ const removeUrls = (text) => {
     // Clean up extra whitespace and newlines left after removing images
     processedText = processedText.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
-    
+
 
     return processedText;
 }
@@ -987,18 +1106,10 @@ const acceptTypes = 'image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls'
 const canUploadMore = computed(() => {
   // Attachments only allowed when:
   // 1. allow_attachments setting is enabled
-  // 2. Chat has been handed over to a human agent
-  // 3. Human agent has sent at least one message
+  // 2. Chat has been handed over to a human agent (no need to wait for agent message)
+  // 3. Haven't reached max file limit
   const isHandedOverToHuman = !!humanAgent.value?.human_agent_name
-  const hasAgentMessage = messages.value.some(msg => msg.message_type === 'agent')
-  return allowAttachments.value && isHandedOverToHuman && hasAgentMessage && uploadedAttachments.value.length < maxFiles
-})
-
-// Watch for changes to allowAttachments
-watch(allowAttachments, (newVal) => {
-  console.log('🔍 allowAttachments changed to:', newVal)
-  console.log('   isHandedOverToHuman:', !!humanAgent.value?.human_agent_name)
-  console.log('   canUploadMore:', canUploadMore.value)
+  return allowAttachments.value && isHandedOverToHuman && uploadedAttachments.value.length < maxFiles
 })
 
 
@@ -1055,6 +1166,9 @@ const initializeWidget = async () => {
             console.error('Widget data not available after waiting')
             return false
         }
+
+        // Set widget ID for socket authentication (supports anonymous access)
+        setWidgetId(window.__INITIAL_DATA__.widgetId)
 
         const isAuthorized = await checkAuthorization()
 
@@ -1174,6 +1288,9 @@ onMounted(async () => {
     // Setup DOM observer to detect changes
     setupDOMObserver()
 
+    // Close header menu when clicking outside
+    document.addEventListener('click', closeHeaderMenu)
+
     // Only set up native event listeners if we're in a state where input is expected
     // This avoids unnecessary overhead during workflow navigation
     const shouldSetupListeners = () => {
@@ -1200,6 +1317,9 @@ onUnmounted(() => {
             scrollToBottom()
         }
     })
+
+    // Remove header menu click listener
+    document.removeEventListener('click', closeHeaderMenu)
 
     // Clean up DOM observer
     if (domObserver) {
@@ -1287,7 +1407,50 @@ const shouldShowWelcomeMessage = computed(() => {
 </script>
 
 <template>
-    <div v-if="widgetId" class="chat-container" :class="{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }" :style="{ ...shadowStyle, ...containerStyles }">
+    <!-- API Key Not Configured Error (Widget not set up) -->
+    <div v-if="showAuthError && isApiKeyAuthRequired" class="widget-unavailable-overlay">
+        <div class="widget-unavailable-card">
+            <div class="widget-unavailable-icon-wrapper">
+                <svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M9 12l2 2 4-4"/>
+                </svg>
+            </div>
+            <h2 class="widget-unavailable-title">Chat Unavailable</h2>
+            <p class="widget-unavailable-message">
+                This chat widget is not currently configured. Please contact the website administrator to enable chat support.
+            </p>
+            <div class="widget-unavailable-footer">
+                <svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="currentColor" opacity="0.6"/>
+                </svg>
+                <span>Powered by ChatterMate</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Auth Error (Token expired/invalid) -->
+    <div v-else-if="showAuthError" class="auth-error-overlay">
+        <div class="auth-error-card">
+            <div class="auth-error-header">
+                <svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <h2>Authentication Error</h2>
+            </div>
+
+            <p class="auth-error-message">
+                {{ authError }}
+            </p>
+
+            <button class="auth-error-refresh-btn" @click="() => window.location.reload()">
+                Refresh Page
+            </button>
+        </div>
+    </div>
+    <div v-else-if="widgetId && !showAuthError" class="chat-container" :class="{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }" :style="{ ...shadowStyle, ...containerStyles }">
         <!-- Loading State -->
         <div v-if="isInitializing" class="initializing-overlay">
             <div class="loading-spinner">
@@ -2255,7 +2418,7 @@ const shouldShowWelcomeMessage = computed(() => {
 .chat-header {
     padding: var(--space-md);
     display: flex;
-    justify-content: flex-start;
+    justify-content: space-between;
     align-items: center;
 }
 
@@ -2263,6 +2426,85 @@ const shouldShowWelcomeMessage = computed(() => {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
+}
+
+/* Header Menu Styles */
+.header-menu-container {
+    position: relative;
+    margin-left: auto;
+}
+
+.header-menu-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    color: var(--text-secondary, #6b7280);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.header-menu-btn:hover {
+    background: var(--background-secondary, #f3f4f6);
+    color: var(--text-primary, #1f2937);
+}
+
+.header-menu-btn:focus {
+    outline: 2px solid var(--primary-color, #3b82f6);
+    outline-offset: 2px;
+}
+
+.header-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--background-base, white);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 140px;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: var(--text-sm, 14px);
+    color: var(--text-primary, #1f2937);
+    text-align: left;
+    transition: all 0.15s ease;
+}
+
+.dropdown-item:hover:not(:disabled) {
+    background: var(--background-secondary, #f3f4f6);
+}
+
+.dropdown-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.dropdown-item.end-chat-btn {
+    color: var(--error-color, #ef4444);
+}
+
+.dropdown-item.end-chat-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.dropdown-item svg {
+    flex-shrink: 0;
 }
 
 .header-avatar {
@@ -2572,6 +2814,117 @@ const shouldShowWelcomeMessage = computed(() => {
     z-index: 100;
     animation: slideDown 0.3s ease-out;
     border-radius: 24px 24px 0 0;
+}
+
+/* Authentication Error Alert Styles */
+.auth-error-alert {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    color: white;
+    z-index: 200;
+    border-radius: 24px;
+    animation: slideDown 0.3s ease-out;
+    text-align: center;
+}
+
+.auth-error-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.auth-error-icon {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.auth-error-message {
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 12px 0;
+    opacity: 0.95;
+}
+
+.auth-error-refresh-btn {
+    margin-top: 16px;
+    padding: 8px 16px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.auth-error-refresh-btn:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: translateY(-1px);
+}
+
+.auth-error-refresh-btn:active {
+    transform: translateY(0);
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* SECURITY: Full-page blocking auth error container */
+.auth-error-only-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Blocking auth error alert - prevents any interaction with chat */
+.auth-error-alert-blocking {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    color: white;
+    z-index: 9999;
+    text-align: center;
+    animation: slideDown 0.3s ease-out;
+    max-width: 90%;
+}
+
+.auth-error-alert-blocking .auth-error-header {
+    margin-bottom: 16px;
+}
+
+.auth-error-alert-blocking .auth-error-message {
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 16px 0;
+    opacity: 0.95;
+    color: #f9fafb;
+}
+
+.chat-container.collapsed .auth-error-alert {
+    display: none;
 }
 
 @keyframes slideDown {
@@ -5015,6 +5368,120 @@ const shouldShowWelcomeMessage = computed(() => {
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+/* Widget Unavailable / API Key Not Configured State */
+.widget-unavailable-overlay {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: relative;
+}
+
+.widget-unavailable-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.widget-unavailable-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  max-width: 90%;
+}
+
+.widget-unavailable-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  border-radius: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+}
+
+.widget-unavailable-icon {
+  width: 36px;
+  height: 36px;
+  color: #6366f1;
+}
+
+.widget-unavailable-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.01em;
+}
+
+.widget-unavailable-message {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #64748b;
+  margin: 0 0 24px 0;
+  max-width: 280px;
+}
+
+.widget-unavailable-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  opacity: 0.8;
+}
+
+.chattermate-logo-small {
+  opacity: 0.6;
+}
+
+/* Mobile responsive for unavailable state */
+@media (max-width: 768px) {
+  .widget-unavailable-card {
+    padding: 24px 20px;
+  }
+
+  .widget-unavailable-icon-wrapper {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+  }
+
+  .widget-unavailable-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .widget-unavailable-title {
+    font-size: 18px;
+  }
+
+  .widget-unavailable-message {
+    font-size: 13px;
+    max-width: 260px;
   }
 }
 </style>

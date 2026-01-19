@@ -63,6 +63,7 @@ class Organization(Base):
         "Knowledge", back_populates="organization")
     mcp_tools = relationship("MCPTool", back_populates="organization")
     widgets = relationship("Widget", back_populates="organization")
+    widget_apps = relationship("WidgetApp", back_populates="organization", cascade="all, delete-orphan")
     groups = relationship("UserGroup", back_populates="organization")
     workflows = relationship("Workflow", back_populates="organization")
  
