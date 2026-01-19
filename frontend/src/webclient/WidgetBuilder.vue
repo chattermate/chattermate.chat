@@ -478,25 +478,30 @@ const checkAuthorization = async () => {
         })
 
         if (response.status === 401) {
-            // Token is invalid or expired
+            // Check the error detail to determine the type of 401
             hasConversationToken.value = false
             try {
                 const errorData = await response.json()
                 const errorDetail = errorData.detail || ''
 
-                // Check if this is specifically an API key authentication error
-                if (errorDetail.includes('generate-token') || errorDetail.includes('API key')) {
+                // Check if this is specifically an API key/token authentication error
+                // These indicate the widget requires token auth (require_token_auth=true)
+                if (errorDetail.includes('generate-token') || errorDetail.includes('API key') || errorDetail.includes('Token required')) {
                     isApiKeyAuthRequired.value = true
                     authError.value = 'Widget authentication not configured. Please contact the website administrator.'
-                } else {
-                    authError.value = errorDetail || 'Authentication failed. Your token has expired or is invalid. Please refresh the page.'
+                    showAuthError.value = true
+                    localStorage.removeItem(TOKEN_KEY)
+                    token.value = null
                 }
+                // For plain "Unauthorized" - this is a regular non-auth agent waiting for email
+                // Don't show auth error, just let the email input display
             } catch {
+                // If we can't parse the error, assume it's a token issue
                 authError.value = 'Authentication required. Your token has expired or is invalid. Please refresh the page.'
+                showAuthError.value = true
+                localStorage.removeItem(TOKEN_KEY)
+                token.value = null
             }
-            showAuthError.value = true
-            localStorage.removeItem(TOKEN_KEY)
-            token.value = null
             return false
         }
 

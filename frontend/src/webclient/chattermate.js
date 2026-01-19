@@ -933,16 +933,25 @@ window.ChatterMate;
         };
 
         fetch(url, options)
-          .then(response => {
-            // Handle 401 Unauthorized - widget requires token authentication
+          .then(async response => {
+            // Handle 401 Unauthorized - only for token-required widgets
             if (response.status === 401) {
-              button.classList.remove('loading')
-              // Remove stored token if it was invalid
-              removeToken();
-              // Show error UI in the container
-              const errorUI = createErrorUI('This chat widget is not currently configured. Please contact the website administrator to enable chat support.');
-              container.appendChild(errorUI);
-              return null;
+              // Try to read error detail to determine if this is token-auth required
+              try {
+                const errorData = await response.json();
+                const errorDetail = errorData.detail || '';
+                // Only show auth error for token-required cases (contains generate-token or API key)
+                if (errorDetail.includes('generate-token') || errorDetail.includes('API key') || errorDetail.includes('Token must be obtained')) {
+                  button.classList.remove('loading')
+                  removeToken();
+                  const errorUI = createErrorUI('This chat widget is not currently configured. Please contact the website administrator to enable chat support.');
+                  container.appendChild(errorUI);
+                  return null;
+                }
+              } catch {
+                // If we can't parse the response, fall through to default handling
+              }
+              // For non-token-auth 401s, let the iframe handle it (shouldn't normally happen)
             }
             if (!response.ok) {
               throw new Error('HTTP error! status: ' + response.status);

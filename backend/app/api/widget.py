@@ -267,8 +267,8 @@ async def get_widget_data(
                            agent.customization.chat_style.value == "ASK_ANYTHING")
     
     # For workflow agents or ASK_ANYTHING style, create customer with blank email if no customer exists
-    # For other agents with require_token_auth=false, allow anonymous access
-    should_create_customer = (customer_id == "None" or customer_id is None) and (email or agent_has_workflow or is_ask_anything_style or not require_token_auth)
+    # For regular non-authenticated agents, require email before creating customer
+    should_create_customer = (customer_id == "None" or customer_id is None) and (email or agent_has_workflow or is_ask_anything_style)
 
     logger.debug(f"should_create_customer={should_create_customer}, customer_id={customer_id}, require_token_auth={require_token_auth}")
     
@@ -336,19 +336,62 @@ async def get_widget_data(
             "token": new_token
         }
     else:
-        # Existing customer with valid token - get session info and return existing token
+        # If workflow is enabled or ASK_ANYTHING style and no customer_id, create anonymous customer
+        if (customer_id == "None" or customer_id is None) and (agent_has_workflow or is_ask_anything_style):
+            # Generate unique email with timestamp for workflow agents and ASK_ANYTHING style
+            timestamp = int(time.time() * 1000)  # milliseconds for better uniqueness
+            anonymous_email = f"{timestamp}@noemail.com"
+
+            # Create anonymous customer for workflow or ASK_ANYTHING style
+            customer = customer_repo.create_customer(anonymous_email, widget.organization_id)
+
+            # Generate new token with customer_id
+            new_token = create_conversation_token(
+                customer_id=str(customer.id),
+                widget_id=widget_id
+            )
+
+            # Create a copy of customization to modify photo_url
+            customization = agent.customization
+
+            if settings.S3_FILE_STORAGE and customization and customization.photo_url:
+                # Get signed URL for the photo
+                customization.photo_url = await get_s3_signed_url(customization.photo_url)
+
+            return {
+                "id": widget.id,
+                "organization_id": widget.organization_id,
+                "customer_id": str(customer.id),
+                "human_agent": {},
+                "agent": {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "display_name": agent.display_name,
+                    "customization": customization,
+                    "workflow": bool(agent.use_workflow and agent.active_workflow_id),
+                    "allow_attachments": agent.allow_attachments
+                },
+                "token": new_token
+            }
+        elif customer_id == "None" or customer_id is None:
+            # Regular agent without email/customer_id - return 401
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorized"
+            )
+
+        # Existing customer with valid token - get session info
         logger.debug(f"Using existing token for customer_id: {customer_id}")
         human_agent_info = await get_human_agent_session_info(db, customer_id)
-    
+
     # Create a copy of customization to modify photo_url
     customization = agent.customization
-          
+
     if settings.S3_FILE_STORAGE and customization and customization.photo_url:
         # Get signed URL for the photo
         customization.photo_url = await get_s3_signed_url(customization.photo_url)
 
-    # Build response - include token if we have one (existing token) or if we should create one
-    response_data = {
+    return {
         "id": widget.id,
         "organization_id": widget.organization_id,
         "customer_id": customer_id,
@@ -362,17 +405,6 @@ async def get_widget_data(
             "allow_attachments": agent.allow_attachments
         }
     }
-    
-    # 🔐 SECURITY: Include token in response if:
-    # 1. We're in the new customer path (new_token was generated), OR
-    # 2. We have a valid existing token from the request (token auth required)
-    if token_was_generated:
-        response_data["token"] = new_token
-    elif token and require_token_auth:
-        # Return the existing token provided by the client (already validated)
-        response_data["token"] = token
-    
-    return response_data
 
 
 @router.post("/{widget_id}/end-chat")
