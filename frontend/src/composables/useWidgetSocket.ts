@@ -25,18 +25,41 @@ export function useWidgetSocket() {
     let onTakeoverCallback: ((data: { session_id: string, user_name: string }) => void) | null = null
     let onWorkflowStateCallback: ((data: any) => void) | null = null
     let onWorkflowProceededCallback: ((data: any) => void) | null = null
+    let widgetToken: string | undefined = undefined
+    let widgetIdAuth: string | undefined = undefined
+
+    // Store token for socket authentication
+    const setToken = (token: string | undefined) => {
+        widgetToken = token
+        if (token) {
+            localStorage.setItem('ctid', token)
+        }
+    }
+
+    // Store widget ID for socket authentication (for anonymous access)
+    const setWidgetId = (widgetId: string | undefined) => {
+        widgetIdAuth = widgetId
+    }
 
     const initializeSocket = (sessionId: string) => {
-        const token = localStorage.getItem('ctid');
+        // Use passed token first, then stored token, then localStorage
+        const token = widgetToken || localStorage.getItem('ctid')
+        
+        // Build auth object with token and widget_id
+        const auth: any = {}
+        if (token) {
+            auth.conversation_token = token
+        }
+        if (widgetIdAuth) {
+            auth.widget_id = widgetIdAuth
+        }
         
         socket = io(`${widgetEnv.WS_URL}/widget`, {
             transports: ['websocket'],
             reconnection: true,
             reconnectionAttempts: MAX_RETRIES,
             reconnectionDelay: 1000,
-            auth: token ? {
-                conversation_token: token
-            } : undefined
+            auth: Object.keys(auth).length > 0 ? auth : undefined
         })
 
         // Set up event listeners
@@ -158,6 +181,14 @@ export function useWidgetSocket() {
             // Call the callback if registered
             if (onTakeoverCallback) {
                 onTakeoverCallback(data)
+            }
+        })
+
+        socket.on('session_initialized', (data) => {
+            // Capture session_id immediately upon connection
+            if (data.session_id) {
+                console.log('Initialized session_id from session_initialized:', data.session_id)
+                currentSessionId.value = data.session_id
             }
         })
 
@@ -515,6 +546,8 @@ export function useWidgetSocket() {
         proceedWorkflow,
         onWorkflowState,
         onWorkflowProceeded,
-        currentSessionId
+        currentSessionId,
+        setToken,
+        setWidgetId
     }
-} 
+}

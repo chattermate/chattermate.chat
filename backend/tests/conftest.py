@@ -18,14 +18,25 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import pytest
 import uuid
-from sqlalchemy import create_engine, event, DDL
+import asyncio
+import sys
+from sqlalchemy import create_engine, event, DDL, String
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.compiler import compiles
 from app.database import Base
 from typing import Generator
 from sqlalchemy.schema import CreateTable, Table
 from app.models.organization import Organization
 from uuid import UUID, uuid4
+
+# Register a custom type compiler for PostgreSQL UUID to work with SQLite
+# This teaches SQLite how to compile the PostgreSQL UUID type
+@compiles(postgresql.UUID, 'sqlite')
+def compile_uuid_sqlite(type_, compiler, **kw):
+    """Compile PostgreSQL UUID type as CHAR(36) for SQLite"""
+    return "CHAR(36)"
 from app.models.widget import Widget
 from app.models.agent import Agent, AgentType
 from app.models.ai_config import AIConfig, AIModelType
@@ -48,6 +59,63 @@ from app.models.permission import Permission
 
 # Test database URL
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+
+# Configure asyncio event loop policy to prevent "Event loop is closed" errors
+@pytest.fixture(scope="function")
+def event_loop():
+    """Create a fresh event loop for each test function.
+
+    This prevents test pollution where one test's asyncio operations
+    affect subsequent tests.
+    """
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    # Create a new event loop for this test
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    yield loop
+
+    # Clean up: cancel all pending tasks and close the loop
+    try:
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    except Exception:
+        pass  # Ignore cleanup errors
+    finally:
+        try:
+            loop.close()
+        except Exception:
+            pass
+        # Reset the event loop to None so the next test gets a fresh one
+        asyncio.set_event_loop(None)
+
+
+@pytest.fixture(autouse=True)
+def setup_event_loop_for_sync_tests():
+    """Ensure an event loop exists for synchronous tests that use asyncio internally.
+
+    This fixture runs automatically for every test and ensures that
+    asyncio.get_event_loop() doesn't raise RuntimeError.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("Event loop is closed")
+    except RuntimeError:
+        # No event loop exists, create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    yield
+
+    # Don't close the loop here - let the event_loop fixture handle cleanup
+    # for async tests, and for sync tests we just leave it for the next test
+
 
 # Create test engine
 engine = create_engine(

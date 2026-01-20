@@ -16,8 +16,9 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict
+import uuid
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
@@ -61,14 +62,14 @@ fernet = Fernet(ENCRYPTION_KEY)
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire, "type": "access"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -106,31 +107,67 @@ def decrypt_api_key(encrypted_key: str) -> str:
         raise ValueError("Failed to decrypt API key")
 
 
-def create_conversation_token(widget_id: str, customer_id: Optional[str] = None, **extra_data) -> str:
-    """Create a JWT token for widget conversations"""
+def create_conversation_token(widget_id: str, customer_id: Optional[str] = None, customer_email: Optional[str] = None, **extra_data) -> str:
+    """
+    Create a JWT token for widget conversations with revocation support via Redis
+    
+    Includes a JTI (JWT ID) claim for revocation. Token is stored in Redis with TTL.
+    Optionally stores customer email for session tracking and bulk revocation.
+    
+    Args:
+        widget_id: The widget ID
+        customer_id: Optional customer ID
+        customer_email: Optional customer email for session management
+        **extra_data: Additional data to include in token
+    """
+    jti = str(uuid.uuid4())
     data = {
-        "sub": str(customer_id),
+        "sub": customer_id,  # Keep as None if not provided, don't convert to string "None"
         "widget_id": widget_id,
-        "type": "conversation"
+        "type": "conversation",
+        "jti": jti
     }
+    
+    # Add email to token if provided
+    if customer_email:
+        data["email"] = customer_email
     
     # Add any extra data to the token
     data.update(extra_data)
     
     # Set expiration to 30 days
-    expire = datetime.utcnow() + timedelta(days=30)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=30)
     data.update({"exp": expire})
 
-    return jwt.encode(data, CONVERSATION_SECRET_KEY, algorithm=ALGORITHM)
+    token = jwt.encode(data, CONVERSATION_SECRET_KEY, algorithm=ALGORITHM)
+
+    # Store token JTI in Redis with TTL and optional email mapping (with widget_id)
+    _store_token_in_redis(jti, int((expire - now).total_seconds()), customer_email, widget_id)
+    
+    return token
 
 
 def verify_conversation_token(token: str) -> Optional[dict]:
-    """Verify conversation token and return payload"""
+    """
+    Verify conversation token signature and check if revoked
+
+    Returns:
+        Token payload dict if valid and not revoked, None otherwise
+    """
     try:
         payload = jwt.decode(token, CONVERSATION_SECRET_KEY,
                              algorithms=[ALGORITHM])
+
         if payload.get("type") != "conversation":
             return None
+
+        # Check if token JTI exists in Redis (if revoked, it won't exist)
+        jti = payload.get("jti")
+        if jti and not _is_token_in_redis(jti):
+            logger.warning(f"Token revoked or expired: jti={jti[:8]}...")
+            return None
+
         return payload
     except JWTError:
         return None
@@ -144,3 +181,411 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """Hash a password"""
     return pwd_context.hash(password)
+
+
+# ============================================================================
+# TOKEN STORAGE IN REDIS - Minimal approach
+# ============================================================================
+
+def _store_token_in_redis(jti: str, ttl_seconds: int, email: Optional[str] = None, widget_id: Optional[str] = None) -> bool:
+    """
+    Store token JTI in Redis with TTL and optionally store email/widget_id mapping
+
+    Args:
+        jti: JWT ID for the token
+        ttl_seconds: Time to live in seconds
+        email: Optional email to store for session tracking
+        widget_id: Optional widget ID for widget-specific session tracking
+    """
+    try:
+        from app.core.redis import redis_client
+        if redis_client:
+            # Store the token JTI
+            redis_client.setex(f"token:{jti}", ttl_seconds, "1")
+
+            # Store email mapping if provided (key: user_sessions:email, value: set of JTIs)
+            if email:
+                redis_client.sadd(f"user_sessions:{email}", jti)
+                # Set same TTL for email->JTI mapping
+                redis_client.expire(f"user_sessions:{email}", ttl_seconds)
+                
+                # If widget_id provided, also store widget-specific sessions
+                if widget_id:
+                    widget_key = f"user_sessions:{email}:widget:{widget_id}"
+                    redis_client.sadd(widget_key, jti)
+                    redis_client.expire(widget_key, ttl_seconds)
+                    
+                    # Maintain reverse index: track all widget keys for this email
+                    # for efficient bulk deletion without scanning
+                    redis_client.sadd(f"user_sessions:{email}:widget_keys", widget_key)
+                    redis_client.expire(f"user_sessions:{email}:widget_keys", ttl_seconds)
+            
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to store token in Redis: {str(e)}")
+    return False
+
+
+def _is_token_in_redis(jti: str) -> bool:
+    """Check if token JTI exists in Redis"""
+    try:
+        from app.core.redis import redis_client
+        if redis_client:
+            return redis_client.exists(f"token:{jti}") > 0
+    except Exception as e:
+        logger.debug(f"Failed to check token in Redis: {str(e)}")
+    # If Redis unavailable, assume valid (don't block requests)
+    return True
+
+
+def revoke_token(jti: str) -> bool:
+    """Revoke token by deleting JTI from Redis"""
+    try:
+        from app.core.redis import redis_client
+        if redis_client:
+            redis_client.delete(f"token:{jti}")
+            logger.info(f"Token revoked: {jti[:8]}...")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to revoke token: {str(e)}")
+    return False
+
+
+def revoke_user_sessions(email: str) -> bool:
+    """
+    Revoke all sessions for a user by email.
+    
+    Args:
+        email: The user's email address
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        from app.core.redis import redis_client
+        if redis_client:
+            # Get all JTIs for this email across all widgets
+            jti_set = redis_client.smembers(f"user_sessions:{email}")
+            
+            if jti_set:
+                # Delete each JTI
+                for jti in jti_set:
+                    redis_client.delete(f"token:{jti.decode() if isinstance(jti, bytes) else jti}")
+                
+                # Delete the email mapping
+                redis_client.delete(f"user_sessions:{email}")
+                
+                # Also delete all widget-specific mappings using the reverse index set
+                widget_keys_set = f"user_sessions:{email}:widget_keys"
+                widget_keys = redis_client.smembers(widget_keys_set)
+                if widget_keys:
+                    for key in widget_keys:
+                        redis_client.delete(key.decode() if isinstance(key, bytes) else key)
+                    redis_client.delete(widget_keys_set)
+                # NOTE: When creating or deleting widget-specific session keys elsewhere,
+                # be sure to add/remove the key from the widget_keys_set for this user.
+                
+                logger.info(f"Revoked {len(jti_set)} sessions for user: {email}")
+                return True
+            else:
+                logger.info(f"No active sessions found for user: {email}")
+                return True
+    except Exception as e:
+        logger.error(f"Failed to revoke user sessions: {str(e)}")
+    return False
+
+
+def revoke_user_sessions_by_widget(email: str, widget_id: str) -> bool:
+    """
+    Revoke all sessions for a user in a specific widget.
+    
+    Args:
+        email: The user's email address
+        widget_id: The widget ID to revoke sessions for
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        from app.core.redis import redis_client
+        if redis_client:
+            # Get all JTIs for this email in this specific widget
+            jti_set = redis_client.smembers(f"user_sessions:{email}:widget:{widget_id}")
+            
+            if jti_set:
+                # Delete each JTI
+                for jti in jti_set:
+                    jti_str = jti.decode() if isinstance(jti, bytes) else jti
+                    redis_client.delete(f"token:{jti_str}")
+                    # Also remove from general user_sessions set
+                    redis_client.srem(f"user_sessions:{email}", jti_str)
+                
+                # Delete the widget-specific mapping
+                redis_client.delete(f"user_sessions:{email}:widget:{widget_id}")
+                
+                logger.info(f"Revoked {len(jti_set)} sessions for user: {email} in widget: {widget_id}")
+                return True
+            else:
+                logger.info(f"No active sessions found for user: {email} in widget: {widget_id}")
+                return True
+    except Exception as e:
+        logger.error(f"Failed to revoke user sessions by widget: {str(e)}")
+    return False
+
+
+def get_user_active_sessions(email: str, widget_id: Optional[str] = None) -> list:
+    """
+    Get all active session JTIs for a user by email.
+    
+    Args:
+        email: The user's email address
+        widget_id: Optional widget ID to get sessions only for that widget
+    
+    Returns:
+        List of active JTI strings for the user (filtered by widget if provided)
+    """
+    try:
+        from app.core.redis import redis_client
+        if redis_client:
+            if widget_id:
+                # Get sessions only for this specific widget
+                jti_set = redis_client.smembers(f"user_sessions:{email}:widget:{widget_id}")
+            else:
+                # Get all sessions for this user across all widgets
+                jti_set = redis_client.smembers(f"user_sessions:{email}")
+            
+            return [jti.decode() if isinstance(jti, bytes) else jti for jti in jti_set]
+    except Exception as e:
+        logger.error(f"Failed to get user sessions: {str(e)}")
+    return []
+
+
+def get_all_active_sessions() -> Dict[str, list]:
+    """
+    Get all active sessions across all users.
+    
+    Note: This function uses SCAN for pattern matching user_sessions keys.
+    For better performance with many users, consider maintaining a master set
+    of all active user emails (e.g., "all_active_users") updated alongside
+    token storage operations.
+    
+    Returns:
+        Dictionary with email as key and list of JTI strings as value
+    """
+    try:
+        from app.core.redis import redis_client
+        if redis_client:
+            # Find all keys matching the user_sessions pattern
+            # Filters out widget-specific and widget_keys sets (pattern: user_sessions:EMAIL)
+            all_sessions = {}
+            cursor = 0
+            pattern = "user_sessions:*"
+            
+            while True:
+                cursor, keys = redis_client.scan(cursor, match=pattern)
+                
+                for key in keys:
+                    key_str = key.decode() if isinstance(key, bytes) else key
+                    
+                    # Skip widget-specific and metadata keys (contain ':widget:' or end with ':widget_keys')
+                    if ":widget:" in key_str or key_str.endswith(":widget_keys"):
+                        continue
+                    
+                    # Extract email from key (user_sessions:email@example.com)
+                    email = key_str.replace("user_sessions:", "", 1)
+                    
+                    # Get JTIs for this email
+                    jti_set = redis_client.smembers(key_str)
+                    jti_list = [jti.decode() if isinstance(jti, bytes) else jti for jti in jti_set]
+                    
+                    if jti_list:
+                        all_sessions[email] = jti_list
+                
+                if cursor == 0:
+                    break
+            
+            return all_sessions
+    except Exception as e:
+        logger.error(f"Failed to get all sessions: {str(e)}")
+    return {}
+
+
+def get_existing_valid_token_jti(email: str, widget_id: str, customer_id: str) -> Optional[str]:
+    """
+    Check if there's an existing valid token JTI for this customer/widget combination.
+    
+    Returns the JTI (JWT ID) of an existing valid token, not the token itself.
+    This prevents token multiplication when the same user refreshes the page multiple times.
+    
+    Args:
+        email: Customer email
+        widget_id: Widget ID
+        customer_id: Customer ID
+    
+    Returns:
+        The JTI (JWT ID) string of an existing valid token if found, None otherwise
+    """
+    try:
+        from app.core.redis import redis_client
+        if not redis_client:
+            return None
+        
+        # Get all active JTIs for this email in this widget
+        jti_set = redis_client.smembers(f"user_sessions:{email}:widget:{widget_id}")
+        
+        if not jti_set:
+            logger.debug(f"No existing sessions found for {email} in widget {widget_id}")
+            return None
+        
+        # If we have active tokens, return the first valid one
+        # In a typical flow, there should only be one per widget per user
+        for jti in jti_set:
+            jti_str = jti.decode() if isinstance(jti, bytes) else jti
+            # Check if the token still exists in Redis (not revoked)
+            if redis_client.exists(f"token:{jti_str}") > 0:
+                logger.info(f"Found existing valid token for {email} in widget {widget_id}, reusing it")
+                return jti_str
+        
+        logger.debug(f"Active sessions found for {email} in widget {widget_id}, but none are valid in Redis")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error checking existing tokens: {str(e)}")
+        return None
+
+
+# ============================================================================
+# WIDGET API KEY MANAGEMENT
+# ============================================================================
+
+def generate_widget_api_key() -> str:
+    """
+    Generate a secure random API key with 'wak_' prefix.
+
+    Format: wak_<base64url> (e.g., wak_Xu8f3kLp9mN2...)
+    Entropy: 256 bits (32 random bytes)
+    Length: ~47 characters total (4 + 43)
+
+    Returns:
+        str: API key in format 'wak_<base64url>'
+    """
+    import secrets
+    import base64
+
+    # Generate 32 random bytes (256 bits of entropy)
+    random_bytes = secrets.token_bytes(32)
+    # Encode as URL-safe base64 without padding
+    key_suffix = base64.urlsafe_b64encode(random_bytes).decode('utf-8').rstrip('=')
+    return f"wak_{key_suffix}"
+
+
+def hash_widget_api_key(api_key: str) -> str:
+    """
+    Hash API key using bcrypt (same as password hashing).
+
+    Args:
+        api_key: Plain text API key
+
+    Returns:
+        str: bcrypt hash of the API key
+    """
+    return get_password_hash(api_key)
+
+
+def verify_widget_api_key(plain_key: str, hashed_key: str) -> bool:
+    """
+    Verify API key against its hash.
+
+    Args:
+        plain_key: Plain text API key from request
+        hashed_key: Stored bcrypt hash
+
+    Returns:
+        bool: True if key matches hash
+    """
+    return verify_password(plain_key, hashed_key)
+
+
+# ============================================================================
+# WIDGET API KEY CACHING (Redis)
+# ============================================================================
+
+def cache_widget_api_key(api_key: str, app_id: str, organization_id: str, ttl: int = 3600) -> bool:
+    """
+    Cache valid API key in Redis for fast lookup.
+
+    Args:
+        api_key: Plain text API key (first 20 chars used as cache key)
+        app_id: Widget app UUID
+        organization_id: Organization UUID
+        ttl: Time to live in seconds (default 1 hour)
+
+    Returns:
+        bool: True if cached successfully, False otherwise
+    """
+    try:
+        from app.core.redis import redis_client
+        import json
+
+        if redis_client:
+            # Use first 20 chars of key as cache key (enough to be unique)
+            cache_key = f"widget_api_key:{api_key[:20]}"
+            cache_value = json.dumps({
+                "app_id": str(app_id),
+                "organization_id": str(organization_id)
+            })
+            redis_client.setex(cache_key, ttl, cache_value)
+            logger.debug(f"Cached API key for app: {app_id}")
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to cache API key: {str(e)}")
+    return False
+
+
+def get_cached_widget_api_key(api_key: str) -> Optional[dict]:
+    """
+    Get cached API key data from Redis.
+
+    Args:
+        api_key: Plain text API key
+
+    Returns:
+        dict: {"app_id": "...", "organization_id": "..."} or None
+    """
+    try:
+        from app.core.redis import redis_client
+        import json
+
+        if redis_client:
+            cache_key = f"widget_api_key:{api_key[:20]}"
+            cached = redis_client.get(cache_key)
+            if cached:
+                logger.debug(f"Cache HIT for API key")
+                return json.loads(cached)
+    except Exception as e:
+        logger.debug(f"Cache miss or error: {str(e)}")
+    return None
+
+
+def invalidate_widget_api_key_cache(api_key_prefix: str) -> bool:
+    """
+    Invalidate cached API key (on regeneration/deactivation).
+
+    Args:
+        api_key_prefix: First 20 chars of the API key
+
+    Returns:
+        bool: True if invalidated successfully, False otherwise
+    """
+    try:
+        from app.core.redis import redis_client
+
+        if redis_client:
+            cache_key = f"widget_api_key:{api_key_prefix}"
+            redis_client.delete(cache_key)
+            logger.info(f"Invalidated API key cache: {cache_key}")
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to invalidate cache: {str(e)}")
+    return False
+

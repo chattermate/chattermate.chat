@@ -16,11 +16,12 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Response, Header, Query, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from jose import JWTError
+from datetime import datetime
 import json
 import time
 
@@ -63,7 +64,7 @@ async def get_widget_ui(
     db: Session = Depends(get_db)
 ):
     """Get widget UI and handle customer authentication"""
-    
+
     widget = db.query(Widget).filter(Widget.id == widget_id).first()
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
@@ -74,29 +75,54 @@ async def get_widget_ui(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Check existing conversation token first
+    require_token_auth = getattr(agent, 'require_token_auth', False)
     customer_id = None
+    token = None
+
+    # Try to validate existing token if provided
     if authorization and authorization.startswith('Bearer '):
         token = authorization.split(' ')[1]
-        
+
         try:
             token_data = verify_conversation_token(token)
-         
             if token_data and token_data.get("widget_id") == widget_id:
                 customer_id = token_data.get("sub")
-                return HTMLResponse(await get_widget_html(
-                    widget_id=widget_id,
-                    agent_name=agent.display_name or agent.name,
-                    agent_customization=agent.customization,
-                    customer_id=customer_id,
-                    agent_workflow=bool(agent.use_workflow and agent.active_workflow_id),
-                    allow_attachments=agent.allow_attachments
-                ))
         except (JWTError, ValueError):
-            pass
+            token = None  # Invalid token
 
-    # No valid token, create new one
-    # Store source in token if widget_id matches and source is provided (prioritize new source, fallback to old)
+    # SECURITY: If token auth is required, valid token MUST be provided
+    if require_token_auth:
+        if not token or customer_id is None:
+            logger.warning(f"Widget UI request denied: require_token_auth=true but no valid token for widget_id={widget_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required. Token must be obtained from /api/v1/generate-token endpoint with valid API key."
+            )
+        # Has valid token - return widget with existing token
+        return HTMLResponse(await get_widget_html(
+            widget_id=widget_id,
+            agent_name=agent.display_name or agent.name,
+            agent_customization=agent.customization,
+            customer_id=customer_id,
+            initial_token=token,
+            agent_workflow=bool(agent.use_workflow and agent.active_workflow_id),
+            allow_attachments=agent.allow_attachments
+        ))
+    
+    # Token auth NOT required - allow anonymous access
+    # If we have a valid token, use it; otherwise create a new one
+    if token and customer_id:
+        return HTMLResponse(await get_widget_html(
+            widget_id=widget_id,
+            agent_name=agent.display_name or agent.name,
+            agent_customization=agent.customization,
+            customer_id=customer_id,
+            initial_token=token,
+            agent_workflow=bool(agent.use_workflow and agent.active_workflow_id),
+            allow_attachments=agent.allow_attachments
+        ))
+
+    # No valid token - create new one for anonymous access
     token_extra_data = {}
     if widget_id == settings.EXPLORE_WIDGET_ID:
         if source:
@@ -200,94 +226,134 @@ async def get_widget_data(
     db: Session = Depends(get_db)
 ):
     """Get widget data including agent customization"""
-    logger.info(f"Getting widget data for widget_id {widget_id}, email {email}")
+    logger.info(f"Getting widget data for widget_id {widget_id}, email {email}, has_token {bool(authorization)}")
 
-    # Check if token exists
-    if not authorization or not authorization.startswith('Bearer '):
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized"
-        )
+    widget = db.query(Widget).filter(Widget.id == widget_id).first()
+    if not widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    
+    agent_repo = AgentRepository(db)
+    agent = agent_repo.get_by_id(widget.agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
-    token = authorization.split(' ')[1]
-    widget = None
+    require_token_auth = getattr(agent, 'require_token_auth', False)
+    customer_id = None
+    token = None
     old_token_source = None
-    # Verify conversation token and get widget_id from token
-    try:
-        token_data = verify_conversation_token(token)
-        if not token_data or token_data.get("widget_id") != widget_id:
-            raise HTTPException(
-                status_code=401,
-                detail="Unauthorized"
-            )
-        widget = db.query(Widget).filter(Widget.id == widget_id).first()
-        if not widget:
-                raise HTTPException(status_code=404, detail="Widget not found")
-        # Get customer_id and source from token if exists
-        customer_id = token_data.get("sub")
-        old_token_source = token_data.get("source")
+    
+    # Try to validate existing token if provided
+    if authorization and authorization.startswith('Bearer '):
+        token = authorization.split(' ')[1]
+        try:
+            token_data = verify_conversation_token(token)
+            if token_data and token_data.get("widget_id") == widget_id:
+                customer_id = token_data.get("sub")
+                old_token_source = token_data.get("source")
+        except (JWTError, ValueError):
+            token = None
+    
+    # SECURITY: If token auth required, must have valid token with customer_id
+    if require_token_auth:
+        if not token or customer_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized - Token required")
 
-        agent_repo = AgentRepository(db)
-        agent = agent_repo.get_by_id(widget.agent_id)
+    # Check if agent has workflow enabled
+    agent_has_workflow = bool(agent.use_workflow and agent.active_workflow_id)
+    
+    # Check if agent has ASK_ANYTHING chat style
+    is_ask_anything_style = (agent.customization and 
+                           agent.customization.chat_style and 
+                           agent.customization.chat_style.value == "ASK_ANYTHING")
+    
+    # For workflow agents or ASK_ANYTHING style, create customer with blank email if no customer exists
+    # For regular non-authenticated agents, require email before creating customer
+    should_create_customer = (customer_id == "None" or customer_id is None) and (email or agent_has_workflow or is_ask_anything_style)
 
-        if not agent:
-            raise HTTPException(status_code=404, detail="Agent not found")
+    logger.debug(f"should_create_customer={should_create_customer}, customer_id={customer_id}, require_token_auth={require_token_auth}")
+    
+    customer_repo = CustomerRepository(db)
+    human_agent_info = {}
+    
+    # Flag to track if we generated a new token
+    token_was_generated = False
+    
+    if should_create_customer:
+        logger.debug(f"Creating new customer for email: {email}")
+        # Generate unique email if no email provided
+        if email:
+            customer_email = email
+        else:
+            # Generate unique email with timestamp for anonymous access
+            timestamp = int(time.time() * 1000)  # milliseconds for better uniqueness
+            customer_email = f"{timestamp}@noemail.com"
+        
+        # Try to get existing customer first (only if email is provided)
+        customer = None
+        if email:
+            customer = customer_repo.get_customer_by_email(email, widget.organization_id)
+        
+        if not customer:
+            # Create new customer if doesn't exist
+            customer = customer_repo.create_customer(customer_email, widget.organization_id)
+        
+        # Get session info for existing customer
+        if customer:
+            human_agent_info = await get_human_agent_session_info(db, str(customer.id))
+        
+        # Generate new token with customer_id and preserve source if applicable
+        new_token_extra_data = {}
+        if widget_id == settings.EXPLORE_WIDGET_ID and old_token_source:
+            new_token_extra_data["source"] = old_token_source
 
-        # Check if agent has workflow enabled
-        agent_has_workflow = bool(agent.use_workflow and agent.active_workflow_id)
+        new_token = create_conversation_token(
+            customer_id=str(customer.id),
+            widget_id=widget_id,
+            **new_token_extra_data
+        )
+        token_was_generated = True
         
-        # Check if agent has ASK_ANYTHING chat style
-        is_ask_anything_style = (agent.customization and 
-                               agent.customization.chat_style and 
-                               agent.customization.chat_style.value == "ASK_ANYTHING")
-        
-        # For workflow agents or ASK_ANYTHING style, create customer with blank email if no customer exists
-        # For other agents, require email
-        should_create_customer = (customer_id == "None" or customer_id is None) and (email or agent_has_workflow or is_ask_anything_style)
+        # Create a copy of customization to modify photo_url
+        customization = agent.customization
+      
+        if settings.S3_FILE_STORAGE and customization and customization.photo_url:
+            # Get signed URL for the photo
+            customization.photo_url = await get_s3_signed_url(customization.photo_url)
 
-        
-        customer_repo = CustomerRepository(db)
-        human_agent_info = {}
-        
-        if should_create_customer:
-            # For workflow agents or ASK_ANYTHING style, generate unique email if no email provided
-            # For other agents, use the provided email
-            if email:
-                customer_email = email
-            elif agent_has_workflow or is_ask_anything_style:
-                # Generate unique email with timestamp for workflow agents and ASK_ANYTHING style
-                timestamp = int(time.time() * 1000)  # milliseconds for better uniqueness
-                customer_email = f"{timestamp}@noemail.com"
-            else:
-                customer_email = ""
-            
-            # Try to get existing customer first (only if email is provided and not generated)
-            customer = None
-            if email:
-                customer = customer_repo.get_customer_by_email(email, widget.organization_id)
-            
-            if not customer:
-                # Create new customer if doesn't exist
-                customer = customer_repo.create_customer(customer_email, widget.organization_id)
-            
-            # Get session info for existing customer
-            if customer:
-                human_agent_info = await get_human_agent_session_info(db, customer.id)
-            
-            # Generate new token with customer_id and preserve source if applicable
-            new_token_extra_data = {}
-            if widget_id == settings.EXPLORE_WIDGET_ID and old_token_source:
-                new_token_extra_data["source"] = old_token_source
-            
+        return {
+            "id": widget.id,
+            "organization_id": widget.organization_id,
+            "customer_id": str(customer.id),
+            "human_agent": human_agent_info,
+            "agent": {
+                "id": agent.id,
+                "name": agent.name,
+                "display_name": agent.display_name,
+                "customization": customization,
+                "workflow": bool(agent.use_workflow and agent.active_workflow_id),
+                "allow_attachments": agent.allow_attachments
+            },
+            "token": new_token
+        }
+    else:
+        # If workflow is enabled or ASK_ANYTHING style and no customer_id, create anonymous customer
+        if (customer_id == "None" or customer_id is None) and (agent_has_workflow or is_ask_anything_style):
+            # Generate unique email with timestamp for workflow agents and ASK_ANYTHING style
+            timestamp = int(time.time() * 1000)  # milliseconds for better uniqueness
+            anonymous_email = f"{timestamp}@noemail.com"
+
+            # Create anonymous customer for workflow or ASK_ANYTHING style
+            customer = customer_repo.create_customer(anonymous_email, widget.organization_id)
+
+            # Generate new token with customer_id
             new_token = create_conversation_token(
-                customer_id=customer.id,
-                widget_id=widget_id,
-                **new_token_extra_data
+                customer_id=str(customer.id),
+                widget_id=widget_id
             )
-            
+
             # Create a copy of customization to modify photo_url
             customization = agent.customization
-          
+
             if settings.S3_FILE_STORAGE and customization and customization.photo_url:
                 # Get signed URL for the photo
                 customization.photo_url = await get_s3_signed_url(customization.photo_url)
@@ -295,8 +361,8 @@ async def get_widget_data(
             return {
                 "id": widget.id,
                 "organization_id": widget.organization_id,
-                "customer_id": customer.id,
-                "human_agent": human_agent_info,
+                "customer_id": str(customer.id),
+                "human_agent": {},
                 "agent": {
                     "id": agent.id,
                     "name": agent.name,
@@ -307,63 +373,20 @@ async def get_widget_data(
                 },
                 "token": new_token
             }
-        else:
-            # If workflow is enabled or ASK_ANYTHING style and no customer_id, create anonymous customer
-            if (customer_id == "None" or customer_id is None) and (agent_has_workflow or is_ask_anything_style):
-                # Generate unique email with timestamp for workflow agents and ASK_ANYTHING style
-                timestamp = int(time.time() * 1000)  # milliseconds for better uniqueness
-                anonymous_email = f"{timestamp}@noemail.com"
-                
-                # Create anonymous customer for workflow or ASK_ANYTHING style
-                customer = customer_repo.create_customer(anonymous_email, widget.organization_id)
-                
-                # Generate new token with customer_id
-                new_token = create_conversation_token(
-                    customer_id=customer.id,
-                    widget_id=widget_id
-                )
-                
-                # Create a copy of customization to modify photo_url
-                customization = agent.customization
-              
-                if settings.S3_FILE_STORAGE and customization and customization.photo_url:
-                    # Get signed URL for the photo
-                    customization.photo_url = await get_s3_signed_url(customization.photo_url)
+        elif customer_id == "None" or customer_id is None:
+            # Regular agent without email/customer_id - return 401
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorized"
+            )
 
-                return {
-                    "id": widget.id,
-                    "organization_id": widget.organization_id,
-                    "customer_id": customer.id,
-                    "human_agent": {},
-                    "agent": {
-                        "id": agent.id,
-                        "name": agent.name,
-                        "display_name": agent.display_name,
-                        "customization": customization,
-                        "workflow": bool(agent.use_workflow and agent.active_workflow_id),
-                        "allow_attachments": agent.allow_attachments
-                    },
-                    "token": new_token
-                }
-            elif customer_id == "None" or customer_id is None:
-                raise HTTPException(
-                    status_code=401,
-                    detail="Unauthorized"
-                )
-            
-            # Get session info for existing customer
-            human_agent_info = await get_human_agent_session_info(db, customer_id)
+        # Existing customer with valid token - get session info
+        logger.debug(f"Using existing token for customer_id: {customer_id}")
+        human_agent_info = await get_human_agent_session_info(db, customer_id)
 
-    except JWTError:
-        logger.error(f"JWTError: {JWTError}")
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized"
-        )
-    
     # Create a copy of customization to modify photo_url
     customization = agent.customization
-          
+
     if settings.S3_FILE_STORAGE and customization and customization.photo_url:
         # Get signed URL for the photo
         customization.photo_url = await get_s3_signed_url(customization.photo_url)
@@ -382,6 +405,63 @@ async def get_widget_data(
             "allow_attachments": agent.allow_attachments
         }
     }
+
+
+@router.post("/{widget_id}/end-chat")
+async def end_chat_acknowledgment(
+    widget_id: str,
+    session_id: str,
+    reason: Optional[str] = None,
+    description: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Acknowledge end_chat event from widget and close session on backend"""
+    try:
+        logger.info(f"End chat request received: widget_id={widget_id}, session_id={session_id}, reason={reason}, has_token={bool(authorization)}")
+        
+        from app.repositories.session_to_agent import SessionToAgentRepository
+        from app.core.security import verify_conversation_token
+        
+        # Validate token if provided
+        customer_id = None
+        if authorization and authorization.startswith('Bearer '):
+            token = authorization.split(' ')[1]
+            try:
+                token_data = verify_conversation_token(token)
+                if token_data:
+                    customer_id = token_data.get("sub")
+                    verified_widget_id = token_data.get("widget_id")
+                    if verified_widget_id != widget_id:
+                        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Widget mismatch")
+            except Exception:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        
+        # Close the session
+        session_repo = SessionToAgentRepository(db)
+        success = session_repo.close_session(
+            session_id=session_id,
+            reason=reason,
+            description=description
+        )
+        
+        if success:
+            logger.info(f"End chat acknowledged: widget_id={widget_id}, session_id={session_id}, reason={reason}")
+            return {
+                "success": True,
+                "message": "Chat session closed",
+                "session_id": session_id,
+                "closed_at": datetime.utcnow().isoformat()
+            }
+        else:
+            logger.warning(f"Failed to close session: widget_id={widget_id}, session_id={session_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in end_chat_acknowledgment: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to process end chat")
 
 
 @router.get("", response_model=List[WidgetResponse])
@@ -426,42 +506,3 @@ def remove_widget(
         raise HTTPException(status_code=404, detail="Widget not found")
     widget_repo.delete_widget(widget_id)
     return {"message": "Widget deleted"}
-
-@router.get("/{widget_id}/details", response_model=WidgetResponse)
-async def get_widget_details(
-    widget_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    """Get widget details for authenticated users"""
-    widget = db.query(Widget).filter(
-        Widget.id == widget_id,
-        Widget.organization_id == current_user.organization_id
-    ).first()
-    
-    if not widget:
-        raise HTTPException(status_code=404, detail="Widget not found")
-
-    agent_repo = AgentRepository(db)
-    agent = agent_repo.get_by_id(widget.agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    
-        # Create a copy of customization to modify photo_url
-    customization = agent.customization
-          
-    if settings.S3_FILE_STORAGE and customization and customization.photo_url:
-        # Get signed URL for the photo
-        customization.photo_url = await get_s3_signed_url(customization.photo_url)
-
-    return {
-        "id": widget.id,
-        "organization_id": widget.organization_id,
-        "agent": {
-            "id": agent.id,
-            "name": agent.name,
-            "display_name": agent.display_name,
-            "customization": customization,
-            "workflow": bool(agent.use_workflow and agent.active_workflow_id)
-        }
-    }
