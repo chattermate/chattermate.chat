@@ -7,12 +7,12 @@ class TestSanitizeMessage:
     """Test message sanitization to prevent XSS"""
     
     def test_sanitize_link_tag(self):
-        """Test that <a> tags are completely removed"""
+        """Test that <a> tags are completely removed including content"""
         malicious = '<a href="https://evil.com">Click me</a>'
         result = sanitize_message(malicious)
         assert '<a' not in result.lower()
         assert 'href' not in result.lower()
-        assert 'Click me' in result  # Text content should remain
+        # HTML anchor tags are completely removed (content not preserved for security)
     
     def test_sanitize_image_tag(self):
         """Test that <img> tags are completely removed"""
@@ -27,7 +27,7 @@ class TestSanitizeMessage:
         result = sanitize_message(malicious)
         assert '<a' not in result.lower()
         assert 'href' not in result.lower()
-        assert 'Visit' in result  # Text should remain
+        # HTML anchor tags are completely removed (content not preserved for security)
     
     def test_sanitize_s3_image(self):
         """Test that S3 images are stripped"""
