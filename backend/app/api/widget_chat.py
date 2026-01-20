@@ -58,6 +58,8 @@ try:
 except ImportError:
     HAS_ENTERPRISE = False
 
+from app.utils.sanitize import sanitize_message
+
 router = APIRouter()
 logger = get_logger(__name__)
 
@@ -289,10 +291,23 @@ async def handle_widget_chat(sid, data):
             return
 
         # Process message and files
-        message = data.get('message', '').strip()
+        original_message = data.get('message', '').strip()
+        
+        # Sanitize message to prevent XSS attacks
+        message = sanitize_message(original_message)
+        
         files = data.get('files', [])  # List of file objects with base64 content
         
-        if not message and not files:
+        # If message was stripped to empty but had content before, it was malicious
+        if original_message and not message.strip() and not files:
+            logger.warning(f"Blocked malicious message from customer {customer_id}")
+            await sio.emit('error', {
+                'error': 'Your message contains unsafe content and cannot be sent.',
+                'type': 'validation_error'
+            }, room=sid, namespace='/widget')
+            return
+        
+        if not message.strip() and not files:
             return
 
         session_id = session['session_id']
@@ -1009,8 +1024,22 @@ async def handle_agent_message(sid, data):
                     return
 
         # Store the agent's message
+        original_agent_message = data.get('message', '')
+        
+        # Sanitize message to prevent XSS attacks
+        agent_message = sanitize_message(original_agent_message)
+        
+        # If message was stripped to empty but had content before, it was malicious
+        if original_agent_message and not agent_message.strip():
+            logger.warning(f"Blocked malicious message from agent {session.get('user_id')}")
+            await sio.emit('error', {
+                'error': 'Your message contains unsafe content and cannot be sent.',
+                'type': 'validation_error'
+            }, to=sid, namespace='/agent')
+            return
+        
         message_data = {
-            "message": data['message'],
+            "message": agent_message,
             "message_type": data.get('message_type', "agent"),
             "session_id": session_id,
             "organization_id": session.get('organization_id'),

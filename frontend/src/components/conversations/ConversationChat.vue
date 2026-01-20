@@ -27,6 +27,7 @@ import FileUpload from '@/components/common/FileUpload.vue'
 import sendIcon from '@/assets/sendbutton.svg'
 import { userService } from '@/services/user'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/utils/sanitize'
 import type { Renderer } from 'marked'
 
 const props = defineProps<{
@@ -101,6 +102,11 @@ renderer.link = function({ href, title, text }) {
   return link.replace(/^<a /, '<a target="_blank" rel="nofollow" ')
 }
 marked.use({ renderer })
+
+// Create helper function to render and sanitize markdown
+const renderMarkdown = (text: string) => {
+  return sanitizeHtml(marked.parse(text, { async: false }) as string)
+}
 
 
 
@@ -199,7 +205,7 @@ onMounted(async () => {
               <!-- Product message -->
               <template v-if="message.message_type === 'product' && message.attributes?.shopify_output?.products?.length">
                 <div class="products-carousel">
-                  <div v-html="marked(message.message || '')" class="product-message-text"></div>
+                  <div v-html="renderMarkdown(message.message || '')" class="product-message-text"></div>
                   <div class="carousel-items">
                     <div 
                       v-for="product in message.attributes.shopify_output.products" 
@@ -230,7 +236,7 @@ onMounted(async () => {
               </template>
               <!-- Regular message with markdown -->
               <template v-else>
-                <div v-html="marked(message.message || '')"></div>
+                <div v-html="renderMarkdown(message.message || '')"></div>
                 
                 <!-- Display attachments if present -->
                 <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
