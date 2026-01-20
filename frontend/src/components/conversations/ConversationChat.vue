@@ -105,7 +105,7 @@ marked.use({ renderer })
 
 // Create helper function to render and sanitize markdown
 const renderMarkdown = (text: string) => {
-  return sanitizeHtml(marked(text))
+  return sanitizeHtml(marked.parse(text, { async: false }) as string)
 }
 
 

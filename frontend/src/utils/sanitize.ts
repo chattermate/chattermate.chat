@@ -37,6 +37,24 @@ DOMPurify.addHook('uponSanitizeElement', (node, data) => {
     node.parentNode?.removeChild(node)
     return
   }
+
+  // SECURITY: Remove any remaining <a>, <img>, <area>, and <map> tags completely
+  const element = node as HTMLElement
+  const tagName = data.tagName?.toUpperCase()
+  if (tagName === 'A' || tagName === 'IMG' || tagName === 'AREA' || tagName === 'MAP') {
+    // For links, keep the text content if it exists
+    if (tagName === 'A') {
+      const textContent = element.textContent
+      if (textContent) {
+        element.replaceWith(textContent)
+      } else {
+        element.parentNode?.removeChild(element)
+      }
+    } else {
+      // For images and maps, just remove them
+      element.parentNode?.removeChild(element)
+    }
+  }
 })
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -133,25 +151,6 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   Array.from(node.attributes).forEach((attr) => {
     if (attr.name.toLowerCase().startsWith('on')) {
       node.removeAttribute(attr.name)
-    }
-  })
-
-  // SECURITY: Remove any remaining <a> and <img> tags completely
-  DOMPurify.addHook('uponSanitizeElement', (node, data) => {
-    const element = node as HTMLElement
-    if (element.tagName === 'A' || element.tagName === 'IMG' || element.tagName === 'AREA' || element.tagName === 'MAP') {
-      // For links, keep the text content if it exists
-      if (element.tagName === 'A') {
-        const textContent = element.textContent
-        if (textContent) {
-          element.replaceWith(textContent)
-        } else {
-          element.parentNode?.removeChild(element)
-        }
-      } else {
-        // For images and maps, just remove them
-        element.parentNode?.removeChild(element)
-      }
     }
   })
 })

@@ -81,11 +81,13 @@ class TestSanitizeMessage:
         result = sanitize_message(malicious)
         assert 'data:text/html' not in result.lower()
     
-    def test_sanitize_allows_data_image(self):
-        """Test that data:image URIs are allowed"""
+    def test_sanitize_removes_img_tags(self):
+        """Test that all img tags are removed for security (no external resource loading)"""
         safe = '<img src="data:image/png;base64,iVBORw0KGgo=">'
         result = sanitize_message(safe)
-        assert 'data:image' in result.lower()
+        # All img tags are removed to prevent external resource loading and tracking
+        assert '<img' not in result.lower()
+        assert 'src' not in result.lower()
     
     def test_sanitize_normal_text(self):
         """Test that normal text is unchanged"""
@@ -94,10 +96,14 @@ class TestSanitizeMessage:
         assert result == text
     
     def test_sanitize_markdown_links(self):
-        """Test that markdown links are preserved"""
+        """Test that markdown links are sanitized - text preserved, URL removed"""
         text = "Check out [this link](https://example.com)"
         result = sanitize_message(text)
-        assert result == text
+        # Markdown links are stripped for security - only text content is preserved
+        assert result == "Check out this link"
+        assert "https://example.com" not in result
+        assert "[" not in result
+        assert "]" not in result
     
     def test_sanitize_none(self):
         """Test that None input returns None"""
