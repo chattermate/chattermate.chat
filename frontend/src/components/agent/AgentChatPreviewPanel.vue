@@ -23,6 +23,7 @@ import { getAvatarUrl } from '@/utils/avatars'
 import { useAgentChat } from '@/composables/useAgentChat'
 import WebFont from 'webfontloader'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 const props = defineProps<{
     isActive: boolean
@@ -345,10 +346,8 @@ const headerBorderStyles = computed(() => ({
 
 // Function to format message content
 const formatMessage = (content: string) => {
-    // Configure marked options
-
-
-    return marked(content)
+    // Configure marked options and sanitize to prevent XSS attacks
+    return sanitizeHtml(marked(content) as string)
 }
 
 // Add this function near the top of the script section with other utility functions
