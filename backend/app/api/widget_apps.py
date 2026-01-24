@@ -32,8 +32,47 @@ from app.models.schemas.widget_app import (
 from uuid import UUID
 from app.core.logger import get_logger
 
+# Enterprise feature check
+try:
+    from app.enterprise.repositories.subscription import SubscriptionRepository
+    from app.enterprise.repositories.plan import PlanRepository
+    HAS_ENTERPRISE = True
+except ImportError:
+    HAS_ENTERPRISE = False
+
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+def check_widget_app_feature_access(current_user: User, db: Session):
+    """Check if user has access to widget apps feature (requires pro plan)"""
+    if not HAS_ENTERPRISE:
+        return  # Allow access in non-enterprise mode
+
+    subscription_repo = SubscriptionRepository(db)
+    plan_repo = PlanRepository(db)
+
+    # Get current subscription
+    subscription = subscription_repo.get_by_organization(str(current_user.organization_id))
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No active subscription found"
+        )
+
+    # Check subscription status
+    if not subscription.is_active() and not subscription.is_trial():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Subscription is not active"
+        )
+
+    # Check if api_access feature is available in the plan (required for widget apps)
+    if not plan_repo.check_feature_availability(str(subscription.plan_id), 'api_access'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Widget Apps feature is not available in your current plan. Please upgrade to Pro to access this feature."
+        )
 
 
 @router.post("", response_model=WidgetAppWithKeyResponse, status_code=status.HTTP_201_CREATED)
@@ -49,8 +88,12 @@ async def create_widget_app(
     Save it securely - it cannot be retrieved later.
 
     Requires: manage_organization permission (admin only)
+    Requires: Pro plan with widget_apps feature
     """
     try:
+        # Check widget apps feature access
+        check_widget_app_feature_access(current_user, db)
+
         repo = WidgetAppRepository(db)
 
         # Create app (returns app and plain key)
@@ -92,8 +135,12 @@ async def list_widget_apps(
     List all widget apps for current organization.
 
     Requires: manage_organization permission (admin only)
+    Requires: Pro plan with widget_apps feature
     """
     try:
+        # Check widget apps feature access
+        check_widget_app_feature_access(current_user, db)
+
         repo = WidgetAppRepository(db)
         apps = repo.get_apps_by_organization(
             organization_id=current_user.organization_id,
@@ -123,8 +170,12 @@ async def get_widget_app(
     Get widget app details by ID.
 
     Requires: manage_organization permission (admin only)
+    Requires: Pro plan with widget_apps feature
     """
     try:
+        # Check widget apps feature access
+        check_widget_app_feature_access(current_user, db)
+
         repo = WidgetAppRepository(db)
         app = repo.get_app_by_id(
             app_id=app_id,
@@ -160,8 +211,12 @@ async def update_widget_app(
     Update widget app (name, description, active status).
 
     Requires: manage_organization permission (admin only)
+    Requires: Pro plan with widget_apps feature
     """
     try:
+        # Check widget apps feature access
+        check_widget_app_feature_access(current_user, db)
+
         repo = WidgetAppRepository(db)
         app = repo.update_app(
             app_id=app_id,
@@ -203,8 +258,12 @@ async def delete_widget_app(
     Hard delete: Permanently removes record (use with caution).
 
     Requires: manage_organization permission (admin only)
+    Requires: Pro plan with widget_apps feature
     """
     try:
+        # Check widget apps feature access
+        check_widget_app_feature_access(current_user, db)
+
         repo = WidgetAppRepository(db)
 
         if hard_delete:
@@ -247,8 +306,12 @@ async def regenerate_api_key(
     The old key will be immediately invalidated.
 
     Requires: manage_organization permission (admin only)
+    Requires: Pro plan with widget_apps feature
     """
     try:
+        # Check widget apps feature access
+        check_widget_app_feature_access(current_user, db)
+
         repo = WidgetAppRepository(db)
 
         result = repo.regenerate_api_key(
