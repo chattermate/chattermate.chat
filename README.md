@@ -1,12 +1,84 @@
-# ChatterMate - AI-Powered ChatBot Agent Framework
+# ChatterMate - Open Source AI Customer Support Chatbot Platform
+
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![npm version](https://img.shields.io/npm/v/chattermate-cli.svg)](https://www.npmjs.com/package/chattermate-cli)
+[![Docker Pulls](https://img.shields.io/docker/pulls/chattermate/backend.svg)](https://hub.docker.com/r/chattermate/backend)
 
 ![ChatterMate Logo](frontend/public/assets/images/logo.svg)
 
-ChatterMate is a no-code AI chatbot agent framework. It enables businesses to provide 24/7 support through AI agents that can handle common queries, escalate complex issues to the human agent on need basics, and continuously learn from knowledge base articles. Integrate the chat widget easily on any website. 
+> **No-code AI chatbot framework for 24/7 customer support automation.** Self-hosted, multi-model AI support, intelligent human handoff, file attachments, Jira integration, and seamless website embedding. Build AI-powered help desk and live chat solutions without writing code.
+
+**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://chattermate.chat)**
+
+---
+
+## Table of Contents
+
+- [Why ChatterMate?](#why-chattermate)
+- [Features](#features)
+- [Demo](#demo)
+- [Quick Start](#quick-start-with-cli)
+- [Installation](#installation-methods)
+- [Deployment](#deployment)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Support](#support)
+
+---
+
+## Why ChatterMate?
+
+ChatterMate is a **no-code AI chatbot agent framework** that enables businesses to provide **24/7 customer support** through intelligent AI agents. Your chatbot can handle common queries, escalate complex issues to human agents when needed, and continuously learn from your knowledge base articles. Integrate the chat widget easily on any website with a single line of code.
+
+**Perfect for:** SaaS companies, e-commerce stores, help desks, customer success teams, and any business looking to automate customer support while maintaining a human touch.
+
+---
+
+## Features
+
+### NEW Core Features
+
+| Feature | Description |
+|---------|-------------|
+| 🆕 **Ask Anything Mode** | Let visitors start conversations instantly - no signup or email required. Perfect for Q&A, documentation assistants, and exploratory chat experiences. |
+| 🆕 **Multi-Model AI Support** | Choose your AI provider - **OpenAI GPT-4**, **Groq Llama 3.3**, **Google AI**, **Ollama** (self-hosted), and more. Switch providers anytime without code changes. |
+| 🆕 **Smart Human Handoff** | Intelligent transfer to human agents with **business hours awareness**, real-time availability detection, and context-aware escalation messages. |
+| 🆕 **File Attachments** | Enable customers to share **images, PDFs, Word docs, spreadsheets**, and more directly in chat. Secure uploads with S3 storage and magic byte validation. |
+| 🆕 **Auto Translation** | Multilingual support with configurable **default language per workflow**. Serve customers globally in their preferred language. |
+| 🆕 **Jira Ticket Creation** | Create and manage **Jira tickets directly from chat** conversations. OAuth 2.0 secure integration with automatic ticket tracking. |
+| 🆕 **Widget Authentication** | **Token-based security** for embedded widgets. Support both public Q&A and private authenticated conversations. |
+| 🆕 **Slack Integration** | Connect your **Slack workspace** for internal product support. Enable teams to get AI-powered assistance directly in Slack channels. |
+
+### Platform Features
+
+| Feature | Description |
+|---------|-------------|
+| 🤖 **AI-Powered Responses** | Context-aware AI with conversation memory across sessions |
+| 📊 **Analytics Dashboard** | Real-time monitoring, conversation insights, and performance metrics |
+| 📚 **Knowledge Base Training** | Train your AI with domain-specific knowledge and FAQs |
+| 🎨 **Custom Theming** | Fully customizable chat widget to match your brand |
+| 🔐 **Role-Based Access Control** | Granular permissions for team members |
+| 🌐 **Open Source & Self-Hosted** | Full control over your data with self-hosting option |
+
+---
+
+## Demo
+
+### Video Walkthrough
+[![ChatterMate Demo](https://img.youtube.com/vi/bk40VSS2BLU/0.jpg)](https://youtu.be/bk40VSS2BLU)
+[![ChatterMate Demo](https://img.youtube.com/vi/WyMQ8Poqn5E/0.jpg)](https://www.youtube.com/embed/WyMQ8Poqn5E?mute=1&loop=1&playlist=WyMQ8Poqn5E&rel=0&controls=1)
+
+### Agent Dashboard
+![Agent Dashboard](frontend/public/images/agent-dashboard.gif)
+
+### Analytics Dashboard
+![Analytics Dashboard](frontend/public/images/analytics-view.gif)
+
+---
 
 ## Quick Start with CLI
 
-Get ChatterMate running in minutes with our CLI tool:
+Get ChatterMate running in minutes:
 
 ```bash
 # Install the ChatterMate CLI globally
@@ -24,74 +96,35 @@ chattermate start
 # Open http://localhost/ in your browser
 ```
 
-That's it! ChatterMate is now running with all services configured.
-
 ### CLI Commands
 
 ```bash
 chattermate init <project-name>    # Initialize a new project
 chattermate start                  # Start all services
-chattermate stop                   # Stop all services  
+chattermate stop                   # Stop all services
 chattermate status                 # Check service status
 chattermate logs                   # View service logs
 chattermate reset                  # Reset and cleanup project
 ```
 
-## Documentation
+---
 
-[docs.chattermate.chat](https://docs.chattermate.chat)
+## Installation Methods
 
-## Demo
-[![ChatterMate Demo](https://img.youtube.com/vi/bk40VSS2BLU/0.jpg)](https://youtu.be/bk40VSS2BLU)
-[![ChatterMate Demo](https://img.youtube.com/vi/WyMQ8Poqn5E/0.jpg)](https://www.youtube.com/embed/WyMQ8Poqn5E?mute=1&loop=1&playlist=WyMQ8Poqn5E&rel=0&controls=1)
+### Prerequisites
 
-### Agent Dashboard
-![Agent Dashboard](frontend/public/images/agent-dashboard.gif)
-
-### Analytics Dashboard
-![Analytics Dashboard](frontend/public/images/analytics-view.gif)
-
-## Free Signup
-https://chattermate.chat
-
-## Features
-
-- 🤖 **AI-Powered Responses**: Context-aware AI with multiple provider support (OpenAI GPT-4, Google AI, Ollama)
-- 👥 **Human Handoff**: Seamless transition to human agents when needed
-- 🔌 **Deep Integration**: Connect with Jira, Zendesk, Slack, and more (Coming Soon)
-- 🎨 **Custom Theming**: Fully customizable chat interface
-- 🔐 **Role-Based Access**: Granular control over user permissions
-- 📊 **Analytics Dashboard**: Real-time monitoring and insights
-- 💾 **Smart Memory**: Maintains conversation context across sessions
-- 📚 **Knowledge Base**: Train the AI with your domain knowledge
-- 🌐 **Open Source**: Self-hostable and community-driven
-
-### Technical Features
-
-**Backend (Python FastAPI)**
-
-
-**Frontend (Vue 3)**
-
-
-## Prerequisites
-
-### For CLI Installation (Recommended)
+**For CLI Installation (Recommended)**
 - Node.js 16+
 - Docker & Docker Compose
 - npm or yarn
 
-### For Manual Installation
+**For Manual Installation**
 - Python 3.12+
 - PostgreSQL 14+ (with Vector extension)
-- Firebase Project for push notification
-- Redis (Optional for rate limiting and multiserver socket deployment)
-
-## Installation Methods
+- Firebase Project (for push notifications)
+- Redis (optional, for rate limiting and multi-server socket deployment)
 
 ### Method 1: CLI Installation (Recommended)
-
-The fastest way to get started is using our CLI tool:
 
 ```bash
 npm install -g chattermate-cli
@@ -102,9 +135,6 @@ chattermate start
 
 ### Method 2: Docker Installation
 
-For local development, you can build the images yourself:
-
-Make sure to set up your environment variables in a `.env` file in backend and frontend before running Docker.
 ```bash
 # Build and start all services
 docker compose up --build
@@ -117,23 +147,14 @@ docker compose down
 
 # View logs
 docker compose logs -f
-
-# View specific service logs
-docker compose logs -f db     # PostgreSQL logs
-docker compose logs -f redis  # Redis logs
-docker compose logs -f backend # Backend logs
-docker compose logs -f frontend # frontend logs
 ```
-
-
-
-## Non Docker Installation
 
 ### Method 3: Manual Installation
 
-> **Note**: For most users, we recommend using the CLI installation method above. Manual installation is for advanced users who want to customize the setup.
+<details>
+<summary>Click to expand manual installation steps</summary>
 
-### Backend Setup
+#### Backend Setup
 ```bash
 cd backend
 python -m venv venv
@@ -147,26 +168,24 @@ cp .env.example .env
 # Database setup
 alembic upgrade head
 
-# To generate revisions if any model changes 
-alembic revision --autogenerate -m "Changes description "
+# To generate revisions if any model changes
+alembic revision --autogenerate -m "Changes description"
 ```
 
-### Frontend Setup
+#### Frontend Setup
 ```bash
 cd frontend
-
 npm install
-
-# Configure environment
 cp .env.example .env
-
 ```
-For Web Push notification, generate a firebase config and keep in folder backend/app/config/firebase-config.json 
 
+For Web Push notification, generate a firebase config and place it in `backend/app/config/firebase-config.json`
+
+</details>
+
+---
 
 ## Running the Application
-
-
 
 **Backend**
 ```bash
@@ -175,16 +194,6 @@ uvicorn app.main:app --reload --port 8000
 
 # Run Knowledge Processor (in a separate terminal)
 python -m app.workers.run_knowledge_processor
-
-# Production
-# Install gunicorn if not already installed
-pip install gunicorn
-
-# Run with gunicorn (adjust workers based on CPU cores)
-gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --access-logfile - --error-logfile - --log-level info
-
-# Run Knowledge Processor as a background service
-nohup python -m app.workers.run_knowledge_processor > knowledge_processor.log 2>&1 &
 ```
 
 **Frontend**
@@ -192,12 +201,14 @@ nohup python -m app.workers.run_knowledge_processor > knowledge_processor.log 2>
 # Development
 npm run dev
 
-# Build Widget for chat to integrate in website
+# Build Widget for chat integration
 npm run build:widget
 
-# Build Web Client to integrate in website
+# Build Web Client
 npm run build:webclient
 ```
+
+---
 
 ## Testing
 
@@ -208,23 +219,34 @@ pytest tests/
 
 **Frontend**
 ```bash
-# Unit tests
-npm run test:unit
-
-# E2E tests
-npm run test:e2e
+npm run test:unit    # Unit tests
+npm run test:e2e     # E2E tests
 ```
+
+---
 
 ## Deployment
 
-For production deployment without Docker:
+### Docker Deployment (Recommended)
+
+Pre-built Docker images are available:
+
+```bash
+# Pull images
+docker pull chattermate/frontend:latest
+docker pull chattermate/backend:latest
+
+# Run with production compose
+docker compose -f docker-compose.prod.yml up -d
+```
+
+<details>
+<summary>Click for production deployment without Docker</summary>
 
 **Backend**
 ```bash
-# Install production dependencies
 pip install gunicorn
 
-# Run with gunicorn
 gunicorn app.main:app \
     --workers 4 \
     --worker-class uvicorn.workers.UvicornWorker \
@@ -233,9 +255,10 @@ gunicorn app.main:app \
     --error-logfile - \
     --log-level info \
     --timeout 120
+```
 
-# Run Knowledge Processor
-# Option 1: Using systemd (recommended)
+**Knowledge Processor (systemd)**
+```bash
 sudo tee /etc/systemd/system/chattermate-knowledge-processor.service << EOF
 [Unit]
 Description=ChatterMate Knowledge Processor
@@ -256,80 +279,33 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable chattermate-knowledge-processor
 sudo systemctl start chattermate-knowledge-processor
-
-# Option 2: Using supervisor
-sudo tee /etc/supervisor/conf.d/chattermate-knowledge-processor.conf << EOF
-[program:chattermate-knowledge-processor]
-command=/path/to/chattermate/backend/venv/bin/python -m app.workers.run_knowledge_processor
-directory=/path/to/chattermate/backend
-user=chattermate
-autostart=true
-autorestart=true
-stderr_logfile=/var/log/chattermate/knowledge-processor.err.log
-stdout_logfile=/var/log/chattermate/knowledge-processor.out.log
-EOF
-
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start chattermate-knowledge-processor
-
-# Recommended worker count:
-# - CPU bound: 1-2 workers per CPU core
-# - I/O bound: 2-4 workers per CPU core
-# Example: For a 4-core machine, use 4-16 workers depending on workload
 ```
 
 **Frontend**
 ```bash
-# Build for production
 npm run build
-
 # Serve using nginx or other web server
 ```
 
-### Docker Deployment
+</details>
 
-You can run the project using either Docker Compose with local builds or pre-built Docker images.
-
-#### Using Pre-built Images
-
-The following Docker images are available on Docker Hub:
-```bash
-# Frontend Image
-docker pull chattermate/frontend:latest
-
-# Backend Image
-docker pull chattermate/backend:latest
-
-
-```
-
-To run using pre-built images refer docker-compose.prod.yml:
-
-```
-docker compose -f docker-compose.prod.yml up -d
-```
-
-
-
+---
 
 ## Roadmap
 
+### Coming Soon
 
+- 🔄 **Auto Follow-up System** - Automated follow-ups for idle customers
+- 📘 **Customer Contact Management** - CRM-like contact organization
+- 🤝 **Human Agent AI Suggestions** - AI-powered response suggestions for agents
+- 📞 **AI Voice Chat** - Voice-enabled AI conversations
+- 🔌 **More Integrations** - Zendesk, Intercom, and more
 
-- 🔄 Auto Follow-up System for idle customer
-
-- 📘 Customer Contact Management
-
-- 🤝 Human Agent AI Suggestions
-
-- 📞 AI Voice Chat or Call
-
-- 🔌 Third-party Integrations
-  - Slack workspace connection
-
+---
 
 ## Contributing
+
+We welcome contributions! Here's how to get started:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -343,13 +319,40 @@ docker compose -f docker-compose.prod.yml up -d
 - Update documentation as needed
 - Add type hints to new functions
 
+---
+
 ## Support
 
-- 🐛 Issues: [GitHub Issues](https://github.com/chattermate/chattermate/issues)
-- 📧 Email: support@chattermate.chat
-
-
+- 📖 **Documentation**: [docs.chattermate.chat](https://docs.chattermate.chat)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/chattermate/chattermate/issues)
+- 📧 **Email**: support@chattermate.chat
 
 ---
 
-Made with ❤️ by the ChatterMate team 
+## License
+
+ChatterMate is open source software available under a **dual license**:
+
+**Open Source (AGPL-3.0)**
+- Free for personal and commercial use
+- Source code must be disclosed for modified versions
+- Network users must have access to source code if deployed as a service
+- Derivative works must be licensed under AGPL-3.0
+
+**Commercial License**
+- Available for proprietary integrations
+- No source disclosure requirements
+- Official support and warranties
+- Contact: [contact@chattermate.chat](mailto:contact@chattermate.chat)
+
+See [LICENSE](license.md) for full details.
+
+---
+
+<p align="center">
+  Made with ❤️ by the ChatterMate team
+</p>
+
+<p align="center">
+  <b>Keywords:</b> AI chatbot, customer support automation, open source help desk, live chat software, self-hosted chatbot, no-code chatbot builder, GPT-4 customer service, human handoff, Jira integration, Slack bot, multilingual chatbot
+</p>
