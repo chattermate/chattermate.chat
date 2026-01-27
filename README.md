@@ -48,6 +48,21 @@ ChatterMate is a **no-code AI chatbot agent framework** that enables businesses 
 | 🆕 **Jira Ticket Creation** | Create and manage **Jira tickets directly from chat** conversations. OAuth 2.0 secure integration with automatic ticket tracking. |
 | 🆕 **Widget Authentication** | **Token-based security** for embedded widgets. Support both public Q&A and private authenticated conversations. |
 | 🆕 **Slack Integration** | Connect your **Slack workspace** for internal product support. Enable teams to get AI-powered assistance directly in Slack channels. |
+| 🆕 **Visual Workflow Builder** | Design complex conversation flows with a **drag-and-drop interface**. Create branching logic, conditional responses, and multi-step workflows without coding. |
+
+### Workflow Builder
+
+Build sophisticated conversation flows visually with our intuitive workflow builder:
+
+<!-- TODO: Add workflow builder screenshot -->
+![Workflow Builder](frontend/public/images/workflow-builder-placeholder.png)
+
+**Workflow Builder Features:**
+- **Drag-and-drop nodes** - AI responses, human handoff, conditions, and more
+- **Branching logic** - Create different paths based on user input
+- **Node types** - Start, AI Response, Human Transfer, Condition, End nodes
+- **Real-time preview** - Test workflows before deploying
+- **Version control** - Save and restore workflow versions
 
 ### Platform Features
 
