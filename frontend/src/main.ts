@@ -31,9 +31,10 @@ app.use(FloatingVue)
 initializeFirebase()
 
 // Initialize GTM only if enterprise module is available
-const analyticsModule = import.meta.glob('./modules/enterprise/utils/analytics.ts')
-if (Object.keys(analyticsModule).length > 0) {
-  Object.values(analyticsModule)[0]().then((mod: any) => mod.initGTM?.())
+// Cannot use useEnterpriseFeatures() here — runs before Vue app mounts
+const enterpriseAnalytics = import.meta.glob('./modules/enterprise/utils/analytics.ts')
+if (Object.keys(enterpriseAnalytics).length > 0) {
+  Object.values(enterpriseAnalytics)[0]().then((mod: any) => mod.initGTM?.())
 }
 
 app.mount('#app')
