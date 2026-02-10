@@ -68,12 +68,12 @@ class SlackService:
         self.signing_secret = settings.SLACK_SIGNING_SECRET
         self.redirect_uri = settings.SLACK_REDIRECT_URI
 
-    def get_authorization_url(self, state: str) -> str:
+    def get_authorization_url(self, state: Optional[str] = None) -> str:
         """
         Generate the authorization URL for Slack OAuth flow.
 
         Args:
-            state: State parameter for CSRF protection (should include org_id)
+            state: State parameter for CSRF protection (optional, None for marketplace installs)
 
         Returns:
             Authorization URL to redirect user to
@@ -82,8 +82,10 @@ class SlackService:
             "client_id": self.client_id,
             "scope": ",".join(self.SCOPES),
             "redirect_uri": self.redirect_uri,
-            "state": state,
         }
+        # Only include state if provided (not for marketplace installs)
+        if state:
+            params["state"] = state
         return f"{self.OAUTH_AUTHORIZE_URL}?{urlencode(params)}"
 
     async def exchange_code_for_token(self, code: str) -> Dict[str, Any]:

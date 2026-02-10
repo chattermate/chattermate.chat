@@ -26,7 +26,8 @@ vi.mock('@/utils/permissions', () => ({
 // Mock enterprise features
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: vi.fn(() => ({
-    hasEnterpriseModule: false
+    hasEnterpriseModule: false,
+    loadModule: vi.fn().mockResolvedValue(null)
   }))
 }))
 

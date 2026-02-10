@@ -128,6 +128,23 @@ async def slack_status(
         return SlackConnectionStatus(connected=False)
 
 
+@router.get("/install")
+async def install_slack():
+    """
+    Public endpoint for Slack Marketplace direct install.
+    Returns a 302 redirect to Slack's OAuth authorization page.
+    No state parameter - callback handles marketplace installs separately.
+
+    Configure this URL in Slack App Settings > Install from Slack Marketplace > Direct install URL
+    Example: https://api.chattermate.chat/api/slack/install
+    """
+    # For marketplace installs, we don't include state parameter
+    # The callback will detect this and handle it as a marketplace install
+    auth_url = slack_service.get_authorization_url(state=None)
+    logger.info("Marketplace install: Redirecting to Slack authorization URL")
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
 @router.get("/authorize")
 async def authorize_slack(
     request: Request,

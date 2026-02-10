@@ -25,12 +25,17 @@ import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useForgotPassword } from '@/composables/useForgotPassword'
 import api from '@/services/api'
 import type { AxiosError } from 'axios'
-
 interface ErrorResponse {
     detail: string
 }
 
 const router = useRouter()
+const { loadModule } = useEnterpriseFeatures()
+
+const trackLogin = async (method: string) => {
+  const mod = await loadModule('/src/modules/enterprise/utils/analytics.ts') as any
+  mod?.trackLogin?.(method)
+}
 const email = ref('')
 const password = ref('')
 const error = ref('')
@@ -96,6 +101,8 @@ const handleLogin = async () => {
         error.value = ''
 
         await authService.login(email.value, password.value)
+
+        trackLogin('email')
 
         // Check if this is Shopify flow (new managed installation)
         const urlParams = new URLSearchParams(window.location.search)
