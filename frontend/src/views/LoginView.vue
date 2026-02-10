@@ -25,6 +25,7 @@ import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useForgotPassword } from '@/composables/useForgotPassword'
 import api from '@/services/api'
 import type { AxiosError } from 'axios'
+import { trackLogin } from '@/utils/analytics'
 
 interface ErrorResponse {
     detail: string
@@ -96,6 +97,8 @@ const handleLogin = async () => {
         error.value = ''
 
         await authService.login(email.value, password.value)
+
+        trackLogin('email')
 
         // Check if this is Shopify flow (new managed installation)
         const urlParams = new URLSearchParams(window.location.search)

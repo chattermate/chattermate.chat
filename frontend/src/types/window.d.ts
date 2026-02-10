@@ -7,4 +7,5 @@ interface Window {
         customer: Record<string, any>;
         initialToken?: string;
     };
+    dataLayer: Record<string, any>[];
 } 
