@@ -7,7 +7,6 @@ import VueApexCharts from 'vue3-apexcharts'
 import App from './App.vue'
 import router from './router'
 import { initializeFirebase } from './services/firebase'
-import { initGTM } from './utils/analytics'
 import 'floating-vue/dist/style.css'
 import FloatingVue from 'floating-vue'
 
@@ -30,6 +29,11 @@ app.component('font-awesome-icon', FontAwesomeIcon)
 app.use(FloatingVue)
 
 initializeFirebase()
-initGTM()
+
+// Initialize GTM only if enterprise module is available
+const analyticsModule = import.meta.glob('./modules/enterprise/utils/analytics.ts')
+if (Object.keys(analyticsModule).length > 0) {
+  Object.values(analyticsModule)[0]().then((mod: any) => mod.initGTM?.())
+}
 
 app.mount('#app')

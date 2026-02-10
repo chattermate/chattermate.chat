@@ -25,7 +25,15 @@ import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useForgotPassword } from '@/composables/useForgotPassword'
 import api from '@/services/api'
 import type { AxiosError } from 'axios'
-import { trackLogin } from '@/utils/analytics'
+// Dynamic import — analytics only exists in enterprise module
+const trackLogin = async (method: string) => {
+  try {
+    const mod = await import('@/modules/enterprise/utils/analytics')
+    mod.trackLogin(method)
+  } catch {
+    // Enterprise module not available
+  }
+}
 
 interface ErrorResponse {
     detail: string
