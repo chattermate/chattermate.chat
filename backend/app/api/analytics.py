@@ -25,6 +25,7 @@ from app.models.agent import Agent
 from app.models.customer import Customer
 from app.models.rating import Rating
 from app.models.session_to_agent import SessionToAgent, SessionStatus
+from app.models.chat_history import ChatHistory
 from datetime import datetime, timedelta
 from sqlalchemy import func, and_, or_, desc, distinct, case
 from typing import Optional, List
@@ -513,4 +514,170 @@ async def get_customer_details(
         raise
     except Exception as e:
         logger.error(f"Error getting customer details: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sentiment")
+async def get_sentiment_analytics(
+    time_range: str = Query('7d', regex='^(24h|7d|30d|90d)$'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("view_analytics"))
+):
+    """Get sentiment distribution and trends for the organization"""
+    try:
+        start_date, end_date = get_time_range_dates(time_range)
+        interval = get_interval(time_range)
+        org_id = current_user.organization_id
+
+        # Sentiment distribution (counts of positive/neutral/negative)
+        distribution = db.query(
+            ChatHistory.sentiment_label,
+            func.count(ChatHistory.id).label('count')
+        ).filter(
+            ChatHistory.organization_id == org_id,
+            ChatHistory.created_at.between(start_date, end_date),
+            ChatHistory.message_type == 'user',
+            ChatHistory.sentiment_label.isnot(None)
+        ).group_by(
+            ChatHistory.sentiment_label
+        ).all()
+
+        dist_dict = {"positive": 0, "neutral": 0, "negative": 0}
+        for row in distribution:
+            if row.sentiment_label in dist_dict:
+                dist_dict[row.sentiment_label] = row.count
+
+        total_analyzed = sum(dist_dict.values())
+
+        # Sentiment trend over time
+        trend = db.query(
+            func.date_trunc(interval, ChatHistory.created_at).label('period'),
+            func.avg(ChatHistory.sentiment_score).label('avg_score'),
+            func.count(ChatHistory.id).label('message_count')
+        ).filter(
+            ChatHistory.organization_id == org_id,
+            ChatHistory.created_at.between(start_date, end_date),
+            ChatHistory.message_type == 'user',
+            ChatHistory.sentiment_score.isnot(None)
+        ).group_by('period').order_by('period').all()
+
+        # Average sentiment score
+        avg_score = db.query(
+            func.avg(ChatHistory.sentiment_score)
+        ).filter(
+            ChatHistory.organization_id == org_id,
+            ChatHistory.created_at.between(start_date, end_date),
+            ChatHistory.message_type == 'user',
+            ChatHistory.sentiment_score.isnot(None)
+        ).scalar() or 0.0
+
+        # Previous period comparison
+        prev_start = start_date - (end_date - start_date)
+        prev_avg = db.query(
+            func.avg(ChatHistory.sentiment_score)
+        ).filter(
+            ChatHistory.organization_id == org_id,
+            ChatHistory.created_at.between(prev_start, start_date),
+            ChatHistory.message_type == 'user',
+            ChatHistory.sentiment_score.isnot(None)
+        ).scalar() or 0.0
+
+        score_change = ((float(avg_score) - float(prev_avg)) / abs(float(prev_avg)) * 100) if prev_avg else 0.0
+
+        # Sessions with negative sentiment (for agent attention)
+        negative_sessions = db.query(
+            SessionToAgent.session_id,
+            SessionToAgent.sentiment_label,
+            SessionToAgent.sentiment_score,
+            SessionToAgent.status
+        ).filter(
+            SessionToAgent.organization_id == org_id,
+            SessionToAgent.assigned_at.between(start_date, end_date),
+            SessionToAgent.sentiment_label == 'negative'
+        ).order_by(
+            SessionToAgent.sentiment_score.asc()
+        ).limit(10).all()
+
+        return {
+            "distribution": dist_dict,
+            "total_analyzed": total_analyzed,
+            "avg_score": round(float(avg_score), 4),
+            "score_change": round(score_change, 2),
+            "score_trend": "up" if score_change >= 0 else "down",
+            "trend": {
+                "data": [round(float(r.avg_score or 0), 4) for r in trend],
+                "labels": [r.period.strftime("%Y-%m-%d") for r in trend],
+                "message_counts": [r.message_count for r in trend]
+            },
+            "negative_sessions": [
+                {
+                    "session_id": str(s.session_id),
+                    "sentiment_label": s.sentiment_label,
+                    "sentiment_score": round(float(s.sentiment_score), 4) if s.sentiment_score else None,
+                    "status": s.status
+                }
+                for s in negative_sessions
+            ],
+            "time_range": time_range
+        }
+    except Exception as e:
+        logger.error(f"Error getting sentiment analytics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting sentiment analytics: {str(e)}")
+
+
+@router.get("/session-sentiment/{session_id}")
+async def get_session_sentiment(
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("view_analytics"))
+):
+    """Get sentiment breakdown for a specific session"""
+    try:
+        org_id = current_user.organization_id
+
+        # Verify session belongs to organization
+        session = db.query(SessionToAgent).filter(
+            SessionToAgent.session_id == session_id,
+            SessionToAgent.organization_id == org_id
+        ).first()
+
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Get per-message sentiment for customer messages
+        messages = db.query(
+            ChatHistory.id,
+            ChatHistory.message,
+            ChatHistory.sentiment_label,
+            ChatHistory.sentiment_score,
+            ChatHistory.created_at
+        ).filter(
+            ChatHistory.session_id == session_id,
+            ChatHistory.message_type == 'user',
+            ChatHistory.sentiment_label.isnot(None)
+        ).order_by(
+            ChatHistory.created_at.asc()
+        ).all()
+
+        return {
+            "session_id": str(session_id),
+            "overall_sentiment": {
+                "label": session.sentiment_label,
+                "score": round(float(session.sentiment_score), 4) if session.sentiment_score else None
+            },
+            "messages": [
+                {
+                    "id": m.id,
+                    "message": m.message[:200] if m.message else None,  # Truncate for privacy
+                    "sentiment_label": m.sentiment_label,
+                    "sentiment_score": round(float(m.sentiment_score), 4) if m.sentiment_score else None,
+                    "created_at": m.created_at.isoformat()
+                }
+                for m in messages
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session sentiment: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

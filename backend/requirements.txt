@@ -35,6 +35,9 @@ pytest-mock
 coverage==7.4.1
 
 
+# Sentiment Analysis
+textblob
+
 #ai
 openai
 agno==1.7.6
