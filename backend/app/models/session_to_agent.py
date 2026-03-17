@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, JSON, Integer, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -66,6 +66,11 @@ class SessionToAgent(Base):
     ticket_description = Column(String, nullable=True)
     integration_type = Column(String, nullable=True)
     ticket_priority = Column(String, nullable=True)
+
+    # AI Conversation Summary fields
+    summary = Column(Text, nullable=True)
+    summary_updated_at = Column(DateTime(timezone=True), nullable=True)
+    summary_message_count = Column(Integer, nullable=True)  # Message count when summary was last generated
 
     # Workflow-related fields
     workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id", ondelete="SET NULL"), nullable=True)

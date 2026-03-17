@@ -195,7 +195,8 @@ class ChatRepository:
             func.max(ChatHistory.message).label('last_message'),
             func.max(ChatHistory.created_at).label('updated_at'),
             func.count(ChatHistory.id).label('message_count'),
-            SessionToAgent.session_id.label('session_id')
+            SessionToAgent.session_id.label('session_id'),
+            SessionToAgent.summary.label('summary')
         ).join(
             Agent, ChatHistory.agent_id == Agent.id
         ).join(
@@ -266,7 +267,8 @@ class ChatRepository:
             Agent.display_name,
             SessionToAgent.status,
             SessionToAgent.group_id,
-            SessionToAgent.session_id
+            SessionToAgent.session_id,
+            SessionToAgent.summary
         ).order_by(
             # Create a custom ordering to prioritize transferred conversations
             # Using direct SQL expression for the CASE statement with uppercase status values
@@ -294,7 +296,8 @@ class ChatRepository:
             'message_count': r.message_count,
             'status': r.status,
             'group_id': str(r.group_id) if r.group_id else None,
-            'session_id': r.session_id
+            'session_id': r.session_id,
+            'summary': r.summary
         } for r in results]
 
     async def check_session_access(

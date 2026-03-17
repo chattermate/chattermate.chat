@@ -20,6 +20,7 @@ from app.repositories.session_to_agent import SessionToAgentRepository
 from app.repositories.chat import ChatRepository
 from app.models.schemas.chat import ChatDetailResponse
 from app.core.socketio import sio
+from app.services.conversation_summary import get_or_generate_summary, generate_summary
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from app.core.logger import get_logger
@@ -165,3 +166,117 @@ async def reassign_chat(
     except Exception as e:
         logger.error(f"Error reassigning chat: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to reassign chat")
+
+
+@router.get("/{session_id}/summary")
+async def get_session_summary(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get or generate an AI summary for a conversation session."""
+    try:
+        # Check permissions
+        user_permissions = {p.name for p in current_user.role.permissions}
+        if not ("manage_chats" in user_permissions or "manage_assigned_chats" in user_permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions"
+            )
+
+        # Verify session exists and belongs to user's org
+        session_repo = SessionToAgentRepository(db)
+        session = session_repo.get_session(session_id)
+
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail="Chat session not found"
+            )
+
+        if str(session.organization_id) != str(current_user.organization_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Session does not belong to your organization"
+            )
+
+        # Get or generate the summary
+        summary = await get_or_generate_summary(
+            db=db,
+            session_id=session_id,
+            organization_id=current_user.organization_id
+        )
+
+        return {
+            "session_id": session_id,
+            "summary": summary,
+            "summary_updated_at": session.summary_updated_at.isoformat() if session.summary_updated_at else None,
+            "summary_message_count": session.summary_message_count
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session summary: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get session summary"
+        )
+
+
+@router.post("/{session_id}/summary/regenerate")
+async def regenerate_session_summary(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Force regenerate the AI summary for a conversation session."""
+    try:
+        # Check permissions
+        user_permissions = {p.name for p in current_user.role.permissions}
+        if not ("manage_chats" in user_permissions or "manage_assigned_chats" in user_permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions"
+            )
+
+        # Verify session exists and belongs to user's org
+        session_repo = SessionToAgentRepository(db)
+        session = session_repo.get_session(session_id)
+
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail="Chat session not found"
+            )
+
+        if str(session.organization_id) != str(current_user.organization_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Session does not belong to your organization"
+            )
+
+        # Force regenerate summary
+        summary = await generate_summary(
+            db=db,
+            session_id=session_id,
+            organization_id=current_user.organization_id,
+            force=True
+        )
+
+        return {
+            "session_id": session_id,
+            "summary": summary,
+            "summary_updated_at": session.summary_updated_at.isoformat() if session.summary_updated_at else None,
+            "summary_message_count": session.summary_message_count,
+            "regenerated": True
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error regenerating session summary: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to regenerate session summary"
+        )
