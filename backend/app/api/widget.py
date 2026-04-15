@@ -222,6 +222,7 @@ async def get_widget_data(
     widget_id: str,
     response: Response,
     email: Optional[str] = None,
+    source: Optional[str] = Query(None),
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
@@ -301,10 +302,14 @@ async def get_widget_data(
         if customer:
             human_agent_info = await get_human_agent_session_info(db, str(customer.id))
         
-        # Generate new token with customer_id and preserve source if applicable
+        # Generate new token with customer_id and preserve source if applicable.
+        # Prefer the fresh `source` query param (first-visit Explore flow) and
+        # fall back to any source already captured in a prior token.
         new_token_extra_data = {}
-        if widget_id == settings.EXPLORE_WIDGET_ID and old_token_source:
-            new_token_extra_data["source"] = old_token_source
+        if widget_id == settings.EXPLORE_WIDGET_ID:
+            effective_source = source or old_token_source
+            if effective_source:
+                new_token_extra_data["source"] = effective_source
 
         new_token = create_conversation_token(
             customer_id=str(customer.id),
