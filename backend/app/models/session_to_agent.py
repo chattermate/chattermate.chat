@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, JSON, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -66,6 +66,10 @@ class SessionToAgent(Base):
     ticket_description = Column(String, nullable=True)
     integration_type = Column(String, nullable=True)
     ticket_priority = Column(String, nullable=True)
+
+    # Sentiment fields
+    sentiment_label = Column(String, nullable=True)  # Overall session sentiment: 'positive', 'neutral', 'negative'
+    sentiment_score = Column(Float, nullable=True)  # Overall average sentiment score: -1.0 to 1.0
 
     # Workflow-related fields
     workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id", ondelete="SET NULL"), nullable=True)

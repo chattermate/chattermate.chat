@@ -32,6 +32,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from app.core.s3 import get_s3_signed_url
 from app.core.config import settings
+from app.services.sentiment import analyze_sentiment, compute_session_sentiment
 
 logger = get_logger(__name__)
 
@@ -105,15 +106,65 @@ class ChatRepository:
                     if isinstance(message_data[field], str):
                         message_data[field] = UUID(message_data[field])
 
+            # Analyze sentiment for customer messages ('user' type)
+            if message_data.get('message_type') == 'user' and message_data.get('message'):
+                try:
+                    label, score = analyze_sentiment(message_data['message'])
+                    message_data['sentiment_label'] = label
+                    message_data['sentiment_score'] = score
+                except Exception as e:
+                    logger.error(f"Error analyzing message sentiment: {str(e)}")
+
             message = ChatHistory(**message_data)
             self.db.add(message)
             self.db.commit()
             self.db.refresh(message)
+
+            # Update session-level sentiment after saving a customer message
+            if message_data.get('message_type') == 'user' and message_data.get('session_id'):
+                try:
+                    self._update_session_sentiment(message_data['session_id'])
+                except Exception as e:
+                    logger.error(f"Error updating session sentiment: {str(e)}")
+
             return message
         except Exception as e:
             logger.error(f"Error creating message: {str(e)}")
             self.db.rollback()
             raise
+
+    def _update_session_sentiment(self, session_id) -> None:
+        """Recompute and update the overall session sentiment from customer messages."""
+        try:
+            if isinstance(session_id, str):
+                session_id = UUID(session_id)
+
+            # Get all customer message sentiments for this session
+            messages = self.db.query(
+                ChatHistory.sentiment_score,
+                ChatHistory.sentiment_label
+            ).filter(
+                ChatHistory.session_id == session_id,
+                ChatHistory.message_type == 'user',
+                ChatHistory.sentiment_score.isnot(None)
+            ).all()
+
+            scores = [m.sentiment_score for m in messages]
+            labels = [m.sentiment_label for m in messages]
+
+            overall_label, overall_score = compute_session_sentiment(scores, labels)
+
+            if overall_label is not None:
+                session = self.db.query(SessionToAgent).filter(
+                    SessionToAgent.session_id == session_id
+                ).first()
+                if session:
+                    session.sentiment_label = overall_label
+                    session.sentiment_score = overall_score
+                    self.db.commit()
+        except Exception as e:
+            logger.error(f"Error updating session sentiment: {str(e)}")
+            self.db.rollback()
 
     async def get_session_history(self, session_id: str | UUID) -> List[ChatHistory]:
         """Get chat history for a session with joined relationships"""

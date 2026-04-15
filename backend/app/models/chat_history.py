@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from sqlalchemy import Column, Integer, String, JSON, ForeignKey, TIMESTAMP, func, UUID, Interval
+from sqlalchemy import Column, Integer, String, JSON, ForeignKey, TIMESTAMP, func, UUID, Interval, Float
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -38,6 +38,8 @@ class ChatHistory(Base):
     # 'user', 'bot', or 'agent'
     message_type = Column(String, nullable=False)
     attributes = Column(JSON, default={})
+    sentiment_label = Column(String, nullable=True)  # 'positive', 'neutral', 'negative'
+    sentiment_score = Column(Float, nullable=True)  # -1.0 to 1.0
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(),
                         onupdate=func.now())

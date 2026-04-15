@@ -18,6 +18,9 @@ declare global {
       GOOGLE_FONTS_API_KEY?: string
       NODE_ENV?: string
       HOST?: string
+      DEMO_WIDGET_ID?: string
+      VITE_SHOPIFY_API_KEY?: string
+      GTM_ID?: string
     }
   }
 }
