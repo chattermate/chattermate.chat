@@ -122,12 +122,18 @@ def create_conversation_token(widget_id: str, customer_id: Optional[str] = None,
     """
     jti = str(uuid.uuid4())
     data = {
-        "sub": customer_id,  # Keep as None if not provided, don't convert to string "None"
         "widget_id": widget_id,
         "type": "conversation",
         "jti": jti
     }
-    
+
+    # Only include `sub` when a customer_id is present. RFC 7519 (and python-jose)
+    # require `sub` to be a string — encoding it as JSON null causes decode to fail
+    # with JWTError("Subject must be a string") for anonymous widget visitors
+    # (e.g. Explore flow), which silently drops all downstream claims (like `source`).
+    if customer_id is not None:
+        data["sub"] = customer_id
+
     # Add email to token if provided
     if customer_email:
         data["email"] = customer_email
@@ -156,8 +162,13 @@ def verify_conversation_token(token: str) -> Optional[dict]:
         Token payload dict if valid and not revoked, None otherwise
     """
     try:
+        # verify_sub=False tolerates existing tokens (already in browsers' localStorage)
+        # that were issued with `sub: null`. New tokens from create_conversation_token
+        # omit `sub` entirely when anonymous, so this option only matters for in-flight
+        # tokens until the old 30-day TTLs expire.
         payload = jwt.decode(token, CONVERSATION_SECRET_KEY,
-                             algorithms=[ALGORITHM])
+                             algorithms=[ALGORITHM],
+                             options={"verify_sub": False})
 
         if payload.get("type") != "conversation":
             return None
