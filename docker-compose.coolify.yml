@@ -1,6 +1,8 @@
 services:
   frontend:
-    image: chattermate/frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
     restart: unless-stopped
     environment:
       VITE_API_URL: ${VITE_API_URL}
@@ -13,7 +15,9 @@ services:
         condition: service_healthy
 
   backend:
-    image: chattermate/backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
@@ -37,7 +41,7 @@ services:
       ENVIRONMENT: production
       LOG_LEVEL: info
       WORKERS: "1"
-      TIMEOUT: "120"
+      TIMEOUT: "180"
 
       HF_HOME: /app/.cache/huggingface
       TRANSFORMERS_CACHE: /app/.cache/huggingface/transformers
@@ -48,8 +52,8 @@ services:
       TORCH_HOME: /app/.cache/torch
       PYTORCH_TRANSFORMERS_CACHE: /app/.cache/pytorch_transformers
 
-      EMBEDDING_MAX_WORKERS: "2"
-      KB_MAX_WORKERS: "2"
+      EMBEDDING_MAX_WORKERS: "1"
+      KB_MAX_WORKERS: "1"
       EMBEDDING_SINGLE_THREADED: "true"
       EMBEDDING_SEQUENTIAL_FALLBACK: "true"
 
@@ -76,13 +80,15 @@ services:
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 90s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 240s
 
   knowledge_processor:
-    image: chattermate/backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     command: python -m app.workers.knowledge_processor
     environment:
