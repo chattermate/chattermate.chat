@@ -1,7 +1,7 @@
 """add sentiment analysis columns
 
 Revision ID: add_sentiment_analysis_001
-Revises: 2381319791e8
+Revises: add_widget_apps_001
 Create Date: 2026-03-16 11:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_sentiment_analysis_001'
-down_revision: Union[str, None] = '2381319791e8'
+down_revision: Union[str, None] = 'add_widget_apps_001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
