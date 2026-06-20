@@ -1,5 +1,9 @@
 # Web Framework
-fastapi
+# Pin fastapi/starlette: fastapi 0.138.0 breaks error-handling behavior relied on
+# by the session takeover tests (returns 200/422 instead of 403/404/400/500).
+# fastapi 0.135.1 only requires starlette>=0.46.0 (no upper bound), so pin starlette too.
+fastapi==0.135.1
+starlette==0.52.1
 uvicorn
 python-socketio
 websockets
@@ -34,6 +38,9 @@ pytest-cov==4.1.0
 pytest-mock
 coverage==7.4.1
 
+
+# Sentiment Analysis
+textblob
 
 #ai
 openai
