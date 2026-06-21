@@ -394,8 +394,12 @@ const layoutClasses = computed(() => ({
 
 /* Header Styles */
 .header {
-    background: var(--background-soft);
+    background: #ffffff;
     border-bottom: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    position: sticky;
+    top: 0;
+    z-index: 50;
 }
 
 .header-content {
@@ -505,30 +509,34 @@ const layoutClasses = computed(() => ({
     position: absolute;
     top: 100%;
     right: 0;
-    background: var(--background-soft);
+    background: #ffffff;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: var(--space-xs);
-    margin-top: var(--space-xs);
-    min-width: 150px;
+    margin-top: var(--space-sm);
+    min-width: 180px;
     z-index: 100;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-lg);
 }
 
 .menu-item {
     display: block;
     width: 100%;
-    padding: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
     text-align: left;
     background: none;
     border: none;
-    color: var(--text-color);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     border-radius: var(--radius-sm);
+    transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .menu-item:hover {
-    background: var(--background-mute);
+    background: var(--hover-bg);
+    color: var(--text-primary);
 }
 
 /* Content Styles */
@@ -776,14 +784,14 @@ const layoutClasses = computed(() => ({
 .message-limit-banner {
     position: relative;
     padding: var(--space-md) var(--space-xl);
-    background: var(--warning-soft);
+    background: var(--warning-bg);
     border-bottom: 1px solid var(--warning-color);
     width: 100%;
     overflow: hidden;
 }
 
 .message-limit-banner.error {
-    background: var(--error-soft);
+    background: var(--error-bg);
     border-bottom: 1px solid var(--error-color);
 }
 
