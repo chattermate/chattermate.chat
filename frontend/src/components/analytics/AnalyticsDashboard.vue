@@ -118,11 +118,17 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
         >
           Agent Performance
         </button>
-        <button 
+        <button
           :class="{ active: activeTab === 'customers' }"
           @click="activeTab = 'customers'"
         >
           Customers
+        </button>
+        <button
+          :class="{ active: activeTab === 'sentiment' }"
+          @click="activeTab = 'sentiment'"
+        >
+          Sentiment
         </button>
       </div>
     </div>
@@ -269,6 +275,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
       <div v-if="activeTab === 'customers'">
         <CustomerAnalytics :time-range="timeRange" @time-range-change="handleTimeRangeChange" />
       </div>
+
+      <!-- Sentiment Analytics Tab -->
+      <div v-if="activeTab === 'sentiment'">
+        <SentimentAnalytics :time-range="timeRange" />
+      </div>
     </div>
   </div>
 </template>
@@ -279,6 +290,7 @@ import VueApexCharts from 'vue3-apexcharts'
 import api from '@/services/api'
 import AgentPerformance from './AgentPerformance.vue'
 import CustomerAnalytics from './CustomerAnalytics.vue'
+import SentimentAnalytics from './SentimentAnalytics.vue'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 

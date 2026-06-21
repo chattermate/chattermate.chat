@@ -26,7 +26,7 @@ from app.models.customer import Customer
 from app.models.rating import Rating
 from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.models.chat_history import ChatHistory
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, and_, or_, desc, distinct, case
 from typing import Optional, List
 from app.core.logger import get_logger
@@ -37,7 +37,10 @@ router = APIRouter()
 
 def get_time_range_dates(time_range: str) -> tuple[datetime, datetime]:
     """Get start and end dates based on time range"""
-    end_date = datetime.utcnow()
+    # Use timezone-aware UTC so comparisons against timestamptz columns are correct
+    # regardless of the database session timezone (naive bounds get interpreted in
+    # the session tz, which silently drops recent rows when that tz isn't UTC).
+    end_date = datetime.now(timezone.utc)
     
     if time_range == '24h':
         start_date = end_date - timedelta(days=1)

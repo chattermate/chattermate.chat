@@ -4,6 +4,12 @@ import { nextTick } from 'vue'
 import ConversationsView from '../../views/ConversationsView.vue'
 import { createPinia, setActivePinia } from 'pinia'
 
+// Mock vue-router (component uses useRoute for deep-link query params)
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
+
 // Mock the chat service
 vi.mock('@/services/chat', () => ({
   chatService: {

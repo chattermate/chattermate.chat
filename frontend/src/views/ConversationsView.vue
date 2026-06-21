@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import ConversationsList from '@/components/conversations/ConversationsList.vue'
 import ConversationFilters from '@/components/conversations/ConversationFilters.vue'
@@ -27,10 +28,19 @@ import { chatService } from '@/services/chat'
 import { agentService } from '@/services/agent'
 import api from '@/services/api'
 
+const route = useRoute()
+// Deep-link target session (e.g. from analytics "Sessions Needing Attention")
+const initialSessionId = ref<string | null>(
+  typeof route.query.session === 'string' ? route.query.session : null
+)
+
 const conversations = ref<Conversation[]>([])
 const loading = ref(true)
 const error = ref('')
-const statusFilter = ref<'open' | 'closed'>('open')
+// Select the matching tab when deep-linking (closed sessions live under the "Closed" tab)
+const statusFilter = ref<'open' | 'closed'>(
+  route.query.status === 'closed' ? 'closed' : 'open'
+)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const hasMore = ref(true)
@@ -304,6 +314,7 @@ const handleChatClosed = (_sessionId?: string) => {
         :loaded-count="loadedCount"
         :total-count="totalItems"
         :show-chat-info="showChatInfo && !!selectedChatInfo"
+        :initial-session-id="initialSessionId"
         @refresh="loadConversations(1)"
         @update-filter="updateFilter"
         @load-more="loadMoreConversations"
