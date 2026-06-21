@@ -30,6 +30,7 @@ const props = defineProps<{
   hasMore: boolean
   loadingMore: boolean
   showChatInfo?: boolean
+  initialSessionId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -131,6 +132,21 @@ watch(() => props.loading, (isLoading, prevLoading) => {
     }
   }
 })
+
+// Deep-link: open a specific session directly (e.g. from analytics "Sessions Needing
+// Attention"). Fetches the chat detail by id, so it works even if the session isn't
+// in the currently loaded/filtered list.
+const initialSessionHandled = ref(false)
+watch(
+  () => props.initialSessionId,
+  (sessionId) => {
+    if (sessionId && !initialSessionHandled.value) {
+      initialSessionHandled.value = true
+      loadChatDetailWithSelection(sessionId)
+    }
+  },
+  { immediate: true }
+)
 
 // Setup intersection observer for infinite scrolling
 onMounted(() => {
