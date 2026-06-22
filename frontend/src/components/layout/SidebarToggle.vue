@@ -40,25 +40,33 @@ defineEmits<{
     transform: translateY(-50%);
     width: 24px;
     height: 24px;
-    background: var(--primary-color);
-    border: none;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
     border-radius: 50%;
-    color: var(--background-color);
+    color: var(--text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all var(--transition-normal);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: background-color var(--transition-fast), color var(--transition-fast),
+        border-color var(--transition-fast), box-shadow var(--transition-fast);
+    box-shadow: var(--shadow-sm);
     z-index: 10;
 }
 
 .toggle-btn:hover {
-    background: var(--secondary-color);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    border-color: var(--primary-color);
+}
+
+.toggle-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--ring-focus);
 }
 
 .toggle-icon {
-    font-size: 12px;
+    font-size: 10px;
+    line-height: 1;
 }
 </style>

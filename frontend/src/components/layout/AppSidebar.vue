@@ -206,9 +206,11 @@ const handleNavigation = () => {
 }
 
 .logo-text {
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: var(--tracking-tight);
     font-size: var(--text-lg);
-    color: var(--text-color);
+    color: var(--text-heading);
 }
 
 .sidebar-nav {
@@ -221,10 +223,11 @@ const handleNavigation = () => {
 
 .nav-section {
     padding: var(--space-md) var(--space-md) var(--space-xs);
-    color: var(--text-color);
-    opacity: 0.7;
-    font-size: var(--text-sm);
-    font-weight: 500;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
 }
 
 .section-divider {
@@ -234,29 +237,56 @@ const handleNavigation = () => {
 }
 
 .nav-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-md);
     padding: var(--space-sm) var(--space-md);
-    color: var(--text-color);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
     text-decoration: none;
     border-radius: var(--radius-md);
     margin: 0 var(--space-xs);
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .nav-item:hover {
-    background: var(--background-mute);
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+.nav-item:focus-visible {
+    outline: none;
+    box-shadow: var(--ring-focus);
 }
 
 .nav-item.active {
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* Accent indicator bar on the active item */
+.nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    border-radius: var(--radius-full);
     background: var(--primary-color);
-    color: var(--background-color);
+}
+
+.sidebar.collapsed .nav-item.active::before {
+    left: calc(-1 * var(--space-xs));
 }
 
 .nav-item.active .icon-img {
-    filter: brightness(0);
-    /* Makes white SVG black when active */
+    filter: var(--primary-color-filter);
+    /* Tints the icon to the terracotta accent when active */
 }
 
 .nav-icon {

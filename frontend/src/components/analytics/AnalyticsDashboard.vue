@@ -211,7 +211,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
               v-else
               type="area"
               height="300"
-              :options="getChartOptions('Conversations', '#f34611')"
+              :options="getChartOptions('Conversations', '#c2471f')"
               :series="[{
                 name: 'Conversations',
                 data: getChartData(analyticsData?.conversations)
@@ -466,7 +466,7 @@ const getChartOptions = (name: string, color: string) => ({
 
 const getRatingChartOptions = () => ({
   ...getChartOptions('Ratings', '#10B981'),
-  colors: ['#f34611', '#10B981'],
+  colors: ['#c2471f', '#10B981'],
   stroke: {
     curve: 'smooth',
     width: 3
@@ -495,7 +495,7 @@ const getRatingChartOptions = () => ({
 
 const getComparisonChartOptions = () => ({
   ...getChartOptions('Closures & Transfers', '#10B981'),
-  colors: ['#10B981', '#f34611'],
+  colors: ['#10B981', '#c2471f'],
   stroke: {
     curve: 'smooth',
     width: 2

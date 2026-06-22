@@ -381,10 +381,10 @@ const handleVerifyAndResetPassword = async () => {
                         <path d="M650 150 Q 800 200 750 350 T 650 550 L 850 650 L 850 50 L 650 150Z" fill="#FECACA" opacity="0.3"/>
                         
                         <!-- Decorative Elements -->
-                        <circle cx="600" cy="200" r="8" fill="#f34611" opacity="0.6"/>
-                        <circle cx="650" cy="250" r="6" fill="#f34611" opacity="0.4"/>
-                        <circle cx="700" cy="180" r="10" fill="#f34611" opacity="0.5"/>
-                        <circle cx="580" cy="300" r="7" fill="#f34611" opacity="0.3"/>
+                        <circle cx="600" cy="200" r="8" fill="#c2471f" opacity="0.6"/>
+                        <circle cx="650" cy="250" r="6" fill="#c2471f" opacity="0.4"/>
+                        <circle cx="700" cy="180" r="10" fill="#c2471f" opacity="0.5"/>
+                        <circle cx="580" cy="300" r="7" fill="#c2471f" opacity="0.3"/>
                     </svg>
 
                     <div class="illustration-content">
@@ -653,7 +653,7 @@ const handleVerifyAndResetPassword = async () => {
 
 .input-wrapper input:focus {
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(243, 70, 17, 0.1);
+    box-shadow: var(--ring-focus);
     outline: none;
 }
 
