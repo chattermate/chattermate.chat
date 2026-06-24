@@ -113,6 +113,10 @@ async def create_workflow(
     except ValueError as e:
         logger.error(f"Validation error creating workflow: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error creating workflow: {str(e)}")
         db.rollback()
@@ -164,6 +168,10 @@ async def get_workflow_by_agent_id(
     except ValueError as e:
         logger.error(f"Validation error getting workflow by agent ID: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error getting workflow by agent ID: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get workflow")
@@ -216,6 +224,10 @@ async def update_workflow(
     except ValueError as e:
         logger.error(f"Validation error updating workflow: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error updating workflow: {str(e)}")
         db.rollback()
@@ -249,6 +261,10 @@ async def delete_workflow(
     except ValueError as e:
         logger.error(f"Validation error deleting workflow: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error deleting workflow: {str(e)}")
         db.rollback()
