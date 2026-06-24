@@ -30,6 +30,32 @@ from app.models.role import Role
 
 logger = get_logger(__name__)
 
+# Enterprise: Personal Access Tokens (PATs). PATs are an enterprise-only feature, so the
+# resolver lives in the enterprise package. In the community edition that package is absent
+# and this falls back to a no-op, meaning "cmat_" bearer tokens simply fail normal JWT
+# verification like any other invalid token. See app/enterprise/services/pat.py.
+#
+# The enterprise resolver is imported lazily (on first use) rather than at module load: the
+# enterprise package pulls in the API routers, which import this module, so an eager import
+# here would create a circular import during application start-up.
+PAT_TOKEN_PREFIX = "cmat_"
+_pat_resolver = None
+_pat_resolver_loaded = False
+
+
+def _resolve_pat_user(token: str, db: Session) -> Optional[User]:
+    global _pat_resolver, _pat_resolver_loaded
+    if not _pat_resolver_loaded:
+        _pat_resolver_loaded = True
+        try:
+            from app.enterprise.services.pat import resolve_pat_user
+            _pat_resolver = resolve_pat_user
+        except ImportError:  # community edition / enterprise package not installed
+            _pat_resolver = None
+    if _pat_resolver is None:
+        return None
+    return _pat_resolver(token, db)
+
 def check_permissions(user: User, required_permissions: List[str]) -> bool:
     """Check if user has required permissions through their role"""
     if not user.role or not user.role.permissions:
@@ -81,6 +107,17 @@ async def get_current_user(
                     detail="Not authenticated",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
+
+        # Enterprise: a Personal Access Token resolves directly to its owning user.
+        if access_token.startswith(PAT_TOKEN_PREFIX):
+            pat_user = _resolve_pat_user(access_token, db)
+            if pat_user is not None and pat_user.is_active:
+                return pat_user
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or revoked access token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         payload = verify_token(access_token)
         if payload is None:
@@ -222,6 +259,24 @@ async def get_unified_auth(request: Request, db: Session = Depends(get_db)) -> d
                             headers={"WWW-Authenticate": "Bearer"},
                         )
 
+                # Enterprise: a Personal Access Token resolves directly to its owning user.
+                if access_token.startswith(PAT_TOKEN_PREFIX):
+                    current_user = _resolve_pat_user(access_token, db)
+                    if current_user is None or not current_user.is_active:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Invalid or revoked access token",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+                    if not check_permissions(current_user, ["manage_agents"]):
+                        raise HTTPException(status_code=403, detail="Not enough permissions")
+                    return {
+                        "auth_type": "pat",
+                        "organization_id": current_user.organization_id,
+                        "user_id": current_user.id,
+                        "current_user": current_user
+                    }
+
                 payload = verify_token(access_token)
                 if payload is None:
                     raise HTTPException(
@@ -315,6 +370,29 @@ async def get_unified_chat_auth(request: Request, db: Session = Depends(get_db))
                             headers={"WWW-Authenticate": "Bearer"},
                         )
 
+                # Enterprise: a Personal Access Token resolves directly to its owning user.
+                if access_token.startswith(PAT_TOKEN_PREFIX):
+                    current_user = _resolve_pat_user(access_token, db)
+                    if current_user is None or not current_user.is_active:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Invalid or revoked access token",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+                    pat_permissions = {p.name for p in current_user.role.permissions}
+                    pat_can_view_all = "view_all_chats" in pat_permissions
+                    pat_can_view_assigned = "view_assigned_chats" in pat_permissions
+                    if not (pat_can_view_all or pat_can_view_assigned):
+                        raise HTTPException(status_code=403, detail="Not enough permissions")
+                    return {
+                        "auth_type": "pat",
+                        "organization_id": current_user.organization_id,
+                        "user_id": current_user.id,
+                        "current_user": current_user,
+                        "can_view_all": pat_can_view_all,
+                        "can_view_assigned": pat_can_view_assigned
+                    }
+
                 payload = verify_token(access_token)
                 if payload is None:
                     raise HTTPException(
@@ -350,7 +428,7 @@ async def get_unified_chat_auth(request: Request, db: Session = Depends(get_db))
                 user_permissions = {p.name for p in current_user.role.permissions}
                 can_view_all = "view_all_chats" in user_permissions
                 can_view_assigned = "view_assigned_chats" in user_permissions
-                
+
                 if not (can_view_all or can_view_assigned):
                     raise HTTPException(
                         status_code=403,
