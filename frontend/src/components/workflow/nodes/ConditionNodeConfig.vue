@@ -490,7 +490,7 @@ const updateGroupOperator = (groupId: string, operator: 'AND' | 'OR') => {
 .value-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(243, 70, 17, 0.1);
+  box-shadow: 0 0 0 2px rgba(201, 242, 78, 0.15);
 }
 
 .add-btn {
@@ -507,7 +507,7 @@ const updateGroupOperator = (groupId: string, operator: 'AND' | 'OR') => {
 .add-btn:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
-  background: rgba(243, 70, 17, 0.05);
+  background: rgba(201, 242, 78, 0.05);
 }
 
 .add-rule {

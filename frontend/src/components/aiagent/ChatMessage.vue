@@ -160,7 +160,7 @@ defineProps<{
 .typing-indicator span {
     width: 8px;
     height: 8px;
-    background: var(--primary-color, #f34611);
+    background: var(--primary-color, #C9F24E);
     border-radius: 50%;
     animation: typing 1.4s infinite ease-in-out;
 }

@@ -10,8 +10,8 @@ export function useWidgetStyles(customization: { value: AgentCustomization }) {
     }))
 
     const chatIconStyles = computed(() => ({
-        backgroundColor: customization.value.chat_bubble_color || '#f34611',
-        color: isColorDark(customization.value.chat_bubble_color || '#f34611') ? '#FFFFFF' : '#000000'
+        backgroundColor: customization.value.chat_bubble_color || '#C9F24E',
+        color: isColorDark(customization.value.chat_bubble_color || '#C9F24E') ? '#FFFFFF' : '#000000'
     }))
 
     const agentBubbleStyles = computed(() => {
@@ -24,8 +24,8 @@ export function useWidgetStyles(customization: { value: AgentCustomization }) {
     })
 
     const userBubbleStyles = computed(() => ({
-        backgroundColor: customization.value.accent_color || '#f34611',
-        color: isColorDark(customization.value.accent_color || '#f34611') ? '#FFFFFF' : '#000000'
+        backgroundColor: customization.value.accent_color || '#C9F24E',
+        color: isColorDark(customization.value.accent_color || '#C9F24E') ? '#FFFFFF' : '#000000'
     }))
 
     const messageNameStyles = computed(() => ({

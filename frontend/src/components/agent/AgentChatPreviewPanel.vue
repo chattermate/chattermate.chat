@@ -1523,7 +1523,7 @@ const handleInitiationClick = () => {
     content: '|';
     animation: blink 1s step-end infinite;
     margin-left: 2px;
-    color: v-bind('customization.accent_color || "#f34611"');
+    color: v-bind('customization.accent_color || "#C9F24E"');
     font-weight: 500;
 }
 

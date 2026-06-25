@@ -210,7 +210,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
               v-else
               type="area"
               height="300"
-              :options="getChartOptions('Conversations', '#c2471f')"
+              :options="getChartOptions('Conversations', '#C9F24E')"
               :series="[{
                 name: 'Conversations',
                 data: getChartData(analyticsData?.conversations)
@@ -465,7 +465,7 @@ const getChartOptions = (name: string, color: string) => ({
 
 const getRatingChartOptions = () => ({
   ...getChartOptions('Ratings', '#10B981'),
-  colors: ['#c2471f', '#10B981'],
+  colors: ['#C9F24E', '#5FE3D6'],
   stroke: {
     curve: 'smooth',
     width: 3
@@ -494,7 +494,7 @@ const getRatingChartOptions = () => ({
 
 const getComparisonChartOptions = () => ({
   ...getChartOptions('Closures & Transfers', '#10B981'),
-  colors: ['#10B981', '#c2471f'],
+  colors: ['#5FE3D6', '#C9F24E'],
   stroke: {
     curve: 'smooth',
     width: 2
@@ -756,8 +756,8 @@ fetchAnalytics()
   right: 0;
   bottom: 0;
   background: 
-    radial-gradient(circle at 20% 80%, rgba(243, 70, 17, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+    radial-gradient(circle at 20% 80%, rgba(201, 242, 78, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(95, 227, 214, 0.04) 0%, transparent 50%);
   pointer-events: none;
 }
 
