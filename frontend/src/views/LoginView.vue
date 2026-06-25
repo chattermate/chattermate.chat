@@ -330,7 +330,7 @@ const handleVerifyAndResetPassword = async () => {
 
             <!-- Slack Installation Banner -->
             <div v-if="hasPendingSlackInstall" class="slack-banner">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="#C9F24E">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--accent-ink)">
                     <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
                 </svg>
                 <div>
@@ -526,9 +526,9 @@ const handleVerifyAndResetPassword = async () => {
     min-height: 100vh;
     display: grid;
     grid-template-columns: 1.02fr .98fr;
-    background: #0B0C10;
-    color: #F5F6F8;
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
 }
 
 /* ── Form panel ── */
@@ -537,7 +537,7 @@ const handleVerifyAndResetPassword = async () => {
     flex-direction: column;
     justify-content: center;
     padding: 60px 56px;
-    background: #0B0C10;
+    background: var(--bg);
     min-height: 100vh;
 }
 
@@ -551,7 +551,7 @@ const handleVerifyAndResetPassword = async () => {
 .logo-mark {
     width: 32px;
     height: 32px;
-    background: #C9F24E;
+    background: var(--accent-ink);
     border-radius: 10px 10px 10px 2px;
     display: flex;
     align-items: center;
@@ -563,30 +563,30 @@ const handleVerifyAndResetPassword = async () => {
 .dot {
     width: 4.5px;
     height: 4.5px;
-    background: #0B0C10;
+    background: var(--on-accent);
     border-radius: 50%;
 }
 
 .logo-word {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-display);
     font-weight: 700;
     font-size: 18px;
     letter-spacing: -0.01em;
-    color: #F5F6F8;
+    color: var(--text);
 }
 
 .auth-title {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-display);
     font-size: 40px;
     font-weight: 700;
     letter-spacing: -0.03em;
-    color: #F5F6F8;
+    color: var(--text);
     margin-bottom: 10px;
     line-height: 1.1;
 }
 
 .auth-sub {
-    color: #9CA3B0;
+    color: var(--muted);
     font-size: 15px;
     margin-bottom: 36px;
 }
@@ -597,16 +597,16 @@ const handleVerifyAndResetPassword = async () => {
     align-items: center;
     gap: 10px;
     padding: 12px 16px;
-    background: rgba(201,242,78,.06);
-    border: 1px solid rgba(201,242,78,.2);
+    background: color-mix(in srgb, var(--accent-ink) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-ink) 20%, transparent);
     border-radius: 10px;
     margin-bottom: 24px;
     font-size: 13.5px;
-    color: #C7CCD6;
+    color: var(--text3);
 }
 
-.slack-banner strong { color: #F5F6F8; }
-.slack-banner em { color: #C9F24E; font-style: normal; }
+.slack-banner strong { color: var(--text); }
+.slack-banner em { color: var(--accent-ink); font-style: normal; }
 
 /* Form */
 .auth-form {
@@ -631,50 +631,50 @@ const handleVerifyAndResetPassword = async () => {
 .field label {
     font-size: 13.5px;
     font-weight: 500;
-    color: #C7CCD6;
+    color: var(--text3);
 }
 
 .field input {
     width: 100%;
     padding: 14px 16px;
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.12);
+    background: var(--o04);
+    border: 1px solid var(--o12);
     border-radius: 12px;
-    color: #F5F6F8;
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    color: var(--text);
+    font-family: var(--font-sans);
     font-size: 15px;
     transition: border-color 0.18s, box-shadow 0.18s;
 }
 
-.field input::placeholder { color: #5B6271; }
+.field input::placeholder { color: var(--faint); }
 
 .field input:focus {
     outline: none;
-    border-color: #C9F24E;
-    box-shadow: 0 0 0 3px rgba(201,242,78,.15);
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-ink) 15%, transparent);
 }
 
 .field input:-webkit-autofill,
 .field input:-webkit-autofill:hover,
 .field input:-webkit-autofill:focus {
-    -webkit-box-shadow: 0 0 0 1000px #0E0F14 inset !important;
-    -webkit-text-fill-color: #F5F6F8 !important;
-    caret-color: #F5F6F8;
-    border: 1px solid rgba(255,255,255,.12) !important;
+    -webkit-box-shadow: 0 0 0 1000px var(--bg2) inset !important;
+    -webkit-text-fill-color: var(--text) !important;
+    caret-color: var(--text);
+    border: 1px solid var(--o12) !important;
     transition: background-color 9999s ease-in-out 0s;
 }
 
 .forgot-link {
     font-size: 13px;
-    color: #C9F24E;
+    color: var(--accent-ink);
     text-decoration: none;
 }
 .forgot-link:hover { text-decoration: underline; }
 
 .auth-error {
-    color: #FF8A73;
-    background: rgba(255,138,115,.1);
-    border: 1px solid rgba(255,138,115,.2);
+    color: var(--c-coral);
+    background: color-mix(in srgb, var(--c-coral) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c-coral) 20%, transparent);
     border-radius: 10px;
     padding: 10px 14px;
     font-size: 13.5px;
@@ -683,11 +683,11 @@ const handleVerifyAndResetPassword = async () => {
 .auth-submit {
     width: 100%;
     padding: 15px;
-    background: #C9F24E;
-    color: #0B0C10;
+    background: var(--accent-ink);
+    color: var(--on-accent);
     border: none;
     border-radius: 12px;
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-family: var(--font-sans);
     font-weight: 600;
     font-size: 15px;
     cursor: pointer;
@@ -700,11 +700,11 @@ const handleVerifyAndResetPassword = async () => {
 .signup-prompt {
     text-align: center;
     font-size: 14px;
-    color: #7A8190;
+    color: var(--muted2);
 }
 
 .signup-link {
-    color: #C9F24E;
+    color: var(--accent-ink);
     text-decoration: none;
     font-weight: 500;
 }
@@ -713,7 +713,7 @@ const handleVerifyAndResetPassword = async () => {
 /* ── Brand panel ── */
 .brand-panel {
     position: relative;
-    background: linear-gradient(160deg, #101119, #0A0B0E);
+    background: linear-gradient(160deg, var(--bg-elevated), var(--bg-deep));
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -733,7 +733,7 @@ const handleVerifyAndResetPassword = async () => {
 .blob-lime {
     width: 420px;
     height: 420px;
-    background: radial-gradient(circle, rgba(201,242,78,.32), rgba(201,242,78,.06));
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-ink) 32%, transparent), color-mix(in srgb, var(--accent-ink) 6%, transparent));
     top: -80px;
     right: -60px;
     animation-duration: 16s;
@@ -742,7 +742,7 @@ const handleVerifyAndResetPassword = async () => {
 .blob-purple {
     width: 360px;
     height: 360px;
-    background: radial-gradient(circle, rgba(157,140,255,.28), rgba(157,140,255,.04));
+    background: radial-gradient(circle, color-mix(in srgb, var(--c-purple) 28%, transparent), color-mix(in srgb, var(--c-purple) 4%, transparent));
     top: 20%;
     left: -80px;
     animation-duration: 20s;
@@ -752,7 +752,7 @@ const handleVerifyAndResetPassword = async () => {
 .blob-teal {
     width: 300px;
     height: 300px;
-    background: radial-gradient(circle, rgba(95,227,214,.22), rgba(95,227,214,.03));
+    background: radial-gradient(circle, color-mix(in srgb, var(--c-teal) 22%, transparent), color-mix(in srgb, var(--c-teal) 3%, transparent));
     bottom: 15%;
     right: 10%;
     animation-duration: 18s;
@@ -772,7 +772,7 @@ const handleVerifyAndResetPassword = async () => {
     width: 160px;
     height: 160px;
     border-radius: 50%;
-    background: conic-gradient(from 0deg, #C9F24E, #5FE3D6, #9D8CFF, #C9F24E);
+    background: conic-gradient(from 0deg, var(--accent-ink), var(--c-teal), var(--c-purple), var(--accent-ink));
     filter: blur(40px);
     opacity: .4;
     animation: cm-spin 12s linear infinite;
@@ -785,18 +785,18 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .brand-copy h2 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-display);
     font-size: 36px;
     font-weight: 700;
     letter-spacing: -0.03em;
-    color: #F5F6F8;
+    color: var(--text);
     line-height: 1.18;
     margin-bottom: 28px;
 }
 
 .brand-copy h2 em {
     font-style: normal;
-    color: #C9F24E;
+    color: var(--accent-ink);
 }
 
 .feature-list {
@@ -813,11 +813,11 @@ const handleVerifyAndResetPassword = async () => {
     align-items: center;
     gap: 12px;
     font-size: 15px;
-    color: #9CA3B0;
+    color: var(--muted);
 }
 
 .check {
-    color: #C9F24E;
+    color: var(--accent-ink);
     font-weight: 700;
     font-size: 14px;
 }
@@ -850,8 +850,8 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .modal-content {
-    background: #13151C;
-    border: 1px solid rgba(255,255,255,.1);
+    background: var(--surface);
+    border: 1px solid var(--o10);
     border-radius: 20px;
     width: 100%;
     max-width: 500px;
@@ -865,23 +865,23 @@ const handleVerifyAndResetPassword = async () => {
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid rgba(255,255,255,.08);
+    border-bottom: 1px solid var(--o08);
 }
 
 .modal-header h2 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-display);
     font-size: 1.25rem;
     font-weight: 600;
     margin: 0;
-    color: #F5F6F8;
+    color: var(--text);
 }
 
 .close-btn {
     background: none;
-    border: 1px solid rgba(255,255,255,.12);
+    border: 1px solid var(--o12);
     border-radius: 8px;
     font-size: 1.5rem;
-    color: #7A8190;
+    color: var(--muted2);
     cursor: pointer;
     width: 32px;
     height: 32px;
@@ -892,8 +892,8 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .close-btn:hover {
-    background: rgba(255,255,255,.06);
-    color: #F5F6F8;
+    background: var(--o06);
+    color: var(--text);
 }
 
 .modal-body {
@@ -907,7 +907,7 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .step-description {
-    color: #9CA3B0;
+    color: var(--muted);
     margin: 0;
     line-height: 1.5;
     font-size: 14px;
@@ -931,7 +931,7 @@ const handleVerifyAndResetPassword = async () => {
 .password-requirements .requirements-title {
     margin: 0 0 0.25rem 0;
     font-size: 0.75rem;
-    color: #7A8190;
+    color: var(--muted2);
 }
 
 .password-requirements ul {
@@ -941,7 +941,7 @@ const handleVerifyAndResetPassword = async () => {
 
 .password-requirements li {
     font-size: 0.8125rem;
-    color: #9CA3B0;
+    color: var(--muted);
     margin: 0.125rem 0;
 }
 
@@ -957,33 +957,33 @@ const handleVerifyAndResetPassword = async () => {
     margin-bottom: 9px;
     font-size: 13.5px;
     font-weight: 500;
-    color: #C7CCD6;
+    color: var(--text3);
 }
 
 .input-wrapper input {
     width: 100%;
     padding: 13px 15px;
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.12);
+    background: var(--o04);
+    border: 1px solid var(--o12);
     border-radius: 12px;
-    color: #F5F6F8;
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    color: var(--text);
+    font-family: var(--font-sans);
     font-size: 14px;
     transition: border-color 0.18s, box-shadow 0.18s;
 }
 
-.input-wrapper input::placeholder { color: #5B6271; }
+.input-wrapper input::placeholder { color: var(--faint); }
 .input-wrapper input:focus {
     outline: none;
-    border-color: #C9F24E;
-    box-shadow: 0 0 0 3px rgba(201,242,78,.15);
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-ink) 15%, transparent);
 }
 .input-wrapper input:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .error-message {
-    color: #FF8A73;
-    background: rgba(255,138,115,.1);
-    border: 1px solid rgba(255,138,115,.2);
+    color: var(--c-coral);
+    background: color-mix(in srgb, var(--c-coral) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c-coral) 20%, transparent);
     border-radius: 10px;
     padding: 10px 14px;
     font-size: 13.5px;
@@ -992,11 +992,11 @@ const handleVerifyAndResetPassword = async () => {
 .modal-submit-btn {
     width: 100%;
     padding: 13px;
-    background: #C9F24E;
-    color: #0B0C10;
+    background: var(--accent-ink);
+    color: var(--on-accent);
     border: none;
     border-radius: 12px;
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-family: var(--font-sans);
     font-weight: 600;
     font-size: 15px;
     cursor: pointer;
@@ -1015,11 +1015,11 @@ const handleVerifyAndResetPassword = async () => {
 .modal-back-btn {
     flex: 1;
     padding: 13px;
-    background: rgba(255,255,255,.06);
-    color: #C7CCD6;
-    border: 1px solid rgba(255,255,255,.12);
+    background: var(--o06);
+    color: var(--text3);
+    border: 1px solid var(--o12);
     border-radius: 12px;
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-family: var(--font-sans);
     font-weight: 600;
     font-size: 15px;
     cursor: pointer;
@@ -1027,8 +1027,8 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .modal-back-btn:hover:not(:disabled) {
-    background: rgba(255,255,255,.1);
-    color: #F5F6F8;
+    background: var(--o10);
+    color: var(--text);
 }
 
 .modal-back-btn:disabled { opacity: 0.5; cursor: not-allowed; }
