@@ -608,8 +608,10 @@ const handleInitiationClick = () => {
                     <div class="header-info">
                         <h3 :style="messageNameStyles">{{ agentName }}</h3>
                         <div class="status">
-                            <span class="status-indicator" :class="{ online: isActive }"></span>
-                            <span class="status-text" :style="messageNameStyles">{{ isActive ? 'Online' : 'Offline'
+                            <span class="status-indicator" :class="{ online: isActive }"
+                                :style="isActive ? { background: customization.accent_color } : {}"></span>
+                            <span class="status-text"
+                                :style="isActive ? { color: customization.accent_color } : messageNameStyles">{{ isActive ? 'Online' : 'Offline'
                                 }}</span>
                         </div>
                     </div>
@@ -706,11 +708,12 @@ const handleInitiationClick = () => {
     display: flex;
     flex-direction: column;
     background: transparent;
-    border-radius: 24px;
+    border-radius: var(--radius-xl, 20px);
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 30px 70px -25px rgba(0, 0, 0, 0.7);
     margin-left: auto;
     position: relative;
+    font-family: var(--font-sans);
 }
 
 .chat-container.collapsed {
@@ -735,19 +738,19 @@ const handleInitiationClick = () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
+    width: 62px;
+    height: 62px;
+    border-radius: 20px 20px 20px 6px;
     border: none;
     color: white;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 16px 36px -8px v-bind('customization.chat_bubble_color || "var(--accent-ink)"');
     transition: all 0.3s ease;
 }
 
 .chat-toggle:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    transform: scale(1.05);
+    box-shadow: 0 18px 40px -8px v-bind('customization.chat_bubble_color || "var(--accent-ink)"');
 }
 
 .chat-toggle.preview {
@@ -769,12 +772,14 @@ const handleInitiationClick = () => {
 }
 
 .chat-panel {
-    background: var(--background-base);
+    background: var(--surface);
+    border: 1px solid var(--o08);
     display: flex;
     flex-direction: column;
     height: 600px;
     transition: all 0.3s ease;
-    border-radius: 24px;
+    border-radius: var(--radius-xl, 20px);
+    overflow: hidden;
 }
 
 .chat-container.collapsed .chat-panel,
@@ -783,7 +788,7 @@ const handleInitiationClick = () => {
 }
 
 .chat-header {
-    padding: var(--space-md);
+    padding: 14px 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -791,7 +796,9 @@ const handleInitiationClick = () => {
 
 .chat-header h3 {
     margin: 0;
-    font-size: var(--text-lg);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.1;
 }
 
 
@@ -822,11 +829,16 @@ const handleInitiationClick = () => {
 }
 
 .message-bubble {
-    padding: 2px 14px;
-    border-radius: 20px;
-    line-height: 1.4;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    padding: 10px 14px;
+    border-radius: 4px 14px 14px 14px;
+    font-size: 13.5px;
+    line-height: 1.5;
     max-width: 85%;
+}
+
+.bot-message .message-bubble,
+.assistant-message .message-bubble {
+    border-radius: 4px 14px 14px 14px;
 }
 
 .user-message {
@@ -835,54 +847,61 @@ const handleInitiationClick = () => {
 }
 
 .user-message .message-bubble {
-    border-bottom-right-radius: 4px;
-}
-
-.assistant-message .message-bubble {
-    border-bottom-left-radius: 4px;
-    background-color: #f5f5f5;
+    border-radius: 14px 14px 4px 14px;
 }
 
 .chat-input {
-    padding: var(--space-md);
-    border-top: 1px solid var(--border-color);
+    padding: 12px 14px;
+    border-top: 1px solid var(--o08);
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: 8px;
 }
 
 .email-input {
-    width: 85%;
+    width: 100%;
 }
 
 .email-input input {
     width: 100%;
-    padding: var(--space-sm) var(--space-md);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    padding: 9px 12px;
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-input);
+    background: var(--o05);
+    color: var(--text);
+    font-size: 12.5px;
 }
 
 .message-input {
     display: flex;
-    gap: var(--space-sm);
+    align-items: center;
+    gap: 8px;
 }
 
 .message-input input {
     flex: 1;
-    padding: var(--space-sm) var(--space-md);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    padding: 9px 12px;
+    border: 1px solid var(--o12);
+    border-radius: 999px;
+    background: var(--o05);
+    color: var(--text);
+    font-size: 12.5px;
+}
+
+.message-input input::placeholder {
+    color: var(--muted);
 }
 
 .send-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-sm);
-    min-width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    padding: 0;
     border: none;
-    border-radius: var(--radius-lg);
+    border-radius: 50%;
     cursor: pointer;
     color: white;
 }
@@ -1011,12 +1030,12 @@ const handleInitiationClick = () => {
 .header-content {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: 10px;
 }
 
 .header-avatar {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     object-fit: cover;
 }
@@ -1028,29 +1047,32 @@ const handleInitiationClick = () => {
 
 .header-info h3 {
     margin: 0;
-    font-size: var(--text-md);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.1;
 }
 
 .status {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    font-size: var(--text-sm);
+    gap: 5px;
+    font-size: 11px;
+    margin-top: 2px;
 }
 
 .status-indicator {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--error-color);
 }
 
 .status-indicator.online {
-    background: var(--success-color);
+    background: v-bind('customization.accent_color || "var(--accent-ink)"');
 }
 
 .status-text {
-    color: var(--text-muted);
+    color: v-bind('customization.accent_color || "var(--accent-ink)"');
 }
 
 /* Add styles for markdown content */
@@ -1099,11 +1121,10 @@ const handleInitiationClick = () => {
     padding: var(--space-xs);
     font-size: 0.75rem;
     opacity: 0.7;
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    border-top: 1px solid var(--o08);
 }
 
 .message-input input:disabled {
-    background-color: rgba(0, 0, 0, 0.05);
     cursor: not-allowed;
 }
 
@@ -1457,17 +1478,17 @@ const handleInitiationClick = () => {
     bottom: 215px;
     right: 20px;
     max-width: 240px;
-    background: var(--surface);
-    padding: 12px 36px 12px 14px;
-    border-radius: 14px;
-    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.3);
+    background: #FFFFFF;
+    padding: 11px 32px 11px 14px;
+    border-radius: 16px 16px 16px 4px;
+    box-shadow: 0 14px 32px -12px rgba(0, 0, 0, 0.7);
     z-index: 9;
     cursor: pointer;
     opacity: 0;
     visibility: hidden;
     transform: translateY(10px) scale(0.95);
     transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-sans);
 }
 
 .chat-initiation-message.show {
@@ -1496,23 +1517,10 @@ const handleInitiationClick = () => {
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.14);
 }
 
-.chat-initiation-message::after {
-    content: '';
-    position: absolute;
-    bottom: -7px;
-    right: 30px;
-    width: 14px;
-    height: 14px;
-    background: var(--surface);
-    transform: rotate(45deg);
-    box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.12);
-    clip-path: polygon(0 0, 100% 0, 100% 100%);
-}
-
 .initiation-message-text {
-    font-size: 13px;
+    font-size: 13.5px;
     line-height: 1.4;
-    color: #374151;
+    color: #1A1A22;
     margin: 0;
     position: relative;
     z-index: 1;
@@ -1539,15 +1547,15 @@ const handleInitiationClick = () => {
 
 .initiation-close {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 20px;
-    height: 20px;
-    background: rgba(0, 0, 0, 0.04);
+    top: 7px;
+    right: 9px;
+    width: 14px;
+    height: 14px;
+    background: transparent;
     border: none;
-    border-radius: 5px;
+    border-radius: 4px;
     cursor: pointer;
-    opacity: 0.5;
+    opacity: 0.8;
     transition: all 0.2s ease;
     z-index: 2;
     display: flex;
@@ -1558,8 +1566,7 @@ const handleInitiationClick = () => {
 
 .initiation-close:hover {
     opacity: 1;
-    background: rgba(0, 0, 0, 0.08);
-    transform: scale(1.05);
+    transform: scale(1.1);
 }
 
 .initiation-close::before,
@@ -1568,7 +1575,7 @@ const handleInitiationClick = () => {
     position: absolute;
     width: 9px;
     height: 1.5px;
-    background: #4a5568;
+    background: #9A9AA6;
     border-radius: 1px;
 }
 

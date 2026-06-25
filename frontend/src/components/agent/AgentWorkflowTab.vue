@@ -191,11 +191,13 @@ onMounted(() => {
 <template>
   <div class="workflow-tab">
     <section class="detail-section">
-      <h3 class="section-title">Workflow Builder</h3>
-      <p class="section-description">
-        Create and manage conversation workflows for your agent. Design custom chat journeys with drag-and-drop interface.
-      </p>
-      
+      <div class="wf-header">
+        <h3 class="section-title">Workflow Builder</h3>
+        <p class="section-description">
+          Create and manage conversation workflows. Design custom chat journeys with a drag-and-drop builder.
+        </p>
+      </div>
+
       <!-- Loading State -->
       <div v-if="workflowLoading && !hasWorkflow" class="loading-container">
         <div class="loading-spinner"></div>
@@ -211,46 +213,36 @@ onMounted(() => {
 
       <!-- No Workflow State -->
       <div v-else-if="!hasWorkflow && !showCreateForm && !showEditForm" class="no-workflow-container">
-        <div class="no-workflow-content">
-          <div class="no-workflow-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="6" height="6"/>
-              <rect x="15" y="3" width="6" height="6"/>
-              <rect x="9" y="15" width="6" height="6"/>
-              <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
-              <path d="M12 15v-3"/>
-            </svg>
-          </div>
-          <h4 class="no-workflow-title">No Workflow Created</h4>
-          <p class="no-workflow-description">
-            Create a workflow to design custom conversation journeys for your agent. 
-            Use our drag-and-drop interface to build sophisticated chat flows.
-          </p>
-          <button class="create-workflow-button" @click="showCreateForm = true; showEditForm = false">
-            <svg class="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Create Workflow
-          </button>
+        <div class="no-workflow-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="6" height="6"/>
+            <rect x="15" y="3" width="6" height="6"/>
+            <rect x="9" y="15" width="6" height="6"/>
+            <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
+            <path d="M12 15v-3"/>
+          </svg>
         </div>
+        <h4 class="no-workflow-title">No workflow created</h4>
+        <p class="no-workflow-description">
+          Create a workflow to design custom conversation journeys with a drag-and-drop interface.
+        </p>
+        <button class="create-workflow-button" @click="showCreateForm = true; showEditForm = false">
+          + Create workflow
+        </button>
       </div>
 
       <!-- Create Workflow Form -->
       <div v-else-if="showCreateForm" class="create-form-container">
         <div class="form-header">
-          <h4 class="form-title">Create New Workflow</h4>
-          <button class="close-form-button" @click="cancelCreateForm">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+          <h4 class="form-title">Create new workflow</h4>
+          <button class="close-form-button" @click="cancelCreateForm" aria-label="Close">
+            ✕
           </button>
         </div>
-        
+
         <form @submit.prevent="handleCreateWorkflow" class="create-form">
           <div class="form-group">
-            <label for="workflow-name" class="form-label">Workflow Name *</label>
+            <label for="workflow-name" class="form-label">Workflow name <span class="req">*</span></label>
             <input
               id="workflow-name"
               v-model="workflowName"
@@ -261,7 +253,7 @@ onMounted(() => {
               :disabled="createWorkflowLoading"
             />
           </div>
-          
+
           <div class="form-group">
             <label for="workflow-description" class="form-label">Description</label>
             <textarea
@@ -273,7 +265,7 @@ onMounted(() => {
               :disabled="createWorkflowLoading"
             ></textarea>
           </div>
-          
+
           <div class="form-actions">
             <button
               type="button"
@@ -289,7 +281,7 @@ onMounted(() => {
               :disabled="!workflowName.trim() || createWorkflowLoading"
             >
               <div v-if="createWorkflowLoading" class="button-spinner"></div>
-              <span v-else>Create Workflow</span>
+              <span v-else>Create workflow</span>
             </button>
           </div>
         </form>
@@ -298,18 +290,15 @@ onMounted(() => {
       <!-- Edit Workflow Form -->
       <div v-else-if="showEditForm" class="create-form-container">
         <div class="form-header">
-          <h4 class="form-title">Edit Workflow</h4>
-          <button class="close-form-button" @click="cancelEditForm">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+          <h4 class="form-title">Rename workflow</h4>
+          <button class="close-form-button" @click="cancelEditForm" aria-label="Close">
+            ✕
           </button>
         </div>
-        
+
         <form @submit.prevent="handleUpdateWorkflow" class="create-form">
           <div class="form-group">
-            <label for="edit-workflow-name" class="form-label">Workflow Name *</label>
+            <label for="edit-workflow-name" class="form-label">Workflow name <span class="req">*</span></label>
             <input
               id="edit-workflow-name"
               v-model="editWorkflowName"
@@ -320,7 +309,7 @@ onMounted(() => {
               :disabled="workflowLoading"
             />
           </div>
-          
+
           <div class="form-group">
             <label for="edit-workflow-description" class="form-label">Description</label>
             <textarea
@@ -332,7 +321,7 @@ onMounted(() => {
               :disabled="workflowLoading"
             ></textarea>
           </div>
-          
+
           <div class="form-actions">
             <button
               type="button"
@@ -348,7 +337,7 @@ onMounted(() => {
               :disabled="!editWorkflowName.trim() || workflowLoading"
             >
               <div v-if="workflowLoading" class="button-spinner"></div>
-              <span v-else>Update Workflow</span>
+              <span v-else>Save changes</span>
             </button>
           </div>
         </form>
@@ -357,52 +346,35 @@ onMounted(() => {
       <!-- Existing Workflow -->
       <div v-else-if="hasWorkflow && !showEditForm" class="workflow-container">
         <div class="workflow-card">
-          <div class="workflow-content">
-            <div class="workflow-info">
-              <div class="workflow-main">
-                <h4 class="workflow-name">{{ workflow!.name }}</h4>
-                <span class="workflow-status" :class="`status-${workflowStatusColor}`">
-                  {{ workflowStatus }}
-                </span>
-              </div>
-              <p v-if="workflow!.description" class="workflow-description">
-                {{ workflow!.description }}
-              </p>
-              <div class="workflow-meta">
-                <span class="workflow-date">
-                  Created {{ formatDate(workflow!.created_at) }}
-                </span>
-                <span class="workflow-separator">•</span>
-                <span class="workflow-date">
-                  Updated {{ formatDate(workflow!.updated_at) }}
-                </span>
-              </div>
+          <div class="workflow-info">
+            <div class="workflow-main">
+              <span class="workflow-name">{{ workflow!.name }}</span>
+              <span class="workflow-status" :class="`status-${workflowStatusColor}`">
+                {{ workflowStatus }}
+              </span>
             </div>
-            
-            <div class="workflow-actions">
-              <button class="action-button primary" @click="openWorkflowBuilder">
-                <svg class="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
-                </svg>
-                Open Builder
-              </button>
-              
-              <button class="action-button secondary" @click="handleEditWorkflow">
-                <svg class="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-                Edit
-              </button>
-              
-              <button class="action-button danger" @click="handleDeleteWorkflow">
-                <svg class="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3,6 5,6 21,6"></polyline>
-                  <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
-                </svg>
-                Delete
-              </button>
+            <p v-if="workflow!.description" class="workflow-description">
+              {{ workflow!.description }}
+            </p>
+            <div class="workflow-meta">
+              <span class="workflow-date">Created {{ formatDate(workflow!.created_at) }}</span>
+              <span class="workflow-separator">·</span>
+              <span class="workflow-date">Updated {{ formatDate(workflow!.updated_at) }}</span>
             </div>
+          </div>
+
+          <div class="workflow-actions">
+            <button class="action-button primary" @click="openWorkflowBuilder">
+              ⛶ Open Builder
+            </button>
+
+            <button class="action-button secondary" @click="handleEditWorkflow">
+              ✎ Rename
+            </button>
+
+            <button class="action-button danger" @click="handleDeleteWorkflow">
+              Delete
+            </button>
           </div>
         </div>
       </div>
@@ -430,18 +402,25 @@ onMounted(() => {
   margin-bottom: var(--space-xl);
 }
 
+/* Header */
+.wf-header {
+  margin-bottom: 22px;
+}
+
 .section-title {
-  font-size: 1.25rem;
+  font-family: var(--font-display);
   font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: var(--space-xs);
+  font-size: 20px;
+  color: var(--text);
+  margin: 0 0 6px;
 }
 
 .section-description {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  margin-bottom: var(--space-lg);
-  line-height: 1.5;
+  color: var(--muted);
+  font-size: 14px;
+  max-width: 600px;
+  line-height: 1.55;
+  margin: 0;
 }
 
 /* Loading State */
@@ -518,25 +497,21 @@ onMounted(() => {
 
 /* No Workflow State */
 .no-workflow-container {
+  border: 1px solid var(--o08);
+  border-radius: var(--radius-card);
+  padding: 64px 30px;
+  background: var(--bg-elevated);
   display: flex;
-  justify-content: center;
-  padding: var(--space-xl);
-}
-
-.no-workflow-content {
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-  max-width: 480px;
-  padding: var(--space-xl);
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
 }
 
 .no-workflow-icon {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto var(--space-lg);
-  color: var(--text-muted);
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 14px;
+  color: var(--muted);
   opacity: 0.7;
 }
 
@@ -546,66 +521,62 @@ onMounted(() => {
 }
 
 .no-workflow-title {
-  font-size: 1.25rem;
+  font-family: var(--font-display);
   font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: var(--space-md);
+  font-size: 20px;
+  color: var(--text);
+  margin: 0;
 }
 
 .no-workflow-description {
-  color: var(--text-muted);
-  font-size: 0.9rem;
+  color: var(--muted);
+  font-size: 14px;
   line-height: 1.5;
-  margin-bottom: var(--space-xl);
+  max-width: 420px;
+  margin: 6px 0 20px;
 }
 
 .create-workflow-button {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
+  padding: 12px 22px;
   background: var(--accent-ink);
   color: var(--on-accent);
   border: none;
-  border-radius: var(--radius-full);
-  font-weight: 500;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 14.5px;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: var(--text-sm);
 }
 
 .create-workflow-button:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.button-icon {
-  width: 16px;
-  height: 16px;
-}
-
-/* Create Form */
+/* Create / Rename Form */
 .create-form-container {
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: var(--radius-card);
+  padding: 28px;
 }
 
 .form-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-lg);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-color);
+  margin-bottom: 22px;
 }
 
 .form-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-color);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+  color: var(--text);
   margin: 0;
 }
 
@@ -615,101 +586,109 @@ onMounted(() => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--text-muted);
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .close-form-button:hover {
-  background: var(--background-muted);
-  color: var(--text-color);
-}
-
-.close-form-button svg {
-  width: 16px;
-  height: 16px;
+  background: var(--o10);
+  color: var(--text);
 }
 
 .create-form {
-  padding: var(--space-lg);
+  padding: 0;
 }
 
 .form-group {
-  margin-bottom: var(--space-lg);
+  margin-bottom: 18px;
+}
+
+.form-group:last-of-type {
+  margin-bottom: 0;
 }
 
 .form-label {
   display: block;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: var(--space-sm);
+  font-size: 13.5px;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+
+.form-label .req {
+  color: var(--c-coral);
 }
 
 .form-input,
 .form-textarea {
   width: 100%;
-  padding: var(--space-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--background-color);
-  color: var(--text-color);
-  font-size: var(--text-sm);
+  padding: 13px 15px;
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-btn);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14.5px;
+  font-family: var(--font-sans);
   transition: border-color 0.2s ease;
 }
 
 .form-input:focus,
 .form-textarea:focus {
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-soft);
+  border-color: var(--accent-ink);
 }
 
 .form-textarea {
   resize: vertical;
+  line-height: 1.5;
   min-height: 80px;
 }
 
 .form-actions {
   display: flex;
-  gap: var(--space-sm);
+  gap: 12px;
   justify-content: flex-end;
+  margin-top: 22px;
 }
 
 .cancel-button,
 .submit-button {
-  padding: var(--space-sm) var(--space-lg);
-  border: none;
-  border-radius: var(--radius-md);
-  font-weight: 500;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 14.5px;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   gap: var(--space-xs);
 }
 
 .cancel-button {
-  background: var(--background-muted);
-  color: var(--text-muted);
+  padding: 12px 22px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  color: var(--text);
 }
 
 .cancel-button:hover {
-  background: var(--background-alt);
-  color: var(--text-color);
+  background: var(--o10);
 }
 
 .submit-button {
+  padding: 12px 24px;
   background: var(--accent-ink);
+  border: none;
   color: var(--on-accent);
 }
 
 .submit-button:hover:not(:disabled) {
-  background: var(--primary-dark);
+  filter: brightness(1.05);
 }
 
 .submit-button:disabled {
@@ -729,63 +708,44 @@ onMounted(() => {
 /* Workflow Card */
 .workflow-container {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .workflow-card {
-  background: var(--background-soft);
+  background: var(--surface);
+  border: 1px solid var(--o08);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
-  width: 100%;
-  max-width: 700px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-}
-
-.workflow-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-1px);
-}
-
-.workflow-content {
+  padding: 20px 24px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: var(--space-lg);
-  gap: var(--space-lg);
+  gap: 20px;
+  flex-wrap: wrap;
 }
 
 .workflow-info {
-  flex: 1;
   min-width: 0;
 }
 
 .workflow-main {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-sm);
-  gap: var(--space-md);
+  gap: 12px;
 }
 
 .workflow-name {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-color);
-  margin: 0;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--text);
 }
 
 .workflow-description {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  color: var(--muted);
+  font-size: 13px;
   line-height: 1.4;
-  margin: 0 0 var(--space-sm) 0;
+  margin: 6px 0 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -795,130 +755,112 @@ onMounted(() => {
 .workflow-meta {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 6px;
   flex-wrap: wrap;
+  margin-top: 6px;
 }
 
 .workflow-status {
-  padding: 2px var(--space-sm);
-  border-radius: var(--radius-full);
-  font-size: 0.7rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.06em;
   flex-shrink: 0;
 }
 
 .workflow-status.status-success {
-  background: var(--success-light);
-  color: var(--success-color);
+  background: color-mix(in srgb, var(--c-positive) 15%, transparent);
+  color: var(--c-positive);
 }
 
 .workflow-status.status-warning {
-  background: var(--warning-light);
-  color: var(--warning-color);
+  background: var(--warn-bg, color-mix(in srgb, var(--c-warn) 15%, transparent));
+  color: var(--c-warn);
 }
 
 .workflow-status.status-muted {
-  background: var(--background-muted);
-  color: var(--text-muted);
+  background: var(--o05);
+  color: var(--muted);
 }
 
 .workflow-date {
-  color: var(--text-muted);
-  font-size: 0.7rem;
+  color: var(--muted2);
+  font-size: 12.5px;
   white-space: nowrap;
 }
 
 .workflow-separator {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  margin: 0 2px;
+  color: var(--muted2);
+  font-size: 12.5px;
 }
 
 .workflow-actions {
   display: flex;
-  gap: var(--space-xs);
+  gap: 10px;
   flex-shrink: 0;
-  align-items: flex-start;
 }
 
 .action-button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  border: none;
-  border-radius: var(--radius-md);
-  font-weight: 500;
+  gap: 7px;
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 0.7rem;
   white-space: nowrap;
-  min-height: 32px;
 }
 
 .action-button.primary {
+  padding: 10px 18px;
   background: var(--accent-ink);
   color: var(--on-accent);
+  border: none;
+  font-weight: 600;
 }
 
 .action-button.primary:hover {
-  background: var(--primary-dark);
-  transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 
 .action-button.secondary {
-  background: var(--background-muted);
-  color: var(--text-muted);
-  border: 1px solid var(--border-color);
+  padding: 10px 16px;
+  background: var(--o05);
+  color: var(--text);
+  border: 1px solid var(--o14);
+  font-weight: 500;
 }
 
 .action-button.secondary:hover {
-  background: var(--background-alt);
-  color: var(--text-color);
-  border-color: var(--text-muted);
+  background: var(--o10);
 }
 
 .action-button.danger {
+  padding: 10px 16px;
   background: transparent;
-  color: var(--error-color);
-  border: 1px solid var(--error-color);
+  color: var(--c-coral);
+  border: 1px solid var(--coral-border);
+  font-weight: 500;
 }
 
 .action-button.danger:hover {
-  background: var(--error-color);
-  color: white;
-}
-
-.action-button svg {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
+  background: color-mix(in srgb, var(--c-coral) 12%, transparent);
 }
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .workflow-content {
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-  
-  .workflow-main {
+  .workflow-card {
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--space-sm);
+    gap: var(--space-md);
   }
-  
+
   .workflow-actions {
     width: 100%;
     justify-content: flex-start;
-  }
-  
-  .action-button {
-    flex: 1;
-    justify-content: center;
-    min-width: 0;
+    flex-wrap: wrap;
   }
 }
 </style> 
