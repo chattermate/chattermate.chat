@@ -17,12 +17,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import Modal from '@/components/common/Modal.vue'
 import GroupForm from './GroupForm.vue'
-import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
-import { EllipsisVerticalIcon } from '@heroicons/vue/24/outline'
 import { useGroups } from '@/composables/useGroups'
+import type { User, UserGroup } from '@/types/user'
+
+const props = defineProps<{
+  searchQuery?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'changed'): void
+}>()
 
 const {
   groups,
@@ -45,78 +52,117 @@ const {
   handleDeleteConfirm
 } = useGroups()
 
+// Wrap create/delete to emit `changed` for the parent view's counters.
+const onCreateGroup = async (groupData: Partial<UserGroup>) => {
+  await handleCreateGroup(groupData)
+  emit('changed')
+}
+
+const onDeleteConfirm = async () => {
+  await handleDeleteConfirm()
+  emit('changed')
+}
+
+// Filter cards by group name (case-insensitive).
+const filteredGroups = computed(() => {
+  const q = (props.searchQuery || '').trim().toLowerCase()
+  if (!q) return groups.value
+  return groups.value.filter(g => g.name.toLowerCase().includes(q))
+})
+
+const onlineCount = (group: UserGroup) =>
+  group.users?.filter(u => u.is_online).length || 0
+
+const memberCount = (group: UserGroup) => group.users?.length || 0
+
+// Up to ~4 avatars in the stack.
+const stackedMembers = (group: UserGroup) => (group.users || []).slice(0, 4)
+
+const initials = (user: User) => {
+  const name = (user.full_name || '').trim()
+  if (!name) return '?'
+  const parts = name.split(/\s+/)
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase()
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase()
+}
+
+// Deterministic accent per member, from the design palette tokens.
+const avatarPalette = [
+  'var(--c-purple)',
+  'var(--c-coral)',
+  'var(--c-online)',
+  'var(--accent-ink)'
+]
+const avatarColor = (user: User) => {
+  let hash = 0
+  for (const ch of user.id || user.full_name || '') {
+    hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
+  }
+  return avatarPalette[hash % avatarPalette.length]
+}
+
 onMounted(fetchGroups)
 </script>
 
 <template>
   <div class="group-list">
-    <header class="page-header">
-      <div class="header-actions">
-        <button class="btn btn-primary" @click="showCreateModal = true">
-          <span class="icon">+</span>
-          Add Group
-        </button>
-      </div>
-    </header>
-
     <div v-if="error" class="error-message">
       {{ error }}
     </div>
 
     <div v-if="loading" class="loading">Loading groups...</div>
-    
-    <div v-else-if="groups.length > 0" class="groups-grid">
-      <div v-for="group in groups" :key="group.id" class="group-card">
-        <div class="group-details">
-          <h3>{{ group.name }}</h3>
-          <p v-if="group.description" class="description">{{ group.description }}</p>
-          <span class="members-count">
-            {{ group.users?.length || 0 }} members
+
+    <div v-else class="teams-grid">
+      <div v-for="group in filteredGroups" :key="group.id" class="team-card">
+        <div class="card-header">
+          <div class="team-name">{{ group.name }}</div>
+          <span class="online-badge" :class="{ active: onlineCount(group) > 0 }">
+            <span class="online-dot"></span>
+            <span class="online-text">{{ onlineCount(group) }} online</span>
           </span>
         </div>
-        <Menu as="div" class="group-menu">
-          <MenuButton class="menu-button">
-            <EllipsisVerticalIcon class="h-5 w-5" />
-          </MenuButton>
-          <MenuItems class="menu-items">
-            <MenuItem v-slot="{ active }">
-              <button 
-                :class="['menu-item', { active }]"
-                @click="handleEditGroup(group)"
-              >
-                Edit Group
-              </button>
-            </MenuItem>
-            <MenuItem v-slot="{ active }">
-              <button 
-                :class="['menu-item', { active }]"
-                @click="handleManageMembers(group)"
-              >
-                Manage Members
-              </button>
-            </MenuItem>
-            <MenuItem v-slot="{ active }">
-              <button 
-                :class="['menu-item delete', { active }]"
-                @click="handleDeleteGroup(group)"
-              >
-                Delete Group
-              </button>
-            </MenuItem>
-          </MenuItems>
-        </Menu>
-      </div>
-    </div>
 
-    <div v-else class="empty-state">
-      <div class="empty-content">
-        <h3>No Groups Found</h3>
-        <p>Create your first group to start organizing team members</p>
-        <button class="btn btn-primary" @click="showCreateModal = true">
-          <span class="icon">+</span>
-          Create Group
-        </button>
+        <p v-if="group.description" class="team-desc">{{ group.description }}</p>
+        <p v-else class="team-desc no-desc">No description</p>
+
+        <div class="card-footer">
+          <div class="members">
+            <div class="avatar-stack">
+              <div
+                v-for="(member, i) in stackedMembers(group)"
+                :key="member.id"
+                class="avatar"
+                :style="{ background: avatarColor(member), marginLeft: i ? '-9px' : '0' }"
+                :title="member.full_name"
+              >
+                {{ initials(member) }}
+              </div>
+            </div>
+            <span class="member-count">
+              {{ memberCount(group) }} {{ memberCount(group) === 1 ? 'agent' : 'agents' }}
+            </span>
+          </div>
+          <button class="manage-btn" @click="handleManageMembers(group)">Manage</button>
+        </div>
+
+        <!-- Hidden edit/delete affordances preserved on the card via context actions -->
+        <div class="card-actions">
+          <button class="card-action" title="Edit team" @click="handleEditGroup(group)">Edit</button>
+          <button class="card-action delete" title="Delete team" @click="handleDeleteGroup(group)">Delete</button>
+        </div>
       </div>
+
+      <!-- Create a team (dashed) card -->
+      <button class="create-card" @click="showCreateModal = true">
+        <span class="create-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </span>
+        <span class="create-title">Create a team</span>
+        <span class="create-sub">Group agents by skill or channel</span>
+      </button>
     </div>
 
     <!-- Create Group Modal -->
@@ -124,7 +170,7 @@ onMounted(fetchGroups)
       <template #title>Create Group</template>
       <template #content>
         <GroupForm
-          @submit="handleCreateGroup"
+          @submit="onCreateGroup"
           @cancel="showCreateModal = false"
         />
       </template>
@@ -176,7 +222,7 @@ onMounted(fetchGroups)
             <button class="btn btn-secondary" @click="showDeleteModal = false">
               Cancel
             </button>
-            <button class="btn btn-danger" @click="handleDeleteConfirm">
+            <button class="btn btn-danger" @click="onDeleteConfirm">
               Delete
             </button>
           </div>
@@ -188,93 +234,234 @@ onMounted(fetchGroups)
 
 <style scoped>
 .group-list {
-  padding: var(--space-lg);
+  width: 100%;
 }
 
-.page-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: var(--space-lg);
-}
-
-.header-actions {
-  display: flex;
-  gap: var(--space-md);
-}
-
-.icon {
-  font-size: 1.2em;
-  margin-right: var(--space-xs);
-}
-
-.empty-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 300px;
-  background: var(--surface);
-  border: 1px solid var(--o08);
-  border-radius: var(--radius-lg);
-  margin-top: var(--space-lg);
-}
-
-.empty-content {
-  text-align: center;
-}
-
-.empty-content h3 {
-  font-size: var(--text-lg);
-  margin-bottom: var(--space-sm);
-  color: var(--text);
-}
-
-.empty-content p {
-  color: var(--muted);
-  margin-bottom: var(--space-lg);
-}
-
-.groups-grid {
+.teams-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--space-lg);
-  margin-top: var(--space-lg);
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 18px;
 }
 
-.group-card {
+/* ── Team card ───────────────────────────────────────── */
+.team-card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--o08);
   border-radius: 18px;
-  padding: var(--space-lg);
+  padding: 22px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
   transition: border-color var(--transition-fast);
 }
 
-.group-card:hover {
-  border-color: var(--o16);
+.team-card:hover {
+  border-color: var(--o14);
 }
 
-.group-details h3 {
-  font-size: var(--text-lg);
-  margin-bottom: var(--space-xs);
-  color: var(--text);
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team-name {
   font-family: var(--font-display);
   font-weight: 600;
+  font-size: 17.5px;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
-.description {
+.online-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  flex-shrink: 0;
+}
+
+.online-badge.active {
+  background: var(--teal-bg);
+  border: 1px solid var(--teal-border);
+}
+
+.online-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.online-badge.active .online-dot {
+  background: var(--c-online);
+  box-shadow: 0 0 6px var(--c-online);
+}
+
+.online-text {
+  font-size: 11.5px;
+  font-weight: 500;
   color: var(--muted);
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-sm);
 }
 
-.members-count {
-  font-size: var(--text-sm);
+.online-badge.active .online-text {
+  color: var(--c-online);
+}
+
+.team-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 12px 0 16px;
+  flex: 1;
+}
+
+.no-desc {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* ── Footer ──────────────────────────────────────────── */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--o07);
+}
+
+.members {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.avatar-stack {
+  display: flex;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11.5px;
+  color: var(--on-accent);
+  border: 2px solid var(--surface);
+}
+
+.member-count {
+  font-size: 13px;
   color: var(--muted);
 }
 
+.manage-btn {
+  padding: 9px 16px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.manage-btn:hover {
+  background: var(--o10);
+}
+
+/* Edit / delete affordances revealed on hover */
+.card-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.team-card:hover .card-actions {
+  opacity: 1;
+}
+
+.card-action {
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: var(--radius-chip);
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.card-action:hover {
+  background: var(--o10);
+  color: var(--text);
+}
+
+.card-action.delete:hover {
+  color: var(--c-coral);
+  border-color: var(--c-coral);
+}
+
+/* ── Create a team card ──────────────────────────────── */
+.create-card {
+  background: transparent;
+  border: 1.5px dashed var(--o16);
+  border-radius: 18px;
+  padding: 24px;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted2);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.create-card:hover {
+  border-color: var(--c-lime);
+  color: var(--c-lime);
+}
+
+.create-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--o05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.create-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.create-sub {
+  font-size: 12.5px;
+  color: var(--muted2);
+}
+
+/* ── States ──────────────────────────────────────────── */
 .error-message {
   color: var(--error-color);
   text-align: center;
@@ -287,61 +474,7 @@ onMounted(fetchGroups)
   opacity: 0.7;
 }
 
-.group-menu {
-  position: relative;
-}
-
-.menu-button {
-  padding: var(--space-xs);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  transition: all var(--transition-fast);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-
-.menu-button:hover {
-  color: var(--text);
-  background: var(--o08);
-}
-
-.menu-items {
-  position: absolute;
-  right: 0;
-  margin-top: var(--space-xs);
-  background: var(--surface);
-  border: 1px solid var(--o10);
-  border-radius: 12px;
-  padding: var(--space-xs);
-  min-width: 160px;
-  z-index: 10;
-  box-shadow: var(--shadow-md);
-}
-
-.menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  color: var(--text);
-  transition: all var(--transition-fast);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-
-.menu-item:hover,
-.menu-item.active {
-  background: var(--o08);
-}
-
-.menu-item.delete {
-  color: var(--c-coral);
-}
-
+/* ── Manage-members modal ────────────────────────────── */
 .members-list {
   max-height: 400px;
   overflow-y: auto;
@@ -378,6 +511,7 @@ onMounted(fetchGroups)
   opacity: 0.7;
 }
 
+/* ── Delete-confirm modal ────────────────────────────── */
 .delete-confirmation {
   text-align: center;
   padding: var(--space-lg);
@@ -393,6 +527,13 @@ onMounted(fetchGroups)
   margin-top: var(--space-sm);
 }
 
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+}
+
 .btn-danger {
   background: transparent;
   border: 1px solid rgba(255, 138, 115, 0.3);
@@ -402,10 +543,4 @@ onMounted(fetchGroups)
 .btn-danger:hover {
   background: rgba(255, 138, 115, 0.1);
 }
-
-.form-actions {
-  justify-content: flex-end;
-  gap: var(--space-md);
-  margin-top: var(--space-xl);
-}
-</style> 
+</style>

@@ -20,11 +20,18 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { onMounted, ref, computed } from 'vue'
 import Modal from '@/components/common/Modal.vue'
 import RoleForm from './RoleForm.vue'
-import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
-import { EllipsisVerticalIcon } from '@heroicons/vue/24/outline'
+import type { Role } from '@/types/user'
 import { useRoles } from '@/composables/useRoles'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+
+const props = defineProps<{
+  searchQuery?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'changed'): void
+}>()
 
 const {
   roles,
@@ -43,6 +50,28 @@ const {
   openCreateModal,
   deleteError
 } = useRoles()
+
+// Wrap create/delete so the parent view can refresh counts after a change
+const createRoleAndNotify = async (data: Partial<Role>) => {
+  await handleCreateRole(data)
+  if (!showCreateModal.value) {
+    emit('changed')
+  }
+}
+
+const deleteRoleAndNotify = async () => {
+  await confirmDeleteRole()
+  if (!showDeleteModal.value) {
+    emit('changed')
+  }
+}
+
+// Filter cards by role name (case-insensitive)
+const filteredRoles = computed(() => {
+  const q = (props.searchQuery || '').trim().toLowerCase()
+  if (!q) return roles.value
+  return roles.value.filter(role => role.name?.toLowerCase().includes(q))
+})
 
 // Subscription and role feature checking
 const subscriptionStorage = useSubscriptionStorage()
@@ -141,120 +170,108 @@ onMounted(() => {
 
     <!-- Roles Content (when unlocked) -->
     <div v-else>
-      <header class="page-header">
-        <button class="btn btn-primary" @click="openCreateModal">
-          <span class="icon">+</span>
-          Add Role
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
+
+      <div v-if="loading" class="loading">Loading roles...</div>
+
+      <div v-else class="roles-grid">
+        <div
+          v-for="role in filteredRoles"
+          :key="role.id"
+          class="role-card"
+        >
+          <div class="role-card__header">
+            <h3 class="role-card__name">{{ role.name }}</h3>
+            <span v-if="role.is_default" class="role-card__badge">Default</span>
+          </div>
+
+          <p class="role-card__desc" :class="{ 'is-muted': !role.description }">
+            {{ role.description || 'No description' }}
+          </p>
+
+          <template v-if="role.permissions?.length">
+            <div class="role-card__perm-label">PERMISSIONS</div>
+            <div class="role-card__perm-chips">
+              <span
+                v-for="permission in role.permissions"
+                :key="permission.id"
+                class="role-card__chip"
+              >
+                {{ permission.name }}
+              </span>
+            </div>
+          </template>
+
+          <button
+            class="role-card__edit"
+            @click="handleEditRole(role)"
+            :disabled="role.is_default"
+            :title="role.is_default ? 'Cannot edit default role' : ''"
+          >
+            Edit permissions
+          </button>
+
+          <button
+            v-if="!role.is_default"
+            class="role-card__delete"
+            @click="handleDeleteRole(role)"
+          >
+            Delete role
+          </button>
+        </div>
+
+        <!-- Create a custom role card -->
+        <button class="role-card-add" @click="openCreateModal">
+          <div class="role-card-add__icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </div>
+          <div class="role-card-add__title">Create a custom role</div>
+          <div class="role-card-add__desc">Pick exactly which permissions a group of agents gets</div>
         </button>
-      </header>
+      </div>
 
-    <div v-if="error" class="error-message">
-      {{ error }}
-    </div>
+      <!-- Create/Edit Role Modal -->
+      <Modal v-if="showCreateModal || showEditModal"
+             @close="showCreateModal ? (showCreateModal = false) : (showEditModal = false)">
+        <template #title>{{ showCreateModal ? 'Create Role' : 'Edit Role' }}</template>
+        <template #content>
+          <RoleForm
+            :role="selectedRole"
+            @submit="(data) => showCreateModal ? createRoleAndNotify(data) : handleUpdateRole(data)"
+            @cancel="showCreateModal ? (showCreateModal = false) : (showEditModal = false)"
+          />
+        </template>
+      </Modal>
 
-    <div v-if="loading" class="loading">Loading roles...</div>
-    
-    <div v-else-if="roles.length > 0" class="roles-grid">
-      <div 
-        v-for="role in roles" 
-        :key="role.id" 
-        class="role-card"
-        :data-default="role.is_default"
-      >
-        <div class="role-info">
-          <div class="role-details">
-            <h3>{{ role.name }}</h3>
-            <p v-if="role.description" class="description">{{ role.description }}</p>
-            <div class="permissions-list" v-if="role.permissions?.length">
-              <div class="permissions-label">Permissions:</div>
-              <div class="permission-badges">
-                <span v-for="permission in role.permissions" :key="permission.id" class="permission-badge">
-                  {{ permission.name }}
-                </span>
-              </div>
+      <!-- Delete Confirmation Modal -->
+      <Modal v-if="showDeleteModal" @close="showDeleteModal = false">
+        <template #title>Delete Role</template>
+        <template #content>
+          <div class="delete-confirmation">
+            <div v-if="deleteError" class="error-message">
+              {{ deleteError }}
+            </div>
+            <p>Are you sure you want to delete "{{ selectedRole?.name }}"?</p>
+            <p class="warning">This action cannot be undone.</p>
+            <div class="form-actions">
+              <button class="btn btn-secondary" @click="showDeleteModal = false">
+                Cancel
+              </button>
+              <button
+                class="btn btn-danger"
+                @click="deleteRoleAndNotify"
+                :disabled="loading"
+              >
+                {{ loading ? 'Deleting...' : 'Delete' }}
+              </button>
             </div>
           </div>
-        </div>
-        <Menu as="div" class="role-menu">
-          <MenuButton class="menu-button">
-            <EllipsisVerticalIcon class="h-5 w-5" />
-          </MenuButton>
-
-          <MenuItems class="menu-items">
-            <MenuItem v-slot="{ active }">
-              <button 
-                :class="['menu-item', { active }]"
-                @click="handleEditRole(role)"
-                :disabled="role.is_default"
-                :title="role.is_default ? 'Cannot edit default role' : ''"
-              >
-                Edit Role
-              </button>
-            </MenuItem>
-            <MenuItem v-slot="{ active }">
-              <button 
-                :class="['menu-item delete', { active }]"
-                @click="handleDeleteRole(role)"
-                :disabled="role.is_default"
-                :title="role.is_default ? 'Cannot delete default role' : ''"
-              >
-                Delete Role
-              </button>
-            </MenuItem>
-          </MenuItems>
-        </Menu>
-      </div>
-    </div>
-
-    <div v-else class="empty-state">
-      <div class="empty-content">
-        <h3>No Roles Found</h3>
-        <p>Create your first role to manage user permissions</p>
-        <button class="btn btn-primary" @click="openCreateModal">
-          <span class="icon">+</span>
-          Create Role
-        </button>
-      </div>
-    </div>
-
-    <!-- Create/Edit Role Modal -->
-    <Modal v-if="showCreateModal || showEditModal" 
-           @close="showCreateModal ? (showCreateModal = false) : (showEditModal = false)">
-      <template #title>{{ showCreateModal ? 'Create Role' : 'Edit Role' }}</template>
-      <template #content>
-        <RoleForm
-          :role="selectedRole"
-          @submit="(data) => showCreateModal ? handleCreateRole(data) : handleUpdateRole(data)"
-          @cancel="showCreateModal ? (showCreateModal = false) : (showEditModal = false)"
-        />
-      </template>
-    </Modal>
-
-    <!-- Delete Confirmation Modal -->
-    <Modal v-if="showDeleteModal" @close="showDeleteModal = false">
-      <template #title>Delete Role</template>
-      <template #content>
-        <div class="delete-confirmation">
-          <div v-if="deleteError" class="error-message">
-            {{ deleteError }}
-          </div>
-          <p>Are you sure you want to delete "{{ selectedRole?.name }}"?</p>
-          <p class="warning">This action cannot be undone.</p>
-          <div class="form-actions">
-            <button class="btn btn-secondary" @click="showDeleteModal = false">
-              Cancel
-            </button>
-            <button 
-              class="btn btn-danger" 
-              @click="confirmDeleteRole"
-              :disabled="loading"
-            >
-              {{ loading ? 'Deleting...' : 'Delete' }}
-            </button>
-          </div>
-        </div>
-      </template>
-    </Modal>
+        </template>
+      </Modal>
     </div>
   </div>
 </template>
@@ -264,28 +281,20 @@ onMounted(() => {
   padding: var(--space-lg);
 }
 
-.page-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: var(--space-lg);
-}
-
 .roles-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--space-lg);
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 18px;
+  align-items: start;
 }
 
 .role-card {
   background: var(--surface);
   border: 1px solid var(--o08);
   border-radius: 18px;
-  padding: var(--space-lg);
+  padding: 24px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  position: relative;
+  flex-direction: column;
   transition: border-color var(--transition-fast);
 }
 
@@ -293,107 +302,151 @@ onMounted(() => {
   border-color: var(--o16);
 }
 
-.role-details h3 {
-  font-size: var(--text-lg);
-  margin-bottom: var(--space-xs);
-  color: var(--text);
+.role-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.role-card__name {
   font-family: var(--font-display);
   font-weight: 600;
+  font-size: 19px;
+  color: var(--text);
+  margin: 0;
 }
 
-.description {
+.role-card__badge {
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg-12);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.role-card__desc {
+  font-size: 13.5px;
   color: var(--muted);
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-sm);
+  line-height: 1.5;
+  margin: 0 0 18px;
 }
 
-.permissions-list {
-  margin-top: var(--space-sm);
+.role-card__desc.is-muted {
+  color: var(--muted2);
 }
 
-.permissions-label {
-  font-size: var(--text-xs);
-  color: var(--faint);
+.role-card__perm-label {
   font-family: var(--font-mono);
-  text-transform: uppercase;
+  font-size: 10.5px;
   letter-spacing: 0.06em;
-  margin-bottom: var(--space-xs);
+  color: var(--faint);
+  margin-bottom: 9px;
 }
 
-.permission-badges {
+.role-card__perm-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-xs);
+  gap: 7px;
 }
 
-.permission-badge {
-  background: var(--o08);
+.role-card__chip {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: var(--o05);
+  border: 1px solid var(--o08);
   color: var(--text3);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  border: 1px solid var(--o10);
+  white-space: nowrap;
 }
 
-.role-menu {
-  position: relative;
+.role-card__edit {
+  margin-top: 20px;
+  padding: 11px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--transition-fast);
 }
 
-.menu-button {
-  padding: var(--space-xs);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  transition: all var(--transition-fast);
+.role-card__edit:hover:not(:disabled) {
+  background: var(--o10);
+}
+
+.role-card__edit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.role-card__delete {
+  margin-top: 8px;
+  padding: 8px;
   background: transparent;
   border: none;
+  color: var(--muted2);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
   cursor: pointer;
+  transition: color var(--transition-fast);
 }
 
-.menu-button:hover {
-  color: var(--text);
-  background: var(--o08);
-}
-
-.menu-items {
-  position: absolute;
-  right: 0;
-  margin-top: var(--space-xs);
-  background: var(--surface);
-  border: 1px solid var(--o10);
-  border-radius: 12px;
-  padding: var(--space-xs);
-  min-width: 160px;
-  z-index: 10;
-  box-shadow: var(--shadow-md);
-}
-
-.menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  color: var(--text);
-  transition: all var(--transition-fast);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-
-.menu-item:hover,
-.menu-item.active {
-  background: var(--o08);
-}
-
-.menu-item.delete {
+.role-card__delete:hover {
   color: var(--c-coral);
 }
 
-.menu-item:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--o06);
+/* Create a custom role dashed card */
+.role-card-add {
+  background: transparent;
+  border: 1.5px dashed var(--o16);
+  border-radius: 18px;
+  padding: 24px;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted2);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.role-card-add:hover {
+  border-color: var(--accent-border);
+  color: var(--accent-ink);
+}
+
+.role-card-add__icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--o05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.role-card-add__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.role-card-add__desc {
+  font-size: 12.5px;
+  color: var(--muted2);
+  text-align: center;
+  max-width: 200px;
 }
 
 .loading {
@@ -404,16 +457,6 @@ onMounted(() => {
 
 .error-message {
   color: var(--c-coral);
-  margin-bottom: var(--space-lg);
-}
-
-.empty-state {
-  text-align: center;
-  padding: var(--space-xl);
-  color: var(--muted);
-}
-
-.empty-content {
   margin-bottom: var(--space-lg);
 }
 
@@ -431,25 +474,6 @@ onMounted(() => {
   justify-content: flex-end;
   gap: var(--space-md);
   margin-top: var(--space-xl);
-}
-
-/* Add visual indicator for default role */
-.role-card[data-default="true"] {
-  border: 2px solid rgba(201, 242, 78, 0.4);
-}
-
-.role-card[data-default="true"]::after {
-  content: 'Default';
-  position: absolute;
-  top: var(--space-sm);
-  right: var(--space-lg);
-  font-size: var(--text-xs);
-  padding: 2px var(--space-sm);
-  background: rgba(201, 242, 78, 0.12);
-  color: var(--accent-ink);
-  border: 1px solid rgba(201, 242, 78, 0.3);
-  border-radius: var(--radius-full);
-  font-weight: 500;
 }
 
 /* Roles Locked Overlay Styles */

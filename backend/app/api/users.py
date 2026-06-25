@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import json
 import os
 from urllib.parse import quote
@@ -29,7 +29,9 @@ from uuid import UUID
 
 from app.database import get_db
 from app.models.user import User
+from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.models.schemas.user import UserCreate, UserStatusUpdate, UserUpdate, UserResponse, TokenResponse
+from datetime import datetime, timezone
 from app.core.security import create_access_token, create_refresh_token, verify_token
 from app.core.auth import get_current_user, require_permissions
 from app.core.logger import get_logger
@@ -194,6 +196,168 @@ async def list_users(
         return users
     except Exception as e:
         logger.error(f"Error listing users: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+# Default concurrent-chat capacity for an agent (no per-user column yet).
+DEFAULT_AGENT_CAPACITY = 5
+
+
+class TeamAgentStats(BaseModel):
+    id: str
+    full_name: str
+    email: str
+    profile_pic: Optional[str] = None
+    is_online: bool = False
+    last_seen: Optional[datetime] = None
+    is_active: bool = True
+    role: Optional[str] = None
+    is_admin: bool = False
+    groups: List[str] = []
+    active_chats: int = 0
+    resolved_chats: int = 0
+    capacity: int = DEFAULT_AGENT_CAPACITY
+
+
+class TeamKpis(BaseModel):
+    team_size: int = 0
+    admins: int = 0
+    agents: int = 0
+    online_now: int = 0
+    active_chats: int = 0
+    total_capacity: int = 0
+    waiting_handoff: int = 0
+    oldest_wait_minutes: int = 0
+
+
+class TeamOverviewResponse(BaseModel):
+    kpis: TeamKpis
+    agents: List[TeamAgentStats]
+
+
+@router.get("/team-overview", response_model=TeamOverviewResponse)
+async def get_team_overview(
+    current_user: User = Depends(require_permissions("manage_users")),
+    db: Session = Depends(get_db)
+):
+    """Aggregated Human-Agents dashboard: per-agent load/resolved counts + org KPIs."""
+    try:
+        org_id = current_user.organization_id
+        user_repo = UserRepository(db)
+        users = user_repo.get_users_by_organization(org_id)
+
+        # Per-agent active (OPEN, assigned to a human) chat counts
+        active_rows = (
+            db.query(SessionToAgent.user_id, func.count(SessionToAgent.session_id))
+            .filter(
+                SessionToAgent.organization_id == org_id,
+                SessionToAgent.status == SessionStatus.OPEN,
+                SessionToAgent.user_id.isnot(None),
+            )
+            .group_by(SessionToAgent.user_id)
+            .all()
+        )
+        active_counts = {str(uid): cnt for uid, cnt in active_rows}
+
+        # Per-agent resolved (CLOSED) chat counts
+        resolved_rows = (
+            db.query(SessionToAgent.user_id, func.count(SessionToAgent.session_id))
+            .filter(
+                SessionToAgent.organization_id == org_id,
+                SessionToAgent.status == SessionStatus.CLOSED,
+                SessionToAgent.user_id.isnot(None),
+            )
+            .group_by(SessionToAgent.user_id)
+            .all()
+        )
+        resolved_counts = {str(uid): cnt for uid, cnt in resolved_rows}
+
+        # Org-wide waiting handoffs (transferred, not yet picked up by a human)
+        waiting_handoff = (
+            db.query(func.count(SessionToAgent.session_id))
+            .filter(
+                SessionToAgent.organization_id == org_id,
+                SessionToAgent.status == SessionStatus.TRANSFERRED,
+                SessionToAgent.user_id.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+        oldest_wait = (
+            db.query(func.min(SessionToAgent.assigned_at))
+            .filter(
+                SessionToAgent.organization_id == org_id,
+                SessionToAgent.status == SessionStatus.TRANSFERRED,
+                SessionToAgent.user_id.is_(None),
+            )
+            .scalar()
+        )
+        oldest_wait_minutes = 0
+        if oldest_wait is not None:
+            if oldest_wait.tzinfo is None:
+                oldest_wait = oldest_wait.replace(tzinfo=timezone.utc)
+            oldest_wait_minutes = max(
+                0, int((datetime.now(timezone.utc) - oldest_wait).total_seconds() // 60)
+            )
+
+        agents: List[TeamAgentStats] = []
+        admins = 0
+        online_now = 0
+        total_active = 0
+        total_capacity = 0
+        for user in users:
+            uid = str(user.id)
+            role_name = user.role.name if user.role else None
+            perms = {p.name for p in (user.role.permissions or [])} if user.role else set()
+            is_admin = bool(perms & {"manage_organization", "super_admin"}) or (role_name == "Admin")
+            if is_admin:
+                admins += 1
+            if user.is_online:
+                online_now += 1
+
+            active = active_counts.get(uid, 0)
+            total_active += active
+            total_capacity += DEFAULT_AGENT_CAPACITY
+
+            profile_pic = user.profile_pic
+            if settings.S3_FILE_STORAGE and profile_pic:
+                try:
+                    profile_pic = await get_s3_signed_url(profile_pic)
+                except Exception:
+                    pass
+
+            agents.append(TeamAgentStats(
+                id=uid,
+                full_name=user.full_name,
+                email=user.email,
+                profile_pic=profile_pic,
+                is_online=bool(user.is_online),
+                last_seen=user.last_seen,
+                is_active=bool(user.is_active),
+                role=role_name,
+                is_admin=is_admin,
+                groups=[g.name for g in (user.groups or [])],
+                active_chats=active,
+                resolved_chats=resolved_counts.get(uid, 0),
+                capacity=DEFAULT_AGENT_CAPACITY,
+            ))
+
+        kpis = TeamKpis(
+            team_size=len(users),
+            admins=admins,
+            agents=len(users) - admins,
+            online_now=online_now,
+            active_chats=total_active,
+            total_capacity=total_capacity,
+            waiting_handoff=int(waiting_handoff),
+            oldest_wait_minutes=oldest_wait_minutes,
+        )
+        return TeamOverviewResponse(kpis=kpis, agents=agents)
+    except Exception as e:
+        logger.error(f"Error building team overview: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
