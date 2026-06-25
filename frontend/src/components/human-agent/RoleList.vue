@@ -279,24 +279,31 @@ onMounted(() => {
 }
 
 .role-card {
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
   padding: var(--space-lg);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   position: relative;
+  transition: border-color var(--transition-fast);
+}
+
+.role-card:hover {
+  border-color: var(--o16);
 }
 
 .role-details h3 {
   font-size: var(--text-lg);
   margin-bottom: var(--space-xs);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 600;
 }
 
 .description {
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
   font-size: var(--text-sm);
   margin-bottom: var(--space-sm);
 }
@@ -307,8 +314,10 @@ onMounted(() => {
 
 .permissions-label {
   font-size: var(--text-xs);
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin-bottom: var(--space-xs);
 }
 
@@ -319,12 +328,12 @@ onMounted(() => {
 }
 
 .permission-badge {
-  background: var(--background-mute);
-  color: var(--text-color);
+  background: var(--o08);
+  color: var(--text3);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
-  opacity: 0.8;
+  border: 1px solid var(--o10);
 }
 
 .role-menu {
@@ -334,26 +343,29 @@ onMounted(() => {
 .menu-button {
   padding: var(--space-xs);
   border-radius: var(--radius-sm);
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
   transition: all var(--transition-fast);
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .menu-button:hover {
-  opacity: 1;
-  background: var(--background-mute);
+  color: var(--text);
+  background: var(--o08);
 }
 
 .menu-items {
   position: absolute;
   right: 0;
   margin-top: var(--space-xs);
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: 12px;
   padding: var(--space-xs);
   min-width: 160px;
   z-index: 10;
+  box-shadow: var(--shadow-md);
 }
 
 .menu-item {
@@ -363,23 +375,26 @@ onMounted(() => {
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  color: black;
+  color: var(--text);
   transition: all var(--transition-fast);
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .menu-item:hover,
 .menu-item.active {
-  background: var(--background-mute);
+  background: var(--o08);
 }
 
 .menu-item.delete {
-  color: var(--error-color);
+  color: var(--c-coral);
 }
 
 .menu-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: var(--background-mute);
+  background: var(--o06);
 }
 
 .loading {
@@ -389,14 +404,14 @@ onMounted(() => {
 }
 
 .error-message {
-  color: var(--text-danger);
+  color: var(--c-coral);
   margin-bottom: var(--space-lg);
 }
 
 .empty-state {
   text-align: center;
   padding: var(--space-xl);
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 .empty-content {
@@ -421,7 +436,7 @@ onMounted(() => {
 
 /* Add visual indicator for default role */
 .role-card[data-default="true"] {
-  border: 2px solid var(--primary-color);
+  border: 2px solid rgba(201, 242, 78, 0.4);
 }
 
 .role-card[data-default="true"]::after {
@@ -431,9 +446,9 @@ onMounted(() => {
   right: var(--space-lg);
   font-size: var(--text-xs);
   padding: 2px var(--space-sm);
-  background: var(--background-soft);
-  color: var(--primary-color);
-  border: 1px solid var(--primary-color);
+  background: rgba(201, 242, 78, 0.12);
+  color: var(--accent-ink);
+  border: 1px solid rgba(201, 242, 78, 0.3);
   border-radius: var(--radius-full);
   font-weight: 500;
 }
@@ -444,12 +459,12 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 50vh;
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border-radius: 20px;
   margin: var(--space-md) 0;
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o08);
 }
 
 .roles-locked-overlay::before {
@@ -487,7 +502,8 @@ onMounted(() => {
   justify-content: center;
   width: 64px;
   height: 64px;
-  background: var(--primary-color);
+  background: rgba(201, 242, 78, 0.15);
+  border: 1px solid rgba(201, 242, 78, 0.3);
   border-radius: 50%;
   box-shadow: var(--shadow-lg);
   margin-bottom: var(--space-sm);
@@ -495,13 +511,14 @@ onMounted(() => {
 
 .locked-icon {
   font-size: 1.5rem;
-  color: white;
+  color: var(--accent-ink);
 }
 
 .locked-content h2 {
   font-size: var(--text-3xl);
-  font-weight: 600;
-  color: var(--text-primary);
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--text);
   margin-bottom: var(--space-sm);
 }
 
@@ -509,13 +526,13 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  background: var(--primary-color);
-  color: white;
+  background: rgba(201, 242, 78, 0.12);
+  color: var(--accent-ink);
+  border: 1px solid rgba(201, 242, 78, 0.3);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
 }
 
 .badge-icon {
@@ -524,7 +541,7 @@ onMounted(() => {
 
 .locked-description {
   font-size: var(--text-lg);
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.6;
   margin-bottom: var(--space-lg);
   max-width: 600px;
@@ -544,18 +561,17 @@ onMounted(() => {
   align-items: flex-start;
   gap: var(--space-sm);
   padding: var(--space-lg);
-  background: var(--background-color);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
+  background: var(--o05);
+  border-radius: 14px;
+  border: 1px solid var(--o10);
   text-align: left;
   transition: all var(--transition-normal);
 }
 
 .feature-item:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-color-hover);
+  background: var(--o08);
+  border-color: var(--o16);
 }
 
 .feature-icon-wrapper {
@@ -564,14 +580,14 @@ onMounted(() => {
   justify-content: center;
   width: 40px;
   height: 40px;
-  background: var(--success-color);
+  background: rgba(201, 242, 78, 0.12);
   border-radius: var(--radius-md);
   flex-shrink: 0;
 }
 
 .feature-icon {
   font-size: 1rem;
-  color: white;
+  color: var(--accent-ink);
 }
 
 .feature-content {
@@ -583,12 +599,12 @@ onMounted(() => {
 .feature-title {
   font-size: var(--text-base);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .feature-desc {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.4;
 }
 
@@ -600,44 +616,28 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border: none;
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg) var(--space-xl);
+  border-radius: 14px;
+  padding: var(--space-md) var(--space-xl);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all var(--transition-normal);
-  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
 }
 
-.upgrade-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left 0.5s;
-}
-
-.upgrade-button:hover::before {
-  left: 100%;
-}
-
 .upgrade-button:hover {
-  background: var(--primary-dark);
+  opacity: 0.88;
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 8px 24px rgba(201, 242, 78, 0.25);
 }
 
 .upgrade-icon {
   font-size: 1rem;
-  color: #ffd700;
+  color: #0B0C10;
 }
 
 .arrow-icon {

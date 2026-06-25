@@ -214,7 +214,8 @@ onMounted(fetchGroups)
   justify-content: center;
   align-items: center;
   min-height: 300px;
-  background: var(--background-soft);
+  background: var(--surface);
+  border: 1px solid var(--o08);
   border-radius: var(--radius-lg);
   margin-top: var(--space-lg);
 }
@@ -226,11 +227,11 @@ onMounted(fetchGroups)
 .empty-content h3 {
   font-size: var(--text-lg);
   margin-bottom: var(--space-sm);
+  color: var(--text);
 }
 
 .empty-content p {
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
   margin-bottom: var(--space-lg);
 }
 
@@ -242,31 +243,37 @@ onMounted(fetchGroups)
 }
 
 .group-card {
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
   padding: var(--space-lg);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  transition: border-color var(--transition-fast);
+}
+
+.group-card:hover {
+  border-color: var(--o16);
 }
 
 .group-details h3 {
   font-size: var(--text-lg);
   margin-bottom: var(--space-xs);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 600;
 }
 
 .description {
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
   font-size: var(--text-sm);
   margin-bottom: var(--space-sm);
 }
 
 .members-count {
   font-size: var(--text-sm);
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 .error-message {
@@ -288,26 +295,29 @@ onMounted(fetchGroups)
 .menu-button {
   padding: var(--space-xs);
   border-radius: var(--radius-sm);
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
   transition: all var(--transition-fast);
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .menu-button:hover {
-  opacity: 1;
-  background: var(--background-mute);
+  color: var(--text);
+  background: var(--o08);
 }
 
 .menu-items {
   position: absolute;
   right: 0;
   margin-top: var(--space-xs);
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: 12px;
   padding: var(--space-xs);
   min-width: 160px;
   z-index: 10;
+  box-shadow: var(--shadow-md);
 }
 
 .menu-item {
@@ -317,17 +327,20 @@ onMounted(fetchGroups)
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  color: black;
+  color: var(--text);
   transition: all var(--transition-fast);
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .menu-item:hover,
 .menu-item.active {
-  background: var(--background-mute);
+  background: var(--o08);
 }
 
 .menu-item.delete {
-  color: var(--error-color);
+  color: var(--c-coral);
 }
 
 .members-list {
@@ -338,7 +351,7 @@ onMounted(fetchGroups)
 
 .member-item {
   padding: var(--space-sm);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o08);
 }
 
 .member-item:last-child {
@@ -382,12 +395,13 @@ onMounted(fetchGroups)
 }
 
 .btn-danger {
-  background: var(--error-color);
-  color: white;
+  background: transparent;
+  border: 1px solid rgba(255, 138, 115, 0.3);
+  color: var(--c-coral);
 }
 
 .btn-danger:hover {
-  background: var(--error-dark);
+  background: rgba(255, 138, 115, 0.1);
 }
 
 .form-actions {
