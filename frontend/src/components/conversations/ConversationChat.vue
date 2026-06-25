@@ -683,8 +683,8 @@ onMounted(async () => {
 }
 
 .product-card-compact {
-  background-color: white;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background-color: var(--surface);
+  border: 1px solid var(--o10);
   border-radius: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06),
               0 1px 2px rgba(0, 0, 0, 0.04);
@@ -752,8 +752,8 @@ onMounted(async () => {
 .view-details-button-compact {
   width: 100%;
   padding: 8px 12px;
-  background-color: white;
-  color: var(--text-primary);
+  background-color: var(--bg2);
+  color: var(--text);
   border: 1px solid var(--border-color);
   border-radius: 16px;
   font-size: var(--text-xs);

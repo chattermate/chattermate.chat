@@ -832,14 +832,14 @@ const chatterMateButtonText = computed(() => {
 
 /* Upgrade Prompt Styles */
 .upgrade-prompt {
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+  background: linear-gradient(135deg, var(--c-purple), #7C6AE6);
   border-radius: var(--radius-md);
   padding: var(--space-lg);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-md);
-  color: white;
+  color: #F5F6F8;
   margin-top: var(--space-md);
 }
 
@@ -966,7 +966,7 @@ const chatterMateButtonText = computed(() => {
 
 .custom-models-locked-overlay .locked-icon {
   font-size: 1.25rem;
-  color: white;
+  color: #0B0C10;
 }
 
 .custom-models-locked-overlay h3 {
@@ -981,7 +981,7 @@ const chatterMateButtonText = computed(() => {
   align-items: center;
   gap: var(--space-xs);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -1072,7 +1072,7 @@ const chatterMateButtonText = computed(() => {
   align-items: center;
   gap: var(--space-sm);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-lg);
   padding: var(--space-md) var(--space-lg);

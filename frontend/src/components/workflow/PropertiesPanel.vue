@@ -1636,7 +1636,7 @@ const handleDelete = () => {
 
 .btn-primary {
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
 }
 
 .btn-primary:hover {
@@ -2011,7 +2011,7 @@ const handleDelete = () => {
 /* Variables Section Styles */
 .variables-count {
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border-radius: var(--radius-full);
   padding: 2px 8px;
   font-size: 0.7rem;

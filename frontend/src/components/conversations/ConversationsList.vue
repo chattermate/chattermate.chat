@@ -633,7 +633,7 @@ onBeforeUnmount(() => {
 
 .load-more-button:hover {
   background-color: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border-color: var(--primary-color);
 }
 
@@ -656,7 +656,7 @@ onBeforeUnmount(() => {
   height: 36px;
   border-radius: 50%;
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   display: flex;
   align-items: center;

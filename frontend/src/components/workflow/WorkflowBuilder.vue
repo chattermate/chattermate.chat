@@ -928,7 +928,7 @@ onUnmounted(() => {
 .header-status {
   padding: var(--space-xs) var(--space-sm);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 500;
@@ -962,7 +962,7 @@ onUnmounted(() => {
 
 .action-btn.primary {
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
 }
 
 .action-btn.primary:hover:not(:disabled) {

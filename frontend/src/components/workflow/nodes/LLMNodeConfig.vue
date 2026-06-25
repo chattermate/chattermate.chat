@@ -534,7 +534,7 @@ const toggleSection = (section: string) => {
 
 .generate-ai-button {
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
 }
 
 .generate-ai-button:hover {

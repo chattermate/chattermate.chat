@@ -858,8 +858,8 @@ input:checked + .slider:before {
   padding: var(--space-xl);
   text-align: center;
   position: relative;
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  color: white;
+  background: linear-gradient(135deg, var(--c-purple), #7C6AE6);
+  color: #F5F6F8;
 }
 
 .upgrade-icon {
@@ -882,7 +882,7 @@ input:checked + .slider:before {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0;
-  color: white;
+  color: #F5F6F8;
 }
 
 .upgrade-modal-header .close-button {
@@ -894,7 +894,7 @@ input:checked + .slider:before {
   border-radius: 50%;
   width: 32px;
   height: 32px;
-  color: white;
+  color: #F5F6F8;
   cursor: pointer;
   font-size: 1.25rem;
   display: flex;
@@ -957,8 +957,8 @@ input:checked + .slider:before {
 }
 
 .upgrade-button {
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-full);
   padding: var(--space-md) var(--space-xl);

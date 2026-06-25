@@ -311,7 +311,8 @@ const userBubbleStyles = computed(() => ({
 }))
 
 const accentStyles = computed(() => ({
-    backgroundColor: props.customization.accent_color
+    backgroundColor: props.customization.accent_color,
+    color: isColorDark(props.customization.accent_color ?? '#C9F24E') ? '#FFFFFF' : '#000000'
 }))
 
 const messageNameStyles = computed(() => ({
@@ -1456,10 +1457,10 @@ const handleInitiationClick = () => {
     bottom: 215px;
     right: 20px;
     max-width: 240px;
-    background: white;
+    background: var(--surface);
     padding: 12px 36px 12px 14px;
     border-radius: 14px;
-    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.3);
     z-index: 9;
     cursor: pointer;
     opacity: 0;
@@ -1502,9 +1503,9 @@ const handleInitiationClick = () => {
     right: 30px;
     width: 14px;
     height: 14px;
-    background: white;
+    background: var(--surface);
     transform: rotate(45deg);
-    box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.06);
+    box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.12);
     clip-path: polygon(0 0, 100% 0, 100% 100%);
 }
 
