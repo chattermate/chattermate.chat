@@ -20,10 +20,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
   <DashboardLayout>
     <div class="dashboard-container">
       <div class="settings-section">
-        <header class="page-header">
-          <h1>AI Configuration</h1>
-          <p class="description">Configure your AI provider settings</p>
-        </header>
         <AISetup @ai-setup-complete="handleSetupComplete" />
       </div>
     </div>

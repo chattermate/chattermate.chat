@@ -49,15 +49,6 @@ onMounted(async () => {
     </div>
 
     <div v-else class="settings-content">
-      <div class="settings-header">
-        <div class="header-content">
-          <h3>Organization Settings</h3>
-        </div>
-        <p class="settings-description">
-          Manage your organization settings and configuration
-        </p>
-      </div>
-
       <form @submit.prevent="updateOrganization" class="settings-form">
         <!-- Organization Info -->
         <div class="form-section">

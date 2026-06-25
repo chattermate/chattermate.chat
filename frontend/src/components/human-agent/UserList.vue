@@ -135,8 +135,7 @@ onMounted(async () => {
 <template>
   <div class="user-list">
     <header class="page-header">
-      <h1>Users</h1>
-      <button 
+      <button
         class="btn btn-primary" 
         :class="{ 'locked': isUserCreationLocked }"
         :disabled="isUserCreationLocked"
@@ -312,16 +311,18 @@ onMounted(async () => {
 }
 
 .page-header {
-  padding: var(--space-lg);
-  border-bottom: 1px solid var(--border-color);
+  padding: 0 0 var(--space-lg) 0;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
 }
 
 .page-header h1 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .users-grid {
@@ -331,15 +332,19 @@ onMounted(async () => {
 }
 
 .user-card {
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
   padding: var(--space-lg);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   position: relative;
   transition: all var(--transition-fast);
+}
+
+.user-card:hover {
+  border-color: var(--o14);
 }
 
 .user-info {
@@ -382,27 +387,27 @@ onMounted(async () => {
 
 .menu-button {
   padding: var(--space-xs);
-  border-radius: var(--radius-sm);
-  color: var(--text-color);
-  opacity: 0.7;
+  border-radius: 8px;
+  color: var(--muted);
   transition: all var(--transition-fast);
 }
 
 .menu-button:hover {
-  opacity: 1;
-  background: var(--background-soft);
+  color: var(--text);
+  background: var(--o08);
 }
 
 .menu-items {
   position: absolute;
   right: 0;
   margin-top: var(--space-xs);
-  background: var(--background-mute);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: var(--space-xs);
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: 12px;
+  padding: 4px;
   min-width: 160px;
   z-index: 10;
+  box-shadow: var(--shadow-md);
 }
 
 .menu-item {
@@ -410,15 +415,16 @@ onMounted(async () => {
   width: 100%;
   text-align: left;
   padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   font-size: var(--text-sm);
-  color: black;
+  color: var(--text3);
   transition: all var(--transition-fast);
 }
 
 .menu-item:hover,
 .menu-item.active {
-  background: var(--background-soft);
+  background: var(--o08);
+  color: var(--text);
 }
 
 .user-menu {
@@ -432,12 +438,12 @@ onMounted(async () => {
 }
 
 .role-badge {
-  background: var(--background-soft);
-  color: var(--text-color);
-  padding: var(--space-xs) var(--space-sm);
+  background: rgba(157,140,255,.15);
+  color: var(--c-purple);
+  padding: 3px 10px;
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
-  opacity: 0.8;
+  font-weight: 600;
   display: inline-block;
 }
 
@@ -472,12 +478,12 @@ onMounted(async () => {
 }
 
 .group-badge {
-  background: var(--background-soft);
-  color: var(--text-color);
-  padding: var(--space-xs) var(--space-sm);
+  background: var(--o08);
+  color: var(--text3);
+  padding: 3px 10px;
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
-  opacity: 0.8;
+  font-weight: 500;
 }
 
 .status-badge {
@@ -489,14 +495,14 @@ onMounted(async () => {
 }
 
 .status-badge.inactive {
-  background: var(--error-soft);
+  background: var(--error-bg);
   color: var(--error-color);
 }
 
 .user-inactive {
-  opacity: 0.7;
-  background: var(--background-mute);
-  border: 1px dashed var(--border-color);
+  opacity: 0.6;
+  background: var(--o04);
+  border: 1px dashed var(--o10);
 }
 
 .status-indicator {
@@ -506,8 +512,8 @@ onMounted(async () => {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background-color: var(--text-muted);
-  border: 2px solid var(--background-soft);
+  background-color: var(--muted);
+  border: 2px solid var(--surface);
 }
 
 .status-indicator.online {
@@ -516,14 +522,14 @@ onMounted(async () => {
 
 /* Locked button styles */
 .btn.locked {
-  background: var(--background-mute);
-  color: var(--text-muted);
+  background: var(--o06);
+  color: var(--muted);
   cursor: not-allowed;
   opacity: 0.7;
 }
 
 .btn.locked:hover {
-  background: var(--background-mute);
+  background: var(--o06);
   transform: none;
 }
 
@@ -540,7 +546,8 @@ onMounted(async () => {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(5, 6, 9, 0.66);
+  backdrop-filter: blur(3px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -548,14 +555,15 @@ onMounted(async () => {
 }
 
 .upgrade-modal {
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: 20px;
   padding: 0;
   max-width: 500px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
 }
 
 .upgrade-modal-header {
@@ -563,21 +571,22 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: var(--space-lg);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o08);
 }
 
 .upgrade-modal-header h3 {
   margin: 0;
-  color: var(--text-color);
+  font-family: var(--font-display);
+  color: var(--text);
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .close-button {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  color: var(--text-muted);
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  font-size: 1.2rem;
+  color: var(--muted);
   cursor: pointer;
   padding: 0;
   width: 32px;
@@ -585,13 +594,13 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   transition: all 0.2s ease;
 }
 
 .close-button:hover {
-  background: var(--background-mute);
-  color: var(--text-color);
+  background: var(--o10);
+  color: var(--text);
 }
 
 .upgrade-modal-content {
@@ -599,7 +608,7 @@ onMounted(async () => {
 }
 
 .upgrade-description {
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.6;
   margin-bottom: var(--space-lg);
 }
@@ -617,7 +626,7 @@ onMounted(async () => {
 }
 
 .feature-icon {
-  color: var(--success-color);
+  color: var(--accent-ink);
   font-size: 0.875rem;
 }
 
@@ -625,36 +634,37 @@ onMounted(async () => {
   display: flex;
   gap: var(--space-sm);
   padding: var(--space-lg);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--o08);
 }
 
 .upgrade-button {
   flex: 1;
   padding: var(--space-md);
-  border-radius: var(--radius-md);
-  font-weight: 500;
+  border-radius: 12px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   border: none;
 }
 
 .upgrade-button.primary {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
 }
 
 .upgrade-button.primary:hover {
-  background: var(--primary-dark);
+  filter: brightness(1.08);
   transform: translateY(-1px);
 }
 
 .upgrade-button.secondary {
-  background: var(--background-mute);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
+  background: var(--o06);
+  color: var(--text3);
+  border: 1px solid var(--o10);
 }
 
 .upgrade-button.secondary:hover {
-  background: var(--background-soft);
+  background: var(--o10);
+  color: var(--text);
 }
 </style> 

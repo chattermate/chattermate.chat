@@ -91,7 +91,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
     <!-- Analytics Content (when unlocked) -->
     <div v-else>
       <div class="analytics-header">
-        <h1>Analytics Dashboard</h1>
         <div class="time-range-selector">
           <button 
             v-for="range in ['24h', '7d', '30d', '90d']" 
@@ -552,7 +551,7 @@ fetchAnalytics()
 
 .analytics-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: var(--space-md);
 }
@@ -563,7 +562,7 @@ fetchAnalytics()
 
 .tab-buttons {
   display: flex;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o08);
   margin-bottom: var(--space-lg);
 }
 
@@ -572,14 +571,15 @@ fetchAnalytics()
   background: none;
   border: none;
   cursor: pointer;
-  font-size: var(--text-md);
-  color: var(--text-muted);
+  font-size: var(--text-sm);
+  color: var(--muted);
   transition: all var(--transition-fast);
   position: relative;
+  font-family: var(--font-sans);
 }
 
 .tab-buttons button.active {
-  color: var(--primary-color);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -590,31 +590,34 @@ fetchAnalytics()
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--primary-color);
+  background: var(--accent-ink);
 }
 
 .time-range-selector {
   display: flex;
-  gap: var(--space-xs);
-  background: var(--background-soft);
-  padding: var(--space-xs);
+  gap: 4px;
+  background: var(--o06);
+  border: 1px solid var(--o10);
+  padding: 4px;
   border-radius: var(--radius-full);
 }
 
 .time-range-selector button {
-  padding: var(--space-xs) var(--space-sm);
+  padding: 5px 12px;
   border: none;
   background: none;
   border-radius: var(--radius-full);
   cursor: pointer;
-  color: var(--text-color);
-  font-size: var(--text-sm);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
   transition: all var(--transition-fast);
 }
 
 .time-range-selector button.active {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
+  font-weight: 600;
 }
 
 .metrics-overview {
@@ -625,33 +628,39 @@ fetchAnalytics()
 }
 
 .metric-card {
-  background: var(--background-soft);
+  background: var(--surface);
   padding: var(--space-lg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  border-radius: 18px;
+  border: 1px solid var(--o08);
 }
 
 .metric-card h3 {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
   margin-bottom: var(--space-sm);
 }
 
 .metric-value {
+  font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   display: flex;
   align-items: baseline;
   gap: var(--space-sm);
+  color: var(--text);
 }
 
 .change {
   font-size: var(--text-sm);
-  color: var(--error-color);
+  color: var(--c-coral);
 }
 
 .change.positive {
-  color: var(--success-color);
+  color: var(--c-teal);
 }
 
 .charts-grid {
@@ -663,14 +672,17 @@ fetchAnalytics()
 
 .chart-container {
   padding: var(--space-lg);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  background: var(--background-soft);
+  border-radius: 18px;
+  border: 1px solid var(--o08);
+  background: var(--surface);
 }
 
 .chart-container h3 {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
   margin-bottom: var(--space-md);
 }
 

@@ -341,13 +341,6 @@ onMounted(async () => {
 <template>
   <DashboardLayout>
     <div class="integrations-settings">
-      <div class="page-header">
-        <h1 class="page-title">Integrations</h1>
-        <p class="page-description">
-          Connect ChatterMate with your favorite tools and services to enhance your workflow.
-        </p>
-      </div>
-      
       <div class="settings-section">
         <div class="section-header">
           <h2>Available Integrations</h2>
@@ -641,39 +634,43 @@ onMounted(async () => {
 }
 
 .page-title {
-  font-size: var(--text-2xl);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
   margin-bottom: var(--space-xs);
 }
 
 .page-description {
-  color: var(--text-muted);
-  font-size: var(--text-md);
+  color: var(--muted);
+  font-size: 15px;
 }
 
 .settings-section {
-  background: var(--background-color);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  background: var(--surface);
+  border-radius: 20px;
+  border: 1px solid var(--o08);
   padding: var(--space-lg);
   margin-bottom: var(--space-xl);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .section-header {
   margin-bottom: var(--space-lg);
   padding-bottom: var(--space-md);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o08);
 }
 
 .section-header h2 {
+  font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--text);
   margin-bottom: var(--space-xs);
 }
 
 .section-header p {
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .integration-cards {
@@ -683,26 +680,26 @@ onMounted(async () => {
 }
 
 .integration-card {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--o10);
+  border-radius: 16px;
   padding: var(--space-lg);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
-  background-color: white;
+  background: var(--o05);
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   height: 100%;
 }
 
 .integration-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--o16);
+  background: var(--o08);
   transform: translateY(-2px);
 }
 
 .integration-card.coming-soon {
-  opacity: 0.7;
-  background-color: var(--background-soft);
+  opacity: 0.6;
+  background: var(--o04);
 }
 
 .integration-header {
@@ -719,23 +716,24 @@ onMounted(async () => {
 }
 
 .integration-logo.placeholder {
-  background-color: var(--background-mute);
+  background: var(--o10);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--text-xl);
   font-weight: bold;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .integration-info h3 {
   font-size: var(--text-lg);
   font-weight: 600;
+  color: var(--text);
   margin-bottom: var(--space-xs);
 }
 
 .integration-info p {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: var(--text-sm);
   line-height: 1.5;
 }
@@ -747,7 +745,7 @@ onMounted(async () => {
 }
 
 .loading-indicator {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: var(--text-sm);
   display: flex;
   align-items: center;
@@ -758,8 +756,8 @@ onMounted(async () => {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(0, 0, 0, 0.1);
-  border-top-color: var(--primary-color);
+  border: 2px solid var(--o10);
+  border-top-color: var(--accent-ink);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -778,7 +776,7 @@ onMounted(async () => {
 
 .site-link {
   font-size: var(--text-sm);
-  color: var(--primary-color);
+  color: var(--c-teal);
   text-decoration: none;
   display: flex;
   align-items: center;
@@ -787,13 +785,13 @@ onMounted(async () => {
   margin-top: var(--space-xs);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
-  background-color: #f0f7ff; /* Light blue background */
+  background: rgba(95,227,214,.1);
+  border: 1px solid rgba(95,227,214,.2);
   width: fit-content;
 }
 
 .site-link:hover {
-  color: var(--primary-dark);
-  background-color: #e0f0ff; /* Slightly darker blue on hover */
+  background: rgba(95,227,214,.18);
   transform: translateY(-1px);
 }
 
@@ -817,32 +815,32 @@ onMounted(async () => {
 }
 
 .status-badge.connected {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
+  background: rgba(34,197,94,.15);
+  color: #4ade80;
 }
 
 .status-badge.not-connected {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
+  background: var(--warning-bg);
+  color: var(--warning-color);
 }
 
 .status-badge.coming-soon {
-  background: linear-gradient(135deg, #9ca3af, #6b7280);
-  color: white;
+  background: var(--o08);
+  color: var(--muted);
 }
 
 .installation-instructions {
   margin-top: var(--space-md);
   padding: var(--space-md);
-  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
-  border-radius: var(--radius-md);
-  border: 1px solid #bae6fd;
+  background: rgba(95,227,214,.08);
+  border-radius: 12px;
+  border: 1px solid rgba(95,227,214,.15);
 }
 
 .instructions-title {
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-color);
+  color: var(--text3);
   margin-bottom: var(--space-sm);
 }
 
@@ -850,7 +848,7 @@ onMounted(async () => {
   margin: 0;
   padding-left: var(--space-lg);
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.6;
 }
 
@@ -864,15 +862,15 @@ onMounted(async () => {
 
 .shopify-install-note {
   padding: var(--space-md);
-  background: linear-gradient(135deg, #fef3c7, #fde68a);
-  border-radius: var(--radius-md);
-  border: 1px solid #fcd34d;
+  background: var(--warning-bg);
+  border-radius: 12px;
+  border: 1px solid rgba(217,119,6,.2);
 }
 
 .note-text {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--text-color);
+  color: var(--warning-color);
   display: flex;
   align-items: flex-start;
   gap: var(--space-sm);
@@ -912,38 +910,37 @@ onMounted(async () => {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   font-weight: 600;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  filter: brightness(1.1);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  filter: brightness(1.08);
 }
 
 .btn-danger {
-  background-color: var(--error-color);
-  color: white;
+  background: transparent;
+  border: 1px solid rgba(255,138,115,.3);
+  color: var(--c-coral);
 }
 
 .btn-danger:hover {
-  background-color: #d63939; /* Slightly darker shade of error color */
+  background: rgba(255,138,115,.1);
   transform: translateY(-1px);
 }
 
 .btn-coming-soon {
-  background: linear-gradient(135deg, #9ca3af, #6b7280);
-  color: white;
+  background: var(--o08);
+  color: var(--muted);
   opacity: 0.7;
   cursor: not-allowed;
 }
 
 .btn-disabled {
-  background-color: var(--background-mute);
-  color: var(--text-muted);
+  background: var(--o06);
+  color: var(--muted);
   cursor: not-allowed;
 }
 

@@ -312,86 +312,79 @@ const handleVerifyAndResetPassword = async () => {
 </script>
 
 <template>
-    <div class="login-page">
-        <div class="login-container">
-            <div class="login-content">
-                <!-- Login Form Container -->
-                <div class="login-form-container">
-                    <div class="logo-container">
-                        <img src="@/assets/logo-signup.svg" alt="Logo" class="logo" />
-                    </div>
+    <div class="auth-page">
+        <!-- Left: form panel -->
+        <div class="form-panel">
+            <!-- Logo mark -->
+            <div class="auth-logo">
+                <div class="logo-mark">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+                <span class="logo-word">ChatterMate</span>
+            </div>
 
-                    <h1 class="title">Welcome Back</h1>
-                    <p class="subtitle">Sign in to your account to continue</p>
+            <h1 class="auth-title">Welcome back</h1>
+            <p class="auth-sub">Sign in to continue to your dashboard</p>
 
-                    <!-- Slack Installation Banner -->
-                    <div v-if="hasPendingSlackInstall" class="slack-install-banner">
-                        <div class="slack-icon">
-                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
-                            </svg>
-                        </div>
-                        <div class="slack-message">
-                            <strong>Connect Slack Workspace</strong>
-                            <span v-if="pendingSlackTeam">Sign in to connect <em>{{ pendingSlackTeam }}</em> to your organization</span>
-                            <span v-else>Sign in to complete your Slack installation</span>
-                        </div>
-                    </div>
+            <!-- Slack Installation Banner -->
+            <div v-if="hasPendingSlackInstall" class="slack-banner">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="#C9F24E">
+                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                </svg>
+                <div>
+                    <strong>Connect Slack Workspace</strong>
+                    <span v-if="pendingSlackTeam"> — connect <em>{{ pendingSlackTeam }}</em></span>
+                    <span v-else> — complete your Slack installation</span>
+                </div>
+            </div>
 
-                    <form @submit.prevent="handleLogin" class="login-form">
-                        <div class="form-group">
-                            <label for="email">Email</label>
-                            <div class="input-wrapper">
-                                <input id="email" v-model="email" type="email" required placeholder="Enter your email" />
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="password">Password</label>
-                            <div class="input-wrapper">
-                                <input id="password" v-model="password" type="password" required placeholder="Enter your password" />
-                            </div>
-                            <div v-if="hasEnterpriseModule" class="forgot-password-link-wrapper">
-                                <a href="#" @click.prevent="openForgotPasswordModal" class="forgot-password-link">Forgot Password?</a>
-                            </div>
-                        </div>
-
-                        <div v-if="error" class="error-message" role="alert">
-                            {{ error }}
-                        </div>
-
-                        <button type="submit" class="submit-btn" :disabled="isLoading">
-                            <span v-if="isLoading">{{ router.currentRoute.value.query.embedded === 'true' ? 'Connecting...' : 'Signing in...' }}</span>
-                            <span v-else>Sign In</span>
-                        </button>
-                        
-                        <div v-if="hasEnterpriseModule" class="signup-link-container">
-                            <p>Don't have an account? <a href="#" @click.prevent="navigateToSignup" class="signup-link">Sign up</a></p>
-                        </div>
-                    </form>
+            <form @submit.prevent="handleLogin" class="auth-form">
+                <div class="field">
+                    <label for="email">Email</label>
+                    <input id="email" v-model="email" type="email" required placeholder="you@company.com" autocomplete="email" />
                 </div>
 
-                <!-- Illustration Container -->
-                <div class="illustration-container">
-                    <!-- Custom SVG Illustration -->
-                    <svg class="background-illustration" viewBox="0 0 800 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <!-- Background Elements -->
-                        <path d="M0 0 L800 0 L800 600 L0 600 Z" fill="#FEF2F2"/>
-                        <path d="M600 100 Q 750 150 700 300 T 600 500 L 800 600 L 800 0 L 600 100Z" fill="#FEE2E2" opacity="0.5"/>
-                        <path d="M650 150 Q 800 200 750 350 T 650 550 L 850 650 L 850 50 L 650 150Z" fill="#FECACA" opacity="0.3"/>
-                        
-                        <!-- Decorative Elements -->
-                        <circle cx="600" cy="200" r="8" fill="#c2471f" opacity="0.6"/>
-                        <circle cx="650" cy="250" r="6" fill="#c2471f" opacity="0.4"/>
-                        <circle cx="700" cy="180" r="10" fill="#c2471f" opacity="0.5"/>
-                        <circle cx="580" cy="300" r="7" fill="#c2471f" opacity="0.3"/>
-                    </svg>
-
-                    <div class="illustration-content">
-                        <h2>Welcome to ChatterMate</h2>
-                        <p>Access your AI-powered customer support dashboard and deliver exceptional service.</p>
+                <div class="field">
+                    <div class="field-row">
+                        <label for="password">Password</label>
+                        <a v-if="hasEnterpriseModule" href="#" @click.prevent="openForgotPasswordModal" class="forgot-link">Forgot password?</a>
                     </div>
+                    <input id="password" v-model="password" type="password" required placeholder="••••••••" autocomplete="current-password" />
                 </div>
+
+                <div v-if="error" class="auth-error" role="alert">{{ error }}</div>
+
+                <button type="submit" class="auth-submit" :disabled="isLoading">
+                    <span v-if="isLoading">{{ router.currentRoute.value.query.embedded === 'true' ? 'Connecting…' : 'Signing in…' }}</span>
+                    <span v-else>Sign In</span>
+                </button>
+
+                <p v-if="hasEnterpriseModule" class="signup-prompt">
+                    Don't have an account?
+                    <a href="#" @click.prevent="navigateToSignup" class="signup-link">Sign up</a>
+                </p>
+            </form>
+        </div>
+
+        <!-- Right: brand panel with aurora -->
+        <div class="brand-panel">
+            <div class="aurora-blob blob-lime"></div>
+            <div class="aurora-blob blob-purple"></div>
+            <div class="aurora-blob blob-teal"></div>
+
+            <div class="orb-wrap">
+                <div class="orb"></div>
+            </div>
+
+            <div class="brand-copy">
+                <h2>Support that <em>learns itself.</em></h2>
+                <ul class="feature-list">
+                    <li><span class="check">✓</span> Resolves tickets automatically</li>
+                    <li><span class="check">✓</span> Learns from every conversation</li>
+                    <li><span class="check">✓</span> Hands off to humans gracefully</li>
+                </ul>
             </div>
         </div>
 
@@ -528,278 +521,316 @@ const handleVerifyAndResetPassword = async () => {
 </template>
 
 <style scoped>
-.login-page {
+/* Auth page is always dark — do not inherit app theme */
+.auth-page {
     min-height: 100vh;
-    background: var(--background-soft);
+    display: grid;
+    grid-template-columns: 1.02fr .98fr;
+    background: #0B0C10;
+    color: #F5F6F8;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+}
+
+/* ── Form panel ── */
+.form-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 60px 56px;
+    background: #0B0C10;
+    min-height: 100vh;
+}
+
+.auth-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 44px;
+}
+
+.logo-mark {
+    width: 32px;
+    height: 32px;
+    background: #C9F24E;
+    border-radius: 10px 10px 10px 2px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2rem;
-}
-
-.login-container {
-    width: 100%;
-    max-width: 1200px;
-    background: var(--background-color);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-}
-
-.login-content {
-    display: flex;
-    width: 100%;
-    background: white;
-}
-
-.login-form-container {
-    flex: 1;
-    padding: 3rem;
-    max-width: 480px;
-    background: white;
-}
-
-.logo-container {
-    margin-bottom: 2rem;
-    display: inline-block;
-}
-
-.logo {
-    height: 40px;
-    width: auto;
-    display: block;
-}
-
-.title {
-    font-size: 2.5rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    color: var(--text-primary);
-}
-
-.subtitle {
-    color: var(--text-muted);
-    margin-bottom: 2rem;
-}
-
-/* Slack Installation Banner */
-.slack-install-banner {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 1rem;
-    background: linear-gradient(135deg, #4A154B10, #36C5F010);
-    border: 1px solid #4A154B30;
-    border-radius: var(--radius-md);
-    margin-bottom: 1.5rem;
-}
-
-.slack-icon {
+    gap: 3.5px;
     flex-shrink: 0;
-    color: #4A154B;
-    margin-top: 2px;
 }
 
-.slack-message {
+.dot {
+    width: 4.5px;
+    height: 4.5px;
+    background: #0B0C10;
+    border-radius: 50%;
+}
+
+.logo-word {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    color: #F5F6F8;
+}
+
+.auth-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #F5F6F8;
+    margin-bottom: 10px;
+    line-height: 1.1;
+}
+
+.auth-sub {
+    color: #9CA3B0;
+    font-size: 15px;
+    margin-bottom: 36px;
+}
+
+/* Slack banner */
+.slack-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(201,242,78,.06);
+    border: 1px solid rgba(201,242,78,.2);
+    border-radius: 10px;
+    margin-bottom: 24px;
+    font-size: 13.5px;
+    color: #C7CCD6;
+}
+
+.slack-banner strong { color: #F5F6F8; }
+.slack-banner em { color: #C9F24E; font-style: normal; }
+
+/* Form */
+.auth-form {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
+    gap: 20px;
+    max-width: 400px;
 }
 
-.slack-message strong {
-    color: var(--text-primary);
-    font-weight: 600;
-}
-
-.slack-message span {
-    color: var(--text-secondary);
-}
-
-.slack-message em {
-    color: #4A154B;
-    font-style: normal;
-    font-weight: 500;
-}
-
-.login-form {
+.field {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 9px;
 }
 
-.form-group {
-    margin-bottom: 0;
+.field-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-.form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    color: var(--text-primary);
+.field label {
+    font-size: 13.5px;
     font-weight: 500;
-    font-size: 0.875rem;
+    color: #C7CCD6;
 }
 
-.input-wrapper input {
+.field input {
     width: 100%;
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--background-color);
-    font-size: 1rem;
-    color: var(--text-primary);
-    transition: var(--transition-fast);
+    padding: 14px 16px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 12px;
+    color: #F5F6F8;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-size: 15px;
+    transition: border-color 0.18s, box-shadow 0.18s;
 }
 
-.input-wrapper input:focus {
-    border-color: var(--primary-color);
-    box-shadow: var(--ring-focus);
+.field input::placeholder { color: #5B6271; }
+
+.field input:focus {
     outline: none;
+    border-color: #C9F24E;
+    box-shadow: 0 0 0 3px rgba(201,242,78,.15);
 }
 
-.input-wrapper input::placeholder {
-    color: var(--text-placeholder);
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #0E0F14 inset !important;
+    -webkit-text-fill-color: #F5F6F8 !important;
+    caret-color: #F5F6F8;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    transition: background-color 9999s ease-in-out 0s;
 }
 
-.error-message {
-    color: var(--error-color);
-    text-align: center;
-    padding: 0.75rem;
-    background: rgba(239, 68, 68, 0.1);
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    margin: 0;
+.forgot-link {
+    font-size: 13px;
+    color: #C9F24E;
+    text-decoration: none;
+}
+.forgot-link:hover { text-decoration: underline; }
+
+.auth-error {
+    color: #FF8A73;
+    background: rgba(255,138,115,.1);
+    border: 1px solid rgba(255,138,115,.2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13.5px;
 }
 
-.submit-btn {
+.auth-submit {
     width: 100%;
-    padding: 0.75rem;
-    background: var(--primary-color);
-    color: var(--background-color);
+    padding: 15px;
+    background: #C9F24E;
+    color: #0B0C10;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: 12px;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 15px;
     cursor: pointer;
-    transition: var(--transition-fast);
+    transition: opacity 0.18s;
 }
 
-.submit-btn:hover:not(:disabled) {
-    background: var(--accent-color);
-}
+.auth-submit:hover:not(:disabled) { opacity: 0.88; }
+.auth-submit:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.submit-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
-.signup-link-container {
+.signup-prompt {
     text-align: center;
-    margin-top: 1rem;
-    font-size: 0.875rem;
-    color: var(--text-secondary);
+    font-size: 14px;
+    color: #7A8190;
 }
 
 .signup-link {
-    color: var(--primary-color);
-    font-weight: 500;
+    color: #C9F24E;
     text-decoration: none;
-    transition: var(--transition-fast);
+    font-weight: 500;
 }
+.signup-link:hover { text-decoration: underline; }
 
-.signup-link:hover {
-    color: var(--accent-color);
-    text-decoration: underline;
-}
-
-.illustration-container {
-    flex: 1.2;
-    background: var(--background-soft);
-    padding: 0;
-    display: flex;
-    align-items: flex-end;
+/* ── Brand panel ── */
+.brand-panel {
     position: relative;
+    background: linear-gradient(160deg, #101119, #0A0B0E);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 60px 56px;
+    min-height: 100vh;
 }
 
-.background-illustration {
+/* Aurora blobs */
+.aurora-blob {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 0;
+    border-radius: 50%;
+    filter: blur(80px);
+    animation: cm-aurora 14s ease-in-out infinite;
 }
 
-.illustration-content {
+.blob-lime {
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(circle, rgba(201,242,78,.32), rgba(201,242,78,.06));
+    top: -80px;
+    right: -60px;
+    animation-duration: 16s;
+}
+
+.blob-purple {
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(157,140,255,.28), rgba(157,140,255,.04));
+    top: 20%;
+    left: -80px;
+    animation-duration: 20s;
+    animation-delay: -5s;
+}
+
+.blob-teal {
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(95,227,214,.22), rgba(95,227,214,.03));
+    bottom: 15%;
+    right: 10%;
+    animation-duration: 18s;
+    animation-delay: -9s;
+}
+
+/* Central orb */
+.orb-wrap {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: cm-float 6s ease-in-out infinite;
+}
+
+.orb {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, #C9F24E, #5FE3D6, #9D8CFF, #C9F24E);
+    filter: blur(40px);
+    opacity: .4;
+    animation: cm-spin 12s linear infinite;
+}
+
+/* Brand copy */
+.brand-copy {
     position: relative;
     z-index: 1;
-    padding: 3rem;
-    max-width: 400px;
-    margin-top: auto;
-    margin-bottom: 6rem;
-    margin-left: 3rem;
-    background: linear-gradient(to bottom, rgba(254, 242, 242, 0), rgba(254, 242, 242, 0.95) 20%);
-    border-radius: 16px;
-    backdrop-filter: blur(4px);
 }
 
-.illustration-content h2 {
-    font-size: 2.5rem;
+.brand-copy h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 36px;
     font-weight: 700;
-    margin-bottom: 1.5rem;
-    color: var(--text-primary);
-    line-height: 1.2;
+    letter-spacing: -0.03em;
+    color: #F5F6F8;
+    line-height: 1.18;
+    margin-bottom: 28px;
 }
 
-.illustration-content p {
-    font-size: 1.125rem;
-    color: var(--text-secondary);
-    line-height: 1.6;
-    opacity: 0.9;
-    max-width: 360px;
+.brand-copy h2 em {
+    font-style: normal;
+    color: #C9F24E;
 }
 
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.feature-list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    color: #9CA3B0;
+}
+
+.check {
+    color: #C9F24E;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+/* ── Responsive ── */
 @media (max-width: 1024px) {
-    .illustration-container {
-        display: none;
-    }
-    
-    .login-form-container {
-        max-width: none;
-    }
+    .auth-page { grid-template-columns: 1fr; }
+    .brand-panel { display: none; }
 }
 
-@media (max-width: 640px) {
-    .login-page {
-        padding: 1rem;
-    }
-    
-    .login-form-container {
-        padding: 2rem;
-    }
-    
-    .login-container {
-        border-radius: 16px;
-    }
-}
-
-/* Forgot Password Link */
-.forgot-password-link-wrapper {
-    margin-top: 0.5rem;
-    text-align: right;
-}
-
-.forgot-password-link {
-    color: var(--primary-color);
-    font-size: 0.875rem;
-    text-decoration: none;
-    transition: var(--transition-fast);
-}
-
-.forgot-password-link:hover {
-    color: var(--accent-color);
-    text-decoration: underline;
+@media (max-width: 600px) {
+    .form-panel { padding: 40px 28px; }
+    .auth-title { font-size: 30px; }
 }
 
 /* Modal Overlay */
@@ -809,7 +840,8 @@ const handleVerifyAndResetPassword = async () => {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(5,6,9,.7);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -818,13 +850,14 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .modal-content {
-    background: var(--background-color);
-    border-radius: var(--radius-lg);
+    background: #13151C;
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 20px;
     width: 100%;
     max-width: 500px;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 20px 50px rgba(0,0,0,.5);
 }
 
 .modal-header {
@@ -832,35 +865,35 @@ const handleVerifyAndResetPassword = async () => {
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid rgba(255,255,255,.08);
 }
 
 .modal-header h2 {
-    font-size: 1.5rem;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.25rem;
     font-weight: 600;
     margin: 0;
-    color: var(--text-primary);
+    color: #F5F6F8;
 }
 
 .close-btn {
     background: none;
-    border: none;
-    font-size: 2rem;
-    color: var(--text-muted);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 8px;
+    font-size: 1.5rem;
+    color: #7A8190;
     cursor: pointer;
-    padding: 0;
     width: 32px;
     height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-md);
-    transition: var(--transition-fast);
+    transition: 0.18s;
 }
 
 .close-btn:hover {
-    background: var(--background-soft);
-    color: var(--text-primary);
+    background: rgba(255,255,255,.06);
+    color: #F5F6F8;
 }
 
 .modal-body {
@@ -874,17 +907,18 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .step-description {
-    color: var(--text-secondary);
+    color: #9CA3B0;
     margin: 0;
     line-height: 1.5;
+    font-size: 14px;
 }
 
 .success-message {
-    color: var(--success-color, #10b981);
+    color: #0f9d6e;
     text-align: center;
     padding: 0.75rem;
-    background: rgba(16, 185, 129, 0.1);
-    border-radius: var(--radius-md);
+    background: rgba(15,157,110,.1);
+    border-radius: 10px;
     font-size: 0.875rem;
     margin: 0;
 }
@@ -897,7 +931,7 @@ const handleVerifyAndResetPassword = async () => {
 .password-requirements .requirements-title {
     margin: 0 0 0.25rem 0;
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: #7A8190;
 }
 
 .password-requirements ul {
@@ -907,7 +941,7 @@ const handleVerifyAndResetPassword = async () => {
 
 .password-requirements li {
     font-size: 0.8125rem;
-    color: var(--text-secondary);
+    color: #9CA3B0;
     margin: 0.125rem 0;
 }
 
@@ -915,27 +949,62 @@ const handleVerifyAndResetPassword = async () => {
     color: var(--success-color, #10b981);
 }
 
+/* Modal uses the same dark form-field style as the auth form */
+.form-group { margin-bottom: 0; }
+
+.form-group label {
+    display: block;
+    margin-bottom: 9px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #C7CCD6;
+}
+
+.input-wrapper input {
+    width: 100%;
+    padding: 13px 15px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 12px;
+    color: #F5F6F8;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-size: 14px;
+    transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.input-wrapper input::placeholder { color: #5B6271; }
+.input-wrapper input:focus {
+    outline: none;
+    border-color: #C9F24E;
+    box-shadow: 0 0 0 3px rgba(201,242,78,.15);
+}
+.input-wrapper input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.error-message {
+    color: #FF8A73;
+    background: rgba(255,138,115,.1);
+    border: 1px solid rgba(255,138,115,.2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13.5px;
+}
+
 .modal-submit-btn {
     width: 100%;
-    padding: 0.75rem;
-    background: var(--primary-color);
-    color: var(--background-color);
+    padding: 13px;
+    background: #C9F24E;
+    color: #0B0C10;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: 12px;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 15px;
     cursor: pointer;
-    transition: var(--transition-fast);
+    transition: opacity 0.18s;
 }
 
-.modal-submit-btn:hover:not(:disabled) {
-    background: var(--accent-color);
-}
-
-.modal-submit-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
+.modal-submit-btn:hover:not(:disabled) { opacity: 0.88; }
+.modal-submit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .modal-actions {
     display: flex;
@@ -945,39 +1014,27 @@ const handleVerifyAndResetPassword = async () => {
 
 .modal-back-btn {
     flex: 1;
-    padding: 0.75rem;
-    background: var(--background-soft);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    padding: 13px;
+    background: rgba(255,255,255,.06);
+    color: #C7CCD6;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 12px;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 15px;
     cursor: pointer;
-    transition: var(--transition-fast);
+    transition: 0.18s;
 }
 
 .modal-back-btn:hover:not(:disabled) {
-    background: var(--background-color);
-    border-color: var(--text-muted);
+    background: rgba(255,255,255,.1);
+    color: #F5F6F8;
 }
 
-.modal-back-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
+.modal-back-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 640px) {
-    .modal-content {
-        max-width: 100%;
-        margin: 1rem;
-    }
-    
-    .modal-header {
-        padding: 1rem;
-    }
-    
-    .modal-body {
-        padding: 1rem;
-    }
+    .modal-content { max-width: 100%; margin: 1rem; }
+    .modal-header, .modal-body { padding: 1rem; }
 }
 </style>

@@ -189,10 +189,6 @@ const formatDate = (dateString: string) => {
     <template v-else>
       <!-- Header -->
       <header class="page-header">
-        <div>
-          <h1>Widget Apps</h1>
-          <p class="subtitle">Manage widget apps and API keys for your organization</p>
-        </div>
         <button v-if="hasAnyApps" class="btn btn-primary" @click="showCreateModal = true">
           <PlusIcon class="icon" />
           Create App
@@ -421,7 +417,7 @@ const formatDate = (dateString: string) => {
 
 .page-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: var(--space-xl);
 }
