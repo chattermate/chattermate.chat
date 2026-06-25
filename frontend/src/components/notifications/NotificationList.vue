@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { notificationService, type Notification } from '@/services/notification'
 import { getNotificationIcon } from './notificationIcons'
 
@@ -59,6 +59,29 @@ const markAsRead = async (id: number) => {
     }
 }
 
+const activeFilter = ref<'all' | 'unread'>('all')
+
+const filteredNotifications = computed(() =>
+    activeFilter.value === 'unread'
+        ? notifications.value.filter(n => !n.is_read)
+        : notifications.value
+)
+
+const hasUnread = computed(() => notifications.value.some(n => !n.is_read))
+
+const markAllRead = async () => {
+    const unread = notifications.value.filter(n => !n.is_read)
+    for (const n of unread) {
+        try {
+            await notificationService.markAsRead(n.id)
+            n.is_read = true
+        } catch (err) {
+            console.error('Error marking notification as read:', err)
+        }
+    }
+    if (unread.length) emit('notification-read')
+}
+
 const formatTime = (timestamp: string): string => {
     const date = new Date(timestamp)
     const now = new Date()
@@ -93,46 +116,59 @@ onMounted(fetchNotifications)
         <div class="drawer-header">
             <h3>Notifications</h3>
             <div class="header-actions">
-                <button 
-                    class="refresh-button" 
+                <button
+                    class="refresh-button"
                     @click="fetchNotifications"
                     :disabled="isLoading"
                     :class="{ 'loading': isLoading }"
+                    title="Refresh"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
                     </svg>
                 </button>
-                <button class="close-button" @click="emit('close')">&times;</button>
+                <button class="close-button" @click="emit('close')" title="Close">&times;</button>
             </div>
         </div>
 
+        <div class="drawer-filter">
+            <div class="filter-tabs">
+                <button class="filter-tab" :class="{ active: activeFilter === 'all' }" @click="activeFilter = 'all'">All</button>
+                <button class="filter-tab" :class="{ active: activeFilter === 'unread' }" @click="activeFilter = 'unread'">Unread</button>
+            </div>
+            <button class="mark-all" :disabled="!hasUnread" @click="markAllRead">Mark all read</button>
+        </div>
+
         <div class="drawer-content">
-            <div v-if="isLoading" class="loading">
+            <div v-if="isLoading" class="state-message">
                 Loading notifications...
             </div>
 
-            <div v-else-if="error" class="error">
+            <div v-else-if="error" class="state-message">
                 {{ error }}
             </div>
 
-            <div v-else-if="!notifications.length" class="empty">
-                No notifications
+            <div v-else-if="!filteredNotifications.length" class="empty-state">
+                <div class="empty-title">You're all caught up</div>
+                <div class="empty-sub">No {{ activeFilter === 'unread' ? 'unread ' : '' }}notifications.</div>
             </div>
 
             <div v-else class="notifications">
-                <div v-for="notification in notifications" :key="notification.id" class="notification-item"
+                <div v-for="notification in filteredNotifications" :key="notification.id" class="notification-item"
                     :class="{ unread: !notification.is_read }" @click="markAsRead(notification.id)">
-                    <div class="notification-header">
+                    <span class="notification-icon-wrap">
                         <img v-if="getNotificationIcon(notification.type.toLowerCase())"
                             :src="getNotificationIcon(notification.type.toLowerCase())" class="notification-type-icon"
                             :alt="notification.type" />
-                        <div class="notification-time">
-                            {{ formatTime(notification.created_at) }}
+                    </span>
+                    <div class="notification-body">
+                        <div class="notification-top">
+                            <span class="notification-title">{{ notification.title }}</span>
+                            <span class="notification-time">{{ formatTime(notification.created_at) }}</span>
                         </div>
+                        <div class="notification-message">{{ notification.message }}</div>
                     </div>
-                    <div class="notification-title">{{ notification.title }}</div>
-                    <div class="notification-message">{{ notification.message }}</div>
+                    <span class="unread-dot" :class="{ on: !notification.is_read }"></span>
                 </div>
             </div>
         </div>
@@ -143,8 +179,9 @@ onMounted(fetchNotifications)
 .notification-drawer {
     position: fixed;
     top: 0;
-    right: -400px;
-    width: 400px;
+    right: -380px;
+    width: 380px;
+    max-width: 90vw;
     height: 100vh;
     background: var(--bg2);
     border-left: 1px solid var(--o08);
@@ -160,8 +197,8 @@ onMounted(fetchNotifications)
 }
 
 .drawer-header {
-    padding: var(--space-md) var(--space-lg);
-    border-bottom: 1px solid var(--o08);
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--o07);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -171,8 +208,8 @@ onMounted(fetchNotifications)
 .drawer-header h3 {
     margin: 0;
     font-family: var(--font-display);
-    font-size: 17px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: var(--font-weight-bold);
     color: var(--text);
 }
 
@@ -183,22 +220,22 @@ onMounted(fetchNotifications)
 }
 
 .refresh-button {
-    background: var(--o05);
-    border: 1px solid var(--o10);
+    background: transparent;
+    border: 1px solid var(--o12);
     border-radius: 8px;
     cursor: pointer;
-    padding: 6px;
+    width: 30px;
+    height: 30px;
     color: var(--muted);
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .refresh-button:hover {
-    background: var(--o10);
+    background: var(--o06);
     color: var(--text);
-    transform: scale(1.1);
 }
 
 .refresh-button:disabled {
@@ -216,14 +253,14 @@ onMounted(fetchNotifications)
 }
 
 .close-button {
-    background: var(--o05);
-    border: 1px solid var(--o10);
-    font-size: 18px;
+    background: transparent;
+    border: 1px solid var(--o12);
+    font-size: 15px;
     cursor: pointer;
     color: var(--muted);
-    transition: all 0.2s ease;
-    width: 32px;
-    height: 32px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    width: 30px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -231,78 +268,174 @@ onMounted(fetchNotifications)
 }
 
 .close-button:hover {
-    background: var(--o10);
+    background: var(--o06);
     color: var(--text);
+}
+
+/* Filter row */
+.drawer-filter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--o07);
+}
+
+.filter-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    background: var(--surface);
+    border: 1px solid var(--o08);
+    border-radius: 9px;
+}
+
+.filter-tab {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 5px 13px;
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: var(--font-weight-medium);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.filter-tab.active {
+    background: var(--accent-bg-12);
+    color: var(--accent-ink);
+}
+
+.mark-all {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--accent-ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: var(--font-weight-medium);
+    transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.mark-all:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.mark-all:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 .drawer-content {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-md);
+    min-height: 0;
 }
 
 .notification-item {
-    margin: var(--space-sm);
-    padding: var(--space-md);
-    border-radius: 14px;
-    background: var(--o05);
-    border: 1px solid var(--o08);
-    border-left: 3px solid var(--o12);
-    cursor: pointer;
-    transition: transform 0.2s ease, background 0.2s ease;
     display: flex;
-    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--o05);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
 }
 
 .notification-item:hover {
-    transform: translateY(-1px);
-    background: var(--o08);
+    background: var(--o03);
 }
 
 .notification-item.unread {
-    border-left-color: var(--accent-ink);
-    background: rgba(201, 242, 78, 0.05);
+    background: var(--accent-bg-06);
 }
 
-.notification-header {
+.notification-icon-wrap {
+    flex-shrink: 0;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-sm);
-    gap: var(--space-sm);
+    justify-content: center;
+    width: 20px;
+    height: 20px;
 }
 
 .notification-type-icon {
-    width: 20px;
-    height: 20px;
-    color: var(--muted);
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
+    filter: var(--icon-filter, brightness(0) invert(1));
+    opacity: var(--icon-opacity, 0.55);
+}
+
+.notification-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 .notification-title {
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: var(--space-xs);
-    word-break: break-word;
-}
-
-.notification-message {
-    font-size: var(--text-sm);
-    color: var(--muted);
+    font-size: 14px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--text2);
     word-break: break-word;
 }
 
 .notification-time {
-    font-size: var(--text-xs);
-    color: var(--text-color-lighter);
+    font-size: 11px;
+    color: var(--muted2);
+    flex-shrink: 0;
     white-space: nowrap;
 }
 
-.loading,
-.error,
-.empty {
+.notification-message {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-top: 3px;
+    word-break: break-word;
+}
+
+.unread-dot {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: transparent;
+    margin-top: 6px;
+}
+
+.unread-dot.on {
+    background: var(--accent-ink);
+}
+
+.state-message {
     padding: var(--space-md);
     text-align: center;
-    color: var(--text-color-light);
+    color: var(--muted2);
+}
+
+.empty-state {
+    padding: 60px 24px;
+    text-align: center;
+}
+
+.empty-title {
+    font-size: 14px;
+    color: var(--muted2);
+    margin-bottom: 4px;
+}
+
+.empty-sub {
+    font-size: 12.5px;
+    color: var(--faint);
 }
 </style>

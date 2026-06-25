@@ -287,6 +287,8 @@ const layoutClasses = computed(() => ({
                             <NotificationList :is-open="showNotifications" @close="showNotifications = false"
                                 @notification-read="fetchUnreadCount" />
 
+                            <div class="topbar-divider" aria-hidden="true"></div>
+
                             <div class="user-profile">
                                 <div class="profile-trigger" @click="showUserMenu = !showUserMenu">
                                     <div class="avatar-wrapper">
@@ -430,10 +432,10 @@ const layoutClasses = computed(() => ({
 
 .topbar-page-title {
     font-family: var(--font-display);
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--text);
+    font-size: 16px;
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: -0.01em;
+    color: var(--text2);
     margin: 0;
     line-height: 1;
 }
@@ -493,7 +495,7 @@ const layoutClasses = computed(() => ({
 .right-section {
     display: flex;
     align-items: center;
-    gap: var(--space-lg);
+    gap: 18px;
 }
 
 .search input {
@@ -507,7 +509,7 @@ const layoutClasses = computed(() => ({
 .user-menu {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: 18px;
 }
 
 .notifications {
@@ -536,13 +538,15 @@ const layoutClasses = computed(() => ({
 
 .avatar-wrapper {
     position: relative;
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--grad-purple-teal);
 }
 
 .avatar {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     object-fit: cover;
 }
@@ -567,10 +571,10 @@ const layoutClasses = computed(() => ({
     right: 0;
     background: var(--surface);
     border: 1px solid var(--o10);
-    border-radius: 14px;
+    border-radius: 16px;
     padding: var(--space-xs);
     margin-top: var(--space-sm);
-    min-width: 180px;
+    min-width: 220px;
     z-index: 100;
     box-shadow: var(--shadow-lg);
 }
@@ -637,36 +641,48 @@ const layoutClasses = computed(() => ({
 }
 
 .notification-button {
-    background: none;
-    border: none;
-    padding: var(--space-sm);
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--o04);
+    border: 1px solid var(--o10);
+    border-radius: 10px;
+    color: var(--muted);
+    padding: 0;
     cursor: pointer;
     position: relative;
-    opacity: 0.7;
-    transition: var(--transition-fast);
+    flex-shrink: 0;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .notification-button:hover {
-    opacity: 1;
+    background: var(--o08);
+    color: var(--text);
 }
 
 .notification-icon {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
+    filter: var(--icon-filter, brightness(0) invert(1));
+    opacity: var(--icon-opacity, 0.55);
 }
 
 .notification-badge {
     position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 18px;
-    height: 18px;
+    top: -5px;
+    right: -5px;
+    min-width: 17px;
+    height: 17px;
     padding: 0 4px;
-    background-color: var(--error-color);
-    color: white;
-    border-radius: 9px;
-    font-size: 12px;
-    font-weight: 500;
+    background-color: var(--c-danger);
+    color: #fff;
+    border: 1.5px solid var(--bg);
+    border-radius: var(--radius-pill);
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: var(--font-weight-bold);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -684,7 +700,14 @@ const layoutClasses = computed(() => ({
 }
 
 .status-indicator.online {
-    background-color: #22c55e;
+    background-color: var(--success-color);
+}
+
+.topbar-divider {
+    width: 1px;
+    height: 26px;
+    background: var(--o10);
+    flex-shrink: 0;
 }
 
 .status-menu-item {

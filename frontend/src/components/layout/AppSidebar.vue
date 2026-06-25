@@ -155,13 +155,14 @@ const handleNavigation = () => {
                 <!-- Section Header -->
                 <div v-if="item.section" class="nav-section" :class="{ 'collapsed': isCollapsed }">
                     <span v-if="!isCollapsed">{{ item.section }}</span>
-                    <div v-else class="section-divider"></div>
                 </div>
 
                 <!-- Nav Item -->
                 <router-link v-else-if="item.to" :to="item.to" class="nav-item"
                     :class="{ 'active': isActiveRoute(item.to) }"
+                    :title="isCollapsed ? item.label : undefined"
                     @click="handleNavigation">
+                    <span class="nav-bar" aria-hidden="true"></span>
                     <span class="nav-icon">
                         <img v-if="item.iconSrc" :src="item.iconSrc" alt="" class="icon-img">
                         <span v-else>{{ item.label }}</span>
@@ -175,12 +176,12 @@ const handleNavigation = () => {
 
 <style scoped>
 .sidebar {
-    width: 230px;
+    width: 252px;
     background: var(--bg2);
     border-right: 1px solid var(--o07);
     display: flex;
     flex-direction: column;
-    transition: all var(--transition-normal);
+    transition: width .22s ease;
     overflow: hidden;
     position: relative;
     height: 100vh;
@@ -188,23 +189,32 @@ const handleNavigation = () => {
 }
 
 .sidebar.collapsed {
-    width: 72px;
+    width: 76px;
 }
 
 .sidebar-header {
-    padding: 18px 14px 18px 16px;
-    border-bottom: 1px solid var(--o07);
-    position: relative;
+    padding: 22px 20px;
+    border-bottom: 1px solid var(--o06);
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 11px;
+}
+
+/* Collapsed header: stack logo above the toggle, both centered */
+.sidebar.collapsed .sidebar-header {
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    padding: 18px 0;
 }
 
 .logo-container {
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex: 1;
+    gap: 11px;
     min-width: 0;
+    overflow: hidden;
 }
 
 /* 3-dot logo mark */
@@ -216,22 +226,22 @@ const handleNavigation = () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 3.5px;
+    gap: 3px;
     flex-shrink: 0;
 }
 
 .dot {
     width: 4.5px;
     height: 4.5px;
-    background: #0B0C10;
+    background: var(--on-accent);
     border-radius: 50%;
 }
 
 .logo-text {
     font-family: var(--font-display);
     font-weight: var(--font-weight-bold);
-    letter-spacing: var(--tracking-tight);
-    font-size: var(--text-lg);
+    letter-spacing: var(--tracking-display);
+    font-size: 18px;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
@@ -240,51 +250,57 @@ const handleNavigation = () => {
 
 .sidebar-nav {
     flex: 1;
-    padding: var(--space-md) 0;
+    padding: 18px 14px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .nav-section {
-    padding: 14px var(--space-md) 6px;
+    padding: 0 13px;
+    margin: 4px 0 12px;
     color: var(--faint);
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: var(--font-weight-medium);
     text-transform: uppercase;
     letter-spacing: .1em;
 }
 
+/* Collapsed: section label becomes an invisible spacer, no divider line */
 .nav-section.collapsed {
-    padding: 14px 0 6px;
-}
-
-.section-divider {
-    height: 1px;
-    background: var(--o10);
-    margin: 6px var(--space-sm);
+    height: 16px;
+    margin: 0;
+    padding: 0;
 }
 
 .nav-item {
     position: relative;
     display: flex;
     align-items: center;
-    gap: var(--space-md);
-    padding: 9px var(--space-md);
+    gap: 13px;
+    padding: 11px 13px;
+    margin-bottom: 4px;
     color: var(--muted);
-    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    font-size: 14.5px;
     font-weight: var(--font-weight-medium);
     text-decoration: none;
-    border-radius: var(--radius-md);
-    margin: 0 var(--space-xs);
+    border-radius: var(--radius-btn);
     transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
-.nav-item:hover {
-    background: var(--o06);
-    color: var(--text);
+/* Collapsed: center the icon, drop the gap */
+.sidebar.collapsed .nav-item {
+    padding: 11px;
+    gap: 0;
+    justify-content: center;
+}
+
+.nav-item:hover:not(.active) {
+    background: var(--o04);
+    color: var(--text2);
 }
 
 .nav-item:focus-visible {
@@ -293,22 +309,30 @@ const handleNavigation = () => {
 }
 
 .nav-item.active {
-    background: var(--o06);
-    color: var(--text);
+    background: var(--accent-bg-12);
+    color: var(--accent-ink);
     font-weight: var(--font-weight-semibold);
 }
 
 /* Lime accent bar on the active item */
-.nav-item.active::before {
-    content: '';
+.nav-bar {
     position: absolute;
-    left: calc(-1 * var(--space-xs));
-    top: 50%;
-    transform: translateY(-50%);
+    left: 0;
+    top: 9px;
+    bottom: 9px;
     width: 3px;
-    height: 60%;
-    border-radius: var(--radius-full);
+    border-radius: 3px;
     background: var(--accent-ink);
+    opacity: 0;
+}
+
+.nav-item.active .nav-bar {
+    opacity: 1;
+}
+
+/* Hide the active bar when collapsed */
+.sidebar.collapsed .nav-item.active .nav-bar {
+    opacity: 0;
 }
 
 .nav-icon {
@@ -346,12 +370,12 @@ const handleNavigation = () => {
 /* Small laptops (1025px - 1280px) */
 @media (max-width: 1280px) and (min-width: 1025px) {
     .sidebar {
-        width: 220px;
+        width: 236px;
         position: relative;
     }
 
     .sidebar.collapsed {
-        width: 72px;
+        width: 76px;
     }
 }
 
@@ -369,7 +393,20 @@ const handleNavigation = () => {
 
     .sidebar.collapsed {
         transform: translateX(-100%);
-        width: 230px;
+        width: 252px;
+    }
+
+    /* In overlay mode the panel is full-width — restore expanded layout */
+    .sidebar.collapsed .sidebar-header {
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 22px 20px;
+    }
+
+    .sidebar.collapsed .nav-item {
+        padding: 11px 13px;
+        gap: 13px;
+        justify-content: flex-start;
     }
 }
 
