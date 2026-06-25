@@ -142,7 +142,6 @@ onMounted(() => {
     <!-- Roles Content (when unlocked) -->
     <div v-else>
       <header class="page-header">
-        <h1>Roles</h1>
         <button class="btn btn-primary" @click="openCreateModal">
           <span class="icon">+</span>
           Add Role
@@ -267,7 +266,7 @@ onMounted(() => {
 
 .page-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: var(--space-lg);
 }

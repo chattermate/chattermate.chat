@@ -51,7 +51,6 @@ onMounted(fetchGroups)
 <template>
   <div class="group-list">
     <header class="page-header">
-      <h1>Groups</h1>
       <div class="header-actions">
         <button class="btn btn-primary" @click="showCreateModal = true">
           <span class="icon">+</span>
@@ -194,7 +193,7 @@ onMounted(fetchGroups)
 
 .page-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: var(--space-lg);
 }
