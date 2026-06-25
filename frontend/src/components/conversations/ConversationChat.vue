@@ -198,7 +198,7 @@ onMounted(async () => {
           v-for="(message, idx) in formattedMessages" 
           :key="idx"
           class="message"
-          :class="message.message_type === 'bot' || message.message_type === 'agent' || message.message_type === 'product' ? 'bot' : 'user'"
+          :class="message.message_type === 'agent' ? 'agent' : ((message.message_type === 'bot' || message.message_type === 'product') ? 'bot' : 'user')"
         >
           <div class="message-content">
             <div class="message-bubble">
@@ -447,32 +447,48 @@ onMounted(async () => {
   max-width: 100%;
 }
 
+/* Customer (incoming) — left */
 .message.user {
-  margin-left: auto;
-  justify-content: flex-end;
-}
-
-.message.bot {
   margin-right: auto;
   justify-content: flex-start;
 }
 
+/* AI + human agent (outbound) — right */
+.message.bot,
+.message.agent {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
 .message-bubble {
-  background: var(--o08);
-  padding: 12px 16px;
-  border-radius: 16px;
-  border-bottom-left-radius: 4px;
-  color: var(--text);
+  padding: 11px 15px;
   position: relative;
   max-width: 100%;
   word-wrap: break-word;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
+/* Customer bubble — neutral, sharp top-left */
 .message.user .message-bubble {
-  background: var(--accent-ink);
-  color: #0B0C10;
-  border-radius: 16px;
-  border-bottom-right-radius: 4px;
+  background: var(--bubble-customer-bg);
+  color: var(--bubble-customer-fg);
+  border-radius: 4px 15px 15px 15px;
+}
+
+/* AI bubble — teal tint, sharp top-right */
+.message.bot .message-bubble {
+  background: var(--bubble-ai-bg);
+  border: 1px solid var(--bubble-ai-border);
+  color: var(--bubble-ai-fg);
+  border-radius: 15px 15px 4px 15px;
+}
+
+/* Human agent bubble — lime, sharp top-right */
+.message.agent .message-bubble {
+  background: var(--bubble-agent-bg);
+  color: var(--bubble-agent-fg);
+  border-radius: 15px 15px 4px 15px;
 }
 
 .agent-name {
@@ -490,12 +506,13 @@ onMounted(async () => {
   text-align: right;
 }
 
-.message.user .message-time {
-  color: rgba(11, 12, 16, 0.55);
-}
-
+.message.user .message-time,
 .message.bot .message-time {
   color: var(--muted);
+}
+
+.message.agent .message-time {
+  color: color-mix(in srgb, var(--on-accent) 55%, transparent);
 }
 
 .input-container {
@@ -636,10 +653,10 @@ onMounted(async () => {
 
 
 .create-ticket-btn {
-  background: var(--accent-color);
-  color: #0B0C10;
+  background: var(--accent-ink);
+  color: var(--on-accent);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 16px;
   font-size: 14px;
   cursor: pointer;
@@ -841,20 +858,20 @@ onMounted(async () => {
   margin-left: 4px;
 }
 
-.message.user .attachment-link {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: var(--background-color);
+.message.agent .attachment-link {
+  background: color-mix(in srgb, var(--on-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--on-accent) 22%, transparent);
+  color: var(--on-accent);
 }
 
-.message.user .attachment-link:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
+.message.agent .attachment-link:hover {
+  background: color-mix(in srgb, var(--on-accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--on-accent) 32%, transparent);
 }
 
-.message.user .attachment-link i,
-.message.user .attachment-size {
-  color: rgba(255, 255, 255, 0.9);
+.message.agent .attachment-link i,
+.message.agent .attachment-size {
+  color: var(--on-accent);
 }
 
 /* Image attachment styles */
@@ -880,13 +897,13 @@ onMounted(async () => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.message.user .attachment-image {
-  border-color: rgba(255, 255, 255, 0.3);
+.message.agent .attachment-image {
+  border-color: color-mix(in srgb, var(--on-accent) 22%, transparent);
 }
 
-.message.user .attachment-image:hover {
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+.message.agent .attachment-image:hover {
+  border-color: color-mix(in srgb, var(--on-accent) 40%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .attachment-image-info {

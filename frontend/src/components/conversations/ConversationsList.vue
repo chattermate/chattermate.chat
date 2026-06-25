@@ -480,7 +480,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-item.active {
-  background: var(--o08);
+  background: var(--accent-bg-06);
   border-left: 3px solid var(--accent-ink);
 }
 
