@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, provide, computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useTheme } from '@/composables/useTheme'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import userAvatar from '@/assets/user.svg'
 import notificationIcon from '@/assets/notification.svg'
@@ -50,8 +51,23 @@ const userRole = ref(userService.getUserRole())
 const unreadCount = ref(0)
 const statusUpdating = ref(false)
 const { logout } = useAuth()
+const { isDark, toggle: toggleTheme } = useTheme()
 useNotifications()
 const router = useRouter()
+
+const PAGE_TITLES: Record<string, string> = {
+    '/ai-agents': 'AI Agents',
+    '/human-agents': 'Human Agents',
+    '/conversations': 'Inbox',
+    '/analytics': 'Analytics',
+    '/settings/organization': 'Organization',
+    '/settings/subscription': 'Subscription',
+    '/settings/integrations': 'Integrations',
+    '/settings/widgets': 'Widget Apps',
+    '/settings/ai-config': 'AI Configuration',
+    '/settings/user': 'User Settings',
+}
+const pageTitle = computed(() => PAGE_TITLES[route.path] || '')
 
 // Initialize enterprise features
 const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus } = useEnterpriseFeatures()
@@ -233,8 +249,17 @@ const layoutClasses = computed(() => ({
                                 <path d="M3 12H21M3 6H21M3 18H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </button>
+                        <h1 v-if="pageTitle" class="topbar-page-title">{{ pageTitle }}</h1>
                     </div>
                     <div class="right-section">
+                        <button class="icon-btn" @click="toggleTheme" :title="isDark ? 'Light mode' : 'Dark mode'">
+                            <svg v-if="isDark" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                            </svg>
+                            <svg v-else width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                            </svg>
+                        </button>
                         <div v-if="hasEnterpriseModule" class="plan-display">
                             <div v-if="isLoadingPlan" class="plan-loading">
                                 <span class="loading-spinner"></span>
@@ -394,12 +419,43 @@ const layoutClasses = computed(() => ({
 
 /* Header Styles */
 .header {
-    background: #ffffff;
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
+    background: var(--topbar);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--o07);
     position: sticky;
     top: 0;
     z-index: 50;
+}
+
+.topbar-page-title {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin: 0;
+    line-height: 1;
+}
+
+.icon-btn {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--o04);
+    border: 1px solid var(--o10);
+    border-radius: 10px;
+    color: var(--text3);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.icon-btn:hover {
+    background: var(--o08);
+    color: var(--text);
 }
 
 .header-content {
@@ -509,9 +565,9 @@ const layoutClasses = computed(() => ({
     position: absolute;
     top: 100%;
     right: 0;
-    background: #ffffff;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--o10);
+    border-radius: 14px;
     padding: var(--space-xs);
     margin-top: var(--space-sm);
     min-width: 180px;
@@ -526,17 +582,18 @@ const layoutClasses = computed(() => ({
     text-align: left;
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text3);
     font-size: var(--text-sm);
     font-weight: var(--font-weight-medium);
+    font-family: var(--font-sans);
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .menu-item:hover {
-    background: var(--hover-bg);
-    color: var(--text-primary);
+    background: var(--o06);
+    color: var(--text);
 }
 
 /* Content Styles */
@@ -552,8 +609,8 @@ const layoutClasses = computed(() => ({
 
 /* Footer Styles */
 .footer {
-    background: var(--background-soft);
-    border-top: 1px solid var(--border-color);
+    background: var(--bg2);
+    border-top: 1px solid var(--o07);
     padding: var(--space-lg) var(--space-xl);
 }
 
@@ -622,8 +679,8 @@ const layoutClasses = computed(() => ({
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background-color: var(--text-muted);
-    border: 2px solid var(--background-soft);
+    background-color: var(--muted);
+    border: 2px solid var(--bg2);
 }
 
 .status-indicator.online {
@@ -666,7 +723,7 @@ const layoutClasses = computed(() => ({
 
 .menu-divider {
     height: 1px;
-    background: var(--border-color);
+    background: var(--o08);
     margin: var(--space-xs) 0;
 }
 
@@ -696,8 +753,8 @@ const layoutClasses = computed(() => ({
     border-radius: var(--radius-full);
     font-size: var(--text-xs);
     font-weight: 600;
-    background-color: var(--background-mute);
-    color: var(--text-color);
+    background: var(--o08);
+    color: var(--text3);
 }
 
 .plan-badge.pro {
