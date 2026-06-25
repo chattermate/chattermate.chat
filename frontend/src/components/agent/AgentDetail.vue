@@ -656,13 +656,18 @@ onMounted(async () => {
                     <div class="agent-avatar" @click="triggerFileUpload">
                         <input type="file" ref="fileInput" accept="image/jpeg,image/png,image/webp" class="hidden"
                             @change="handleFileUpload">
-                        <img :src="photoUrl" :alt="agentData.name" :class="{ 'opacity-50': isUploading }">
-                        <div class="upload-overlay" v-if="!isUploading">
-                            <span>Change Photo</span>
+                        <div class="agent-avatar-ring">
+                            <img :src="photoUrl" :alt="agentData.name" :class="{ 'opacity-50': isUploading }">
+                            <div class="upload-overlay" v-if="!isUploading">
+                                <span>Change</span>
+                            </div>
+                            <div class="upload-overlay" v-else>
+                                <span>...</span>
+                            </div>
                         </div>
-                        <div class="upload-overlay" v-else>
-                            <span>Uploading...</span>
-                        </div>
+                        <span class="avatar-edit-badge" aria-hidden="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"></path></svg>
+                        </span>
                     </div>
                     <div class="agent-info">
                         <div class="name-section">
@@ -708,7 +713,7 @@ onMounted(async () => {
                                     >
                                     <span class="status-slider"></span>
                                 </label>
-                                <span class="status-text">{{ (isEditingHeader ? editIsActive : agentData.is_active) ? 'Online' : 'Offline' }}</span>
+                                <span class="status-text" :class="{ online: (isEditingHeader ? editIsActive : agentData.is_active) }">{{ (isEditingHeader ? editIsActive : agentData.is_active) ? 'Online' : 'Offline' }}</span>
                             </div>
                             
                             <!-- Mode Selection -->
@@ -1135,9 +1140,9 @@ onMounted(async () => {
 }
 
 .panel-header {
-    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    padding: 26px 32px var(--space-md);
     border-bottom: 1px solid var(--o07);
-    background: var(--bg2);
+    background: var(--header-gradient);
 }
 
 .header-layout {
@@ -1154,10 +1159,10 @@ onMounted(async () => {
     height: 40px;
     background: var(--o05);
     border: 1px solid var(--o12);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-btn);
     cursor: pointer;
     transition: all var(--transition-fast);
-    color: var(--muted);
+    color: var(--text3);
     flex-shrink: 0;
 }
 
@@ -1186,19 +1191,27 @@ onMounted(async () => {
 .agent-avatar {
     position: relative;
     cursor: pointer;
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2px solid var(--o12);
-    box-shadow: 0 4px 12px rgba(0,0,0,.3);
-    transition: all 0.3s ease;
+    width: 64px;
+    height: 64px;
     flex-shrink: 0;
 }
 
-.agent-avatar:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+/* Ring around the avatar */
+.agent-avatar-ring {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    padding: 3px;
+    background: var(--o04);
+    border: 1px solid var(--o12);
+    box-sizing: border-box;
+    overflow: hidden;
+    position: relative;
+    transition: border-color 0.2s ease;
+}
+
+.agent-avatar:hover .agent-avatar-ring {
+    border-color: var(--o20);
 }
 
 .hidden {
@@ -1207,27 +1220,25 @@ onMounted(async () => {
 
 .upload-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    top: 3px;
+    left: 3px;
+    right: 3px;
+    bottom: 3px;
     background: rgba(0, 0, 0, 0.6);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: #fff;
     opacity: 0;
-    transition: all 0.3s ease;
+    transition: opacity 0.3s ease;
     border-radius: 50%;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 500;
     text-align: center;
-    backdrop-filter: blur(2px);
 }
 
 .agent-avatar:hover .upload-overlay {
     opacity: 1;
-    transform: scale(1.02);
 }
 
 .agent-avatar img {
@@ -1235,6 +1246,22 @@ onMounted(async () => {
     height: 100%;
     object-fit: cover;
     border-radius: 50%;
+}
+
+/* Lime pencil edit badge */
+.avatar-edit-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--o20);
+    color: var(--accent-ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .agent-info {
@@ -1248,11 +1275,12 @@ onMounted(async () => {
 
 .agent-info h3 {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: 1.625rem;
     font-weight: 700;
+    letter-spacing: var(--tracking-display);
     color: var(--text);
     margin: 0;
-    line-height: 1.3;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1284,9 +1312,11 @@ onMounted(async () => {
     flex: 1;
     padding: var(--space-sm) var(--space-md);
     border: 1px solid var(--o12);
-    border-radius: var(--radius-md);
-    font-size: 1rem;
-    font-weight: 600;
+    border-radius: var(--radius-input);
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: var(--tracking-display);
     background: var(--o05);
     color: var(--text);
     min-width: 0;
@@ -1371,8 +1401,8 @@ onMounted(async () => {
 .status-switch {
     position: relative;
     display: inline-block;
-    width: 44px;
-    height: 22px;
+    width: 46px;
+    height: 26px;
 }
 
 .status-switch input {
@@ -1388,30 +1418,29 @@ onMounted(async () => {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 22px;
+    background-color: var(--toggle-track-off);
+    transition: .25s;
+    border-radius: var(--radius-pill);
 }
 
 .status-slider:before {
     position: absolute;
     content: "";
-    height: 16px;
-    width: 16px;
+    height: 20px;
+    width: 20px;
     left: 3px;
     bottom: 3px;
-    background-color: white;
-    transition: .4s;
+    background-color: var(--toggle-knob);
+    transition: .25s;
     border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .status-switch input:checked + .status-slider {
-    background-color: var(--success-color);
+    background-color: var(--toggle-on-teal);
 }
 
 .status-switch input:checked + .status-slider:before {
-    transform: translateX(22px);
+    transform: translateX(20px);
 }
 
 .status-switch input:disabled + .status-slider {
@@ -1458,61 +1487,56 @@ onMounted(async () => {
 
 .status-text {
     font-weight: 500;
-    font-size: var(--text-sm);
-    color: var(--text-muted);
+    font-size: 14px;
+    color: var(--muted2);
 }
 
-/* Mode Selection Styles */
+.status-text.online {
+    color: var(--c-online);
+}
+
+/* Mode Selection Styles — standalone solid pills */
 .mode-selection {
     margin-top: var(--space-xs);
 }
 
 .mode-toggle {
     display: inline-flex;
-    background: var(--o05);
-    border-radius: var(--radius-full);
-    padding: 2px;
-    border: 1px solid var(--o10);
+    gap: 6px;
 }
 
 .mode-button {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
-    background: transparent;
+    gap: 6px;
+    padding: 7px 14px;
+    background: var(--pill-idle-bg);
     border: none;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-pill);
     cursor: pointer;
-    transition: all var(--transition-fast);
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--muted);
+    transition: background var(--transition-fast), color var(--transition-fast), filter var(--transition-fast);
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--pill-idle-fg);
     white-space: nowrap;
     position: relative;
 }
 
-.mode-button:hover {
-    background: var(--o08);
-    color: var(--text);
+.mode-button:hover:not(.active):not(.locked) {
+    filter: brightness(1.2);
+    color: var(--text3);
 }
 
-.mode-button.active {
-    background: var(--accent-ink);
-    color: #0B0C10;
-    box-shadow: 0 1px 3px rgba(0,0,0,.2);
-}
-
+/* AI Mode active — solid blue */
 .mode-button:first-child.active {
-    background: rgba(95,227,214,.15);
-    color: var(--c-teal);
-    border: 1px solid rgba(95,227,214,.25);
+    background: var(--mode-ai-bg);
+    color: var(--mode-ai-fg);
 }
 
+/* Workflow active — solid purple */
 .mode-button:last-child.active {
-    background: rgba(157,140,255,.15);
-    color: var(--c-purple);
-    border: 1px solid rgba(157,140,255,.25);
+    background: var(--mode-wf-bg);
+    color: var(--mode-wf-fg);
 }
 
 .mode-icon {
@@ -1523,8 +1547,8 @@ onMounted(async () => {
 }
 
 .mode-label {
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
 }
 
 .mode-button.locked {
@@ -1534,9 +1558,7 @@ onMounted(async () => {
 }
 
 .mode-button.locked:hover {
-    background: var(--background-muted);
-    color: var(--text-muted);
-    transform: none;
+    filter: none;
 }
 
 .lock-icon {
@@ -2208,24 +2230,24 @@ input:checked + .slider:before {
 }
 
 .tab-button {
-    padding: var(--space-lg) var(--space-xl);
+    padding: 14px 18px;
     background: transparent;
     border: none;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
     cursor: pointer;
-    transition: all 0.3s ease;
-    font-weight: 500;
-    font-size: var(--text-sm);
-    color: var(--text-muted);
+    transition: color 0.2s ease, border-color 0.2s ease;
+    font-family: var(--font-sans);
+    font-weight: var(--font-weight-medium);
+    font-size: 14.5px;
+    color: var(--muted);
     position: relative;
     text-align: center;
     white-space: nowrap;
-    border-bottom: 3px solid transparent;
+    border-bottom: 2px solid transparent;
     flex-shrink: 0;
-    min-height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 7px;
 }
 
 .tabs-navigation {
@@ -2234,15 +2256,14 @@ input:checked + .slider:before {
 
 .tabs-navigation.horizontal {
     display: flex;
-    gap: var(--space-md);
-    border-bottom: 1px solid var(--o08);
-    padding: 0 var(--space-lg);
+    gap: 4px;
+    border-bottom: 1px solid var(--o07);
+    padding: 0 32px;
     margin: 0;
     overflow-x: auto;
     background: var(--bg2);
     scrollbar-width: none;
     -ms-overflow-style: none;
-    min-height: 56px;
     align-items: flex-end;
 }
 
@@ -2251,13 +2272,13 @@ input:checked + .slider:before {
 }
 
 .tab-button:hover {
-    color: var(--text);
-    background: var(--o05);
+    color: var(--text2);
+    background: transparent;
 }
 
 .tab-button.active {
     color: var(--accent-ink);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     background: transparent;
     border-bottom-color: var(--accent-ink);
 }
@@ -2514,23 +2535,26 @@ input:checked + .slider:before {
         width: 64px;
         height: 64px;
     }
-    
+
+    .agent-avatar-ring {
+        width: 64px;
+        height: 64px;
+    }
+
     .agent-info h3 {
-        font-size: 1.125rem;
+        font-size: 1.5rem;
     }
-    
+
     .tabs-navigation.horizontal {
-        padding: 0 var(--space-sm);
-        gap: var(--space-xs);
-        min-height: 60px;
+        padding: 0 var(--space-lg);
+        gap: 4px;
     }
-    
+
     .tab-button {
-        padding: var(--space-md) var(--space-sm);
-        font-size: 0.8rem;
-        min-height: 44px;
+        padding: 12px 16px;
+        font-size: 14px;
     }
-    
+
     .tab-content-container {
         padding: var(--space-md);
     }
@@ -2540,52 +2564,33 @@ input:checked + .slider:before {
     .detail-panel {
         margin: var(--space-xs);
     }
-    
+
     .panel-header {
-        padding: var(--space-sm) var(--space-sm) var(--space-xs);
+        padding: var(--space-lg) var(--space-lg) var(--space-sm);
     }
-    
-    .agent-avatar {
-        width: 56px;
-        height: 56px;
-    }
-    
+
     .agent-info h3 {
-        font-size: 1rem;
+        font-size: 1.375rem;
     }
-    
-    .mode-button {
-        padding: var(--space-xs) var(--space-xs);
-    }
-    
-    .mode-label {
-        font-size: 0.625rem;
-    }
-    
+
     .status-and-mode {
         gap: var(--space-xs);
     }
-    
-    .mode-toggle {
-        padding: 1px;
-    }
-    
+
     .status-text {
-        font-size: 0.75rem;
+        font-size: 13px;
     }
-    
+
     .tabs-navigation.horizontal {
-        padding: 0 var(--space-xs);
-        gap: var(--space-xs);
-        min-height: 56px;
+        padding: 0 var(--space-lg);
+        gap: 4px;
     }
-    
+
     .tab-button {
-        padding: var(--space-sm) var(--space-xs);
-        font-size: 0.75rem;
-        min-height: 40px;
+        padding: 12px 14px;
+        font-size: 13.5px;
     }
-    
+
     .customization-tab-layout {
         padding: var(--space-sm);
         gap: var(--space-md);

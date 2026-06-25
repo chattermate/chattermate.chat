@@ -16,6 +16,7 @@
   /* Contrast inks — text/icon placed on top of a fill */
   --on-accent: #0B0C10;   /* on lime accent */
   --on-light: #0B0C10;    /* on any light fill */
+  --on-dark: #F5F6F8;     /* on any dark/coloured fill (theme-invariant) */
 
   /* Elevated surfaces / header gradient */
   --bg-elevated: #101119;
@@ -254,6 +255,7 @@
   /* Contrast inks — accent is dark-olive in light, so text on it must be white */
   --on-accent: #FFFFFF;
   --on-light: #0B0C10;
+  --on-dark: #F5F6F8;
 
   /* Elevated surfaces / scrim (gradients & tints referencing base tokens auto-recompute) */
   --bg-elevated: #FFFFFF;

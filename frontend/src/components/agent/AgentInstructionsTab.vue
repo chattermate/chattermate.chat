@@ -409,8 +409,8 @@ const handleSave = () => {
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
-  background: linear-gradient(135deg, var(--c-purple), #7C6AE6);
-  color: #fff;
+  background: var(--grad-generate);
+  color: var(--on-light);
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -515,19 +515,19 @@ const handleSave = () => {
 }
 
 .generate-ai-button {
-  padding: var(--space-sm) var(--space-md);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  padding: 10px 16px;
+  background: var(--grad-generate);
+  color: var(--on-light);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-chip);
   cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
+  font-size: 13.5px;
+  font-weight: var(--font-weight-semibold);
+  transition: filter 0.2s ease, transform 0.2s ease;
 }
 
 .generate-ai-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  filter: brightness(1.06);
 }
 
 .generate-ai-button:disabled {
@@ -834,7 +834,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  background: var(--surface);
   border-radius: 16px;
   width: 90%;
   max-width: 500px;
@@ -858,8 +858,8 @@ input:checked + .slider:before {
   padding: var(--space-xl);
   text-align: center;
   position: relative;
-  background: linear-gradient(135deg, var(--c-purple), #7C6AE6);
-  color: #F5F6F8;
+  background: var(--grad-generate);
+  color: var(--on-dark);
 }
 
 .upgrade-icon {
