@@ -13,6 +13,66 @@
   --c-purple: #9D8CFF;
   --c-coral: #FF8A73;
 
+  /* Contrast inks — text/icon placed on top of a fill */
+  --on-accent: #0B0C10;   /* on lime accent */
+  --on-light: #0B0C10;    /* on any light fill */
+
+  /* Elevated surfaces / header gradient */
+  --bg-elevated: #101119;
+  --bg-deep: #0A0B0E;
+  --header-gradient: linear-gradient(180deg, var(--bg-elevated), var(--bg));
+  --scrim: rgba(6,7,10,.72);
+
+  /* Mode pills (agent editor) */
+  --mode-ai-bg: #3B82F6;
+  --mode-ai-fg: #FFFFFF;
+  --mode-wf-bg: #9D8CFF;
+  --mode-wf-fg: #0B0C10;
+  --pill-idle-bg: var(--o05);
+  --pill-idle-fg: var(--muted);
+
+  /* Extended status / chart palette */
+  --c-danger: #FF6B6B;
+  --c-warn: #E6A23C;
+  --c-info: #8FB8FF;
+  --c-positive: #7CE38B;
+  --c-neutral: #8A93A3;
+  --c-online: #8FEDE3;    /* online label text */
+  --c-pro: #C5BDFF;       /* PRO badge text */
+
+  /* Theme-aware tints (derived from base palette, auto-adjust per theme) */
+  --accent-bg-06: color-mix(in srgb, var(--accent-ink) 6%, transparent);
+  --accent-bg-08: color-mix(in srgb, var(--accent-ink) 8%, transparent);
+  --accent-bg-12: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+  --accent-border: color-mix(in srgb, var(--accent-ink) 30%, transparent);
+  --teal-bg-10: color-mix(in srgb, var(--c-teal) 10%, transparent);
+  --teal-bg: color-mix(in srgb, var(--c-teal) 12%, transparent);
+  --teal-border: color-mix(in srgb, var(--c-teal) 22%, transparent);
+  --purple-bg: color-mix(in srgb, var(--c-purple) 15%, transparent);
+  --purple-border: color-mix(in srgb, var(--c-purple) 28%, transparent);
+  --coral-bg: color-mix(in srgb, var(--c-coral) 12%, transparent);
+  --coral-border: color-mix(in srgb, var(--c-coral) 30%, transparent);
+
+  /* Controls */
+  --toggle-knob: #FFFFFF;
+  --toggle-track-off: var(--o12);
+  --toggle-on-teal: var(--c-teal);
+  --toggle-on-accent: var(--accent-ink);
+
+  /* Inbox message bubbles */
+  --bubble-customer-bg: var(--o05);
+  --bubble-customer-fg: var(--text2);
+  --bubble-ai-bg: var(--teal-bg-10);
+  --bubble-ai-border: var(--teal-border);
+  --bubble-ai-fg: var(--text2);
+  --bubble-agent-bg: var(--accent-ink);
+  --bubble-agent-fg: var(--on-accent);
+
+  /* Brand gradients / avatars */
+  --grad-purple-teal: linear-gradient(135deg, var(--c-purple), var(--c-teal));
+  --grad-lime-teal: linear-gradient(135deg, var(--accent-ink), var(--c-teal));
+  --grad-generate: linear-gradient(135deg, var(--c-purple), #7C6AE6);
+
   /* Text scale */
   --text: #F5F6F8;
   --text2: #E7EAF0;
@@ -89,6 +149,13 @@
   --radius-md: 8px;
   --radius-lg: 16px;
   --radius-full: 9999px;
+  /* Design-spec radii */
+  --radius-chip: 10px;
+  --radius-btn: 11px;
+  --radius-input: 12px;
+  --radius-card: 18px;
+  --radius-card-lg: 20px;
+  --radius-pill: 999px;
 
   /* Transitions */
   --transition-fast: 0.18s cubic-bezier(0.4,0,0.2,1);
@@ -183,6 +250,33 @@
 
   --ring-focus: 0 0 0 3px rgba(76,122,11,.2);
   --primary-soft: rgba(76,122,11,.08);
+
+  /* Contrast inks — accent is dark-olive in light, so text on it must be white */
+  --on-accent: #FFFFFF;
+  --on-light: #0B0C10;
+
+  /* Elevated surfaces / scrim (gradients & tints referencing base tokens auto-recompute) */
+  --bg-elevated: #FFFFFF;
+  --bg-deep: #F4F6FA;
+  --scrim: rgba(17,21,30,.4);
+
+  /* Mode pills — darker fills need light text in light theme */
+  --mode-ai-bg: #2563EB;
+  --mode-ai-fg: #FFFFFF;
+  --mode-wf-bg: #6D5BD0;
+  --mode-wf-fg: #FFFFFF;
+
+  /* Extended status / chart palette tuned for light bg */
+  --c-danger: #E04F4F;
+  --c-warn: #B7791F;
+  --c-info: #2563EB;
+  --c-positive: #1F9D57;
+  --c-neutral: #6B7280;
+  --c-online: #0E8C8C;
+  --c-pro: #6D5BD0;
+
+  /* Generate gradient — darker end stop for light */
+  --grad-generate: linear-gradient(135deg, var(--c-purple), #5B49C9);
 
   /* Legacy aliases */
   --primary-color: var(--accent-ink);
