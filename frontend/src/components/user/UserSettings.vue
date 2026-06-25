@@ -401,33 +401,29 @@ const handleProfilePicClick = () => {
 
 .settings-header {
   margin-bottom: var(--space-xl);
-  background: linear-gradient(to right, var(--primary-soft), var(--background-soft));
-  padding: var(--space-xl);
-  border-radius: 30px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  padding: 0;
 }
 
 .settings-header h3 {
-  font-size: 2rem;
-  margin-bottom: var(--space-sm);
-  background: linear-gradient(to right, var(--primary-color), var(--text-color));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-bottom: var(--space-xs);
 }
 
 .settings-description {
-  color: var(--text-muted);
-  font-size: 1.1rem;
+  color: var(--muted);
+  font-size: 15px;
   line-height: 1.6;
 }
 
 .settings-content {
-  background: var(--background-base);
-  border-radius: 24px;
-  border: 1px solid var(--border-color);
+  background: var(--surface);
+  border-radius: 20px;
+  border: 1px solid var(--o08);
   padding: var(--space-xl);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .settings-form {
@@ -443,9 +439,13 @@ const handleProfilePicClick = () => {
 }
 
 .form-section h4 {
-  font-size: 1.25rem;
-  color: var(--text-color);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
   margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--o07);
 }
 
 .form-group {
@@ -455,30 +455,33 @@ const handleProfilePicClick = () => {
 }
 
 .form-group label {
-  font-size: 0.875rem;
+  font-size: 13.5px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--text3);
+  margin-bottom: 6px;
 }
 
 .form-group input {
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--background-soft);
-  color: var(--text-color);
-  font-size: 1rem;
-  transition: all 0.3s ease;
+  padding: 12px var(--space-md);
+  border: 1px solid var(--o12);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  transition: all 0.2s ease;
 }
 
 .form-group input:disabled {
-  background: var(--background-mute);
+  background: var(--o04);
+  color: var(--muted);
   cursor: not-allowed;
 }
 
 .form-group input:focus {
-  border-color: var(--primary-color);
+  border-color: var(--accent-ink);
   outline: none;
-  box-shadow: 0 0 0 2px var(--primary-soft);
+  box-shadow: var(--ring-focus);
 }
 
 .form-actions {
@@ -490,21 +493,22 @@ const handleProfilePicClick = () => {
 
 .submit-button {
   padding: var(--space-sm) var(--space-xl);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border: none;
-  border-radius: var(--radius-md);
-  font-weight: 500;
+  border-radius: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .submit-button:hover {
-  background: var(--primary-dark);
+  filter: brightness(1.08);
 }
 
 .submit-button:disabled {
-  background: var(--background-mute);
+  background: var(--o10);
+  color: var(--muted);
   cursor: not-allowed;
 }
 
@@ -543,21 +547,22 @@ const handleProfilePicClick = () => {
 }
 
 .back-button {
-  background: none;
-  border: none;
-  color: var(--text-color);
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  color: var(--muted);
   font-size: 1rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-  transition: all 0.3s ease;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
 .back-button:hover {
-  background: var(--background-mute);
+  background: var(--o10);
+  color: var(--text);
 }
 
 .password-strength {
@@ -566,7 +571,7 @@ const handleProfilePicClick = () => {
 
 .strength-meter {
   height: 4px;
-  background: var(--background-mute);
+  background: var(--o10);
   border-radius: var(--radius-full);
   margin-bottom: var(--space-sm);
 }

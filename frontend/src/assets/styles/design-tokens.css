@@ -1,58 +1,60 @@
-/* Hallmark · genre: modern-minimal · redesign: visual-layer · theme: Coral-adjacent (warm-grey paper · terracotta accent · Inter + Montserrat) · tone: professional/enterprise */
+/* ChatterMate Design Tokens — dark-first, lime accent */
 :root {
-  /* Brand Colors — softened, deeper terracotta (replaces bright #f34611) */
-  --primary-color: #c2471f;          /* oklch(~56% 0.15 40) — muted terracotta */
-  --primary-dark: #a8381a;           /* hover/active */
-  --secondary-color: #FBEEE8;        /* soft warm tint */
-  --accent-color: #a8381a;
-  --primary-soft: #f7ece6;           /* tint for active-nav backgrounds, badges */
-  --primary-color-rgb: 194, 71, 31;  /* for rgba() alpha use */
-  --background-color: #FFFFFF;
-  --text-color: #1c1917;             /* warm near-black */
-  --text-color-muted: #ffffff;       /* text on coloured backgrounds */
-  /* Semantic Colors */
+  /* Surfaces */
+  --bg: #0B0C10;
+  --bg2: #0E0F14;
+  --surface: #13151C;
+  --topbar: rgba(11,12,16,.8);
+
+  /* Accent */
+  --accent-ink: #C9F24E;
+  --c-lime: #C9F24E;
+  --c-teal: #5FE3D6;
+  --c-purple: #9D8CFF;
+  --c-coral: #FF8A73;
+
+  /* Text scale */
+  --text: #F5F6F8;
+  --text2: #E7EAF0;
+  --text3: #C7CCD6;
+  --muted: #9CA3B0;
+  --muted2: #7A8190;
+  --faint: #5B6271;
+  --code: #D7DBE3;
+
+  /* White-opacity tokens — borders, dividers, overlays */
+  --o03: rgba(255,255,255,.03);
+  --o04: rgba(255,255,255,.04);
+  --o05: rgba(255,255,255,.05);
+  --o06: rgba(255,255,255,.06);
+  --o07: rgba(255,255,255,.07);
+  --o08: rgba(255,255,255,.08);
+  --o10: rgba(255,255,255,.1);
+  --o12: rgba(255,255,255,.12);
+  --o14: rgba(255,255,255,.14);
+  --o16: rgba(255,255,255,.16);
+  --o20: rgba(255,255,255,.2);
+  --o25: rgba(255,255,255,.25);
+  --o30: rgba(255,255,255,.3);
+
+  /* Semantic */
   --success-color: #0f9d6e;
   --error-color: #DC2626;
   --error-dark: #b91c1c;
   --warning-color: #D97706;
   --info-color: #2563EB;
+  --success-bg: rgba(15,157,110,.1);
+  --error-bg: rgba(220,38,38,.1);
+  --warning-bg: rgba(217,119,6,.1);
+  --info-bg: rgba(37,99,235,.1);
 
-  /* Semantic Background Colors (for messages, badges, alerts, etc.) */
-  --success-bg: rgba(15, 157, 110, 0.1);
-  --error-bg: rgba(220, 38, 38, 0.1);
-  --warning-bg: rgba(217, 119, 6, 0.1);
-  --info-bg: rgba(37, 99, 235, 0.1);
+  /* Fonts */
+  --font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
-  /* Background Variations — cleaner warm-neutral paper */
-  --background-soft: #faf9f8;
-  --background-mute: #f4f3f1;
-
-  /* Interaction States */
-  --hover-bg: var(--background-mute);
-
-  /* Code/Monospace Backgrounds */
-  --code-bg: var(--background-mute);
-
-  /* Border Colors — warm-neutral */
-  --border-color: #e7e5e4;
-  --border-color-hover: #d6d3d1;
-
-  /* Typography Colors */
-  --text-heading: #1c1917;
-  --text-primary: #1c1917;
-  --text-secondary: #44403c;
-  --text-muted: #78716c;
-  --text-placeholder: #a8a29e;
-  --text-color-light: rgb(255, 255, 255);
-
-  /* Typography */
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans',
-    'Helvetica Neue', sans-serif;
-  --font-display: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, 'Helvetica Neue', sans-serif;
-
-  /* Font Weights */
+  /* Font weights */
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -63,7 +65,7 @@
   --tracking-tight: -0.01em;
   --tracking-wide: 0.04em;
 
-  /* Font Sizes */
+  /* Font sizes */
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-base: 1rem;
@@ -82,34 +84,117 @@
   --space-2xl: 3rem;
   --space-3xl: 4rem;
 
-  /* Border Radius */
+  /* Border radius */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 16px;
   --radius-full: 9999px;
 
   /* Transitions */
-  --transition-fast: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 0.18s cubic-bezier(0.4,0,0.2,1);
+  --transition-normal: 0.25s cubic-bezier(0.4,0,0.2,1);
+  --transition-slow: 0.4s cubic-bezier(0.4,0,0.2,1);
 
-  /* Shadows — layered, soft */
-  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.05);
-  --shadow-md: 0 1px 2px rgba(28, 25, 23, 0.04), 0 4px 12px rgba(28, 25, 23, 0.06);
-  --shadow-lg: 0 4px 12px rgba(28, 25, 23, 0.06), 0 12px 28px rgba(28, 25, 23, 0.10);
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.15);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.2);
+  --shadow-lg: 0 20px 50px rgba(0,0,0,.5);
 
   /* Focus ring */
-  --ring-focus: 0 0 0 3px rgba(var(--primary-color-rgb), 0.32);
+  --ring-focus: 0 0 0 3px rgba(201,242,78,.15);
 
-  /* Primary Color Filter — recolours monochrome SVG icons to the terracotta accent */
-  --primary-color-filter: invert(34%) sepia(48%) saturate(2200%) hue-rotate(354deg) brightness(91%) contrast(91%);
+  /* Icon filters (for SVG img elements on dark bg) */
+  --icon-filter: brightness(0) invert(1);
+  --icon-opacity: 0.5;
+  --icon-active-opacity: 0.9;
 
-  /* Responsive Breakpoints */
+  /* Breakpoints */
   --breakpoint-xs: 480px;
   --breakpoint-sm: 768px;
   --breakpoint-md: 1024px;
   --breakpoint-lg: 1280px;
-  --breakpoint-xl: 1366px; /* 13-inch laptops */
-  --breakpoint-xxl: 1440px; /* 14-15 inch laptops */
-  --breakpoint-xxxl: 1600px; /* Large screens */
+  --breakpoint-xl: 1366px;
+  --breakpoint-xxl: 1440px;
+  --breakpoint-xxxl: 1600px;
+
+  /* Legacy aliases (keep for component compatibility) */
+  --primary-color: var(--accent-ink);
+  --primary-dark: #b3d943;
+  --background-color: var(--bg);
+  --background-soft: var(--bg2);
+  --background-mute: var(--surface);
+  --hover-bg: var(--o05);
+  --border-color: var(--o10);
+  --border-color-hover: var(--o16);
+  --text-primary: var(--text);
+  --text-secondary: var(--text3);
+  --text-heading: var(--text);
+  --text-muted: var(--muted);
+  --text-placeholder: var(--faint);
+  --code-bg: var(--surface);
+  --primary-soft: rgba(201,242,78,.1);
+}
+
+/* Light theme override */
+[data-theme="light"] {
+  --bg: #EEF0F4;
+  --bg2: #FFFFFF;
+  --surface: #FFFFFF;
+  --topbar: rgba(255,255,255,.85);
+
+  --accent-ink: #4C7A0B;
+  --c-lime: #4C7A0B;
+  --c-teal: #0E8C8C;
+  --c-purple: #6D5BD0;
+  --c-coral: #CF5B38;
+
+  --text: #171A21;
+  --text2: #222732;
+  --text3: #3C424E;
+  --muted: #5C6473;
+  --muted2: #838A98;
+  --faint: #A6ACB6;
+  --code: #3C424E;
+
+  --o03: rgba(17,21,30,.03);
+  --o04: rgba(17,21,30,.04);
+  --o05: rgba(17,21,30,.05);
+  --o06: rgba(17,21,30,.06);
+  --o07: rgba(17,21,30,.075);
+  --o08: rgba(17,21,30,.08);
+  --o10: rgba(17,21,30,.09);
+  --o12: rgba(17,21,30,.1);
+  --o14: rgba(17,21,30,.11);
+  --o16: rgba(17,21,30,.12);
+  --o20: rgba(17,21,30,.14);
+  --o25: rgba(17,21,30,.18);
+  --o30: rgba(17,21,30,.2);
+
+  /* Icon filters for light theme — SVGs are already dark, no inversion needed */
+  --icon-filter: brightness(1);
+  --icon-opacity: 0.6;
+  --icon-active-opacity: 0.85;
+
+  --shadow-sm: 0 1px 2px rgba(17,21,30,.05);
+  --shadow-md: 0 4px 12px rgba(17,21,30,.08);
+  --shadow-lg: 0 20px 50px rgba(17,21,30,.15);
+
+  --ring-focus: 0 0 0 3px rgba(76,122,11,.2);
+  --primary-soft: rgba(76,122,11,.08);
+
+  /* Legacy aliases */
+  --primary-color: var(--accent-ink);
+  --primary-dark: #3d6209;
+  --background-color: var(--bg);
+  --background-soft: var(--bg2);
+  --background-mute: var(--surface);
+  --hover-bg: var(--o05);
+  --border-color: var(--o10);
+  --border-color-hover: var(--o16);
+  --text-primary: var(--text);
+  --text-secondary: var(--text3);
+  --text-heading: var(--text);
+  --text-muted: var(--muted);
+  --text-placeholder: var(--faint);
+  --code-bg: var(--surface);
 }

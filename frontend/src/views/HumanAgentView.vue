@@ -71,30 +71,33 @@ const activeTab = ref('users') // users, groups, roles
 
 .tab-nav {
   display: flex;
-  gap: var(--space-md);
+  gap: var(--space-sm);
   margin-bottom: var(--space-xl);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o08);
 }
 
 .tab-btn {
-  padding: var(--space-md) var(--space-lg);
+  padding: 12px var(--space-lg);
   background: none;
   border: none;
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
   cursor: pointer;
-  font-size: var(--text-base);
-  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
   transition: all var(--transition-normal);
 }
 
 .tab-btn:hover {
-  opacity: 1;
+  color: var(--text);
+  background: var(--o05);
+  border-radius: 8px 8px 0 0;
 }
 
 .tab-btn.active {
-  opacity: 1;
-  border-bottom-color: var(--primary-color);
+  color: var(--accent-ink);
+  border-bottom-color: var(--accent-ink);
 }
 
 .content-area {

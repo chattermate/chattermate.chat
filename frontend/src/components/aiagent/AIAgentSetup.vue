@@ -122,14 +122,11 @@ onMounted(async () => {
     flex-direction: column;
     height: 100%;
     margin: 0 auto;
-    background: #fff;
-    border-radius: 24px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    background: transparent;
 }
 
 .messages {
     flex: 1;
-    padding: var(--space-xl);
     background: transparent;
     display: flex;
     flex-direction: column;
@@ -138,13 +135,15 @@ onMounted(async () => {
 
 .ai-provider-setup {
     margin-bottom: var(--space-xl);
+    padding: var(--space-xl);
 }
 
 .ai-provider-setup h3 {
     margin-bottom: var(--space-lg);
-    color: var(--text-primary);
+    color: var(--text);
+    font-family: var(--font-display);
     font-size: var(--text-2xl);
-    font-weight: 600;
+    font-weight: 700;
     text-align: center;
 }
 
@@ -154,7 +153,7 @@ onMounted(async () => {
 
 .error-message {
     padding: var(--space-md);
-    background: var(--secondary-color);
+    background: var(--error-bg);
     color: var(--error-color);
     border-radius: var(--radius-lg);
     text-align: center;
@@ -171,8 +170,8 @@ onMounted(async () => {
 .loader {
     width: 48px;
     height: 48px;
-    border: 5px solid var(--border-color);
-    border-bottom-color: var(--primary-color);
+    border: 3px solid var(--o10);
+    border-bottom-color: var(--accent-ink);
     border-radius: 50%;
     animation: rotation 1s linear infinite;
 }

@@ -1,48 +1,16 @@
-/* color palette from <https://github.com/vuejs/theme> */
+/* ChatterMate base — global resets & keyframes */
 :root {
   --vt-c-white: #ffffff;
   --vt-c-white-soft: #f8f8f8;
   --vt-c-white-mute: #f2f2f2;
-
   --vt-c-black: #181818;
   --vt-c-black-soft: #222222;
   --vt-c-black-mute: #282828;
-
   --vt-c-indigo: #2c3e50;
-
-  --vt-c-divider-light-1: rgba(60, 60, 60, 0.29);
-  --vt-c-divider-light-2: rgba(60, 60, 60, 0.12);
-  --vt-c-divider-dark-1: rgba(84, 84, 84, 0.65);
-  --vt-c-divider-dark-2: rgba(84, 84, 84, 0.48);
-
-  --vt-c-text-light-1: var(--vt-c-indigo);
-  --vt-c-text-light-2: rgba(60, 60, 60, 0.66);
-  --vt-c-text-dark-1: var(--vt-c-white);
-  --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
-
-  --background-base-rgb: 255, 255, 255;  
-  --background-soft-rgb: 255, 255, 255; 
-  --background-dark-rgb: 0, 0, 0;  
+  --background-base-rgb: 11,12,16;
+  --background-soft-rgb: 14,15,20;
+  --background-dark-rgb: 0,0,0;
 }
-
-/* semantic color variables for this project */
-:root {
-  --color-background: var(--vt-c-white);
-  --color-background-soft: var(--vt-c-white-soft);
-  --color-background-mute: var(--vt-c-white-mute);
-
-  --color-border: var(--vt-c-divider-light-2);
-  --color-border-hover: var(--vt-c-divider-light-1);
-
-  --color-heading: var(--vt-c-text-light-1);
-  --color-text: var(--vt-c-text-light-1);
-
-  --section-gap: 160px;
-}
-
-/* App is intentionally light-only (Hallmark redesign decision). The previous
-   prefers-color-scheme: dark block flipped surfaces to black using Vue
-   defaults and broke rendering for system-dark users — intentionally removed. */
 
 *,
 *::before,
@@ -52,30 +20,100 @@
   font-weight: normal;
 }
 
-body {
+html, body {
   min-height: 100vh;
-  color: var(--text-primary);
-  background: var(--background-color);
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
   line-height: 1.6;
-  font-family: var(--font-family);
+  font-family: var(--font-sans);
   font-size: 15px;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Display headings — Montserrat, tight, warm near-black */
+/* Display headings */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: var(--font-weight-bold);
   letter-spacing: var(--tracking-display);
-  color: var(--text-heading);
+  color: var(--text);
   line-height: 1.2;
 }
 
-/* Global focus ring — instant, never animated */
+/* Inputs inherit font */
+input, textarea, select, button {
+  font-family: var(--font-sans);
+  color: var(--text);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--faint);
+}
+
+/* Text selection */
+::selection {
+  background: #C9F24E;
+  color: #0B0C10;
+}
+
+[data-theme="light"] ::selection {
+  background: #4C7A0B;
+  color: #ffffff;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--o10);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--o16);
+}
+
+/* Global focus ring */
 :focus-visible {
   outline: none;
   box-shadow: var(--ring-focus);
   border-radius: var(--radius-sm);
+}
+
+/* Keyframe animations */
+@keyframes cm-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes cm-pulse {
+  0%, 100% { opacity: .4; }
+  50% { opacity: 1; }
+}
+
+@keyframes cm-aurora {
+  0% { transform: translate3d(-4%,-2%,0) scale(1); }
+  50% { transform: translate3d(4%,3%,0) scale(1.12); }
+  100% { transform: translate3d(-4%,-2%,0) scale(1); }
+}
+
+@keyframes cm-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes button-loading-spinner {
+  from { transform: rotate(0turn); }
+  to { transform: rotate(1turn); }
 }

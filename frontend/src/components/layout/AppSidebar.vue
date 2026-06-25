@@ -139,7 +139,11 @@ const handleNavigation = () => {
         <!-- Logo -->
         <div class="sidebar-header">
             <div class="logo-container">
-                <img src="@/assets/logo.svg" alt="Logo" class="logo" />
+                <div class="logo-mark" aria-hidden="true">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
                 <span v-if="!isCollapsed" class="logo-text">ChatterMate</span>
             </div>
             <SidebarToggle :isCollapsed="isCollapsed" @toggle="emit('toggle')" />
@@ -172,8 +176,8 @@ const handleNavigation = () => {
 <style scoped>
 .sidebar {
     width: 230px;
-    background: var(--background-soft);
-    border-right: 1px solid var(--border-color);
+    background: var(--bg2);
+    border-right: 1px solid var(--o07);
     display: flex;
     flex-direction: column;
     transition: all var(--transition-normal);
@@ -184,12 +188,12 @@ const handleNavigation = () => {
 }
 
 .sidebar.collapsed {
-    width: 90px;
+    width: 72px;
 }
 
 .sidebar-header {
-    /* padding: var(--space-md) var(--space-lg); */
-    border-bottom: 1px solid var(--border-color);
+    padding: 18px 14px 18px 16px;
+    border-bottom: 1px solid var(--o07);
     position: relative;
     display: flex;
     align-items: center;
@@ -198,11 +202,29 @@ const handleNavigation = () => {
 .logo-container {
     display: flex;
     align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
 }
 
-.logo {
-    width: 40px;
-    height: 40px;
+/* 3-dot logo mark */
+.logo-mark {
+    width: 32px;
+    height: 32px;
+    background: var(--accent-ink);
+    border-radius: 10px 10px 10px 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3.5px;
+    flex-shrink: 0;
+}
+
+.dot {
+    width: 4.5px;
+    height: 4.5px;
+    background: #0B0C10;
+    border-radius: 50%;
 }
 
 .logo-text {
@@ -210,7 +232,10 @@ const handleNavigation = () => {
     font-weight: var(--font-weight-bold);
     letter-spacing: var(--tracking-tight);
     font-size: var(--text-lg);
-    color: var(--text-heading);
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sidebar-nav {
@@ -218,22 +243,28 @@ const handleNavigation = () => {
     padding: var(--space-md) 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: 2px;
+    overflow-y: auto;
 }
 
 .nav-section {
-    padding: var(--space-md) var(--space-md) var(--space-xs);
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: var(--font-weight-semibold);
+    padding: 14px var(--space-md) 6px;
+    color: var(--faint);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: var(--font-weight-medium);
     text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
+    letter-spacing: .1em;
+}
+
+.nav-section.collapsed {
+    padding: 14px 0 6px;
 }
 
 .section-divider {
     height: 1px;
-    background: var(--border-color);
-    margin: var(--space-xs) var(--space-sm);
+    background: var(--o10);
+    margin: 6px var(--space-sm);
 }
 
 .nav-item {
@@ -241,8 +272,8 @@ const handleNavigation = () => {
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    padding: var(--space-sm) var(--space-md);
-    color: var(--text-secondary);
+    padding: 9px var(--space-md);
+    color: var(--muted);
     font-size: var(--text-sm);
     font-weight: var(--font-weight-medium);
     text-decoration: none;
@@ -252,8 +283,8 @@ const handleNavigation = () => {
 }
 
 .nav-item:hover {
-    background: var(--hover-bg);
-    color: var(--text-primary);
+    background: var(--o06);
+    color: var(--text);
 }
 
 .nav-item:focus-visible {
@@ -262,96 +293,65 @@ const handleNavigation = () => {
 }
 
 .nav-item.active {
-    background: var(--primary-soft);
-    color: var(--primary-dark);
+    background: var(--o06);
+    color: var(--text);
     font-weight: var(--font-weight-semibold);
 }
 
-/* Accent indicator bar on the active item */
+/* Lime accent bar on the active item */
 .nav-item.active::before {
     content: '';
     position: absolute;
-    left: 0;
+    left: calc(-1 * var(--space-xs));
     top: 50%;
     transform: translateY(-50%);
     width: 3px;
     height: 60%;
     border-radius: var(--radius-full);
-    background: var(--primary-color);
-}
-
-.sidebar.collapsed .nav-item.active::before {
-    left: calc(-1 * var(--space-xs));
-}
-
-.nav-item.active .icon-img {
-    filter: var(--primary-color-filter);
-    /* Tints the icon to the terracotta accent when active */
+    background: var(--accent-ink);
 }
 
 .nav-icon {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .icon-img {
-    width: 20px;
-    height: 20px;
+    width: 19px;
+    height: 19px;
     object-fit: contain;
-    transition: filter var(--transition-fast);
+    filter: var(--icon-filter, brightness(0) invert(1));
+    opacity: var(--icon-opacity, 0.5);
+    transition: opacity var(--transition-fast);
 }
 
-.nav-item:hover:not(.active) .icon-img {
-    filter: brightness(0.8);
+.nav-item:hover .icon-img {
+    opacity: 0.75;
+}
+
+.nav-item.active .icon-img {
+    opacity: var(--icon-active-opacity, 0.9);
 }
 
 .nav-label {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.user-profile {
-    padding: var(--space-md);
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-}
-
-.avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: var(--primary-color);
-}
-
-.user-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.user-name {
-    font-weight: 500;
-    color: var(--text-color);
-}
-
-.user-role {
-    font-size: var(--text-sm);
-    color: var(--text-color);
-    opacity: 0.7;
-}
-
-/* Small laptops (1025px - 1280px) - Keep normal sidebar behavior */
+/* Small laptops (1025px - 1280px) */
 @media (max-width: 1280px) and (min-width: 1025px) {
     .sidebar {
-        width: 230px;
+        width: 220px;
         position: relative;
     }
-    
+
     .sidebar.collapsed {
-        width: 90px;
+        width: 72px;
     }
 }
 
@@ -363,49 +363,45 @@ const handleNavigation = () => {
         top: 0;
         bottom: 0;
         z-index: 1000;
-        box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+        box-shadow: 8px 0 32px rgba(0,0,0,.4);
         transform: translateX(0);
     }
-    
+
     .sidebar.collapsed {
         transform: translateX(-100%);
         width: 230px;
     }
 }
 
-/* Mobile responsive */
+/* Mobile */
 @media (max-width: 768px) {
     .sidebar {
         width: 280px;
         max-width: 85vw;
     }
-    
+
     .sidebar.collapsed {
         width: 280px;
         max-width: 85vw;
     }
-    
-    .logo-container {
-        padding: var(--space-md);
-    }
 }
 
-/* Very small mobile devices */
+/* Very small mobile */
 @media (max-width: 480px) {
     .sidebar {
         width: 100%;
         max-width: 100vw;
     }
-    
+
     .sidebar.collapsed {
         width: 100%;
         max-width: 100vw;
     }
-    
+
     .nav-item {
         padding: var(--space-md) var(--space-lg);
     }
-    
+
     .nav-section {
         padding: var(--space-md) var(--space-lg) var(--space-xs);
     }

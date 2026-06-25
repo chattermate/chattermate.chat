@@ -1118,7 +1118,7 @@ onMounted(async () => {
     flex-direction: column;
     min-height: 100vh;
     height: auto;
-    background: var(--background-base);
+    background: var(--bg);
     overflow-x: hidden;
     max-width: 100vw;
     box-sizing: border-box;
@@ -1126,21 +1126,18 @@ onMounted(async () => {
 
 .detail-panel {
     flex: 1;
-    background: white;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    background: transparent;
     overflow: visible;
     display: flex;
     flex-direction: column;
-    margin: var(--space-sm);
     min-height: calc(100vh - 2 * var(--space-sm));
     max-width: 100%;
 }
 
 .panel-header {
     padding: var(--space-lg) var(--space-lg) var(--space-md);
-    border-bottom: 1px solid var(--border-color);
-    background: var(--background-soft);
+    border-bottom: 1px solid var(--o07);
+    background: var(--bg2);
 }
 
 .header-layout {
@@ -1155,20 +1152,19 @@ onMounted(async () => {
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--background-color);
-    border: 1px solid var(--border-color);
+    background: var(--o05);
+    border: 1px solid var(--o12);
     border-radius: var(--radius-full);
     cursor: pointer;
-    transition: all 0.2s ease;
-    color: var(--text-muted);
+    transition: all var(--transition-fast);
+    color: var(--muted);
     flex-shrink: 0;
 }
 
 .back-button:hover {
-    background: var(--background-muted);
-    color: var(--text-color);
+    background: var(--o10);
+    color: var(--text);
     transform: translateX(-2px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .back-icon {
@@ -1194,8 +1190,8 @@ onMounted(async () => {
     height: 80px;
     border-radius: 50%;
     overflow: hidden;
-    border: 3px solid white;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 2px solid var(--o12);
+    box-shadow: 0 4px 12px rgba(0,0,0,.3);
     transition: all 0.3s ease;
     flex-shrink: 0;
 }
@@ -1251,9 +1247,10 @@ onMounted(async () => {
 }
 
 .agent-info h3 {
+    font-family: var(--font-display);
     font-size: 1.25rem;
     font-weight: 700;
-    color: var(--text-color);
+    color: var(--text);
     margin: 0;
     line-height: 1.3;
     white-space: nowrap;
@@ -1286,19 +1283,19 @@ onMounted(async () => {
 .name-input {
     flex: 1;
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--o12);
     border-radius: var(--radius-md);
     font-size: 1rem;
     font-weight: 600;
-    background: white;
-    color: var(--text-color);
+    background: var(--o05);
+    color: var(--text);
     min-width: 0;
 }
 
 .name-input:focus {
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px var(--primary-soft);
+    border-color: var(--accent-ink);
+    box-shadow: var(--ring-focus);
 }
 
 .edit-actions {
@@ -1472,10 +1469,10 @@ onMounted(async () => {
 
 .mode-toggle {
     display: inline-flex;
-    background: var(--background-soft);
+    background: var(--o05);
     border-radius: var(--radius-full);
     padding: 2px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--o10);
 }
 
 .mode-button {
@@ -1487,31 +1484,35 @@ onMounted(async () => {
     border: none;
     border-radius: var(--radius-full);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--muted);
     white-space: nowrap;
     position: relative;
 }
 
 .mode-button:hover {
-    background: var(--background-muted);
-    color: var(--text-color);
+    background: var(--o08);
+    color: var(--text);
 }
 
 .mode-button.active {
-    background: var(--primary-color);
-    color: white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    background: var(--accent-ink);
+    color: #0B0C10;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
 }
 
 .mode-button:first-child.active {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    background: rgba(95,227,214,.15);
+    color: var(--c-teal);
+    border: 1px solid rgba(95,227,214,.25);
 }
 
 .mode-button:last-child.active {
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    background: rgba(157,140,255,.15);
+    color: var(--c-purple);
+    border: 1px solid rgba(157,140,255,.25);
 }
 
 .mode-icon {
@@ -2176,9 +2177,7 @@ input:checked + .slider:before {
     overflow: visible;
     display: flex;
     flex-direction: column;
-    background: white;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    background: transparent;
     margin-top: var(--space-md);
     min-height: calc(100vh - 300px);
 }
@@ -2203,7 +2202,7 @@ input:checked + .slider:before {
     overflow: visible;
     display: flex;
     flex-direction: column;
-    background: var(--background-base);
+    background: var(--bg);
     padding: var(--space-lg);
     min-height: calc(100vh - 200px);
 }
@@ -2236,15 +2235,14 @@ input:checked + .slider:before {
 .tabs-navigation.horizontal {
     display: flex;
     gap: var(--space-md);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--o08);
     padding: 0 var(--space-lg);
     margin: 0;
     overflow-x: auto;
-    background: white;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
-    min-height: 64px;
+    background: var(--bg2);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    min-height: 56px;
     align-items: flex-end;
 }
 
@@ -2253,18 +2251,15 @@ input:checked + .slider:before {
 }
 
 .tab-button:hover {
-    color: var(--text-color);
-    background: var(--background-soft);
-    transform: translateY(-1px);
-    border-radius: var(--radius-md);
+    color: var(--text);
+    background: var(--o05);
 }
 
 .tab-button.active {
-    color: var(--primary-color);
+    color: var(--accent-ink);
     font-weight: 600;
-    background: var(--primary-soft);
-    border-bottom-color: var(--primary-color);
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background: transparent;
+    border-bottom-color: var(--accent-ink);
 }
 
 .tabs-navigation.horizontal .tab-button.active::after {
@@ -2316,15 +2311,16 @@ input:checked + .slider:before {
 }
 
 .section-title {
+    font-family: var(--font-display);
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--text-color);
+    color: var(--text);
     margin-bottom: var(--space-lg);
     line-height: 1.3;
 }
 
 .section-description {
-    color: var(--text-muted);
+    color: var(--muted);
     font-size: 1rem;
     line-height: 1.6;
     margin-bottom: var(--space-xl);

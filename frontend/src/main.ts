@@ -20,6 +20,9 @@ import { fab } from '@fortawesome/free-brands-svg-icons'
 /* Add icons to the library */
 library.add(fas, far, fab)
 
+const savedTheme = localStorage.getItem('cm-theme') ?? 'dark'
+document.documentElement.setAttribute('data-theme', savedTheme)
+
 const app = createApp(App)
 
 app.use(createPinia())

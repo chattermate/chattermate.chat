@@ -146,8 +146,9 @@ onMounted(fetchNotifications)
     right: -400px;
     width: 400px;
     height: 100vh;
-    background-color: rgb(var(--background-base-rgb));
-    box-shadow: var(--shadow-lg);
+    background: var(--bg2);
+    border-left: 1px solid var(--o08);
+    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.4);
     transition: right 0.3s ease;
     z-index: 1000;
     display: flex;
@@ -159,16 +160,20 @@ onMounted(fetchNotifications)
 }
 
 .drawer-header {
-    padding: var(--space-lg);
-    border-bottom: 1px solid var(--border-color);
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--o08);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: rgb(var(--background-soft-rgb));
+    background: var(--bg2);
 }
 
 .drawer-header h3 {
     margin: 0;
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
 }
 
 .header-actions {
@@ -178,12 +183,12 @@ onMounted(fetchNotifications)
 }
 
 .refresh-button {
-    background: none;
-    border: none;
+    background: var(--o05);
+    border: 1px solid var(--o10);
+    border-radius: 8px;
     cursor: pointer;
-    padding: var(--space-xs);
-    border-radius: var(--radius-full);
-    color: var(--text-color);
+    padding: 6px;
+    color: var(--muted);
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
@@ -191,7 +196,8 @@ onMounted(fetchNotifications)
 }
 
 .refresh-button:hover {
-    background-color: rgb(var(--background-mute-rgb));
+    background: var(--o10);
+    color: var(--text);
     transform: scale(1.1);
 }
 
@@ -210,23 +216,23 @@ onMounted(fetchNotifications)
 }
 
 .close-button {
-    background: none;
-    border: none;
-    font-size: 24px;
+    background: var(--o05);
+    border: 1px solid var(--o10);
+    font-size: 18px;
     cursor: pointer;
-    color: var(--error-color);
+    color: var(--muted);
     transition: all 0.2s ease;
     width: 32px;
     height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-full);
+    border-radius: 8px;
 }
 
 .close-button:hover {
-    background-color: var(--error-color-soft);
-    transform: scale(1.1);
+    background: var(--o10);
+    color: var(--text);
 }
 
 .drawer-content {
@@ -237,27 +243,25 @@ onMounted(fetchNotifications)
 
 .notification-item {
     margin: var(--space-sm);
-    padding: var(--space-lg);
-    border-radius: var(--radius-lg);
-    background-color: rgb(var(--background-soft-rgb));
-    border: 1px solid var(--border-color);
-    border-left: 4px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
+    padding: var(--space-md);
+    border-radius: 14px;
+    background: var(--o05);
+    border: 1px solid var(--o08);
+    border-left: 3px solid var(--o12);
     cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, background 0.2s ease;
     display: flex;
     flex-direction: column;
 }
 
 .notification-item:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-    border-color: var(--border-hover);
+    transform: translateY(-1px);
+    background: var(--o08);
 }
 
 .notification-item.unread {
-    border-left-color: var(--primary-color);
-    background-color: rgb(var(--background-base-rgb));
+    border-left-color: var(--accent-ink);
+    background: rgba(201, 242, 78, 0.05);
 }
 
 .notification-header {
@@ -271,19 +275,20 @@ onMounted(fetchNotifications)
 .notification-type-icon {
     width: 20px;
     height: 20px;
-    color: var(--text-color-light);
+    color: var(--muted);
     flex-shrink: 0;
 }
 
 .notification-title {
-    font-weight: 500;
+    font-weight: 600;
+    color: var(--text);
     margin-bottom: var(--space-xs);
     word-break: break-word;
 }
 
 .notification-message {
     font-size: var(--text-sm);
-    color: var(--text-color);
+    color: var(--muted);
     word-break: break-word;
 }
 

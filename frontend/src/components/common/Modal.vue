@@ -49,7 +49,8 @@ defineEmits<{
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(5, 6, 9, 0.66);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -57,13 +58,15 @@ defineEmits<{
 }
 
 .modal-content {
-  background: var(--background-color);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: 20px;
+  padding: var(--space-xl);
   min-width: 400px;
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
+  box-shadow: var(--shadow-lg);
 }
 
 .modal-header {
@@ -74,24 +77,31 @@ defineEmits<{
 }
 
 .modal-title {
+  font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--text);
   margin: 0;
- 
 }
 
 .close-button {
-  background: none;
-  border: none;
-  font-size: var(--text-2xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  border-radius: 8px;
+  font-size: 18px;
+  color: var(--muted);
   cursor: pointer;
-  padding: var(--space-xs);
-  opacity: 0.7;
-  transition: opacity var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .close-button:hover {
-  opacity: 1;
+  background: var(--o10);
+  color: var(--text);
 }
 
 .modal-body {

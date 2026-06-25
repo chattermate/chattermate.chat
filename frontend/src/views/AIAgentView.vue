@@ -54,6 +54,6 @@ const handleWorkflowFullscreenToggle = (isFullscreen: boolean) => {
 
 .chat-section {
     flex: 1;
-    padding: var(--space-lg);
+    overflow: auto;
 }
 </style>

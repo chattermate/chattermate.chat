@@ -379,10 +379,10 @@ const handleSave = () => {
 
 .detail-section {
   margin-bottom: var(--space-xl);
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
   padding: var(--space-lg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   width: 100%;
 }
 
@@ -409,19 +409,19 @@ const handleSave = () => {
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--c-purple), #7C6AE6);
+  color: #fff;
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .ai-generate-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(157,140,255,.35);
 }
 
 .ai-generate-button:disabled {
@@ -447,12 +447,13 @@ const handleSave = () => {
 }
 
 .ai-prompt-content {
-  background: white;
+  background: var(--surface);
+  border: 1px solid var(--o10);
   padding: var(--space-xl);
-  border-radius: var(--radius-lg);
+  border-radius: 20px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg);
 }
 
 .ai-prompt-content h5 {
