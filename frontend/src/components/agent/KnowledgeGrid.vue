@@ -346,19 +346,12 @@ const closeKnowledgeModal = () => {
             <div class="knowledge-grid-header">
                 <div class="header-cell">Source</div>
                 <div class="header-cell">Type</div>
-                <div class="header-cell">Subpages</div>
-                <div class="header-cell">Created</div>
-                <div class="header-cell actions-cell">Actions</div>
+                <div class="header-cell">Status</div>
+                <div class="header-cell"></div>
             </div>
 
             <div v-if="!knowledgeItems.length" class="knowledge-empty">
-                <div class="warning-message">
-                    <span class="warning-icon">⚠️</span>
-                    No knowledge sources configured
-                </div>
-                <p class="warning-description">
-                    Add knowledge sources to improve the agent's responses
-                </p>
+                ⚠ No knowledge sources yet — add a URL or PDF to ground your agent.
             </div>
 
             <template v-for="item in knowledgeItems" :key="item.id">
@@ -367,33 +360,14 @@ const closeKnowledgeModal = () => {
                     <div class="grid-cell">
                         <span class="type-tag"
                             :class="String(item.type).toLowerCase().includes('pdf') || String(item.type).toLowerCase().includes('file') ? 'type-tag--pdf' : 'type-tag--web'">{{
-                                item.type }}</span>
+                                String(item.type).toLowerCase().includes('pdf') || String(item.type).toLowerCase().includes('file') ? 'PDF' : 'Website' }}</span>
                     </div>
-                    <div class="grid-cell pages-cell">
-                        <div class="pages-list">
-                            <div v-for="page in item.pages.slice(0, 3)" :key="page.subpage" class="page-item">
-                                <a v-if="isValidUrl(page.subpage)" :href="page.subpage" target="_blank"
-                                    rel="noopener noreferrer" class="page-url page-link" :title="page.subpage">
-                                    {{ page.subpage }}
-                                </a>
-                                <span v-else class="page-url" :title="page.subpage">
-                                    {{ page.subpage }}
-                                </span>
-                            </div>
-                            <div v-if="item.pages.length > 3" class="more-pages">
-                                +{{ item.pages.length - 3 }} more
-                            </div>
-                        </div>
+                    <div class="grid-cell status-cell">
+                        <span class="status-indexed">✓ indexed</span>
                     </div>
-                    <div class="grid-cell">
-                        {{ item.pages.length ? formatDate(getFirstCreated(item.pages)) : 'N/A' }}
-                    </div>
-                    <div class="grid-cell actions-cell">
-                        <button class="view-button" @click="viewKnowledgeContent(item.id)" title="View content">
-                            <img :src="EditIcon" alt="View" class="action-icon" />
-                        </button>
-                        <button class="delete-button" @click="confirmDelete(item.id)" title="Delete knowledge source">
-                            <img :src="DeleteIcon" alt="Delete" class="action-icon" />
+                    <div class="grid-cell remove-cell">
+                        <button class="remove-button" @click="confirmDelete(item.id)" title="Remove knowledge source">
+                            Remove
                         </button>
                     </div>
                 </div>
@@ -782,7 +756,8 @@ const closeKnowledgeModal = () => {
 
 .knowledge-grid-header {
     display: grid;
-    grid-template-columns: 2fr 1fr 2fr 1fr 110px;
+    grid-template-columns: 2fr 1fr 1fr 80px;
+    gap: 12px;
     border-bottom: 1px solid var(--o08);
 }
 
@@ -797,7 +772,8 @@ const closeKnowledgeModal = () => {
 
 .knowledge-grid-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 2fr 1fr 110px;
+    grid-template-columns: 2fr 1fr 1fr 80px;
+    gap: 12px;
     border-bottom: 1px solid var(--o05);
     align-items: center;
 }
@@ -815,8 +791,7 @@ const closeKnowledgeModal = () => {
 }
 
 .type-tag {
-    font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .type-tag--pdf {
@@ -825,6 +800,37 @@ const closeKnowledgeModal = () => {
 
 .type-tag--web {
     color: var(--c-teal);
+}
+
+.status-cell {
+    font-size: 12px;
+}
+
+.status-indexed {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--c-lime);
+}
+
+.remove-cell {
+    overflow: visible;
+}
+
+.remove-button {
+    justify-self: end;
+    padding: 6px 11px;
+    background: transparent;
+    border: 1px solid var(--coral-border);
+    border-radius: var(--radius-md);
+    color: var(--c-coral);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.remove-button:hover {
+    background: var(--coral-bg);
 }
 
 .pages-cell {
@@ -904,23 +910,9 @@ const closeKnowledgeModal = () => {
 }
 
 .knowledge-empty {
-    padding: var(--space-xl);
+    padding: 40px;
     text-align: center;
-}
-
-.warning-message {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-sm);
-    color: var(--c-coral);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    margin-bottom: var(--space-sm);
-}
-
-.warning-description {
-    color: var(--muted);
+    color: var(--muted2);
     font-size: 14px;
 }
 
@@ -1923,20 +1915,6 @@ const closeKnowledgeModal = () => {
 }
 
 /* Responsive design for knowledge grid */
-@media (max-width: 1024px) {
-
-    .knowledge-grid-header,
-    .knowledge-grid-row {
-        grid-template-columns: 2fr 1fr 1fr 80px;
-    }
-
-    .header-cell:nth-child(3),
-    .grid-cell:nth-child(3) {
-        display: none;
-        /* Hide subpages column on medium screens */
-    }
-}
-
 @media (max-width: 768px) {
     .knowledge-grid-container {
         padding: var(--space-sm);
@@ -1965,12 +1943,10 @@ const closeKnowledgeModal = () => {
 
     .header-cell:nth-child(2),
     .header-cell:nth-child(3),
-    .header-cell:nth-child(4),
     .grid-cell:nth-child(2),
-    .grid-cell:nth-child(3),
-    .grid-cell:nth-child(4) {
+    .grid-cell:nth-child(3) {
         display: none;
-        /* Hide type, subpages, and created columns on mobile */
+        /* Hide type and status columns on mobile, keep source + remove */
     }
 
     .grid-cell:first-child {

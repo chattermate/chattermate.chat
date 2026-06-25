@@ -411,14 +411,30 @@ onMounted(async () => {
       <!-- Jira Integration -->
       <div class="integration-section">
         <div class="integration-head">
-          <div class="integration-badge badge-teal">Ji</div>
-          <div class="integration-heading">
-            <div class="integration-title">Jira — auto-ticketing</div>
-            <div class="integration-desc">Create Jira tickets for issues that need follow-up.</div>
+          <div class="integration-head-left">
+            <div class="integration-badge badge-teal">Ji</div>
+            <div class="integration-heading">
+              <div class="integration-title">Jira — auto-ticketing</div>
+              <div class="integration-desc">Create Jira tickets for issues that need follow-up.</div>
+            </div>
           </div>
+          <router-link
+            v-if="!jiraConnected"
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Connect
+          </router-link>
+          <router-link
+            v-else
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Manage
+          </router-link>
         </div>
         <!-- Jira Ticket Creation Toggle -->
-        <div class="ticket-toggle">
+        <div v-if="jiraConnected" class="ticket-toggle">
           <div class="toggle-header">
             <h5 class="toggle-title">Create Jira Tickets</h5>
             <label class="switch" v-tooltip="ticketTooltipContent">
@@ -505,13 +521,29 @@ onMounted(async () => {
       <!-- Shopify Integration -->
       <div class="integration-section">
         <div class="integration-head">
-          <div class="integration-badge badge-lime">Sh</div>
-          <div class="integration-heading">
-            <div class="integration-title">Shopify — orders &amp; products</div>
-            <div class="integration-desc">Let the agent look up orders and recommend products.</div>
+          <div class="integration-head-left">
+            <div class="integration-badge badge-lime">Sh</div>
+            <div class="integration-heading">
+              <div class="integration-title">Shopify — orders &amp; products</div>
+              <div class="integration-desc">Let the agent look up orders and recommend products.</div>
+            </div>
           </div>
+          <router-link
+            v-if="!shopifyConnected"
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Connect
+          </router-link>
+          <router-link
+            v-else
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Manage
+          </router-link>
         </div>
-        <div class="ticket-toggle">
+        <div v-if="shopifyConnected" class="ticket-toggle">
           <div class="toggle-header">
             <h5 class="toggle-title">Enable Shopify Features</h5>
             <div class="toggle-with-loader">
@@ -549,7 +581,7 @@ onMounted(async () => {
           </div>
         </div>
         <!-- Add error message display -->
-        <div v-if="shopifyError" class="shopify-error">
+        <div v-if="shopifyConnected && shopifyError" class="shopify-error">
           <span class="error-icon">❌</span>
           {{ shopifyError }}
         </div>
@@ -558,25 +590,31 @@ onMounted(async () => {
       <!-- Slack Integration -->
       <div class="integration-section">
         <div class="integration-head">
-          <div class="integration-badge badge-purple">Sl</div>
-          <div class="integration-heading">
-            <div class="integration-title">Slack — agent notifications</div>
-            <div class="integration-desc">Notify your team in Slack on handoffs and new tickets.</div>
+          <div class="integration-head-left">
+            <div class="integration-badge badge-purple">Sl</div>
+            <div class="integration-heading">
+              <div class="integration-title">Slack — agent notifications</div>
+              <div class="integration-desc">Notify your team in Slack on handoffs and new tickets.</div>
+            </div>
           </div>
-        </div>
-
-        <!-- Slack Connection Status -->
-        <div v-if="slackLoading" class="jira-status loading">
-          Checking Slack connection...
-        </div>
-        <div v-else-if="!slackConnected" class="jira-status not-connected">
-          <span class="status-icon">⚠️</span>
-          Slack is not connected
-          <router-link to="/settings/integrations" class="connect-link">
-            Connect Slack
+          <router-link
+            v-if="!slackConnected"
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Connect
+          </router-link>
+          <router-link
+            v-else
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Manage
           </router-link>
         </div>
-        <div v-else class="jira-status connected">
+
+        <!-- Slack Connection Status (connected only) -->
+        <div v-if="slackConnected" class="jira-status connected">
           <span class="status-icon">✓</span>
           Connected to {{ slackTeamName }}
         </div>
@@ -751,7 +789,34 @@ onMounted(async () => {
 .integration-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.integration-head-left {
+  display: flex;
+  align-items: center;
   gap: 14px;
+  min-width: 0;
+}
+
+.connect-btn {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 10px 18px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  color: var(--text);
+  border-radius: var(--radius-chip);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.connect-btn:hover {
+  background: var(--o14);
 }
 
 .integration-badge {

@@ -907,20 +907,6 @@ onMounted(async () => {
                         <!-- Knowledge Tab -->
                         <div v-if="activeTab === 'knowledge'" class="tab-content">
                             <div class="knowledge-tab-container">
-                                <div class="knowledge-header">
-                                    <div>
-                                        <h3 class="section-title">Knowledge Sources</h3>
-                                        <p class="section-description">
-                                            Connect your agent to various knowledge sources to enhance its responses with context-relevant information.
-                                        </p>
-                                    </div>
-                                    <div class="knowledge-actions">
-                                        <button class="knowledge-action-button" title="Quick tips for managing knowledge" @click="openTips">
-                                            <span class="icon">💡</span>
-                                            <span>Tips</span>
-                                        </button>
-                                    </div>
-                                </div>
                                 <KnowledgeGrid :agent-id="agentData.id" :organization-id="agentData.organization_id" />
                             </div>
                         </div>
@@ -1461,8 +1447,10 @@ onMounted(async () => {
 
 .status-and-mode {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
 }
 
 .status {
@@ -1497,7 +1485,7 @@ onMounted(async () => {
 
 /* Mode Selection Styles — standalone solid pills */
 .mode-selection {
-    margin-top: var(--space-xs);
+    margin-top: 0;
 }
 
 .mode-toggle {
