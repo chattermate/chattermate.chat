@@ -19,8 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import { useWidgetApps } from '@/composables/useWidgetApps'
-import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
-import { EllipsisVerticalIcon, PlusIcon } from '@heroicons/vue/24/outline'
+import { PlusIcon } from '@heroicons/vue/24/outline'
 import Modal from '@/components/common/Modal.vue'
 import WidgetAppForm from './WidgetAppForm.vue'
 import ApiKeyModal from './ApiKeyModal.vue'
@@ -189,9 +188,16 @@ const formatDate = (dateString: string) => {
     <template v-else>
       <!-- Header -->
       <header class="page-header">
+        <div class="page-header-text">
+          <h1>Widget Apps</h1>
+          <p class="subtitle">
+            Generate secure API keys to authenticate your chat widgets.
+            <span v-if="hasAnyApps" class="subtitle-count">{{ apps.length }} {{ apps.length === 1 ? 'app' : 'apps' }}</span>
+          </p>
+        </div>
         <button v-if="hasAnyApps" class="btn btn-primary" @click="showCreateModal = true">
           <PlusIcon class="icon" />
-          Create App
+          Create app
         </button>
       </header>
 
@@ -221,132 +227,74 @@ const formatDate = (dateString: string) => {
     <!-- Empty state (only when no apps at all) -->
     <div v-else-if="!hasAnyApps" class="empty-state">
       <div class="empty-content">
-        <div class="empty-icon-wrapper">
-          <div class="empty-icon-bg">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
-              <rect x="3" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/>
-              <rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-          </div>
+        <div class="empty-icon-bg">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+            <rect x="4" y="4" width="7" height="7" rx="2"/>
+            <rect x="13" y="4" width="7" height="7" rx="2"/>
+            <rect x="4" y="13" width="7" height="7" rx="2"/>
+            <rect x="13" y="13" width="7" height="7" rx="2"/>
+          </svg>
         </div>
-        <h2>No Widget Apps Yet</h2>
+        <h2>No widget apps yet</h2>
         <p class="empty-description">
-          Widget apps allow you to generate secure API keys for authenticating your chat widgets.
-          Create your first app to get started.
+          Widget apps let you generate secure API keys for authenticating your chat widgets.
+          Create your first to get started.
         </p>
-        <div class="empty-features">
-          <div class="feature-item">
-            <div class="feature-icon-wrapper">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feature-icon">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-            </div>
-            <div class="feature-text">
-              <strong>Secure API Keys</strong>
-              <span>Generate unique keys for each integration</span>
-            </div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon-wrapper">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feature-icon">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-            </div>
-            <div class="feature-text">
-              <strong>Access Control</strong>
-              <span>Manage and revoke access anytime</span>
-            </div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon-wrapper">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feature-icon">
-                <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/>
-              </svg>
-            </div>
-            <div class="feature-text">
-              <strong>Multi-Platform</strong>
-              <span>Deploy widgets across multiple sites</span>
-            </div>
-          </div>
-        </div>
         <button class="btn btn-primary create-btn" @click="showCreateModal = true">
           <PlusIcon class="icon" />
-          Create Your First App
+          Create your first app
         </button>
       </div>
     </div>
 
     <!-- Table -->
     <div v-else-if="apps.length > 0" class="table-container">
-      <table class="widget-app-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Description</th>
-            <th>Status</th>
-            <th>Created</th>
-            <th>Updated</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="app in apps" :key="app.id" :class="{ inactive: !app.is_active }">
-            <td class="name-cell">
-              <strong>{{ app.name }}</strong>
-            </td>
-            <td class="description-cell">
-              {{ app.description || '—' }}
-            </td>
-            <td>
-              <span :class="['status-badge', app.is_active ? 'active' : 'inactive']">
-                {{ app.is_active ? 'Active' : 'Inactive' }}
-              </span>
-            </td>
-            <td class="date-cell">
-              {{ formatDate(app.created_at) }}
-            </td>
-            <td class="date-cell">
-              {{ formatDate(app.updated_at) }}
-            </td>
-            <td class="actions-cell">
-              <Menu as="div" class="actions-menu">
-                <MenuButton class="menu-button">
-                  <EllipsisVerticalIcon class="icon" />
-                </MenuButton>
-                <MenuItems class="menu-items">
-                  <MenuItem v-slot="{ active }">
-                    <button
-                      :class="['menu-item', { active }]"
-                      @click="handleEditApp(app)"
-                    >
-                      Edit
-                    </button>
-                  </MenuItem>
-                  <MenuItem v-slot="{ active }">
-                    <button
-                      :class="['menu-item', { active }]"
-                      @click="handleRegenerateKey(app)"
-                    >
-                      Regenerate API Key
-                    </button>
-                  </MenuItem>
-                  <MenuItem v-slot="{ active }">
-                    <button
-                      :class="['menu-item danger', { active }]"
-                      @click="handleDeleteApp(app)"
-                    >
-                      Delete
-                    </button>
-                  </MenuItem>
-                </MenuItems>
-              </Menu>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-head">
+        <span class="col-name">NAME</span>
+        <span class="col-desc">DESCRIPTION</span>
+        <span class="col-created">CREATED</span>
+        <span class="col-updated">UPDATED</span>
+        <span class="col-actions">ACTIONS</span>
+      </div>
+      <div
+        v-for="app in apps"
+        :key="app.id"
+        :class="['table-row', { inactive: !app.is_active }]"
+      >
+        <div class="cell-name">
+          <div class="app-name">{{ app.name }}</div>
+          <span :class="['status-badge', app.is_active ? 'active' : 'inactive']">
+            <span class="status-dot"></span>
+            {{ app.is_active ? 'Active' : 'Inactive' }}
+          </span>
+        </div>
+        <div class="cell-desc">{{ app.description || '—' }}</div>
+        <div class="cell-date">{{ formatDate(app.created_at) }}</div>
+        <div class="cell-date">{{ formatDate(app.updated_at) }}</div>
+        <div class="cell-actions">
+          <button
+            class="action-btn"
+            title="Edit"
+            @click="handleEditApp(app)"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+          <button
+            class="action-btn"
+            title="Regenerate key"
+            @click="handleRegenerateKey(app)"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+          </button>
+          <button
+            class="action-btn action-btn-danger"
+            title="Revoke"
+            @click="handleDeleteApp(app)"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M6 6l1 14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-14"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- All apps filtered state (all inactive and showInactive is false) -->
@@ -412,31 +360,64 @@ const formatDate = (dateString: string) => {
 <style scoped>
 .widget-app-list {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .page-header {
   display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: var(--space-xl);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
 }
 
 .page-header h1 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  margin-bottom: var(--space-xs);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  color: var(--text);
 }
 
 .subtitle {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0;
+}
+
+.subtitle-count {
+  color: var(--muted2);
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 8px;
+}
+
+.page-header .btn-primary {
+  padding: 12px 20px;
+  background: var(--accent-ink);
+  color: var(--on-accent);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter var(--transition-fast, 0.15s);
+}
+
+.page-header .btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.page-header .btn-primary .icon {
+  width: 17px;
+  height: 17px;
 }
 
 .filters {
@@ -451,126 +432,141 @@ const formatDate = (dateString: string) => {
 }
 
 .table-container {
-  overflow: visible;
   background: var(--surface);
-  border-radius: 18px;
   border: 1px solid var(--o08);
+  border-radius: 18px;
+  padding: 18px 0 6px;
 }
 
-.widget-app-table {
-  width: 100%;
-  border-collapse: collapse;
+.table-head,
+.table-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.3fr) minmax(160px, 1.6fr) 130px 130px 130px;
+  gap: 14px;
+  align-items: center;
 }
 
-.widget-app-table th {
-  text-align: left;
-  padding: 12px var(--space-md);
-  border-bottom: 1px solid var(--o07);
+.table-head {
+  padding: 0 22px 14px;
+}
+
+.table-head span {
   font-family: var(--font-mono);
-  font-weight: 600;
   font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--faint);
 }
 
-.widget-app-table td {
-  padding: 14px var(--space-md);
-  border-bottom: 1px solid var(--o07);
-  color: var(--text3);
-  font-size: var(--text-sm);
+.table-head .col-actions {
+  text-align: right;
 }
 
-.widget-app-table tr:last-child td {
-  border-bottom: none;
+.table-row {
+  padding: 15px 22px;
+  border-top: 1px solid var(--o06);
 }
 
-.widget-app-table tr:hover td {
-  background: var(--o04);
-}
-
-.widget-app-table tr.inactive {
+.table-row.inactive {
   opacity: 0.6;
 }
 
-.status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
+.cell-name {
+  min-width: 0;
+}
+
+.app-name {
+  font-size: 14px;
   font-weight: 600;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-desc {
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-date {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
 }
 
 .status-badge.active {
-  background: rgba(95,227,214,.12);
-  color: var(--c-teal);
-  border: 1px solid rgba(95,227,214,.25);
+  background: var(--teal-bg);
+  border: 1px solid var(--teal-border);
+  color: var(--c-online);
+}
+
+.status-badge.active .status-dot {
+  background: var(--c-teal);
 }
 
 .status-badge.inactive {
   background: var(--o06);
-  color: var(--muted);
   border: 1px solid var(--o10);
-}
-
-.date-cell {
-  font-size: var(--text-sm);
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 12px;
 }
 
-.actions-menu {
-  position: relative;
+.status-badge.inactive .status-dot {
+  background: var(--muted);
 }
 
-.menu-button {
-  padding: var(--space-xs);
-  border: none;
-  background: none;
+.cell-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  color: var(--muted);
   cursor: pointer;
-  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast, 0.15s), color var(--transition-fast, 0.15s);
 }
 
-.menu-button:hover {
-  background: var(--hover-bg);
+.action-btn:hover {
+  background: var(--o10);
+  color: var(--text2);
 }
 
-.menu-items {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: var(--space-xs);
-  background: var(--background-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  z-index: 50;
-  min-width: 180px;
+.action-btn-danger {
+  background: transparent;
+  border: 1px solid var(--coral-border);
+  color: var(--c-coral);
 }
 
-.actions-cell {
-  position: relative;
-  overflow: visible;
-}
-
-.menu-item {
-  display: block;
-  width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  border: none;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-
-.menu-item:hover,
-.menu-item.active {
-  background: var(--hover-bg);
-}
-
-.menu-item.danger {
-  color: var(--error-color);
+.action-btn-danger:hover {
+  background: var(--coral-bg);
+  color: var(--c-coral);
 }
 
 .confirm-delete {
@@ -629,186 +625,70 @@ const formatDate = (dateString: string) => {
 
 /* Empty State Styles */
 .empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 50vh;
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  position: relative;
-  overflow: hidden;
-}
-
-.empty-state::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 80%, rgba(201, 242, 78, 0.04) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
-  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 20px;
+  padding: 48px 32px;
+  text-align: center;
 }
 
 .empty-content {
-  text-align: center;
-  max-width: 600px;
-  padding: var(--space-xl);
-  position: relative;
-  z-index: 1;
-}
-
-.empty-icon-wrapper {
-  margin-bottom: var(--space-lg);
+  max-width: 440px;
+  margin: 0 auto;
 }
 
 .empty-icon-bg {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 80px;
-  height: 80px;
-  background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 18px;
+  border-radius: 16px;
+  background: var(--accent-bg-12);
+  border: 1px solid var(--accent-border);
 }
 
 .empty-icon {
-  width: 40px;
-  height: 40px;
-  color: var(--on-accent);
+  width: 28px;
+  height: 28px;
+  color: var(--accent-ink);
 }
 
 .empty-content h2 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--space-sm);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--text);
+  margin: 0 0 8px;
 }
 
 .empty-description {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  line-height: 1.6;
-  margin-bottom: var(--space-xl);
-}
-
-.empty-features {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  margin-bottom: var(--space-xl);
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-md);
-  background: var(--background-color);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  text-align: left;
-  transition: all var(--transition-normal);
-}
-
-.feature-item:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-color-hover);
-}
-
-.feature-icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  background: var(--info-bg);
-  border-radius: var(--radius-md);
-  flex-shrink: 0;
-}
-
-.feature-icon {
-  width: 22px;
-  height: 22px;
-  color: var(--info-color);
-}
-
-.feature-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.feature-text strong {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.feature-text span {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  font-size: 14.5px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0 auto 26px;
 }
 
 .create-btn {
-  padding: var(--space-md) var(--space-xl);
-  font-size: var(--text-base);
+  padding: 13px 24px;
+  background: var(--accent-ink);
+  color: var(--on-accent);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 15px;
   font-weight: 600;
-  box-shadow: var(--shadow-md);
-  transition: all var(--transition-normal);
+  cursor: pointer;
+  transition: filter var(--transition-fast, 0.15s);
 }
 
 .create-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  filter: brightness(1.05);
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .empty-state {
-    min-height: 40vh;
-  }
-
-  .empty-content {
-    padding: var(--space-lg);
-  }
-
-  .empty-icon-bg {
-    width: 64px;
-    height: 64px;
-  }
-
-  .empty-icon {
-    width: 32px;
-    height: 32px;
-  }
-
-  .empty-content h2 {
-    font-size: var(--text-xl);
-  }
-
-  .empty-description {
-    font-size: var(--text-sm);
-  }
-
-  .feature-item {
-    padding: var(--space-sm);
-  }
-
-  .feature-icon-wrapper {
-    width: 36px;
-    height: 36px;
-  }
-
-  .feature-icon {
-    width: 18px;
-    height: 18px;
-  }
+.create-btn .icon {
+  width: 17px;
+  height: 17px;
 }
 
 /* Widget Apps Locked Overlay Styles */
