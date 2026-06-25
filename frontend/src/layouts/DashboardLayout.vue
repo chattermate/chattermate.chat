@@ -260,20 +260,18 @@ const layoutClasses = computed(() => ({
                                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                             </svg>
                         </button>
-                        <div v-if="hasEnterpriseModule" class="plan-display">
+                        <div v-if="hasEnterpriseModule && (isLoadingPlan || isInTrial)" class="plan-display">
                             <div v-if="isLoadingPlan" class="plan-loading">
                                 <span class="loading-spinner"></span>
                                 Loading...
                             </div>
-                            <div v-else-if="currentPlan" class="plan-info">
-                                <div v-if="isInTrial" class="trial-info">
-                                    <span 
-                                        class="trial-badge clickable" 
-                                        @click="navigateToUpgrade"
-                                    >
-                                        Trial ({{ trialDaysLeft }} days left)
-                                    </span>
-                                </div>
+                            <div v-else-if="isInTrial" class="trial-info">
+                                <span
+                                    class="trial-badge clickable"
+                                    @click="navigateToUpgrade"
+                                >
+                                    Trial ({{ trialDaysLeft }} days left)
+                                </span>
                             </div>
                         </div>
                         <div class="user-menu">

@@ -193,12 +193,12 @@ const handleNavigation = () => {
 }
 
 .sidebar-header {
-    padding: 22px 20px;
+    padding: 20px 14px;
     border-bottom: 1px solid var(--o06);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 11px;
+    gap: 8px;
 }
 
 /* Collapsed header: stack logo above the toggle, both centered */
@@ -212,9 +212,8 @@ const handleNavigation = () => {
 .logo-container {
     display: flex;
     align-items: center;
-    gap: 11px;
+    gap: 9px;
     min-width: 0;
-    overflow: hidden;
 }
 
 /* 3-dot logo mark */
@@ -244,8 +243,7 @@ const handleNavigation = () => {
     font-size: 18px;
     color: var(--text);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex-shrink: 0;
 }
 
 .sidebar-nav {
@@ -370,7 +368,7 @@ const handleNavigation = () => {
 /* Small laptops (1025px - 1280px) */
 @media (max-width: 1280px) and (min-width: 1025px) {
     .sidebar {
-        width: 236px;
+        width: 248px;
         position: relative;
     }
 
