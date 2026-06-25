@@ -456,9 +456,9 @@ const formatDate = (dateString: string) => {
 
 .table-container {
   overflow: visible;
-  background: var(--background-color);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  background: var(--surface);
+  border-radius: 18px;
+  border: 1px solid var(--o08);
 }
 
 .widget-app-table {
@@ -468,20 +468,29 @@ const formatDate = (dateString: string) => {
 
 .widget-app-table th {
   text-align: left;
-  padding: var(--space-md);
-  border-bottom: 1px solid var(--border-color);
-  font-weight: 500;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  padding: 12px var(--space-md);
+  border-bottom: 1px solid var(--o07);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 
 .widget-app-table td {
-  padding: var(--space-md);
-  border-bottom: 1px solid var(--border-color);
+  padding: 14px var(--space-md);
+  border-bottom: 1px solid var(--o07);
+  color: var(--text3);
+  font-size: var(--text-sm);
 }
 
 .widget-app-table tr:last-child td {
   border-bottom: none;
+}
+
+.widget-app-table tr:hover td {
+  background: var(--o04);
 }
 
 .widget-app-table tr.inactive {
@@ -490,25 +499,29 @@ const formatDate = (dateString: string) => {
 
 .status-badge {
   display: inline-block;
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-md);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .status-badge.active {
-  background: var(--success-bg);
-  color: var(--success-color);
+  background: rgba(95,227,214,.12);
+  color: var(--c-teal);
+  border: 1px solid rgba(95,227,214,.25);
 }
 
 .status-badge.inactive {
-  background: var(--error-bg);
-  color: var(--error-color);
+  background: var(--o06);
+  color: var(--muted);
+  border: 1px solid var(--o10);
 }
 
 .date-cell {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .actions-menu {

@@ -63,7 +63,7 @@ const PAGE_TITLES: Record<string, string> = {
     '/settings/organization': 'Organization',
     '/settings/subscription': 'Subscription',
     '/settings/integrations': 'Integrations',
-    '/settings/widgets': 'Widget Apps',
+    '/settings/widget-apps': 'Widget Apps',
     '/settings/ai-config': 'AI Configuration',
     '/settings/user': 'User Settings',
 }
