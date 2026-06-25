@@ -1641,7 +1641,7 @@ onMounted(async () => {
 }
 
 .cropper-container {
-    background: #ffffff;
+    background: var(--bg);
     padding: 2rem;
     border-radius: 12px;
     width: 90%;
@@ -1672,7 +1672,7 @@ onMounted(async () => {
 
 .cropper-actions button:first-child {
     background: var(--primary-color);
-    color: #0B0C10;
+    color: var(--on-accent);
 }
 
 .cropper-actions button:last-child {
@@ -2108,7 +2108,7 @@ input:checked + .slider:before {
 
 .connect-link:hover {
     background-color: var(--primary-color);
-    color: #0B0C10;
+    color: var(--on-accent);
 }
 
 .jira-config {
@@ -2157,7 +2157,7 @@ input:checked + .slider:before {
     margin-top: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-full);
     font-weight: 500;
@@ -2395,7 +2395,7 @@ input:checked + .slider:before {
 }
 
 .tips-dialog {
-    background: #ffffff;
+    background: var(--bg);
     padding: 2rem;
     border-radius: 12px;
     width: 90%;
@@ -2463,7 +2463,7 @@ input:checked + .slider:before {
 .close-tips-button {
     padding: var(--space-sm) var(--space-md);
     background: var(--primary-color);
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-full);
     cursor: pointer;
@@ -2637,7 +2637,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal {
-    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    background: linear-gradient(135deg, var(--bg) 0%, #f8fafc 100%);
     border-radius: 16px;
     width: 90%;
     max-width: 500px;
@@ -2662,7 +2662,7 @@ input:checked + .slider:before {
     text-align: center;
     position: relative;
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: #0B0C10;
+    color: var(--on-accent);
 }
 
 .upgrade-icon {
@@ -2685,7 +2685,7 @@ input:checked + .slider:before {
     font-size: 1.5rem;
     font-weight: 700;
     margin: 0;
-    color: #0B0C10;
+    color: var(--on-accent);
 }
 
 .upgrade-modal-header .close-button {
@@ -2697,7 +2697,7 @@ input:checked + .slider:before {
     border-radius: 50%;
     width: 32px;
     height: 32px;
-    color: #0B0C10;
+    color: var(--on-accent);
     cursor: pointer;
     font-size: 1.25rem;
     display: flex;
@@ -2761,7 +2761,7 @@ input:checked + .slider:before {
 
 .upgrade-button {
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-full);
     padding: var(--space-md) var(--space-xl);

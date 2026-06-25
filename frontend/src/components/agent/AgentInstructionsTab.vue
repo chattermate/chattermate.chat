@@ -763,7 +763,7 @@ input:checked + .slider:before {
 .save-button {
   padding: var(--space-md) var(--space-xl);
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   font-size: 1rem;
@@ -882,7 +882,7 @@ input:checked + .slider:before {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0;
-  color: #F5F6F8;
+  color: var(--text);
 }
 
 .upgrade-modal-header .close-button {
@@ -894,7 +894,7 @@ input:checked + .slider:before {
   border-radius: 50%;
   width: 32px;
   height: 32px;
-  color: #F5F6F8;
+  color: var(--text);
   cursor: pointer;
   font-size: 1.25rem;
   display: flex;
@@ -958,7 +958,7 @@ input:checked + .slider:before {
 
 .upgrade-button {
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-full);
   padding: var(--space-md) var(--space-xl);

@@ -616,7 +616,7 @@ onMounted(() => {
   align-items: center;
   gap: var(--space-sm);
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: 14px;
   padding: var(--space-md) var(--space-xl);
@@ -636,7 +636,7 @@ onMounted(() => {
 
 .upgrade-icon {
   font-size: 1rem;
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .arrow-icon {

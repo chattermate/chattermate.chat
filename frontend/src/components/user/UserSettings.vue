@@ -494,7 +494,7 @@ const handleProfilePicClick = () => {
 .submit-button {
   padding: var(--space-sm) var(--space-xl);
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: 12px;
   font-weight: 600;
@@ -695,7 +695,7 @@ const handleProfilePicClick = () => {
 .upload-button {
   padding: var(--space-xs) var(--space-md);
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;

@@ -1524,7 +1524,7 @@ const handleInitiationClick = () => {
     content: '|';
     animation: blink 1s step-end infinite;
     margin-left: 2px;
-    color: v-bind('customization.accent_color || "#C9F24E"');
+    color: v-bind('customization.accent_color || "var(--accent-ink)"');
     font-weight: 500;
 }
 

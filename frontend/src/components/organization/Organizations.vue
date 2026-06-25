@@ -294,7 +294,7 @@ onMounted(async () => {
 .submit-button {
   padding: var(--space-sm) var(--space-xl);
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   font-weight: 500;
@@ -418,7 +418,7 @@ select.form-input {
   width: 16px;
   left: 2px;
   bottom: 2px;
-  background-color: white;
+  background-color: var(--toggle-knob);
   transition: .4s;
   border-radius: 50%;
 }

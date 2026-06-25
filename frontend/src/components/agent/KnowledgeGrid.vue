@@ -906,7 +906,7 @@ const closeKnowledgeModal = () => {
 
 .knowledge-tabs button.active {
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
 }
 
 .tab-content {
@@ -922,7 +922,7 @@ const closeKnowledgeModal = () => {
     width: 100%;
     padding: var(--space-sm);
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;
@@ -970,7 +970,7 @@ const closeKnowledgeModal = () => {
 .url-input-group button {
     padding: var(--space-sm) var(--space-md);
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;
@@ -1048,7 +1048,7 @@ const closeKnowledgeModal = () => {
 
 .link-button {
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
 }
 
 .unlink-button {
@@ -1376,7 +1376,7 @@ const closeKnowledgeModal = () => {
 .add-subpage-btn {
     padding: var(--space-sm) var(--space-md);
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1410,7 +1410,7 @@ const closeKnowledgeModal = () => {
 .save-button {
     padding: var(--space-xs) var(--space-sm);
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;

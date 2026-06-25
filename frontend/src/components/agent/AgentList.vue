@@ -207,11 +207,11 @@ const handleFullscreenToggle = (isFullscreen: boolean) => {
 
 // Colorful gradient orb per agent (matches design aesthetic)
 const ORB_PALETTES = [
-    { stops: '#9D8CFF, #5FE3D6, #C9F24E', glow: 'rgba(157,140,255,0.45)' },
-    { stops: '#FF8A73, #9D8CFF, #5FE3D6', glow: 'rgba(255,138,115,0.4)' },
-    { stops: '#5FE3D6, #C9F24E, #9D8CFF', glow: 'rgba(95,227,214,0.4)' },
-    { stops: '#C9F24E, #5FE3D6, #FF8A73', glow: 'rgba(201,242,78,0.35)' },
-    { stops: '#9D8CFF, #FF8A73, #5FE3D6', glow: 'rgba(157,140,255,0.4)' },
+    { stops: 'var(--c-purple), var(--c-teal), var(--accent-ink)', glow: 'rgba(157,140,255,0.45)' },
+    { stops: 'var(--c-coral), var(--c-purple), var(--c-teal)', glow: 'rgba(255,138,115,0.4)' },
+    { stops: 'var(--c-teal), var(--accent-ink), var(--c-purple)', glow: 'rgba(95,227,214,0.4)' },
+    { stops: 'var(--accent-ink), var(--c-teal), var(--c-coral)', glow: 'rgba(201,242,78,0.35)' },
+    { stops: 'var(--c-purple), var(--c-coral), var(--c-teal)', glow: 'rgba(157,140,255,0.4)' },
 ]
 
 const getOrbStyle = (agent: Agent): Record<string, string> => {
@@ -494,7 +494,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
 
 .create-agent-button {
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: 12px;
     padding: 11px 22px;
@@ -800,7 +800,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     gap: 7px;
     padding: 11px 16px;
     background: var(--accent-ink);
-    color: #0B0C10;
+    color: var(--on-accent);
     border: none;
     border-radius: 12px;
     font-family: var(--font-sans);
@@ -1023,7 +1023,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     border: none;
 }
 
-.upgrade-button.primary { background: var(--accent-ink); color: #0B0C10; }
+.upgrade-button.primary { background: var(--accent-ink); color: var(--on-accent); }
 .upgrade-button.primary:hover { opacity: 0.88; transform: translateY(-1px); }
 .upgrade-button.secondary { background: var(--o06); color: var(--text3); border: 1px solid var(--o10); }
 .upgrade-button.secondary:hover { background: var(--o10); color: var(--text); }

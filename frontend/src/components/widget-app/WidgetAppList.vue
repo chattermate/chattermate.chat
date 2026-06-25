@@ -679,7 +679,7 @@ const formatDate = (dateString: string) => {
 .empty-icon {
   width: 40px;
   height: 40px;
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .empty-content h2 {
@@ -867,7 +867,7 @@ const formatDate = (dateString: string) => {
 .widget-apps-locked-overlay .locked-icon {
   width: 40px;
   height: 40px;
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .widget-apps-locked-overlay .locked-header h2 {
@@ -959,7 +959,7 @@ const formatDate = (dateString: string) => {
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-xl);
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-base);

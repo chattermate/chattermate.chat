@@ -610,7 +610,7 @@ onMounted(() => {
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   font-weight: 500;
@@ -1147,7 +1147,7 @@ onMounted(() => {
 .input-add button {
   padding: var(--space-sm) var(--space-md);
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -1218,7 +1218,7 @@ onMounted(() => {
 
 .primary-button {
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .primary-button:hover {
@@ -1251,7 +1251,7 @@ onMounted(() => {
 
 .link-button {
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   min-width: 80px;
   display: flex;
   align-items: center;

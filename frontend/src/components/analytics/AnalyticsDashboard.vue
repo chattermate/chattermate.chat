@@ -616,7 +616,7 @@ fetchAnalytics()
 
 .time-range-selector button.active {
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -791,7 +791,7 @@ fetchAnalytics()
 
 .locked-icon {
   font-size: 1.5rem;
-  color: white;
+  color: var(--on-accent);
 }
 
 .locked-content h2 {
@@ -806,7 +806,7 @@ fetchAnalytics()
   align-items: center;
   gap: var(--space-xs);
   background: var(--primary-color);
-  color: white;
+  color: var(--on-accent);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -897,7 +897,7 @@ fetchAnalytics()
   align-items: center;
   gap: var(--space-sm);
   background: var(--primary-color);
-  color: white;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-lg);
   padding: var(--space-lg) var(--space-xl);

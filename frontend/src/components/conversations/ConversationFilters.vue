@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
 
 .filter-toggle-btn.active {
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border-color: var(--primary-color);
 }
 
@@ -406,7 +406,7 @@ onBeforeUnmount(() => {
 
 .apply-btn {
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .apply-btn:hover {

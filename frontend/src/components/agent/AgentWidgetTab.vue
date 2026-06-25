@@ -392,7 +392,7 @@ const { data } = await response.json();
   width: 28px;
   height: 28px;
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   border-radius: 50%;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -445,13 +445,13 @@ const { data } = await response.json();
   position: absolute;
   top: var(--space-sm);
   right: var(--space-sm);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--o10);
   border: none;
   color: #888;
 }
 
 .code-block .copy-button:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--o20);
   color: #fff;
 }
 

@@ -580,7 +580,7 @@ const handleObjectChange = (fieldKey: string, value: string) => {
 
 .add-item-btn {
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   padding: var(--space-sm);
@@ -619,7 +619,7 @@ const handleObjectChange = (fieldKey: string, value: string) => {
 
 .btn-primary {
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .btn-primary:hover {

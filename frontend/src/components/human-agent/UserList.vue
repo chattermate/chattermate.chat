@@ -649,7 +649,7 @@ onMounted(async () => {
 
 .upgrade-button.primary {
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .upgrade-button.primary:hover {

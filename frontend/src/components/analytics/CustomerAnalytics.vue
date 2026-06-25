@@ -471,7 +471,7 @@ onMounted(() => {
 
 .view-details-btn {
   background-color: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);

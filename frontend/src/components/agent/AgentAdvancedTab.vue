@@ -539,7 +539,7 @@ const updateTokenAuthSetting = async (enabled: boolean) => {
   width: 20px;
   left: 3px;
   bottom: 3px;
-  background-color: white;
+  background-color: var(--toggle-knob);
   transition: 0.3s;
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
@@ -641,7 +641,7 @@ input:checked + .slider:before {
   margin-top: var(--space-lg);
   padding: var(--space-sm) var(--space-lg);
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   font-weight: 500;

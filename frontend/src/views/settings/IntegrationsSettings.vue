@@ -911,7 +911,7 @@ onMounted(async () => {
 
 .btn-primary {
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -1112,9 +1112,9 @@ onMounted(async () => {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid var(--o30);
   border-radius: 50%;
-  border-top-color: white;
+  border-top-color: var(--text);
   animation: spin 1s linear infinite;
 }
 

@@ -839,7 +839,7 @@ const chatterMateButtonText = computed(() => {
   justify-content: space-between;
   align-items: center;
   gap: var(--space-md);
-  color: #F5F6F8;
+  color: var(--text);
   margin-top: var(--space-md);
 }
 
@@ -966,7 +966,7 @@ const chatterMateButtonText = computed(() => {
 
 .custom-models-locked-overlay .locked-icon {
   font-size: 1.25rem;
-  color: #0B0C10;
+  color: var(--on-accent);
 }
 
 .custom-models-locked-overlay h3 {
@@ -981,7 +981,7 @@ const chatterMateButtonText = computed(() => {
   align-items: center;
   gap: var(--space-xs);
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -1072,7 +1072,7 @@ const chatterMateButtonText = computed(() => {
   align-items: center;
   gap: var(--space-sm);
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-lg);
   padding: var(--space-md) var(--space-lg);

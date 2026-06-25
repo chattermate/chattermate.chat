@@ -311,7 +311,7 @@ input:focus {
     border: none;
     border-radius: var(--radius-md);
     background: var(--primary-color);
-    color: #0B0C10;
+    color: var(--on-accent);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;

@@ -535,7 +535,7 @@ onBeforeUnmount(() => {
 
 .unread-bubble {
   background: var(--accent-ink);
-  color: #0B0C10;
+  color: var(--on-accent);
   border-radius: 50%;
   min-width: 18px;
   height: 18px;
@@ -633,7 +633,7 @@ onBeforeUnmount(() => {
 
 .load-more-button:hover {
   background-color: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border-color: var(--primary-color);
 }
 
@@ -656,7 +656,7 @@ onBeforeUnmount(() => {
   height: 36px;
   border-radius: 50%;
   background: var(--primary-color);
-  color: #0B0C10;
+  color: var(--on-accent);
   border: none;
   display: flex;
   align-items: center;
