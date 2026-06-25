@@ -863,15 +863,15 @@ const closeKnowledgeModal = () => {
 }
 
 .modal-content {
-    background: white;
+    background: var(--surface);
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
     width: 85%;
     max-width: 500px;
     max-height: 80vh;
     overflow-y: auto;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--o10);
 }
 
 .modal-header {
@@ -905,8 +905,8 @@ const closeKnowledgeModal = () => {
 }
 
 .knowledge-tabs button.active {
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
 }
 
 .tab-content {
@@ -921,8 +921,8 @@ const closeKnowledgeModal = () => {
 .upload-button {
     width: 100%;
     padding: var(--space-sm);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;
@@ -969,8 +969,8 @@ const closeKnowledgeModal = () => {
 
 .url-input-group button {
     padding: var(--space-sm) var(--space-md);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;
@@ -1047,8 +1047,8 @@ const closeKnowledgeModal = () => {
 }
 
 .link-button {
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
 }
 
 .unlink-button {
@@ -1178,8 +1178,8 @@ const closeKnowledgeModal = () => {
 }
 
 .queue-item {
-    background: white;
-    border: 1px solid var(--border-color);
+    background: var(--surface);
+    border: 1px solid var(--o08);
     border-radius: var(--radius-lg);
     padding: var(--space-md);
     transition: all 0.2s ease;
@@ -1375,8 +1375,8 @@ const closeKnowledgeModal = () => {
 
 .add-subpage-btn {
     padding: var(--space-sm) var(--space-md);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1409,8 +1409,8 @@ const closeKnowledgeModal = () => {
 .edit-button,
 .save-button {
     padding: var(--space-xs) var(--space-sm);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;

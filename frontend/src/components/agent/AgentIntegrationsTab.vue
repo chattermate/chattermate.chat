@@ -852,7 +852,7 @@ input:checked + .slider:before {
 
 .connect-link:hover {
   background-color: var(--primary-color);
-  color: white;
+  color: #0B0C10;
 }
 
 .jira-config {
@@ -913,8 +913,8 @@ input:checked + .slider:before {
 .save-config-btn {
   margin-top: var(--space-lg);
   padding: var(--space-sm) var(--space-lg);
-  background: #bb8873;
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-full);
   font-weight: 500;
@@ -1103,7 +1103,7 @@ input:checked + .slider:before {
   margin-top: var(--space-md);
   padding: var(--space-sm) var(--space-lg);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-full);
   font-weight: 500;

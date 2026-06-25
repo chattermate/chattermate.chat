@@ -391,8 +391,8 @@ const { data } = await response.json();
   justify-content: center;
   width: 28px;
   height: 28px;
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border-radius: 50%;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -563,7 +563,7 @@ const { data } = await response.json();
   width: 100%;
   height: 450px;
   border-radius: var(--radius-md);
-  background: white;
+  background: var(--bg2);
   display: block;
 }
 

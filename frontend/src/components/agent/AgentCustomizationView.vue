@@ -934,8 +934,8 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .save-button {
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
 }
 
 .save-button:hover:not(:disabled) {
@@ -1000,8 +1000,8 @@ const isSectionExpanded = (sectionId: string) => {
     right: 0;
     max-height: 200px;
     overflow-y: auto;
-    background: white;
-    border: 1px solid var(--border-color);
+    background: var(--surface);
+    border: 1px solid var(--o12);
     border-radius: var(--radius-md);
     margin-top: var(--space-xs);
     z-index: 10;
@@ -1068,8 +1068,8 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .style-card.active {
-    border-color: var(--primary-color);
-    background: rgba(243, 70, 17, 0.03);
+    border-color: var(--accent-ink);
+    background: rgba(201, 242, 78, 0.05);
     box-shadow: var(--shadow-md);
 }
 
@@ -1196,8 +1196,8 @@ const isSectionExpanded = (sectionId: string) => {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: linear-gradient(135deg, #f34611 0%, #ff6b3d 100%);
-    color: white;
+    background: linear-gradient(135deg, var(--c-purple), #7C6AE6);
+    color: #F5F6F8;
     padding: 2px 8px;
     border-radius: var(--radius-full);
     font-size: 10px;
@@ -1243,8 +1243,8 @@ const isSectionExpanded = (sectionId: string) => {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-md);
     padding: 6px 12px;
@@ -1298,19 +1298,19 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .preview-btn-initiation:hover {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
+    background: var(--accent-ink);
+    color: #0B0C10;
+    border-color: var(--accent-ink);
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(243, 70, 17, 0.2);
+    box-shadow: 0 2px 8px rgba(201, 242, 78, 0.2);
 }
 
 .preview-btn-initiation:focus {
     outline: none;
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(243, 70, 17, 0.1);
+    background: var(--accent-ink);
+    color: #0B0C10;
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px rgba(201, 242, 78, 0.1);
 }
 
 .preview-btn-initiation svg {
@@ -1364,8 +1364,8 @@ const isSectionExpanded = (sectionId: string) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-ink);
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-md);
     cursor: pointer;

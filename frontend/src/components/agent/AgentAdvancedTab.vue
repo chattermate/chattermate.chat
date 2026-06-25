@@ -640,8 +640,8 @@ input:checked + .slider:before {
 .save-btn {
   margin-top: var(--space-lg);
   padding: var(--space-sm) var(--space-lg);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-md);
   font-weight: 500;
@@ -729,9 +729,9 @@ input:checked + .slider:before {
 }
 
 .file-type-chip.selected {
-  background: rgba(243, 70, 17, 0.1);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  background: rgba(201, 242, 78, 0.1);
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
 }
 
 .file-types-note {

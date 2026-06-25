@@ -294,7 +294,7 @@ onMounted(async () => {
 .submit-button {
   padding: var(--space-sm) var(--space-xl);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-md);
   font-weight: 500;

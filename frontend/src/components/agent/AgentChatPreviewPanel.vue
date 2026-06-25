@@ -1231,7 +1231,7 @@ const handleInitiationClick = () => {
 .welcome-email-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px rgba(243, 70, 17, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0 4px rgba(201, 242, 78, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
 }
 
@@ -1269,7 +1269,7 @@ const handleInitiationClick = () => {
 .welcome-message-field:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px rgba(243, 70, 17, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0 4px rgba(201, 242, 78, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
 }
 
@@ -1290,12 +1290,12 @@ const handleInitiationClick = () => {
     cursor: pointer;
     color: white;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 14px rgba(243, 70, 17, 0.3);
+    box-shadow: 0 4px 14px rgba(201, 242, 78, 0.2);
 }
 
 .welcome-send-button:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(243, 70, 17, 0.4);
+    box-shadow: 0 8px 25px rgba(201, 242, 78, 0.3);
 }
 
 .welcome-send-button:disabled {
@@ -1423,7 +1423,7 @@ const handleInitiationClick = () => {
 .ask-anything-field:focus {
     outline: none !important;
     border-color: var(--primary-color) !important;
-    box-shadow: 0 0 0 4px rgba(243, 70, 17, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 0 0 4px rgba(201, 242, 78, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1) !important;
     transform: translateY(-1px) !important;
 }
 
@@ -1433,12 +1433,12 @@ const handleInitiationClick = () => {
     height: 48px !important;
     border-radius: 12px !important;
     transition: all 0.3s ease !important;
-    box-shadow: 0 4px 14px rgba(243, 70, 17, 0.3) !important;
+    box-shadow: 0 4px 14px rgba(201, 242, 78, 0.2) !important;
 }
 
 .send-button.ask-anything-send:hover:not(:disabled) {
     transform: translateY(-2px) !important;
-    box-shadow: 0 8px 25px rgba(243, 70, 17, 0.4) !important;
+    box-shadow: 0 8px 25px rgba(201, 242, 78, 0.3) !important;
 }
 
 /* ASK_ANYTHING: Typing indicator alignment */

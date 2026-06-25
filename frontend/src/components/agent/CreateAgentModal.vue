@@ -137,7 +137,8 @@ const handleCreateAgent = async () => {
 }
 
 .modal-content {
-    background: white;
+    background: var(--surface);
+    border: 1px solid var(--o10);
     border-radius: 24px;
     width: 90%;
     max-width: 600px;
@@ -310,7 +311,7 @@ input:focus {
     border: none;
     border-radius: var(--radius-md);
     background: var(--primary-color);
-    color: white;
+    color: #0B0C10;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;

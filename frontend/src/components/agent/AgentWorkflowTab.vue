@@ -564,8 +564,8 @@ onMounted(() => {
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-lg);
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-full);
   font-weight: 500;
@@ -704,8 +704,8 @@ onMounted(() => {
 }
 
 .submit-button {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
 }
 
 .submit-button:hover:not(:disabled) {
@@ -859,8 +859,8 @@ onMounted(() => {
 }
 
 .action-button.primary {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
 }
 
 .action-button.primary:hover {

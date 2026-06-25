@@ -610,7 +610,7 @@ onMounted(() => {
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-md);
   font-weight: 500;
@@ -899,10 +899,10 @@ onMounted(() => {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface);
   border-radius: var(--radius-xl);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o12);
   width: 100%;
   max-width: 500px;
   max-height: 90vh;
@@ -1147,7 +1147,7 @@ onMounted(() => {
 .input-add button {
   padding: var(--space-sm) var(--space-md);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -1218,7 +1218,7 @@ onMounted(() => {
 
 .primary-button {
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
 }
 
 .primary-button:hover {
@@ -1251,7 +1251,7 @@ onMounted(() => {
 
 .link-button {
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   min-width: 80px;
   display: flex;
   align-items: center;

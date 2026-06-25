@@ -55,7 +55,7 @@ const previewCustomization = ref<AgentCustomization>({
     agent_id: agentData.value.id,
     chat_background_color: agentData.value.customization?.chat_background_color ?? '#F8F9FA',
     chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? '#E9ECEF',
-    accent_color: agentData.value.customization?.accent_color ?? '#f34611',
+    accent_color: agentData.value.customization?.accent_color ?? '#C9F24E',
     font_family: agentData.value.customization?.font_family ?? 'Inter, system-ui, sans-serif',
     photo_url: agentData.value.customization?.photo_url,
     icon_color: agentData.value.customization?.icon_color ?? '#6C757D',
@@ -1650,7 +1650,7 @@ onMounted(async () => {
 
 .cropper-actions button:first-child {
     background: var(--primary-color);
-    color: white;
+    color: #0B0C10;
 }
 
 .cropper-actions button:last-child {
@@ -2086,7 +2086,7 @@ input:checked + .slider:before {
 
 .connect-link:hover {
     background-color: var(--primary-color);
-    color: white;
+    color: #0B0C10;
 }
 
 .jira-config {
@@ -2135,7 +2135,7 @@ input:checked + .slider:before {
     margin-top: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-full);
     font-weight: 500;
@@ -2442,7 +2442,7 @@ input:checked + .slider:before {
 .close-tips-button {
     padding: var(--space-sm) var(--space-md);
     background: var(--primary-color);
-    color: white;
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-full);
     cursor: pointer;
@@ -2657,7 +2657,7 @@ input:checked + .slider:before {
     text-align: center;
     position: relative;
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
+    color: #0B0C10;
 }
 
 .upgrade-icon {
@@ -2680,7 +2680,7 @@ input:checked + .slider:before {
     font-size: 1.5rem;
     font-weight: 700;
     margin: 0;
-    color: white;
+    color: #0B0C10;
 }
 
 .upgrade-modal-header .close-button {
@@ -2692,7 +2692,7 @@ input:checked + .slider:before {
     border-radius: 50%;
     width: 32px;
     height: 32px;
-    color: white;
+    color: #0B0C10;
     cursor: pointer;
     font-size: 1.25rem;
     display: flex;
@@ -2756,7 +2756,7 @@ input:checked + .slider:before {
 
 .upgrade-button {
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
+    color: #0B0C10;
     border: none;
     border-radius: var(--radius-full);
     padding: var(--space-md) var(--space-xl);

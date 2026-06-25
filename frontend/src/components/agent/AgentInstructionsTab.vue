@@ -762,8 +762,8 @@ input:checked + .slider:before {
 
 .save-button {
   padding: var(--space-md) var(--space-xl);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-ink);
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-md);
   font-size: 1rem;

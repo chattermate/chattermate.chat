@@ -637,7 +637,7 @@ onMounted(async () => {
 
 .create-ticket-btn {
   background: var(--accent-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   border-radius: 4px;
   padding: 8px 16px;

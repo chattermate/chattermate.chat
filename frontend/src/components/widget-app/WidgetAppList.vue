@@ -648,7 +648,7 @@ const formatDate = (dateString: string) => {
   right: 0;
   bottom: 0;
   background:
-    radial-gradient(circle at 20% 80%, rgba(243, 70, 17, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 20% 80%, rgba(201, 242, 78, 0.04) 0%, transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
   pointer-events: none;
 }
@@ -679,7 +679,7 @@ const formatDate = (dateString: string) => {
 .empty-icon {
   width: 40px;
   height: 40px;
-  color: white;
+  color: #0B0C10;
 }
 
 .empty-content h2 {
@@ -832,7 +832,7 @@ const formatDate = (dateString: string) => {
   right: 0;
   bottom: 0;
   background:
-    radial-gradient(circle at 20% 80%, rgba(243, 70, 17, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 20% 80%, rgba(201, 242, 78, 0.04) 0%, transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
   pointer-events: none;
 }
@@ -867,7 +867,7 @@ const formatDate = (dateString: string) => {
 .widget-apps-locked-overlay .locked-icon {
   width: 40px;
   height: 40px;
-  color: white;
+  color: #0B0C10;
 }
 
 .widget-apps-locked-overlay .locked-header h2 {
@@ -959,7 +959,7 @@ const formatDate = (dateString: string) => {
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-xl);
   background: var(--primary-color);
-  color: white;
+  color: #0B0C10;
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-base);
