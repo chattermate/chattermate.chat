@@ -22,17 +22,25 @@ import { useRoute } from 'vue-router'
 import { permissionChecks } from '@/utils/permissions'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
-import conversationIcon from '@/assets/conversation.svg'
-import aiAgentIcon from '@/assets/aiagent.svg'
-import humanAgentIcon from '@/assets/humanagent.svg'
-import organizationIcon from '@/assets/organization.svg'
-import analyticsIcon from '@/assets/analytics.svg'
-import configIcon from '@/assets/config.svg'
-import subscriptionIcon from '@/assets/subscription.svg'
-import userAvatar from '@/assets/user.svg'
-import integrationsIcon from '@/assets/integrations.svg'
-import widgetAppsIcon from '@/assets/widget-apps.svg'
 import SidebarToggle from './SidebarToggle.vue'
+
+// Inline stroke icons matching the design (stroke="currentColor" so they
+// inherit the nav color — muted by default, lime when active)
+const NAV_ICONS: Record<string, string> = {
+    agents: '<rect x="5" y="8" width="14" height="11" rx="3"/><line x1="12" y1="4" x2="12" y2="8"/><circle cx="9" cy="13" r="1" fill="currentColor"/><circle cx="15" cy="13" r="1" fill="currentColor"/>',
+    humans: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5 0 0 1 11 0"/><circle cx="16.5" cy="9" r="2.3"/><path d="M15 19a4.5 4 0 0 1 5.5-3.6"/>',
+    inbox: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 13h5l1.5 2.5h4L19 13h2"/>',
+    analytics: '<line x1="5" y1="17" x2="5" y2="13"/><line x1="10" y1="17" x2="10" y2="9"/><line x1="15" y1="17" x2="15" y2="6"/><line x1="20" y1="17" x2="20" y2="11"/>',
+    org: '<rect x="4" y="4" width="14" height="16" rx="2"/><line x1="20" y1="20" x2="20" y2="11"/><line x1="18" y1="11" x2="22" y2="11"/><circle cx="8" cy="9" r=".6" fill="currentColor"/><circle cx="12" cy="9" r=".6" fill="currentColor"/><circle cx="8" cy="13" r=".6" fill="currentColor"/><circle cx="12" cy="13" r=".6" fill="currentColor"/>',
+    subscription: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="7" y1="14" x2="11" y2="14"/>',
+    integrations: '<line x1="12" y1="12" x2="6" y2="6"/><line x1="12" y1="12" x2="18" y2="6"/><line x1="12" y1="12" x2="12" y2="19"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="19" r="2"/>',
+    widgets: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><circle cx="16.5" cy="16.5" r="3.5"/>',
+    aiconfig: '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="9" cy="8" r="2.4"/><circle cx="15" cy="16" r="2.4"/>',
+    usersettings: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 5.5 0 0 1 13 0"/>',
+}
+
+const navIconSvg = (name?: string) =>
+    `<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="${name === 'analytics' ? 2 : 1.7}" stroke-linecap="round" stroke-linejoin="round">${name ? (NAV_ICONS[name] || '') : ''}</svg>`
 
 defineProps<{
     isCollapsed: boolean
@@ -51,7 +59,6 @@ const { hasEnterpriseModule } = useEnterpriseFeatures()
 interface NavItem {
     to?: string;
     icon?: string;
-    iconSrc?: string;
     label?: string;
     section?: string;
     show?: boolean;
@@ -63,25 +70,25 @@ const navItems = computed(() => [
     },
     {
         to: '/ai-agents',
-        iconSrc: aiAgentIcon,
+        icon: 'agents',
         label: 'AI Agents',
         show: permissionChecks.canViewAgents()
     },
     {
         to: '/human-agents',
-        iconSrc: humanAgentIcon,
+        icon: 'humans',
         label: 'Human Agents',
         show: permissionChecks.canManageUsers()
     },
     {
         to: '/conversations',
-        iconSrc: conversationIcon,
+        icon: 'inbox',
         label: 'Inbox',
         show: permissionChecks.canViewChats()
     },
     {
         to: '/analytics',
-        iconSrc: analyticsIcon,
+        icon: 'analytics',
         label: 'Analytics',
         show: permissionChecks.canViewAnalytics()
     },
@@ -91,37 +98,37 @@ const navItems = computed(() => [
     },
     {
         to: '/settings/organization',
-        iconSrc: organizationIcon,
+        icon: 'org',
         label: 'Organization',
         show: permissionChecks.canViewOrganization()
     },
     {
         to: '/settings/subscription',
-        iconSrc: subscriptionIcon,
+        icon: 'subscription',
         label: 'Subscription',
         show: hasEnterpriseModule && permissionChecks.canViewOrganization()
     },
     {
         to: '/settings/integrations',
-        iconSrc: integrationsIcon,
+        icon: 'integrations',
         label: 'Integrations',
         show: permissionChecks.canViewOrganization()
     },
     {
         to: '/settings/widget-apps',
-        iconSrc: widgetAppsIcon,
+        icon: 'widgets',
         label: 'Widget Apps',
         show: permissionChecks.canManageOrganization()
     },
     {
         to: '/settings/ai-config',
-        iconSrc: configIcon,
+        icon: 'aiconfig',
         label: 'AI Configuration',
         show: permissionChecks.canViewAIConfig()
     },
     {
         to: '/settings/user',
-        iconSrc: userAvatar,
+        icon: 'usersettings',
         label: 'User Settings',
         show: true
     }
@@ -163,10 +170,7 @@ const handleNavigation = () => {
                     :title="isCollapsed ? item.label : undefined"
                     @click="handleNavigation">
                     <span class="nav-bar" aria-hidden="true"></span>
-                    <span class="nav-icon">
-                        <img v-if="item.iconSrc" :src="item.iconSrc" alt="" class="icon-img">
-                        <span v-else>{{ item.label }}</span>
-                    </span>
+                    <span class="nav-icon" v-html="navIconSvg(item.icon)"></span>
                     <span v-if="!isCollapsed" class="nav-label">{{ item.label }}</span>
                 </router-link>
             </div>
@@ -340,23 +344,13 @@ const handleNavigation = () => {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    color: inherit;
 }
 
-.icon-img {
+.nav-icon :deep(svg) {
     width: 19px;
     height: 19px;
-    object-fit: contain;
-    filter: var(--icon-filter, brightness(0) invert(1));
-    opacity: var(--icon-opacity, 0.5);
-    transition: opacity var(--transition-fast);
-}
-
-.nav-item:hover .icon-img {
-    opacity: 0.75;
-}
-
-.nav-item.active .icon-img {
-    opacity: var(--icon-active-opacity, 0.9);
+    display: block;
 }
 
 .nav-label {
