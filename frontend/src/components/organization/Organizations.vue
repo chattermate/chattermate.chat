@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useOrganizationSettings } from '@/composables/useOrganizationSettings'
 // @ts-ignore
 import { listTz, clientTz } from 'timezone-select-js'
@@ -36,8 +36,6 @@ const {
 } = useOrganizationSettings()
 
 const timezones = ref(listTz())
-
-const orgInitial = computed(() => (formData.value.name || 'O').charAt(0).toUpperCase())
 
 // Danger zone — no destructive API yet; route the user to support.
 const onTransferOwnership = () => {
@@ -133,14 +131,6 @@ onMounted(async () => {
           <div class="card-head">
             <h3 class="card-title">Profile</h3>
             <p class="card-desc">How your workspace appears to your team and customers.</p>
-          </div>
-
-          <div class="logo-row">
-            <div class="org-logo">{{ orgInitial }}</div>
-            <div class="logo-meta">
-              <div class="logo-meta-title">Workspace logo</div>
-              <div class="logo-meta-sub">Generated from your organization name.</div>
-            </div>
           </div>
 
           <div class="field-grid">
@@ -274,8 +264,6 @@ onMounted(async () => {
 <style scoped>
 .org-settings {
   width: 100%;
-  height: 100%;
-  overflow-y: auto;
 }
 
 .org-page {

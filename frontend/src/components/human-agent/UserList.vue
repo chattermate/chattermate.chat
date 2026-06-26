@@ -882,8 +882,12 @@ onMounted(async () => {
   text-align: left;
   padding: var(--space-sm) var(--space-md);
   border-radius: 8px;
+  background: none;
+  border: none;
+  font-family: var(--font-sans);
   font-size: var(--text-sm);
   color: var(--text3);
+  cursor: pointer;
   transition: all var(--transition-fast);
 }
 
