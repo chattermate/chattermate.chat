@@ -6,19 +6,28 @@ import type { Organization, BusinessHoursDict } from '@/types/organization'
 export function useOrganizationSettings() {
   const { user } = useAuth()
 
+  const defaultBusinessHours = (): BusinessHoursDict => ({
+    monday: { start: '09:00', end: '17:00', enabled: true },
+    tuesday: { start: '09:00', end: '17:00', enabled: true },
+    wednesday: { start: '09:00', end: '17:00', enabled: true },
+    thursday: { start: '09:00', end: '17:00', enabled: true },
+    friday: { start: '09:00', end: '17:00', enabled: true },
+    saturday: { start: '09:00', end: '17:00', enabled: false },
+    sunday: { start: '09:00', end: '17:00', enabled: false }
+  })
+
+  // Server-stored business_hours may be empty or missing days; merge over the
+  // full default so every day key is present (presets + day-rows assume this).
+  const normalizeBusinessHours = (raw: unknown): BusinessHoursDict => ({
+    ...defaultBusinessHours(),
+    ...(raw && typeof raw === 'object' ? raw as Partial<BusinessHoursDict> : {})
+  })
+
   const formData = ref({
     name: '',
     domain: '',
     timezone: '',
-    business_hours: {
-      monday: { start: '09:00', end: '17:00', enabled: true },
-      tuesday: { start: '09:00', end: '17:00', enabled: true },
-      wednesday: { start: '09:00', end: '17:00', enabled: true },
-      thursday: { start: '09:00', end: '17:00', enabled: true },
-      friday: { start: '09:00', end: '17:00', enabled: true },
-      saturday: { start: '09:00', end: '17:00', enabled: false },
-      sunday: { start: '09:00', end: '17:00', enabled: false }
-    } as BusinessHoursDict,
+    business_hours: defaultBusinessHours(),
     settings: {} as Record<string, any>
   })
 
@@ -73,7 +82,7 @@ export function useOrganizationSettings() {
           name: org.name,
           domain: org.domain,
           timezone: org.timezone,
-          business_hours: JSON.parse(JSON.stringify(org.business_hours)),
+          business_hours: normalizeBusinessHours(org.business_hours),
           settings: org.settings ? JSON.parse(JSON.stringify(org.settings)) : {}
         }
         

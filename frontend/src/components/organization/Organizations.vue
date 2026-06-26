@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { ref, onMounted } from 'vue'
 import { useOrganizationSettings } from '@/composables/useOrganizationSettings'
 // @ts-ignore
-import { listTz, clientTz } from 'timezone-select-js'
+import { listTz } from 'timezone-select-js'
 
 const {
   formData,

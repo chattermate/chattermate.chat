@@ -625,11 +625,18 @@ async def get_organization_stats(
         User.organization_id == org_id,
         User.is_active == True
     ).count()
-    admins = (
-        db.query(User)
-        .join(Role, User.role_id == Role.id)
-        .filter(User.organization_id == org_id, Role.name == "Admin")
-        .count()
+    # Count admins consistently with the team-overview endpoint (users.py):
+    # a user is an admin if their role grants manage_organization/super_admin,
+    # or the role is literally named "Admin". A plain Role.name == "Admin"
+    # match misses custom/renamed roles that still hold admin permissions.
+    org_users = db.query(User).filter(User.organization_id == org_id).all()
+    admins = sum(
+        1
+        for u in org_users
+        if u.role and (
+            {"manage_organization", "super_admin"} & {p.name for p in (u.role.permissions or [])}
+            or u.role.name == "Admin"
+        )
     )
     members_agents = total_users - admins
 
