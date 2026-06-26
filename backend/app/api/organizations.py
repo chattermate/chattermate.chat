@@ -40,7 +40,9 @@ from app.models.permission import Permission
 from app.repositories.organization import OrganizationRepository
 from app.repositories.agent import AgentRepository
 from app.core.default_templates import DEFAULT_TEMPLATES
-from app.models.agent import AgentType
+from app.models.agent import Agent, AgentType
+from app.models.session_to_agent import SessionToAgent
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from app.core.cors import update_cors_middleware
 from app.core.application import app  # Import the FastAPI app instance from the new location
@@ -617,11 +619,67 @@ async def get_organization_stats(
             detail="Organization not found"
         )
 
+    # --- Members ---
+    total_users = db.query(User).filter(User.organization_id == org_id).count()
+    active_users = db.query(User).filter(
+        User.organization_id == org_id,
+        User.is_active == True
+    ).count()
+    admins = (
+        db.query(User)
+        .join(Role, User.role_id == Role.id)
+        .filter(User.organization_id == org_id, Role.name == "Admin")
+        .count()
+    )
+    members_agents = total_users - admins
+
+    # --- Active now (online) ---
+    active_now = db.query(User).filter(
+        User.organization_id == org_id,
+        User.is_online == True
+    ).count()
+
+    # --- AI agents (live vs draft) ---
+    agents_total = db.query(Agent).filter(Agent.organization_id == org_id).count()
+    agents_live = db.query(Agent).filter(
+        Agent.organization_id == org_id,
+        Agent.is_active == True
+    ).count()
+    agents_draft = agents_total - agents_live
+
+    # --- Conversations (last 30d vs previous 30d) ---
+    now = datetime.now(timezone.utc)
+    d30 = now - timedelta(days=30)
+    d60 = now - timedelta(days=60)
+    conversations_30d = db.query(SessionToAgent).filter(
+        SessionToAgent.organization_id == org_id,
+        SessionToAgent.assigned_at >= d30
+    ).count()
+    conversations_prev_30d = db.query(SessionToAgent).filter(
+        SessionToAgent.organization_id == org_id,
+        SessionToAgent.assigned_at >= d60,
+        SessionToAgent.assigned_at < d30
+    ).count()
+    if conversations_prev_30d:
+        conversations_change_pct = round(
+            (conversations_30d - conversations_prev_30d) / conversations_prev_30d * 100
+        )
+    else:
+        conversations_change_pct = 100 if conversations_30d else 0
+
     return {
-        "total_users": db.query(User).filter(User.organization_id == org_id).count(),
-        "active_users": db.query(User).filter(
-            User.organization_id == org_id,
-            User.is_active == True
-        ).count(),
-        "settings": org.settings
+        "total_users": total_users,
+        "active_users": active_users,
+        "settings": org.settings,
+        # Design KPI strip
+        "members_total": total_users,
+        "members_admins": admins,
+        "members_agents": members_agents,
+        "active_now": active_now,
+        "agents_total": agents_total,
+        "agents_live": agents_live,
+        "agents_draft": agents_draft,
+        "conversations_30d": conversations_30d,
+        "conversations_prev_30d": conversations_prev_30d,
+        "conversations_change_pct": conversations_change_pct,
     }

@@ -39,6 +39,22 @@ const timezones = ref(listTz())
 
 const orgInitial = computed(() => (formData.value.name || 'O').charAt(0).toUpperCase())
 
+// Workspace logo (local preview; persistence pending a backend logo field)
+const logoInput = ref<HTMLInputElement | null>(null)
+const logoPreview = ref<string | null>(null)
+const triggerLogoUpload = () => logoInput.value?.click()
+const onLogoSelected = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => { logoPreview.value = reader.result as string }
+  reader.readAsDataURL(file)
+}
+const removeLogo = () => {
+  logoPreview.value = null
+  if (logoInput.value) logoInput.value.value = ''
+}
+
 // Business-hours presets — pure client-side mutation of formData
 const applyPreset = (preset: 'weekday' | 'everyday' | 'always' | 'clear') => {
   for (const day of days) {
@@ -93,12 +109,27 @@ onMounted(async () => {
       <!-- Stats strip -->
       <div v-if="stats" class="stats-strip">
         <div class="stat-card">
-          <span class="stat-label">Total Users</span>
-          <span class="stat-value">{{ stats.total_users }}</span>
+          <span class="stat-label">MEMBERS</span>
+          <span class="stat-value">{{ stats.members_total ?? stats.total_users ?? 0 }}</span>
+          <span class="stat-sub members">{{ stats.members_admins ?? 0 }} admins · {{ stats.members_agents ?? 0 }} agents</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Active Users</span>
-          <span class="stat-value">{{ stats.active_users }}</span>
+          <span class="stat-label">ACTIVE NOW</span>
+          <span class="stat-value">{{ stats.active_now ?? 0 }}</span>
+          <span class="stat-sub active">online today</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">AI AGENTS</span>
+          <span class="stat-value">{{ stats.agents_total ?? 0 }}</span>
+          <span class="stat-sub agents">{{ stats.agents_live ?? 0 }} live · {{ stats.agents_draft ?? 0 }} draft</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">CONVERSATIONS · 30D</span>
+          <span class="stat-value">{{ (stats.conversations_30d ?? 0).toLocaleString() }}</span>
+          <span class="stat-sub conversations">
+            {{ (stats.conversations_change_pct ?? 0) >= 0 ? '▲' : '▼' }}
+            {{ Math.abs(stats.conversations_change_pct ?? 0) }}% vs prev
+          </span>
         </div>
       </div>
 
@@ -111,10 +142,18 @@ onMounted(async () => {
           </div>
 
           <div class="logo-row">
-            <div class="org-logo">{{ orgInitial }}</div>
+            <div class="org-logo" :class="{ 'has-image': logoPreview }">
+              <img v-if="logoPreview" :src="logoPreview" alt="Workspace logo" />
+              <template v-else>{{ orgInitial }}</template>
+            </div>
             <div class="logo-meta">
               <div class="logo-meta-title">Workspace logo</div>
-              <div class="logo-meta-sub">Generated from your organization name.</div>
+              <div class="logo-meta-sub">PNG or SVG, at least 256×256px. Max 5MB.</div>
+            </div>
+            <div class="logo-actions">
+              <input ref="logoInput" type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" class="hidden-input" @change="onLogoSelected" />
+              <button type="button" class="logo-btn" @click="triggerLogoUpload">Upload</button>
+              <button type="button" class="logo-btn" :disabled="!logoPreview" @click="removeLogo">Remove</button>
             </div>
           </div>
 
@@ -285,33 +324,55 @@ onMounted(async () => {
 /* Stats strip */
 .stats-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin-bottom: 22px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--o08);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .stat-label {
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
   color: var(--muted2);
-  font-weight: 500;
 }
 
 .stat-value {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.02em;
+  margin: 8px 0 4px;
+}
+
+.stat-sub {
+  font-size: 12.5px;
+}
+
+.stat-sub.members { color: var(--c-online); }
+.stat-sub.active { color: var(--accent-ink); }
+.stat-sub.agents { color: var(--c-pro); }
+.stat-sub.conversations { color: var(--c-coral); }
+
+@media (max-width: 980px) {
+  .stats-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .stats-strip {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Section cards */
@@ -373,10 +434,55 @@ onMounted(async () => {
   font-weight: 700;
   font-size: 26px;
   color: var(--on-accent);
+  overflow: hidden;
+}
+
+.org-logo.has-image {
+  background: var(--surface);
+  border: 1px solid var(--o10);
+}
+
+.org-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .logo-meta {
   flex: 1;
+  min-width: 0;
+}
+
+.logo-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.logo-btn {
+  padding: 9px 18px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.logo-btn:hover:not(:disabled) {
+  background: var(--o10);
+}
+
+.logo-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .logo-meta-title {

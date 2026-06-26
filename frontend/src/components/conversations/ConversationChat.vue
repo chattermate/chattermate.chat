@@ -24,7 +24,6 @@ import { useConversationFiles } from '@/composables/useConversationFiles'
 import { useJiraTicket } from '@/composables/useJiraTicket'
 import JiraTicketModal from '@/components/jira/JiraTicketModal.vue'
 import FileUpload from '@/components/common/FileUpload.vue'
-import sendIcon from '@/assets/sendbutton.svg'
 import { userService } from '@/services/user'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
@@ -319,12 +318,13 @@ onMounted(async () => {
             @keyup.enter="handleSendMessageWithAttachments"
             :disabled="!canSendMessage"
           >
-          <button 
-            class="send-button" 
+          <button
+            class="send-button"
             @click="handleSendMessageWithAttachments"
             :disabled="(!newMessage.trim() && uploadedFiles.length === 0) || !canSendMessage"
+            aria-label="Send"
           >
-            <img :src="sendIcon" alt="Send" />
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"></path><path d="M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
           </button>
         </div>
       </div>
@@ -563,28 +563,32 @@ onMounted(async () => {
 }
 
 .send-button {
-  background: none;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  padding: 0;
   border: none;
   cursor: pointer;
-  padding: 8px;
-  opacity: 0.7;
-  transition: opacity 0.2s;
   display: flex;
   align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-input);
+  background: var(--accent-ink);
+  color: var(--on-accent);
+  transition: filter 0.2s, opacity 0.2s;
 }
 
-.send-button:hover {
-  opacity: 1;
+.send-button:hover:not(:disabled) {
+  filter: brightness(1.05);
 }
 
 .send-button:disabled {
-  opacity: 0.3;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.send-button img {
-  width: 24px;
-  height: 24px;
+.send-button svg {
+  display: block;
 }
 
 
