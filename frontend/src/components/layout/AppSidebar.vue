@@ -257,6 +257,18 @@ const handleNavigation = () => {
     flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Hide the scrollbar so it doesn't squeeze the centered icons when collapsed */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+    display: none;
+}
+
+/* Collapsed: tighten side padding so icons sit dead-centre in the 76px rail */
+.sidebar.collapsed .sidebar-nav {
+    padding: 18px 8px;
 }
 
 .nav-section {

@@ -68,7 +68,7 @@ const handleSubmit = () => {
         id="name"
         v-model="name"
         type="text"
-        placeholder="My Widget App"
+        placeholder="e.g. Marketing Site"
         maxlength="100"
         required
       />
@@ -80,7 +80,7 @@ const handleSubmit = () => {
       <textarea
         id="description"
         v-model="description"
-        placeholder="Optional description..."
+        placeholder="Where will this widget live?"
         maxlength="500"
         rows="3"
       />
@@ -90,11 +90,11 @@ const handleSubmit = () => {
     <div v-if="error" class="error-message">{{ error }}</div>
 
     <div class="form-actions">
-      <button type="submit" class="btn btn-primary">
-        {{ app ? 'Update' : 'Create' }}
-      </button>
       <button type="button" class="btn btn-secondary" @click="emit('cancel')">
         Cancel
+      </button>
+      <button type="submit" class="btn btn-primary">
+        {{ app ? 'Update app' : 'Create app' }}
       </button>
     </div>
   </form>
@@ -111,40 +111,56 @@ const handleSubmit = () => {
 
 .form-group label {
   display: block;
-  margin-bottom: var(--space-sm);
-  font-weight: 500;
-  color: var(--text-color);
+  margin-bottom: 9px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
 }
 
 .required {
-  color: var(--error-color);
+  color: var(--c-coral);
 }
 
 .form-group input,
 .form-group textarea {
   width: 100%;
-  padding: var(--space-sm);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-family: inherit;
-  font-size: var(--text-base);
+  box-sizing: border-box;
+  padding: 13px 15px;
+  background: var(--bg);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-input);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+}
+
+.form-group textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: var(--faint);
 }
 
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--primary-color);
+  border-color: var(--accent-ink);
+  box-shadow: var(--ring-focus);
 }
 
 .hint {
   display: block;
-  margin-top: var(--space-xs);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .error-message {
-  padding: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
   background: var(--error-bg);
   color: var(--error-color);
   border-radius: var(--radius-md);
@@ -153,7 +169,38 @@ const handleSubmit = () => {
 
 .form-actions {
   display: flex;
-  gap: var(--space-md);
+  justify-content: flex-end;
+  gap: 12px;
   margin-top: var(--space-lg);
+}
+
+.btn {
+  padding: 12px 22px;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), filter var(--transition-fast);
+}
+
+.btn-primary {
+  background: var(--accent-ink);
+  color: var(--on-accent);
+  border: none;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-secondary {
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--o10);
 }
 </style>

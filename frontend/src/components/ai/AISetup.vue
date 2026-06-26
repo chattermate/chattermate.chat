@@ -871,7 +871,7 @@ const chatterMateButtonText = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 22px;
-  max-width: 600px;
+  width: 100%;
 }
 
 .provider-header {

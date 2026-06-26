@@ -597,6 +597,15 @@ const handleProfilePicClick = () => {
   margin-top: 16px;
 }
 
+/* Form-groups inside a 2-col grid align at the top — the grid gap handles spacing */
+.field-grid > .form-group + .form-group {
+  margin-top: 0;
+}
+
+.field-grid {
+  align-items: start;
+}
+
 .form-group label {
   display: block;
   font-size: 13px;

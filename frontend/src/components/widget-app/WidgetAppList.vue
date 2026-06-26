@@ -307,7 +307,7 @@ const formatDate = (dateString: string) => {
 
     <!-- Create Modal -->
     <Modal v-if="showCreateModal" @close="showCreateModal = false">
-      <template #title>Create Widget App</template>
+      <template #title>Create widget app</template>
       <template #content>
         <WidgetAppForm
           @submit="handleCreateApp"
