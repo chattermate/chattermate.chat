@@ -54,6 +54,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px;
   z-index: 100;
 }
 
@@ -61,9 +62,9 @@ defineEmits<{
   background: var(--surface);
   border: 1px solid var(--o10);
   border-radius: 20px;
-  padding: var(--space-xl);
-  min-width: 400px;
-  max-width: 90%;
+  padding: 28px;
+  width: 100%;
+  max-width: 520px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
@@ -73,7 +74,7 @@ defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-lg);
+  margin-bottom: 22px;
 }
 
 .modal-title {
@@ -105,6 +106,6 @@ defineEmits<{
 }
 
 .modal-body {
-  margin-top: var(--space-md);
+  margin-top: 0;
 }
 </style> 

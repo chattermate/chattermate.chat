@@ -102,7 +102,7 @@ const handleSubmit = () => {
 
 <style scoped>
 .widget-app-form {
-  padding: var(--space-md);
+  padding: 0;
 }
 
 .form-group {
