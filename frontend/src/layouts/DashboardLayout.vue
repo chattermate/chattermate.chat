@@ -351,9 +351,9 @@ const layoutClasses = computed(() => ({
 .dashboard-layout {
     display: grid;
     grid-template-columns: auto 1fr;
-    min-height: 100vh;
+    height: 100vh;
     transition: grid-template-columns var(--transition-normal);
-    overflow-x: hidden;
+    overflow: hidden;
     width: 100%;
     position: relative;
 }
@@ -601,7 +601,6 @@ const layoutClasses = computed(() => ({
 /* Content Styles */
 .content {
     padding: var(--space-xl);
-    min-height: calc(100vh - 180px);
 }
 
 /* Remove padding when header is hidden (for full-page layouts like ConversationsView) */
@@ -945,8 +944,9 @@ const layoutClasses = computed(() => ({
 .main-content {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
     width: 100%;
+    overflow-y: auto;
     overflow-x: hidden;
 }
 
