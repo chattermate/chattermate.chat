@@ -1192,7 +1192,7 @@ const isSectionExpanded = (sectionId: string) => {
     align-items: center;
     gap: 4px;
     background: var(--grad-generate);
-    color: var(--text);
+    color: var(--on-dark);
     padding: 2px 8px;
     border-radius: 999px;
     font-size: 10px;

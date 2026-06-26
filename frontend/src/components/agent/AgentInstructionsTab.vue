@@ -410,7 +410,7 @@ const handleSave = () => {
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
   background: var(--grad-generate);
-  color: var(--on-light);
+  color: var(--on-dark);
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -517,7 +517,7 @@ const handleSave = () => {
 .generate-ai-button {
   padding: 10px 16px;
   background: var(--grad-generate);
-  color: var(--on-light);
+  color: var(--on-dark);
   border: none;
   border-radius: var(--radius-chip);
   cursor: pointer;
@@ -754,10 +754,10 @@ input:checked + .slider:before {
 .save-section {
   display: flex;
   justify-content: flex-end;
-  padding: var(--space-lg);
-  border-top: 1px solid var(--border-color);
-  background: var(--background-soft);
-  margin-top: var(--space-xl);
+  padding: var(--space-lg) 0 0;
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--o08);
+  background: transparent;
 }
 
 .save-button {

@@ -1179,7 +1179,9 @@ onMounted(async () => {
 
 .detail-panel {
     flex: 1;
-    background: transparent;
+    background: var(--surface);
+    border: 1px solid var(--o08);
+    border-radius: var(--radius-card);
     overflow: visible;
     display: flex;
     flex-direction: column;
@@ -1189,8 +1191,7 @@ onMounted(async () => {
 
 .panel-header {
     padding: 26px 32px var(--space-md);
-    border-bottom: 1px solid var(--o07);
-    background: var(--header-gradient);
+    background: transparent;
 }
 
 .header-layout {
@@ -2101,8 +2102,9 @@ input:checked + .slider:before {
 }
 
 .preview-wrapper {
-    /* Base styles are now handled by computed previewWrapperStyles */
-    flex: 1;
+    /* Width comes from the inline previewWrapperStyles (400px / 500px); don't
+       let flex-grow stretch it. */
+    flex: 0 0 auto;
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -2363,8 +2365,10 @@ input:checked + .slider:before {
     overflow: visible;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
-    padding: var(--space-lg);
+    background: transparent;
+    /* No horizontal padding: each tab's own root padding (24px) sets the inset
+       so content aligns with the tab bar. */
+    padding: var(--space-sm) 0 var(--space-lg);
     min-height: calc(100vh - 200px);
 }
 
@@ -2695,13 +2699,12 @@ input:checked + .slider:before {
     }
 
     .tab-content-container {
-        padding: var(--space-md);
+        padding: var(--space-sm) 0 var(--space-md);
     }
 }
 
 @media (max-width: 1440px) {
     .detail-panel {
-        margin: var(--space-xs);
     }
 
     .panel-header {
@@ -2757,7 +2760,6 @@ input:checked + .slider:before {
     }
     
     .detail-panel {
-        margin: 2px;
     }
 }
 

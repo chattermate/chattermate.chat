@@ -290,7 +290,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
 </script>
 
 <template>
-    <div class="agent-list">
+    <div class="agent-list" :class="{ 'showing-detail': selectedAgent }">
         <div v-if="!selectedAgent">
             <!-- Resume guided setup -->
             <div v-if="showResumeBanner" class="resume-banner">
@@ -539,6 +539,12 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     padding: var(--space-lg);
     max-width: 1280px;
     margin: 0 auto;
+}
+
+/* Detail view fills the area edge-to-edge (no list grid padding / width cap) */
+.agent-list.showing-detail {
+    padding: 0;
+    max-width: none;
 }
 
 /* ─── Resume guided setup banner ────────────────────────────────── */
