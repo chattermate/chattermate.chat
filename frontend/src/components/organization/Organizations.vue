@@ -39,20 +39,14 @@ const timezones = ref(listTz())
 
 const orgInitial = computed(() => (formData.value.name || 'O').charAt(0).toUpperCase())
 
-// Workspace logo (local preview; persistence pending a backend logo field)
-const logoInput = ref<HTMLInputElement | null>(null)
-const logoPreview = ref<string | null>(null)
-const triggerLogoUpload = () => logoInput.value?.click()
-const onLogoSelected = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = () => { logoPreview.value = reader.result as string }
-  reader.readAsDataURL(file)
+// Danger zone — no destructive API yet; route the user to support.
+const onTransferOwnership = () => {
+  window.alert('To transfer ownership, please contact support@chattermate.chat.')
 }
-const removeLogo = () => {
-  logoPreview.value = null
-  if (logoInput.value) logoInput.value.value = ''
+const onDeleteOrganization = () => {
+  if (window.confirm('Permanently delete this organization and all its data? This cannot be undone.')) {
+    window.alert('Organization deletion must be completed by support — please contact support@chattermate.chat.')
+  }
 }
 
 // Business-hours presets — pure client-side mutation of formData
@@ -142,18 +136,10 @@ onMounted(async () => {
           </div>
 
           <div class="logo-row">
-            <div class="org-logo" :class="{ 'has-image': logoPreview }">
-              <img v-if="logoPreview" :src="logoPreview" alt="Workspace logo" />
-              <template v-else>{{ orgInitial }}</template>
-            </div>
+            <div class="org-logo">{{ orgInitial }}</div>
             <div class="logo-meta">
               <div class="logo-meta-title">Workspace logo</div>
-              <div class="logo-meta-sub">PNG or SVG, at least 256×256px. Max 5MB.</div>
-            </div>
-            <div class="logo-actions">
-              <input ref="logoInput" type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" class="hidden-input" @change="onLogoSelected" />
-              <button type="button" class="logo-btn" @click="triggerLogoUpload">Upload</button>
-              <button type="button" class="logo-btn" :disabled="!logoPreview" @click="removeLogo">Remove</button>
+              <div class="logo-meta-sub">Generated from your organization name.</div>
             </div>
           </div>
 
@@ -246,6 +232,25 @@ onMounted(async () => {
           </div>
         </section>
 
+        <!-- DANGER ZONE -->
+        <section class="card danger-card">
+          <h3 class="danger-title">Danger zone</h3>
+          <div class="danger-row">
+            <div>
+              <div class="danger-row-title">Transfer ownership</div>
+              <div class="danger-row-desc">Hand this workspace to another admin.</div>
+            </div>
+            <button type="button" class="danger-btn" @click="onTransferOwnership">Transfer</button>
+          </div>
+          <div class="danger-row last">
+            <div>
+              <div class="danger-row-title">Delete organization</div>
+              <div class="danger-row-desc">Permanently remove this workspace and all its data.</div>
+            </div>
+            <button type="button" class="danger-btn delete" @click="onDeleteOrganization">Delete</button>
+          </div>
+        </section>
+
         <p v-if="message" class="success-message">{{ message }}</p>
         <p v-if="error" class="error-message">{{ error }}</p>
       </form>
@@ -276,7 +281,7 @@ onMounted(async () => {
 .org-page {
   max-width: 900px;
   margin: 0 auto;
-  padding: 4px 0 100px;
+  padding: 4px 0 24px;
 }
 
 .loading-container {
@@ -381,7 +386,79 @@ onMounted(async () => {
   border: 1px solid var(--o08);
   border-radius: 18px;
   padding: 26px;
-  margin-bottom: 18px;
+  margin: 0 0 18px;
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Danger zone */
+.danger-card {
+  border-color: var(--coral-border);
+  padding: 24px;
+}
+
+.danger-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0 0 16px;
+  color: var(--c-coral);
+}
+
+.danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--o06);
+}
+
+.danger-row.last {
+  padding: 14px 0 0;
+  border-bottom: none;
+}
+
+.danger-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.danger-row-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.danger-btn {
+  flex-shrink: 0;
+  padding: 9px 16px;
+  background: transparent;
+  border: 1px solid var(--o14);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.danger-btn:hover {
+  background: var(--o06);
+}
+
+.danger-btn.delete {
+  background: var(--coral-bg);
+  border-color: var(--coral-border);
+  color: var(--c-coral);
+  font-weight: 600;
+}
+
+.danger-btn.delete:hover {
+  background: color-mix(in srgb, var(--c-coral) 18%, transparent);
 }
 
 .card-head {
