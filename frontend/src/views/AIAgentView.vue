@@ -48,12 +48,12 @@ const handleWorkflowFullscreenToggle = (isFullscreen: boolean) => {
 <style scoped>
 .dashboard-container {
     display: flex;
-    height: 100%;
+    min-height: 100%;
     position: relative;
 }
 
 .chat-section {
     flex: 1;
-    overflow: auto;
+    min-width: 0;
 }
 </style>

@@ -151,68 +151,150 @@ onMounted(fetchPermissions)
 
 <style scoped>
 .role-form {
-  padding: var(--space-lg);
-  background-color: var(--background-dark);
+  padding: 0;
 }
 
 .form-group {
-  margin-bottom: var(--space-lg);
+  margin-bottom: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 9px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
 }
 
 .form-input {
   width: 100%;
-  padding: var(--space-sm);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  box-sizing: border-box;
+  padding: 13px 15px;
+  background: var(--bg);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-input);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+}
+
+textarea.form-input {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.form-input::placeholder {
+  color: var(--faint);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent-ink);
+  box-shadow: var(--ring-focus);
 }
 
 .permissions-list {
-  max-height: 300px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-height: 260px;
   overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: var(--space-sm);
+  border: 1px solid var(--o10);
+  border-radius: var(--radius-input);
+  padding: 10px;
 }
 
 .permission-item {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-sm);
-  padding: var(--space-sm);
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.permission-item:hover {
+  background: var(--o04);
+}
+
+.permission-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--accent-ink);
   cursor: pointer;
 }
 
 .permission-info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .permission-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 500;
+  color: var(--text2);
+  word-break: break-word;
 }
 
 .permission-description {
-  font-size: var(--text-sm);
-  color: var(--text-color);
-  opacity: 0.7;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.35;
 }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-md);
-  margin-top: var(--space-lg);
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.btn {
+  padding: 12px 22px;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), filter var(--transition-fast);
+}
+
+.btn-primary {
+  background: var(--accent-ink);
+  color: var(--on-accent);
+  border: none;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-secondary {
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--o10);
 }
 
 .error-message {
   color: var(--error-color);
   margin-bottom: var(--space-md);
+  font-size: 14px;
 }
 
 .loading {
   text-align: center;
   padding: var(--space-lg);
-  color: var(--text-color);
-  opacity: 0.7;
+  color: var(--muted);
 }
 </style> 
