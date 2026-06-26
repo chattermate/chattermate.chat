@@ -1068,7 +1068,7 @@ const handleInitiationClick = () => {
 }
 
 .status-indicator.online {
-    background: v-bind('customization.accent_color || "var(--accent-ink)"');
+    background: v-bind('customization.accent_color || "var(--accent-solid)"');
 }
 
 .status-text {

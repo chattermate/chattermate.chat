@@ -414,7 +414,7 @@ onMounted(fetchNotifications)
 }
 
 .unread-dot.on {
-    background: var(--accent-ink);
+    background: var(--accent-solid);
 }
 
 .state-message {

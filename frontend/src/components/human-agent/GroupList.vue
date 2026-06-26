@@ -355,7 +355,7 @@ onMounted(fetchGroups)
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 11.5px;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
   border: 2px solid var(--surface);
 }
 

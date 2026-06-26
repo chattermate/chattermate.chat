@@ -833,7 +833,7 @@ const chatterMateButtonText = computed(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
 }
 
 .key-hint {
@@ -854,8 +854,8 @@ const chatterMateButtonText = computed(() => {
 }
 
 .btn-primary {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .btn-primary:hover {
@@ -895,7 +895,7 @@ const chatterMateButtonText = computed(() => {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
 }
 
 .active-text {
@@ -965,8 +965,8 @@ const chatterMateButtonText = computed(() => {
 }
 
 .continue-button {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-btn);
   padding: 14px 26px;
@@ -990,7 +990,7 @@ const chatterMateButtonText = computed(() => {
   justify-content: space-between;
   align-items: center;
   gap: var(--space-md);
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
   margin-top: var(--space-md);
 }
 
@@ -1109,7 +1109,7 @@ const chatterMateButtonText = computed(() => {
   justify-content: center;
   width: 48px;
   height: 48px;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
   border-radius: 50%;
   box-shadow: var(--shadow-lg);
   margin-bottom: var(--space-sm);
@@ -1117,7 +1117,7 @@ const chatterMateButtonText = computed(() => {
 
 .custom-models-locked-overlay .locked-icon {
   font-size: 1.25rem;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .custom-models-locked-overlay h3 {
@@ -1185,14 +1185,14 @@ const chatterMateButtonText = computed(() => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
   border-radius: var(--radius-input);
   flex-shrink: 0;
 }
 
 .custom-models-locked-overlay .feature-icon {
   font-size: 0.875rem;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .custom-models-locked-overlay .feature-content {
@@ -1221,8 +1221,8 @@ const chatterMateButtonText = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-btn);
   padding: var(--space-md) var(--space-lg);
@@ -1257,7 +1257,7 @@ const chatterMateButtonText = computed(() => {
 
 .custom-models-locked-overlay .upgrade-icon {
   font-size: 0.875rem;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .custom-models-locked-overlay .arrow-icon {

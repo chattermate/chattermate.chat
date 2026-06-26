@@ -22,12 +22,16 @@ import type { Agent } from '@/types/agent';
 import type { Widget } from '@/types/widget';
 import { getAvatarUrl } from '@/utils/avatars'
 import { useAgentStorage, useSubscriptionStorage } from '@/utils/storage'
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, onUnmounted, ref, computed } from 'vue';
+import { agentService } from '@/services/agent'
 import AgentDetail from './AgentDetail.vue'
 import CreateAgentModal from './CreateAgentModal.vue'
 import { widgetService } from '@/services/widget'
 import { toast } from 'vue-sonner'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { buildWidgetEmbed } from '@/utils/widgetEmbed'
+import { useOnboardingState } from '@/composables/useOnboardingState'
+import { userService } from '@/services/user'
 
 const agentStorage = useAgentStorage()
 const subscriptionStorage = useSubscriptionStorage()
@@ -41,9 +45,61 @@ const widgetLoadingMap = ref<Record<string, boolean>>({})
 const widgetMap = ref<Record<string, Widget | null>>({})
 const searchQuery = ref('')
 
+// Per-card kebab menu
+const openMenuId = ref<string | null>(null)
+const togglingActiveId = ref<string | null>(null)
+
+const toggleMenu = (agentId: string) => {
+    openMenuId.value = openMenuId.value === agentId ? null : agentId
+}
+const closeMenu = () => { openMenuId.value = null }
+
+const toggleAgentActive = async (agent: Agent) => {
+    closeMenu()
+    togglingActiveId.value = agent.id
+    try {
+        const updated = await agentService.updateAgent(agent.id, { is_active: !agent.is_active })
+        const idx = agents.value.findIndex(a => a.id === agent.id)
+        if (idx !== -1) agents.value[idx] = updated
+        toast.success(updated.is_active ? 'Agent is now online' : 'Agent set offline')
+    } catch (err) {
+        console.error('Failed to toggle agent status:', err)
+        toast.error('Failed to update agent status')
+    } finally {
+        togglingActiveId.value = null
+    }
+}
+
+const copyAgentId = async (agent: Agent) => {
+    closeMenu()
+    try {
+        await navigator.clipboard.writeText(agent.id)
+        toast.success('Agent ID copied to clipboard')
+    } catch (err) {
+        console.error('Failed to copy agent ID:', err)
+        toast.error('Failed to copy agent ID')
+    }
+}
+
 const emit = defineEmits<{
     (e: 'toggle-fullscreen', isFullscreen: boolean): void
+    (e: 'resume-onboarding'): void
 }>()
+
+// Resume-setup banner: shown when an onboarding run was started but not finished
+const onboarding = useOnboardingState()
+const orgId = userService.getCurrentUser()?.organization_id || ''
+const onboardingRecord = ref(onboarding.get(orgId))
+const showResumeBanner = computed(() => onboarding.hasUnfinishedRun(orgId) && !bannerDismissed.value)
+const bannerDismissed = ref(false)
+const checklistProgress = computed(() => {
+    const done = onboardingRecord.value.completedSteps.length
+    return `${done} of ${onboarding.ONBOARDING_STEPS.length} steps complete`
+})
+const dismissBanner = () => {
+    onboarding.skip(orgId)
+    bannerDismissed.value = true
+}
 
 const currentSubscription = computed(() => subscriptionStorage.getCurrentSubscription())
 const planLimits = computed(() => subscriptionStorage.getPlanLimits())
@@ -91,8 +147,6 @@ const loadWidgetsForAgents = async () => {
     }
 }
 
-const getWidgetUrl = () => import.meta.env.VITE_WIDGET_URL
-
 const copyWidgetCode = async (agent: Agent) => {
     const widget = widgetMap.value[agent.id]
     if (!widget) {
@@ -116,40 +170,7 @@ const copyWidgetCode = async (agent: Agent) => {
 }
 
 const copyWidgetCodeToClipboard = async (widget: Widget, requireTokenAuth?: boolean) => {
-    const widgetUrl = getWidgetUrl()
-    let code: string
-    if (requireTokenAuth) {
-        code = `<!-- Get token from your backend: POST /api/v1/generate-token with API key -->
-<!-- Security Note: Widget ID and token are cryptographically bound in the JWT. -->
-    <script>
-    (function() {
-    fetch('/api/chattermate')
-        .then(r => r.json())
-        .then(d => {
-        let token, widget_id;
-        if (d.data && d.data.token && d.data.widget_id) {
-            token = d.data.token;
-            widget_id = d.data.widget_id;
-        } else if (d.token && d.token.data && d.token.data.data) {
-            token = d.token.data.data.token;
-            widget_id = d.token.data.data.widget_id;
-        } else if (d.token && d.widget_id) {
-            token = d.token;
-            widget_id = d.widget_id;
-        }
-        if (!token || !widget_id) throw new Error('Failed to extract token or widget_id');
-        window.chattermateId = widget_id;
-        localStorage.setItem('ctid', token);
-        const script = document.createElement('script');
-        script.src = '${widgetUrl}/webclient/chattermate.min.js';
-        document.head.appendChild(script);
-        })
-        .catch(e => console.error('[ChatterMate] Initialization failed:', e));
-    })();
-    <\/script>`
-    } else {
-        code = `<script>window.chattermateId='${widget.id}';<\/script><script src="${widgetUrl}/webclient/chattermate.min.js"><\/script>`
-    }
+    const code = buildWidgetEmbed(widget.id, requireTokenAuth)
     try {
         await navigator.clipboard.writeText(code)
         toast.success('Widget code copied to clipboard!', { duration: 3000 })
@@ -161,11 +182,47 @@ const copyWidgetCodeToClipboard = async (widget: Widget, requireTokenAuth?: bool
 
 const openWidgetHelp = () => window.open('https://docs.chattermate.chat/features/widget', '_blank')
 
-onMounted(async () => { await refreshAgents() })
+onMounted(async () => {
+    await refreshAgents()
+    window.addEventListener('click', closeMenu)
+
+    // Restore the detail view after a browser refresh (?agent=<id>)
+    const agentId = new URLSearchParams(window.location.search).get('agent')
+    if (agentId) {
+        const found = agents.value.find(a => a.id === agentId)
+        if (found) selectedAgent.value = found
+        else setAgentParam(null) // stale id → clean the URL
+    }
+})
+
+onUnmounted(() => {
+    window.removeEventListener('click', closeMenu)
+})
+
+// Keep the open agent in the URL so a browser refresh restores the detail view
+const setAgentParam = (id: string | null) => {
+    const url = new URL(window.location.href)
+    if (id) {
+        url.searchParams.set('agent', id)
+    } else {
+        url.searchParams.delete('agent')
+        url.searchParams.delete('tab')
+    }
+    window.history.replaceState({}, '', url.toString())
+}
 
 const handleAgentClose = async () => {
+    // Re-sync from the backend so detail edits (photo, name, status) reflect
+    // immediately. With S3 storage the authoritative signed photo URL only
+    // comes back from GET /agent/list, not from localStorage.
+    try {
+        await agentService.getOrganizationAgents()
+    } catch (e) {
+        console.error('Failed to refresh agents from server:', e)
+    }
     await refreshAgents()
     selectedAgent.value = null
+    setAgentParam(null)
 }
 
 const handleCreateAgent = () => {
@@ -179,6 +236,7 @@ const handleAgentCreated = async (agent: Agent) => {
     await refreshAgents()
     showCreateModal.value = false
     selectedAgent.value = agent
+    setAgentParam(agent.id)
     if (agent.use_workflow) {
         const url = new URL(window.location.href)
         url.searchParams.set('tab', 'general')
@@ -188,6 +246,7 @@ const handleAgentCreated = async (agent: Agent) => {
 
 const handleAgentClick = (agent: Agent) => {
     selectedAgent.value = agent
+    setAgentParam(agent.id)
     if (agent.use_workflow) {
         const url = new URL(window.location.href)
         url.searchParams.set('tab', 'general')
@@ -233,6 +292,20 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
 <template>
     <div class="agent-list">
         <div v-if="!selectedAgent">
+            <!-- Resume guided setup -->
+            <div v-if="showResumeBanner" class="resume-banner">
+                <div class="resume-info">
+                    <div class="resume-text">
+                        <div class="resume-title">Finish setting up your agent</div>
+                        <div class="resume-progress">{{ checklistProgress }}</div>
+                    </div>
+                </div>
+                <div class="resume-actions">
+                    <button class="resume-dismiss" @click="dismissBanner">Dismiss</button>
+                    <button class="resume-cta" @click="emit('resume-onboarding')">Resume setup →</button>
+                </div>
+            </div>
+
             <!-- Search + Create header -->
             <div class="list-header">
                 <div class="search-wrap">
@@ -306,11 +379,32 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
                             <h4 class="agent-display-name">{{ agent.display_name || agent.name }}</h4>
                             <span class="agent-slug">{{ agent.name }}</span>
                         </div>
-                        <button class="card-menu-btn" @click.stop title="More options">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
-                            </svg>
-                        </button>
+                        <div class="card-menu-wrap" @click.stop>
+                            <button
+                                class="card-menu-btn"
+                                :class="{ active: openMenuId === agent.id }"
+                                @click.stop="toggleMenu(agent.id)"
+                                title="More options"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+                                </svg>
+                            </button>
+                            <div v-if="openMenuId === agent.id" class="card-menu" role="menu">
+                                <button class="card-menu-item" role="menuitem" @click="closeMenu(); handleAgentClick(agent)">Configure</button>
+                                <button class="card-menu-item" role="menuitem" @click="closeMenu(); copyWidgetCode(agent)">Copy widget code</button>
+                                <button class="card-menu-item" role="menuitem" @click="copyAgentId(agent)">Copy agent ID</button>
+                                <div class="card-menu-divider"></div>
+                                <button
+                                    class="card-menu-item"
+                                    role="menuitem"
+                                    :disabled="togglingActiveId === agent.id"
+                                    @click="toggleAgentActive(agent)"
+                                >
+                                    {{ agent.is_active ? 'Set offline' : 'Set online' }}
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Status + integration badges -->
@@ -447,6 +541,70 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     margin: 0 auto;
 }
 
+/* ─── Resume guided setup banner ────────────────────────────────── */
+.resume-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    background: linear-gradient(120deg, var(--purple-bg), var(--accent-bg-08));
+    border: 1px solid var(--o10);
+    border-radius: 16px;
+    padding: 18px 22px;
+    margin-bottom: 22px;
+}
+
+.resume-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--text);
+}
+
+.resume-progress {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin-top: 2px;
+}
+
+.resume-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.resume-dismiss {
+    background: none;
+    border: none;
+    color: var(--muted2);
+    font-size: 13.5px;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.resume-dismiss:hover {
+    color: var(--text3);
+}
+
+.resume-cta {
+    padding: 10px 18px;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
+    border: none;
+    border-radius: var(--radius-btn);
+    font-size: 14px;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.resume-cta:hover {
+    filter: brightness(1.05);
+}
+
 /* ─── Header: search + create ───────────────────────────────────── */
 .list-header {
     display: flex;
@@ -493,8 +651,8 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
 }
 
 .create-agent-button {
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: 12px;
     padding: 11px 22px;
@@ -669,7 +827,52 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     transition: all var(--transition-fast);
 }
 
-.card-menu-btn:hover { background: var(--o10); color: var(--text); border-color: var(--o16); }
+.card-menu-btn:hover,
+.card-menu-btn.active { background: var(--o10); color: var(--text); border-color: var(--o16); }
+
+.card-menu-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.card-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 180px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.card-menu-item {
+    width: 100%;
+    text-align: left;
+    padding: 9px 12px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.card-menu-item:hover:not(:disabled) { background: var(--o06); }
+.card-menu-item:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.card-menu-divider {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--o08);
+}
 
 /* Badges row */
 .badges-row {
@@ -799,8 +1002,8 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     justify-content: center;
     gap: 7px;
     padding: 11px 16px;
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: 12px;
     font-family: var(--font-sans);
@@ -881,7 +1084,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: radial-gradient(circle at 40% 40%, var(--c-purple), var(--c-teal), var(--accent-ink));
+    background: radial-gradient(circle at 40% 40%, var(--c-purple), var(--c-teal), var(--accent-solid));
     opacity: 0.4;
     filter: blur(8px);
     margin-bottom: var(--space-sm);
@@ -1023,7 +1226,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
     border: none;
 }
 
-.upgrade-button.primary { background: var(--accent-ink); color: var(--on-accent); }
+.upgrade-button.primary { background: var(--accent-solid); color: var(--on-accent-solid); }
 .upgrade-button.primary:hover { opacity: 0.88; transform: translateY(-1px); }
 .upgrade-button.secondary { background: var(--o06); color: var(--text3); border: 1px solid var(--o10); }
 .upgrade-button.secondary:hover { background: var(--o10); color: var(--text); }

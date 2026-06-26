@@ -169,8 +169,8 @@ const onInvite = async () => {
   align-items: center;
   gap: 8px;
   padding: 12px 20px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 14.5px;

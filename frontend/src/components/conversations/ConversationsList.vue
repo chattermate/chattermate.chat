@@ -534,8 +534,8 @@ onBeforeUnmount(() => {
 }
 
 .unread-bubble {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-radius: 50%;
   min-width: 18px;
   height: 18px;
@@ -632,8 +632,8 @@ onBeforeUnmount(() => {
 }
 
 .load-more-button:hover {
-  background-color: var(--primary-color);
-  color: var(--on-accent);
+  background-color: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-color: var(--primary-color);
 }
 
@@ -655,8 +655,8 @@ onBeforeUnmount(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   display: flex;
   align-items: center;

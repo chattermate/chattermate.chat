@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getAvatarUrl } from '@/utils/avatars'
 
@@ -46,6 +46,40 @@ const props = defineProps<{
 
 const { hasEnterpriseModule } = useEnterpriseFeatures()
 const agentData = ref({ ...props.agent })
+
+// Avatar picker (preset avatars + upload)
+const avatarModules = import.meta.glob('@/assets/avatars/avatar-*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+const presetAvatars = Object.keys(avatarModules).sort().map((k) => avatarModules[k])
+const showAvatarPicker = ref(false)
+// Show the chosen preset instantly while the upload finishes in the background
+const optimisticPhoto = ref<string | null>(null)
+const closeAvatarPicker = () => { showAvatarPicker.value = false }
+const toggleAvatarPicker = () => {
+  if (isUploading.value) return
+  showAvatarPicker.value = !showAvatarPicker.value
+}
+const selectPresetAvatar = async (url: string) => {
+  if (isUploading.value) return
+  closeAvatarPicker()
+  optimisticPhoto.value = url
+  try {
+    await applyPresetAvatar(url)
+  } finally {
+    optimisticPhoto.value = null
+  }
+}
+const chooseUploadAvatar = () => {
+  if (isUploading.value) return
+  closeAvatarPicker()
+  triggerFileUpload()
+}
+onMounted(() => window.addEventListener('click', closeAvatarPicker))
+onUnmounted(() => window.removeEventListener('click', closeAvatarPicker))
+
 const activeTab = ref(props.agent.use_workflow ? 'workflow-builder' : 'agent') // Track the active tab: 'agent', 'integrations', etc.
 const isEditingHeader = ref(false)
 const editDisplayName = ref(agentData.value.display_name || agentData.value.name)
@@ -140,6 +174,7 @@ const {
   handleFileUpload,
   handleCrop,
   cancelCrop,
+  applyPresetAvatar,
   handleClose: handleCloseAgent,
   initializeWidget,
   copyWidgetCode: copyWidgetCodeFn,
@@ -201,10 +236,15 @@ const handleChatStyleChange = (oldStyle: string, newStyle: string) => {
 }
 
 const photoUrl = computed(() => {
+    // Optimistic preview while an upload is in flight
+    if (optimisticPhoto.value) {
+        return optimisticPhoto.value
+    }
+
     if (!agentData.value.customization?.photo_url) {
         return getAvatarUrl(agentData.value.agent_type.toLowerCase())
     }
-    
+
     // If it's an S3 URL (contains amazonaws.com), use it directly
     if (agentData.value.customization.photo_url.includes('amazonaws.com')) {
         return agentData.value.customization.photo_url
@@ -653,7 +693,7 @@ onMounted(async () => {
                     </svg>
                 </button>
                 <div class="agent-header">
-                    <div class="agent-avatar" @click="triggerFileUpload">
+                    <div class="agent-avatar" :class="{ uploading: isUploading }" @click.stop="toggleAvatarPicker">
                         <input type="file" ref="fileInput" accept="image/jpeg,image/png,image/webp" class="hidden"
                             @change="handleFileUpload">
                         <div class="agent-avatar-ring">
@@ -668,6 +708,28 @@ onMounted(async () => {
                         <span class="avatar-edit-badge" aria-hidden="true">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"></path></svg>
                         </span>
+
+                        <!-- Preset avatar picker -->
+                        <div v-if="showAvatarPicker" class="avatar-picker" @click.stop>
+                            <div class="avatar-picker-title">Choose a picture</div>
+                            <div class="avatar-picker-grid">
+                                <button
+                                    v-for="(url, i) in presetAvatars"
+                                    :key="i"
+                                    type="button"
+                                    class="avatar-pick"
+                                    :disabled="isUploading"
+                                    @click="selectPresetAvatar(url)"
+                                    :aria-label="`Avatar ${i + 1}`"
+                                >
+                                    <img :src="url" alt="">
+                                </button>
+                            </div>
+                            <button type="button" class="avatar-picker-upload" :disabled="isUploading" @click="chooseUploadAvatar">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Upload your own
+                            </button>
+                        </div>
                     </div>
                     <div class="agent-info">
                         <div class="name-section">
@@ -1008,7 +1070,7 @@ onMounted(async () => {
                     }" :default-size="{
                         width: 250,
                         height: 250
-                    }" :stencil-component="CircleStencil" image-restriction="stencil" background="#f0f0f0" />
+                    }" :stencil-component="CircleStencil" image-restriction="stencil" background="var(--o05)" />
                     <div class="cropper-actions">
                         <button @click="handleCrop" :disabled="isUploading">
                             {{ isUploading ? 'Uploading...' : 'Save' }}
@@ -1182,6 +1244,95 @@ onMounted(async () => {
     flex-shrink: 0;
 }
 
+/* Preset avatar picker popover */
+.avatar-picker {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    z-index: 40;
+    width: 296px;
+    padding: 14px;
+    background: var(--surface);
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    cursor: default;
+}
+
+.avatar-picker-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text3);
+    margin-bottom: 10px;
+}
+
+.avatar-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.avatar-pick {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--o05);
+    border: 2px solid var(--o12);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.avatar-pick img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-pick:hover:not(:disabled) {
+    border-color: var(--o25);
+}
+
+.avatar-pick:disabled,
+.avatar-picker-upload:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.agent-avatar.uploading {
+    cursor: progress;
+}
+
+.avatar-pick.selected {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--accent-bg-12);
+}
+
+.avatar-picker-upload {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px;
+    background: var(--o05);
+    border: 1px solid var(--o14);
+    border-radius: var(--radius-input);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.avatar-picker-upload:hover {
+    background: var(--o10);
+}
+
 /* Ring around the avatar */
 .agent-avatar-ring {
     width: 64px;
@@ -1214,7 +1365,7 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--toggle-knob);
     opacity: 0;
     transition: opacity 0.3s ease;
     border-radius: 50%;
@@ -1348,7 +1499,7 @@ onMounted(async () => {
     border: none;
     background: var(--success-color);
     border-radius: var(--radius-sm);
-    color: white;
+    color: var(--toggle-knob);
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -1374,7 +1525,7 @@ onMounted(async () => {
 
 .cancel-icon-button:hover {
     background: var(--error-color);
-    color: white;
+    color: var(--toggle-knob);
     transform: translateY(-1px);
 }
 
@@ -1463,13 +1614,13 @@ onMounted(async () => {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--error-color, #ef4444);
+    background: var(--error-color);
     position: relative;
     animation: pulse-offline 2s infinite;
 }
 
 .status-indicator.online {
-    background: var(--success-color, #22c55e);
+    background: var(--success-color);
     animation: pulse-online 2s infinite;
 }
 
@@ -1558,25 +1709,25 @@ onMounted(async () => {
 
 @keyframes pulse-online {
     0% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-color) 70%, transparent);
     }
     70% {
-        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+        box-shadow: 0 0 0 10px color-mix(in srgb, var(--success-color) 0%, transparent);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-color) 0%, transparent);
     }
 }
 
 @keyframes pulse-offline {
     0% {
-        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--error-color) 70%, transparent);
     }
     70% {
-        box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+        box-shadow: 0 0 0 10px color-mix(in srgb, var(--error-color) 0%, transparent);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--error-color) 0%, transparent);
     }
 }
 
@@ -1641,7 +1792,7 @@ onMounted(async () => {
     position: relative;
     width: 100%;
     height: 400px;
-    background: var(--background-soft, #f8f9fa);
+    background: var(--bg2);
 }
 
 .cropper-actions {
@@ -1659,8 +1810,8 @@ onMounted(async () => {
 }
 
 .cropper-actions button:first-child {
-    background: var(--primary-color);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .cropper-actions button:last-child {
@@ -1681,7 +1832,7 @@ onMounted(async () => {
 }
 
 :deep(.vue-advanced-cropper__background) {
-    background: #f0f0f0;
+    background: var(--o05);
 }
 
 .widget-info {
@@ -1786,7 +1937,7 @@ onMounted(async () => {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgb(252, 0, 0);
+    background-color: var(--toggle-track-off);
     transition: .4s;
     border-radius: 24px;
 }
@@ -1798,13 +1949,13 @@ onMounted(async () => {
     width: 18px;
     left: 3px;
     bottom: 3px;
-    background-color: rgb(255, 255, 255);
+    background-color: var(--toggle-knob);
     transition: .4s;
     border-radius: 50%;
 }
 
 input:checked + .slider {
-    background-color: green;
+    background-color: var(--success-color);
 }
 
 input:focus + .slider {
@@ -2011,7 +2162,7 @@ input:checked + .slider:before {
 .preview-unavailable-icon {
     width: 80px;
     height: 80px;
-    background: rgba(245, 158, 11, 0.1);
+    background: color-mix(in srgb, var(--warning-color) 10%, transparent);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -2095,8 +2246,8 @@ input:checked + .slider:before {
 }
 
 .connect-link:hover {
-    background-color: var(--primary-color);
-    color: var(--on-accent);
+    background-color: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .jira-config {
@@ -2144,8 +2295,8 @@ input:checked + .slider:before {
 .save-config-btn {
     margin-top: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: var(--on-accent);
+    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-full);
     font-weight: 500;
@@ -2450,8 +2601,8 @@ input:checked + .slider:before {
 
 .close-tips-button {
     padding: var(--space-sm) var(--space-md);
-    background: var(--primary-color);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-full);
     cursor: pointer;
@@ -2459,22 +2610,22 @@ input:checked + .slider:before {
 
 .customization-tab-layout {
     display: flex;
+    align-items: flex-start;
     gap: var(--space-xl);
-    height: 100%;
     padding: var(--space-lg);
-    min-height: calc(100vh - 400px);
 }
 
 .customization-panel {
     flex: 1;
     max-width: 480px;
-    height: calc(100vh - 250px);
-    max-height: 800px;
+    /* Match the chat preview window height (.chat-container is 600px) */
+    height: 600px;
+    max-height: 600px;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: var(--space-xs);
     scrollbar-width: thin;
-    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+    scrollbar-color: var(--o25) transparent;
 }
 
 .customization-panel::-webkit-scrollbar {
@@ -2486,13 +2637,13 @@ input:checked + .slider:before {
 }
 
 .customization-panel::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.5);
+    background-color: var(--o25);
     border-radius: 4px;
     transition: background-color 0.2s ease;
 }
 
 .customization-panel::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(156, 163, 175, 0.7);
+    background-color: var(--o25);
 }
 
 .customization-preview {
@@ -2585,7 +2736,8 @@ input:checked + .slider:before {
     }
     
     .customization-panel {
-        height: calc(100vh - 350px);
+        /* Keep matching the 600px chat preview, even on laptop widths */
+        height: 600px;
         max-height: 600px;
     }
 }
@@ -2625,7 +2777,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal {
-    background: linear-gradient(135deg, var(--bg) 0%, #f8fafc 100%);
+    background: linear-gradient(135deg, var(--bg) 0%, var(--surface) 100%);
     border-radius: 16px;
     width: 90%;
     max-width: 500px;
@@ -2649,15 +2801,15 @@ input:checked + .slider:before {
     padding: var(--space-xl);
     text-align: center;
     position: relative;
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: var(--on-accent);
+    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
+    color: var(--on-accent-solid);
 }
 
 .upgrade-icon {
     width: 48px;
     height: 48px;
     margin: 0 auto var(--space-md);
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -2673,19 +2825,19 @@ input:checked + .slider:before {
     font-size: 1.5rem;
     font-weight: 700;
     margin: 0;
-    color: var(--on-accent);
+    color: var(--on-accent-solid);
 }
 
 .upgrade-modal-header .close-button {
     position: absolute;
     top: var(--space-md);
     right: var(--space-md);
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
     border: none;
     border-radius: 50%;
     width: 32px;
     height: 32px;
-    color: var(--on-accent);
+    color: var(--on-accent-solid);
     cursor: pointer;
     font-size: 1.25rem;
     display: flex;
@@ -2695,7 +2847,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal-header .close-button:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: color-mix(in srgb, var(--on-accent-solid) 30%, transparent);
     transform: scale(1.1);
 }
 
@@ -2748,8 +2900,8 @@ input:checked + .slider:before {
 }
 
 .upgrade-button {
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: var(--on-accent);
+    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-full);
     padding: var(--space-md) var(--space-xl);

@@ -1635,8 +1635,8 @@ const handleDelete = () => {
 }
 
 .btn-primary {
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .btn-primary:hover {
@@ -2010,8 +2010,8 @@ const handleDelete = () => {
 
 /* Variables Section Styles */
 .variables-count {
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-radius: var(--radius-full);
   padding: 2px 8px;
   font-size: 0.7rem;

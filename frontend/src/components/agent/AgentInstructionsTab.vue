@@ -421,7 +421,7 @@ const handleSave = () => {
 
 .ai-generate-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(157,140,255,.35);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--c-purple) 35%, transparent);
 }
 
 .ai-generate-button:disabled {
@@ -439,7 +439,7 @@ const handleSave = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--text) 50%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -611,7 +611,7 @@ const handleSave = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgb(224, 224, 224);
+  background-color: var(--toggle-track-off);
   transition: .4s;
   border-radius: 24px;
 }
@@ -623,14 +623,14 @@ const handleSave = () => {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: rgb(255, 255, 255);
+  background-color: var(--toggle-knob);
   transition: .4s;
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 10%, transparent);
 }
 
 input:checked + .slider {
-  background-color: var(--success-color, green);
+  background-color: var(--toggle-on-accent);
 }
 
 input:focus + .slider {
@@ -762,8 +762,8 @@ input:checked + .slider:before {
 
 .save-button {
   padding: var(--space-md) var(--space-xl);
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-md);
   font-size: 1rem;
@@ -773,9 +773,9 @@ input:checked + .slider:before {
 }
 
 .save-button:hover {
-  background: var(--primary-dark);
+  filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--text) 15%, transparent);
 }
 
 /* Rating Feature Lock Styles */
@@ -798,11 +798,11 @@ input:checked + .slider:before {
 
 .slider.locked {
   cursor: not-allowed;
-  background-color: #ccc !important;
+  background-color: var(--toggle-track-off) !important;
 }
 
 .slider.locked:before {
-  background-color: #f5f5f5 !important;
+  background-color: var(--toggle-knob) !important;
 }
 
 .locked-text {
@@ -814,7 +814,7 @@ input:checked + .slider:before {
 }
 
 .premium-icon {
-  color: #ffd700;
+  color: var(--warning-color);
   font-size: 0.875rem;
 }
 
@@ -825,7 +825,7 @@ input:checked + .slider:before {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: color-mix(in srgb, var(--text) 85%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -838,7 +838,7 @@ input:checked + .slider:before {
   border-radius: 16px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
   animation: modalSlideIn 0.3s ease-out;
 }
@@ -866,7 +866,7 @@ input:checked + .slider:before {
   width: 48px;
   height: 48px;
   margin: 0 auto var(--space-md);
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--on-dark) 20%, transparent);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -889,7 +889,7 @@ input:checked + .slider:before {
   position: absolute;
   top: var(--space-md);
   right: var(--space-md);
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--on-dark) 20%, transparent);
   border: none;
   border-radius: 50%;
   width: 32px;
@@ -904,7 +904,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal-header .close-button:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--on-dark) 30%, transparent);
   transform: scale(1.1);
 }
 
@@ -957,8 +957,8 @@ input:checked + .slider:before {
 }
 
 .upgrade-button {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-full);
   padding: var(--space-md) var(--space-xl);
@@ -968,18 +968,18 @@ input:checked + .slider:before {
   align-items: center;
   gap: var(--space-sm);
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--text) 15%, transparent);
 }
 
 .upgrade-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 20%, transparent);
   filter: brightness(1.1);
 }
 
 .upgrade-button .upgrade-icon {
   font-size: 1rem;
-  color: #ffd700;
+  color: var(--warning-color);
   width: auto;
   height: auto;
   margin: 0;

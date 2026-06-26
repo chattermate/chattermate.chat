@@ -118,7 +118,7 @@ defineProps<{
 }
 
 .message.user .bubble {
-    background: var(--primary-color);
+    background: var(--accent-solid);
     color: black;
     border-top-right-radius: 4px;
 }
@@ -160,7 +160,7 @@ defineProps<{
 .typing-indicator span {
     width: 8px;
     height: 8px;
-    background: var(--primary-color, var(--accent-ink));
+    background: var(--primary-color, var(--accent-solid));
     border-radius: 50%;
     animation: typing 1.4s infinite ease-in-out;
 }

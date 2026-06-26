@@ -909,7 +909,7 @@ onMounted(async () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--o14);
+  background-color: var(--toggle-track-off);
   transition: .4s;
   border-radius: 24px;
 }
@@ -921,18 +921,18 @@ onMounted(async () => {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: rgb(255, 255, 255);
+  background-color: var(--toggle-knob);
   transition: .4s;
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 input:checked + .slider {
-  background-color: var(--accent-ink);
+  background-color: var(--accent-solid);
 }
 
 input:checked + .slider:before {
-  background-color: var(--on-accent);
+  background-color: var(--on-accent-solid);
 }
 
 input:focus + .slider {
@@ -1044,8 +1044,8 @@ input:checked + .slider:before {
 .save-config-btn {
   margin-top: var(--space-lg);
   padding: 10px 18px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-chip);
   font-weight: 600;
@@ -1070,8 +1070,8 @@ input:checked + .slider:before {
   margin-top: var(--space-md);
   padding: var(--space-md);
   border-radius: var(--radius-md);
-  background-color: var(--error-light, #FEEAEA);
-  color: var(--error, #EF4444);
+  background-color: var(--coral-bg);
+  color: var(--error-color);
   font-size: var(--text-sm);
   display: flex;
   align-items: center;
@@ -1099,7 +1099,7 @@ input:checked + .slider:before {
 .loader-dot {
   width: 6px;
   height: 6px;
-  background-color: var(--accent-ink);
+  background-color: var(--accent-solid);
   border-radius: 50%;
   animation: pulse 1.5s infinite ease-in-out;
 }
@@ -1148,8 +1148,8 @@ input:checked + .slider:before {
   margin-top: var(--space-md);
   padding: var(--space-md);
   border-radius: var(--radius-md);
-  background-color: var(--error-light, #FEEAEA);
-  color: var(--error, #EF4444);
+  background-color: var(--coral-bg);
+  color: var(--error-color);
   font-size: var(--text-sm);
   display: flex;
   align-items: center;
@@ -1193,7 +1193,7 @@ input:checked + .slider:before {
 }
 
 .remove-btn:hover {
-  color: var(--error);
+  color: var(--error-color);
 }
 
 .remove-btn:disabled {

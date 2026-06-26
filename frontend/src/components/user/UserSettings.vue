@@ -500,7 +500,7 @@ const handleProfilePicClick = () => {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 26px;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .profile-pic {
@@ -721,8 +721,8 @@ const handleProfilePicClick = () => {
 
 .submit-button {
   padding: 10px 20px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: 10px;
   font-size: 13.5px;

@@ -838,8 +838,8 @@ onMounted(async () => {
 .int-btn-connect {
   width: 100%;
   padding: 12px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-chip);
   font-size: 14px;

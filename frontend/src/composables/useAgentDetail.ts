@@ -119,6 +119,23 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
     cropperImage.value = ''
   }
 
+  // Apply a bundled preset avatar (fetched into a File) via the photo endpoint
+  const applyPresetAvatar = async (url: string) => {
+    try {
+      isUploading.value = true
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const file = new File([blob], 'profile.png', { type: blob.type || 'image/png' })
+      const updatedCustomization = await agentService.uploadAgentPhoto(agentData.value.id, file)
+      agentData.value.customization = updatedCustomization
+    } catch (error) {
+      console.error('Failed to apply preset avatar:', error)
+      alert('Failed to update photo')
+    } finally {
+      isUploading.value = false
+    }
+  }
+
   const handleClose = (cleanup: () => void) => {
     cleanup()
     emit('close')
@@ -316,6 +333,7 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
     handleFileUpload,
     handleCrop,
     cancelCrop,
+    applyPresetAvatar,
     handleClose,
     initializeWidget,
     copyWidgetCode,

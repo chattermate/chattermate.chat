@@ -927,8 +927,8 @@ onUnmounted(() => {
 
 .header-status {
   padding: var(--space-xs) var(--space-sm);
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 500;
@@ -961,8 +961,8 @@ onUnmounted(() => {
 }
 
 .action-btn.primary {
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .action-btn.primary:hover:not(:disabled) {

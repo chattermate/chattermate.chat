@@ -38,9 +38,7 @@ from app.core.logger import get_logger
 from app.models.role import Role
 from app.models.permission import Permission
 from app.repositories.organization import OrganizationRepository
-from app.repositories.agent import AgentRepository
-from app.core.default_templates import DEFAULT_TEMPLATES
-from app.models.agent import Agent, AgentType
+from app.models.agent import Agent
 from app.models.session_to_agent import SessionToAgent
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -82,30 +80,9 @@ async def create_organization(
             business_hours=org_data.business_hours
         )
 
-        # Create only the default Customer Support agent and make it active
-        template_repo = AgentRepository(db)
-
-        try:
-            default_template = DEFAULT_TEMPLATES[AgentType.CUSTOMER_SUPPORT]
-            template_repo.create_agent(
-                name=default_template["name"],
-                description=default_template["description"],
-                agent_type=AgentType.CUSTOMER_SUPPORT,
-                instructions=default_template["instructions"],
-                tools=default_template["tools"],
-                org_id=organization.id,
-                is_default=True,
-                is_active=True  # Make the default agent active
-            )
-            logger.info(f"Created default active Customer Support agent for org {organization.id}")
-        except Exception as template_error:
-            logger.error(f"Failed to create default agent for org {
-                         organization.id}: {str(template_error)}")
-            db.rollback()  # Rollback transaction on error
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create default agent: {str(template_error)}"
-            )
+        # Note: no default agent is created here. New orgs start with zero
+        # agents so the guided onboarding flow (Create → Teach → Test → Launch)
+        # is what creates the first agent.
 
         # Get or create default permissions
         permissions = {}

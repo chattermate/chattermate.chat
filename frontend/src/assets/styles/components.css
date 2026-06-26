@@ -14,7 +14,7 @@
   justify-content: center;
   gap: var(--space-sm);
   line-height: 1.4;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
   color: #0B0C10;
 }
 
@@ -38,7 +38,7 @@
 }
 
 .btn-primary {
-  background: var(--accent-ink);
+  background: var(--accent-solid);
   color: #0B0C10;
   border-color: transparent;
 }
@@ -214,7 +214,7 @@
 }
 
 .step-indicator.completed {
-  background: var(--accent-ink);
+  background: var(--accent-solid);
   border-color: var(--accent-ink);
   color: #0B0C10;
 }

@@ -677,7 +677,7 @@ onMounted(async () => {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 15px;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .status-dot {
@@ -1034,8 +1034,8 @@ onMounted(async () => {
 }
 
 .upgrade-button.primary {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .upgrade-button.primary:hover {

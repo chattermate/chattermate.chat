@@ -267,8 +267,8 @@ textarea.form-input {
 }
 
 .btn-primary {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
 }
 

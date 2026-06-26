@@ -242,7 +242,7 @@
 
 .form-submit-button {
     padding: 16px 32px;
-    background: linear-gradient(135deg, var(--primary-color) 0%, #ff6b47 100%);
+    background: linear-gradient(135deg, var(--accent-solid) 0%, #ff6b47 100%);
     color: white;
     border: none;
     border-radius: 16px;
@@ -275,7 +275,7 @@
     box-shadow: 
         0 8px 25px 0 rgba(243, 70, 17, 0.4),
         0 4px 8px 0 rgba(0, 0, 0, 0.15);
-    background: linear-gradient(135deg, #ff6b47 0%, var(--primary-color) 100%);
+    background: linear-gradient(135deg, #ff6b47 0%, var(--accent-solid) 100%);
 }
 
 .form-submit-button:hover:not(:disabled)::before {
@@ -558,7 +558,7 @@
 
 .form-fullscreen .submit-form-button {
     padding: 16px 32px;
-    background: var(--primary-color);
+    background: var(--accent-solid);
     color: white;
     border: none;
     border-radius: 8px;

@@ -1849,7 +1849,7 @@ const shouldShowWelcomeMessage = computed(() => {
                                             @click="handleSubmitRating(message.session_id, hoverRating, message.feedback)"
                                             :disabled="isSubmittingRating || !hoverRating"
                                             class="submit-rating-button"
-                                            :style="{ backgroundColor: customization.accent_color || 'var(--primary-color)' }"
+                                            :style="{ backgroundColor: customization.accent_color || 'var(--accent-solid)' }"
                                         >
                                             {{ isSubmittingRating ? 'Submitting...' : 'Submit Rating' }}
                                         </button>
@@ -2636,7 +2636,7 @@ const shouldShowWelcomeMessage = computed(() => {
 
 .user-message .message-bubble {
     border-bottom-right-radius: 6px;
-    background: linear-gradient(135deg, var(--primary-color) 0%, color-mix(in srgb, var(--primary-color) 90%, black) 100%);
+    background: linear-gradient(135deg, var(--accent-solid) 0%, color-mix(in srgb, var(--accent-solid) 90%, black) 100%);
 }
 
 .assistant-message .message-bubble,
@@ -3185,7 +3185,7 @@ const shouldShowWelcomeMessage = computed(() => {
 .loading-spinner .dot {
     width: 10px;
     height: 10px;
-    background: var(--primary-color);
+    background: var(--accent-solid);
     border-radius: 50%;
     animation: bounce 1.4s infinite ease-in-out;
 }
@@ -3261,7 +3261,7 @@ const shouldShowWelcomeMessage = computed(() => {
     padding: 12px 20px;
     border: none;
     border-radius: var(--radius-md);
-    background-color: var(--primary-color);
+    background-color: var(--accent-solid);
     color: white;
     cursor: pointer;
     font-size: var(--text-base);
@@ -3370,7 +3370,7 @@ const shouldShowWelcomeMessage = computed(() => {
     padding: 10px 20px;
     border: none;
     border-radius: 8px;
-    background-color: var(--primary-color);
+    background-color: var(--accent-solid);
     color: white;
     cursor: pointer;
     font-size: var(--text-base);
@@ -3657,7 +3657,7 @@ const shouldShowWelcomeMessage = computed(() => {
 }
 
 .add-to-cart-button-compact {
-    background-color: var(--primary-color);
+    background-color: var(--accent-solid);
     color: white;
     border-color: transparent;
     box-shadow: var(--shadow-xs);
@@ -3895,7 +3895,7 @@ const shouldShowWelcomeMessage = computed(() => {
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, var(--primary-color), #ff6b6b, #4ecdc4, var(--primary-color));
+    background: linear-gradient(90deg, var(--accent-solid), #ff6b6b, #4ecdc4, var(--accent-solid));
     background-size: 200% 100%;
     animation: gradientShift 3s ease infinite;
 }
@@ -4029,7 +4029,7 @@ const shouldShowWelcomeMessage = computed(() => {
 
 .user-input-submit-button {
     padding: var(--space-sm) var(--space-lg);
-    background: var(--primary-color);
+    background: var(--accent-solid);
     color: white;
     border: none;
     border-radius: var(--radius-md);

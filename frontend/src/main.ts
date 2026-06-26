@@ -21,7 +21,10 @@ import { fab } from '@fortawesome/free-brands-svg-icons'
 library.add(fas, far, fab)
 
 const savedTheme = localStorage.getItem('cm-theme') ?? 'dark'
-document.documentElement.setAttribute('data-theme', savedTheme)
+const resolvedTheme = savedTheme === 'system'
+  ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  : savedTheme
+document.documentElement.setAttribute('data-theme', resolvedTheme)
 
 const app = createApp(App)
 

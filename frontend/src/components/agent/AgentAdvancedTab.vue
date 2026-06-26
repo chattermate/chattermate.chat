@@ -519,13 +519,13 @@ const updateTokenAuthSetting = async (enabled: boolean) => {
   position: absolute;
   cursor: pointer;
   inset: 0;
-  background: var(--o14);
+  background: var(--toggle-track-off);
   transition: background 0.15s;
   border-radius: var(--radius-pill);
 }
 
 .slider.enabled {
-  background: var(--c-teal);
+  background: var(--toggle-on-teal);
 }
 
 .slider:before {
@@ -695,8 +695,8 @@ input:checked + .slider:before {
 
 .btn-primary {
   padding: 13px 26px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
 }
 

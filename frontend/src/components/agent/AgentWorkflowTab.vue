@@ -430,23 +430,23 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   padding: var(--space-xl);
-  background: var(--background-soft);
+  background: var(--surface);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o08);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid var(--border-color);
+  border: 3px solid var(--o10);
   border-radius: 50%;
-  border-top-color: var(--primary-color);
+  border-top-color: var(--accent-ink);
   animation: spin 1s linear infinite;
   margin-bottom: var(--space-md);
 }
 
 .loading-text {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: var(--text-sm);
 }
 
@@ -463,7 +463,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   padding: var(--space-xl);
-  background: var(--error-light);
+  background: var(--coral-bg);
   border-radius: var(--radius-lg);
   border: 1px solid var(--error-color);
 }
@@ -483,7 +483,7 @@ onMounted(() => {
 .retry-button {
   padding: var(--space-sm) var(--space-md);
   background: var(--error-color);
-  color: white;
+  color: var(--on-dark);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -492,7 +492,7 @@ onMounted(() => {
 }
 
 .retry-button:hover {
-  background: var(--error-dark);
+  filter: brightness(1.05);
 }
 
 /* No Workflow State */
@@ -500,7 +500,7 @@ onMounted(() => {
   border: 1px solid var(--o08);
   border-radius: var(--radius-card);
   padding: 64px 30px;
-  background: var(--bg-elevated);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -541,8 +541,8 @@ onMounted(() => {
   align-items: center;
   gap: var(--space-sm);
   padding: 12px 22px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-btn);
   font-family: var(--font-sans);
@@ -682,9 +682,9 @@ onMounted(() => {
 
 .submit-button {
   padding: 12px 24px;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
   border: none;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .submit-button:hover:not(:disabled) {
@@ -770,13 +770,13 @@ onMounted(() => {
 }
 
 .workflow-status.status-success {
-  background: color-mix(in srgb, var(--c-positive) 15%, transparent);
-  color: var(--c-positive);
+  background: color-mix(in srgb, var(--success-color) 15%, transparent);
+  color: var(--success-color);
 }
 
 .workflow-status.status-warning {
-  background: var(--warn-bg, color-mix(in srgb, var(--c-warn) 15%, transparent));
-  color: var(--c-warn);
+  background: color-mix(in srgb, var(--warning-color) 15%, transparent);
+  color: var(--warning-color);
 }
 
 .workflow-status.status-muted {
@@ -815,8 +815,8 @@ onMounted(() => {
 
 .action-button.primary {
   padding: 10px 18px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   font-weight: 600;
 }

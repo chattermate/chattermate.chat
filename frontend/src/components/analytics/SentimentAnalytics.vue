@@ -543,7 +543,7 @@ onMounted(() => {
 }
 
 .view-details-btn {
-  background-color: var(--primary-color);
+  background-color: var(--accent-solid);
   color: white;
   border: none;
   padding: var(--space-xs) var(--space-sm);
@@ -554,7 +554,7 @@ onMounted(() => {
 }
 
 .view-details-btn:hover {
-  background-color: var(--accent-color);
+  background-color: var(--accent-solid);
 }
 
 /* Modal */

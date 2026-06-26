@@ -224,7 +224,7 @@ const handleNavigation = () => {
 .logo-mark {
     width: 32px;
     height: 32px;
-    background: var(--accent-ink);
+    background: var(--accent-solid);
     border-radius: 10px 10px 10px 2px;
     display: flex;
     align-items: center;
@@ -336,7 +336,7 @@ const handleNavigation = () => {
     bottom: 9px;
     width: 3px;
     border-radius: 3px;
-    background: var(--accent-ink);
+    background: var(--accent-solid);
     opacity: 0;
 }
 

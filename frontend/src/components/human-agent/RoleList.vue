@@ -639,8 +639,8 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: 14px;
   padding: var(--space-md) var(--space-xl);
@@ -660,7 +660,7 @@ onMounted(() => {
 
 .upgrade-icon {
   font-size: 1rem;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .arrow-icon {

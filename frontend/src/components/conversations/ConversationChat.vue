@@ -573,8 +573,8 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-input);
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   transition: filter 0.2s, opacity 0.2s;
 }
 
@@ -657,8 +657,8 @@ onMounted(async () => {
 
 
 .create-ticket-btn {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-sm);
   padding: 8px 16px;

@@ -576,8 +576,8 @@ onMounted(() => {
   align-items: center;
   gap: 7px;
   padding: 11px 18px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-chip);
   font-family: var(--font-sans);
@@ -1068,7 +1068,7 @@ onMounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -1135,8 +1135,8 @@ onMounted(() => {
 
 .input-add button {
   padding: 11px 18px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-chip);
   cursor: pointer;
@@ -1194,7 +1194,7 @@ onMounted(() => {
 
 .list-item .remove-button:hover {
   background: var(--c-coral);
-  color: var(--on-accent);
+  color: var(--on-dark);
 }
 
 /* ---------- Buttons ---------- */
@@ -1215,8 +1215,8 @@ onMounted(() => {
 
 .primary-button {
   padding: 13px 24px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .empty-state .primary-button {
@@ -1245,7 +1245,7 @@ onMounted(() => {
 
 .danger-button {
   background: var(--c-coral);
-  color: var(--on-accent);
+  color: var(--on-dark);
 }
 
 .danger-button:hover {
@@ -1253,8 +1253,8 @@ onMounted(() => {
 }
 
 .link-button {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   min-width: 80px;
   display: inline-flex;
   align-items: center;

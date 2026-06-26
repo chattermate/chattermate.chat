@@ -400,8 +400,8 @@ const formatDate = (dateString: string) => {
 
 .page-header .btn-primary {
   padding: 12px 20px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 14.5px;
@@ -672,8 +672,8 @@ const formatDate = (dateString: string) => {
 
 .create-btn {
   padding: 13px 24px;
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 15px;
@@ -739,7 +739,7 @@ const formatDate = (dateString: string) => {
   justify-content: center;
   width: 80px;
   height: 80px;
-  background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+  background: linear-gradient(135deg, var(--accent-solid), var(--primary-dark));
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
@@ -747,7 +747,7 @@ const formatDate = (dateString: string) => {
 .widget-apps-locked-overlay .locked-icon {
   width: 40px;
   height: 40px;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .widget-apps-locked-overlay .locked-header h2 {
@@ -838,8 +838,8 @@ const formatDate = (dateString: string) => {
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-xl);
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-base);

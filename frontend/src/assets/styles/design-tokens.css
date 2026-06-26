@@ -7,7 +7,9 @@
   --topbar: rgba(11,12,16,.8);
 
   /* Accent */
-  --accent-ink: #C9F24E;
+  --accent-ink: #C9F24E;        /* accent for text / borders / icons (darkens in light mode) */
+  --accent-solid: #C9F24E;      /* accent for FILLED surfaces (stays lime in both themes) */
+  --on-accent-solid: #0B0C10;   /* text/icon on --accent-solid (dark in both themes) */
   --c-lime: #C9F24E;
   --c-teal: #5FE3D6;
   --c-purple: #9D8CFF;
@@ -203,6 +205,22 @@
   --text-placeholder: var(--faint);
   --code-bg: var(--surface);
   --primary-soft: rgba(201,242,78,.1);
+
+  /* Legacy aliases used by the agent editor (resolve via flipping tokens) */
+  --accent-color: var(--accent-ink);
+  --background-alt: var(--bg2);
+  --background-muted: var(--o05);
+  --radius-xl: 20px;
+  --success: var(--success-color);
+  --success-dark: var(--success-color);
+  --success-light: color-mix(in srgb, var(--success-color) 14%, transparent);
+  --success-color-soft: color-mix(in srgb, var(--success-color) 12%, transparent);
+  --warning: var(--warning-color);
+  --warning-light: color-mix(in srgb, var(--warning-color) 14%, transparent);
+  --error-light: var(--coral-bg);
+  --error-soft: var(--coral-bg);
+  --error-color-soft: var(--coral-bg);
+  --primary-color-filter: none;
 }
 
 /* Light theme override */

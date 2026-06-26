@@ -590,7 +590,7 @@ fetchAnalytics()
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--accent-ink);
+  background: var(--accent-solid);
 }
 
 .time-range-selector {
@@ -615,8 +615,8 @@ fetchAnalytics()
 }
 
 .time-range-selector button.active {
-  background: var(--accent-ink);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   font-weight: 600;
 }
 
@@ -783,7 +783,7 @@ fetchAnalytics()
   justify-content: center;
   width: 64px;
   height: 64px;
-  background: var(--primary-color);
+  background: var(--accent-solid);
   border-radius: 50%;
   box-shadow: var(--shadow-lg);
   margin-bottom: var(--space-sm);
@@ -791,7 +791,7 @@ fetchAnalytics()
 
 .locked-icon {
   font-size: 1.5rem;
-  color: var(--on-accent);
+  color: var(--on-accent-solid);
 }
 
 .locked-content h2 {
@@ -805,8 +805,8 @@ fetchAnalytics()
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -896,8 +896,8 @@ fetchAnalytics()
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--primary-color);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-lg);
   padding: var(--space-lg) var(--space-xl);

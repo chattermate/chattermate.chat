@@ -764,7 +764,7 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .accent-swatch.active {
-    border-color: #fff;
+    border-color: var(--surface);
 }
 
 .accent-custom {
@@ -969,9 +969,9 @@ const isSectionExpanded = (sectionId: string) => {
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
-    padding: var(--space-lg) var(--space-md);
-    border-top: 1px solid var(--border-color);
-    background: var(--background-base);
+    padding: var(--space-md);
+    border-top: 1px solid var(--o08);
+    background: transparent;
     margin-top: auto;
     flex-shrink: 0;
 }
@@ -1000,15 +1000,15 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .save-message.success {
-    background: rgba(16, 185, 129, 0.1);
+    background: color-mix(in srgb, var(--success-color) 10%, transparent);
     color: var(--success-color);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    border: 1px solid color-mix(in srgb, var(--success-color) 30%, transparent);
 }
 
 .save-message.error {
-    background: rgba(239, 68, 68, 0.1);
+    background: color-mix(in srgb, var(--error-color) 10%, transparent);
     color: var(--error-color);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    border: 1px solid color-mix(in srgb, var(--error-color) 30%, transparent);
 }
 
 .message-icon {
@@ -1018,17 +1018,17 @@ const isSectionExpanded = (sectionId: string) => {
 /* Button Actions */
 .button-actions {
     display: flex;
+    justify-content: flex-end;
     gap: var(--space-sm);
 }
 
 .save-button,
 .cancel-button {
-    padding: var(--space-sm) var(--space-lg);
+    padding: var(--space-sm) var(--space-xl);
     border: none;
     border-radius: var(--radius-md);
     cursor: pointer;
     font-weight: 500;
-    flex: 1;
     min-width: 120px;
     transition: var(--transition-fast);
     display: flex;
@@ -1038,8 +1038,8 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .save-button {
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .save-button:hover:not(:disabled) {
@@ -1191,7 +1191,7 @@ const isSectionExpanded = (sectionId: string) => {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: linear-gradient(135deg, var(--c-purple), #7C6AE6);
+    background: var(--grad-generate);
     color: var(--text);
     padding: 2px 8px;
     border-radius: 999px;
@@ -1238,8 +1238,8 @@ const isSectionExpanded = (sectionId: string) => {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-btn);
     padding: 8px 14px;
@@ -1287,9 +1287,9 @@ const isSectionExpanded = (sectionId: string) => {
     flex-shrink: 0;
     width: 46px;
     border-radius: 11px;
-    background: var(--accent-ink);
+    background: var(--accent-solid);
     border: none;
-    color: var(--on-accent);
+    color: var(--on-accent-solid);
     font-size: 22px;
     line-height: 1;
     cursor: pointer;

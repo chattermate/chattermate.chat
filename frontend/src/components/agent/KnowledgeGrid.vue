@@ -726,8 +726,8 @@ const closeKnowledgeModal = () => {
 }
 
 .action-button--primary {
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
 }
 
@@ -1003,8 +1003,8 @@ const closeKnowledgeModal = () => {
 }
 
 .knowledge-tabs button.active {
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border-color: transparent;
     font-weight: 600;
 }
@@ -1039,8 +1039,8 @@ const closeKnowledgeModal = () => {
 .upload-button {
     width: 100%;
     padding: 12px;
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-chip);
     font-family: var(--font-sans);
@@ -1111,8 +1111,8 @@ const closeKnowledgeModal = () => {
 .url-input-group button {
     flex-shrink: 0;
     padding: 14px 22px;
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-input);
     font-family: var(--font-sans);
@@ -1140,7 +1140,7 @@ const closeKnowledgeModal = () => {
 
 .progress {
     height: 100%;
-    background: var(--primary-color);
+    background: var(--accent-solid);
     transition: width 0.3s ease;
 }
 
@@ -1197,8 +1197,8 @@ const closeKnowledgeModal = () => {
 }
 
 .link-button {
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .unlink-button {
@@ -1207,11 +1207,11 @@ const closeKnowledgeModal = () => {
 }
 
 .link-button:hover {
-    background: var(--primary-color-dark, #0056b3);
+    background: var(--primary-dark);
 }
 
 .unlink-button:hover {
-    background: var(--error-color-dark, #dc2626);
+    background: color-mix(in srgb, var(--error-color) 80%, black);
 }
 
 .error-message {
@@ -1298,7 +1298,7 @@ const closeKnowledgeModal = () => {
 }
 
 .confirm-actions .delete-button:hover {
-    background: var(--error-color-dark, #dc2626);
+    background: color-mix(in srgb, var(--error-color) 80%, black);
 }
 
 .confirm-content {
@@ -1371,24 +1371,24 @@ const closeKnowledgeModal = () => {
 }
 
 .status-badge.pending {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--info-bg);
+    color: var(--c-info);
 }
 
 .status-badge.processing {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--warning-bg);
+    color: var(--warning-color);
     animation: pulse 2s ease-in-out infinite;
 }
 
 .status-badge.failed {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--error-bg);
+    color: var(--error-color);
 }
 
 .status-badge.completed {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--success-bg);
+    color: var(--success-color);
 }
 
 @keyframes pulse {
@@ -1419,7 +1419,7 @@ const closeKnowledgeModal = () => {
 
 .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    background: linear-gradient(90deg, var(--c-info), color-mix(in srgb, var(--c-info) 70%, var(--surface)));
     border-radius: var(--radius-full);
     transition: width 0.3s ease;
 }
@@ -1435,7 +1435,7 @@ const closeKnowledgeModal = () => {
     align-items: center;
     gap: var(--space-xs);
     padding: var(--space-sm);
-    background: #fee2e2;
+    background: var(--error-bg);
     border-radius: var(--radius-sm);
 }
 
@@ -1444,7 +1444,7 @@ const closeKnowledgeModal = () => {
 }
 
 .error-text {
-    color: #991b1b;
+    color: var(--error-color);
     font-size: 0.875rem;
     flex: 1;
 }
@@ -1538,8 +1538,8 @@ const closeKnowledgeModal = () => {
 
 .add-subpage-btn {
     padding: var(--space-sm) var(--space-md);
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1572,8 +1572,8 @@ const closeKnowledgeModal = () => {
 .edit-button,
 .save-button {
     padding: var(--space-xs) var(--space-sm);
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;
@@ -1583,7 +1583,7 @@ const closeKnowledgeModal = () => {
 
 .edit-button:hover,
 .save-button:hover:not(:disabled) {
-    background: var(--primary-color-dark, #0056b3);
+    background: var(--primary-dark);
     transform: translateY(-1px);
 }
 
@@ -1879,7 +1879,7 @@ const closeKnowledgeModal = () => {
 }
 
 .confirm-modal .delete-button:hover {
-    background: var(--error-color-dark, #dc2626);
+    background: color-mix(in srgb, var(--error-color) 80%, black);
 }
 
 .remove-url-button {

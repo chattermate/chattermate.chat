@@ -405,7 +405,7 @@ const timeOptions = Array.from({ length: 24 * 4 }, (_, i) => {
 }
 
 .gradient-text {
-    background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(to right, var(--accent-solid), var(--secondary-color));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -649,7 +649,7 @@ select.form-input {
 }
 
 input:checked + .toggle-slider {
-    background-color: var(--primary-color);
+    background-color: var(--accent-solid);
 }
 
 input:checked + .toggle-slider:before {

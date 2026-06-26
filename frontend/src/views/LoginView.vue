@@ -347,11 +347,9 @@ const handleVerifyAndResetPassword = async () => {
                 </div>
 
                 <div class="field">
-                    <div class="field-row">
-                        <label for="password">Password</label>
-                        <a v-if="hasEnterpriseModule" href="#" @click.prevent="openForgotPasswordModal" class="forgot-link">Forgot password?</a>
-                    </div>
+                    <label for="password">Password</label>
                     <input id="password" v-model="password" type="password" required placeholder="••••••••" autocomplete="current-password" />
+                    <a v-if="hasEnterpriseModule" href="#" @click.prevent="openForgotPasswordModal" class="forgot-link">Forgot password?</a>
                 </div>
 
                 <div v-if="error" class="auth-error" role="alert">{{ error }}</div>
@@ -374,16 +372,27 @@ const handleVerifyAndResetPassword = async () => {
             <div class="aurora-blob blob-purple"></div>
             <div class="aurora-blob blob-teal"></div>
 
-            <div class="orb-wrap">
-                <div class="orb"></div>
-            </div>
-
             <div class="brand-copy">
+                <!-- Siri orb -->
+                <div class="orb">
+                    <div class="orb-glow"></div>
+                    <div class="orb-gradient"></div>
+                    <div class="orb-core"></div>
+                    <div class="orb-ring"></div>
+                </div>
+
+                <div class="brand-badge">
+                    <span class="badge-dot"></span>
+                    open source · MCP-native
+                </div>
+
                 <h2>Support that <em>learns itself.</em></h2>
+                <p class="brand-lede">Reads your knowledge base, answers in any chat design, hands off to humans, and even answers other AI agents over open MCP.</p>
+
                 <ul class="feature-list">
-                    <li><span class="check">✓</span> Resolves tickets automatically</li>
-                    <li><span class="check">✓</span> Learns from every conversation</li>
-                    <li><span class="check">✓</span> Hands off to humans gracefully</li>
+                    <li><span class="check">✓</span> Auto-learning knowledge base — drop a PDF or URL</li>
+                    <li><span class="check">✓</span> Human handoff with full context</li>
+                    <li><span class="check">✓</span> Self-host or cloud — bring your own models</li>
                 </ul>
             </div>
         </div>
@@ -551,7 +560,7 @@ const handleVerifyAndResetPassword = async () => {
 .logo-mark {
     width: 32px;
     height: 32px;
-    background: var(--accent-ink);
+    background: var(--accent-solid);
     border-radius: 10px 10px 10px 2px;
     display: flex;
     align-items: center;
@@ -597,7 +606,7 @@ const handleVerifyAndResetPassword = async () => {
     align-items: center;
     gap: 10px;
     padding: 12px 16px;
-    background: color-mix(in srgb, var(--accent-ink) 6%, transparent);
+    background: color-mix(in srgb, var(--accent-solid) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent-ink) 20%, transparent);
     border-radius: 10px;
     margin-bottom: 24px;
@@ -665,6 +674,8 @@ const handleVerifyAndResetPassword = async () => {
 }
 
 .forgot-link {
+    align-self: flex-end;
+    margin-top: 2px;
     font-size: 13px;
     color: var(--accent-ink);
     text-decoration: none;
@@ -683,8 +694,8 @@ const handleVerifyAndResetPassword = async () => {
 .auth-submit {
     width: 100%;
     padding: 15px;
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: 12px;
     font-family: var(--font-sans);
@@ -717,9 +728,10 @@ const handleVerifyAndResetPassword = async () => {
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
-    padding: 60px 56px;
+    justify-content: center;
+    padding: 56px 6vw;
     min-height: 100vh;
+    border-left: 1px solid var(--o06);
 }
 
 /* Aurora blobs */
@@ -733,7 +745,7 @@ const handleVerifyAndResetPassword = async () => {
 .blob-lime {
     width: 420px;
     height: 420px;
-    background: radial-gradient(circle, color-mix(in srgb, var(--accent-ink) 32%, transparent), color-mix(in srgb, var(--accent-ink) 6%, transparent));
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-solid) 32%, transparent), color-mix(in srgb, var(--accent-solid) 6%, transparent));
     top: -80px;
     right: -60px;
     animation-duration: 16s;
@@ -759,44 +771,98 @@ const handleVerifyAndResetPassword = async () => {
     animation-delay: -9s;
 }
 
-/* Central orb */
-.orb-wrap {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    animation: cm-float 6s ease-in-out infinite;
-}
-
-.orb {
-    width: 160px;
-    height: 160px;
-    border-radius: 50%;
-    background: conic-gradient(from 0deg, var(--accent-ink), var(--c-teal), var(--c-purple), var(--accent-ink));
-    filter: blur(40px);
-    opacity: .4;
-    animation: cm-spin 12s linear infinite;
-}
-
 /* Brand copy */
 .brand-copy {
     position: relative;
     z-index: 1;
+    max-width: 460px;
+}
+
+/* Siri orb */
+.orb {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    margin-bottom: 38px;
+    animation: cm-float 7s ease-in-out infinite;
+}
+
+.orb-glow {
+    position: absolute;
+    inset: -36px;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-solid) 20%, transparent), transparent 70%);
+    filter: blur(10px);
+}
+
+.orb-gradient {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, var(--accent-solid), var(--c-purple), var(--c-teal), var(--c-coral), var(--accent-solid));
+    filter: blur(6px);
+    animation: cm-spin 6s linear infinite;
+}
+
+.orb-core {
+    position: absolute;
+    inset: 24px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--text) 92%, transparent), color-mix(in srgb, var(--text) 12%, transparent) 55%, transparent 72%);
+    animation: cm-pulse 2.6s ease-in-out infinite;
+}
+
+.orb-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 26px color-mix(in srgb, var(--bg-deep) 55%, transparent);
+}
+
+/* Badge pill */
+.brand-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 14px;
+    border: 1px solid var(--o12);
+    border-radius: 999px;
+    background: var(--o03);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text3);
+    margin-bottom: 26px;
+}
+
+.badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-solid);
+    box-shadow: 0 0 10px var(--accent-ink);
+    animation: cm-pulse 2.6s ease-in-out infinite;
 }
 
 .brand-copy h2 {
     font-family: var(--font-display);
-    font-size: 36px;
+    font-size: 42px;
     font-weight: 700;
     letter-spacing: -0.03em;
     color: var(--text);
-    line-height: 1.18;
-    margin-bottom: 28px;
+    line-height: 1.06;
+    margin: 0 0 18px;
 }
 
 .brand-copy h2 em {
     font-style: normal;
     color: var(--accent-ink);
+}
+
+.brand-lede {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0 0 30px;
 }
 
 .feature-list {
@@ -805,7 +871,7 @@ const handleVerifyAndResetPassword = async () => {
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
 }
 
 .feature-list li {
@@ -813,7 +879,7 @@ const handleVerifyAndResetPassword = async () => {
     align-items: center;
     gap: 12px;
     font-size: 15px;
-    color: var(--muted);
+    color: var(--text3);
 }
 
 .check {
@@ -992,8 +1058,8 @@ const handleVerifyAndResetPassword = async () => {
 .modal-submit-btn {
     width: 100%;
     padding: 13px;
-    background: var(--accent-ink);
-    color: var(--on-accent);
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: 12px;
     font-family: var(--font-sans);
