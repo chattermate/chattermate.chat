@@ -403,7 +403,7 @@ const orbStyle = computed(() => resolveOrbStyle(props.agentName, orbMeta.value?.
 // Computed property for container styles
 const containerStyles = computed(() => {
     const baseStyles = {
-        width: '400px',
+        width: '480px',
         height: '600px',
         borderRadius: '24px'
     }

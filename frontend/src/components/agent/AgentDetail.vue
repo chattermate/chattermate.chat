@@ -192,7 +192,7 @@ const previewWrapperStyles = computed(() => {
     
     return {
         ...baseStyles,
-        width: '400px'
+        width: '480px'
     }
 })
 
