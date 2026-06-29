@@ -350,6 +350,45 @@ class TestCrawl4AIFallback:
         assert screenshot is None
 
 
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    def test_run_async_safely_threaded_execution(self):
+        """Cover the real new-thread/new-loop path when an event loop is already running.
+
+        Mocks _async_fetch so no real network/browser is touched, but lets the actual
+        threading + new event loop machinery run (the path the live test used to cover).
+        """
+        fallback = Crawl4AIFallback()
+        fallback._is_available = True
+
+        expected = ("<html><body>Threaded</body></html>", "# Threaded content", None)
+
+        fake_loop = MagicMock()
+        fake_loop.is_running.return_value = True
+
+        with patch('asyncio.get_event_loop', return_value=fake_loop), \
+             patch.object(fallback, '_async_fetch', new=AsyncMock(return_value=expected)):
+            html, markdown, screenshot = fallback._run_async_safely("https://example.com", False)
+
+        assert (html, markdown, screenshot) == expected
+
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    def test_run_async_safely_threaded_exception(self):
+        """An exception inside the worker thread is re-raised and handled gracefully."""
+        fallback = Crawl4AIFallback()
+        fallback._is_available = True
+
+        fake_loop = MagicMock()
+        fake_loop.is_running.return_value = True
+
+        with patch('asyncio.get_event_loop', return_value=fake_loop), \
+             patch.object(fallback, '_async_fetch', new=AsyncMock(side_effect=RuntimeError("boom"))):
+            html, markdown, screenshot = fallback._run_async_safely("https://example.com", False)
+
+        assert html is None
+        assert markdown is None
+        assert screenshot is None
+
+
 class TestGetCrawl4AIFallback:
     """Test suite for get_crawl4ai_fallback singleton function"""
     
