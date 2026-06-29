@@ -16,6 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
+import os
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from bs4 import BeautifulSoup
@@ -26,6 +27,15 @@ from app.knowledge.crawl4ai_fallback import (
     get_crawl4ai_fallback,
     CRAWL4AI_AVAILABLE
 )
+
+
+# Live integration tests below hit the real network and launch a real Chromium
+# browser. On CI (Python 3.12) the event-loop teardown of fetch_with_browser can
+# raise "Event loop is closed" during GC and leave a coroutine un-awaited, which
+# then fails an unrelated test. Skip them in CI by default; run them locally with
+# RUN_LIVE_CRAWL_TESTS=1 to exercise the real path.
+_SKIP_LIVE = os.getenv("CI") is not None and os.getenv("RUN_LIVE_CRAWL_TESTS") != "1"
+_LIVE_REASON = "live crawl4ai network/browser test (set RUN_LIVE_CRAWL_TESTS=1 to run; skipped in CI)"
 
 
 class TestCrawl4AIFallback:
@@ -381,7 +391,7 @@ class TestGetCrawl4AIFallback:
 class TestCrawl4AIIntegration:
     """Integration tests for Crawl4AI (only run if Crawl4AI is available)"""
     
-    @pytest.mark.skipif(not CRAWL4AI_AVAILABLE, reason="Crawl4AI not installed")
+    @pytest.mark.skipif(not CRAWL4AI_AVAILABLE or _SKIP_LIVE, reason=_LIVE_REASON)
     @pytest.mark.asyncio
     async def test_real_async_fetch_simple_page(self):
         """Test real async fetch with a simple page (requires Crawl4AI)"""
@@ -401,7 +411,7 @@ class TestCrawl4AIIntegration:
         except Exception as e:
             pytest.skip(f"Network or Crawl4AI issue: {str(e)}")
     
-    @pytest.mark.skipif(not CRAWL4AI_AVAILABLE, reason="Crawl4AI not installed")
+    @pytest.mark.skipif(not CRAWL4AI_AVAILABLE or _SKIP_LIVE, reason=_LIVE_REASON)
     def test_real_fetch_with_browser(self):
         """Test real fetch_with_browser (requires Crawl4AI)"""
         fallback = Crawl4AIFallback(timeout=10)
