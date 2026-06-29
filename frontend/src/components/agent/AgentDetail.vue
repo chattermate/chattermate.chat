@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
-import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle } from '@/utils/orb'
+import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri } from '@/utils/orb'
 
 import KnowledgeGrid from './KnowledgeGrid.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
@@ -73,12 +73,13 @@ const useOrbAvatar = computed(() => orbMeta.value?.avatar_style === 'orb')
 const currentOrbVariant = computed(() => orbMeta.value?.orb_variant)
 const orbStyle = computed(() => resolveOrbStyle(agentData.value.name || '', currentOrbVariant.value))
 
-const persistAvatarMeta = async (patch: Record<string, unknown>) => {
+const persistAvatarMeta = async (patch: Record<string, unknown>, photoUrl?: string) => {
   const cust = agentData.value.customization
   if (!cust) return
   const meta = { ...(cust.customization_metadata ?? {}), ...patch }
   const updated = await agentService.updateCustomization(agentData.value.id, {
     ...cust,
+    ...(photoUrl !== undefined ? { photo_url: photoUrl } : {}),
     customization_metadata: meta,
   })
   agentData.value.customization = updated
@@ -88,7 +89,10 @@ const selectOrbAvatar = async (variant: number) => {
   if (isUploading.value) return
   closeAvatarPicker()
   try {
-    await persistAvatarMeta({ avatar_style: 'orb', orb_variant: variant })
+    // Store the orb as an SVG data URI in photo_url so it propagates everywhere
+    // (agent list, widget header, previews) via the normal avatar path.
+    const orbUrl = orbSvgDataUri(agentData.value.name || '', variant)
+    await persistAvatarMeta({ avatar_style: 'orb', orb_variant: variant }, orbUrl)
   } catch (error) {
     console.error('Failed to set orb avatar:', error)
     toast.error('Failed to update avatar')

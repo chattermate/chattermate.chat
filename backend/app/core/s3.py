@@ -34,8 +34,11 @@ async def get_s3_signed_url(s3_url: str, expiration: int = 2592000) -> str:
         if not settings.S3_FILE_STORAGE or not s3_url:
             return s3_url
 
-        
-        
+        # Inline data URIs (e.g. generated orb avatars stored in photo_url) and any
+        # non-S3 absolute URL are not S3 objects — return them unchanged.
+        if s3_url.startswith('data:') or 'amazonaws.com' not in s3_url:
+            return s3_url
+
         # Parse the URL
         parsed_url = urlparse(s3_url)
         path_parts = parsed_url.path.strip('/').split('/')

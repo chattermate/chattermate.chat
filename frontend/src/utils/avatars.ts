@@ -19,4 +19,4 @@ export const getAvatarUrl = (agentType: string): string => {
  * analysis (CodeQL js/incomplete-url-substring-sanitization).
  */
 export const isAbsoluteUrl = (path?: string | null): boolean =>
-  !!path && /^https?:\/\//i.test(path)
+  !!path && (/^https?:\/\//i.test(path) || path.startsWith('data:'))

@@ -6302,7 +6302,7 @@ const Ss = [
 }, td = (t, e) => {
   const n = typeof e == "number" && Number.isFinite(e) ? e : Qh(t);
   return ed(n);
-}, ro = (t) => !!t && /^https?:\/\//i.test(t);
+}, ro = (t) => !!t && (/^https?:\/\//i.test(t) || t.startsWith("data:"));
 function ya() {
   return typeof window < "u" && window.APP_CONFIG ? window.APP_CONFIG : {};
 }
