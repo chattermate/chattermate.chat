@@ -2161,11 +2161,16 @@ input:checked + .slider:before {
     gap: var(--space-xl);
     padding: var(--space-lg);
     height: 100%;
+    /* Keep the description + preview grouped and centered instead of spread
+       across ultrawide screens. */
+    max-width: 1040px;
+    margin: 0 auto;
+    justify-content: center;
 }
 
 .preview-header {
-    flex: 1;
-    max-width: 480px;
+    flex: 0 1 460px;
+    max-width: 460px;
     overflow-y: auto;
 }
 
@@ -2692,10 +2697,15 @@ input:checked + .slider:before {
     align-items: flex-start;
     gap: var(--space-xl);
     padding: var(--space-lg);
+    /* Group the options + preview and center them rather than letting the
+       preview column stretch across ultrawide screens. */
+    max-width: 1040px;
+    margin: 0 auto;
+    justify-content: center;
 }
 
 .customization-panel {
-    flex: 1;
+    flex: 0 0 460px;
     max-width: 480px;
     /* Match the chat preview window height (.chat-container is 600px) */
     height: 600px;
@@ -2726,7 +2736,7 @@ input:checked + .slider:before {
 }
 
 .customization-preview {
-    flex: 1;
+    flex: 0 1 auto;
     display: flex;
     align-items: flex-start;
     justify-content: center;

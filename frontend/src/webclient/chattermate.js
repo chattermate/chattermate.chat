@@ -23,8 +23,8 @@ window.ChatterMate;
       return window.APP_CONFIG.API_URL;
     }
     
-    // Final fallback
-    return 'http://localhost:8000';
+    // Final fallback — default to production so a plain build ships working.
+    return 'https://api.chattermate.chat';
   }
 
   // Configuration object
