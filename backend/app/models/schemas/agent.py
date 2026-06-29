@@ -41,6 +41,8 @@ class AgentBase(BaseModel):
     is_default: bool = False
     transfer_to_human: bool = False
     ask_for_rating: bool = False
+    handoff_collect_email: bool = True
+    handoff_collect_name: bool = True
     enable_rate_limiting: bool = False
     overall_limit_per_ip: int = Field(default=100, description="Maximum number of requests allowed per IP address")
     requests_per_sec: float = Field(default=1.0, description="Number of requests allowed per second")
@@ -65,6 +67,8 @@ class AgentUpdate(BaseModel):
     is_active: Optional[bool] = None
     transfer_to_human: Optional[bool] = None
     ask_for_rating: Optional[bool] = None
+    handoff_collect_email: Optional[bool] = None
+    handoff_collect_name: Optional[bool] = None
     enable_rate_limiting: Optional[bool] = None
     overall_limit_per_ip: Optional[int] = None
     requests_per_sec: Optional[float] = None
@@ -96,6 +100,8 @@ class AgentResponse(BaseModel):
     knowledge: List[AgentKnowledge] = []
     transfer_to_human: bool = False
     ask_for_rating: bool = False
+    handoff_collect_email: bool = True
+    handoff_collect_name: bool = True
     enable_rate_limiting: Optional[bool] = None
     overall_limit_per_ip: Optional[int] = None
     requests_per_sec: Optional[float] = None

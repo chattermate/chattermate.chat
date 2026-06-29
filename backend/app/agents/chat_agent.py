@@ -151,11 +151,13 @@ class ChatAgent(ChatAgentMCPMixin):
         logger.debug(f"Initializing chat agent for agent_id: {agent_id} and org_id: {org_id} and source: {source}")
         tools = []
         knowledge_tool_prompt = ""  # Initialize to empty string
-        
+        self.knowledge_tool = None  # Holds the KnowledgeSearchByAgent for citation collection
+
         if org_id and agent_id:
             logger.debug(f"Initializing knowledge search tool for agent_id: {agent_id} and org_id: {org_id} and source: {source}")
             knowledge_tool = KnowledgeSearchByAgent(
                 agent_id=agent_id, org_id=org_id, source=source)
+            self.knowledge_tool = knowledge_tool
             tools.append(knowledge_tool)
             
             # Base knowledge tool prompt
@@ -649,7 +651,11 @@ Keep your responses concise and focused. Provide clear, actionable information i
             create_ticket=False,
             shopify_output=None
         )
-        
+
+        # Signal the widget to collect the visitor's contact details (handoff happened,
+        # whether or not a live agent was available).
+        updated_response.request_contact = True
+
         # Prepare message attributes
         attributes = {
             "transfer_to_human": updated_response.transfer_to_human,
@@ -741,7 +747,11 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "attributes": {}
                 })
 
-                
+
+                # Reset citation collection for this turn
+                if self.knowledge_tool is not None:
+                    self.knowledge_tool.collected_sources = []
+
                 # Get AI response
                 response = await self.agent.arun(
                     message=message,
@@ -751,6 +761,20 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
                 # Use the utility function to parse the response
                 response_content = parse_response_content(response)
+
+                # Attach knowledge-base citations gathered during this turn (overrides any
+                # value the LLM may have produced — this field is system-managed).
+                if self.knowledge_tool is not None and self.knowledge_tool.collected_sources:
+                    from app.models.schemas.chat import SourceRef
+                    response_content.sources = [
+                        SourceRef(**s) for s in self.knowledge_tool.collected_sources
+                    ]
+                else:
+                    response_content.sources = None
+
+                # request_contact is system-managed (set only by the transfer handler);
+                # clear anything the LLM may have produced.
+                response_content.request_contact = False
 
                 logger.debug(f"Response content: {response_content}")
 
@@ -792,7 +816,11 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "request_rating": response_content.request_rating,
                     "shopify_output": response_content.shopify_output
                 }
-                
+
+                # Persist citations so reloaded history can render them too
+                if response_content.sources:
+                    attributes["sources"] = [s.model_dump() for s in response_content.sources]
+
                 # Add ticket attributes if present
                 if response_content.create_ticket:
                     attributes.update({

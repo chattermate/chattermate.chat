@@ -136,11 +136,12 @@ class TransferResponseAgent:
             f"1. If within business hours ({is_business_hours}) and agents available ({available_agents} online), "
             f"explain that you need to transfer to a human agent who can better assist them.\n"
             f"2. If outside business hours or no agents available, if jira tool is available, "
-            f"create a ticket and inform that the team will contact them"
-            f"{' at ' + customer_email if customer_email else ''}.\n"
+            f"create a ticket so the team can follow up. "
+            f"{('Tell them the team will follow up at ' + customer_email + '. ') if customer_email else 'No email is on file. Simply reassure them that the team will follow up. Do NOT ask for an email; do NOT mention, reference, or link to any form; and never write a URL, a bracketed placeholder, or any email address. '}"
+            f"\n"
             f"3. Keep the response professional and empathetic.\n"
-            f"4. Make it clear whether they should expect immediate help (transfer) "
-            f"or a follow-up email.\n"
+            f"4. Never show a placeholder or fake email address. Make it clear whether they should expect "
+            f"immediate help (transfer) or a follow-up.\n"
             f"Generate a natural-sounding response:"
         )
 
@@ -194,10 +195,14 @@ async def get_agent_availability_response(
                 "transfer_to_human": False
             }
 
-    # Get customer email if customer_id provided
+    # Get customer email if customer_id provided. Treat the auto-generated anonymous
+    # placeholder (…@noemail.com) as "no email" so the bot never promises to follow up
+    # at a fake address — the handoff contact form collects a real one instead.
     customer_email = None
     if customer_id:
         customer_email = customer_repo.get_customer_email(customer_id)
+        if CustomerRepository.is_placeholder_email(customer_email):
+            customer_email = None
 
     # Get available users with proper session handling
     available_users = []

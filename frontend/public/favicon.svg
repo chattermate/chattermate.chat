@@ -1,13 +1,6 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Chat bubble background -->
-  <path 
-    d="M26 4H6C4.89543 4 4 4.89543 4 6V20C4 21.1046 4.89543 22 6 22H12L16 28L20 22H26C27.1046 22 28 21.1046 28 20V6C28 4.89543 27.1046 4 26 4Z" 
-    fill="#f34611"
-  />
-  
-  <!-- Letter C -->
-  <path 
-    d="M20 10C20 10 17.5 9 15.5 9C13.5 9 11 10 11 14C11 18 13.5 19 15.5 19C17.5 19 20 18 20 18V16C20 16 18 17 16.5 17C15 17 14 16 14 14C14 12 15 11 16.5 11C18 11 20 12 20 12V10Z" 
-    fill="#000000"
-  />
-</svg> 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="1.5" y="1.5" width="29" height="29" rx="8.5" fill="#C9F24E"/>
+  <circle cx="10.5" cy="16" r="2.3" fill="#0B0C10"/>
+  <circle cx="16" cy="16" r="2.3" fill="#0B0C10"/>
+  <circle cx="21.5" cy="16" r="2.3" fill="#0B0C10"/>
+</svg>

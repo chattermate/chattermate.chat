@@ -92,23 +92,85 @@ const customization = ref<AgentCustomization>({
     welcome_title: props.agent.customization?.welcome_title ?? '',
     welcome_subtitle: props.agent.customization?.welcome_subtitle ?? '',
     chat_initiation_messages: props.agent.customization?.chat_initiation_messages ?? [],
+    show_citations: props.agent.customization?.show_citations ?? true,
+    collect_email: props.agent.customization?.collect_email ?? false,
 })
 
-// Chat style options with descriptions
+// Chat style options grouped into Legacy (existing looks) and New (premium presets)
 const chatStyleOptions = [
     {
         value: 'CHATBOT' as ChatStyle,
-        label: 'Chatbot',
-        description: 'Traditional customer support style with agent branding',
-        icon: '💬'
+        label: 'Legacy',
+        description: 'The original look — light, neutral, classic chatbot.',
+        group: 'legacy' as const,
     },
     {
         value: 'ASK_ANYTHING' as ChatStyle,
         label: 'Ask Anything',
-        description: 'Modern AI assistant style for general queries',
-        icon: '🤖'
-    }
+        description: 'Modern AI assistant style for general queries.',
+        group: 'legacy' as const,
+    },
+    {
+        value: 'GLASS' as ChatStyle,
+        label: 'Glass',
+        description: 'Frosted dark glass with soft glow and rounded bubbles.',
+        group: 'new' as const,
+    },
+    {
+        value: 'TERMINAL' as ChatStyle,
+        label: 'Terminal',
+        description: 'Monospace developer style, square corners.',
+        group: 'new' as const,
+    },
+    {
+        value: 'PLAYFUL' as ChatStyle,
+        label: 'Playful',
+        description: 'Light, friendly and very rounded with warm accents.',
+        group: 'new' as const,
+    },
+    {
+        value: 'CALM_MINT' as ChatStyle,
+        label: 'Calm Mint',
+        description: 'Clean dark-teal with subtle borders.',
+        group: 'new' as const,
+    },
+    {
+        value: 'AURORA' as ChatStyle,
+        label: 'Aurora',
+        description: 'The new ask-me-anything — dark, with a glowing aurora orb avatar.',
+        group: 'new' as const,
+    },
 ]
+
+const legacyStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'legacy'))
+const newStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'new'))
+
+// Default palette per design. Selecting a design seeds these color fields so the look
+// matches the marketing presets; the user can still recolor afterwards.
+const THEME_PRESETS: Record<string, { chat_background_color: string; chat_bubble_color: string; accent_color: string; font_family: string }> = {
+    CHATBOT: { chat_background_color: '#FFFFFF', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
+    ASK_ANYTHING: { chat_background_color: '#F8F9FA', chat_bubble_color: '#E9ECEF', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
+    GLASS: { chat_background_color: '#17151F', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
+    TERMINAL: { chat_background_color: '#070907', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'JetBrains Mono, monospace' },
+    PLAYFUL: { chat_background_color: '#FFFFFF', chat_bubble_color: '#FF7A6B', accent_color: '#FF7A6B', font_family: 'Instrument Sans, sans-serif' },
+    CALM_MINT: { chat_background_color: '#0E1A1A', chat_bubble_color: '#5FE3D6', accent_color: '#5FE3D6', font_family: 'Instrument Sans, sans-serif' },
+    AURORA: { chat_background_color: '#14111C', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
+}
+
+const themePreset = (value: string) => THEME_PRESETS[value] || THEME_PRESETS.CHATBOT
+
+// Select a design and seed its preset palette into the editable color fields
+const selectChatStyle = (value: ChatStyle) => {
+    customization.value.chat_style = value
+    const preset = THEME_PRESETS[value]
+    if (preset) {
+        customization.value.chat_background_color = preset.chat_background_color
+        customization.value.chat_bubble_color = preset.chat_bubble_color
+        customization.value.accent_color = preset.accent_color
+        customization.value.font_family = preset.font_family
+    }
+    emit('preview', { ...customization.value })
+}
 
 // Brand color swatch presets (design grid)
 const accentSwatchColors = ['#C9F24E', '#9D8CFF', '#5FE3D6', '#FF8A73', '#6EA8FF', '#F34611']
@@ -189,6 +251,8 @@ watch(() => props.agent.customization, (newCustomization) => {
             welcome_title: newCustomization.welcome_title ?? '',
             welcome_subtitle: newCustomization.welcome_subtitle ?? '',
             chat_initiation_messages: newCustomization.chat_initiation_messages ?? [],
+            show_citations: newCustomization.show_citations ?? true,
+            collect_email: newCustomization.collect_email ?? false,
         }
         nextTick(() => {
             isInternalUpdate.value = false
@@ -367,16 +431,21 @@ const isSectionExpanded = (sectionId: string) => {
             <div class="form-section">
                 <h3 class="section-heading">Chat design</h3>
                 <p class="section-subtext">Every look from the marketing site — pick one, match it to your brand.</p>
+
+                <div class="chat-style-group-label">Legacy</div>
                 <div class="chat-style-grid">
                     <button
-                        v-for="option in chatStyleOptions"
+                        v-for="option in legacyStyleOptions"
                         :key="option.value"
                         type="button"
                         class="chat-style-card"
                         :class="{ 'active': customization.chat_style === option.value }"
-                        @click="customization.chat_style = option.value"
+                        @click="selectChatStyle(option.value)"
                     >
-                        <div class="chat-style-thumb">{{ option.icon }}</div>
+                        <div class="chat-style-thumb" :style="{ background: themePreset(option.value).chat_background_color }">
+                            <span class="thumb-bubble agent"></span>
+                            <span class="thumb-bubble user" :style="{ background: themePreset(option.value).accent_color }"></span>
+                        </div>
                         <div class="chat-style-title">
                             <span>{{ option.label }}</span>
                             <span v-if="customization.chat_style === option.value" class="chat-style-check">✓</span>
@@ -384,6 +453,46 @@ const isSectionExpanded = (sectionId: string) => {
                         <div class="chat-style-desc">{{ option.description }}</div>
                     </button>
                 </div>
+
+                <div class="chat-style-group-label">New <span class="chat-style-group-badge">premium</span></div>
+                <div class="chat-style-grid">
+                    <button
+                        v-for="option in newStyleOptions"
+                        :key="option.value"
+                        type="button"
+                        class="chat-style-card"
+                        :class="{ 'active': customization.chat_style === option.value }"
+                        @click="selectChatStyle(option.value)"
+                    >
+                        <div class="chat-style-thumb" :style="{ background: themePreset(option.value).chat_background_color }">
+                            <span class="thumb-bubble agent"></span>
+                            <span class="thumb-bubble user" :style="{ background: themePreset(option.value).accent_color }"></span>
+                        </div>
+                        <div class="chat-style-title">
+                            <span>{{ option.label }}</span>
+                            <span v-if="customization.chat_style === option.value" class="chat-style-check">✓</span>
+                        </div>
+                        <div class="chat-style-desc">{{ option.description }}</div>
+                    </button>
+                </div>
+
+                <label class="citations-toggle">
+                    <input type="checkbox" v-model="customization.show_citations">
+                    <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
+                    <span class="citations-toggle-text">
+                        <span class="citations-toggle-title">Show citations</span>
+                        <span class="citations-toggle-desc">Display the knowledge-base sources used to answer, as chips under each reply.</span>
+                    </span>
+                </label>
+
+                <label class="citations-toggle">
+                    <input type="checkbox" v-model="customization.collect_email">
+                    <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
+                    <span class="citations-toggle-text">
+                        <span class="citations-toggle-title">Collect email before chat</span>
+                        <span class="citations-toggle-desc">Require visitors to enter their email before they can start chatting. Off by default.</span>
+                    </span>
+                </label>
             </div>
 
             <!-- Brand color + Typography Section -->
@@ -709,16 +818,100 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .chat-style-thumb {
+    position: relative;
     height: 64px;
     border-radius: 10px;
     background: var(--surface);
     border: 1px solid var(--o08);
     display: flex;
-    align-items: center;
+    flex-direction: column;
     justify-content: center;
-    font-size: 28px;
+    gap: 7px;
+    padding: 12px;
     overflow: hidden;
 }
+
+.chat-style-thumb .thumb-bubble {
+    height: 12px;
+    border-radius: 7px;
+    display: block;
+}
+.chat-style-thumb .thumb-bubble.agent {
+    width: 62%;
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.18);
+}
+.chat-style-thumb .thumb-bubble.user {
+    width: 46%;
+    align-self: flex-end;
+}
+
+.chat-style-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted2);
+    margin: 18px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.chat-style-group-label:first-of-type { margin-top: 4px; }
+.chat-style-group-badge {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-bg-08);
+    color: var(--accent-ink);
+    border: 1px solid var(--accent-border);
+}
+
+.citations-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--o10);
+    border-radius: 12px;
+    background: var(--bg);
+    cursor: pointer;
+}
+.citations-toggle input { display: none; }
+.citations-toggle-track {
+    position: relative;
+    flex-shrink: 0;
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--o10);
+    transition: background var(--transition-fast);
+    margin-top: 2px;
+}
+.citations-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform var(--transition-fast);
+}
+.citations-toggle input:checked + .citations-toggle-track {
+    background: var(--accent-solid, var(--accent-border));
+}
+.citations-toggle input:checked + .citations-toggle-track .citations-toggle-thumb {
+    transform: translateX(16px);
+}
+.citations-toggle-text { display: flex; flex-direction: column; gap: 2px; }
+.citations-toggle-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.citations-toggle-desc { font-size: 12px; color: var(--muted2); line-height: 1.4; }
 
 .chat-style-title {
     display: flex;

@@ -23,6 +23,7 @@ import {
     isValidEmail} from '../types/widget'
 import { marked } from 'marked'
 import { sanitizeHtml } from '../utils/sanitize'
+import { resolveOrbStyle } from '../utils/orb'
 import { widgetEnv } from './widget-env'
 import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
@@ -235,14 +236,21 @@ const cleanupNativeEventListeners = () => {
     currentInputFields = []
 }
 
+// Inputs inside a rendered form (contact/handoff/workflow forms) manage their own state —
+// the message-box native listeners must never hijack them (would steal focus + the value).
+const isFormField = (el: EventTarget | null) =>
+    !!(el && (el as HTMLElement).closest && (el as HTMLElement).closest('.form-message, .form-fullscreen'))
+
 // Native input handler that bypasses Vue
 const handleNativeInput = (event: Event) => {
+    if (isFormField(event.target)) return
     const target = event.target as HTMLInputElement
     newMessage.value = target.value
 }
 
 // Native keyboard event handlers
 const handleNativeKeyPress = (event: KeyboardEvent) => {
+    if (isFormField(event.target)) return
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
         event.stopPropagation()
@@ -251,6 +259,7 @@ const handleNativeKeyPress = (event: KeyboardEvent) => {
 }
 
 const handleNativeKeyDown = (event: KeyboardEvent) => {
+    if (isFormField(event.target)) return
     // Also handle keydown as a fallback for some browsers/contexts
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
@@ -384,8 +393,8 @@ const isMessageInputEnabled = computed(() => {
         return connectionStatus.value === 'connected' && !loading.value
     }
 
-    // For ASK_ANYTHING style, don't require email
-    if (isAskAnythingStyle.value) {
+    // When email collection is off (Ask AI, or collect_email disabled), don't require email
+    if (!shouldCollectEmail.value) {
 
         return connectionStatus.value === 'connected' && !loading.value
     }
@@ -1345,10 +1354,41 @@ onUnmounted(() => {
     cleanup()
 })
 
+// Aurora is the new dark ask-me-anything design (shares the ASK_ANYTHING flow).
+const isAuroraStyle = computed(() => customization.value.chat_style === 'AURORA')
+
 // Add after the existing computed properties, around line 120
 const isAskAnythingStyle = computed(() => {
-    return customization.value.chat_style === 'ASK_ANYTHING'
+    return customization.value.chat_style === 'ASK_ANYTHING' || isAuroraStyle.value
 })
+
+// Use the generated aurora orb when the user explicitly picked "orb", or as the Aurora
+// fallback when no profile photo is set. A selected profile picture always takes precedence.
+const orbMeta = computed(() => customization.value.customization_metadata as Record<string, unknown> | undefined)
+const useOrbAvatar = computed(() => {
+    const avatarStyle = orbMeta.value?.avatar_style
+    if (avatarStyle === 'orb') return true
+    if (avatarStyle === 'photo') return false
+    return isAuroraStyle.value && !customization.value.photo_url
+})
+
+const orbStyle = computed(() => resolveOrbStyle(agentName.value || '', orbMeta.value?.orb_variant))
+
+// Premium design presets → CSS theme class applied on .chat-container.
+// Legacy (CHATBOT) and ASK_ANYTHING return no theme class (handled separately).
+const THEME_CLASS_MAP: Record<string, string> = {
+    GLASS: 'theme-glass',
+    TERMINAL: 'theme-terminal',
+    PLAYFUL: 'theme-playful',
+    CALM_MINT: 'theme-calm',
+}
+const themeClass = computed(() => THEME_CLASS_MAP[customization.value.chat_style as string] || '')
+
+// Citations are shown unless explicitly turned off
+const showCitations = computed(() => customization.value.show_citations !== false)
+
+// Pre-chat email gate: only when the agent opts in (and never for the gate-less Ask AI layout)
+const shouldCollectEmail = computed(() => customization.value.collect_email === true && !isAskAnythingStyle.value)
 
 const containerStyles = computed(() => {
     const baseStyles = {
@@ -1428,7 +1468,10 @@ const shouldShowWelcomeMessage = computed(() => {
             </p>
             <div class="widget-unavailable-footer">
                 <svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="currentColor" opacity="0.6"/>
+                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
                 <span>Powered by ChatterMate</span>
             </div>
@@ -1456,7 +1499,7 @@ const shouldShowWelcomeMessage = computed(() => {
             </button>
         </div>
     </div>
-    <div v-else-if="widgetId && !showAuthError" class="chat-container" :class="{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }" :style="{ ...shadowStyle, ...containerStyles }">
+    <div v-else-if="widgetId && !showAuthError" class="chat-container" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle, aurora: isAuroraStyle }, themeClass]" :style="{ ...shadowStyle, ...containerStyles, '--cm-accent': customization.accent_color || '#C9F24E' }">
         <!-- Loading State -->
         <div v-if="isInitializing" class="initializing-overlay">
             <div class="loading-spinner">
@@ -1491,11 +1534,12 @@ const shouldShowWelcomeMessage = computed(() => {
         </div>
 
         <!-- Welcome Message for ASK_ANYTHING Style -->
-        <div v-if="shouldShowWelcomeMessage" class="welcome-message-section" :style="chatStyles">
+        <div v-if="shouldShowWelcomeMessage" class="welcome-message-section" :class="{ aurora: isAuroraStyle }" :style="chatStyles">
             <div class="welcome-content">
                 <div class="welcome-header">
+                    <div v-if="useOrbAvatar" class="welcome-orb" :style="orbStyle"></div>
                     <img
-                        v-if="photoUrl"
+                        v-else-if="photoUrl"
                         :src="photoUrl"
                         :alt="agentName"
                         class="welcome-avatar"
@@ -1507,7 +1551,7 @@ const shouldShowWelcomeMessage = computed(() => {
 
             <!-- Welcome Input Container -->
             <div class="welcome-input-container">
-                <div class="email-input" v-if="!hasStartedChat && !hasConversationToken && !isAskAnythingStyle">
+                <div class="email-input" v-if="!hasStartedChat && !hasConversationToken && shouldCollectEmail">
                     <input
                         v-model="emailInput"
                         type="email"
@@ -1534,11 +1578,16 @@ const shouldShowWelcomeMessage = computed(() => {
                     >
                     <button
                         class="welcome-send-button"
+                        :class="{ 'aurora-send': isAuroraStyle }"
                         :style="userBubbleStyles"
                         @click="sendMessage"
                         :disabled="!newMessage.trim() || !isMessageInputEnabled"
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg v-if="isAuroraStyle" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 19V5M12 5L5 12M12 5L19 12" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M5 12L3 21L21 12L3 3L5 12ZM5 12L13 12" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
@@ -1549,8 +1598,10 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer for welcome message -->
             <div class="powered-by-welcome" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="currentColor" opacity="0.8"/>
-                    <path d="M36 27C36 27 32.5 26 30 26C27.5 26 24 27 24 31C24 35 27.5 36 30 36C32.5 36 36 35 36 35V33C36 33 33 34 31.5 34C30 34 27 33 27 31C27 29 30 28 31.5 28C33 28 36 29 36 29V27Z" fill="currentColor"/>
+                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
                 Powered by ChatterMate
             </div>
@@ -1579,8 +1630,10 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer for landing page -->
             <div class="powered-by-landing" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="currentColor" opacity="0.8"/>
-                    <path d="M36 27C36 27 32.5 26 30 26C27.5 26 24 27 24 31C24 35 27.5 36 30 36C32.5 36 36 35 36 35V33C36 33 33 34 31.5 34C30 34 27 33 27 31C27 29 30 28 31.5 28C33 28 36 29 36 29V27Z" fill="currentColor"/>
+                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
                 Powered by ChatterMate
             </div>
@@ -1740,8 +1793,10 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer for form -->
             <div class="powered-by-landing" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="currentColor" opacity="0.8"/>
-                    <path d="M36 27C36 27 32.5 26 30 26C27.5 26 24 27 24 31C24 35 27.5 36 30 36C32.5 36 36 35 36 35V33C36 33 33 34 31.5 34C30 34 27 33 27 31C27 29 30 28 31.5 28C33 28 36 29 36 29V27Z" fill="currentColor"/>
+                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
                 Powered by ChatterMate
             </div>
@@ -2155,6 +2210,19 @@ const shouldShowWelcomeMessage = computed(() => {
                                 </div>
                             </template>
                         </div>
+                        <!-- Knowledge-base citation chips -->
+                        <div
+                            v-if="showCitations && (message.message_type === 'bot' || message.message_type === 'agent') && message.sources && message.sources.length"
+                            class="citation-chips"
+                        >
+                            <span class="citation-label">Sources</span>
+                            <span
+                                v-for="(src, sIdx) in message.sources"
+                                :key="sIdx"
+                                class="citation-chip"
+                                :title="src.type"
+                            >{{ src.name }}</span>
+                        </div>
                         <div class="message-info">
                             <span v-if="message.message_type === 'user'" class="agent-name">
                                 You
@@ -2163,17 +2231,18 @@ const shouldShowWelcomeMessage = computed(() => {
                     </div>
                 </template>
 
-                <!-- Typing indicator -->
-                <div v-if="loading" class="typing-indicator">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
+                <!-- Typing / reading-knowledge-base indicator -->
+                <div v-if="loading" class="typing-indicator reading-indicator">
+                    <div class="reading-bars" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <span class="reading-label">reading knowledge base</span>
                 </div>
             </div>
 
             <!-- Chat Input Section (Hidden when conversation is ended in workflow) -->
             <div v-if="!shouldShowNewConversationOption" class="chat-input" :class="{ 'ask-anything-input': isAskAnythingStyle }" :style="agentBubbleStyles">
-                <div class="email-input" v-if="!hasStartedChat && !hasConversationToken && !isAskAnythingStyle">
+                <div class="email-input" v-if="!hasStartedChat && !hasConversationToken && shouldCollectEmail">
                     <input
                         v-model="emailInput"
                         type="email"
@@ -2311,8 +2380,10 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer -->
             <div class="powered-by" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="currentColor" opacity="0.8"/>
-                    <path d="M36 27C36 27 32.5 26 30 26C27.5 26 24 27 24 31C24 35 27.5 36 30 36C32.5 36 36 35 36 35V33C36 33 33 34 31.5 34C30 34 27 33 27 31C27 29 30 28 31.5 28C33 28 36 29 36 29V27Z" fill="currentColor"/>
+                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
                 Powered by ChatterMate
             </div>
@@ -2618,7 +2689,8 @@ const shouldShowWelcomeMessage = computed(() => {
 .message-bubble {
     padding: 10px 14px;
     border-radius: 18px;
-    line-height: 1.4;
+    font-size: 14px;
+    line-height: 1.45;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     max-width: 85%;
     transition: all 0.2s ease;
@@ -2642,27 +2714,57 @@ const shouldShowWelcomeMessage = computed(() => {
 .assistant-message .message-bubble,
 .agent-message .message-bubble {
     border-bottom-left-radius: 6px;
-    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+    /* Fallback only — the per-theme color from agentBubbleStyles (inline background-color)
+       wins, so dark themes (Aurora/Glass/Calm/Terminal) get a dark bubble, not white. */
+    background-color: #ffffff;
     border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
+/* Markdown paragraphs default to 1em top/bottom margins, which makes bubbles tall.
+   Collapse them so a single-line reply is a compact bubble. */
+.message-bubble p { margin: 0; }
+.message-bubble p + p { margin-top: 0.5em; }
+.message-bubble ul,
+.message-bubble ol { margin: 0.4em 0; padding-left: 1.2em; }
+
 .chat-input {
     padding: var(--space-md);
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
 }
 
 .email-input {
-    width: 85%;
+    width: 100%;
 }
 
-.email-input input {
+/* Inputs derive fill/border/placeholder from the inherited panel text color, so they
+   stay clearly legible on both light (Legacy/Playful) and dark (Glass/Terminal/Calm) themes. */
+.email-input input,
+.message-input input {
     width: 100%;
     padding: var(--space-sm) var(--space-md);
-    border: 2px solid var(--border-color);
+    /* Border tinted with the agent's accent so it matches each theme (not bright white). */
+    border: 1.5px solid rgba(127, 127, 127, 0.3);
+    border: 1.5px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent);
     border-radius: var(--radius-lg);
+    background: rgba(127, 127, 127, 0.08);
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    color: inherit;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-input input::placeholder {
+    color: currentColor;
+    opacity: 0.5;
+}
+
+.email-input input:focus,
+.message-input input:focus {
+    border-color: var(--cm-accent, #C9F24E);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--cm-accent, #C9F24E) 22%, transparent);
 }
 
 .email-input input.invalid {
@@ -2676,13 +2778,6 @@ const shouldShowWelcomeMessage = computed(() => {
 .message-input {
     display: flex;
     gap: var(--space-sm);
-}
-
-.message-input input {
-    flex: 1;
-    padding: var(--space-sm) var(--space-md);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
 }
 
 .message-input input:disabled {
@@ -2760,7 +2855,7 @@ const shouldShowWelcomeMessage = computed(() => {
 /* New conversation section styles */
 .new-conversation-section {
     padding: var(--space-md);
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -3045,6 +3140,174 @@ const shouldShowWelcomeMessage = computed(() => {
     gap: 4px;
     padding: 12px 16px;
     margin-top: var(--space-md);
+}
+
+/* ===== Reading-knowledge-base indicator ===== */
+.typing-indicator.reading-indicator {
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted, #6b7280);
+    font-size: 0.78rem;
+}
+.reading-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 14px;
+}
+.reading-bars span {
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--primary-color, currentColor);
+    transform-origin: bottom;
+    transform: scaleY(0.35);
+    animation: cm-reading-bar 1s ease-in-out infinite;
+}
+.reading-bars span:nth-child(2) { animation-delay: 0.15s; }
+.reading-bars span:nth-child(3) { animation-delay: 0.3s; }
+.reading-label { opacity: 0.85; }
+@keyframes cm-reading-bar {
+    0%, 100% { transform: scaleY(0.35); }
+    50% { transform: scaleY(1); }
+}
+
+/* ===== Knowledge-base citation chips ===== */
+.citation-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding-left: 2px;
+    animation: cm-msg-in 0.4s ease both;
+}
+.citation-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.55;
+}
+.citation-chip {
+    font-size: 0.72rem;
+    line-height: 1;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(127, 127, 127, 0.1);
+    background: color-mix(in srgb, var(--primary-color, #C9F24E) 12%, transparent);
+    border: 1px solid rgba(127, 127, 127, 0.25);
+    border-color: color-mix(in srgb, var(--primary-color, #C9F24E) 35%, transparent);
+    color: var(--text-color, inherit);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ===== Shared premium animation layer ===== */
+.chat-messages .message {
+    animation: cm-msg-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.chat-panel {
+    animation: cm-panel-in 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes cm-msg-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes cm-panel-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.99); }
+    to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .chat-messages .message,
+    .chat-panel,
+    .citation-chips,
+    .reading-bars span,
+    .status-indicator.online { animation: none !important; }
+}
+
+/* ========================================================== */
+/* ===== PREMIUM DESIGN PRESETS (theme classes) ============= */
+/* Colors come from the seeded customization palette; these   */
+/* rules own the structural finish: radius, shadow, fonts.    */
+/* ========================================================== */
+
+/* ---- Glass (Aurora) ---- */
+.chat-container.theme-glass .chat-panel {
+    border-radius: 18px;
+    box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.55), 0 0 50px rgba(157, 140, 255, 0.12);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+.chat-container.theme-glass .message-bubble {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.16);
+}
+.chat-container.theme-glass .user-message .message-bubble { border-radius: 16px 16px 5px 16px; }
+.chat-container.theme-glass .agent-message .message-bubble {
+    border-radius: 5px 16px 16px 16px;
+}
+.chat-container.theme-glass .chat-input input { border-radius: 999px; }
+
+/* ---- Terminal ---- */
+.chat-container.theme-terminal .chat-panel,
+.chat-container.theme-terminal .chat-messages,
+.chat-container.theme-terminal .message-bubble,
+.chat-container.theme-terminal .chat-input,
+.chat-container.theme-terminal .header-info h3,
+.chat-container.theme-terminal .reading-label,
+.chat-container.theme-terminal .citation-chip {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.chat-container.theme-terminal .chat-panel { border-radius: 8px; }
+.chat-container.theme-terminal .message-bubble { border-radius: 4px; }
+.chat-container.theme-terminal .chat-input input { border-radius: 6px; }
+.chat-container.theme-terminal .citation-chip { border-radius: 4px; }
+
+/* ---- Playful (Sunrise) ---- */
+.chat-container.theme-playful .chat-panel { border-radius: 22px; }
+.chat-container.theme-playful .message-bubble { border-radius: 20px; }
+.chat-container.theme-playful .user-message .message-bubble { border-radius: 20px 20px 6px 20px; }
+.chat-container.theme-playful .agent-message .message-bubble { border-radius: 6px 20px 20px 20px; }
+.chat-container.theme-playful .chat-input input { border-radius: 999px; }
+
+/* ---- Calm Mint ---- */
+.chat-container.theme-calm .chat-panel {
+    border-radius: 14px;
+    box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5);
+}
+.chat-container.theme-calm .message-bubble {
+    border-radius: 12px;
+}
+.chat-container.theme-calm .chat-input input { border-radius: 10px; }
+
+/* ===== Dark presets: transient light surfaces need a dark variant =====
+   The init/loading/connection overlays and the attach button hardcode a light background,
+   which flashes white over the dark conversation. Give the dark presets (Aurora + Glass +
+   Terminal + Calm) a dark variant. Playful stays light. Form cards are left light by design
+   (readable card with dark fields). */
+.chat-container.aurora .initializing-overlay,
+.chat-container.theme-glass .initializing-overlay,
+.chat-container.theme-terminal .initializing-overlay,
+.chat-container.theme-calm .initializing-overlay,
+.chat-container.aurora .loading-history,
+.chat-container.theme-glass .loading-history,
+.chat-container.theme-terminal .loading-history,
+.chat-container.theme-calm .loading-history,
+.chat-container.aurora .connection-status,
+.chat-container.theme-glass .connection-status,
+.chat-container.theme-terminal .connection-status,
+.chat-container.theme-calm .connection-status {
+    background: rgba(13, 14, 20, 0.92) !important;
+    color: #F2F3F8;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.chat-container.aurora .attach-button,
+.chat-container.theme-glass .attach-button,
+.chat-container.theme-terminal .attach-button,
+.chat-container.theme-calm .attach-button {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #F2F3F8 !important;
 }
 
 .connection-status {
@@ -3935,6 +4198,60 @@ const shouldShowWelcomeMessage = computed(() => {
     opacity: 0.8;
 }
 
+/* ===== Dark presets: the inline form/contact card is a light card by default,
+   which looks broken on dark themes. Give it a dark variant (light themes unchanged). ===== */
+.chat-container.aurora .form-message .message-bubble,
+.chat-container.theme-glass .form-message .message-bubble,
+.chat-container.theme-terminal .form-message .message-bubble,
+.chat-container.theme-calm .form-message .message-bubble {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.5) !important;
+}
+.chat-container.aurora .form-title,
+.chat-container.theme-glass .form-title,
+.chat-container.theme-terminal .form-title,
+.chat-container.theme-calm .form-title {
+    /* The base title uses background-clip:text + transparent fill (renders as a blank
+       block when we only change the background). Set the text color directly instead. */
+    background: none !important;
+    -webkit-text-fill-color: #F2F3F8 !important;
+    color: #F2F3F8 !important;
+}
+.chat-container.aurora .form-description,
+.chat-container.theme-glass .form-description,
+.chat-container.theme-terminal .form-description,
+.chat-container.theme-calm .form-description,
+.chat-container.aurora .field-label,
+.chat-container.theme-glass .field-label,
+.chat-container.theme-terminal .field-label,
+.chat-container.theme-calm .field-label {
+    color: #C7CCD6 !important;
+}
+.chat-container.aurora .form-input,
+.chat-container.theme-glass .form-input,
+.chat-container.theme-terminal .form-input,
+.chat-container.theme-calm .form-input,
+.chat-container.aurora .form-textarea,
+.chat-container.theme-glass .form-textarea,
+.chat-container.theme-terminal .form-textarea,
+.chat-container.theme-calm .form-textarea {
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: #F2F3F8 !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    box-shadow: none !important;
+}
+.chat-container.aurora .form-input::placeholder,
+.chat-container.theme-glass .form-input::placeholder,
+.chat-container.theme-terminal .form-input::placeholder,
+.chat-container.theme-calm .form-input::placeholder,
+.chat-container.aurora .form-textarea::placeholder,
+.chat-container.theme-glass .form-textarea::placeholder,
+.chat-container.theme-terminal .form-textarea::placeholder,
+.chat-container.theme-calm .form-textarea::placeholder {
+    color: rgba(242, 243, 248, 0.5) !important;
+}
+
 
 
 
@@ -4241,7 +4558,7 @@ const shouldShowWelcomeMessage = computed(() => {
 .chat-input.ask-anything-input {
     padding: var(--space-xl) !important;
     background: var(--background-base) !important;
-    border-top: 1px solid var(--border-color) !important;
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent) !important;
     border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
     display: flex !important;
     flex-direction: column !important;
@@ -4513,6 +4830,80 @@ const shouldShowWelcomeMessage = computed(() => {
     cursor: not-allowed;
     transform: none;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ===== AURORA conversation (dark) overrides =====
+   The ASK_ANYTHING input/field styles assume a light theme (var(--background-base) etc.).
+   Aurora is dark, so override the input band + fields to dark-on-light. Scoped to
+   .chat-container.aurora so legacy ASK_ANYTHING (light) is untouched. The agent bubble
+   itself is already correct via the per-theme inline background-color. */
+.chat-container.aurora .chat-input.ask-anything-input {
+    background: transparent !important;
+}
+.chat-container.aurora .ask-anything-field,
+.chat-container.aurora .chat-input.ask-anything-input .email-input input {
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: #F2F3F8 !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    border-color: color-mix(in srgb, var(--cm-accent, #9D8CFF) 35%, transparent) !important;
+    box-shadow: none !important;
+}
+.chat-container.aurora .ask-anything-field::placeholder,
+.chat-container.aurora .chat-input.ask-anything-input .email-input input::placeholder {
+    color: rgba(242, 243, 248, 0.5) !important;
+}
+.chat-container.aurora .powered-by {
+    color: rgba(242, 243, 248, 0.6);
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ===== AURORA style: dark ask-me-anything with glowing orb avatar =====
+   Scoped to .welcome-message-section.aurora so legacy ASK_ANYTHING is untouched. */
+.welcome-orb {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.welcome-message-section.aurora .welcome-avatar {
+    width: 120px;
+    height: 120px;
+    border: none;
+    box-shadow: 0 8px 40px rgba(157, 140, 255, 0.35);
+}
+.welcome-message-section.aurora .welcome-title {
+    color: #ffffff;
+}
+.welcome-message-section.aurora .welcome-subtitle {
+    color: rgba(255, 255, 255, 0.6);
+}
+.welcome-message-section.aurora .welcome-message-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    padding: 6px 6px 6px 8px;
+}
+.welcome-message-section.aurora .welcome-message-field {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: #ffffff;
+    border-radius: 999px;
+}
+.welcome-message-section.aurora .welcome-message-field:focus {
+    border: none;
+    box-shadow: none;
+    transform: none;
+}
+.welcome-message-section.aurora .welcome-message-field::placeholder {
+    color: rgba(255, 255, 255, 0.45);
+}
+.welcome-message-section.aurora .welcome-send-button.aurora-send {
+    border-radius: 50%;
+    min-width: 48px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
 }
 
 .powered-by-welcome {
@@ -5112,7 +5503,10 @@ const shouldShowWelcomeMessage = computed(() => {
 .message-input input {
   flex: 1;
   padding: var(--space-sm) var(--space-md);
-  border: 2px solid var(--border-color);
+  /* Accent-tinted border so it matches the theme (this duplicate rule otherwise wins
+     over the earlier one with a light --border-color → white on dark themes). */
+  border: 1.5px solid rgba(127, 127, 127, 0.3);
+  border: 1.5px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent);
   border-radius: var(--radius-lg);
   font-size: 14px;
   transition: all 0.2s ease;
@@ -5120,8 +5514,8 @@ const shouldShowWelcomeMessage = computed(() => {
 
 .message-input input:focus {
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(243, 70, 17, 0.1);
+  border-color: var(--cm-accent, #C9F24E);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cm-accent, #C9F24E) 22%, transparent);
 }
 
 .message-input input:disabled {

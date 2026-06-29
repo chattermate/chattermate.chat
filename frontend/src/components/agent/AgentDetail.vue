@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getAvatarUrl } from '@/utils/avatars'
+import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle } from '@/utils/orb'
 
 import KnowledgeGrid from './KnowledgeGrid.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
@@ -62,12 +63,46 @@ const toggleAvatarPicker = () => {
   if (isUploading.value) return
   showAvatarPicker.value = !showAvatarPicker.value
 }
+// Aurora orb avatar (generated, no photo). Stored in customization_metadata so no
+// schema change is needed. Selecting a real picture resets this back to 'photo'.
+const orbCount = ORB_PALETTE_COUNT
+const orbMeta = computed(
+  () => (agentData.value.customization?.customization_metadata as Record<string, unknown> | undefined),
+)
+const useOrbAvatar = computed(() => orbMeta.value?.avatar_style === 'orb')
+const currentOrbVariant = computed(() => orbMeta.value?.orb_variant)
+const orbStyle = computed(() => resolveOrbStyle(agentData.value.name || '', currentOrbVariant.value))
+
+const persistAvatarMeta = async (patch: Record<string, unknown>) => {
+  const cust = agentData.value.customization
+  if (!cust) return
+  const meta = { ...(cust.customization_metadata ?? {}), ...patch }
+  const updated = await agentService.updateCustomization(agentData.value.id, {
+    ...cust,
+    customization_metadata: meta,
+  })
+  agentData.value.customization = updated
+}
+
+const selectOrbAvatar = async (variant: number) => {
+  if (isUploading.value) return
+  closeAvatarPicker()
+  try {
+    await persistAvatarMeta({ avatar_style: 'orb', orb_variant: variant })
+  } catch (error) {
+    console.error('Failed to set orb avatar:', error)
+    toast.error('Failed to update avatar')
+  }
+}
+
 const selectPresetAvatar = async (url: string) => {
   if (isUploading.value) return
   closeAvatarPicker()
   optimisticPhoto.value = url
   try {
     await applyPresetAvatar(url)
+    // A real picture was chosen — turn off the orb if it was on.
+    if (useOrbAvatar.value) await persistAvatarMeta({ avatar_style: 'photo' })
   } finally {
     optimisticPhoto.value = null
   }
@@ -625,7 +660,9 @@ const handleSaveAgentFromTab = async (data: any) => {
         const updatedAgent = await agentService.updateAgent(agentData.value.id, {
             instructions: instructions,
             transfer_to_human: data.transferToHuman,
-            ask_for_rating: data.askForRating
+            ask_for_rating: data.askForRating,
+            handoff_collect_email: data.handoffCollectEmail,
+            handoff_collect_name: data.handoffCollectName
         })
         
         // Update agent groups if changed
@@ -697,7 +734,8 @@ onMounted(async () => {
                         <input type="file" ref="fileInput" accept="image/jpeg,image/png,image/webp" class="hidden"
                             @change="handleFileUpload">
                         <div class="agent-avatar-ring">
-                            <img :src="photoUrl" :alt="agentData.name" :class="{ 'opacity-50': isUploading }">
+                            <div v-if="useOrbAvatar && !optimisticPhoto" class="agent-orb-avatar" :class="{ 'opacity-50': isUploading }" :style="orbStyle"></div>
+                            <img v-else :src="photoUrl" :alt="agentData.name" :class="{ 'opacity-50': isUploading }">
                             <div class="upload-overlay" v-if="!isUploading">
                                 <span>Change</span>
                             </div>
@@ -723,6 +761,19 @@ onMounted(async () => {
                                     :aria-label="`Avatar ${i + 1}`"
                                 >
                                     <img :src="url" alt="">
+                                </button>
+                                <button
+                                    v-for="n in orbCount"
+                                    :key="`orb-${n}`"
+                                    type="button"
+                                    class="avatar-pick avatar-pick-orb"
+                                    :class="{ active: useOrbAvatar && (currentOrbVariant ?? -1) === n - 1 }"
+                                    :disabled="isUploading"
+                                    @click="selectOrbAvatar(n - 1)"
+                                    :aria-label="`Orb ${n}`"
+                                    :title="`Orb ${n}`"
+                                >
+                                    <span class="avatar-orb-thumb" :style="getOrbStyleAt(n - 1)"></span>
                                 </button>
                             </div>
                             <button type="button" class="avatar-picker-upload" :disabled="isUploading" @click="chooseUploadAvatar">
@@ -913,6 +964,8 @@ onMounted(async () => {
                                 :instructions="instructionsText"
                                 :transfer-to-human="agentData.transfer_to_human"
                                 :ask-for-rating="agentData.ask_for_rating"
+                                :handoff-collect-email="agentData.handoff_collect_email"
+                                :handoff-collect-name="agentData.handoff_collect_name"
                                 :user-groups="userGroups"
                                 :selected-group-ids="selectedGroupIds"
                                 :loading-groups="loadingGroups"
@@ -1275,8 +1328,8 @@ onMounted(async () => {
 }
 
 .avatar-pick {
-    width: 40px;
-    height: 40px;
+    width: 100%;
+    aspect-ratio: 1;
     padding: 0;
     border-radius: 50%;
     overflow: hidden;
@@ -1308,6 +1361,21 @@ onMounted(async () => {
 }
 
 .avatar-pick.selected {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--accent-bg-12);
+}
+
+/* Aurora orb tile in the picker grid */
+.avatar-pick-orb {
+    background: transparent;
+}
+.avatar-orb-thumb {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
+.avatar-pick-orb.active {
     border-color: var(--accent-ink);
     box-shadow: 0 0 0 2px var(--accent-bg-12);
 }
@@ -1383,6 +1451,13 @@ onMounted(async () => {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 50%;
+}
+
+/* Generated aurora orb shown in place of the avatar image */
+.agent-orb-avatar {
+    width: 100%;
+    height: 100%;
     border-radius: 50%;
 }
 

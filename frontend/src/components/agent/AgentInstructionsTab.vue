@@ -40,6 +40,14 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
+  handoffCollectEmail: {
+    type: Boolean,
+    default: true
+  },
+  handoffCollectName: {
+    type: Boolean,
+    default: true
+  },
   userGroups: {
     type: Array as () => UserGroup[],
     required: true
@@ -104,6 +112,8 @@ const handleUpgrade = () => {
 const localInstructions = ref(props.instructions)
 const localTransferToHuman = ref(props.transferToHuman)
 const localAskForRating = ref(props.askForRating)
+const localHandoffCollectEmail = ref(props.handoffCollectEmail)
+const localHandoffCollectName = ref(props.handoffCollectName)
 const localSelectedGroupIds = ref<string[]>([...props.selectedGroupIds])
 
 // Watch for changes in props to update local state
@@ -117,6 +127,14 @@ watch(() => props.transferToHuman, (newValue) => {
 
 watch(() => props.askForRating, (newValue) => {
   localAskForRating.value = newValue
+})
+
+watch(() => props.handoffCollectEmail, (newValue) => {
+  localHandoffCollectEmail.value = newValue
+})
+
+watch(() => props.handoffCollectName, (newValue) => {
+  localHandoffCollectName.value = newValue
 })
 
 watch(() => props.selectedGroupIds, (newValue) => {
@@ -179,6 +197,8 @@ const handleSave = () => {
     instructions: localInstructions.value,
     transferToHuman: localTransferToHuman.value,
     askForRating: localAskForRating.value,
+    handoffCollectEmail: localHandoffCollectEmail.value,
+    handoffCollectName: localHandoffCollectName.value,
     selectedGroupIds: localSelectedGroupIds.value
   })
 }
@@ -256,6 +276,25 @@ const handleSave = () => {
             </label>
           </div>
           <p class="helper-text">Enable automatic transfer to human agents when needed</p>
+        </div>
+
+        <!-- Collect contact details at handoff -->
+        <div v-if="localTransferToHuman" class="handoff-collect">
+          <div class="toggle-header">
+            <span class="subsection-title">Ask for email at handoff</span>
+            <label class="switch">
+              <input type="checkbox" v-model="localHandoffCollectEmail" :disabled="!isEditing">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="toggle-header">
+            <span class="subsection-title">Ask for name at handoff (optional)</span>
+            <label class="switch">
+              <input type="checkbox" v-model="localHandoffCollectName" :disabled="!isEditing">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <p class="helper-text">Collect contact details when a chat is handed to a human, so your team can follow up.</p>
         </div>
 
         <!-- Group selection -->

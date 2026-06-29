@@ -104,6 +104,15 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
       const updatedCustomization = await agentService.uploadAgentPhoto(agentData.value.id, croppedFile)
       agentData.value.customization = updatedCustomization
 
+      // A real picture was just uploaded — turn off the aurora orb if it was on.
+      const meta = updatedCustomization?.customization_metadata as Record<string, unknown> | undefined
+      if (meta?.avatar_style === 'orb') {
+        agentData.value.customization = await agentService.updateCustomization(agentData.value.id, {
+          ...updatedCustomization,
+          customization_metadata: { ...meta, avatar_style: 'photo' },
+        })
+      }
+
       showCropper.value = false
       cropperImage.value = ''
     } catch (error) {

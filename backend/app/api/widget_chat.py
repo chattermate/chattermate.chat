@@ -730,7 +730,10 @@ async def handle_widget_chat(sid, data):
                 'end_chat_description': response.end_chat_description,
                 'request_rating': response.request_rating,
                 # Initialize shopify_output to None. It will be populated if data exists.
-                'shopify_output': None 
+                'shopify_output': None,
+                # Knowledge-base citations (rendering is gated client-side by the agent's
+                # show_citations customization setting).
+                'sources': [s.model_dump() for s in response.sources] if getattr(response, 'sources', None) else None
             }
             
             # Check if the response object has the structured shopify_output field
@@ -749,7 +752,30 @@ async def handle_widget_chat(sid, data):
                          logger.warning(f"Unexpected type for shopify_output: {type(response.shopify_output)}")
 
             await sio.emit('chat_response', response_payload, room=session_id, namespace='/widget')
-            
+
+            # On human handoff, optionally collect the visitor's contact details (email/name)
+            # so the human agent can follow up. Fires for both a live transfer and the
+            # no-agents/ticket case (request_contact). Only asks for enabled + missing fields.
+            if response.transfer_to_human or getattr(response, 'request_contact', False):
+                try:
+                    from app.services.contact_capture import build_handoff_contact_form
+                    agent_repo = AgentRepository(db)
+                    handoff_agent = agent_repo.get_agent(session['agent_id'])
+                    customer = CustomerRepository(db).get_by_id(customer_id)
+                    if handoff_agent and customer:
+                        contact_form = build_handoff_contact_form(
+                            customer,
+                            collect_email=getattr(handoff_agent, 'handoff_collect_email', True),
+                            collect_name=getattr(handoff_agent, 'handoff_collect_name', True),
+                        )
+                        if contact_form:
+                            await sio.emit('display_form', {
+                                'form_data': contact_form,
+                                'session_id': session_id,
+                            }, room=session_id, namespace='/widget')
+                except Exception as contact_err:
+                    logger.error(f"Failed to emit handoff contact form: {contact_err}")
+
             # If end_chat is true, close the session
             if response.end_chat:
                 try:
@@ -1745,6 +1771,65 @@ async def handle_proceed_workflow(sid, data):
             'error': 'Failed to proceed workflow',
             'type': 'workflow_error'
         }, to=sid, namespace='/widget')
+
+
+@sio.on('submit_contact_info', namespace='/widget')
+@socket_rate_limit(namespace='/widget')
+async def handle_contact_info(sid, data):
+    """Handle the inline contact form shown at human handoff (email + optional name).
+
+    Updates the customer record so the human agent can follow up. Non-blocking: the handoff
+    already happened, so failures here never undo the transfer.
+    """
+    try:
+        session = await sio.get_session(sid, namespace='/widget')
+        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+
+        if not widget_id or not org_id:
+            logger.error(f"Widget authentication failed for sid {sid}")
+            await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
+            return
+
+        session_id = session['session_id']
+        # Verify session matches authenticated data (mirror other handlers)
+        if (session['widget_id'] != widget_id or
+            session['org_id'] != org_id or
+            session['customer_id'] != customer_id):
+            raise ValueError("Session mismatch")
+
+        form_data = data.get('form_data', {}) or {}
+        email = (form_data.get('email') or '').strip()
+        name = (form_data.get('name') or '').strip()
+
+        # Validate email server-side too (the field is required client-side when shown)
+        if email and not validate_email(email):
+            await sio.emit('error', {'error': 'Please enter a valid email address', 'type': 'validation_error'},
+                           room=session_id, namespace='/widget')
+            return
+
+        if not email and not name:
+            return  # nothing to update
+
+        db = next(get_db())
+        customer_repo = CustomerRepository(db)
+        result = customer_repo.update_contact(customer_id, email=email or None, full_name=name or None)
+
+        # Confirm back to the visitor as a bot message
+        if result.get('email_updated') or result.get('name_updated'):
+            confirm = "Thanks — a teammate will follow up"
+            updated_email = result.get('email') or ''
+            if updated_email and not CustomerRepository.is_placeholder_email(updated_email):
+                confirm += f" at {updated_email}"
+            confirm += "."
+            await sio.emit('chat_response', {
+                'message': confirm,
+                'type': 'chat_response',
+                'session_id': session_id,
+                'transfer_to_human': False,
+                'end_chat': False,
+            }, room=session_id, namespace='/widget')
+    except Exception as e:
+        logger.error(f"Error handling contact info for sid {sid}: {str(e)}")
 
 
 @sio.on('submit_form', namespace='/widget')
