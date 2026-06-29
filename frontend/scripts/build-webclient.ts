@@ -3,6 +3,10 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import * as fs from 'fs'
 import * as path from 'path'
+import dotenv from 'dotenv'
+
+// Load the local .env so a plain `build:webclient` uses the local API URL.
+dotenv.config({ path: '.env' })
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)

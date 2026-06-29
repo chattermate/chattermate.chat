@@ -2,6 +2,11 @@ import { build } from 'vite'
 import { resolve } from 'path'
 import * as fs from 'fs'
 import * as path from 'path'
+import dotenv from 'dotenv'
+
+// Load the local .env so a plain `build:widget` bakes the local API URL
+// (VITE_API_URL) instead of falling through to the widget-env default.
+dotenv.config({ path: '.env' })
 
 const config = resolve(process.cwd(), 'vite.widget.config.ts')
 const assetsDir = resolve(process.cwd(), '../backend/assets')
