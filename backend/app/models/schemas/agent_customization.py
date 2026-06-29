@@ -64,7 +64,7 @@ class CustomizationBase(BaseModel):
     welcome_title: Optional[str] = None
     welcome_subtitle: Optional[str] = None
     chat_initiation_messages: Optional[List[str]] = None
-    show_citations: Optional[bool] = True
+    show_citations: Optional[bool] = False
     collect_email: Optional[bool] = False
 
 

@@ -1384,8 +1384,8 @@ const THEME_CLASS_MAP: Record<string, string> = {
 }
 const themeClass = computed(() => THEME_CLASS_MAP[customization.value.chat_style as string] || '')
 
-// Citations are shown unless explicitly turned off
-const showCitations = computed(() => customization.value.show_citations !== false)
+// Citations are shown only when explicitly enabled (off by default for now)
+const showCitations = computed(() => customization.value.show_citations === true)
 
 // Pre-chat email gate: only when the agent opts in (and never for the gate-less Ask AI layout)
 const shouldCollectEmail = computed(() => customization.value.collect_email === true && !isAskAnythingStyle.value)

@@ -10144,7 +10144,7 @@ const Bn = "ctid", la = 3, Qd = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", 
       TERMINAL: "theme-terminal",
       PLAYFUL: "theme-playful",
       CALM_MINT: "theme-calm"
-    }, cc = We(() => io[a.value.chat_style] || ""), uc = We(() => a.value.show_citations !== !1), oo = We(() => a.value.collect_email === !0 && !Jn.value), fc = We(() => {
+    }, cc = We(() => io[a.value.chat_style] || ""), uc = We(() => a.value.show_citations === !0), oo = We(() => a.value.collect_email === !0 && !Jn.value), fc = We(() => {
       const d = {
         width: "100%",
         height: "580px",

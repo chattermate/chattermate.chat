@@ -34,17 +34,18 @@ def upgrade() -> None:
             for value in NEW_CHAT_STYLES:
                 op.execute(f"ALTER TYPE chatstyle ADD VALUE IF NOT EXISTS '{value}'")
 
-    # Add show_citations column (default on). Use IF NOT EXISTS on Postgres so the
-    # migration is safe to run on a DB where the column was already added out-of-band.
+    # Add show_citations column (default OFF for now — citations need more work).
+    # Use IF NOT EXISTS on Postgres so the migration is safe to run on a DB where the
+    # column was already added out-of-band.
     if bind.dialect.name == "postgresql":
         op.execute(
             "ALTER TABLE agent_customizations "
-            "ADD COLUMN IF NOT EXISTS show_citations boolean NOT NULL DEFAULT true"
+            "ADD COLUMN IF NOT EXISTS show_citations boolean NOT NULL DEFAULT false"
         )
     else:
         op.add_column(
             'agent_customizations',
-            sa.Column('show_citations', sa.Boolean(), server_default=sa.true(), nullable=False),
+            sa.Column('show_citations', sa.Boolean(), server_default=sa.false(), nullable=False),
         )
 
 

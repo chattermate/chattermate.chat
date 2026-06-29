@@ -70,7 +70,7 @@ class AgentCustomization(Base):
     welcome_title = Column(String, nullable=True)
     welcome_subtitle = Column(String, nullable=True)
     chat_initiation_messages = Column(JSON, nullable=True)
-    show_citations = Column(Boolean, default=True, nullable=False)
+    show_citations = Column(Boolean, default=False, nullable=False)
     # Optionally require the visitor's email before chatting (off by default)
     collect_email = Column(Boolean, default=False, nullable=False)
 

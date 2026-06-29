@@ -92,7 +92,7 @@ const customization = ref<AgentCustomization>({
     welcome_title: props.agent.customization?.welcome_title ?? '',
     welcome_subtitle: props.agent.customization?.welcome_subtitle ?? '',
     chat_initiation_messages: props.agent.customization?.chat_initiation_messages ?? [],
-    show_citations: props.agent.customization?.show_citations ?? true,
+    show_citations: props.agent.customization?.show_citations ?? false,
     collect_email: props.agent.customization?.collect_email ?? false,
 })
 
@@ -251,7 +251,7 @@ watch(() => props.agent.customization, (newCustomization) => {
             welcome_title: newCustomization.welcome_title ?? '',
             welcome_subtitle: newCustomization.welcome_subtitle ?? '',
             chat_initiation_messages: newCustomization.chat_initiation_messages ?? [],
-            show_citations: newCustomization.show_citations ?? true,
+            show_citations: newCustomization.show_citations ?? false,
             collect_email: newCustomization.collect_email ?? false,
         }
         nextTick(() => {
