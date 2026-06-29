@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import type { AgentCustomization } from '../types/widget'
 import { isColorDark, adjustColorBrightness } from '../types/widget'
 import { widgetEnv } from '../webclient/widget-env'
+import { isAbsoluteUrl } from '../utils/avatars'
 
 export function useWidgetStyles(customization: { value: AgentCustomization }) {
     const chatStyles = computed(() => ({
@@ -44,7 +45,7 @@ export function useWidgetStyles(customization: { value: AgentCustomization }) {
             return ''
         }
         // Use signed URL if available
-        if (customization.value.photo_url.includes('amazonaws.com')) {
+        if (isAbsoluteUrl(customization.value.photo_url)) {
             return customization.value.photo_url
         }
         

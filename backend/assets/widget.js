@@ -6313,8 +6313,8 @@ const _n = {
   get WS_URL() {
     return ta().WS_URL || "ws://localhost:8000";
   }
-};
-function $h(t) {
+}, $h = (t) => !!t && /^https?:\/\//i.test(t);
+function Xh(t) {
   const e = We(() => ({
     backgroundColor: t.value.chat_background_color || "#ffffff",
     color: dn(t.value.chat_background_color || "#ffffff") ? "#ffffff" : "#000000"
@@ -6334,7 +6334,7 @@ function $h(t) {
     color: dn(t.value.chat_background_color || "#F8F9FA") ? "#FFFFFF" : "#000000"
   })), i = We(() => ({
     borderBottom: `1px solid ${dn(t.value.chat_background_color || "#F8F9FA") ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"}`
-  })), a = We(() => t.value.photo_url ? t.value.photo_url.includes("amazonaws.com") ? t.value.photo_url : `${_n.API_URL}${t.value.photo_url}` : ""), l = We(() => {
+  })), a = We(() => t.value.photo_url ? $h(t.value.photo_url) ? t.value.photo_url : `${_n.API_URL}${t.value.photo_url}` : ""), l = We(() => {
     const c = t.value.chat_background_color || "#ffffff";
     return {
       boxShadow: `0 8px 5px ${dn(c) ? "rgba(0, 0, 0, 0.24)" : "rgba(0, 0, 0, 0.12)"}`
@@ -6351,7 +6351,7 @@ function $h(t) {
     shadowStyle: l
   };
 }
-const Xh = /* @__PURE__ */ new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]), Zh = /* @__PURE__ */ new Set([
+const Zh = /* @__PURE__ */ new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]), Jh = /* @__PURE__ */ new Set([
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -6360,8 +6360,8 @@ const Xh = /* @__PURE__ */ new Set(["image/jpeg", "image/jpg", "image/png", "ima
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ]);
-[...Xh, ...Zh];
-function Jh(t, e) {
+[...Zh, ...Jh];
+function Qh(t, e) {
   const n = ge([]), s = ge(!1), r = ge(null), o = (z) => {
     if (z === 0) return "0 Bytes";
     const $ = 1024, Y = ["Bytes", "KB", "MB", "GB"], we = Math.floor(Math.log(z) / Math.log($));
@@ -6570,7 +6570,7 @@ function sa(t) {
   return t instanceof Uint8Array ? t : t instanceof ArrayBuffer ? new Uint8Array(t) : new Uint8Array(t.buffer, t.byteOffset, t.byteLength);
 }
 let Yr;
-function Qh(t, e) {
+function ed(t, e) {
   if (Cl && t.data instanceof Blob)
     return t.data.arrayBuffer().then(sa).then(e);
   if (Rl && (t.data instanceof ArrayBuffer || Il(t.data)))
@@ -6582,14 +6582,14 @@ function Qh(t, e) {
 const ra = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", fs = typeof Uint8Array > "u" ? [] : new Uint8Array(256);
 for (let t = 0; t < ra.length; t++)
   fs[ra.charCodeAt(t)] = t;
-const ed = (t) => {
+const td = (t) => {
   let e = t.length * 0.75, n = t.length, s, r = 0, o, i, a, l;
   t[t.length - 1] === "=" && (e--, t[t.length - 2] === "=" && e--);
   const c = new ArrayBuffer(e), u = new Uint8Array(c);
   for (s = 0; s < n; s += 4)
     o = fs[t.charCodeAt(s)], i = fs[t.charCodeAt(s + 1)], a = fs[t.charCodeAt(s + 2)], l = fs[t.charCodeAt(s + 3)], u[r++] = o << 2 | i >> 4, u[r++] = (i & 15) << 4 | a >> 2, u[r++] = (a & 3) << 6 | l & 63;
   return c;
-}, td = typeof ArrayBuffer == "function", Zi = (t, e) => {
+}, nd = typeof ArrayBuffer == "function", Zi = (t, e) => {
   if (typeof t != "string")
     return {
       type: "message",
@@ -6598,16 +6598,16 @@ const ed = (t) => {
   const n = t.charAt(0);
   return n === "b" ? {
     type: "message",
-    data: nd(t.substring(1), e)
+    data: sd(t.substring(1), e)
   } : Qs[n] ? t.length > 1 ? {
     type: Qs[n],
     data: t.substring(1)
   } : {
     type: Qs[n]
   } : mi;
-}, nd = (t, e) => {
-  if (td) {
-    const n = ed(t);
+}, sd = (t, e) => {
+  if (nd) {
+    const n = td(t);
     return Ll(n, e);
   } else
     return { base64: !0, data: t };
@@ -6619,7 +6619,7 @@ const ed = (t) => {
     default:
       return t instanceof ArrayBuffer ? t : t.buffer;
   }
-}, Ol = "", sd = (t, e) => {
+}, Ol = "", rd = (t, e) => {
   const n = t.length, s = new Array(n);
   let r = 0;
   t.forEach((o, i) => {
@@ -6627,7 +6627,7 @@ const ed = (t) => {
       s[i] = a, ++r === n && e(s.join(Ol));
     });
   });
-}, rd = (t, e) => {
+}, id = (t, e) => {
   const n = t.split(Ol), s = [];
   for (let r = 0; r < n.length; r++) {
     const o = Zi(n[r], e);
@@ -6636,10 +6636,10 @@ const ed = (t) => {
   }
   return s;
 };
-function id() {
+function od() {
   return new TransformStream({
     transform(t, e) {
-      Qh(t, (n) => {
+      ed(t, (n) => {
         const s = n.length;
         let r;
         if (s < 126)
@@ -6671,7 +6671,7 @@ function Vs(t, e) {
     n[r] = t[0][s++], s === t[0].length && (t.shift(), s = 0);
   return t.length && s < t[0].length && (t[0] = t[0].slice(s)), n;
 }
-function od(t, e) {
+function ad(t, e) {
   $r || ($r = new TextDecoder());
   const n = [];
   let s = 0, r = -1, o = !1;
@@ -6713,9 +6713,9 @@ function od(t, e) {
 }
 const Fl = 4;
 function ot(t) {
-  if (t) return ad(t);
+  if (t) return ld(t);
 }
-function ad(t) {
+function ld(t) {
   for (var e in ot.prototype)
     t[e] = ot.prototype[e];
   return t;
@@ -6761,19 +6761,19 @@ ot.prototype.listeners = function(t) {
 ot.prototype.hasListeners = function(t) {
   return !!this.listeners(t).length;
 };
-const Sr = typeof Promise == "function" && typeof Promise.resolve == "function" ? (e) => Promise.resolve().then(e) : (e, n) => n(e, 0), Pt = typeof self < "u" ? self : typeof window < "u" ? window : Function("return this")(), ld = "arraybuffer";
+const Sr = typeof Promise == "function" && typeof Promise.resolve == "function" ? (e) => Promise.resolve().then(e) : (e, n) => n(e, 0), Pt = typeof self < "u" ? self : typeof window < "u" ? window : Function("return this")(), cd = "arraybuffer";
 function Pl(t, ...e) {
   return e.reduce((n, s) => (t.hasOwnProperty(s) && (n[s] = t[s]), n), {});
 }
-const cd = Pt.setTimeout, ud = Pt.clearTimeout;
+const ud = Pt.setTimeout, fd = Pt.clearTimeout;
 function Ar(t, e) {
-  e.useNativeTimers ? (t.setTimeoutFn = cd.bind(Pt), t.clearTimeoutFn = ud.bind(Pt)) : (t.setTimeoutFn = Pt.setTimeout.bind(Pt), t.clearTimeoutFn = Pt.clearTimeout.bind(Pt));
+  e.useNativeTimers ? (t.setTimeoutFn = ud.bind(Pt), t.clearTimeoutFn = fd.bind(Pt)) : (t.setTimeoutFn = Pt.setTimeout.bind(Pt), t.clearTimeoutFn = Pt.clearTimeout.bind(Pt));
 }
-const fd = 1.33;
-function hd(t) {
-  return typeof t == "string" ? dd(t) : Math.ceil((t.byteLength || t.size) * fd);
-}
+const hd = 1.33;
 function dd(t) {
+  return typeof t == "string" ? pd(t) : Math.ceil((t.byteLength || t.size) * hd);
+}
+function pd(t) {
   let e = 0, n = 0;
   for (let s = 0, r = t.length; s < r; s++)
     e = t.charCodeAt(s), e < 128 ? n += 1 : e < 2048 ? n += 2 : e < 55296 || e >= 57344 ? n += 3 : (s++, n += 4);
@@ -6782,13 +6782,13 @@ function dd(t) {
 function Dl() {
   return Date.now().toString(36).substring(3) + Math.random().toString(36).substring(2, 5);
 }
-function pd(t) {
+function gd(t) {
   let e = "";
   for (let n in t)
     t.hasOwnProperty(n) && (e.length && (e += "&"), e += encodeURIComponent(n) + "=" + encodeURIComponent(t[n]));
   return e;
 }
-function gd(t) {
+function md(t) {
   let e = {}, n = t.split("&");
   for (let s = 0, r = n.length; s < r; s++) {
     let o = n[s].split("=");
@@ -6796,7 +6796,7 @@ function gd(t) {
   }
   return e;
 }
-class md extends Error {
+class _d extends Error {
   constructor(e, n, s) {
     super(e), this.description = n, this.context = s, this.type = "TransportError";
   }
@@ -6821,7 +6821,7 @@ class Ji extends ot {
    * @protected
    */
   onError(e, n, s) {
-    return super.emitReserved("error", new md(e, n, s)), this;
+    return super.emitReserved("error", new _d(e, n, s)), this;
   }
   /**
    * Opens the transport.
@@ -6895,11 +6895,11 @@ class Ji extends ot {
     return this.opts.port && (this.opts.secure && +(this.opts.port !== 443) || !this.opts.secure && Number(this.opts.port) !== 80) ? ":" + this.opts.port : "";
   }
   _query(e) {
-    const n = pd(e);
+    const n = gd(e);
     return n.length ? "?" + n : "";
   }
 }
-class _d extends Ji {
+class yd extends Ji {
   constructor() {
     super(...arguments), this._polling = !1;
   }
@@ -6955,7 +6955,7 @@ class _d extends Ji {
         return this.onClose({ description: "transport closed by the server" }), !1;
       this.onPacket(s);
     };
-    rd(e, this.socket.binaryType).forEach(n), this.readyState !== "closed" && (this._polling = !1, this.emitReserved("pollComplete"), this.readyState === "open" && this._poll());
+    id(e, this.socket.binaryType).forEach(n), this.readyState !== "closed" && (this._polling = !1, this.emitReserved("pollComplete"), this.readyState === "open" && this._poll());
   }
   /**
    * For polling, send a close packet.
@@ -6975,7 +6975,7 @@ class _d extends Ji {
    * @protected
    */
   write(e) {
-    this.writable = !1, sd(e, (n) => {
+    this.writable = !1, rd(e, (n) => {
       this.doWrite(n, () => {
         this.writable = !0, this.emitReserved("drain");
       });
@@ -6996,10 +6996,10 @@ try {
   Nl = typeof XMLHttpRequest < "u" && "withCredentials" in new XMLHttpRequest();
 } catch {
 }
-const yd = Nl;
-function bd() {
+const bd = Nl;
+function vd() {
 }
-class vd extends _d {
+class wd extends yd {
   /**
    * XHR Polling constructor.
    *
@@ -7112,7 +7112,7 @@ class $t extends ot {
    */
   _cleanup(e) {
     if (!(typeof this._xhr > "u" || this._xhr === null)) {
-      if (this._xhr.onreadystatechange = bd, e)
+      if (this._xhr.onreadystatechange = vd, e)
         try {
           this._xhr.abort();
         } catch {
@@ -7152,17 +7152,17 @@ function ia() {
   for (let t in $t.requests)
     $t.requests.hasOwnProperty(t) && $t.requests[t].abort();
 }
-const wd = function() {
+const kd = function() {
   const t = Ml({
     xdomain: !1
   });
   return t && t.responseType !== null;
 }();
-class kd extends vd {
+class xd extends wd {
   constructor(e) {
     super(e);
     const n = e && e.forceBase64;
-    this.supportsBinary = wd && !n;
+    this.supportsBinary = kd && !n;
   }
   request(e = {}) {
     return Object.assign(e, { xd: this.xd }, this.opts), new $t(Ml, this.uri(), e);
@@ -7171,7 +7171,7 @@ class kd extends vd {
 function Ml(t) {
   const e = t.xdomain;
   try {
-    if (typeof XMLHttpRequest < "u" && (!e || yd))
+    if (typeof XMLHttpRequest < "u" && (!e || bd))
       return new XMLHttpRequest();
   } catch {
   }
@@ -7182,7 +7182,7 @@ function Ml(t) {
     }
 }
 const Bl = typeof navigator < "u" && typeof navigator.product == "string" && navigator.product.toLowerCase() === "reactnative";
-class xd extends Ji {
+class Sd extends Ji {
   get name() {
     return "websocket";
   }
@@ -7239,7 +7239,7 @@ class xd extends Ji {
   }
 }
 const Xr = Pt.WebSocket || Pt.MozWebSocket;
-class Sd extends xd {
+class Ad extends Sd {
   createSocket(e, n, s) {
     return Bl ? new Xr(e, n, s) : n ? new Xr(e, n) : new Xr(e);
   }
@@ -7247,7 +7247,7 @@ class Sd extends xd {
     this.ws.send(n);
   }
 }
-class Ad extends Ji {
+class Td extends Ji {
   get name() {
     return "webtransport";
   }
@@ -7263,7 +7263,7 @@ class Ad extends Ji {
       this.onError("webtransport error", e);
     }), this._transport.ready.then(() => {
       this._transport.createBidirectionalStream().then((e) => {
-        const n = od(Number.MAX_SAFE_INTEGER, this.socket.binaryType), s = e.readable.pipeThrough(n).getReader(), r = id();
+        const n = ad(Number.MAX_SAFE_INTEGER, this.socket.binaryType), s = e.readable.pipeThrough(n).getReader(), r = od();
         r.readable.pipeTo(e.writable), this._writer = r.writable.getWriter();
         const o = () => {
           s.read().then(({ done: a, value: l }) => {
@@ -7293,11 +7293,11 @@ class Ad extends Ji {
     (e = this._transport) === null || e === void 0 || e.close();
   }
 }
-const Td = {
-  websocket: Sd,
-  webtransport: Ad,
-  polling: kd
-}, Ed = /^(?:(?![^:@\/?#]+:[^:@\/]*@)(http|https|ws|wss):\/\/)?((?:(([^:@\/?#]*)(?::([^:@\/?#]*))?)?@)?((?:[a-f0-9]{0,4}:){2,7}[a-f0-9]{0,4}|[^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/, Cd = [
+const Ed = {
+  websocket: Ad,
+  webtransport: Td,
+  polling: xd
+}, Cd = /^(?:(?![^:@\/?#]+:[^:@\/]*@)(http|https|ws|wss):\/\/)?((?:(([^:@\/?#]*)(?::([^:@\/?#]*))?)?@)?((?:[a-f0-9]{0,4}:){2,7}[a-f0-9]{0,4}|[^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/, Rd = [
   "source",
   "protocol",
   "authority",
@@ -7318,16 +7318,16 @@ function _i(t) {
     throw "URI too long";
   const e = t, n = t.indexOf("["), s = t.indexOf("]");
   n != -1 && s != -1 && (t = t.substring(0, n) + t.substring(n, s).replace(/:/g, ";") + t.substring(s, t.length));
-  let r = Ed.exec(t || ""), o = {}, i = 14;
+  let r = Cd.exec(t || ""), o = {}, i = 14;
   for (; i--; )
-    o[Cd[i]] = r[i] || "";
-  return n != -1 && s != -1 && (o.source = e, o.host = o.host.substring(1, o.host.length - 1).replace(/;/g, ":"), o.authority = o.authority.replace("[", "").replace("]", "").replace(/;/g, ":"), o.ipv6uri = !0), o.pathNames = Rd(o, o.path), o.queryKey = Id(o, o.query), o;
+    o[Rd[i]] = r[i] || "";
+  return n != -1 && s != -1 && (o.source = e, o.host = o.host.substring(1, o.host.length - 1).replace(/;/g, ":"), o.authority = o.authority.replace("[", "").replace("]", "").replace(/;/g, ":"), o.ipv6uri = !0), o.pathNames = Id(o, o.path), o.queryKey = Ld(o, o.query), o;
 }
-function Rd(t, e) {
+function Id(t, e) {
   const n = /\/{2,9}/g, s = e.replace(n, "/").split("/");
   return (e.slice(0, 1) == "/" || e.length === 0) && s.splice(0, 1), e.slice(-1) == "/" && s.splice(s.length - 1, 1), s;
 }
-function Id(t, e) {
+function Ld(t, e) {
   const n = {};
   return e.replace(/(?:^|&)([^&=]*)=?([^&]*)/g, function(s, r, o) {
     r && (n[r] = o);
@@ -7345,7 +7345,7 @@ class yn extends ot {
    * @param {Object} opts - options
    */
   constructor(e, n) {
-    if (super(), this.binaryType = ld, this.writeBuffer = [], this._prevBufferLen = 0, this._pingInterval = -1, this._pingTimeout = -1, this._maxPayload = -1, this._pingTimeoutTime = 1 / 0, e && typeof e == "object" && (n = e, e = null), e) {
+    if (super(), this.binaryType = cd, this.writeBuffer = [], this._prevBufferLen = 0, this._pingInterval = -1, this._pingTimeout = -1, this._maxPayload = -1, this._pingTimeoutTime = 1 / 0, e && typeof e == "object" && (n = e, e = null), e) {
       const s = _i(e);
       n.hostname = s.host, n.secure = s.protocol === "https" || s.protocol === "wss", n.port = s.port, s.query && (n.query = s.query);
     } else n.host && (n.hostname = _i(n.host).host);
@@ -7366,7 +7366,7 @@ class yn extends ot {
       },
       transportOptions: {},
       closeOnBeforeunload: !1
-    }, n), this.opts.path = this.opts.path.replace(/\/$/, "") + (this.opts.addTrailingSlash ? "/" : ""), typeof this.opts.query == "string" && (this.opts.query = gd(this.opts.query)), yi && (this.opts.closeOnBeforeunload && (this._beforeunloadEventListener = () => {
+    }, n), this.opts.path = this.opts.path.replace(/\/$/, "") + (this.opts.addTrailingSlash ? "/" : ""), typeof this.opts.query == "string" && (this.opts.query = md(this.opts.query)), yi && (this.opts.closeOnBeforeunload && (this._beforeunloadEventListener = () => {
       this.transport && (this.transport.removeAllListeners(), this.transport.close());
     }, addEventListener("beforeunload", this._beforeunloadEventListener, !1)), this.hostname !== "localhost" && (this._offlineEventListener = () => {
       this._onClose("transport close", {
@@ -7501,7 +7501,7 @@ class yn extends ot {
     let n = 1;
     for (let s = 0; s < this.writeBuffer.length; s++) {
       const r = this.writeBuffer[s].data;
-      if (r && (n += hd(r)), s > 0 && n > this._maxPayload)
+      if (r && (n += dd(r)), s > 0 && n > this._maxPayload)
         return this.writeBuffer.slice(0, s);
       n += 2;
     }
@@ -7608,7 +7608,7 @@ class yn extends ot {
   }
 }
 yn.protocol = Fl;
-class Ld extends yn {
+class Od extends yn {
   constructor() {
     super(...arguments), this._upgrades = [];
   }
@@ -7680,21 +7680,21 @@ class Ld extends yn {
     return n;
   }
 }
-let Od = class extends Ld {
+let Fd = class extends Od {
   constructor(e, n = {}) {
     const s = typeof e == "object" ? e : n;
-    (!s.transports || s.transports && typeof s.transports[0] == "string") && (s.transports = (s.transports || ["polling", "websocket", "webtransport"]).map((r) => Td[r]).filter((r) => !!r)), super(e, s);
+    (!s.transports || s.transports && typeof s.transports[0] == "string") && (s.transports = (s.transports || ["polling", "websocket", "webtransport"]).map((r) => Ed[r]).filter((r) => !!r)), super(e, s);
   }
 };
-function Fd(t, e = "", n) {
+function Pd(t, e = "", n) {
   let s = t;
   n = n || typeof location < "u" && location, t == null && (t = n.protocol + "//" + n.host), typeof t == "string" && (t.charAt(0) === "/" && (t.charAt(1) === "/" ? t = n.protocol + t : t = n.host + t), /^(https?|wss?):\/\//.test(t) || (typeof n < "u" ? t = n.protocol + "//" + t : t = "https://" + t), s = _i(t)), s.port || (/^(http|ws)$/.test(s.protocol) ? s.port = "80" : /^(http|ws)s$/.test(s.protocol) && (s.port = "443")), s.path = s.path || "/";
   const o = s.host.indexOf(":") !== -1 ? "[" + s.host + "]" : s.host;
   return s.id = s.protocol + "://" + o + ":" + s.port + e, s.href = s.protocol + "://" + o + (n && n.port === s.port ? "" : ":" + s.port), s;
 }
-const Pd = typeof ArrayBuffer == "function", Dd = (t) => typeof ArrayBuffer.isView == "function" ? ArrayBuffer.isView(t) : t.buffer instanceof ArrayBuffer, Ul = Object.prototype.toString, Nd = typeof Blob == "function" || typeof Blob < "u" && Ul.call(Blob) === "[object BlobConstructor]", Md = typeof File == "function" || typeof File < "u" && Ul.call(File) === "[object FileConstructor]";
+const Dd = typeof ArrayBuffer == "function", Nd = (t) => typeof ArrayBuffer.isView == "function" ? ArrayBuffer.isView(t) : t.buffer instanceof ArrayBuffer, Ul = Object.prototype.toString, Md = typeof Blob == "function" || typeof Blob < "u" && Ul.call(Blob) === "[object BlobConstructor]", Bd = typeof File == "function" || typeof File < "u" && Ul.call(File) === "[object FileConstructor]";
 function Qi(t) {
-  return Pd && (t instanceof ArrayBuffer || Dd(t)) || Nd && t instanceof Blob || Md && t instanceof File;
+  return Dd && (t instanceof ArrayBuffer || Nd(t)) || Md && t instanceof Blob || Bd && t instanceof File;
 }
 function tr(t, e) {
   if (!t || typeof t != "object")
@@ -7714,7 +7714,7 @@ function tr(t, e) {
       return !0;
   return !1;
 }
-function Bd(t) {
+function Ud(t) {
   const e = [], n = t.data, s = t;
   return s.data = bi(n, e), s.attachments = e.length, { packet: s, buffers: e };
 }
@@ -7737,7 +7737,7 @@ function bi(t, e) {
   }
   return t;
 }
-function Ud(t, e) {
+function zd(t, e) {
   return t.data = vi(t.data, e), delete t.attachments, t;
 }
 function vi(t, e) {
@@ -7755,7 +7755,7 @@ function vi(t, e) {
       Object.prototype.hasOwnProperty.call(t, n) && (t[n] = vi(t[n], e));
   return t;
 }
-const zd = [
+const Hd = [
   "connect",
   "connect_error",
   "disconnect",
@@ -7763,12 +7763,12 @@ const zd = [
   "newListener",
   "removeListener"
   // used by the Node.js EventEmitter
-], Hd = 5;
+], Wd = 5;
 var Ae;
 (function(t) {
   t[t.CONNECT = 0] = "CONNECT", t[t.DISCONNECT = 1] = "DISCONNECT", t[t.EVENT = 2] = "EVENT", t[t.ACK = 3] = "ACK", t[t.CONNECT_ERROR = 4] = "CONNECT_ERROR", t[t.BINARY_EVENT = 5] = "BINARY_EVENT", t[t.BINARY_ACK = 6] = "BINARY_ACK";
 })(Ae || (Ae = {}));
-class Wd {
+class qd {
   /**
    * Encoder constructor
    *
@@ -7804,7 +7804,7 @@ class Wd {
    * a list of buffers.
    */
   encodeAsBinary(e) {
-    const n = Bd(e), s = this.encodeAsString(n.packet), r = n.buffers;
+    const n = Ud(e), s = this.encodeAsString(n.packet), r = n.buffers;
     return r.unshift(s), r;
   }
 }
@@ -7832,7 +7832,7 @@ class eo extends ot {
         throw new Error("got plaintext data when reconstructing a packet");
       n = this.decodeString(e);
       const s = n.type === Ae.BINARY_EVENT;
-      s || n.type === Ae.BINARY_ACK ? (n.type = s ? Ae.EVENT : Ae.ACK, this.reconstructor = new qd(n), n.attachments === 0 && super.emitReserved("decoded", n)) : super.emitReserved("decoded", n);
+      s || n.type === Ae.BINARY_ACK ? (n.type = s ? Ae.EVENT : Ae.ACK, this.reconstructor = new jd(n), n.attachments === 0 && super.emitReserved("decoded", n)) : super.emitReserved("decoded", n);
     } else if (Qi(e) || e.base64)
       if (this.reconstructor)
         n = this.reconstructor.takeBinaryData(e), n && (this.reconstructor = null, super.emitReserved("decoded", n));
@@ -7910,7 +7910,7 @@ class eo extends ot {
         return typeof n == "string" || oa(n);
       case Ae.EVENT:
       case Ae.BINARY_EVENT:
-        return Array.isArray(n) && (typeof n[0] == "number" || typeof n[0] == "string" && zd.indexOf(n[0]) === -1);
+        return Array.isArray(n) && (typeof n[0] == "number" || typeof n[0] == "string" && Hd.indexOf(n[0]) === -1);
       case Ae.ACK:
       case Ae.BINARY_ACK:
         return Array.isArray(n);
@@ -7923,7 +7923,7 @@ class eo extends ot {
     this.reconstructor && (this.reconstructor.finishedReconstruction(), this.reconstructor = null);
   }
 }
-class qd {
+class jd {
   constructor(e) {
     this.packet = e, this.buffers = [], this.reconPack = e;
   }
@@ -7937,7 +7937,7 @@ class qd {
    */
   takeBinaryData(e) {
     if (this.buffers.push(e), this.buffers.length === this.reconPack.attachments) {
-      const n = Ud(this.reconPack, this.buffers);
+      const n = zd(this.reconPack, this.buffers);
       return this.finishedReconstruction(), n;
     }
     return null;
@@ -7949,21 +7949,21 @@ class qd {
     this.reconPack = null, this.buffers = [];
   }
 }
-const jd = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+const Vd = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   Decoder: eo,
-  Encoder: Wd,
+  Encoder: qd,
   get PacketType() {
     return Ae;
   },
-  protocol: Hd
+  protocol: Wd
 }, Symbol.toStringTag, { value: "Module" }));
 function zt(t, e, n) {
   return t.on(e, n), function() {
     t.off(e, n);
   };
 }
-const Vd = Object.freeze({
+const Kd = Object.freeze({
   connect: 1,
   connect_error: 1,
   disconnect: 1,
@@ -8088,7 +8088,7 @@ class zl extends ot {
    */
   emit(e, ...n) {
     var s, r, o;
-    if (Vd.hasOwnProperty(e))
+    if (Kd.hasOwnProperty(e))
       throw new Error('"' + e.toString() + '" is a reserved event name');
     if (n.unshift(e), this._opts.retries && !this.flags.fromQueue && !this.flags.volatile)
       return this._addToQueue(n), this;
@@ -8595,7 +8595,7 @@ class wi extends ot {
       max: this.reconnectionDelayMax(),
       jitter: this.randomizationFactor()
     }), this.timeout(n.timeout == null ? 2e4 : n.timeout), this._readyState = "closed", this.uri = e;
-    const r = n.parser || jd;
+    const r = n.parser || Vd;
     this.encoder = new r.Encoder(), this.decoder = new r.Decoder(), this._autoConnect = n.autoConnect !== !1, this._autoConnect && this.open();
   }
   reconnection(e) {
@@ -8638,7 +8638,7 @@ class wi extends ot {
   open(e) {
     if (~this._readyState.indexOf("open"))
       return this;
-    this.engine = new Od(this.uri, this.opts);
+    this.engine = new Fd(this.uri, this.opts);
     const n = this.engine, s = this;
     this._readyState = "opening", this.skipReconnect = !1;
     const r = zt(n, "open", function() {
@@ -8828,7 +8828,7 @@ class wi extends ot {
 const ls = {};
 function nr(t, e) {
   typeof t == "object" && (e = t, t = void 0), e = e || {};
-  const n = Fd(t, e.path || "/socket.io"), s = n.source, r = n.id, o = n.path, i = ls[r] && o in ls[r].nsps, a = e.forceNew || e["force new connection"] || e.multiplex === !1 || i;
+  const n = Pd(t, e.path || "/socket.io"), s = n.source, r = n.id, o = n.path, i = ls[r] && o in ls[r].nsps, a = e.forceNew || e["force new connection"] || e.multiplex === !1 || i;
   let l;
   return a ? l = new wi(s, e) : (ls[r] || (ls[r] = new wi(s, e)), l = ls[r]), n.query && !e.query && (e.query = n.queryKey), l.socket(n.path, e);
 }
@@ -8838,7 +8838,7 @@ Object.assign(nr, {
   io: nr,
   connect: nr
 });
-function Kd() {
+function Gd() {
   const t = ge([]), e = ge(!1), n = ge(""), s = ge(!1), r = ge(!1), o = ge(!1), i = ge("connecting"), a = ge(0), l = 5, c = ge({}), u = ge(null), y = ge("");
   let p = null, L = null, B = null, V = null, Te, se;
   const ce = (W) => {
@@ -9103,11 +9103,11 @@ function Kd() {
     setWidgetId: he
   };
 }
-function Gd(t) {
+function Yd(t) {
   return t && t.__esModule && Object.prototype.hasOwnProperty.call(t, "default") ? t.default : t;
 }
 var Zr = { exports: {} }, aa;
-function Yd() {
+function $d() {
   return aa || (aa = 1, function(t) {
     (function() {
       function e(f, m, x) {
@@ -9534,11 +9534,11 @@ function Yd() {
     })();
   }(Zr)), Zr.exports;
 }
-var $d = Yd();
-const Xd = /* @__PURE__ */ Gd($d);
-function Zd() {
+var Xd = $d();
+const Zd = /* @__PURE__ */ Yd(Xd);
+function Jd() {
   const t = ge({}), e = ge(""), n = (r) => {
-    t.value = r, r.photo_url && (t.value.photo_url = r.photo_url), r.font_family && Xd.load({
+    t.value = r, r.photo_url && (t.value.photo_url = r.photo_url), r.font_family && Zd.load({
       google: {
         families: [r.font_family]
       },
@@ -9565,7 +9565,7 @@ function Zd() {
     }
   };
 }
-function Jd() {
+function Qd() {
   const t = {
     USD: "$",
     EUR: "€",
@@ -9605,7 +9605,7 @@ function Jd() {
     currencySymbols: t
   };
 }
-const Bn = "ctid", la = 3, Qd = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", ep = /* @__PURE__ */ lu({
+const Bn = "ctid", la = 3, ep = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", tp = /* @__PURE__ */ lu({
   __name: "WidgetBuilder",
   props: {
     widgetId: { type: [String, null], required: !1 },
@@ -9629,7 +9629,7 @@ const Bn = "ctid", la = 3, Qd = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", 
       agentName: l,
       applyCustomization: c,
       initializeFromData: u
-    } = Zd(), { formatCurrency: y } = Jd(), {
+    } = Jd(), { formatCurrency: y } = Qd(), {
       messages: p,
       loading: L,
       errorMessage: B,
@@ -9655,7 +9655,7 @@ const Bn = "ctid", la = 3, Qd = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", 
       currentSessionId: oe,
       setToken: st,
       setWidgetId: Xe
-    } = Kd(), de = ge(""), Ze = ge(!0), Se = ge(""), W = ge(!1), _e = (d) => {
+    } = Gd(), de = ge(""), Ze = ge(!0), Se = ge(""), W = ge(!1), _e = (d) => {
       const S = d.target;
       de.value = S.value;
     };
@@ -9757,7 +9757,7 @@ const Bn = "ctid", la = 3, Qd = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", 
       headerBorderStyles: ut,
       photoUrl: f,
       shadowStyle: m
-    } = $h(a), x = ge(null), {
+    } = Xh(a), x = ge(null), {
       uploadedAttachments: w,
       previewModal: P,
       previewFile: G,
@@ -9776,7 +9776,7 @@ const Bn = "ctid", la = 3, Qd = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", 
       closePreview: Rs,
       openFilePicker: Is,
       isImage: Er
-    } = Jh(D, x), Ot = We(() => p.value.some(
+    } = Qh(D, x), Ot = We(() => p.value.some(
       (d) => d.message_type === "form" && (!d.isSubmitted || d.isSubmitted === !1)
     )), un = We(() => {
       var d;
@@ -10179,191 +10179,191 @@ const Bn = "ctid", la = 3, Qd = "image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls", 
       return Pe;
     }, set currentInputFields(d) {
       Pe = d;
-    }, setupNativeEventListeners: He, cleanupNativeEventListeners: it, isFormField: yt, handleNativeInput: h, handleNativeKeyPress: g, handleNativeKeyDown: k, closeHeaderMenu: E, isInitializing: A, TOKEN_KEY: Bn, sanitizeToken: T, token: D, hasToken: M, authError: F, showAuthError: C, isApiKeyAuthRequired: Z, initialData: N, allowAttachments: K, messagesContainer: Q, chatStyles: le, chatIconStyles: Re, agentBubbleStyles: be, userBubbleStyles: rt, messageNameStyles: ze, headerBorderStyles: ut, photoUrl: f, shadowStyle: m, fileInputRef: x, uploadedAttachments: w, previewModal: P, previewFile: G, formatFileSize: ee, isImageAttachment: ye, getDownloadUrl: ke, getPreviewUrl: Ke, handleFileSelect: De, handleDrop: lt, handleDragOver: bt, handleDragLeave: qe, handlePaste: Wt, uploadFiles: Tr, removeAttachment: Cs, openPreview: Yn, closePreview: Rs, openFilePicker: Is, isImage: Er, hasActiveForm: Ot, isMessageInputEnabled: un, placeholderText: Ls, sendMessage: Sn, handleKeyPress: $n, checkAuthorization: fn, fetchChatHistory: Ft, scrollToBottom: An, handleReconnect: Os, showRatingDialog: Fs, currentRating: Ps, ratingFeedback: Cr, hoverRating: J, isSubmittingRating: _, formData: O, isSubmittingForm: j, formErrors: Ie, showLandingPage: et, landingPageData: tt, workflowButtonText: ft, showFullScreenForm: pt, fullScreenFormData: Ct, ratingEnabled: Xn, shouldShowNewConversationOption: ct, humanAgentPhotoUrl: Ds, handleEndChat: Zn, handleStarHover: jl, handleStarLeave: Vl, handleStarClick: Kl, handleSubmitRating: Gl, handleAddToCart: Yl, handleAddToCartFromCarousel: $l, validateForm: to, handleFormSubmit: Xl, handleFieldChange: Zl, isValidPhoneNumber: no, validateFormField: Ns, submitFullScreenForm: Jl, handleViewDetails: Ql, removeUrls: ec, isUploading: tc, dragOver: nc, maxFiles: la, acceptTypes: Qd, canUploadMore: sc, handleLandingPageProceed: rc, handleUserInputSubmit: ic, initializeWidget: Rr, setupEventListeners: so, startNewConversationWorkflow: ro, handleStartNewConversation: oc, isAuroraStyle: Ir, isAskAnythingStyle: Jn, orbMeta: Lr, useOrbAvatar: ac, orbStyle: lc, THEME_CLASS_MAP: io, themeClass: cc, showCitations: uc, shouldCollectEmail: oo, containerStyles: fc, shouldShowWelcomeMessage: hc, get isValidEmail() {
+    }, setupNativeEventListeners: He, cleanupNativeEventListeners: it, isFormField: yt, handleNativeInput: h, handleNativeKeyPress: g, handleNativeKeyDown: k, closeHeaderMenu: E, isInitializing: A, TOKEN_KEY: Bn, sanitizeToken: T, token: D, hasToken: M, authError: F, showAuthError: C, isApiKeyAuthRequired: Z, initialData: N, allowAttachments: K, messagesContainer: Q, chatStyles: le, chatIconStyles: Re, agentBubbleStyles: be, userBubbleStyles: rt, messageNameStyles: ze, headerBorderStyles: ut, photoUrl: f, shadowStyle: m, fileInputRef: x, uploadedAttachments: w, previewModal: P, previewFile: G, formatFileSize: ee, isImageAttachment: ye, getDownloadUrl: ke, getPreviewUrl: Ke, handleFileSelect: De, handleDrop: lt, handleDragOver: bt, handleDragLeave: qe, handlePaste: Wt, uploadFiles: Tr, removeAttachment: Cs, openPreview: Yn, closePreview: Rs, openFilePicker: Is, isImage: Er, hasActiveForm: Ot, isMessageInputEnabled: un, placeholderText: Ls, sendMessage: Sn, handleKeyPress: $n, checkAuthorization: fn, fetchChatHistory: Ft, scrollToBottom: An, handleReconnect: Os, showRatingDialog: Fs, currentRating: Ps, ratingFeedback: Cr, hoverRating: J, isSubmittingRating: _, formData: O, isSubmittingForm: j, formErrors: Ie, showLandingPage: et, landingPageData: tt, workflowButtonText: ft, showFullScreenForm: pt, fullScreenFormData: Ct, ratingEnabled: Xn, shouldShowNewConversationOption: ct, humanAgentPhotoUrl: Ds, handleEndChat: Zn, handleStarHover: jl, handleStarLeave: Vl, handleStarClick: Kl, handleSubmitRating: Gl, handleAddToCart: Yl, handleAddToCartFromCarousel: $l, validateForm: to, handleFormSubmit: Xl, handleFieldChange: Zl, isValidPhoneNumber: no, validateFormField: Ns, submitFullScreenForm: Jl, handleViewDetails: Ql, removeUrls: ec, isUploading: tc, dragOver: nc, maxFiles: la, acceptTypes: ep, canUploadMore: sc, handleLandingPageProceed: rc, handleUserInputSubmit: ic, initializeWidget: Rr, setupEventListeners: so, startNewConversationWorkflow: ro, handleStartNewConversation: oc, isAuroraStyle: Ir, isAskAnythingStyle: Jn, orbMeta: Lr, useOrbAvatar: ac, orbStyle: lc, THEME_CLASS_MAP: io, themeClass: cc, showCitations: uc, shouldCollectEmail: oo, containerStyles: fc, shouldShowWelcomeMessage: hc, get isValidEmail() {
       return zs;
     } };
     return Object.defineProperty(ao, "__isScriptSetup", { enumerable: !1, value: !0 }), ao;
   }
-}), tp = (t, e) => {
+}), np = (t, e) => {
   const n = t.__vccOpts || t;
   for (const [s, r] of e)
     n[s] = r;
   return n;
-}, np = {
+}, sp = {
   key: 0,
   class: "widget-unavailable-overlay"
-}, sp = {
+}, rp = {
   key: 1,
   class: "auth-error-overlay"
-}, rp = { class: "auth-error-card" }, ip = { class: "auth-error-message" }, op = {
+}, ip = { class: "auth-error-card" }, op = { class: "auth-error-message" }, ap = {
   key: 0,
   class: "initializing-overlay"
-}, ap = {
+}, lp = {
   key: 0,
   class: "connecting-message"
-}, lp = {
+}, cp = {
   key: 1,
   class: "failed-message"
-}, cp = { class: "welcome-content" }, up = { class: "welcome-header" }, fp = ["src", "alt"], hp = { class: "welcome-title" }, dp = { class: "welcome-subtitle" }, pp = { class: "welcome-input-container" }, gp = {
+}, up = { class: "welcome-content" }, fp = { class: "welcome-header" }, hp = ["src", "alt"], dp = { class: "welcome-title" }, pp = { class: "welcome-subtitle" }, gp = { class: "welcome-input-container" }, mp = {
   key: 0,
   class: "email-input"
-}, mp = ["disabled"], _p = { class: "welcome-message-input" }, yp = ["placeholder", "disabled"], bp = ["disabled"], vp = {
+}, _p = ["disabled"], yp = { class: "welcome-message-input" }, bp = ["placeholder", "disabled"], vp = ["disabled"], wp = {
   key: 0,
   width: "20",
   height: "20",
   viewBox: "0 0 24 24",
   fill: "none",
   xmlns: "http://www.w3.org/2000/svg"
-}, wp = {
+}, kp = {
   key: 1,
   width: "20",
   height: "20",
   viewBox: "0 0 24 24",
   fill: "none",
   xmlns: "http://www.w3.org/2000/svg"
-}, kp = { class: "landing-page-content" }, xp = { class: "landing-page-header" }, Sp = { class: "landing-page-heading" }, Ap = { class: "landing-page-text" }, Tp = { class: "landing-page-actions" }, Ep = { class: "form-fullscreen-content" }, Cp = {
+}, xp = { class: "landing-page-content" }, Sp = { class: "landing-page-header" }, Ap = { class: "landing-page-heading" }, Tp = { class: "landing-page-text" }, Ep = { class: "landing-page-actions" }, Cp = { class: "form-fullscreen-content" }, Rp = {
   key: 0,
   class: "form-header"
-}, Rp = {
+}, Ip = {
   key: 0,
   class: "form-title"
-}, Ip = {
+}, Lp = {
   key: 1,
   class: "form-description"
-}, Lp = { class: "form-fields" }, Op = ["for"], Fp = {
+}, Op = { class: "form-fields" }, Fp = ["for"], Pp = {
   key: 0,
   class: "required-indicator"
-}, Pp = ["id", "type", "placeholder", "required", "minlength", "maxlength", "value", "onInput", "onBlur", "autocomplete", "inputmode"], Dp = ["id", "placeholder", "required", "min", "max", "value", "onInput"], Np = ["id", "placeholder", "required", "minlength", "maxlength", "value", "onInput"], Mp = ["id", "required", "value", "onChange"], Bp = { value: "" }, Up = ["value"], zp = {
+}, Dp = ["id", "type", "placeholder", "required", "minlength", "maxlength", "value", "onInput", "onBlur", "autocomplete", "inputmode"], Np = ["id", "placeholder", "required", "min", "max", "value", "onInput"], Mp = ["id", "placeholder", "required", "minlength", "maxlength", "value", "onInput"], Bp = ["id", "required", "value", "onChange"], Up = { value: "" }, zp = ["value"], Hp = {
   key: 4,
   class: "checkbox-field"
-}, Hp = ["id", "required", "checked", "onChange"], Wp = { class: "checkbox-label" }, qp = {
+}, Wp = ["id", "required", "checked", "onChange"], qp = { class: "checkbox-label" }, jp = {
   key: 5,
   class: "radio-group"
-}, jp = ["name", "value", "required", "checked", "onChange"], Vp = { class: "radio-label" }, Kp = {
+}, Vp = ["name", "value", "required", "checked", "onChange"], Kp = { class: "radio-label" }, Gp = {
   key: 6,
   class: "field-error"
-}, Gp = { class: "form-actions" }, Yp = ["disabled"], $p = {
+}, Yp = { class: "form-actions" }, $p = ["disabled"], Xp = {
   key: 0,
   class: "loading-spinner-inline"
-}, Xp = { key: 1 }, Zp = { class: "header-content" }, Jp = ["src", "alt"], Qp = { class: "header-info" }, eg = { class: "status" }, tg = { class: "ask-anything-header" }, ng = ["src", "alt"], sg = { class: "header-info" }, rg = {
+}, Zp = { key: 1 }, Jp = { class: "header-content" }, Qp = ["src", "alt"], eg = { class: "header-info" }, tg = { class: "status" }, ng = { class: "ask-anything-header" }, sg = ["src", "alt"], rg = { class: "header-info" }, ig = {
   key: 2,
   class: "loading-history"
-}, ig = {
+}, og = {
   class: "chat-messages",
   ref: "messagesContainer"
-}, og = {
+}, ag = {
   key: 0,
   class: "rating-content"
-}, ag = { class: "rating-prompt" }, lg = ["onMouseover", "onMouseleave", "onClick", "disabled"], cg = {
+}, lg = { class: "rating-prompt" }, cg = ["onMouseover", "onMouseleave", "onClick", "disabled"], ug = {
   key: 0,
   class: "feedback-wrapper"
-}, ug = { class: "feedback-section" }, fg = ["onUpdate:modelValue", "disabled"], hg = { class: "feedback-counter" }, dg = ["onClick", "disabled"], pg = {
+}, fg = { class: "feedback-section" }, hg = ["onUpdate:modelValue", "disabled"], dg = { class: "feedback-counter" }, pg = ["onClick", "disabled"], gg = {
   key: 1,
   class: "submitted-feedback-wrapper"
-}, gg = { class: "submitted-feedback" }, mg = { class: "submitted-feedback-text" }, _g = {
+}, mg = { class: "submitted-feedback" }, _g = { class: "submitted-feedback-text" }, yg = {
   key: 2,
   class: "submitted-message"
-}, yg = {
+}, bg = {
   key: 1,
   class: "form-content"
-}, bg = {
-  key: 0,
-  class: "form-header"
 }, vg = {
   key: 0,
-  class: "form-title"
+  class: "form-header"
 }, wg = {
+  key: 0,
+  class: "form-title"
+}, kg = {
   key: 1,
   class: "form-description"
-}, kg = { class: "form-fields" }, xg = ["for"], Sg = {
+}, xg = { class: "form-fields" }, Sg = ["for"], Ag = {
   key: 0,
   class: "required-indicator"
-}, Ag = ["id", "type", "placeholder", "required", "minlength", "maxlength", "value", "onInput", "onBlur", "disabled", "autocomplete", "inputmode"], Tg = ["id", "placeholder", "required", "min", "max", "value", "onInput", "disabled"], Eg = ["id", "placeholder", "required", "minlength", "maxlength", "value", "onInput", "disabled"], Cg = ["id", "required", "value", "onChange", "disabled"], Rg = { value: "" }, Ig = ["value"], Lg = {
+}, Tg = ["id", "type", "placeholder", "required", "minlength", "maxlength", "value", "onInput", "onBlur", "disabled", "autocomplete", "inputmode"], Eg = ["id", "placeholder", "required", "min", "max", "value", "onInput", "disabled"], Cg = ["id", "placeholder", "required", "minlength", "maxlength", "value", "onInput", "disabled"], Rg = ["id", "required", "value", "onChange", "disabled"], Ig = { value: "" }, Lg = ["value"], Og = {
   key: 4,
   class: "checkbox-field"
-}, Og = ["id", "checked", "onChange", "disabled"], Fg = ["for"], Pg = {
+}, Fg = ["id", "checked", "onChange", "disabled"], Pg = ["for"], Dg = {
   key: 5,
   class: "radio-field"
-}, Dg = ["id", "name", "value", "checked", "onChange", "disabled"], Ng = ["for"], Mg = {
+}, Ng = ["id", "name", "value", "checked", "onChange", "disabled"], Mg = ["for"], Bg = {
   key: 6,
   class: "field-error"
-}, Bg = { class: "form-actions" }, Ug = ["onClick", "disabled"], zg = {
+}, Ug = { class: "form-actions" }, zg = ["onClick", "disabled"], Hg = {
   key: 2,
   class: "user-input-content"
-}, Hg = {
+}, Wg = {
   key: 0,
   class: "user-input-prompt"
-}, Wg = {
+}, qg = {
   key: 1,
   class: "user-input-form"
-}, qg = ["onUpdate:modelValue", "onKeydown"], jg = ["onClick", "disabled"], Vg = {
+}, jg = ["onUpdate:modelValue", "onKeydown"], Vg = ["onClick", "disabled"], Kg = {
   key: 2,
   class: "user-input-submitted"
-}, Kg = {
+}, Gg = {
   key: 0,
   class: "user-input-confirmation"
-}, Gg = {
+}, Yg = {
   key: 3,
   class: "product-message-container"
-}, Yg = ["innerHTML"], $g = {
+}, $g = ["innerHTML"], Xg = {
   key: 1,
   class: "products-carousel"
-}, Xg = { class: "carousel-items" }, Zg = {
+}, Zg = { class: "carousel-items" }, Jg = {
   key: 0,
   class: "product-image-compact"
-}, Jg = ["src", "alt"], Qg = { class: "product-info-compact" }, em = { class: "product-text-area" }, tm = { class: "product-title-compact" }, nm = {
+}, Qg = ["src", "alt"], em = { class: "product-info-compact" }, tm = { class: "product-text-area" }, nm = { class: "product-title-compact" }, sm = {
   key: 0,
   class: "product-variant-compact"
-}, sm = { class: "product-price-compact" }, rm = { class: "product-actions-compact" }, im = ["onClick"], om = {
+}, rm = { class: "product-price-compact" }, im = { class: "product-actions-compact" }, om = ["onClick"], am = {
   key: 2,
   class: "no-products-message"
-}, am = {
+}, lm = {
   key: 3,
   class: "no-products-message"
-}, lm = ["innerHTML"], cm = {
+}, cm = ["innerHTML"], um = {
   key: 0,
   class: "message-attachments"
-}, um = {
+}, fm = {
   key: 0,
   class: "attachment-image-container"
-}, fm = ["src", "alt", "onClick"], hm = { class: "attachment-image-info" }, dm = ["href"], pm = { class: "attachment-size" }, gm = ["href"], mm = { class: "attachment-size" }, _m = {
+}, hm = ["src", "alt", "onClick"], dm = { class: "attachment-image-info" }, pm = ["href"], gm = { class: "attachment-size" }, mm = ["href"], _m = { class: "attachment-size" }, ym = {
   key: 0,
   class: "citation-chips"
-}, ym = ["title"], bm = { class: "message-info" }, vm = {
+}, bm = ["title"], vm = { class: "message-info" }, wm = {
   key: 0,
   class: "agent-name"
-}, wm = {
-  key: 0,
-  class: "typing-indicator reading-indicator"
 }, km = {
   key: 0,
+  class: "typing-indicator reading-indicator"
+}, xm = {
+  key: 0,
   class: "email-input"
-}, xm = ["disabled"], Sm = {
+}, Sm = ["disabled"], Am = {
   key: 1,
   class: "file-previews-widget"
-}, Am = {
+}, Tm = {
   class: "file-preview-content-widget",
   style: { cursor: "pointer" }
-}, Tm = ["src", "alt", "onClick"], Em = ["onClick"], Cm = { class: "file-preview-info-widget" }, Rm = { class: "file-preview-name-widget" }, Im = { class: "file-preview-size-widget" }, Lm = ["onClick"], Om = {
+}, Em = ["src", "alt", "onClick"], Cm = ["onClick"], Rm = { class: "file-preview-info-widget" }, Im = { class: "file-preview-name-widget" }, Lm = { class: "file-preview-size-widget" }, Om = ["onClick"], Fm = {
   key: 2,
   class: "upload-progress-widget"
-}, Fm = { class: "message-input" }, Pm = ["placeholder", "disabled"], Dm = ["disabled", "title"], Nm = ["disabled"], Mm = { class: "conversation-ended-message" }, Bm = {
+}, Pm = { class: "message-input" }, Dm = ["placeholder", "disabled"], Nm = ["disabled", "title"], Mm = ["disabled"], Bm = { class: "conversation-ended-message" }, Um = {
   key: 7,
   class: "rating-dialog"
-}, Um = { class: "rating-content" }, zm = { class: "star-rating" }, Hm = ["onClick"], Wm = { class: "rating-actions" }, qm = ["disabled"], jm = {
+}, zm = { class: "rating-content" }, Hm = { class: "star-rating" }, Wm = ["onClick"], qm = { class: "rating-actions" }, jm = ["disabled"], Vm = {
   key: 0,
   class: "preview-modal-image-container"
-}, Vm = ["src", "alt"], Km = { class: "preview-modal-filename" }, Gm = {
+}, Km = ["src", "alt"], Gm = { class: "preview-modal-filename" }, Ym = {
   key: 3,
   class: "widget-loading"
 };
-function Ym(t, e, n, s, r, o) {
-  return s.showAuthError && s.isApiKeyAuthRequired ? (R(), I("div", np, e[18] || (e[18] = [
+function $m(t, e, n, s, r, o) {
+  return s.showAuthError && s.isApiKeyAuthRequired ? (R(), I("div", sp, e[18] || (e[18] = [
     Rn('<div class="widget-unavailable-card" data-v-a3601fa3><div class="widget-unavailable-icon-wrapper" data-v-a3601fa3><svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" data-v-a3601fa3><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" data-v-a3601fa3></path><path d="M9 12l2 2 4-4" data-v-a3601fa3></path></svg></div><h2 class="widget-unavailable-title" data-v-a3601fa3>Chat Unavailable</h2><p class="widget-unavailable-message" data-v-a3601fa3> This chat widget is not currently configured. Please contact the website administrator to enable chat support. </p><div class="widget-unavailable-footer" data-v-a3601fa3><svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-a3601fa3><rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E" data-v-a3601fa3></rect><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-a3601fa3></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-a3601fa3></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-a3601fa3></circle></svg><span data-v-a3601fa3>Powered by ChatterMate</span></div></div>', 1)
-  ]))) : s.showAuthError ? (R(), I("div", sp, [
-    v("div", rp, [
+  ]))) : s.showAuthError ? (R(), I("div", rp, [
+    v("div", ip, [
       e[19] || (e[19] = Rn('<div class="auth-error-header" data-v-a3601fa3><svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-v-a3601fa3><circle cx="12" cy="12" r="10" data-v-a3601fa3></circle><line x1="12" y1="8" x2="12" y2="12" data-v-a3601fa3></line><line x1="12" y1="16" x2="12.01" y2="16" data-v-a3601fa3></line></svg><h2 data-v-a3601fa3>Authentication Error</h2></div>', 1)),
-      v("p", ip, ae(s.authError), 1),
+      v("p", op, ae(s.authError), 1),
       v("button", {
         class: "auth-error-refresh-btn",
         onClick: e[0] || (e[0] = () => t.window.location.reload())
@@ -10374,21 +10374,21 @@ function Ym(t, e, n, s, r, o) {
     class: Ge(["chat-container", [{ collapsed: !s.isExpanded, "ask-anything-style": s.isAskAnythingStyle, aurora: s.isAuroraStyle }, s.themeClass]]),
     style: Ne({ ...s.shadowStyle, ...s.containerStyles, "--cm-accent": s.customization.accent_color || "#C9F24E" })
   }, [
-    s.isInitializing ? (R(), I("div", op, e[20] || (e[20] = [
+    s.isInitializing ? (R(), I("div", ap, e[20] || (e[20] = [
       Rn('<div class="loading-spinner" data-v-a3601fa3><div class="dot" data-v-a3601fa3></div><div class="dot" data-v-a3601fa3></div><div class="dot" data-v-a3601fa3></div></div><div class="loading-text" data-v-a3601fa3>Initializing chat...</div>', 2)
     ]))) : pe("", !0),
     !s.isInitializing && s.connectionStatus !== "connected" ? (R(), I("div", {
       key: 1,
       class: Ge(["connection-status", s.connectionStatus])
     }, [
-      s.connectionStatus === "connecting" ? (R(), I("div", ap, e[21] || (e[21] = [
+      s.connectionStatus === "connecting" ? (R(), I("div", lp, e[21] || (e[21] = [
         Qt(" Connecting to chat service... ", -1),
         v("div", { class: "loading-dots" }, [
           v("div", { class: "dot" }),
           v("div", { class: "dot" }),
           v("div", { class: "dot" })
         ], -1)
-      ]))) : s.connectionStatus === "failed" ? (R(), I("div", lp, [
+      ]))) : s.connectionStatus === "failed" ? (R(), I("div", cp, [
         e[22] || (e[22] = Qt(" Connection failed. ", -1)),
         v("button", {
           onClick: s.handleReconnect,
@@ -10406,8 +10406,8 @@ function Ym(t, e, n, s, r, o) {
       class: Ge(["welcome-message-section", { aurora: s.isAuroraStyle }]),
       style: Ne(s.chatStyles)
     }, [
-      v("div", cp, [
-        v("div", up, [
+      v("div", up, [
+        v("div", fp, [
           s.useOrbAvatar ? (R(), I("div", {
             key: 0,
             class: "welcome-orb",
@@ -10417,13 +10417,13 @@ function Ym(t, e, n, s, r, o) {
             src: s.photoUrl,
             alt: s.agentName,
             class: "welcome-avatar"
-          }, null, 8, fp)) : pe("", !0),
-          v("h1", hp, ae(s.customization.welcome_title || `Welcome to ${s.agentName}`), 1),
-          v("p", dp, ae(s.customization.welcome_subtitle || "I'm here to help you with anything you need. What can I assist you with today?"), 1)
+          }, null, 8, hp)) : pe("", !0),
+          v("h1", dp, ae(s.customization.welcome_title || `Welcome to ${s.agentName}`), 1),
+          v("p", pp, ae(s.customization.welcome_subtitle || "I'm here to help you with anything you need. What can I assist you with today?"), 1)
         ])
       ]),
-      v("div", pp, [
-        !s.hasStartedChat && !s.hasConversationToken && s.shouldCollectEmail ? (R(), I("div", gp, [
+      v("div", gp, [
+        !s.hasStartedChat && !s.hasConversationToken && s.shouldCollectEmail ? (R(), I("div", mp, [
           Tn(v("input", {
             "onUpdate:modelValue": e[1] || (e[1] = (i) => s.emailInput = i),
             type: "email",
@@ -10433,11 +10433,11 @@ function Ym(t, e, n, s, r, o) {
               invalid: s.emailInput.trim() && !s.isValidEmail(s.emailInput.trim()),
               disabled: s.connectionStatus !== "connected"
             }, "welcome-email-input"])
-          }, null, 10, mp), [
+          }, null, 10, _p), [
             [In, s.emailInput]
           ])
         ])) : pe("", !0),
-        v("div", _p, [
+        v("div", yp, [
           Tn(v("input", {
             "onUpdate:modelValue": e[2] || (e[2] = (i) => s.newMessage = i),
             type: "text",
@@ -10447,7 +10447,7 @@ function Ym(t, e, n, s, r, o) {
             onChange: s.handleInputSync,
             disabled: !s.isMessageInputEnabled,
             class: Ge([{ disabled: !s.isMessageInputEnabled }, "welcome-message-field"])
-          }, null, 42, yp), [
+          }, null, 42, bp), [
             [In, s.newMessage]
           ]),
           v("button", {
@@ -10456,7 +10456,7 @@ function Ym(t, e, n, s, r, o) {
             onClick: s.sendMessage,
             disabled: !s.newMessage.trim() || !s.isMessageInputEnabled
           }, [
-            s.isAuroraStyle ? (R(), I("svg", vp, e[23] || (e[23] = [
+            s.isAuroraStyle ? (R(), I("svg", wp, e[23] || (e[23] = [
               v("path", {
                 d: "M12 19V5M12 5L5 12M12 5L19 12",
                 stroke: "currentColor",
@@ -10464,7 +10464,7 @@ function Ym(t, e, n, s, r, o) {
                 "stroke-linecap": "round",
                 "stroke-linejoin": "round"
               }, null, -1)
-            ]))) : (R(), I("svg", wp, e[24] || (e[24] = [
+            ]))) : (R(), I("svg", kp, e[24] || (e[24] = [
               v("path", {
                 d: "M5 12L3 21L21 12L3 3L5 12ZM5 12L13 12",
                 stroke: "currentColor",
@@ -10473,7 +10473,7 @@ function Ym(t, e, n, s, r, o) {
                 "stroke-linejoin": "round"
               }, null, -1)
             ])))
-          ], 14, bp)
+          ], 14, vp)
         ])
       ]),
       v("div", {
@@ -10488,12 +10488,12 @@ function Ym(t, e, n, s, r, o) {
       class: "landing-page-fullscreen",
       style: Ne(s.chatStyles)
     }, [
-      v("div", kp, [
-        v("div", xp, [
-          v("h2", Sp, ae(s.landingPageData.heading), 1),
-          v("div", Ap, ae(s.landingPageData.content), 1)
+      v("div", xp, [
+        v("div", Sp, [
+          v("h2", Ap, ae(s.landingPageData.heading), 1),
+          v("div", Tp, ae(s.landingPageData.content), 1)
         ]),
-        v("div", Tp, [
+        v("div", Ep, [
           v("button", {
             class: "landing-page-button",
             onClick: s.handleLandingPageProceed
@@ -10511,12 +10511,12 @@ function Ym(t, e, n, s, r, o) {
       class: "form-fullscreen",
       style: Ne(s.chatStyles)
     }, [
-      v("div", Ep, [
-        s.fullScreenFormData.title || s.fullScreenFormData.description ? (R(), I("div", Cp, [
-          s.fullScreenFormData.title ? (R(), I("h2", Rp, ae(s.fullScreenFormData.title), 1)) : pe("", !0),
-          s.fullScreenFormData.description ? (R(), I("p", Ip, ae(s.fullScreenFormData.description), 1)) : pe("", !0)
+      v("div", Cp, [
+        s.fullScreenFormData.title || s.fullScreenFormData.description ? (R(), I("div", Rp, [
+          s.fullScreenFormData.title ? (R(), I("h2", Ip, ae(s.fullScreenFormData.title), 1)) : pe("", !0),
+          s.fullScreenFormData.description ? (R(), I("p", Lp, ae(s.fullScreenFormData.description), 1)) : pe("", !0)
         ])) : pe("", !0),
-        v("div", Lp, [
+        v("div", Op, [
           (R(!0), I(Qe, null, Rt(s.fullScreenFormData.fields, (i) => {
             var a, l;
             return R(), I("div", {
@@ -10528,8 +10528,8 @@ function Ym(t, e, n, s, r, o) {
                 class: "field-label"
               }, [
                 Qt(ae(i.label) + " ", 1),
-                i.required ? (R(), I("span", Fp, "*")) : pe("", !0)
-              ], 8, Op),
+                i.required ? (R(), I("span", Pp, "*")) : pe("", !0)
+              ], 8, Fp),
               i.type === "text" || i.type === "email" || i.type === "tel" ? (R(), I("input", {
                 key: 0,
                 id: `fullscreen-form-${i.name}`,
@@ -10544,7 +10544,7 @@ function Ym(t, e, n, s, r, o) {
                 class: Ge(["form-input", { error: s.formErrors[i.name] }]),
                 autocomplete: i.type === "email" ? "email" : i.type === "tel" ? "tel" : "off",
                 inputmode: i.type === "tel" ? "tel" : i.type === "email" ? "email" : "text"
-              }, null, 42, Pp)) : i.type === "number" ? (R(), I("input", {
+              }, null, 42, Dp)) : i.type === "number" ? (R(), I("input", {
                 key: 1,
                 id: `fullscreen-form-${i.name}`,
                 type: "number",
@@ -10555,7 +10555,7 @@ function Ym(t, e, n, s, r, o) {
                 value: s.formData[i.name] || "",
                 onInput: (c) => s.handleFieldChange(i.name, c.target.value),
                 class: Ge(["form-input", { error: s.formErrors[i.name] }])
-              }, null, 42, Dp)) : i.type === "textarea" ? (R(), I("textarea", {
+              }, null, 42, Np)) : i.type === "textarea" ? (R(), I("textarea", {
                 key: 2,
                 id: `fullscreen-form-${i.name}`,
                 placeholder: i.placeholder || "",
@@ -10566,7 +10566,7 @@ function Ym(t, e, n, s, r, o) {
                 onInput: (c) => s.handleFieldChange(i.name, c.target.value),
                 class: Ge(["form-textarea", { error: s.formErrors[i.name] }]),
                 rows: "4"
-              }, null, 42, Np)) : i.type === "select" ? (R(), I("select", {
+              }, null, 42, Mp)) : i.type === "select" ? (R(), I("select", {
                 key: 3,
                 id: `fullscreen-form-${i.name}`,
                 required: i.required,
@@ -10574,13 +10574,13 @@ function Ym(t, e, n, s, r, o) {
                 onChange: (c) => s.handleFieldChange(i.name, c.target.value),
                 class: Ge(["form-select", { error: s.formErrors[i.name] }])
               }, [
-                v("option", Bp, ae(i.placeholder || "Please select..."), 1),
+                v("option", Up, ae(i.placeholder || "Please select..."), 1),
                 (R(!0), I(Qe, null, Rt((Array.isArray(i.options) ? i.options : ((a = i.options) == null ? void 0 : a.split(`
 `)) || []).filter((c) => c.trim()), (c) => (R(), I("option", {
                   key: c,
                   value: c.trim()
-                }, ae(c.trim()), 9, Up))), 128))
-              ], 42, Mp)) : i.type === "checkbox" ? (R(), I("label", zp, [
+                }, ae(c.trim()), 9, zp))), 128))
+              ], 42, Bp)) : i.type === "checkbox" ? (R(), I("label", Hp, [
                 v("input", {
                   id: `fullscreen-form-${i.name}`,
                   type: "checkbox",
@@ -10588,9 +10588,9 @@ function Ym(t, e, n, s, r, o) {
                   checked: s.formData[i.name] || !1,
                   onChange: (c) => s.handleFieldChange(i.name, c.target.checked),
                   class: "form-checkbox"
-                }, null, 40, Hp),
-                v("span", Wp, ae(i.label), 1)
-              ])) : i.type === "radio" ? (R(), I("div", qp, [
+                }, null, 40, Wp),
+                v("span", qp, ae(i.label), 1)
+              ])) : i.type === "radio" ? (R(), I("div", jp, [
                 (R(!0), I(Qe, null, Rt((Array.isArray(i.options) ? i.options : ((l = i.options) == null ? void 0 : l.split(`
 `)) || []).filter((c) => c.trim()), (c) => (R(), I("label", {
                   key: c,
@@ -10604,15 +10604,15 @@ function Ym(t, e, n, s, r, o) {
                     checked: s.formData[i.name] === c.trim(),
                     onChange: (u) => s.handleFieldChange(i.name, c.trim()),
                     class: "form-radio"
-                  }, null, 40, jp),
-                  v("span", Vp, ae(c.trim()), 1)
+                  }, null, 40, Vp),
+                  v("span", Kp, ae(c.trim()), 1)
                 ]))), 128))
               ])) : pe("", !0),
-              s.formErrors[i.name] ? (R(), I("div", Kp, ae(s.formErrors[i.name]), 1)) : pe("", !0)
+              s.formErrors[i.name] ? (R(), I("div", Gp, ae(s.formErrors[i.name]), 1)) : pe("", !0)
             ]);
           }), 128))
         ]),
-        v("div", Gp, [
+        v("div", Yp, [
           v("button", {
             onClick: e[3] || (e[3] = () => {
               console.log("Submit button clicked!"), s.submitFullScreenForm();
@@ -10621,12 +10621,12 @@ function Ym(t, e, n, s, r, o) {
             class: "submit-form-button",
             style: Ne(s.userBubbleStyles)
           }, [
-            s.isSubmittingForm ? (R(), I("span", $p, e[27] || (e[27] = [
+            s.isSubmittingForm ? (R(), I("span", Xp, e[27] || (e[27] = [
               v("div", { class: "dot" }, null, -1),
               v("div", { class: "dot" }, null, -1),
               v("div", { class: "dot" }, null, -1)
-            ]))) : (R(), I("span", Xp, ae(s.fullScreenFormData.submit_button_text || "Submit"), 1))
-          ], 12, Yp)
+            ]))) : (R(), I("span", Zp, ae(s.fullScreenFormData.submit_button_text || "Submit"), 1))
+          ], 12, $p)
         ])
       ]),
       v("div", {
@@ -10646,14 +10646,14 @@ function Ym(t, e, n, s, r, o) {
           class: "ask-anything-top",
           style: Ne(s.headerBorderStyles)
         }, [
-          v("div", tg, [
+          v("div", ng, [
             s.humanAgentPhotoUrl || s.photoUrl ? (R(), I("img", {
               key: 0,
               src: s.humanAgentPhotoUrl || s.photoUrl,
               alt: s.humanAgent.human_agent_name || s.agentName,
               class: "header-avatar"
-            }, null, 8, ng)) : pe("", !0),
-            v("div", sg, [
+            }, null, 8, sg)) : pe("", !0),
+            v("div", rg, [
               v("h3", {
                 style: Ne(s.messageNameStyles)
               }, ae(s.agentName), 5),
@@ -10668,18 +10668,18 @@ function Ym(t, e, n, s, r, o) {
           class: "chat-header",
           style: Ne(s.headerBorderStyles)
         }, [
-          v("div", Zp, [
+          v("div", Jp, [
             s.humanAgentPhotoUrl || s.photoUrl ? (R(), I("img", {
               key: 0,
               src: s.humanAgentPhotoUrl || s.photoUrl,
               alt: s.humanAgent.human_agent_name || s.agentName,
               class: "header-avatar"
-            }, null, 8, Jp)) : pe("", !0),
-            v("div", Qp, [
+            }, null, 8, Qp)) : pe("", !0),
+            v("div", eg, [
               v("h3", {
                 style: Ne(s.messageNameStyles)
               }, ae(s.humanAgent.human_agent_name || s.agentName), 5),
-              v("div", eg, [
+              v("div", tg, [
                 e[29] || (e[29] = v("span", { class: "status-indicator online" }, null, -1)),
                 v("span", {
                   class: "status-text",
@@ -10689,14 +10689,14 @@ function Ym(t, e, n, s, r, o) {
             ])
           ])
         ], 4)),
-        s.loadingHistory ? (R(), I("div", rg, e[30] || (e[30] = [
+        s.loadingHistory ? (R(), I("div", ig, e[30] || (e[30] = [
           v("div", { class: "loading-spinner" }, [
             v("div", { class: "dot" }),
             v("div", { class: "dot" }),
             v("div", { class: "dot" })
           ], -1)
         ]))) : pe("", !0),
-        v("div", ig, [
+        v("div", og, [
           (R(!0), I(Qe, null, Rt(s.messages, (i, a) => {
             var l, c, u, y, p, L, B, V, Te, se, ce, he, U, z, $, Y, we, Ee, Fe;
             return R(), I("div", {
@@ -10710,8 +10710,8 @@ function Ym(t, e, n, s, r, o) {
                 class: "message-bubble",
                 style: Ne(i.message_type === "system" || i.message_type === "rating" || i.message_type === "product" || i.shopify_output ? {} : i.message_type === "user" ? s.userBubbleStyles : s.agentBubbleStyles)
               }, [
-                i.message_type === "rating" ? (R(), I("div", og, [
-                  v("p", ag, "Rate the chat session that you had with " + ae(i.agent_name || s.humanAgent.human_agent_name || s.agentName || "our agent"), 1),
+                i.message_type === "rating" ? (R(), I("div", ag, [
+                  v("p", lg, "Rate the chat session that you had with " + ae(i.agent_name || s.humanAgent.human_agent_name || s.agentName || "our agent"), 1),
                   v("div", {
                     class: Ge(["star-rating", { submitted: s.isSubmittingRating || i.isSubmitted }])
                   }, [
@@ -10726,39 +10726,39 @@ function Ym(t, e, n, s, r, o) {
                       onMouseleave: (te) => !i.isSubmitted && s.handleStarLeave,
                       onClick: (te) => !i.isSubmitted && s.handleStarClick(b),
                       disabled: s.isSubmittingRating || i.isSubmitted
-                    }, " ★ ", 42, lg)), 64))
+                    }, " ★ ", 42, cg)), 64))
                   ], 2),
-                  i.showFeedback && !i.isSubmitted ? (R(), I("div", cg, [
-                    v("div", ug, [
+                  i.showFeedback && !i.isSubmitted ? (R(), I("div", ug, [
+                    v("div", fg, [
                       Tn(v("input", {
                         "onUpdate:modelValue": (b) => i.feedback = b,
                         placeholder: "Please share your feedback (optional)",
                         disabled: s.isSubmittingRating,
                         maxlength: "500",
                         class: "feedback-input"
-                      }, null, 8, fg), [
+                      }, null, 8, hg), [
                         [In, i.feedback]
                       ]),
-                      v("div", hg, ae(((l = i.feedback) == null ? void 0 : l.length) || 0) + "/500", 1)
+                      v("div", dg, ae(((l = i.feedback) == null ? void 0 : l.length) || 0) + "/500", 1)
                     ]),
                     v("button", {
                       onClick: (b) => s.handleSubmitRating(i.session_id, s.hoverRating, i.feedback),
                       disabled: s.isSubmittingRating || !s.hoverRating,
                       class: "submit-rating-button",
                       style: Ne({ backgroundColor: s.customization.accent_color || "var(--accent-solid)" })
-                    }, ae(s.isSubmittingRating ? "Submitting..." : "Submit Rating"), 13, dg)
+                    }, ae(s.isSubmittingRating ? "Submitting..." : "Submit Rating"), 13, pg)
                   ])) : pe("", !0),
-                  i.isSubmitted && i.finalFeedback ? (R(), I("div", pg, [
-                    v("div", gg, [
-                      v("p", mg, ae(i.finalFeedback), 1)
+                  i.isSubmitted && i.finalFeedback ? (R(), I("div", gg, [
+                    v("div", mg, [
+                      v("p", _g, ae(i.finalFeedback), 1)
                     ])
-                  ])) : i.isSubmitted ? (R(), I("div", _g, " Thank you for your rating! ")) : pe("", !0)
-                ])) : i.message_type === "form" ? (R(), I("div", yg, [
-                  (u = (c = i.attributes) == null ? void 0 : c.form_data) != null && u.title || (p = (y = i.attributes) == null ? void 0 : y.form_data) != null && p.description ? (R(), I("div", bg, [
-                    (B = (L = i.attributes) == null ? void 0 : L.form_data) != null && B.title ? (R(), I("h3", vg, ae(i.attributes.form_data.title), 1)) : pe("", !0),
-                    (Te = (V = i.attributes) == null ? void 0 : V.form_data) != null && Te.description ? (R(), I("p", wg, ae(i.attributes.form_data.description), 1)) : pe("", !0)
+                  ])) : i.isSubmitted ? (R(), I("div", yg, " Thank you for your rating! ")) : pe("", !0)
+                ])) : i.message_type === "form" ? (R(), I("div", bg, [
+                  (u = (c = i.attributes) == null ? void 0 : c.form_data) != null && u.title || (p = (y = i.attributes) == null ? void 0 : y.form_data) != null && p.description ? (R(), I("div", vg, [
+                    (B = (L = i.attributes) == null ? void 0 : L.form_data) != null && B.title ? (R(), I("h3", wg, ae(i.attributes.form_data.title), 1)) : pe("", !0),
+                    (Te = (V = i.attributes) == null ? void 0 : V.form_data) != null && Te.description ? (R(), I("p", kg, ae(i.attributes.form_data.description), 1)) : pe("", !0)
                   ])) : pe("", !0),
-                  v("div", kg, [
+                  v("div", xg, [
                     (R(!0), I(Qe, null, Rt((ce = (se = i.attributes) == null ? void 0 : se.form_data) == null ? void 0 : ce.fields, (b) => {
                       var te, Ce;
                       return R(), I("div", {
@@ -10770,8 +10770,8 @@ function Ym(t, e, n, s, r, o) {
                           class: "field-label"
                         }, [
                           Qt(ae(b.label) + " ", 1),
-                          b.required ? (R(), I("span", Sg, "*")) : pe("", !0)
-                        ], 8, xg),
+                          b.required ? (R(), I("span", Ag, "*")) : pe("", !0)
+                        ], 8, Sg),
                         b.type === "text" || b.type === "email" || b.type === "tel" ? (R(), I("input", {
                           key: 0,
                           id: `form-${b.name}`,
@@ -10787,7 +10787,7 @@ function Ym(t, e, n, s, r, o) {
                           disabled: s.isSubmittingForm,
                           autocomplete: b.type === "email" ? "email" : b.type === "tel" ? "tel" : "off",
                           inputmode: b.type === "tel" ? "tel" : b.type === "email" ? "email" : "text"
-                        }, null, 42, Ag)) : b.type === "number" ? (R(), I("input", {
+                        }, null, 42, Tg)) : b.type === "number" ? (R(), I("input", {
                           key: 1,
                           id: `form-${b.name}`,
                           type: "number",
@@ -10799,7 +10799,7 @@ function Ym(t, e, n, s, r, o) {
                           onInput: (X) => s.handleFieldChange(b.name, X.target.value),
                           class: Ge(["form-input", { error: s.formErrors[b.name] }]),
                           disabled: s.isSubmittingForm
-                        }, null, 42, Tg)) : b.type === "textarea" ? (R(), I("textarea", {
+                        }, null, 42, Eg)) : b.type === "textarea" ? (R(), I("textarea", {
                           key: 2,
                           id: `form-${b.name}`,
                           placeholder: b.placeholder || "",
@@ -10811,7 +10811,7 @@ function Ym(t, e, n, s, r, o) {
                           class: Ge(["form-textarea", { error: s.formErrors[b.name] }]),
                           disabled: s.isSubmittingForm,
                           rows: "3"
-                        }, null, 42, Eg)) : b.type === "select" ? (R(), I("select", {
+                        }, null, 42, Cg)) : b.type === "select" ? (R(), I("select", {
                           key: 3,
                           id: `form-${b.name}`,
                           required: b.required,
@@ -10820,13 +10820,13 @@ function Ym(t, e, n, s, r, o) {
                           class: Ge(["form-select", { error: s.formErrors[b.name] }]),
                           disabled: s.isSubmittingForm
                         }, [
-                          v("option", Rg, ae(b.placeholder || "Select an option"), 1),
+                          v("option", Ig, ae(b.placeholder || "Select an option"), 1),
                           (R(!0), I(Qe, null, Rt((Array.isArray(b.options) ? b.options : ((te = b.options) == null ? void 0 : te.split(`
 `)) || []).filter((X) => X.trim()), (X) => (R(), I("option", {
                             key: X.trim(),
                             value: X.trim()
-                          }, ae(X.trim()), 9, Ig))), 128))
-                        ], 42, Cg)) : b.type === "checkbox" ? (R(), I("div", Lg, [
+                          }, ae(X.trim()), 9, Lg))), 128))
+                        ], 42, Rg)) : b.type === "checkbox" ? (R(), I("div", Og, [
                           v("input", {
                             id: `form-${b.name}`,
                             type: "checkbox",
@@ -10834,12 +10834,12 @@ function Ym(t, e, n, s, r, o) {
                             onChange: (X) => s.handleFieldChange(b.name, X.target.checked),
                             class: "form-checkbox",
                             disabled: s.isSubmittingForm
-                          }, null, 40, Og),
+                          }, null, 40, Fg),
                           v("label", {
                             for: `form-${b.name}`,
                             class: "checkbox-label"
-                          }, ae(b.placeholder || b.label), 9, Fg)
-                        ])) : b.type === "radio" ? (R(), I("div", Pg, [
+                          }, ae(b.placeholder || b.label), 9, Pg)
+                        ])) : b.type === "radio" ? (R(), I("div", Dg, [
                           (R(!0), I(Qe, null, Rt((Array.isArray(b.options) ? b.options : ((Ce = b.options) == null ? void 0 : Ce.split(`
 `)) || []).filter((X) => X.trim()), (X) => (R(), I("div", {
                             key: X.trim(),
@@ -10854,18 +10854,18 @@ function Ym(t, e, n, s, r, o) {
                               onChange: ($e) => s.handleFieldChange(b.name, X.trim()),
                               class: "form-radio",
                               disabled: s.isSubmittingForm
-                            }, null, 40, Dg),
+                            }, null, 40, Ng),
                             v("label", {
                               for: `form-${b.name}-${X.trim()}`,
                               class: "radio-label"
-                            }, ae(X.trim()), 9, Ng)
+                            }, ae(X.trim()), 9, Mg)
                           ]))), 128))
                         ])) : pe("", !0),
-                        s.formErrors[b.name] ? (R(), I("div", Mg, ae(s.formErrors[b.name]), 1)) : pe("", !0)
+                        s.formErrors[b.name] ? (R(), I("div", Bg, ae(s.formErrors[b.name]), 1)) : pe("", !0)
                       ]);
                     }), 128))
                   ]),
-                  v("div", Bg, [
+                  v("div", Ug, [
                     v("button", {
                       onClick: () => {
                         var b;
@@ -10874,15 +10874,15 @@ function Ym(t, e, n, s, r, o) {
                       disabled: s.isSubmittingForm,
                       class: "form-submit-button",
                       style: Ne(s.userBubbleStyles)
-                    }, ae(s.isSubmittingForm ? "Submitting..." : ((U = (he = i.attributes) == null ? void 0 : he.form_data) == null ? void 0 : U.submit_button_text) || "Submit"), 13, Ug)
+                    }, ae(s.isSubmittingForm ? "Submitting..." : ((U = (he = i.attributes) == null ? void 0 : he.form_data) == null ? void 0 : U.submit_button_text) || "Submit"), 13, zg)
                   ])
-                ])) : i.message_type === "user_input" ? (R(), I("div", zg, [
-                  (z = i.attributes) != null && z.prompt_message && i.attributes.prompt_message.trim() ? (R(), I("div", Hg, ae(i.attributes.prompt_message), 1)) : pe("", !0),
-                  i.isSubmitted ? (R(), I("div", Vg, [
+                ])) : i.message_type === "user_input" ? (R(), I("div", Hg, [
+                  (z = i.attributes) != null && z.prompt_message && i.attributes.prompt_message.trim() ? (R(), I("div", Wg, ae(i.attributes.prompt_message), 1)) : pe("", !0),
+                  i.isSubmitted ? (R(), I("div", Kg, [
                     e[31] || (e[31] = v("strong", null, "Your input:", -1)),
                     Qt(" " + ae(i.submittedValue) + " ", 1),
-                    ($ = i.attributes) != null && $.confirmation_message && i.attributes.confirmation_message.trim() ? (R(), I("div", Kg, ae(i.attributes.confirmation_message), 1)) : pe("", !0)
-                  ])) : (R(), I("div", Wg, [
+                    ($ = i.attributes) != null && $.confirmation_message && i.attributes.confirmation_message.trim() ? (R(), I("div", Gg, ae(i.attributes.confirmation_message), 1)) : pe("", !0)
+                  ])) : (R(), I("div", qg, [
                     Tn(v("textarea", {
                       "onUpdate:modelValue": (b) => i.userInputValue = b,
                       class: "user-input-textarea",
@@ -10892,44 +10892,44 @@ function Ym(t, e, n, s, r, o) {
                         Uo(Mn((b) => s.handleUserInputSubmit(i), ["ctrl"]), ["enter"]),
                         Uo(Mn((b) => s.handleUserInputSubmit(i), ["meta"]), ["enter"])
                       ]
-                    }, null, 40, qg), [
+                    }, null, 40, jg), [
                       [In, i.userInputValue]
                     ]),
                     v("button", {
                       class: "user-input-submit-button",
                       onClick: (b) => s.handleUserInputSubmit(i),
                       disabled: !i.userInputValue || !i.userInputValue.trim()
-                    }, " Submit ", 8, jg)
+                    }, " Submit ", 8, Vg)
                   ]))
-                ])) : i.shopify_output || i.message_type === "product" ? (R(), I("div", Gg, [
+                ])) : i.shopify_output || i.message_type === "product" ? (R(), I("div", Yg, [
                   i.message ? (R(), I("div", {
                     key: 0,
                     innerHTML: s.renderMarkdown(((we = (Y = i.shopify_output) == null ? void 0 : Y.products) == null ? void 0 : we.length) > 0 ? s.removeUrls(i.message) : i.message),
                     class: "product-message-text"
-                  }, null, 8, Yg)) : pe("", !0),
-                  (Ee = i.shopify_output) != null && Ee.products && i.shopify_output.products.length > 0 ? (R(), I("div", $g, [
+                  }, null, 8, $g)) : pe("", !0),
+                  (Ee = i.shopify_output) != null && Ee.products && i.shopify_output.products.length > 0 ? (R(), I("div", Xg, [
                     e[33] || (e[33] = v("h3", { class: "carousel-title" }, "Products", -1)),
-                    v("div", Xg, [
+                    v("div", Zg, [
                       (R(!0), I(Qe, null, Rt(i.shopify_output.products, (b) => {
                         var te;
                         return R(), I("div", {
                           key: b.id,
                           class: "product-card-compact carousel-item"
                         }, [
-                          (te = b.image) != null && te.src ? (R(), I("div", Zg, [
+                          (te = b.image) != null && te.src ? (R(), I("div", Jg, [
                             v("img", {
                               src: b.image.src,
                               alt: b.title,
                               class: "product-thumbnail"
-                            }, null, 8, Jg)
+                            }, null, 8, Qg)
                           ])) : pe("", !0),
-                          v("div", Qg, [
-                            v("div", em, [
-                              v("div", tm, ae(b.title), 1),
-                              b.variant_title && b.variant_title !== "Default Title" ? (R(), I("div", nm, ae(b.variant_title), 1)) : pe("", !0),
-                              v("div", sm, ae(b.price_formatted || s.formatCurrency(b.price, b.currency)), 1)
+                          v("div", em, [
+                            v("div", tm, [
+                              v("div", nm, ae(b.title), 1),
+                              b.variant_title && b.variant_title !== "Default Title" ? (R(), I("div", sm, ae(b.variant_title), 1)) : pe("", !0),
+                              v("div", rm, ae(b.price_formatted || s.formatCurrency(b.price, b.currency)), 1)
                             ]),
-                            v("div", rm, [
+                            v("div", im, [
                               v("button", {
                                 class: "view-details-button-compact",
                                 onClick: (Ce) => {
@@ -10939,35 +10939,35 @@ function Ym(t, e, n, s, r, o) {
                               }, [...e[32] || (e[32] = [
                                 Qt(" View product ", -1),
                                 v("span", { class: "external-link-icon" }, "↗", -1)
-                              ])], 8, im)
+                              ])], 8, om)
                             ])
                           ])
                         ]);
                       }), 128))
                     ])
-                  ])) : !i.message && ((Fe = i.shopify_output) != null && Fe.products) && i.shopify_output.products.length === 0 ? (R(), I("div", om, [...e[34] || (e[34] = [
+                  ])) : !i.message && ((Fe = i.shopify_output) != null && Fe.products) && i.shopify_output.products.length === 0 ? (R(), I("div", am, [...e[34] || (e[34] = [
                     v("p", null, "No products found.", -1)
-                  ])])) : !i.message && i.shopify_output && !i.shopify_output.products ? (R(), I("div", am, [...e[35] || (e[35] = [
+                  ])])) : !i.message && i.shopify_output && !i.shopify_output.products ? (R(), I("div", lm, [...e[35] || (e[35] = [
                     v("p", null, "No products to display.", -1)
                   ])])) : pe("", !0)
                 ])) : (R(), I(Qe, { key: 4 }, [
                   v("div", {
                     innerHTML: s.renderMarkdown(i.message)
-                  }, null, 8, lm),
-                  i.attachments && i.attachments.length > 0 ? (R(), I("div", cm, [
+                  }, null, 8, cm),
+                  i.attachments && i.attachments.length > 0 ? (R(), I("div", um, [
                     (R(!0), I(Qe, null, Rt(i.attachments, (b) => (R(), I("div", {
                       key: b.id,
                       class: "attachment-item"
                     }, [
-                      s.isImageAttachment(b.content_type) ? (R(), I("div", um, [
+                      s.isImageAttachment(b.content_type) ? (R(), I("div", fm, [
                         v("img", {
                           src: s.getDownloadUrl(b.file_url),
                           alt: b.filename,
                           class: "attachment-image",
                           onClick: Mn((te) => s.openPreview({ url: b.file_url, filename: b.filename, type: b.content_type, file_url: s.getDownloadUrl(b.file_url), size: void 0 }), ["stop"]),
                           style: { cursor: "pointer" }
-                        }, null, 8, fm),
-                        v("div", hm, [
+                        }, null, 8, hm),
+                        v("div", dm, [
                           v("a", {
                             href: s.getDownloadUrl(b.file_url),
                             target: "_blank",
@@ -10993,8 +10993,8 @@ function Ym(t, e, n, s, r, o) {
                               })
                             ], -1)),
                             Qt(" " + ae(b.filename) + " ", 1),
-                            v("span", pm, "(" + ae(s.formatFileSize(b.file_size)) + ")", 1)
-                          ], 8, dm)
+                            v("span", gm, "(" + ae(s.formatFileSize(b.file_size)) + ")", 1)
+                          ], 8, pm)
                         ])
                       ])) : (R(), I("a", {
                         key: 1,
@@ -11015,26 +11015,26 @@ function Ym(t, e, n, s, r, o) {
                           v("path", { d: "M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" })
                         ], -1)),
                         Qt(" " + ae(b.filename) + " ", 1),
-                        v("span", mm, "(" + ae(s.formatFileSize(b.file_size)) + ")", 1)
-                      ], 8, gm))
+                        v("span", _m, "(" + ae(s.formatFileSize(b.file_size)) + ")", 1)
+                      ], 8, mm))
                     ]))), 128))
                   ])) : pe("", !0)
                 ], 64))
               ], 4),
-              s.showCitations && (i.message_type === "bot" || i.message_type === "agent") && i.sources && i.sources.length ? (R(), I("div", _m, [
+              s.showCitations && (i.message_type === "bot" || i.message_type === "agent") && i.sources && i.sources.length ? (R(), I("div", ym, [
                 e[38] || (e[38] = v("span", { class: "citation-label" }, "Sources", -1)),
                 (R(!0), I(Qe, null, Rt(i.sources, (b, te) => (R(), I("span", {
                   key: te,
                   class: "citation-chip",
                   title: b.type
-                }, ae(b.name), 9, ym))), 128))
+                }, ae(b.name), 9, bm))), 128))
               ])) : pe("", !0),
-              v("div", bm, [
-                i.message_type === "user" ? (R(), I("span", vm, " You ")) : pe("", !0)
+              v("div", vm, [
+                i.message_type === "user" ? (R(), I("span", wm, " You ")) : pe("", !0)
               ])
             ], 2);
           }), 128)),
-          s.loading ? (R(), I("div", wm, e[39] || (e[39] = [
+          s.loading ? (R(), I("div", km, e[39] || (e[39] = [
             v("div", {
               class: "reading-bars",
               "aria-hidden": "true"
@@ -11051,7 +11051,7 @@ function Ym(t, e, n, s, r, o) {
           class: "new-conversation-section",
           style: Ne(s.agentBubbleStyles)
         }, [
-          v("div", Mm, [
+          v("div", Bm, [
             e[44] || (e[44] = v("p", { class: "ended-text" }, "This chat has ended.", -1)),
             v("button", {
               class: "start-new-conversation-button",
@@ -11064,7 +11064,7 @@ function Ym(t, e, n, s, r, o) {
           class: Ge(["chat-input", { "ask-anything-input": s.isAskAnythingStyle }]),
           style: Ne(s.agentBubbleStyles)
         }, [
-          !s.hasStartedChat && !s.hasConversationToken && s.shouldCollectEmail ? (R(), I("div", km, [
+          !s.hasStartedChat && !s.hasConversationToken && s.shouldCollectEmail ? (R(), I("div", xm, [
             Tn(v("input", {
               "onUpdate:modelValue": e[4] || (e[4] = (i) => s.emailInput = i),
               type: "email",
@@ -11074,7 +11074,7 @@ function Ym(t, e, n, s, r, o) {
                 invalid: s.emailInput.trim() && !s.isValidEmail(s.emailInput.trim()),
                 disabled: s.connectionStatus !== "connected"
               })
-            }, null, 10, xm), [
+            }, null, 10, Sm), [
               [In, s.emailInput]
             ])
           ])) : pe("", !0),
@@ -11086,12 +11086,12 @@ function Ym(t, e, n, s, r, o) {
             style: { display: "none" },
             onChange: e[5] || (e[5] = (...i) => s.handleFileSelect && s.handleFileSelect(...i))
           }, null, 544),
-          s.uploadedAttachments.length > 0 ? (R(), I("div", Sm, [
+          s.uploadedAttachments.length > 0 ? (R(), I("div", Am, [
             (R(!0), I(Qe, null, Rt(s.uploadedAttachments, (i, a) => (R(), I("div", {
               key: a,
               class: "file-preview-widget"
             }, [
-              v("div", Am, [
+              v("div", Tm, [
                 s.isImage(i.type) ? (R(), I("img", {
                   key: 0,
                   src: s.getPreviewUrl(i),
@@ -11099,7 +11099,7 @@ function Ym(t, e, n, s, r, o) {
                   class: "file-preview-image-widget",
                   onClick: Mn((l) => s.openPreview(i), ["stop"]),
                   style: { cursor: "pointer" }
-                }, null, 8, Tm)) : (R(), I("div", {
+                }, null, 8, Em)) : (R(), I("div", {
                   key: 1,
                   class: "file-preview-icon-widget",
                   onClick: Mn((l) => s.openPreview(i), ["stop"]),
@@ -11116,25 +11116,25 @@ function Ym(t, e, n, s, r, o) {
                     v("path", { d: "M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" }),
                     v("polyline", { points: "13 2 13 9 20 9" })
                   ], -1)
-                ])], 8, Em))
+                ])], 8, Cm))
               ]),
-              v("div", Cm, [
-                v("div", Rm, ae(i.filename), 1),
-                v("div", Im, ae(s.formatFileSize(i.size)), 1)
+              v("div", Rm, [
+                v("div", Im, ae(i.filename), 1),
+                v("div", Lm, ae(s.formatFileSize(i.size)), 1)
               ]),
               v("button", {
                 type: "button",
                 class: "file-preview-remove-widget",
                 onClick: (l) => s.removeAttachment(a),
                 title: "Remove file"
-              }, " × ", 8, Lm)
+              }, " × ", 8, Om)
             ]))), 128))
           ])) : pe("", !0),
-          s.isUploading ? (R(), I("div", Om, e[41] || (e[41] = [
+          s.isUploading ? (R(), I("div", Fm, e[41] || (e[41] = [
             v("div", { class: "upload-spinner-widget" }, null, -1),
             v("span", { class: "upload-text-widget" }, "Uploading files...", -1)
           ]))) : pe("", !0),
-          v("div", Fm, [
+          v("div", Pm, [
             Tn(v("input", {
               "onUpdate:modelValue": e[6] || (e[6] = (i) => s.newMessage = i),
               type: "text",
@@ -11148,7 +11148,7 @@ function Ym(t, e, n, s, r, o) {
               onDragleave: e[10] || (e[10] = (...i) => s.handleDragLeave && s.handleDragLeave(...i)),
               disabled: !s.isMessageInputEnabled,
               class: Ge({ disabled: !s.isMessageInputEnabled, "ask-anything-field": s.isAskAnythingStyle })
-            }, null, 42, Pm), [
+            }, null, 42, Dm), [
               [In, s.newMessage]
             ]),
             s.canUploadMore ? (R(), I("button", {
@@ -11175,7 +11175,7 @@ function Ym(t, e, n, s, r, o) {
                 })
               ], -1),
               v("span", { class: "attach-button-glow" }, null, -1)
-            ]), 8, Dm)) : pe("", !0),
+            ]), 8, Nm)) : pe("", !0),
             v("button", {
               class: Ge(["send-button", { "ask-anything-send": s.isAskAnythingStyle }]),
               style: Ne(s.userBubbleStyles),
@@ -11197,7 +11197,7 @@ function Ym(t, e, n, s, r, o) {
                   "stroke-linejoin": "round"
                 })
               ], -1)
-            ]), 14, Nm)
+            ]), 14, Mm)
           ])
         ], 6)),
         v("div", {
@@ -11208,15 +11208,15 @@ function Ym(t, e, n, s, r, o) {
         ]), 4)
       ], 6)) : pe("", !0)
     ], 64)),
-    s.showRatingDialog ? (R(), I("div", Bm, [
-      v("div", Um, [
+    s.showRatingDialog ? (R(), I("div", Um, [
+      v("div", zm, [
         e[46] || (e[46] = v("h3", null, "Rate your conversation", -1)),
-        v("div", zm, [
+        v("div", Hm, [
           (R(), I(Qe, null, Rt(5, (i) => v("button", {
             key: i,
             onClick: (a) => s.currentRating = i,
             class: Ge([{ active: i <= s.currentRating }, "star-button"])
-          }, " ★ ", 10, Hm)), 64))
+          }, " ★ ", 10, Wm)), 64))
         ]),
         Tn(v("textarea", {
           "onUpdate:modelValue": e[12] || (e[12] = (i) => s.ratingFeedback = i),
@@ -11225,13 +11225,13 @@ function Ym(t, e, n, s, r, o) {
         }, null, 512), [
           [In, s.ratingFeedback]
         ]),
-        v("div", Wm, [
+        v("div", qm, [
           v("button", {
             onClick: e[13] || (e[13] = (i) => t.submitRating(s.currentRating, s.ratingFeedback)),
             disabled: !s.currentRating,
             class: "submit-button",
             style: Ne(s.userBubbleStyles)
-          }, " Submit ", 12, qm),
+          }, " Submit ", 12, jm),
           v("button", {
             onClick: e[14] || (e[14] = (i) => s.showRatingDialog = !1),
             class: "skip-rating"
@@ -11253,28 +11253,28 @@ function Ym(t, e, n, s, r, o) {
           class: "preview-modal-close",
           onClick: e[15] || (e[15] = (...i) => s.closePreview && s.closePreview(...i))
         }, "×"),
-        s.previewFile && s.isImage(s.previewFile.type) ? (R(), I("div", jm, [
+        s.previewFile && s.isImage(s.previewFile.type) ? (R(), I("div", Vm, [
           v("img", {
             src: s.getPreviewUrl(s.previewFile),
             alt: s.previewFile.filename,
             class: "preview-modal-image"
-          }, null, 8, Vm),
-          v("div", Km, ae(s.previewFile.filename), 1)
+          }, null, 8, Km),
+          v("div", Gm, ae(s.previewFile.filename), 1)
         ])) : pe("", !0)
       ])
     ])) : pe("", !0)
-  ], 6)) : (R(), I("div", Gm));
+  ], 6)) : (R(), I("div", Ym));
 }
-const $m = /* @__PURE__ */ tp(ep, [["render", Ym], ["__scopeId", "data-v-a3601fa3"], ["__file", "/Users/arun/Documents/code/chattermate.chat/frontend/src/webclient/WidgetBuilder.vue"]]);
+const Xm = /* @__PURE__ */ np(tp, [["render", $m], ["__scopeId", "data-v-a3601fa3"], ["__file", "/Users/arun/Documents/code/chattermate.chat/frontend/src/webclient/WidgetBuilder.vue"]]);
 window.process || (window.process = { env: { NODE_ENV: "production" } });
 const Dt = window.__INITIAL_DATA__, Hl = new URL(window.location.href), Wl = Hl.searchParams.get("preview") === "true", ql = (t) => {
   const e = Hl.searchParams.get(t);
   if (!(!e || e === "undefined" || e.trim() === ""))
     return e;
-}, Xm = Wl ? ql("widget_id") || (Dt == null ? void 0 : Dt.widgetId) || void 0 : (Dt == null ? void 0 : Dt.widgetId) || void 0, Zm = Wl ? (Dt == null ? void 0 : Dt.initialToken) || ql("token") || void 0 : (Dt == null ? void 0 : Dt.initialToken) || void 0, Jm = Mf($m, {
-  widgetId: Xm,
-  token: Zm || void 0,
+}, Zm = Wl ? ql("widget_id") || (Dt == null ? void 0 : Dt.widgetId) || void 0 : (Dt == null ? void 0 : Dt.widgetId) || void 0, Jm = Wl ? (Dt == null ? void 0 : Dt.initialToken) || ql("token") || void 0 : (Dt == null ? void 0 : Dt.initialToken) || void 0, Qm = Mf(Xm, {
+  widgetId: Zm,
+  token: Jm || void 0,
   initialAuthError: null
   // Let backend determine if auth is required
 });
-Jm.mount("#app");
+Qm.mount("#app");

@@ -29,6 +29,7 @@ import { useRouter } from 'vue-router'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { getTeamOverview } from '@/services/users'
+import { isAbsoluteUrl } from '@/utils/avatars'
 import type { TeamKpis, TeamAgentStats } from '@/services/users'
 
 const props = defineProps<{
@@ -136,7 +137,7 @@ const usingOverview = ref(false)
 
 const resolveAvatar = (pic?: string | null) => {
   if (!pic) return null
-  if (pic.includes('amazonaws.com')) return pic
+  if (isAbsoluteUrl(pic)) return pic
   return `${import.meta.env.VITE_API_URL}${pic}`
 }
 

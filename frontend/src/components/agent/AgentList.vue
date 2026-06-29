@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 import type { Agent } from '@/types/agent';
 import type { Widget } from '@/types/widget';
-import { getAvatarUrl } from '@/utils/avatars'
+import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
 import { useAgentStorage, useSubscriptionStorage } from '@/utils/storage'
 import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { agentService } from '@/services/agent'
@@ -256,7 +256,7 @@ const handleAgentClick = (agent: Agent) => {
 
 const getAgentPhotoUrl = (agent: Agent) => {
     if (!agent.customization?.photo_url) return getAvatarUrl(agent.agent_type.toLowerCase())
-    if (agent.customization.photo_url.includes('amazonaws.com')) return agent.customization.photo_url
+    if (isAbsoluteUrl(agent.customization.photo_url)) return agent.customization.photo_url
     return import.meta.env.VITE_API_URL + agent.customization.photo_url
 }
 
