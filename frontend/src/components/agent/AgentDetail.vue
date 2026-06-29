@@ -19,7 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
-import { getAvatarUrl } from '@/utils/avatars'
+import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
 import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle } from '@/utils/orb'
 
 import KnowledgeGrid from './KnowledgeGrid.vue'
@@ -280,8 +280,8 @@ const photoUrl = computed(() => {
         return getAvatarUrl(agentData.value.agent_type.toLowerCase())
     }
 
-    // If it's an S3 URL (contains amazonaws.com), use it directly
-    if (agentData.value.customization.photo_url.includes('amazonaws.com')) {
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(agentData.value.customization.photo_url)) {
         return agentData.value.customization.photo_url
     }
     

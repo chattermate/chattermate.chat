@@ -19,7 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
-import { getAvatarUrl } from '@/utils/avatars'
+import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
 import { resolveOrbStyle } from '@/utils/orb'
 import { useAgentChat } from '@/composables/useAgentChat'
 import WebFont from 'webfontloader'
@@ -345,8 +345,8 @@ const photoUrl = computed(() => {
         return props.customization.photo_url_signed
     }
     
-    // If it's an S3 URL, use it directly
-    if (props.customization.photo_url.includes('amazonaws.com')) {
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(props.customization.photo_url)) {
         return props.customization.photo_url
     }
     

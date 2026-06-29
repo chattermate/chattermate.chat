@@ -19,6 +19,7 @@
 import { ref, type Ref } from 'vue'
 import type { ChatDetail } from '@/types/chat'
 import FileUpload from '@/components/common/FileUpload.vue'
+import { isAbsoluteUrl } from '@/utils/avatars'
 
 export function useConversationFiles(
   currentChat: Ref<ChatDetail>,
@@ -184,7 +185,7 @@ export function useConversationFiles(
     }
     
     // If it's already a full URL (AWS S3), return as-is
-    if (fileUrl.includes('amazonaws.com')) {
+    if (isAbsoluteUrl(fileUrl)) {
       return fileUrl
     }
     

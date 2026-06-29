@@ -24,6 +24,7 @@ import {
 import { marked } from 'marked'
 import { sanitizeHtml } from '../utils/sanitize'
 import { resolveOrbStyle } from '../utils/orb'
+import { isAbsoluteUrl } from '../utils/avatars'
 import { widgetEnv } from './widget-env'
 import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
@@ -703,7 +704,7 @@ const humanAgentPhotoUrl = computed(() => {
     }
 
     // Use signed URL if available (AWS S3)
-    if (humanAgent.value.human_agent_profile_pic.includes('amazonaws.com')) {
+    if (isAbsoluteUrl(humanAgent.value.human_agent_profile_pic)) {
         return humanAgent.value.human_agent_profile_pic
     }
 

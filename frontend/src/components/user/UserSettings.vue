@@ -23,6 +23,7 @@ import { userService } from '@/services/user'
 import { validatePassword, type PasswordStrength } from '@/utils/validators'
 import userAvatar from '@/assets/user.svg'
 import type { User } from '@/types/user'
+import { isAbsoluteUrl } from '@/utils/avatars'
 
 const { user } = useAuth()
 
@@ -90,8 +91,8 @@ const discardChanges = () => {
 const userAvatarSrc = computed(() => {
   if (profilePicPreview.value) return profilePicPreview.value
   if (user.value?.profile_pic) {
-    // If it's an S3 URL (contains amazonaws.com), use it directly
-    if (user.value.profile_pic.includes('amazonaws.com')) {
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(user.value.profile_pic)) {
       return user.value.profile_pic
     }
     // For local storage, prepend the API URL and add timestamp
@@ -172,7 +173,7 @@ const uploadProfilePic = async () => {
       if (updatedUser && updatedUser.profile_pic) {
         user.value = {
           ...updatedUser,
-          profile_pic: updatedUser.profile_pic.includes('amazonaws.com') ? updatedUser.profile_pic : `${updatedUser.profile_pic}?t=${new Date().getTime()}`
+          profile_pic: isAbsoluteUrl(updatedUser.profile_pic) ? updatedUser.profile_pic : `${updatedUser.profile_pic}?t=${new Date().getTime()}`
         }
       }
     }

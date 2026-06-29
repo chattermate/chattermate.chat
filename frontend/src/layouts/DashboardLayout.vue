@@ -31,6 +31,7 @@ import { notificationService } from '@/services/notification'
 import { useRoute, useRouter } from 'vue-router'
 import { updateUserStatus } from '@/services/users'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { isAbsoluteUrl } from '@/utils/avatars'
 
 const props = defineProps<{
     hideSidebar?: boolean
@@ -84,8 +85,8 @@ const trialDaysLeft = computed(() => subscriptionStore.value.trialDaysLeft)
 
 const userAvatarSrc = computed(() => {
   if (currentUser.value?.profile_pic) {
-    // If it's an S3 URL (contains amazonaws.com), use it directly
-    if (currentUser.value.profile_pic.includes('amazonaws.com')) {
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(currentUser.value.profile_pic)) {
       return currentUser.value.profile_pic
     }
     // For local storage, prepend the API URL and add timestamp
