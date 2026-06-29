@@ -103,6 +103,10 @@ async def replace_workflow_nodes(
     except ValueError as e:
         logger.error(f"Validation error updating workflow nodes: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error replacing workflow nodes: {str(e)}")
         db.rollback()
@@ -166,6 +170,10 @@ async def get_workflow_nodes(
     except ValueError as e:
         logger.error(f"Validation error getting workflow nodes: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error getting workflow nodes: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get workflow nodes")
@@ -197,6 +205,10 @@ async def update_workflow_node(
         
         return updated_node
         
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error updating workflow node: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update workflow node: {str(e)}")
@@ -226,6 +238,10 @@ async def get_workflow_node(
         
         return node
         
+    except HTTPException:
+        # Let intended HTTP errors (e.g. 403 plan feature-gate, 400, 404) propagate
+        # instead of being masked as a generic 500.
+        raise
     except Exception as e:
         logger.error(f"Error getting workflow node: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get workflow node: {str(e)}") 

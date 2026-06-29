@@ -275,8 +275,10 @@ async def update_agent(
         update_dict = update_data.model_dump(
             exclude={'photo_url'}, exclude_unset=True)
         
-        # Check rating feature availability and override ask_for_rating if necessary
-        if HAS_ENTERPRISE and auth_info['auth_type'] == 'jwt':
+        # Check rating feature availability and override ask_for_rating if necessary.
+        # Applies to both JWT and Personal Access Token (PAT) sessions; Shopify auth
+        # enforces plan features separately.
+        if HAS_ENTERPRISE and auth_info['auth_type'] in ('jwt', 'pat'):
             from app.enterprise.repositories.plan import PlanRepository
             subscription_repo = SubscriptionRepository(db)
             subscription = subscription_repo.get_by_organization(auth_info["organization_id"])
