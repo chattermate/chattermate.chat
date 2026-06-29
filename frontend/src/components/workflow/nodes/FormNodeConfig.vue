@@ -382,7 +382,7 @@ const updateFormData = (field: keyof FormNodeData, value: any) => {
 .form-select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(243, 70, 17, 0.1);
+  box-shadow: 0 0 0 2px rgba(201, 242, 78, 0.15);
 }
 
 .form-textarea {
@@ -561,7 +561,7 @@ const updateFormData = (field: keyof FormNodeData, value: any) => {
 .field-select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 1px rgba(243, 70, 17, 0.1);
+  box-shadow: 0 0 0 1px rgba(201, 242, 78, 0.15);
 }
 
 .field-input.error,

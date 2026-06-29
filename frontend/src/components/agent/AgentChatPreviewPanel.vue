@@ -19,7 +19,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
-import { getAvatarUrl } from '@/utils/avatars'
+import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
+import { resolveOrbStyle } from '@/utils/orb'
 import { useAgentChat } from '@/composables/useAgentChat'
 import WebFont from 'webfontloader'
 import { marked } from 'marked'
@@ -53,31 +54,34 @@ watch(() => props.customization, (newCustomization) => {
     console.log('Customization changed:', newCustomization)
 }, { deep: true, immediate: true })
 
+// Sample conversation shown in the preview for every (non Ask-AI) design
+const sampleConversation = (): any[] => ([
+    { role: 'bot', content: 'Hi! How can I help you today?' },
+    { role: 'user', content: 'Do you offer free returns?' },
+    { role: 'bot', content: 'Yes — free 30-day returns on everything.' },
+])
+
 // Handle chat style changes
 const handleChatStyleChange = (oldStyle: string, newStyle: string) => {
     console.log('🔄 Processing chat style change:', { oldStyle, newStyle, currentMessages: messages.value.length })
-    
-    if (oldStyle === 'CHATBOT' && newStyle === 'ASK_ANYTHING') {
-        // Store current messages and clear them
+
+    // Ask-style designs (Ask Anything + Aurora) show the centered welcome with no conversation
+    const isAskStyle = (s: string) => s === 'ASK_ANYTHING' || s === 'AURORA'
+
+    if (isAskStyle(newStyle)) {
+        // Entering an ask-style design (from any other): store current messages and clear them
         if (messages.value.length > 0 && !hasStoredMessages.value) {
-            console.log('💾 Storing messages for later restoration:', messages.value.length)
             originalMessages.value = [...messages.value]
             hasStoredMessages.value = true
         }
-        console.log('🧹 Clearing messages for ASK_ANYTHING style')
-        messages.value.splice(0) // Clear all messages more efficiently
-        
-    } else if (oldStyle === 'ASK_ANYTHING' && newStyle === 'CHATBOT') {
-        // Restore original messages or initialize chat
+        messages.value.splice(0)
+
+    } else if (isAskStyle(oldStyle)) {
+        // Leaving an ask-style design (to a conversation design): restore or seed the sample
         if (hasStoredMessages.value && originalMessages.value.length > 0) {
-            console.log('📥 Restoring original messages:', originalMessages.value.length)
             messages.value.splice(0, messages.value.length, ...originalMessages.value)
         } else {
-            console.log('🆕 No stored messages, initializing new chat')
-            // Clear any existing messages first
-            messages.value.splice(0)
-            // Initialize chat if no stored messages
-            initChat()
+            messages.value.splice(0, messages.value.length, ...sampleConversation())
         }
     }
     
@@ -184,6 +188,8 @@ onMounted(() => {
     // Don't initialize chat for ASK_ANYTHING style to avoid adding initial messages
     if (!isAskAnythingStyle.value) {
         initChat()
+        // Seed a short sample conversation so the preview shows real bubbles for every design
+        messages.value = sampleConversation()
     }
 
     // Load initial font
@@ -286,9 +292,19 @@ watch(() => props.customization.font_family, (newFont) => {
     })
 })
 
+// Premium design presets → CSS theme class on the preview container
+const THEME_CLASS_MAP: Record<string, string> = {
+    GLASS: 'theme-glass',
+    TERMINAL: 'theme-terminal',
+    PLAYFUL: 'theme-playful',
+    CALM_MINT: 'theme-calm',
+}
+const themeClass = computed(() => THEME_CLASS_MAP[props.customization.chat_style as string] || '')
+
 const chatStyles = computed(() => ({
     backgroundColor: props.customization.chat_background_color,
-    color: "#000000"
+    // Adapt text color to background so dark themes stay legible
+    color: isColorDark(props.customization.chat_background_color ?? '#FFFFFF') ? '#FFFFFF' : '#000000'
 }))
 
 const chatIconStyles = computed(() => ({
@@ -311,7 +327,8 @@ const userBubbleStyles = computed(() => ({
 }))
 
 const accentStyles = computed(() => ({
-    backgroundColor: props.customization.accent_color
+    backgroundColor: props.customization.accent_color,
+    color: isColorDark(props.customization.accent_color ?? '#C9F24E') ? '#FFFFFF' : '#000000'
 }))
 
 const messageNameStyles = computed(() => ({
@@ -328,8 +345,8 @@ const photoUrl = computed(() => {
         return props.customization.photo_url_signed
     }
     
-    // If it's an S3 URL, use it directly
-    if (props.customization.photo_url.includes('amazonaws.com')) {
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(props.customization.photo_url)) {
         return props.customization.photo_url
     }
     
@@ -361,10 +378,27 @@ const isMessageInputEnabled = computed(() => {
     return props.isActive && !isLoading.value && isValidEmail(emailInput.value.trim())
 })
 
-// Add computed property for ASK_ANYTHING style detection
+// Aurora is the new dark ask-me-anything design. It reuses the ASK_ANYTHING
+// welcome/input flow but with a dark, polished theme and an orb avatar.
+const isAuroraStyle = computed(() => props.customization.chat_style === 'AURORA')
+
+// Add computed property for ASK_ANYTHING style detection (includes Aurora, which
+// shares the same welcome-screen + ask-anything input behavior)
 const isAskAnythingStyle = computed(() => {
-    return props.customization.chat_style === 'ASK_ANYTHING'
+    return props.customization.chat_style === 'ASK_ANYTHING' || isAuroraStyle.value
 })
+
+// Show the generated aurora orb when the user explicitly picked "orb", or as the Aurora
+// fallback when no profile photo is set. A selected profile picture always takes precedence.
+const orbMeta = computed(() => props.customization.customization_metadata as Record<string, unknown> | undefined)
+const useOrbAvatar = computed(() => {
+    const avatarStyle = orbMeta.value?.avatar_style
+    if (avatarStyle === 'orb') return true
+    if (avatarStyle === 'photo') return false
+    return isAuroraStyle.value && !props.customization.photo_url
+})
+
+const orbStyle = computed(() => resolveOrbStyle(props.agentName, orbMeta.value?.orb_variant))
 
 // Computed property for container styles
 const containerStyles = computed(() => {
@@ -517,7 +551,7 @@ const handleInitiationClick = () => {
 </script>
 
 <template>
-    <div class="chat-container" :class="{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }" :style="containerStyles">
+    <div class="chat-container" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }, themeClass]" :style="containerStyles">
         <!-- Chat Initiation Message -->
         <div 
             v-if="showInitiationMessage && hasChatInitiationMessages && (customization.showBubblePreview || customization.showInitiationPreview || !isExpanded)" 
@@ -548,38 +582,44 @@ const handleInitiationClick = () => {
         </div>
 
         <!-- Welcome Message for ASK_ANYTHING Style -->
-        <div v-if="shouldShowWelcomeMessage && isExpanded && !customization.showBubblePreview && !customization.showInitiationPreview" class="welcome-message-section" :style="chatStyles">
+        <div v-if="shouldShowWelcomeMessage && isExpanded && !customization.showBubblePreview && !customization.showInitiationPreview" class="welcome-message-section" :class="{ aurora: isAuroraStyle }" :style="chatStyles">
             <div class="welcome-content">
                 <div class="welcome-header">
-                    <img 
-                        v-if="photoUrl" 
-                        :src="photoUrl" 
-                        :alt="agentName" 
+                    <div v-if="useOrbAvatar" class="welcome-orb" :style="orbStyle"></div>
+                    <img
+                        v-else-if="photoUrl"
+                        :src="photoUrl"
+                        :alt="agentName"
                         class="welcome-avatar"
                     >
                     <h1 class="welcome-title">{{ welcomeTitle }}</h1>
                     <p class="welcome-subtitle">{{ welcomeSubtitle }}</p>
                 </div>
             </div>
-            
+
             <!-- ASK_ANYTHING Input directly in welcome section -->
             <div class="welcome-input-container">
                 <div class="welcome-message-input">
-                    <input 
-                        v-model="currentInput" 
-                        type="text" 
-                        placeholder="Ask me anything..." 
+                    <input
+                        v-model="currentInput"
+                        type="text"
+                        placeholder="Ask me anything..."
                         @keypress="() => {}"
                         :disabled="true"
                         class="welcome-message-field"
                     >
-                    <button 
-                        class="welcome-send-button" 
-                        :style="accentStyles" 
+                    <button
+                        class="welcome-send-button"
+                        :class="{ 'aurora-send': isAuroraStyle }"
+                        :style="accentStyles"
                         @click="() => {}"
                         :disabled="true"
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg v-if="isAuroraStyle" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 19V5M12 5L5 12M12 5L19 12" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M5 12L3 21L21 12L3 3L5 12ZM5 12L13 12" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
@@ -607,8 +647,10 @@ const handleInitiationClick = () => {
                     <div class="header-info">
                         <h3 :style="messageNameStyles">{{ agentName }}</h3>
                         <div class="status">
-                            <span class="status-indicator" :class="{ online: isActive }"></span>
-                            <span class="status-text" :style="messageNameStyles">{{ isActive ? 'Online' : 'Offline'
+                            <span class="status-indicator" :class="{ online: isActive }"
+                                :style="isActive ? { background: customization.accent_color } : {}"></span>
+                            <span class="status-text"
+                                :style="isActive ? { color: customization.accent_color } : messageNameStyles">{{ isActive ? 'Online' : 'Offline'
                                 }}</span>
                         </div>
                     </div>
@@ -629,7 +671,8 @@ const handleInitiationClick = () => {
             </div>
             <div class="chat-messages">
                 <div v-for="(message, index) in messages" :key="index" :class="['message', `${message.role}-message`]">
-                    <img v-if="message.role === 'bot'" :src="photoUrl" :alt="agentName" class="message-avatar">
+                    <div v-if="message.role === 'bot' && useOrbAvatar" class="message-avatar message-orb" :style="orbStyle"></div>
+                    <img v-else-if="message.role === 'bot'" :src="photoUrl" :alt="agentName" class="message-avatar">
                     <div class="message-bubble"
                         :style="message.role === 'bot' ? agentBubbleStyles : userBubbleStyles"
                         v-html="formatMessage(message.content)">
@@ -654,16 +697,7 @@ const handleInitiationClick = () => {
             </div>
 
             <div class="chat-input" :class="{ 'ask-anything-input': isAskAnythingStyle }" :style="agentBubbleStyles">
-                <!-- Hide email input for ASK_ANYTHING style -->
-                <div class="email-input" v-if="!hasStartedChat && !isAskAnythingStyle">
-                    <input 
-                        v-model="emailInput"
-                        type="email" 
-                        placeholder="Enter your email address to begin" 
-                        :disabled="true"
-                        :class="{ 'invalid': false }"
-                    >
-                </div>
+                <!-- Email gate is intentionally omitted in the preview -->
                 <div class="message-input">
                     <input 
                         v-model="currentInput" 
@@ -705,11 +739,12 @@ const handleInitiationClick = () => {
     display: flex;
     flex-direction: column;
     background: transparent;
-    border-radius: 24px;
+    border-radius: var(--radius-xl, 20px);
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 30px 70px -25px rgba(0, 0, 0, 0.7);
     margin-left: auto;
     position: relative;
+    font-family: var(--font-sans);
 }
 
 .chat-container.collapsed {
@@ -734,19 +769,19 @@ const handleInitiationClick = () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
+    width: 62px;
+    height: 62px;
+    border-radius: 20px 20px 20px 6px;
     border: none;
     color: white;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 16px 36px -8px v-bind('customization.chat_bubble_color || "var(--accent-ink)"');
     transition: all 0.3s ease;
 }
 
 .chat-toggle:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    transform: scale(1.05);
+    box-shadow: 0 18px 40px -8px v-bind('customization.chat_bubble_color || "var(--accent-ink)"');
 }
 
 .chat-toggle.preview {
@@ -768,12 +803,14 @@ const handleInitiationClick = () => {
 }
 
 .chat-panel {
-    background: var(--background-base);
+    background: var(--surface);
+    border: 1px solid var(--o08);
     display: flex;
     flex-direction: column;
     height: 600px;
     transition: all 0.3s ease;
-    border-radius: 24px;
+    border-radius: var(--radius-xl, 20px);
+    overflow: hidden;
 }
 
 .chat-container.collapsed .chat-panel,
@@ -782,7 +819,7 @@ const handleInitiationClick = () => {
 }
 
 .chat-header {
-    padding: var(--space-md);
+    padding: 14px 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -790,7 +827,9 @@ const handleInitiationClick = () => {
 
 .chat-header h3 {
     margin: 0;
-    font-size: var(--text-lg);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.1;
 }
 
 
@@ -821,11 +860,16 @@ const handleInitiationClick = () => {
 }
 
 .message-bubble {
-    padding: 2px 14px;
-    border-radius: 20px;
-    line-height: 1.4;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    padding: 10px 14px;
+    border-radius: 4px 14px 14px 14px;
+    font-size: 13.5px;
+    line-height: 1.5;
     max-width: 85%;
+}
+
+.bot-message .message-bubble,
+.assistant-message .message-bubble {
+    border-radius: 4px 14px 14px 14px;
 }
 
 .user-message {
@@ -834,54 +878,61 @@ const handleInitiationClick = () => {
 }
 
 .user-message .message-bubble {
-    border-bottom-right-radius: 4px;
-}
-
-.assistant-message .message-bubble {
-    border-bottom-left-radius: 4px;
-    background-color: #f5f5f5;
+    border-radius: 14px 14px 4px 14px;
 }
 
 .chat-input {
-    padding: var(--space-md);
-    border-top: 1px solid var(--border-color);
+    padding: 12px 14px;
+    border-top: 1px solid var(--o08);
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: 8px;
 }
 
 .email-input {
-    width: 85%;
+    width: 100%;
 }
 
 .email-input input {
     width: 100%;
-    padding: var(--space-sm) var(--space-md);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    padding: 9px 12px;
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-input);
+    background: var(--o05);
+    color: var(--text);
+    font-size: 12.5px;
 }
 
 .message-input {
     display: flex;
-    gap: var(--space-sm);
+    align-items: center;
+    gap: 8px;
 }
 
 .message-input input {
     flex: 1;
-    padding: var(--space-sm) var(--space-md);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    padding: 9px 12px;
+    border: 1px solid var(--o12);
+    border-radius: 999px;
+    background: var(--o05);
+    color: var(--text);
+    font-size: 12.5px;
+}
+
+.message-input input::placeholder {
+    color: var(--muted);
 }
 
 .send-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-sm);
-    min-width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    padding: 0;
     border: none;
-    border-radius: var(--radius-lg);
+    border-radius: 50%;
     cursor: pointer;
     color: white;
 }
@@ -1010,12 +1061,12 @@ const handleInitiationClick = () => {
 .header-content {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: 10px;
 }
 
 .header-avatar {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     object-fit: cover;
 }
@@ -1027,29 +1078,32 @@ const handleInitiationClick = () => {
 
 .header-info h3 {
     margin: 0;
-    font-size: var(--text-md);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.1;
 }
 
 .status {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    font-size: var(--text-sm);
+    gap: 5px;
+    font-size: 11px;
+    margin-top: 2px;
 }
 
 .status-indicator {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--error-color);
 }
 
 .status-indicator.online {
-    background: var(--success-color);
+    background: v-bind('customization.accent_color || "var(--accent-solid)"');
 }
 
 .status-text {
-    color: var(--text-muted);
+    color: v-bind('customization.accent_color || "var(--accent-ink)"');
 }
 
 /* Add styles for markdown content */
@@ -1098,11 +1152,10 @@ const handleInitiationClick = () => {
     padding: var(--space-xs);
     font-size: 0.75rem;
     opacity: 0.7;
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    border-top: 1px solid var(--o08);
 }
 
 .message-input input:disabled {
-    background-color: rgba(0, 0, 0, 0.05);
     cursor: not-allowed;
 }
 
@@ -1118,6 +1171,72 @@ const handleInitiationClick = () => {
 .email-input input.invalid:focus {
     outline-color: var(--error-color);
 }
+
+/* ===== Message entrance animation ===== */
+.chat-messages .message {
+    animation: cm-msg-in 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes cm-msg-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .chat-messages .message { animation: none; }
+}
+
+/* ===== Theme-adaptive inputs (legible on light & dark designs) ===== */
+.message-input input,
+.email-input input {
+    background: rgba(127, 127, 127, 0.08);
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    border: 1.5px solid rgba(127, 127, 127, 0.3);
+    border: 1.5px solid color-mix(in srgb, currentColor 24%, transparent);
+    color: inherit;
+}
+.message-input input::placeholder {
+    color: currentColor;
+    opacity: 0.5;
+}
+
+/* ============== PREMIUM DESIGN PRESETS (preview) ============== */
+/* Glass (Aurora) — translucent frosted panel + glow */
+.chat-container.theme-glass .chat-panel {
+    background: rgba(23, 21, 31, 0.82) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(157, 140, 255, 0.35);
+    box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6), 0 0 60px rgba(157, 140, 255, 0.14);
+}
+.chat-container.theme-glass .chat-header,
+.chat-container.theme-glass .chat-input { background: transparent !important; }
+.chat-container.theme-glass .message-bubble { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18); }
+.chat-container.theme-glass .bot-message .message-bubble { border: 1px solid rgba(255, 255, 255, 0.08); }
+
+/* Terminal — mono, square corners, → / > prefixes */
+.chat-container.theme-terminal,
+.chat-container.theme-terminal .chat-panel,
+.chat-container.theme-terminal .message-bubble,
+.chat-container.theme-terminal .message-input input,
+.chat-container.theme-terminal .header-info h3 {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+.chat-container.theme-terminal .chat-panel { border-radius: 10px; }
+.chat-container.theme-terminal .message-bubble { border-radius: 4px !important; }
+.chat-container.theme-terminal :deep(.message-bubble p) { display: inline; margin: 0; }
+.chat-container.theme-terminal .bot-message .message-bubble::before { content: '→ '; opacity: 0.9; }
+.chat-container.theme-terminal .user-message .message-bubble::before { content: '> '; opacity: 0.9; }
+.chat-container.theme-terminal .message-input input { border-radius: 6px; }
+.chat-container.theme-terminal .send-button { border-radius: 6px; }
+
+/* Playful (Sunrise) — light, very rounded */
+.chat-container.theme-playful .chat-panel { border-radius: 24px; }
+.chat-container.theme-playful .message-bubble { border-radius: 18px; }
+.chat-container.theme-playful .bot-message .message-bubble { border-radius: 6px 18px 18px 18px; }
+.chat-container.theme-playful .user-message .message-bubble { border-radius: 18px 18px 6px 18px; }
+
+/* Calm Mint — subtle borders */
+.chat-container.theme-calm .chat-panel { border-radius: 18px; box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5); }
+.chat-container.theme-calm .message-bubble { border: 1px solid rgba(127, 127, 127, 0.14); }
 
 /* ========== ASK_ANYTHING CHAT STYLE ========== */
 
@@ -1231,7 +1350,7 @@ const handleInitiationClick = () => {
 .welcome-email-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px rgba(243, 70, 17, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0 4px rgba(201, 242, 78, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
 }
 
@@ -1269,7 +1388,7 @@ const handleInitiationClick = () => {
 .welcome-message-field:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px rgba(243, 70, 17, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0 4px rgba(201, 242, 78, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
 }
 
@@ -1290,12 +1409,12 @@ const handleInitiationClick = () => {
     cursor: pointer;
     color: white;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 14px rgba(243, 70, 17, 0.3);
+    box-shadow: 0 4px 14px rgba(201, 242, 78, 0.2);
 }
 
 .welcome-send-button:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(243, 70, 17, 0.4);
+    box-shadow: 0 8px 25px rgba(201, 242, 78, 0.3);
 }
 
 .welcome-send-button:disabled {
@@ -1318,6 +1437,59 @@ const handleInitiationClick = () => {
     justify-content: center;
     gap: 6px;
     margin-top: auto;
+}
+
+/* ===== AURORA style: dark ask-me-anything with glowing orb avatar =====
+   Scoped to .welcome-message-section.aurora so legacy ASK_ANYTHING is untouched. */
+.welcome-orb {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.welcome-message-section.aurora .welcome-avatar {
+    width: 120px;
+    height: 120px;
+    border: none;
+    box-shadow: 0 8px 40px rgba(157, 140, 255, 0.35);
+}
+.welcome-message-section.aurora .welcome-title {
+    color: #ffffff;
+}
+.welcome-message-section.aurora .welcome-subtitle {
+    color: rgba(255, 255, 255, 0.6);
+}
+.welcome-message-section.aurora .welcome-message-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    padding: 6px 6px 6px 8px;
+}
+.welcome-message-section.aurora .welcome-message-field {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: #ffffff;
+    border-radius: 999px;
+}
+.welcome-message-section.aurora .welcome-message-field:focus {
+    border: none;
+    box-shadow: none;
+    transform: none;
+}
+.welcome-message-section.aurora .welcome-message-field::placeholder {
+    color: rgba(255, 255, 255, 0.45);
+}
+.welcome-message-section.aurora .welcome-send-button.aurora-send {
+    border-radius: 50%;
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+}
+/* Orb avatar shown inside the conversation (bot message rows) */
+.message-orb {
+    border-radius: 50%;
 }
 
 /* ASK_ANYTHING Chat Panel Modifications */
@@ -1423,7 +1595,7 @@ const handleInitiationClick = () => {
 .ask-anything-field:focus {
     outline: none !important;
     border-color: var(--primary-color) !important;
-    box-shadow: 0 0 0 4px rgba(243, 70, 17, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 0 0 4px rgba(201, 242, 78, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1) !important;
     transform: translateY(-1px) !important;
 }
 
@@ -1433,12 +1605,12 @@ const handleInitiationClick = () => {
     height: 48px !important;
     border-radius: 12px !important;
     transition: all 0.3s ease !important;
-    box-shadow: 0 4px 14px rgba(243, 70, 17, 0.3) !important;
+    box-shadow: 0 4px 14px rgba(201, 242, 78, 0.2) !important;
 }
 
 .send-button.ask-anything-send:hover:not(:disabled) {
     transform: translateY(-2px) !important;
-    box-shadow: 0 8px 25px rgba(243, 70, 17, 0.4) !important;
+    box-shadow: 0 8px 25px rgba(201, 242, 78, 0.3) !important;
 }
 
 /* ASK_ANYTHING: Typing indicator alignment */
@@ -1456,17 +1628,17 @@ const handleInitiationClick = () => {
     bottom: 215px;
     right: 20px;
     max-width: 240px;
-    background: white;
-    padding: 12px 36px 12px 14px;
-    border-radius: 14px;
-    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.1);
+    background: #FFFFFF;
+    padding: 11px 32px 11px 14px;
+    border-radius: 16px 16px 16px 4px;
+    box-shadow: 0 14px 32px -12px rgba(0, 0, 0, 0.7);
     z-index: 9;
     cursor: pointer;
     opacity: 0;
     visibility: hidden;
     transform: translateY(10px) scale(0.95);
     transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-sans);
 }
 
 .chat-initiation-message.show {
@@ -1495,23 +1667,10 @@ const handleInitiationClick = () => {
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.14);
 }
 
-.chat-initiation-message::after {
-    content: '';
-    position: absolute;
-    bottom: -7px;
-    right: 30px;
-    width: 14px;
-    height: 14px;
-    background: white;
-    transform: rotate(45deg);
-    box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.06);
-    clip-path: polygon(0 0, 100% 0, 100% 100%);
-}
-
 .initiation-message-text {
-    font-size: 13px;
+    font-size: 13.5px;
     line-height: 1.4;
-    color: #374151;
+    color: #1A1A22;
     margin: 0;
     position: relative;
     z-index: 1;
@@ -1523,7 +1682,7 @@ const handleInitiationClick = () => {
     content: '|';
     animation: blink 1s step-end infinite;
     margin-left: 2px;
-    color: v-bind('customization.accent_color || "#f34611"');
+    color: v-bind('customization.accent_color || "var(--accent-ink)"');
     font-weight: 500;
 }
 
@@ -1538,15 +1697,15 @@ const handleInitiationClick = () => {
 
 .initiation-close {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 20px;
-    height: 20px;
-    background: rgba(0, 0, 0, 0.04);
+    top: 7px;
+    right: 9px;
+    width: 14px;
+    height: 14px;
+    background: transparent;
     border: none;
-    border-radius: 5px;
+    border-radius: 4px;
     cursor: pointer;
-    opacity: 0.5;
+    opacity: 0.8;
     transition: all 0.2s ease;
     z-index: 2;
     display: flex;
@@ -1557,8 +1716,7 @@ const handleInitiationClick = () => {
 
 .initiation-close:hover {
     opacity: 1;
-    background: rgba(0, 0, 0, 0.08);
-    transform: scale(1.05);
+    transform: scale(1.1);
 }
 
 .initiation-close::before,
@@ -1567,7 +1725,7 @@ const handleInitiationClick = () => {
     position: absolute;
     width: 9px;
     height: 1.5px;
-    background: #4a5568;
+    background: #9A9AA6;
     border-radius: 1px;
 }
 

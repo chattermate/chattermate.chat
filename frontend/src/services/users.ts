@@ -1,9 +1,54 @@
 import api from './api'
 import type { User } from '@/types/user'
 
+export interface TeamAgentStats {
+  id: string
+  full_name: string
+  email: string
+  profile_pic?: string | null
+  is_online: boolean
+  last_seen?: string | null
+  is_active: boolean
+  role?: string | null
+  is_admin: boolean
+  groups: string[]
+  active_chats: number
+  resolved_chats: number
+  capacity: number
+}
+
+export interface TeamKpis {
+  team_size: number
+  admins: number
+  agents: number
+  online_now: number
+  active_chats: number
+  total_capacity: number
+  waiting_handoff: number
+  oldest_wait_minutes: number
+}
+
+export interface TeamOverview {
+  kpis: TeamKpis
+  agents: TeamAgentStats[]
+}
+
 export async function listUsers(): Promise<User[]> {
   const response = await api.get('users')
   return response.data
+}
+
+/**
+ * Aggregated Human-Agents dashboard (KPIs + per-agent load/resolved).
+ * Returns null if the backend endpoint isn't available yet (graceful fallback).
+ */
+export async function getTeamOverview(): Promise<TeamOverview | null> {
+  try {
+    const response = await api.get('users/team-overview')
+    return response.data
+  } catch (err) {
+    return null
+  }
 }
 
 export async function getUser(id: string): Promise<User> {

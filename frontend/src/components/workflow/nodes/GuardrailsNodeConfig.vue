@@ -448,8 +448,8 @@ const copyVariableToClipboard = async (variable: Variable) => {
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-radius: 10px;
   font-size: 0.7rem;
   font-weight: 600;

@@ -33,7 +33,7 @@ export function useWidgetCustomization() {
         window.parent.postMessage({
             type: 'CUSTOMIZATION_UPDATE',
             data: {
-                chat_bubble_color: newCustomization.chat_bubble_color || '#f34611',
+                chat_bubble_color: newCustomization.chat_bubble_color || '#C9F24E',
                 chat_style: newCustomization.chat_style,
                 chat_initiation_messages: newCustomization.chat_initiation_messages || []
             }

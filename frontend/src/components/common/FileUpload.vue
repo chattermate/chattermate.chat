@@ -578,7 +578,7 @@ defineExpose({
 }
 
 .drop-zone-content {
-  background: white;
+  background: var(--surface);
   padding: 40px;
   border-radius: 12px;
   text-align: center;

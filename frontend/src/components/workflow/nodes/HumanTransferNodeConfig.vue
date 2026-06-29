@@ -120,7 +120,7 @@ const updateFormData = (field: keyof HumanTransferNodeData, value: any) => {
 .form-textarea:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(243, 70, 17, 0.1);
+  box-shadow: 0 0 0 2px rgba(201, 242, 78, 0.15);
 }
 
 .form-select.error,

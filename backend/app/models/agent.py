@@ -37,6 +37,12 @@ class AgentType(str, enum.Enum):
 class ChatStyle(str, enum.Enum):
     CHATBOT = "CHATBOT"
     ASK_ANYTHING = "ASK_ANYTHING"
+    # Premium design presets
+    GLASS = "GLASS"
+    TERMINAL = "TERMINAL"
+    PLAYFUL = "PLAYFUL"
+    CALM_MINT = "CALM_MINT"
+    AURORA = "AURORA"
 
 
 class WidgetPosition(str, enum.Enum):
@@ -64,6 +70,9 @@ class AgentCustomization(Base):
     welcome_title = Column(String, nullable=True)
     welcome_subtitle = Column(String, nullable=True)
     chat_initiation_messages = Column(JSON, nullable=True)
+    show_citations = Column(Boolean, default=False, nullable=False)
+    # Optionally require the visitor's email before chatting (off by default)
+    collect_email = Column(Boolean, default=False, nullable=False)
 
     # Relationship
     agent = relationship("Agent", back_populates="customization")
@@ -108,6 +117,9 @@ class Agent(Base):
     is_default = Column(Boolean, default=False)
     transfer_to_human = Column(Boolean, default=False, nullable=False)
     ask_for_rating = Column(Boolean, default=True, nullable=True)
+    # On human handoff, optionally collect the visitor's contact details
+    handoff_collect_email = Column(Boolean, default=True, nullable=False)
+    handoff_collect_name = Column(Boolean, default=True, nullable=False)
     enable_rate_limiting = Column(Boolean, default=False, nullable=True)
     overall_limit_per_ip = Column(Integer, default=100, nullable=True)
     requests_per_sec = Column(Float, default=1, nullable=True)

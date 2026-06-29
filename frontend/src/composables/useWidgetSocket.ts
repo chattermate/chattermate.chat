@@ -151,6 +151,8 @@ export function useWidgetSocket() {
                     created_at: new Date().toISOString(),
                     session_id: '',
                     agent_name: data.agent_name,
+                    // Knowledge-base citations (display gated by show_citations in the widget)
+                    sources: Array.isArray(data.sources) && data.sources.length ? data.sources : undefined,
                     attributes: {
                         end_chat: data.end_chat,
                         end_chat_reason: data.end_chat_reason,
@@ -291,6 +293,11 @@ export function useWidgetSocket() {
                     attachments: msg.attachments || [] // Include attachments
                 }
 
+                // Restore knowledge-base citations persisted in attributes
+                if (Array.isArray(msg.attributes?.sources) && msg.attributes.sources.length) {
+                    ;(messageObj as Message).sources = msg.attributes.sources
+                }
+
                 // Check if message has Shopify data in attributes
                 if (msg.attributes?.shopify_output && typeof msg.attributes.shopify_output === 'object') {
                     return {
@@ -420,11 +427,15 @@ export function useWidgetSocket() {
             return
         }
         
-        console.log('Emitting submit_form event with data:', formData)
-        socket.emit('submit_form', {
+        // Handoff contact-capture forms go to a dedicated handler (updates the customer
+        // record) instead of the workflow form pipeline.
+        const isContactForm = currentForm.value?.form_type === 'contact'
+        const event = isContactForm ? 'submit_contact_info' : 'submit_form'
+        console.log(`Emitting ${event} event with data:`, formData)
+        socket.emit(event, {
             form_data: formData
         })
-        
+
         // Clear current form after submission
         currentForm.value = null
     }

@@ -18,6 +18,7 @@
 
 import { ref, type Ref } from 'vue'
 import { widgetEnv } from '../webclient/widget-env'
+import { isAbsoluteUrl } from '../utils/avatars'
 
 // Allowed file types configuration (matching backend)
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'])
@@ -457,9 +458,15 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
         filePath = filePath.substring(1)
       }
       
-      // For S3 URLs, extract the path after the bucket name
-      if (filePath.includes('amazonaws.com/')) {
-        filePath = filePath.split('amazonaws.com/')[1]
+      // For absolute S3/CDN URLs, reduce to the object key (the URL path).
+      // Parsing the URL avoids matching a host substring, which is unreliable
+      // and flagged by static analysis (js/incomplete-url-substring-sanitization).
+      if (isAbsoluteUrl(filePath)) {
+        try {
+          filePath = new URL(filePath).pathname.replace(/^\/+/, '')
+        } catch {
+          // Not a parseable URL — leave the path as-is.
+        }
       }
       
       const headers: Record<string, string> = {}

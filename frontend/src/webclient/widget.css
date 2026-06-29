@@ -72,7 +72,7 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     font-family: inherit;
     position: relative;
-    box-shadow: 
+    box-shadow:
         0 1px 3px rgba(0, 0, 0, 0.1),
         inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
@@ -88,7 +88,7 @@
 .form-textarea:hover,
 .form-select:hover {
     background: rgba(248, 249, 250, 1);
-    box-shadow: 
+    box-shadow:
         0 4px 6px -1px rgba(0, 0, 0, 0.1),
         0 2px 4px -1px rgba(0, 0, 0, 0.06);
     transform: translateY(-1px);
@@ -100,7 +100,7 @@
     outline: none;
     border-color: var(--primary-color);
     background: #ffffff;
-    box-shadow: 
+    box-shadow:
         0 0 0 4px rgba(243, 70, 17, 0.1),
         0 8px 16px -4px rgba(0, 0, 0, 0.1);
     transform: translateY(-2px);
@@ -213,18 +213,22 @@
     color: #ff4757;
     margin-top: var(--space-xs);
     display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
+    /* Align the icon to the first text line (not centered against a wrapped block) */
+    align-items: flex-start;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
     background: rgba(255, 71, 87, 0.1);
     border-radius: 8px;
     border-left: 3px solid #ff4757;
     font-weight: 500;
+    line-height: 1.45;
 }
 
 .field-error::before {
     content: "⚠";
-    font-size: 16px;
+    font-size: 15px;
+    line-height: 1.45;
+    flex-shrink: 0;
     animation: pulse 2s infinite;
 }
 
@@ -242,7 +246,7 @@
 
 .form-submit-button {
     padding: 16px 32px;
-    background: linear-gradient(135deg, var(--primary-color) 0%, #ff6b47 100%);
+    background: linear-gradient(135deg, var(--accent-solid) 0%, #ff6b47 100%);
     color: white;
     border: none;
     border-radius: 16px;
@@ -275,7 +279,7 @@
     box-shadow: 
         0 8px 25px 0 rgba(243, 70, 17, 0.4),
         0 4px 8px 0 rgba(0, 0, 0, 0.15);
-    background: linear-gradient(135deg, #ff6b47 0%, var(--primary-color) 100%);
+    background: linear-gradient(135deg, #ff6b47 0%, var(--accent-solid) 100%);
 }
 
 .form-submit-button:hover:not(:disabled)::before {
@@ -558,7 +562,7 @@
 
 .form-fullscreen .submit-form-button {
     padding: 16px 32px;
-    background: var(--primary-color);
+    background: var(--accent-solid);
     color: white;
     border: none;
     border-radius: 8px;
@@ -761,7 +765,7 @@
 
 .widget-container .chat-input {
     padding: var(--space-md) !important;
-    border-top: 1px solid var(--border-color) !important;
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent) !important;
     display: flex !important;
     flex-direction: column !important;
     gap: var(--space-sm) !important;
@@ -775,7 +779,8 @@
 .widget-container .message-input input {
     flex: 1 !important;
     padding: var(--space-sm) var(--space-md) !important;
-    border: 2px solid var(--border-color) !important;
+    /* Accent-tinted border so it matches the theme (was a light --border-color = white on dark). */
+    border: 1.5px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent) !important;
     border-radius: var(--radius-lg) !important;
 }
 
@@ -948,7 +953,7 @@
 .widget-container .welcome-message-field {
     flex: 1 !important;
     padding: 16px 20px !important;
-    border: 2px solid var(--border-color) !important;
+    border: 2px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent) !important;
     border-radius: 16px !important;
     font-size: 1rem !important;
     font-weight: 500 !important;
@@ -971,6 +976,50 @@
     color: white !important;
     transition: all 0.3s ease !important;
     box-shadow: 0 4px 14px rgba(243, 70, 17, 0.3) !important;
+}
+
+/* ===== AURORA style: dark ask-me-anything with glowing orb avatar =====
+   Scoped to .welcome-message-section.aurora so legacy ASK_ANYTHING is untouched. */
+.widget-container .welcome-orb {
+    width: 120px !important;
+    height: 120px !important;
+    border-radius: 50% !important;
+    flex-shrink: 0 !important;
+}
+.widget-container .welcome-message-section.aurora .welcome-avatar {
+    width: 120px !important;
+    height: 120px !important;
+    border: none !important;
+    box-shadow: 0 8px 40px rgba(157, 140, 255, 0.35) !important;
+}
+.widget-container .welcome-message-section.aurora .welcome-title {
+    color: #ffffff !important;
+}
+.widget-container .welcome-message-section.aurora .welcome-subtitle {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+.widget-container .welcome-message-section.aurora .welcome-message-input {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 999px !important;
+    padding: 6px 6px 6px 8px !important;
+}
+.widget-container .welcome-message-section.aurora .welcome-message-field {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #ffffff !important;
+    border-radius: 999px !important;
+}
+.widget-container .welcome-message-section.aurora .welcome-message-field::placeholder {
+    color: rgba(255, 255, 255, 0.45) !important;
+}
+.widget-container .welcome-message-section.aurora .welcome-send-button.aurora-send {
+    border-radius: 50% !important;
+    min-width: 48px !important;
+    width: 48px !important;
+    height: 48px !important;
+    padding: 0 !important;
 }
 
 
@@ -1188,7 +1237,7 @@
 
 .widget-container .ask-anything-field {
     padding: 18px 24px !important;
-    border: 2px solid var(--border-color) !important;
+    border: 2px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent) !important;
     border-radius: 16px !important;
     font-size: 1rem !important;
     font-weight: 500 !important;

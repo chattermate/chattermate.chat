@@ -23,6 +23,7 @@ import { userService } from '@/services/user'
 import { validatePassword, type PasswordStrength } from '@/utils/validators'
 import userAvatar from '@/assets/user.svg'
 import type { User } from '@/types/user'
+import { isAbsoluteUrl } from '@/utils/avatars'
 
 const { user } = useAuth()
 
@@ -69,11 +70,29 @@ const hasChanges = computed(() => {
   return hasProfileChanges || hasPasswordChanges
 })
 
+const avatarInitial = computed(() => {
+  const name = formData.value.full_name || user.value?.full_name || user.value?.email || ''
+  return name.trim().charAt(0).toUpperCase() || 'U'
+})
+
+const discardChanges = () => {
+  if (user.value) {
+    formData.value.full_name = user.value.full_name
+    formData.value.email = user.value.email
+  }
+  formData.value.current_password = ''
+  formData.value.new_password = ''
+  formData.value.confirm_password = ''
+  passwordTouched.value = false
+  error.value = ''
+  message.value = ''
+}
+
 const userAvatarSrc = computed(() => {
   if (profilePicPreview.value) return profilePicPreview.value
   if (user.value?.profile_pic) {
-    // If it's an S3 URL (contains amazonaws.com), use it directly
-    if (user.value.profile_pic.includes('amazonaws.com')) {
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(user.value.profile_pic)) {
       return user.value.profile_pic
     }
     // For local storage, prepend the API URL and add timestamp
@@ -154,7 +173,7 @@ const uploadProfilePic = async () => {
       if (updatedUser && updatedUser.profile_pic) {
         user.value = {
           ...updatedUser,
-          profile_pic: updatedUser.profile_pic.includes('amazonaws.com') ? updatedUser.profile_pic : `${updatedUser.profile_pic}?t=${new Date().getTime()}`
+          profile_pic: isAbsoluteUrl(updatedUser.profile_pic) ? updatedUser.profile_pic : `${updatedUser.profile_pic}?t=${new Date().getTime()}`
         }
       }
     }
@@ -245,272 +264,495 @@ const handleProfilePicClick = () => {
 
 <template>
   <div class="settings-page">
+    <div class="settings-head">
+      <h1>User Settings</h1>
+      <p>Manage your personal profile, password and notifications.</p>
+    </div>
 
-    <div class="settings-content">
-      <form @submit.prevent="updateProfile" class="settings-form">
-        <div class="form-section profile-section">
-          <div class="profile-pic-section">
-            <div class="profile-pic-wrapper">
-              <img :src="userAvatarSrc" alt="Profile" class="profile-pic" />
-              <div 
-                class="profile-pic-overlay"
-                @click="handleProfilePicClick"
-              >
-                <i class="fas fa-camera"></i>
-                <span>Change Photo</span>
-              </div>
+    <form @submit.prevent="updateProfile" class="settings-form">
+      <!-- Profile card -->
+      <div class="settings-card">
+        <h3 class="card-title">Profile</h3>
+
+        <div class="profile-row">
+          <div class="profile-pic-wrapper" @click="handleProfilePicClick">
+            <img
+              v-if="profilePicPreview || user?.profile_pic"
+              :src="userAvatarSrc"
+              alt="Profile"
+              class="profile-pic"
+            />
+            <span v-else class="avatar-initial">{{ avatarInitial }}</span>
+            <div class="profile-pic-overlay">
+              <i class="fas fa-camera"></i>
+              <span>Change Photo</span>
             </div>
-            <input 
-              type="file" 
-              accept="image/*"
-              @change="handleFileSelect"
-              class="file-input"
-              ref="fileInput"
+          </div>
+          <input
+            type="file"
+            accept="image/*"
+            @change="handleFileSelect"
+            class="file-input"
+            ref="fileInput"
+          >
+          <div class="profile-pic-meta">
+            <div class="profile-pic-title">Profile photo</div>
+            <div class="profile-pic-hint">JPG, PNG or GIF. Max 5MB.</div>
+          </div>
+          <div class="profile-pic-actions">
+            <button
+              type="button"
+              class="upload-button"
+              @click="handleProfilePicClick"
+              :disabled="loading"
             >
-            <div class="profile-pic-actions">
-              <button 
-                v-if="profilePicPreview"
-                type="button" 
-                class="upload-button"
-                @click="uploadProfilePic"
-                :disabled="loading || !profilePicFile"
-              >
-                {{ loading ? 'Uploading...' : 'Save New Picture' }}
-              </button>
-              <p class="upload-hint">Maximum size: 5MB</p>
-            </div>
+              {{ loading ? 'Uploading...' : 'Upload' }}
+            </button>
           </div>
         </div>
 
-        <div class="form-section">
-          <h4>Profile Information</h4>
-          
+        <div class="field-grid">
           <div class="form-group">
-            <label>Full Name</label>
-            <input 
-              type="text" 
-              v-model="formData.full_name" 
+            <label>Full name</label>
+            <input
+              type="text"
+              v-model="formData.full_name"
               placeholder="Your full name"
             >
           </div>
-
           <div class="form-group">
             <label>Email</label>
-            <input 
-              type="email" 
-              v-model="formData.email" 
+            <input
+              type="email"
+              v-model="formData.email"
               placeholder="Your email"
-            >
-          </div>
-
-          <div class="form-group">
-            <label>Role</label>
-            <input 
-              type="text" 
-              :value="user?.role?.name || 'User'" 
+              class="input-mono"
               disabled
             >
           </div>
         </div>
 
-        <div class="form-section">
-          <h4>Change Password</h4>
-          
-          <div class="form-group">
-            <label>Current Password</label>
-            <input 
-              type="password" 
-              v-model="formData.current_password"
-              placeholder="Enter current password"
-            >
-          </div>
+        <div class="role-row">
+          <span class="role-label">Role</span>
+          <span class="role-badge">{{ user?.role?.name || 'User' }}</span>
+          <span class="role-note">Contact an admin to change your role.</span>
+        </div>
+      </div>
 
+      <!-- Change password card -->
+      <div class="settings-card">
+        <h3 class="card-title">Change password</h3>
+        <p class="card-subtitle">Use at least 8 characters with a mix of letters and numbers.</p>
+
+        <div class="form-group">
+          <label>Current password</label>
+          <input
+            type="password"
+            v-model="formData.current_password"
+            placeholder="••••••••"
+          >
+        </div>
+
+        <div class="field-grid">
           <div class="form-group">
-            <label>New Password</label>
-            <input 
-              type="password" 
+            <label>New password</label>
+            <input
+              type="password"
               v-model="formData.new_password"
               @input="handlePasswordInput(formData.new_password)"
               placeholder="Enter new password"
               minlength="8"
             >
-            <div v-if="passwordTouched && formData.new_password" class="password-strength">
-              <div class="strength-meter">
-                <div 
-                  class="strength-bar"
-                  :style="{ width: `${(passwordStrength.score / 5) * 100}%` }"
-                  :class="[
-                    passwordStrength.score < 3 ? 'weak' :
-                    passwordStrength.score < 4 ? 'medium' : 'strong'
-                  ]"
-                ></div>
-              </div>
-              <ul class="strength-requirements">
-                <li :class="{ met: passwordStrength.hasMinLength }">
-                  At least 8 characters
-                </li>
-                <li :class="{ met: passwordStrength.hasUpperCase }">
-                  Contains uppercase letter
-                </li>
-                <li :class="{ met: passwordStrength.hasLowerCase }">
-                  Contains lowercase letter
-                </li>
-                <li :class="{ met: passwordStrength.hasNumber }">
-                  Contains number
-                </li>
-                <li :class="{ met: passwordStrength.hasSpecialChar }">
-                  Contains special character (!@#$%^&*)
-                </li>
-              </ul>
-            </div>
           </div>
-
           <div class="form-group">
-            <label>Confirm New Password</label>
-            <input 
-              type="password" 
+            <label>Confirm new password</label>
+            <input
+              type="password"
               v-model="formData.confirm_password"
               placeholder="Confirm new password"
             >
           </div>
         </div>
 
-        <div class="form-actions">
-          <div v-if="message" class="success-message">{{ message }}</div>
-          <div v-if="error" class="error-message">{{ error }}</div>
-          
-          <button 
-            type="submit" 
-            class="submit-button" 
-            :disabled="loading || !hasChanges"
-          >
-            {{ loading ? 'Saving...' : hasChanges ? 'Save Changes' : 'No Changes' }}
+        <div v-if="passwordTouched && formData.new_password" class="password-strength">
+          <div class="strength-meter">
+            <div
+              class="strength-bar"
+              :style="{ width: `${(passwordStrength.score / 5) * 100}%` }"
+              :class="[
+                passwordStrength.score < 3 ? 'weak' :
+                passwordStrength.score < 4 ? 'medium' : 'strong'
+              ]"
+            ></div>
+          </div>
+          <ul class="strength-requirements">
+            <li :class="{ met: passwordStrength.hasMinLength }">At least 8 characters</li>
+            <li :class="{ met: passwordStrength.hasUpperCase }">Contains uppercase letter</li>
+            <li :class="{ met: passwordStrength.hasLowerCase }">Contains lowercase letter</li>
+            <li :class="{ met: passwordStrength.hasNumber }">Contains number</li>
+            <li :class="{ met: passwordStrength.hasSpecialChar }">Contains special character (!@#$%^&*)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div v-if="error" class="error-message">{{ error }}</div>
+
+      <!-- Sticky save bar -->
+      <div v-if="hasChanges" class="save-bar">
+        <span class="save-bar-text">You have unsaved changes</span>
+        <div class="save-bar-actions">
+          <button type="button" class="discard-button" @click="discardChanges">Discard</button>
+          <button type="submit" class="submit-button" :disabled="loading">
+            {{ loading ? 'Saving...' : 'Save changes' }}
           </button>
         </div>
-      </form>
-    </div>
+      </div>
+      <div v-else-if="message" class="save-bar saved-bar">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        <span class="saved-text">{{ message }}</span>
+      </div>
+    </form>
   </div>
 </template>
 
 <style scoped>
 .settings-page {
-  padding: var(--space-lg);
-  max-width: 800px;
+  max-width: 760px;
   margin: 0 auto;
+  padding: var(--space-lg);
+  padding-bottom: 80px;
 }
 
-.settings-header {
-  margin-bottom: var(--space-xl);
-  background: linear-gradient(to right, var(--primary-soft), var(--background-soft));
-  padding: var(--space-xl);
-  border-radius: 30px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+.settings-head {
+  margin-bottom: 26px;
 }
 
-.settings-header h3 {
-  font-size: 2rem;
-  margin-bottom: var(--space-sm);
-  background: linear-gradient(to right, var(--primary-color), var(--text-color));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+.settings-head h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0 0 6px;
 }
 
-.settings-description {
-  color: var(--text-muted);
-  font-size: 1.1rem;
-  line-height: 1.6;
-}
-
-.settings-content {
-  background: var(--background-base);
-  border-radius: 24px;
-  border: 1px solid var(--border-color);
-  padding: var(--space-xl);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+.settings-head p {
+  font-size: 15px;
+  color: var(--muted);
+  margin: 0;
 }
 
 .settings-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xl);
+  gap: 18px;
 }
 
-.form-section {
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
+  padding: 26px;
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--text);
+  margin: 0 0 20px;
+}
+
+.card-subtitle {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin: -16px 0 20px;
+}
+
+/* Avatar row */
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--o07);
+  margin-bottom: 22px;
+}
+
+.profile-pic-wrapper {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--grad-purple-teal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-pic-wrapper:hover .profile-pic-overlay {
+  opacity: 1;
+}
+
+.avatar-initial {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--on-accent-solid);
+}
+
+.profile-pic {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-pic-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  align-items: center;
+  justify-content: center;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  font-size: 10px;
+  gap: 2px;
 }
 
-.form-section h4 {
-  font-size: 1.25rem;
-  color: var(--text-color);
-  margin-bottom: var(--space-sm);
+.profile-pic-overlay i {
+  font-size: 1rem;
+}
+
+.profile-pic-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-pic-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 3px;
+}
+
+.profile-pic-hint {
+  font-size: 12.5px;
+  color: var(--muted2);
+}
+
+.profile-pic-actions {
+  flex-shrink: 0;
+}
+
+.file-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  cursor: pointer;
+  position: absolute;
+}
+
+.upload-button {
+  padding: 9px 16px;
+  background: var(--o06);
+  border: 1px solid var(--o14);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: background 0.2s ease;
+}
+
+.upload-button:hover:not(:disabled) {
+  background: var(--o10);
+}
+
+.upload-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Inputs */
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+}
+
+.form-group + .form-group,
+.form-group + .field-grid,
+.field-grid + .form-group {
+  margin-top: 16px;
+}
+
+/* Form-groups inside a 2-col grid align at the top — the grid gap handles spacing */
+.field-grid > .form-group + .form-group {
+  margin-top: 0;
+}
+
+.field-grid {
+  align-items: start;
 }
 
 .form-group label {
-  font-size: 0.875rem;
+  display: block;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--text3);
+  margin-bottom: 8px;
 }
 
 .form-group input {
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--background-soft);
-  color: var(--text-color);
-  font-size: 1rem;
-  transition: all 0.3s ease;
-}
-
-.form-group input:disabled {
-  background: var(--background-mute);
-  cursor: not-allowed;
+  width: 100%;
+  padding: 13px 15px;
+  background: var(--bg);
+  border: 1px solid var(--o12);
+  border-radius: 11px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
 }
 
 .form-group input:focus {
-  border-color: var(--primary-color);
-  outline: none;
-  box-shadow: 0 0 0 2px var(--primary-soft);
+  border-color: var(--accent-ink);
+  box-shadow: var(--ring-focus);
 }
 
-.form-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  align-items: flex-start;
-}
-
-.submit-button {
-  padding: var(--space-sm) var(--space-xl);
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.submit-button:hover {
-  background: var(--primary-dark);
-}
-
-.submit-button:disabled {
-  background: var(--background-mute);
+.form-group input.input-mono,
+.form-group input:disabled {
+  background: var(--o03);
+  border: 1px solid var(--o08);
+  color: var(--muted);
+  font-family: var(--font-mono);
   cursor: not-allowed;
 }
 
-.success-message {
-  color: var(--success-color);
-  font-size: 0.875rem;
+/* Role badge */
+.role-row {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.role-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg-12);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.role-note {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* Sticky save bar */
+.save-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 14px 12px 22px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--o12);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.save-bar-text {
+  font-size: 13.5px;
+  color: var(--text3);
+}
+
+.save-bar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.discard-button {
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid var(--o14);
+  border-radius: 10px;
+  color: var(--text3);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: background 0.2s ease;
+}
+
+.discard-button:hover {
+  background: var(--o06);
+}
+
+.submit-button {
+  padding: 10px 20px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  border: none;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: filter 0.2s ease;
+}
+
+.submit-button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.submit-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.saved-bar {
+  gap: 10px;
+  padding: 12px 20px;
+  border-color: var(--accent-border);
+  color: var(--accent-ink);
+}
+
+.saved-text {
+  font-size: 13.5px;
+  color: var(--accent-ink);
+  font-weight: 500;
 }
 
 .error-message {
@@ -521,52 +763,34 @@ const handleProfilePicClick = () => {
 @media (max-width: 768px) {
   .settings-page {
     padding: var(--space-md);
+    padding-bottom: 90px;
   }
 
-  .settings-header {
+  .settings-card {
     padding: var(--space-lg);
   }
 
-  .settings-header h3 {
-    font-size: 1.5rem;
+  .field-grid {
+    grid-template-columns: 1fr;
   }
 
-  .settings-content {
-    padding: var(--space-lg);
+  .save-bar {
+    left: var(--space-md);
+    right: var(--space-md);
+    transform: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
   }
-}
-
-.header-content {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-}
-
-.back-button {
-  background: none;
-  border: none;
-  color: var(--text-color);
-  font-size: 1rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-  transition: all 0.3s ease;
-}
-
-.back-button:hover {
-  background: var(--background-mute);
 }
 
 .password-strength {
-  margin-top: var(--space-sm);
+  margin-top: var(--space-md);
 }
 
 .strength-meter {
   height: 4px;
-  background: var(--background-mute);
+  background: var(--o10);
   border-radius: var(--radius-full);
   margin-bottom: var(--space-sm);
 }
@@ -613,99 +837,5 @@ const handleProfilePicClick = () => {
 .strength-requirements li.met::before {
   content: '✓';
   color: var(--success-color);
-}
-
-.profile-section {
-  display: flex;
-  justify-content: center;
-  padding: var(--space-xl) 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.profile-pic-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-md);
-}
-
-.profile-pic-wrapper {
-  position: relative;
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  overflow: hidden;
-  cursor: pointer;
-  border: 3px solid var(--primary-soft);
-  transition: all 0.3s ease;
-}
-
-.profile-pic-wrapper:hover .profile-pic-overlay {
-  opacity: 1;
-}
-
-.profile-pic {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: all 0.3s ease;
-}
-
-.profile-pic-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  opacity: 0;
-  transition: all 0.3s ease;
-}
-
-.profile-pic-overlay i {
-  font-size: 1.5rem;
-  margin-bottom: var(--space-xs);
-}
-
-.profile-pic-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.file-input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  cursor: pointer;
-  position: absolute;
-}
-
-.upload-button {
-  padding: var(--space-xs) var(--space-md);
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 0.9rem;
-}
-
-.upload-button:disabled {
-  background: var(--background-mute);
-  cursor: not-allowed;
-}
-
-.upload-hint {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin: 0;
 }
 </style> 

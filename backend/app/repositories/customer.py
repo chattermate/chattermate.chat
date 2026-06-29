@@ -98,3 +98,62 @@ class CustomerRepository:
         except Exception as e:
             logger.error(f"Error getting customer email: {str(e)}")
             return None
+
+    @staticmethod
+    def is_placeholder_email(email: str | None) -> bool:
+        """True if the email is missing or an auto-generated anonymous placeholder."""
+        return (not email) or ('@noemail.com' in email)
+
+    def update_contact(
+        self,
+        customer_id: UUID,
+        email: str = None,
+        full_name: str = None
+    ) -> dict:
+        """Update an existing customer's contact details (used by human-handoff capture).
+
+        - Replaces a placeholder ``…@noemail.com`` (or empty) email with the supplied one,
+          respecting the ``(email, organization_id)`` unique constraint — if the email already
+          belongs to a different customer, the email update is skipped (logged) but the name
+          can still be updated. A real existing email is never overwritten.
+        - Sets ``full_name`` when a non-empty value is supplied.
+
+        Returns ``{'email_updated': bool, 'name_updated': bool, 'email': str|None}``.
+        """
+        result = {'email_updated': False, 'name_updated': False, 'email': None}
+        try:
+            customer = self.get_by_id(customer_id)
+            if not customer:
+                return result
+
+            if email:
+                email = email.strip()
+                # Only replace a placeholder/empty email — don't clobber a real one
+                if email and self.is_placeholder_email(customer.email) \
+                        and email.lower() != (customer.email or '').lower():
+                    existing = self.get_customer_by_email(email, customer.organization_id)
+                    if existing and existing.id != customer.id:
+                        logger.warning(
+                            f"Email {email} already belongs to another customer in org "
+                            f"{customer.organization_id}; skipping email update for {customer_id}"
+                        )
+                    else:
+                        customer.email = email
+                        result['email_updated'] = True
+
+            if full_name is not None:
+                full_name = full_name.strip()
+                if full_name:
+                    customer.full_name = full_name
+                    result['name_updated'] = True
+
+            if result['email_updated'] or result['name_updated']:
+                self.db.commit()
+                self.db.refresh(customer)
+
+            result['email'] = customer.email
+            return result
+        except Exception as e:
+            logger.error(f"Error updating customer contact: {str(e)}")
+            self.db.rollback()
+            return result

@@ -335,35 +335,41 @@ const chatterMateButtonText = computed(() => {
         {{ error }}
       </div>
 
+      <header class="page-header">
+        <h1 class="page-title">AI Configuration</h1>
+        <p class="page-subtitle">Your agents already run on ChatterMate AI. Switch to your own model any time — this is optional.</p>
+      </header>
+
       <div class="tabs-container">
         <div class="tabs">
-          <div 
+          <div
             v-if="hasEnterpriseModule"
-            class="tab" 
+            class="tab"
             :class="{ active: activeTab === 'chattermate' }"
             @click="selectTab('chattermate')"
           >
             <span class="tab-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="8"></circle>
               </svg>
             </span>
             <span class="tab-label">ChatterMate AI</span>
           </div>
-          <div 
-            class="tab" 
-            :class="{ 
+          <div
+            class="tab"
+            :class="{
               active: activeTab === 'custom',
               locked: isCustomModelsLocked
             }"
             @click="selectTab('custom')"
           >
             <span class="tab-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="5" y="11" width="14" height="9" rx="2"></rect>
+                <path d="M8 11V8a4 4 0 0 1 8 0v3"></path>
               </svg>
             </span>
-            <span class="tab-label">Bring Your Own Model</span>
+            <span class="tab-label">Advanced — Bring Your Own Model</span>
             <span v-if="hasEnterpriseModule && isCustomModelsLocked" class="lock-icon">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -373,22 +379,28 @@ const chatterMateButtonText = computed(() => {
             </span>
           </div>
         </div>
-        
+
         <div class="tab-content">
           <div v-if="activeTab === 'chattermate' && hasEnterpriseModule" class="chattermate-content">
             <div class="provider-info">
               <div class="provider-header">
+                <span class="active-pill">
+                  <span class="active-dot"></span>
+                  <span class="active-text">ACTIVE</span>
+                </span>
                 <h4>ChatterMate AI</h4>
+                <p class="provider-tagline">Zero setup. Managed models, ready instantly — this is the default.</p>
               </div>
-              
+
               <div class="plan-table">
                 <div class="plan-row">
-                  <div class="plan-cell plan-label">{{ currentPlanName }}:</div>
+                  <div class="plan-cell plan-label">{{ currentPlanName }}</div>
                   <div class="plan-cell plan-value">{{ currentPlanMessageLimit }}</div>
                 </div>
                 <div class="plan-divider"></div>
                 <div class="plan-row rate-limit-row">
-                  <div class="plan-cell">{{ rateLimitText }}</div>
+                  <div class="plan-cell plan-label">Rate limit</div>
+                  <div class="plan-cell rate-limit-value">{{ rateLimitText }}</div>
                 </div>
               </div>
               
@@ -519,27 +531,30 @@ const chatterMateButtonText = computed(() => {
             <!-- Custom Models Form (when unlocked) -->
             <div v-else>
               <form @submit.prevent="handleSubmit" class="setup-form">
+                <h4 class="setup-title">Bring your own model</h4>
                 <p class="setup-description">
-                  {{ hasExistingConfig ? 'Update your AI provider settings' : 'Set up your AI provider to start using ChatterMate\'s intelligent features' }}
+                  {{ hasExistingConfig ? 'Update your AI provider settings' : 'Connect a provider with your own API key. Full control, your rates.' }}
                 </p>
 
                 <div class="form-group">
-                  <label for="provider">AI Provider</label>
-                  <select 
-                    id="provider" 
-                    v-model="setupConfig.provider"
-                    required
-                    class="form-control"
-                  >
-                    <option value="">Select Provider</option>
-                    <option 
-                      v-for="provider in providers" 
-                      :key="provider.value" 
-                      :value="provider.value"
+                  <label>AI Provider</label>
+                  <div class="provider-grid" role="radiogroup">
+                    <button
+                      v-for="provider in providers"
+                      :key="provider.value"
+                      type="button"
+                      class="provider-card"
+                      :class="{ selected: setupConfig.provider === provider.value }"
+                      role="radio"
+                      :aria-checked="setupConfig.provider === provider.value"
+                      @click="setupConfig.provider = provider.value"
                     >
-                      {{ provider.label }}
-                    </option>
-                  </select>
+                      <span class="provider-radio">
+                        <span v-if="setupConfig.provider === provider.value" class="provider-radio-dot"></span>
+                      </span>
+                      <span class="provider-name">{{ provider.label }}</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="form-group">
@@ -552,9 +567,9 @@ const chatterMateButtonText = computed(() => {
                     :disabled="!setupConfig.provider || modelOptions.length === 0"
                   >
                     <option value="" disabled>Select Model</option>
-                    <option 
-                      v-for="model in modelOptions" 
-                      :key="model.value" 
+                    <option
+                      v-for="model in modelOptions"
+                      :key="model.value"
                       :value="model.value"
                     >
                       {{ model.label }}
@@ -569,14 +584,14 @@ const chatterMateButtonText = computed(() => {
                     type="password"
                     v-model="setupConfig.apiKey"
                     :required="showApiKey"
-                    placeholder="Enter your API key"
-                    class="form-control"
+                    placeholder="sk-..."
+                    class="form-control form-control-mono"
                   />
                   <p class="key-hint">Your API key will be encrypted and stored securely</p>
                 </div>
 
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   class="btn btn-primary"
                   :disabled="isLoading"
                 >
@@ -594,7 +609,7 @@ const chatterMateButtonText = computed(() => {
 <style scoped>
 .ai-setup {
   width: 100%;
-  max-width: 750px;
+  max-width: 760px;
   margin: 0 auto;
 }
 
@@ -606,8 +621,8 @@ const chatterMateButtonText = computed(() => {
 }
 
 .loader {
-  border: 3px solid var(--border-color);
-  border-top: 3px solid var(--primary-color);
+  border: 3px solid var(--o12);
+  border-top: 3px solid var(--accent-ink);
   border-radius: 50%;
   width: 30px;
   height: 30px;
@@ -620,48 +635,70 @@ const chatterMateButtonText = computed(() => {
 }
 
 .error-message {
-  background-color: var(--secondary-color);
+  background-color: var(--surface);
   color: var(--error-color);
   padding: 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-input);
   margin-bottom: 20px;
 }
 
+/* Page header */
+.page-header {
+  margin: 10px auto 30px;
+  text-align: center;
+}
+
+.page-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: -.02em;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.page-subtitle {
+  font-size: 15px;
+  color: var(--muted);
+  margin: 0;
+}
+
 .tabs-container {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--o08);
+  border-radius: 20px;
   overflow: hidden;
-  background-color: var(--background-color);
-  box-shadow: var(--shadow-sm);
+  background: var(--surface);
 }
 
 .tabs {
   display: flex;
-  background-color: var(--background-soft);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o08);
 }
 
 .tab {
-  padding: 12px 16px;
+  flex: 1;
+  padding: 16px;
   cursor: pointer;
+  font-family: var(--font-sans);
   font-weight: 500;
+  font-size: 15px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
+  justify-content: center;
+  gap: 9px;
+  color: var(--muted);
   transition: var(--transition-fast);
   border-bottom: 2px solid transparent;
 }
 
 .tab:hover {
-  color: var(--primary-color);
-  background-color: var(--background-mute);
+  color: var(--accent-ink);
 }
 
 .tab.active {
-  color: var(--primary-color);
-  border-bottom: 2px solid var(--primary-color);
-  background-color: var(--background-color);
+  color: var(--accent-ink);
+  border-bottom: 2px solid var(--accent-ink);
+  font-weight: 600;
 }
 
 .tab.locked {
@@ -670,14 +707,12 @@ const chatterMateButtonText = computed(() => {
 }
 
 .tab.locked:hover {
-  color: var(--primary-color);
-  background-color: var(--background-mute);
+  color: var(--accent-ink);
 }
 
 .tab.locked.active {
-  color: var(--primary-color);
-  border-bottom: 2px solid var(--primary-color);
-  background-color: var(--background-color);
+  color: var(--accent-ink);
+  border-bottom: 2px solid var(--accent-ink);
   opacity: 1;
 }
 
@@ -690,123 +725,237 @@ const chatterMateButtonText = computed(() => {
   display: flex;
   align-items: center;
   margin-left: var(--space-xs);
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .tab-content {
-  padding: var(--space-lg);
+  padding: 26px;
 }
 
 .setup-form {
-  max-width: 500px;
+  max-width: 520px;
+}
+
+.setup-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+  margin: 0 0 6px;
+  color: var(--text);
 }
 
 .setup-description {
-  margin-bottom: var(--space-lg);
-  color: var(--text-secondary);
+  margin: 0 0 22px;
+  font-size: 14px;
+  color: var(--muted);
 }
 
 .form-group {
-  margin-bottom: var(--space-lg);
+  margin-bottom: 22px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: var(--space-sm);
+  margin-bottom: 9px;
+  font-size: 13.5px;
   font-weight: 500;
+  color: var(--text3);
 }
 
 .form-control {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-input);
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.form-control-mono {
+  font-family: var(--font-mono);
+}
+
+.form-control:focus {
+  border-color: var(--accent-ink);
+  box-shadow: var(--ring-focus);
+}
+
+/* Provider card grid */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.provider-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 15px 16px;
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  border-radius: var(--radius-input);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.provider-card.selected {
+  background: var(--accent-bg-08);
+  border-color: var(--accent-border);
+}
+
+.provider-radio {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--o25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-fast);
+}
+
+.provider-card.selected .provider-radio {
+  border-color: var(--accent-ink);
+}
+
+.provider-radio-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-solid);
 }
 
 .key-hint {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--muted2);
   margin-top: var(--space-xs);
 }
 
 .btn {
-  padding: 10px 16px;
+  padding: 14px 26px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-btn);
   cursor: pointer;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
   transition: var(--transition-fast);
 }
 
 .btn-primary {
-  background-color: var(--primary-color);
-  color: var(--text-color-light);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .btn-primary:hover {
-  background-color: var(--accent-color);
+  filter: brightness(1.05);
 }
 
 .btn-primary:disabled {
-  background-color: var(--background-mute);
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
 .provider-info {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
-  max-width: 600px;
+  gap: 22px;
+  width: 100%;
 }
 
 .provider-header {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  align-items: flex-start;
+}
+
+.active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg-12);
+  border: 1px solid var(--accent-border);
+  margin-bottom: 16px;
+}
+
+.active-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-solid);
+}
+
+.active-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
 }
 
 .provider-header h4 {
-  font-size: var(--text-xl);
-  margin: 0;
-  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+  margin: 0 0 6px;
+  color: var(--text);
 }
 
-.provider-header p {
+.provider-tagline {
   margin: 0;
-  color: var(--text-secondary);
-  font-weight: normal;
+  font-size: 14px;
+  color: var(--muted);
 }
 
 .plan-table {
-  background-color: var(--background-soft);
-  border-radius: var(--radius-md);
-  padding: var(--space-md);
-  border: 1px solid var(--border-color);
+  background: var(--bg);
+  border-radius: 14px;
+  border: 1px solid var(--o08);
+  overflow: hidden;
 }
 
 .plan-row {
   display: flex;
-  padding: var(--space-sm) 0;
-}
-
-.plan-cell {
-  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
 }
 
 .plan-label {
-  font-weight: 500;
+  font-size: 15px;
+  color: var(--text3);
+}
+
+.plan-value {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--accent-ink);
+  text-align: right;
 }
 
 .plan-divider {
   height: 1px;
-  background-color: var(--border-color);
-  margin: var(--space-sm) 0;
+  background: var(--o07);
 }
 
-.rate-limit-row {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+.rate-limit-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--muted);
+  text-align: right;
 }
 
 .action-area {
@@ -816,30 +965,32 @@ const chatterMateButtonText = computed(() => {
 }
 
 .continue-button {
-  background-color: var(--primary-color);
-  color: var(--text-color-light);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
-  border-radius: var(--radius-md);
-  padding: 10px 16px;
-  font-weight: 500;
+  border-radius: var(--radius-btn);
+  padding: 14px 26px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
   transition: var(--transition-fast);
 }
 
 .continue-button:hover {
-  background-color: var(--accent-color);
+  filter: brightness(1.05);
 }
 
 /* Upgrade Prompt Styles */
 .upgrade-prompt {
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--c-purple), var(--c-purple));
+  border-radius: var(--radius-input);
   padding: var(--space-lg);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-md);
-  color: white;
+  color: var(--on-accent-solid);
   margin-top: var(--space-md);
 }
 
@@ -915,12 +1066,12 @@ const chatterMateButtonText = computed(() => {
   align-items: center;
   justify-content: center;
   min-height: 50vh;
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
+  background: var(--bg);
+  border-radius: 20px;
   margin: var(--space-md) 0;
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o08);
 }
 
 .custom-models-locked-overlay::before {
@@ -930,9 +1081,9 @@ const chatterMateButtonText = computed(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
-    radial-gradient(circle at 20% 80%, rgba(243, 70, 17, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+  background:
+    radial-gradient(circle at 20% 80%, var(--purple-bg) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, var(--accent-bg-08) 0%, transparent 50%);
   pointer-events: none;
 }
 
@@ -958,7 +1109,7 @@ const chatterMateButtonText = computed(() => {
   justify-content: center;
   width: 48px;
   height: 48px;
-  background: var(--primary-color);
+  background: var(--accent-solid);
   border-radius: 50%;
   box-shadow: var(--shadow-lg);
   margin-bottom: var(--space-sm);
@@ -966,13 +1117,14 @@ const chatterMateButtonText = computed(() => {
 
 .custom-models-locked-overlay .locked-icon {
   font-size: 1.25rem;
-  color: white;
+  color: var(--on-accent-solid);
 }
 
 .custom-models-locked-overlay h3 {
+  font-family: var(--font-display);
   font-size: var(--text-2xl);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
   margin-bottom: var(--space-sm);
 }
 
@@ -980,13 +1132,13 @@ const chatterMateButtonText = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-bg-12);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent-border);
   padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   font-size: var(--text-xs);
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
 }
 
 .custom-models-locked-overlay .badge-icon {
@@ -995,7 +1147,7 @@ const chatterMateButtonText = computed(() => {
 
 .custom-models-locked-overlay .locked-description {
   font-size: var(--text-base);
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.6;
   margin-bottom: var(--space-lg);
   max-width: 600px;
@@ -1015,18 +1167,16 @@ const chatterMateButtonText = computed(() => {
   align-items: flex-start;
   gap: var(--space-sm);
   padding: var(--space-md);
-  background: var(--background-color);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
+  background: var(--surface);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--o08);
   text-align: left;
   transition: all var(--transition-normal);
 }
 
 .custom-models-locked-overlay .feature-item:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-color-hover);
+  border-color: var(--o12);
 }
 
 .custom-models-locked-overlay .feature-icon-wrapper {
@@ -1035,14 +1185,14 @@ const chatterMateButtonText = computed(() => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: var(--success-color);
-  border-radius: var(--radius-md);
+  background: var(--accent-solid);
+  border-radius: var(--radius-input);
   flex-shrink: 0;
 }
 
 .custom-models-locked-overlay .feature-icon {
   font-size: 0.875rem;
-  color: white;
+  color: var(--on-accent-solid);
 }
 
 .custom-models-locked-overlay .feature-content {
@@ -1054,12 +1204,12 @@ const chatterMateButtonText = computed(() => {
 .custom-models-locked-overlay .feature-title {
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .custom-models-locked-overlay .feature-desc {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.4;
 }
 
@@ -1071,16 +1221,16 @@ const chatterMateButtonText = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-btn);
   padding: var(--space-md) var(--space-lg);
+  font-family: var(--font-sans);
   font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-normal);
-  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
 }
@@ -1101,14 +1251,13 @@ const chatterMateButtonText = computed(() => {
 }
 
 .custom-models-locked-overlay .upgrade-button:hover {
-  background: var(--primary-dark);
+  filter: brightness(1.05);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
 }
 
 .custom-models-locked-overlay .upgrade-icon {
   font-size: 0.875rem;
-  color: #ffd700;
+  color: var(--on-accent-solid);
 }
 
 .custom-models-locked-overlay .arrow-icon {

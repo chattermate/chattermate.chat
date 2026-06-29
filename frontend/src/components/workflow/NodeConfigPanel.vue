@@ -516,7 +516,7 @@ const handleObjectChange = (fieldKey: string, value: string) => {
 .form-select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(243, 70, 17, 0.1);
+  box-shadow: 0 0 0 2px rgba(201, 242, 78, 0.15);
 }
 
 .form-textarea {
@@ -579,8 +579,8 @@ const handleObjectChange = (fieldKey: string, value: string) => {
 }
 
 .add-item-btn {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-md);
   padding: var(--space-sm);
@@ -618,8 +618,8 @@ const handleObjectChange = (fieldKey: string, value: string) => {
 }
 
 .btn-primary {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .btn-primary:hover {

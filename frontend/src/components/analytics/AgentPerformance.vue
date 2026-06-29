@@ -223,7 +223,7 @@ onMounted(() => {
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--primary-color);
+  background: var(--accent-solid);
 }
 
 .tab-content {

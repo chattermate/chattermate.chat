@@ -83,7 +83,7 @@ const customization = ref<AgentCustomization>({
     chat_background_color: props.agent.customization?.chat_background_color ?? '#F8F9FA',
     chat_bubble_color: props.agent.customization?.chat_bubble_color ?? '#E9ECEF',
     icon_color: props.agent.customization?.icon_color ?? '#6C757D',
-    accent_color: props.agent.customization?.accent_color ?? '#f34611',
+    accent_color: props.agent.customization?.accent_color ?? '#C9F24E',
     font_family: props.agent.customization?.font_family ?? 'Inter, system-ui, sans-serif',
     photo_url: props.agent.customization?.photo_url,
     custom_css: props.agent.customization?.custom_css,
@@ -92,22 +92,95 @@ const customization = ref<AgentCustomization>({
     welcome_title: props.agent.customization?.welcome_title ?? '',
     welcome_subtitle: props.agent.customization?.welcome_subtitle ?? '',
     chat_initiation_messages: props.agent.customization?.chat_initiation_messages ?? [],
+    show_citations: props.agent.customization?.show_citations ?? false,
+    collect_email: props.agent.customization?.collect_email ?? false,
 })
 
-// Chat style options with descriptions
+// Chat style options grouped into Legacy (existing looks) and New (premium presets)
 const chatStyleOptions = [
     {
         value: 'CHATBOT' as ChatStyle,
-        label: 'Chatbot',
-        description: 'Traditional customer support style with agent branding',
-        icon: '💬'
+        label: 'Legacy',
+        description: 'The original look — light, neutral, classic chatbot.',
+        group: 'legacy' as const,
     },
     {
         value: 'ASK_ANYTHING' as ChatStyle,
         label: 'Ask Anything',
-        description: 'Modern AI assistant style for general queries',
-        icon: '🤖'
+        description: 'Modern AI assistant style for general queries.',
+        group: 'legacy' as const,
+    },
+    {
+        value: 'GLASS' as ChatStyle,
+        label: 'Glass',
+        description: 'Frosted dark glass with soft glow and rounded bubbles.',
+        group: 'new' as const,
+    },
+    {
+        value: 'TERMINAL' as ChatStyle,
+        label: 'Terminal',
+        description: 'Monospace developer style, square corners.',
+        group: 'new' as const,
+    },
+    {
+        value: 'PLAYFUL' as ChatStyle,
+        label: 'Playful',
+        description: 'Light, friendly and very rounded with warm accents.',
+        group: 'new' as const,
+    },
+    {
+        value: 'CALM_MINT' as ChatStyle,
+        label: 'Calm Mint',
+        description: 'Clean dark-teal with subtle borders.',
+        group: 'new' as const,
+    },
+    {
+        value: 'AURORA' as ChatStyle,
+        label: 'Aurora',
+        description: 'The new ask-me-anything — dark, with a glowing aurora orb avatar.',
+        group: 'new' as const,
+    },
+]
+
+const legacyStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'legacy'))
+const newStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'new'))
+
+// Default palette per design. Selecting a design seeds these color fields so the look
+// matches the marketing presets; the user can still recolor afterwards.
+const THEME_PRESETS: Record<string, { chat_background_color: string; chat_bubble_color: string; accent_color: string; font_family: string }> = {
+    CHATBOT: { chat_background_color: '#FFFFFF', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
+    ASK_ANYTHING: { chat_background_color: '#F8F9FA', chat_bubble_color: '#E9ECEF', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
+    GLASS: { chat_background_color: '#17151F', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
+    TERMINAL: { chat_background_color: '#070907', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'JetBrains Mono, monospace' },
+    PLAYFUL: { chat_background_color: '#FFFFFF', chat_bubble_color: '#FF7A6B', accent_color: '#FF7A6B', font_family: 'Instrument Sans, sans-serif' },
+    CALM_MINT: { chat_background_color: '#0E1A1A', chat_bubble_color: '#5FE3D6', accent_color: '#5FE3D6', font_family: 'Instrument Sans, sans-serif' },
+    AURORA: { chat_background_color: '#14111C', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
+}
+
+const themePreset = (value: string) => THEME_PRESETS[value] || THEME_PRESETS.CHATBOT
+
+// Select a design and seed its preset palette into the editable color fields
+const selectChatStyle = (value: ChatStyle) => {
+    customization.value.chat_style = value
+    const preset = THEME_PRESETS[value]
+    if (preset) {
+        customization.value.chat_background_color = preset.chat_background_color
+        customization.value.chat_bubble_color = preset.chat_bubble_color
+        customization.value.accent_color = preset.accent_color
+        customization.value.font_family = preset.font_family
     }
+    emit('preview', { ...customization.value })
+}
+
+// Brand color swatch presets (design grid)
+const accentSwatchColors = ['#C9F24E', '#9D8CFF', '#5FE3D6', '#FF8A73', '#6EA8FF', '#F34611']
+
+// Font picker chip presets (design typography picker)
+const fontPresets = [
+    { value: 'Instrument Sans, sans-serif', label: 'Instrument Sans' },
+    { value: 'Space Grotesk, sans-serif', label: 'Space Grotesk' },
+    { value: 'JetBrains Mono, monospace', label: 'JetBrains Mono' },
+    { value: 'system-ui, sans-serif', label: 'System' },
 ]
 
 // Save state management
@@ -169,7 +242,7 @@ watch(() => props.agent.customization, (newCustomization) => {
             chat_background_color: newCustomization.chat_background_color ?? '#F8F9FA',
             chat_bubble_color: newCustomization.chat_bubble_color ?? '#E9ECEF',
             icon_color: newCustomization.icon_color ?? '#6C757D',
-            accent_color: newCustomization.accent_color ?? '#f34611',
+            accent_color: newCustomization.accent_color ?? '#C9F24E',
             font_family: newCustomization.font_family ?? 'Inter, system-ui, sans-serif',
             photo_url: newCustomization.photo_url,
             custom_css: newCustomization.custom_css,
@@ -178,6 +251,8 @@ watch(() => props.agent.customization, (newCustomization) => {
             welcome_title: newCustomization.welcome_title ?? '',
             welcome_subtitle: newCustomization.welcome_subtitle ?? '',
             chat_initiation_messages: newCustomization.chat_initiation_messages ?? [],
+            show_citations: newCustomization.show_citations ?? false,
+            collect_email: newCustomization.collect_email ?? false,
         }
         nextTick(() => {
             isInternalUpdate.value = false
@@ -352,146 +427,156 @@ const isSectionExpanded = (sectionId: string) => {
 <template>
     <div class="customization-form">
         <div class="form-content">
-            <!-- Chat Style Section -->
-            <div class="form-section collapsible" :class="{ 'expanded': isSectionExpanded('chat-style') }">
-                <div class="section-header-collapsible" @click="toggleSection('chat-style')">
-                    <h4>
-                        <font-awesome-icon 
-                            :icon="isSectionExpanded('chat-style') ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" 
-                            class="collapse-icon"
-                        />
-                        Chat Style
-                    </h4>
-                </div>
-                
-                <div v-show="isSectionExpanded('chat-style')" class="section-content">
-                <div class="form-group">
-                    <label class="section-label">Choose Your Chat Style</label>
-                    <div class="style-cards">
-                        <div 
-                            v-for="option in chatStyleOptions" 
-                            :key="option.value"
-                            class="style-card"
-                            :class="{ 'active': customization.chat_style === option.value }"
-                            @click="customization.chat_style = option.value"
-                        >
-                            <div class="style-card-header">
-                                <div class="style-icon">{{ option.icon }}</div>
-                                <div class="style-check" v-if="customization.chat_style === option.value">
-                                    <font-awesome-icon icon="fa-solid fa-circle-check" />
-                                </div>
-                            </div>
-                            <div class="style-card-body">
-                                <h5 class="style-title">{{ option.label }}</h5>
-                                <p class="style-description">{{ option.description }}</p>
-                            </div>
+            <!-- Chat design Section -->
+            <div class="form-section">
+                <h3 class="section-heading">Chat design</h3>
+                <p class="section-subtext">Every look from the marketing site — pick one, match it to your brand.</p>
+
+                <div class="chat-style-group-label">Legacy</div>
+                <div class="chat-style-grid">
+                    <button
+                        v-for="option in legacyStyleOptions"
+                        :key="option.value"
+                        type="button"
+                        class="chat-style-card"
+                        :class="{ 'active': customization.chat_style === option.value }"
+                        @click="selectChatStyle(option.value)"
+                    >
+                        <div class="chat-style-thumb" :style="{ background: themePreset(option.value).chat_background_color }">
+                            <span class="thumb-bubble agent"></span>
+                            <span class="thumb-bubble user" :style="{ background: themePreset(option.value).accent_color }"></span>
                         </div>
-                    </div>
+                        <div class="chat-style-title">
+                            <span>{{ option.label }}</span>
+                            <span v-if="customization.chat_style === option.value" class="chat-style-check">✓</span>
+                        </div>
+                        <div class="chat-style-desc">{{ option.description }}</div>
+                    </button>
                 </div>
+
+                <div class="chat-style-group-label">New <span class="chat-style-group-badge">premium</span></div>
+                <div class="chat-style-grid">
+                    <button
+                        v-for="option in newStyleOptions"
+                        :key="option.value"
+                        type="button"
+                        class="chat-style-card"
+                        :class="{ 'active': customization.chat_style === option.value }"
+                        @click="selectChatStyle(option.value)"
+                    >
+                        <div class="chat-style-thumb" :style="{ background: themePreset(option.value).chat_background_color }">
+                            <span class="thumb-bubble agent"></span>
+                            <span class="thumb-bubble user" :style="{ background: themePreset(option.value).accent_color }"></span>
+                        </div>
+                        <div class="chat-style-title">
+                            <span>{{ option.label }}</span>
+                            <span v-if="customization.chat_style === option.value" class="chat-style-check">✓</span>
+                        </div>
+                        <div class="chat-style-desc">{{ option.description }}</div>
+                    </button>
                 </div>
+
+                <label class="citations-toggle">
+                    <input type="checkbox" v-model="customization.show_citations">
+                    <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
+                    <span class="citations-toggle-text">
+                        <span class="citations-toggle-title">Show citations</span>
+                        <span class="citations-toggle-desc">Display the knowledge-base sources used to answer, as chips under each reply.</span>
+                    </span>
+                </label>
+
+                <label class="citations-toggle">
+                    <input type="checkbox" v-model="customization.collect_email">
+                    <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
+                    <span class="citations-toggle-text">
+                        <span class="citations-toggle-title">Collect email before chat</span>
+                        <span class="citations-toggle-desc">Require visitors to enter their email before they can start chatting. Off by default.</span>
+                    </span>
+                </label>
             </div>
 
-            <!-- Colors Section -->
-            <div class="form-section collapsible" :class="{ 'expanded': isSectionExpanded('colors') }">
-                <div class="section-header-collapsible" @click="toggleSection('colors')">
-                    <h4>
-                        <font-awesome-icon 
-                            :icon="isSectionExpanded('colors') ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" 
-                            class="collapse-icon"
-                        />
-                        Colors
-                    </h4>
+            <!-- Brand color + Typography Section -->
+            <div class="form-section">
+                <h3 class="section-heading">Brand color</h3>
+                <div class="accent-row">
+                    <button
+                        v-for="swatch in accentSwatchColors"
+                        :key="swatch"
+                        type="button"
+                        class="accent-swatch"
+                        :class="{ 'active': customization.accent_color?.toUpperCase() === swatch }"
+                        :title="swatch"
+                        :style="{ background: swatch, boxShadow: customization.accent_color?.toUpperCase() === swatch ? '0 0 0 2px ' + swatch : 'none' }"
+                        @click="customization.accent_color = swatch"
+                    ></button>
+                    <label class="accent-custom" title="Custom color">
+                        <input type="color" v-model="customization.accent_color">
+                        <span class="accent-custom-icon">+</span>
+                    </label>
+                    <span class="accent-hex">{{ customization.accent_color }}</span>
                 </div>
-                
-                <div v-show="isSectionExpanded('colors')" class="section-content">
-                <div class="color-grid">
 
-                    <div class="color-picker">
-                        <label>Background</label>
-                        <div class="color-input">
+                <div class="aux-color-row">
+                    <label class="aux-color">
+                        <span class="aux-color-label">Background</span>
+                        <span class="aux-color-input">
                             <input type="color" v-model="customization.chat_background_color">
-                            <span class="color-value">{{ customization.chat_background_color }}</span>
-                        </div>
-                    </div>
-
-                    <div class="color-picker">
-                        <label>Chat Bubble</label>
-                        <div class="color-input">
+                            <span class="aux-color-value">{{ customization.chat_background_color }}</span>
+                        </span>
+                    </label>
+                    <label class="aux-color">
+                        <span class="aux-color-label">Chat bubble</span>
+                        <span class="aux-color-input">
                             <input type="color" v-model="customization.chat_bubble_color"
                                 @input="emit('preview', { ...customization, showBubblePreview: true })"
                                 @focus="emit('preview', { ...customization, showBubblePreview: true })"
                                 @blur="emit('preview', { ...customization, showBubblePreview: false })">
-                            <span class="color-value">{{ customization.chat_bubble_color }}</span>
-                        </div>
-                    </div>
+                            <span class="aux-color-value">{{ customization.chat_bubble_color }}</span>
+                        </span>
+                    </label>
+                </div>
 
-                    <div class="color-picker">
-                        <label>Accent</label>
-                        <div class="color-input">
-                            <input type="color" v-model="customization.accent_color">
-                            <span class="color-value">{{ customization.accent_color }}</span>
-                        </div>
-                    </div>
-                </div>
-                </div>
-            </div>
-
-            <!-- Typography Section -->
-            <div class="form-section collapsible" :class="{ 'expanded': isSectionExpanded('typography') }">
-                <div class="section-header-collapsible" @click="toggleSection('typography')">
-                    <h4>
-                        <font-awesome-icon 
-                            :icon="isSectionExpanded('typography') ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" 
-                            class="collapse-icon"
-                        />
-                        Typography
-                    </h4>
-                </div>
-                
-                <div v-show="isSectionExpanded('typography')" class="section-content">
-                <div class="form-group">
-                    <label>Font Family</label>
-                    <div class="font-picker">
-                        <div class="font-dropdown" :class="{ 'active': showFontDropdown }">
-                            <input type="text" :value="showFontDropdown ? fontSearch : customization.font_family"
-                                @input="e => fontSearch = (e.target as HTMLInputElement).value"
-                                placeholder="Search fonts..." class="font-search"
-                                :style="!showFontDropdown ? { fontFamily: customization.font_family } : {}"
-                                :disabled="isLoadingFonts" @focus="showFontDropdown = true">
-                            <div v-if="showFontDropdown" class="font-options">
-                                <div v-for="font in filteredFonts" :key="font.family" class="font-option"
-                                    :style="{ fontFamily: font.family }" @click="handleFontSelect(font.family)">
-                                    {{ font.family }}
-                                </div>
+                <h3 class="section-heading section-heading-gap">Typography</h3>
+                <div class="font-picker">
+                    <div class="font-dropdown" :class="{ 'active': showFontDropdown }">
+                        <input type="text" :value="showFontDropdown ? fontSearch : customization.font_family"
+                            @input="e => fontSearch = (e.target as HTMLInputElement).value"
+                            placeholder="Search fonts..." class="font-search"
+                            :style="!showFontDropdown ? { fontFamily: customization.font_family } : {}"
+                            :disabled="isLoadingFonts" @focus="showFontDropdown = true">
+                        <div v-if="showFontDropdown" class="font-options">
+                            <div v-for="font in filteredFonts" :key="font.family" class="font-option"
+                                :style="{ fontFamily: font.family }" @click="handleFontSelect(font.family)">
+                                {{ font.family }}
                             </div>
                         </div>
                     </div>
                 </div>
+                <div class="font-chips">
+                    <button
+                        v-for="preset in fontPresets"
+                        :key="preset.value"
+                        type="button"
+                        class="font-chip"
+                        :class="{ 'active': customization.font_family === preset.value }"
+                        :style="{ fontFamily: preset.value }"
+                        @click="handleFontSelect(preset.value)"
+                    >{{ preset.label }}</button>
                 </div>
             </div>
 
             <!-- Welcome Message Section (only for ASK_ANYTHING style) -->
-            <div v-if="customization.chat_style === 'ASK_ANYTHING'" class="form-section collapsible" :class="{ 'expanded': isSectionExpanded('welcome-message') }">
-                <div class="section-header-collapsible" @click="toggleSection('welcome-message')">
-                    <h4>
-                        <font-awesome-icon 
-                            :icon="isSectionExpanded('welcome-message') ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" 
-                            class="collapse-icon"
-                        />
-                        Welcome Message
-                    </h4>
-                </div>
-                
-                <div v-show="isSectionExpanded('welcome-message')" class="section-content">
-                <p class="section-description">
+            <div v-if="customization.chat_style === 'ASK_ANYTHING'" class="form-section">
+                <h3 class="section-heading">Welcome message</h3>
+                <p class="section-subtext">
                     Customize the welcome message shown when users first open the chat.
                 </p>
-                
+
                 <div class="form-group">
                     <label for="welcome-title">Welcome Title</label>
-                    <input 
+                    <input
                         id="welcome-title"
-                        type="text" 
+                        type="text"
                         v-model="customization.welcome_title"
                         placeholder="e.g., Welcome to our AI Assistant"
                         class="text-input"
@@ -504,7 +589,7 @@ const isSectionExpanded = (sectionId: string) => {
 
                 <div class="form-group">
                     <label for="welcome-subtitle">Welcome Subtitle</label>
-                    <textarea 
+                    <textarea
                         id="welcome-subtitle"
                         v-model="customization.welcome_subtitle"
                         placeholder="e.g., I'm here to help you with anything you need. What can I assist you with today?"
@@ -516,28 +601,27 @@ const isSectionExpanded = (sectionId: string) => {
                         Leave empty to use default message
                     </small>
                 </div>
-                </div>
             </div>
 
-            <!-- Chat Initiation Messages Section -->
-            <div class="form-section collapsible chat-initiation-section" :class="{ 'locked': isChatInitiationsLocked, 'expanded': isSectionExpanded('chat-initiation') }">
-                <div class="section-header-collapsible" @click="toggleSection('chat-initiation')">
-                    <div class="section-title-group">
-                        <h4>
-                            <font-awesome-icon 
-                                :icon="isSectionExpanded('chat-initiation') ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" 
-                                class="collapse-icon"
-                            />
-                            Chat Initiation Messages
-                        </h4>
-                        <div v-if="isChatInitiationsLocked" class="premium-badge-small">
-                            <font-awesome-icon icon="fa-solid fa-crown" />
-                            <span>Premium</span>
-                        </div>
+            <!-- Greeting messages Section -->
+            <div class="form-section chat-initiation-section" :class="{ 'locked': isChatInitiationsLocked }">
+                <div class="section-head-row">
+                    <h3 class="section-heading">Greeting messages</h3>
+                    <button
+                        v-if="!isChatInitiationsLocked"
+                        type="button"
+                        class="load-defaults-link"
+                        @click="loadDefaultInitiations"
+                    >Load defaults</button>
+                    <div v-if="isChatInitiationsLocked" class="premium-badge-small">
+                        <font-awesome-icon icon="fa-solid fa-crown" />
+                        <span>Premium</span>
                     </div>
                 </div>
-                
-                <div v-show="isSectionExpanded('chat-initiation')" class="section-content">
+                <p class="section-subtext">
+                    Proactive nudges the agent shows <strong>above the chat launcher</strong> — before a visitor opens the widget.
+                </p>
+
                 <!-- Locked State -->
                 <div v-if="isChatInitiationsLocked" class="locked-overlay-compact">
                     <div class="locked-content-compact">
@@ -552,112 +636,74 @@ const isSectionExpanded = (sectionId: string) => {
                 
                 <!-- Unlocked State -->
                 <div v-else>
-                    <div class="section-description-with-preview">
-                        <p class="section-description-compact">
-                            Messages appear above the chat bubble to encourage conversations.
-                            <button 
-                                v-if="!customization.chat_initiation_messages || customization.chat_initiation_messages.length === 0"
-                                type="button" 
-                                class="load-defaults-link" 
-                                @click="loadDefaultInitiations"
-                            >
-                                Load defaults
-                            </button>
-                        </p>
-                        <button 
-                            v-if="customization.chat_initiation_messages && customization.chat_initiation_messages.length > 0"
-                            type="button" 
-                            class="preview-btn-initiation"
-                            @mouseenter="showInitiationPreview"
-                            @mouseleave="hideInitiationPreview"
-                            @focus="showInitiationPreview"
-                            @blur="hideInitiationPreview"
-                            title="Preview initiation message"
-                        >
-                            <font-awesome-icon icon="fa-solid fa-eye" />
-                            <span>Preview</span>
-                        </button>
-                    </div>
-
-                    <!-- Add New Message - Compact -->
-                    <div class="add-message-compact">
-                        <input 
-                            type="text" 
+                    <!-- Add New Message -->
+                    <div class="init-add-row">
+                        <input
+                            type="text"
                             v-model="newInitiationMessage"
-                            placeholder="Add new message (e.g., 👋 Hi! Need help?)"
-                            class="message-input"
+                            placeholder="👋 Hi! Need help?"
+                            class="init-input"
                             maxlength="100"
                             @keyup.enter="addInitiationMessage"
                         >
-                        <button 
-                            type="button" 
-                            class="add-btn-icon" 
+                        <button
+                            type="button"
+                            class="init-add-btn"
                             @click="addInitiationMessage"
                             :disabled="!newInitiationMessage.trim()"
                             title="Add message"
+                        >+</button>
+                    </div>
+
+                    <!-- Messages List -->
+                    <div v-if="customization.chat_initiation_messages && customization.chat_initiation_messages.length > 0" class="init-list">
+                        <div
+                            v-for="(message, index) in customization.chat_initiation_messages"
+                            :key="index"
+                            class="init-item"
                         >
-                            <font-awesome-icon icon="fa-solid fa-plus" />
-                        </button>
-                    </div>
-
-                    <!-- Messages List - Compact -->
-                    <div v-if="customization.chat_initiation_messages && customization.chat_initiation_messages.length > 0" class="messages-compact">
-                        <div class="messages-header">
-                            <span class="messages-count">{{ customization.chat_initiation_messages.length }} message{{ customization.chat_initiation_messages.length !== 1 ? 's' : '' }}</span>
-                        </div>
-                        <div class="message-chips">
-                            <div 
-                                v-for="(message, index) in customization.chat_initiation_messages" 
-                                :key="index" 
-                                class="message-chip"
-                            >
-                                <div v-if="editingInitiationIndex === index" class="message-edit-inline">
-                                    <input 
-                                        type="text" 
-                                        v-model="editingInitiationMessage"
-                                        class="message-input-small"
-                                        maxlength="100"
-                                        @keyup.enter="saveEditInitiationMessage"
-                                        @keyup.esc="cancelEditInitiationMessage"
-                                        ref="editInput"
-                                    >
-                                    <button type="button" class="chip-btn save" @click="saveEditInitiationMessage" title="Save">
-                                        <font-awesome-icon icon="fa-solid fa-check" />
-                                    </button>
-                                    <button type="button" class="chip-btn cancel" @click="cancelEditInitiationMessage" title="Cancel">
-                                        <font-awesome-icon icon="fa-solid fa-times" />
-                                    </button>
-                                </div>
-                                <div v-else class="message-chip-content">
-                                    <span class="chip-text">{{ message }}</span>
-                                    <div class="chip-actions">
-                                        <button 
-                                            type="button" 
-                                            class="chip-btn" 
-                                            @click="startEditInitiationMessage(index)"
-                                            title="Edit"
-                                        >
-                                            <font-awesome-icon icon="fa-solid fa-pen" />
-                                        </button>
-                                        <button 
-                                            type="button" 
-                                            class="chip-btn delete" 
-                                            @click="removeInitiationMessage(index)"
-                                            title="Delete"
-                                        >
-                                            <font-awesome-icon icon="fa-solid fa-trash" />
-                                        </button>
-                                    </div>
-                                </div>
+                            <div v-if="editingInitiationIndex === index" class="init-edit-inline">
+                                <input
+                                    type="text"
+                                    v-model="editingInitiationMessage"
+                                    class="init-edit-input"
+                                    maxlength="100"
+                                    @keyup.enter="saveEditInitiationMessage"
+                                    @keyup.esc="cancelEditInitiationMessage"
+                                    ref="editInput"
+                                >
+                                <button type="button" class="init-icon-btn save" @click="saveEditInitiationMessage" title="Save">
+                                    <font-awesome-icon icon="fa-solid fa-check" />
+                                </button>
+                                <button type="button" class="init-icon-btn cancel" @click="cancelEditInitiationMessage" title="Cancel">
+                                    <font-awesome-icon icon="fa-solid fa-times" />
+                                </button>
                             </div>
+                            <template v-else>
+                                <span class="init-handle">☰</span>
+                                <span class="init-text">{{ message }}</span>
+                                <button
+                                    type="button"
+                                    class="init-icon-btn edit"
+                                    @click="startEditInitiationMessage(index)"
+                                    title="Edit"
+                                >
+                                    <font-awesome-icon icon="fa-solid fa-pen" />
+                                </button>
+                                <button
+                                    type="button"
+                                    class="init-remove"
+                                    @click="removeInitiationMessage(index)"
+                                    title="Remove"
+                                >✕</button>
+                            </template>
                         </div>
                     </div>
 
-                    <div v-else-if="customization.chat_initiation_messages && customization.chat_initiation_messages.length === 0" class="empty-hint">
-                        <font-awesome-icon icon="fa-solid fa-info-circle" />
+                    <div v-else-if="customization.chat_initiation_messages && customization.chat_initiation_messages.length === 0" class="init-empty">
+                        <span class="init-empty-icon">ⓘ</span>
                         <span>No messages yet. Add your first message above.</span>
                     </div>
-                </div>
                 </div>
             </div>
         </div>
@@ -702,77 +748,328 @@ const isSectionExpanded = (sectionId: string) => {
     padding: var(--space-md);
 }
 
+/* Section cards (design spec) */
 .form-section {
-    margin-bottom: var(--space-md);
-    padding: 0;
-    background: var(--background-base);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
-    overflow: hidden;
-    transition: all var(--transition-fast);
+    margin-bottom: 18px;
+    background: var(--surface);
+    border: 1px solid var(--o08);
+    border-radius: var(--radius-card);
+    padding: 24px;
 }
 
-/* Collapsible Section Styles */
-.form-section.collapsible {
-    cursor: default;
+.section-heading {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--text);
+    margin: 0 0 4px;
 }
 
-.section-header-collapsible {
-    padding: var(--space-md);
+.section-heading-gap {
+    margin-top: 24px;
+    margin-bottom: 12px;
+}
+
+.section-subtext {
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0 0 18px;
+}
+
+.section-subtext strong {
+    color: var(--text3);
+    font-weight: 600;
+}
+
+.section-head-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 6px;
+}
+
+.section-head-row .section-heading {
+    margin: 0;
+}
+
+/* Chat design grid (design spec) */
+.chat-style-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.chat-style-card {
+    text-align: left;
+    padding: 10px;
+    border-radius: 14px;
+    border: 1px solid var(--o10);
+    background: var(--bg);
     cursor: pointer;
-    user-select: none;
+    font-family: var(--font-sans);
     transition: all var(--transition-fast);
-    background: var(--background-base);
 }
 
-.section-header-collapsible:hover {
-    background: var(--background-soft);
+.chat-style-card.active {
+    background: var(--accent-bg-08);
+    border-color: var(--accent-border);
 }
 
-.form-section.expanded .section-header-collapsible {
-    border-bottom: 1px solid var(--border-color);
+.chat-style-thumb {
+    position: relative;
+    height: 64px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--o08);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 7px;
+    padding: 12px;
+    overflow: hidden;
 }
 
-.section-header-collapsible h4 {
+.chat-style-thumb .thumb-bubble {
+    height: 12px;
+    border-radius: 7px;
+    display: block;
+}
+.chat-style-thumb .thumb-bubble.agent {
+    width: 62%;
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.18);
+}
+.chat-style-thumb .thumb-bubble.user {
+    width: 46%;
+    align-self: flex-end;
+}
+
+.chat-style-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted2);
+    margin: 18px 0 10px;
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    color: var(--text-color);
-    margin: 0;
-    font-size: var(--text-base);
-    font-weight: 600;
+    gap: 8px;
+}
+.chat-style-group-label:first-of-type { margin-top: 4px; }
+.chat-style-group-badge {
     text-transform: none;
     letter-spacing: 0;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-bg-08);
+    color: var(--accent-ink);
+    border: 1px solid var(--accent-border);
 }
 
-.collapse-icon {
-    font-size: 0.75rem;
-    color: var(--text-muted);
+.citations-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--o10);
+    border-radius: 12px;
+    background: var(--bg);
+    cursor: pointer;
+}
+.citations-toggle input { display: none; }
+.citations-toggle-track {
+    position: relative;
+    flex-shrink: 0;
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--o10);
+    transition: background var(--transition-fast);
+    margin-top: 2px;
+}
+.citations-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
     transition: transform var(--transition-fast);
 }
+.citations-toggle input:checked + .citations-toggle-track {
+    background: var(--accent-solid, var(--accent-border));
+}
+.citations-toggle input:checked + .citations-toggle-track .citations-toggle-thumb {
+    transform: translateX(16px);
+}
+.citations-toggle-text { display: flex; flex-direction: column; gap: 2px; }
+.citations-toggle-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.citations-toggle-desc { font-size: 12px; color: var(--muted2); line-height: 1.4; }
 
-.section-content {
-    padding: var(--space-md);
-    animation: slideDown 0.2s ease-out;
+.chat-style-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
 }
 
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.chat-style-card.active .chat-style-title {
+    color: var(--accent-ink);
 }
 
-.form-section h4 {
-    color: var(--text-muted);
-    margin-bottom: var(--space-sm);
-    font-size: var(--text-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+.chat-style-check {
+    color: var(--accent-ink);
+}
+
+.chat-style-desc {
+    font-size: 12px;
+    color: var(--muted2);
+    margin-top: 2px;
+}
+
+/* Brand color swatches (design spec) */
+.accent-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.accent-swatch {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: box-shadow var(--transition-fast);
+}
+
+.accent-swatch.active {
+    border-color: var(--surface);
+}
+
+.accent-custom {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px dashed var(--o12);
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.accent-custom input[type="color"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+}
+
+.accent-custom-icon {
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.accent-hex {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted);
+    margin-left: 4px;
+}
+
+/* Auxiliary color pickers (background + bubble) */
+.aux-color-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.aux-color {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 140px;
+}
+
+.aux-color-label {
+    font-size: 12px;
+    color: var(--muted2);
+}
+
+.aux-color-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg);
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-btn);
+    padding: 6px 10px;
+}
+
+.aux-color-input input[type="color"] {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+}
+
+.aux-color-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Typography chips (design spec) */
+.font-chips {
+    display: flex;
+    gap: 9px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.font-chip {
+    padding: 9px 15px;
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    font-size: 13.5px;
+    font-weight: 500;
+    background: var(--bg);
+    border: 1px solid var(--o12);
+    color: var(--text3);
+    transition: all var(--transition-fast);
+}
+
+.font-chip.active {
+    background: var(--accent-bg-12);
+    border: 1px solid var(--accent-border);
+    color: var(--accent-ink);
 }
 
 .form-group {
@@ -782,9 +1079,9 @@ const isSectionExpanded = (sectionId: string) => {
 .form-group label {
     display: block;
     margin-bottom: var(--space-sm);
-    color: var(--text-muted);
+    color: var(--text3);
     font-weight: 500;
-    font-size: var(--text-sm);
+    font-size: 13.5px;
 }
 
 .form-group input[type="file"],
@@ -865,9 +1162,9 @@ const isSectionExpanded = (sectionId: string) => {
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
-    padding: var(--space-lg) var(--space-md);
-    border-top: 1px solid var(--border-color);
-    background: var(--background-base);
+    padding: var(--space-md);
+    border-top: 1px solid var(--o08);
+    background: transparent;
     margin-top: auto;
     flex-shrink: 0;
 }
@@ -896,15 +1193,15 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .save-message.success {
-    background: rgba(16, 185, 129, 0.1);
+    background: color-mix(in srgb, var(--success-color) 10%, transparent);
     color: var(--success-color);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    border: 1px solid color-mix(in srgb, var(--success-color) 30%, transparent);
 }
 
 .save-message.error {
-    background: rgba(239, 68, 68, 0.1);
+    background: color-mix(in srgb, var(--error-color) 10%, transparent);
     color: var(--error-color);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    border: 1px solid color-mix(in srgb, var(--error-color) 30%, transparent);
 }
 
 .message-icon {
@@ -914,17 +1211,17 @@ const isSectionExpanded = (sectionId: string) => {
 /* Button Actions */
 .button-actions {
     display: flex;
+    justify-content: flex-end;
     gap: var(--space-sm);
 }
 
 .save-button,
 .cancel-button {
-    padding: var(--space-sm) var(--space-lg);
+    padding: var(--space-sm) var(--space-xl);
     border: none;
     border-radius: var(--radius-md);
     cursor: pointer;
     font-weight: 500;
-    flex: 1;
     min-width: 120px;
     transition: var(--transition-fast);
     display: flex;
@@ -934,8 +1231,8 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .save-button {
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .save-button:hover:not(:disabled) {
@@ -985,12 +1282,17 @@ const isSectionExpanded = (sectionId: string) => {
 
 .font-search {
     width: 100%;
-    padding: var(--space-sm);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--background-soft);
-    color: var(--text-color);
-    font-size: var(--text-sm);
+    padding: 11px 14px;
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-btn);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+}
+
+.font-search:focus {
+    border-color: var(--accent-border);
 }
 
 .font-options {
@@ -1000,8 +1302,8 @@ const isSectionExpanded = (sectionId: string) => {
     right: 0;
     max-height: 200px;
     overflow-y: auto;
-    background: white;
-    border: 1px solid var(--border-color);
+    background: var(--surface);
+    border: 1px solid var(--o12);
     border-radius: var(--radius-md);
     margin-top: var(--space-xs);
     z-index: 10;
@@ -1018,131 +1320,16 @@ const isSectionExpanded = (sectionId: string) => {
     background: var(--background-soft);
 }
 
-.color-picker label {
-    font-size: var(--text-sm);
-    margin-bottom: var(--space-xs);
-}
-
-/* Chat Style Cards - Compact */
-.section-label {
-    display: block;
-    margin-bottom: var(--space-sm);
-    color: var(--text-color);
-    font-weight: 500;
-    font-size: var(--text-sm);
-}
-
-.style-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: var(--space-sm);
-}
-
-.style-card {
-    background: var(--background-soft);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: var(--space-md);
-    cursor: pointer;
-    transition: all var(--transition-normal);
-    position: relative;
-    overflow: hidden;
-}
-
-.style-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--primary-color);
-    transform: scaleX(0);
-    transition: transform var(--transition-normal);
-}
-
-.style-card:hover {
-    border-color: var(--primary-color);
-    box-shadow: var(--shadow-sm);
-    transform: translateY(-1px);
-}
-
-.style-card.active {
-    border-color: var(--primary-color);
-    background: rgba(243, 70, 17, 0.03);
-    box-shadow: var(--shadow-md);
-}
-
-.style-card.active::before {
-    transform: scaleX(1);
-}
-
-.style-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-sm);
-}
-
-.style-icon {
-    font-size: 1.5rem;
-    line-height: 1;
-}
-
-.style-check {
-    color: var(--primary-color);
-    font-size: 1rem;
-    animation: scaleIn 0.2s ease-out;
-}
-
-@keyframes scaleIn {
-    from {
-        transform: scale(0);
-    }
-    to {
-        transform: scale(1);
-    }
-}
-
-.style-card-body {
-    text-align: left;
-}
-
-.style-title {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text-color);
-    margin: 0 0 4px 0;
-}
-
-.style-description {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    line-height: 1.3;
-    margin: 0;
-}
-
-.style-card.active .style-title {
-    color: var(--primary-color);
-}
-
 /* Welcome text customization styles */
-.section-description {
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    margin-bottom: var(--space-md);
-    line-height: 1.5;
-}
-
 .text-input,
 .text-textarea {
     width: 100%;
-    padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--background-soft);
-    color: var(--text-color);
-    font-size: var(--text-sm);
+    padding: 13px 15px;
+    border: 1px solid var(--o12);
+    border-radius: 11px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
     font-family: inherit;
     transition: var(--transition-fast);
     resize: vertical;
@@ -1151,22 +1338,19 @@ const isSectionExpanded = (sectionId: string) => {
 .text-input:focus,
 .text-textarea:focus {
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 1px var(--primary-color);
-    background: var(--background-base);
+    border-color: var(--accent-border);
 }
 
 .text-input::placeholder,
 .text-textarea::placeholder {
-    color: var(--text-muted);
-    opacity: 0.7;
+    color: var(--muted2);
 }
 
 .input-hint {
     display: block;
     margin-top: var(--space-xs);
-    color: var(--text-muted);
-    font-size: var(--text-xs);
+    color: var(--muted);
+    font-size: 12px;
     line-height: 1.4;
 }
 
@@ -1175,31 +1359,35 @@ const isSectionExpanded = (sectionId: string) => {
     line-height: 1.5;
 }
 
-/* Chat Initiation Messages Styles - Compact Design */
+/* Greeting messages (design spec) */
 .chat-initiation-section {
     position: relative;
 }
 
-.section-title-group {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    flex: 1;
+.load-defaults-link {
+    background: none;
+    border: none;
+    color: var(--accent-ink);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    padding: 0;
+    white-space: nowrap;
 }
 
-.section-title-group h4 {
-    margin: 0;
-    flex: 1;
+.load-defaults-link:hover {
+    text-decoration: underline;
 }
 
 .premium-badge-small {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: linear-gradient(135deg, #f34611 0%, #ff6b3d 100%);
-    color: white;
+    background: var(--grad-generate);
+    color: var(--on-dark);
     padding: 2px 8px;
-    border-radius: var(--radius-full);
+    border-radius: 999px;
     font-size: 10px;
     font-weight: 600;
 }
@@ -1209,33 +1397,33 @@ const isSectionExpanded = (sectionId: string) => {
     color: #ffd700;
 }
 
-/* Compact Locked State */
+/* Locked State */
 .locked-overlay-compact {
-    background: var(--background-soft);
-    border: 1px dashed var(--border-color);
-    border-radius: var(--radius-md);
-    padding: var(--space-md);
-    margin-top: var(--space-sm);
+    background: var(--bg);
+    border: 1px dashed var(--o12);
+    border-radius: var(--radius-btn);
+    padding: 14px 16px;
+    margin-top: 6px;
 }
 
 .locked-content-compact {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: 12px;
     flex-wrap: wrap;
 }
 
 .lock-icon-small {
     font-size: 1rem;
-    color: var(--text-muted);
-    opacity: 0.6;
+    color: var(--muted);
+    opacity: 0.7;
 }
 
 .locked-text {
     flex: 1;
     min-width: 200px;
-    font-size: var(--text-sm);
-    color: var(--text-muted);
+    font-size: 13.5px;
+    color: var(--muted);
     margin: 0;
 }
 
@@ -1243,12 +1431,12 @@ const isSectionExpanded = (sectionId: string) => {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
-    border-radius: var(--radius-md);
-    padding: 6px 12px;
-    font-size: var(--text-xs);
+    border-radius: var(--radius-btn);
+    padding: 8px 14px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: all var(--transition-fast);
@@ -1256,7 +1444,7 @@ const isSectionExpanded = (sectionId: string) => {
 }
 
 .upgrade-btn-compact:hover {
-    background: var(--primary-dark);
+    filter: brightness(1.05);
 }
 
 .upgrade-btn-compact svg {
@@ -1264,280 +1452,159 @@ const isSectionExpanded = (sectionId: string) => {
     color: #ffd700;
 }
 
-/* Compact Description */
-.section-description-with-preview {
+/* Greeting input row */
+.init-add-row {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-md);
-    margin-bottom: var(--space-sm);
+    gap: 10px;
+    margin-bottom: 14px;
 }
 
-.section-description-compact {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-    margin-bottom: 0;
-    line-height: 1.4;
+.init-input {
     flex: 1;
-}
-
-.preview-btn-initiation {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: var(--background-soft);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-}
-
-.preview-btn-initiation:hover {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(243, 70, 17, 0.2);
-}
-
-.preview-btn-initiation:focus {
-    outline: none;
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(243, 70, 17, 0.1);
-}
-
-.preview-btn-initiation svg {
+    padding: 13px 15px;
+    background: var(--bg);
+    border: 1px solid var(--o12);
+    border-radius: 11px;
+    color: var(--text);
     font-size: 14px;
-}
-
-.load-defaults-link {
-    display: inline;
-    background: none;
-    border: none;
-    color: var(--primary-color);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-    text-decoration: underline;
-    padding: 0;
-    margin-left: 4px;
-}
-
-.load-defaults-link:hover {
-    color: var(--primary-dark);
-}
-
-/* Compact Add Message */
-.add-message-compact {
-    display: flex;
-    gap: var(--space-xs);
-    margin-bottom: var(--space-sm);
-}
-
-.message-input {
-    flex: 1;
-    padding: 8px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--background-soft);
-    color: var(--text-color);
-    font-size: var(--text-sm);
+    outline: none;
+    font-family: var(--font-sans);
     transition: var(--transition-fast);
 }
 
-.message-input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    background: var(--background-base);
+.init-input:focus {
+    border-color: var(--accent-border);
 }
 
-.add-btn-icon {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--primary-color);
-    color: white;
+.init-add-btn {
+    flex-shrink: 0;
+    width: 46px;
+    border-radius: 11px;
+    background: var(--accent-solid);
     border: none;
-    border-radius: var(--radius-md);
+    color: var(--on-accent-solid);
+    font-size: 22px;
+    line-height: 1;
     cursor: pointer;
     transition: all var(--transition-fast);
-    flex-shrink: 0;
 }
 
-.add-btn-icon:hover:not(:disabled) {
-    background: var(--primary-dark);
+.init-add-btn:hover:not(:disabled) {
+    filter: brightness(1.05);
 }
 
-.add-btn-icon:disabled {
+.init-add-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-/* Compact Messages List */
-.messages-compact {
-    margin-top: var(--space-sm);
-}
-
-.messages-header {
-    margin-bottom: var(--space-xs);
-}
-
-.messages-count {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.message-chips {
+/* Greeting list */
+.init-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
 }
 
-.message-chip {
-    background: var(--background-soft);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    transition: all var(--transition-fast);
-}
-
-.message-chip:hover {
-    border-color: var(--border-color-hover);
-    box-shadow: var(--shadow-sm);
-}
-
-.message-chip-content {
+.init-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    gap: var(--space-sm);
+    gap: 11px;
+    padding: 11px 14px;
+    border-radius: 11px;
+    background: var(--bg);
+    border: 1px solid var(--o08);
 }
 
-.chip-text {
+.init-handle {
+    color: var(--faint);
+    font-size: 14px;
+    cursor: grab;
+    line-height: 1;
+}
+
+.init-text {
     flex: 1;
-    font-size: var(--text-sm);
-    color: var(--text-color);
-    line-height: 1.4;
+    font-size: 14px;
+    color: var(--text2);
 }
 
-.chip-actions {
-    display: flex;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity var(--transition-fast);
+.init-remove {
+    background: none;
+    border: none;
+    color: var(--muted2);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    transition: color var(--transition-fast);
 }
 
-.message-chip:hover .chip-actions {
-    opacity: 1;
+.init-remove:hover {
+    color: var(--text2);
 }
 
-.chip-btn {
-    width: 24px;
-    height: 24px;
+.init-icon-btn {
+    width: 26px;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--muted2);
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: all var(--transition-fast);
-    font-size: 11px;
-}
-
-.chip-btn:hover {
-    background: var(--background-mute);
-    color: var(--primary-color);
-}
-
-.chip-btn.delete:hover {
-    color: var(--error-color);
-}
-
-.chip-btn.save {
-    color: var(--success-color);
-}
-
-.chip-btn.save:hover {
-    background: rgba(16, 185, 129, 0.1);
-}
-
-.chip-btn.cancel:hover {
-    background: var(--background-mute);
-    color: var(--text-color);
-}
-
-/* Inline Edit */
-.message-edit-inline {
-    display: flex;
-    align-items: center;
-    padding: 6px 8px;
-    gap: 6px;
-}
-
-.message-input-small {
-    flex: 1;
-    padding: 6px 8px;
-    border: 1px solid var(--primary-color);
-    border-radius: var(--radius-sm);
-    background: var(--background-base);
-    color: var(--text-color);
-    font-size: var(--text-sm);
-}
-
-.message-input-small:focus {
-    outline: none;
-    box-shadow: 0 0 0 1px var(--primary-color);
-}
-
-/* Empty State */
-.empty-hint {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-sm);
-    background: var(--background-soft);
-    border-radius: var(--radius-md);
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-top: var(--space-sm);
-}
-
-.empty-hint svg {
     font-size: 12px;
-    opacity: 0.7;
+    flex-shrink: 0;
 }
 
-/* Responsive Styles */
-@media (max-width: 640px) {
-    .section-description-with-preview {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-sm);
-    }
-    
-    .preview-btn-initiation {
-        align-self: flex-start;
-        font-size: 0.8125rem;
-        padding: 5px 10px;
-    }
-    
-    .preview-btn-initiation span {
-        display: inline;
-    }
+.init-icon-btn:hover {
+    color: var(--accent-ink);
+}
+
+.init-icon-btn.save {
+    color: var(--c-teal);
+}
+
+.init-icon-btn.cancel:hover {
+    color: var(--text2);
+}
+
+/* Inline edit */
+.init-edit-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.init-edit-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-btn);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+}
+
+/* Empty state */
+.init-empty {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 16px;
+    border-radius: 11px;
+    background: var(--o03);
+    border: 1px solid var(--o06);
+    color: var(--muted2);
+    font-size: 13.5px;
+}
+
+.init-empty-icon {
+    font-size: 14px;
+    opacity: 0.8;
 }
 </style>

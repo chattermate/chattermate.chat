@@ -245,8 +245,8 @@ onBeforeUnmount(() => {
 }
 
 .filter-toggle-btn.active {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-color: var(--primary-color);
 }
 
@@ -405,8 +405,8 @@ onBeforeUnmount(() => {
 }
 
 .apply-btn {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .apply-btn:hover {

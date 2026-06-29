@@ -25,6 +25,12 @@ import enum
 class ChatStyle(str, enum.Enum):
     CHATBOT = "CHATBOT"
     ASK_ANYTHING = "ASK_ANYTHING"
+    # Premium design presets
+    GLASS = "GLASS"
+    TERMINAL = "TERMINAL"
+    PLAYFUL = "PLAYFUL"
+    CALM_MINT = "CALM_MINT"
+    AURORA = "AURORA"
 
 
 class WidgetPosition(str, enum.Enum):
@@ -58,6 +64,8 @@ class CustomizationBase(BaseModel):
     welcome_title: Optional[str] = None
     welcome_subtitle: Optional[str] = None
     chat_initiation_messages: Optional[List[str]] = None
+    show_citations: Optional[bool] = False
+    collect_email: Optional[bool] = False
 
 
 class CustomizationCreate(CustomizationBase):

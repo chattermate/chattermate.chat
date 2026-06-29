@@ -1525,7 +1525,7 @@ const handleDelete = () => {
 .form-select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(243, 70, 17, 0.1);
+  box-shadow: 0 0 0 2px rgba(201, 242, 78, 0.15);
 }
 
 .form-input.error,
@@ -1635,8 +1635,8 @@ const handleDelete = () => {
 }
 
 .btn-primary {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .btn-primary:hover {
@@ -2010,8 +2010,8 @@ const handleDelete = () => {
 
 /* Variables Section Styles */
 .variables-count {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-radius: var(--radius-full);
   padding: 2px 8px;
   font-size: 0.7rem;

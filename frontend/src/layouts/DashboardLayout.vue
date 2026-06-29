@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, provide, computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useTheme } from '@/composables/useTheme'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import userAvatar from '@/assets/user.svg'
 import notificationIcon from '@/assets/notification.svg'
@@ -30,6 +31,7 @@ import { notificationService } from '@/services/notification'
 import { useRoute, useRouter } from 'vue-router'
 import { updateUserStatus } from '@/services/users'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { isAbsoluteUrl } from '@/utils/avatars'
 
 const props = defineProps<{
     hideSidebar?: boolean
@@ -50,8 +52,28 @@ const userRole = ref(userService.getUserRole())
 const unreadCount = ref(0)
 const statusUpdating = ref(false)
 const { logout } = useAuth()
+const { mode: themeMode, toggle: toggleTheme } = useTheme()
+const themeTitle = computed(() =>
+  themeMode.value === 'dark' ? 'Theme: Dark — click for Light'
+    : themeMode.value === 'light' ? 'Theme: Light — click for System'
+    : 'Theme: System — click for Dark'
+)
 useNotifications()
 const router = useRouter()
+
+const PAGE_TITLES: Record<string, string> = {
+    '/ai-agents': 'AI Agents',
+    '/human-agents': 'Human Agents',
+    '/conversations': 'Inbox',
+    '/analytics': 'Analytics',
+    '/settings/organization': 'Organization',
+    '/settings/subscription': 'Subscription',
+    '/settings/integrations': 'Integrations',
+    '/settings/widget-apps': 'Widget Apps',
+    '/settings/ai-config': 'AI Configuration',
+    '/settings/user': 'User Settings',
+}
+const pageTitle = computed(() => PAGE_TITLES[route.path] || '')
 
 // Initialize enterprise features
 const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus } = useEnterpriseFeatures()
@@ -63,8 +85,8 @@ const trialDaysLeft = computed(() => subscriptionStore.value.trialDaysLeft)
 
 const userAvatarSrc = computed(() => {
   if (currentUser.value?.profile_pic) {
-    // If it's an S3 URL (contains amazonaws.com), use it directly
-    if (currentUser.value.profile_pic.includes('amazonaws.com')) {
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(currentUser.value.profile_pic)) {
       return currentUser.value.profile_pic
     }
     // For local storage, prepend the API URL and add timestamp
@@ -233,22 +255,35 @@ const layoutClasses = computed(() => ({
                                 <path d="M3 12H21M3 6H21M3 18H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </button>
+                        <h1 v-if="pageTitle" class="topbar-page-title">{{ pageTitle }}</h1>
                     </div>
                     <div class="right-section">
-                        <div v-if="hasEnterpriseModule" class="plan-display">
+                        <button class="icon-btn" @click="toggleTheme" :title="themeTitle" :aria-label="themeTitle">
+                            <!-- Dark mode → moon -->
+                            <svg v-if="themeMode === 'dark'" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                            </svg>
+                            <!-- Light mode → sun -->
+                            <svg v-else-if="themeMode === 'light'" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                            </svg>
+                            <!-- System → monitor -->
+                            <svg v-else width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+                            </svg>
+                        </button>
+                        <div v-if="hasEnterpriseModule && (isLoadingPlan || isInTrial)" class="plan-display">
                             <div v-if="isLoadingPlan" class="plan-loading">
                                 <span class="loading-spinner"></span>
                                 Loading...
                             </div>
-                            <div v-else-if="currentPlan" class="plan-info">
-                                <div v-if="isInTrial" class="trial-info">
-                                    <span 
-                                        class="trial-badge clickable" 
-                                        @click="navigateToUpgrade"
-                                    >
-                                        Trial ({{ trialDaysLeft }} days left)
-                                    </span>
-                                </div>
+                            <div v-else-if="isInTrial" class="trial-info">
+                                <span
+                                    class="trial-badge clickable"
+                                    @click="navigateToUpgrade"
+                                >
+                                    Trial ({{ trialDaysLeft }} days left)
+                                </span>
                             </div>
                         </div>
                         <div class="user-menu">
@@ -261,6 +296,8 @@ const layoutClasses = computed(() => ({
 
                             <NotificationList :is-open="showNotifications" @close="showNotifications = false"
                                 @notification-read="fetchUnreadCount" />
+
+                            <div class="topbar-divider" aria-hidden="true"></div>
 
                             <div class="user-profile">
                                 <div class="profile-trigger" @click="showUserMenu = !showUserMenu">
@@ -326,9 +363,9 @@ const layoutClasses = computed(() => ({
 .dashboard-layout {
     display: grid;
     grid-template-columns: auto 1fr;
-    min-height: 100vh;
+    height: 100vh;
     transition: grid-template-columns var(--transition-normal);
-    overflow-x: hidden;
+    overflow: hidden;
     width: 100%;
     position: relative;
 }
@@ -388,18 +425,49 @@ const layoutClasses = computed(() => ({
 }
 
 .nav-item.active {
-    background: var(--primary-color);
+    background: var(--accent-solid);
     color: var(--background-color);
 }
 
 /* Header Styles */
 .header {
-    background: #ffffff;
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
+    background: var(--topbar);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--o07);
     position: sticky;
     top: 0;
     z-index: 50;
+}
+
+.topbar-page-title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: -0.01em;
+    color: var(--text2);
+    margin: 0;
+    line-height: 1;
+}
+
+.icon-btn {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--o04);
+    border: 1px solid var(--o10);
+    border-radius: 10px;
+    color: var(--text3);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.icon-btn:hover {
+    background: var(--o08);
+    color: var(--text);
 }
 
 .header-content {
@@ -437,7 +505,7 @@ const layoutClasses = computed(() => ({
 .right-section {
     display: flex;
     align-items: center;
-    gap: var(--space-lg);
+    gap: 18px;
 }
 
 .search input {
@@ -451,7 +519,7 @@ const layoutClasses = computed(() => ({
 .user-menu {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: 18px;
 }
 
 .notifications {
@@ -480,13 +548,15 @@ const layoutClasses = computed(() => ({
 
 .avatar-wrapper {
     position: relative;
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--grad-purple-teal);
 }
 
 .avatar {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     object-fit: cover;
 }
@@ -509,12 +579,12 @@ const layoutClasses = computed(() => ({
     position: absolute;
     top: 100%;
     right: 0;
-    background: #ffffff;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--o10);
+    border-radius: 16px;
     padding: var(--space-xs);
     margin-top: var(--space-sm);
-    min-width: 180px;
+    min-width: 220px;
     z-index: 100;
     box-shadow: var(--shadow-lg);
 }
@@ -526,23 +596,23 @@ const layoutClasses = computed(() => ({
     text-align: left;
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text3);
     font-size: var(--text-sm);
     font-weight: var(--font-weight-medium);
+    font-family: var(--font-sans);
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .menu-item:hover {
-    background: var(--hover-bg);
-    color: var(--text-primary);
+    background: var(--o06);
+    color: var(--text);
 }
 
 /* Content Styles */
 .content {
     padding: var(--space-xl);
-    min-height: calc(100vh - 180px);
 }
 
 /* Remove padding when header is hidden (for full-page layouts like ConversationsView) */
@@ -552,8 +622,8 @@ const layoutClasses = computed(() => ({
 
 /* Footer Styles */
 .footer {
-    background: var(--background-soft);
-    border-top: 1px solid var(--border-color);
+    background: var(--bg2);
+    border-top: 1px solid var(--o07);
     padding: var(--space-lg) var(--space-xl);
 }
 
@@ -580,36 +650,48 @@ const layoutClasses = computed(() => ({
 }
 
 .notification-button {
-    background: none;
-    border: none;
-    padding: var(--space-sm);
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--o04);
+    border: 1px solid var(--o10);
+    border-radius: 10px;
+    color: var(--muted);
+    padding: 0;
     cursor: pointer;
     position: relative;
-    opacity: 0.7;
-    transition: var(--transition-fast);
+    flex-shrink: 0;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .notification-button:hover {
-    opacity: 1;
+    background: var(--o08);
+    color: var(--text);
 }
 
 .notification-icon {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
+    filter: var(--icon-filter, brightness(0) invert(1));
+    opacity: var(--icon-opacity, 0.55);
 }
 
 .notification-badge {
     position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 18px;
-    height: 18px;
+    top: -5px;
+    right: -5px;
+    min-width: 17px;
+    height: 17px;
     padding: 0 4px;
-    background-color: var(--error-color);
-    color: white;
-    border-radius: 9px;
-    font-size: 12px;
-    font-weight: 500;
+    background-color: var(--c-danger);
+    color: #fff;
+    border: 1.5px solid var(--bg);
+    border-radius: var(--radius-pill);
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: var(--font-weight-bold);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -622,12 +704,19 @@ const layoutClasses = computed(() => ({
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background-color: var(--text-muted);
-    border: 2px solid var(--background-soft);
+    background-color: var(--muted);
+    border: 2px solid var(--bg2);
 }
 
 .status-indicator.online {
-    background-color: #22c55e;
+    background-color: var(--success-color);
+}
+
+.topbar-divider {
+    width: 1px;
+    height: 26px;
+    background: var(--o10);
+    flex-shrink: 0;
 }
 
 .status-menu-item {
@@ -666,7 +755,7 @@ const layoutClasses = computed(() => ({
 
 .menu-divider {
     height: 1px;
-    background: var(--border-color);
+    background: var(--o08);
     margin: var(--space-xs) 0;
 }
 
@@ -696,8 +785,8 @@ const layoutClasses = computed(() => ({
     border-radius: var(--radius-full);
     font-size: var(--text-xs);
     font-weight: 600;
-    background-color: var(--background-mute);
-    color: var(--text-color);
+    background: var(--o08);
+    color: var(--text3);
 }
 
 .plan-badge.pro {
@@ -706,7 +795,7 @@ const layoutClasses = computed(() => ({
 }
 
 .plan-badge.enterprise {
-    background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+    background: linear-gradient(45deg, var(--accent-solid), var(--accent-solid));
     color: white;
 }
 
@@ -722,7 +811,7 @@ const layoutClasses = computed(() => ({
     font-size: var(--text-xs);
     font-weight: 600;
     color: white;
-    background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+    background: linear-gradient(45deg, var(--accent-solid), var(--accent-solid));
     border: none;
     border-radius: var(--radius-full);
     cursor: pointer;
@@ -741,7 +830,7 @@ const layoutClasses = computed(() => ({
 .upgrade-button {
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius-sm);
-    background-color: var(--primary-color);
+    background-color: var(--accent-solid);
     color: white;
     border: none;
     font-size: var(--text-sm);
@@ -751,7 +840,7 @@ const layoutClasses = computed(() => ({
 }
 
 .upgrade-button:hover {
-    background-color: var(--accent-color);
+    background-color: var(--accent-solid);
     transform: translateY(-1px);
 }
 
@@ -762,7 +851,7 @@ const layoutClasses = computed(() => ({
 }
 
 .trial-badge {
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
     color: white;
     padding: 4px 12px;
     border-radius: 12px;
@@ -828,7 +917,7 @@ const layoutClasses = computed(() => ({
     font-weight: 500;
     cursor: pointer;
     border: none;
-    background: var(--primary-color);
+    background: var(--accent-solid);
     color: white;
     transition: all 0.2s ease;
 }
@@ -867,8 +956,9 @@ const layoutClasses = computed(() => ({
 .main-content {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
     width: 100%;
+    overflow-y: auto;
     overflow-x: hidden;
 }
 

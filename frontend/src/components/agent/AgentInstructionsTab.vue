@@ -40,6 +40,14 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
+  handoffCollectEmail: {
+    type: Boolean,
+    default: true
+  },
+  handoffCollectName: {
+    type: Boolean,
+    default: true
+  },
   userGroups: {
     type: Array as () => UserGroup[],
     required: true
@@ -104,6 +112,8 @@ const handleUpgrade = () => {
 const localInstructions = ref(props.instructions)
 const localTransferToHuman = ref(props.transferToHuman)
 const localAskForRating = ref(props.askForRating)
+const localHandoffCollectEmail = ref(props.handoffCollectEmail)
+const localHandoffCollectName = ref(props.handoffCollectName)
 const localSelectedGroupIds = ref<string[]>([...props.selectedGroupIds])
 
 // Watch for changes in props to update local state
@@ -117,6 +127,14 @@ watch(() => props.transferToHuman, (newValue) => {
 
 watch(() => props.askForRating, (newValue) => {
   localAskForRating.value = newValue
+})
+
+watch(() => props.handoffCollectEmail, (newValue) => {
+  localHandoffCollectEmail.value = newValue
+})
+
+watch(() => props.handoffCollectName, (newValue) => {
+  localHandoffCollectName.value = newValue
 })
 
 watch(() => props.selectedGroupIds, (newValue) => {
@@ -179,6 +197,8 @@ const handleSave = () => {
     instructions: localInstructions.value,
     transferToHuman: localTransferToHuman.value,
     askForRating: localAskForRating.value,
+    handoffCollectEmail: localHandoffCollectEmail.value,
+    handoffCollectName: localHandoffCollectName.value,
     selectedGroupIds: localSelectedGroupIds.value
   })
 }
@@ -256,6 +276,25 @@ const handleSave = () => {
             </label>
           </div>
           <p class="helper-text">Enable automatic transfer to human agents when needed</p>
+        </div>
+
+        <!-- Collect contact details at handoff -->
+        <div v-if="localTransferToHuman" class="handoff-collect">
+          <div class="toggle-header">
+            <span class="subsection-title">Ask for email at handoff</span>
+            <label class="switch">
+              <input type="checkbox" v-model="localHandoffCollectEmail" :disabled="!isEditing">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="toggle-header">
+            <span class="subsection-title">Ask for name at handoff (optional)</span>
+            <label class="switch">
+              <input type="checkbox" v-model="localHandoffCollectName" :disabled="!isEditing">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <p class="helper-text">Collect contact details when a chat is handed to a human, so your team can follow up.</p>
         </div>
 
         <!-- Group selection -->
@@ -379,10 +418,10 @@ const handleSave = () => {
 
 .detail-section {
   margin-bottom: var(--space-xl);
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
   padding: var(--space-lg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   width: 100%;
 }
 
@@ -409,19 +448,19 @@ const handleSave = () => {
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--grad-generate);
+  color: var(--on-dark);
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .ai-generate-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--c-purple) 35%, transparent);
 }
 
 .ai-generate-button:disabled {
@@ -439,7 +478,7 @@ const handleSave = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--text) 50%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -447,12 +486,13 @@ const handleSave = () => {
 }
 
 .ai-prompt-content {
-  background: white;
+  background: var(--surface);
+  border: 1px solid var(--o10);
   padding: var(--space-xl);
-  border-radius: var(--radius-lg);
+  border-radius: 20px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg);
 }
 
 .ai-prompt-content h5 {
@@ -514,19 +554,19 @@ const handleSave = () => {
 }
 
 .generate-ai-button {
-  padding: var(--space-sm) var(--space-md);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  padding: 10px 16px;
+  background: var(--grad-generate);
+  color: var(--on-dark);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-chip);
   cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
+  font-size: 13.5px;
+  font-weight: var(--font-weight-semibold);
+  transition: filter 0.2s ease, transform 0.2s ease;
 }
 
 .generate-ai-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  filter: brightness(1.06);
 }
 
 .generate-ai-button:disabled {
@@ -610,7 +650,7 @@ const handleSave = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgb(224, 224, 224);
+  background-color: var(--toggle-track-off);
   transition: .4s;
   border-radius: 24px;
 }
@@ -622,14 +662,14 @@ const handleSave = () => {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: rgb(255, 255, 255);
+  background-color: var(--toggle-knob);
   transition: .4s;
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 10%, transparent);
 }
 
 input:checked + .slider {
-  background-color: var(--success-color, green);
+  background-color: var(--toggle-on-accent);
 }
 
 input:focus + .slider {
@@ -753,16 +793,16 @@ input:checked + .slider:before {
 .save-section {
   display: flex;
   justify-content: flex-end;
-  padding: var(--space-lg);
-  border-top: 1px solid var(--border-color);
-  background: var(--background-soft);
-  margin-top: var(--space-xl);
+  padding: var(--space-lg) 0 0;
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--o08);
+  background: transparent;
 }
 
 .save-button {
   padding: var(--space-md) var(--space-xl);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-md);
   font-size: 1rem;
@@ -772,9 +812,9 @@ input:checked + .slider:before {
 }
 
 .save-button:hover {
-  background: var(--primary-dark);
+  filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--text) 15%, transparent);
 }
 
 /* Rating Feature Lock Styles */
@@ -797,11 +837,11 @@ input:checked + .slider:before {
 
 .slider.locked {
   cursor: not-allowed;
-  background-color: #ccc !important;
+  background-color: var(--toggle-track-off) !important;
 }
 
 .slider.locked:before {
-  background-color: #f5f5f5 !important;
+  background-color: var(--toggle-knob) !important;
 }
 
 .locked-text {
@@ -813,7 +853,7 @@ input:checked + .slider:before {
 }
 
 .premium-icon {
-  color: #ffd700;
+  color: var(--warning-color);
   font-size: 0.875rem;
 }
 
@@ -824,7 +864,7 @@ input:checked + .slider:before {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: color-mix(in srgb, var(--text) 85%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -833,11 +873,11 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  background: var(--surface);
   border-radius: 16px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
   animation: modalSlideIn 0.3s ease-out;
 }
@@ -857,15 +897,15 @@ input:checked + .slider:before {
   padding: var(--space-xl);
   text-align: center;
   position: relative;
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  color: white;
+  background: var(--grad-generate);
+  color: var(--on-dark);
 }
 
 .upgrade-icon {
   width: 48px;
   height: 48px;
   margin: 0 auto var(--space-md);
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--on-dark) 20%, transparent);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -881,19 +921,19 @@ input:checked + .slider:before {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0;
-  color: white;
+  color: var(--text);
 }
 
 .upgrade-modal-header .close-button {
   position: absolute;
   top: var(--space-md);
   right: var(--space-md);
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--on-dark) 20%, transparent);
   border: none;
   border-radius: 50%;
   width: 32px;
   height: 32px;
-  color: white;
+  color: var(--text);
   cursor: pointer;
   font-size: 1.25rem;
   display: flex;
@@ -903,7 +943,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal-header .close-button:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--on-dark) 30%, transparent);
   transform: scale(1.1);
 }
 
@@ -956,8 +996,8 @@ input:checked + .slider:before {
 }
 
 .upgrade-button {
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-full);
   padding: var(--space-md) var(--space-xl);
@@ -967,18 +1007,18 @@ input:checked + .slider:before {
   align-items: center;
   gap: var(--space-sm);
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--text) 15%, transparent);
 }
 
 .upgrade-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 20%, transparent);
   filter: brightness(1.1);
 }
 
 .upgrade-button .upgrade-icon {
   font-size: 1rem;
-  color: #ffd700;
+  color: var(--warning-color);
   width: auto;
   height: auto;
   margin: 0;

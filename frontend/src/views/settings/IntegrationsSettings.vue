@@ -239,17 +239,21 @@ interface IntegrationCard {
   shopDomain?: string;
   teamName?: string;
   comingSoon?: boolean;
+  category?: string;
+  color?: string;
   connectAction?: () => void;
   disconnectAction?: () => void;
 }
 
 // List of available integrations
-const availableIntegrations = computed(() => [
+const availableIntegrations = computed<IntegrationCard[]>(() => [
   {
     id: 'jira',
     name: 'Jira',
     description: 'Connect to Jira to create issues directly from ChatterMate.',
     logo: jiraLogo,
+    category: 'PROJECT MANAGEMENT',
+    color: 'purple',
     connected: jiraConnected.value,
     siteUrl: jiraSiteUrl.value,
     isLoading: isLoading.value,
@@ -261,6 +265,8 @@ const availableIntegrations = computed(() => [
     name: 'Shopify',
     description: 'Install from Shopify App Store to integrate your store with ChatterMate.',
     logo: shopifyLogo,
+    category: 'E-COMMERCE',
+    color: 'teal',
     connected: shopifyConnected.value,
     shopDomain: shopifyShopDomain.value,
     isLoading: shopifyLoading.value,
@@ -271,6 +277,8 @@ const availableIntegrations = computed(() => [
     name: 'Slack',
     description: 'Connect to Slack to allow users to chat with your AI agent directly from Slack channels.',
     logo: slackLogo,
+    category: 'MESSAGING',
+    color: 'accent',
     connected: slackConnected.value,
     teamName: slackTeamName.value,
     isLoading: slackLoading.value,
@@ -283,10 +291,33 @@ const availableIntegrations = computed(() => [
     name: 'Zendesk',
     description: 'Connect to Zendesk to manage customer support tickets.',
     logo: zendeskLogo,
+    category: 'SUPPORT',
+    color: 'coral',
     connected: false,
     comingSoon: true
   }
 ])
+
+// Search + summary
+const intQuery = ref('')
+
+const filteredIntegrations = computed(() => {
+  const q = intQuery.value.trim().toLowerCase()
+  if (!q) return availableIntegrations.value
+  return availableIntegrations.value.filter(it =>
+    it.name.toLowerCase().includes(q) ||
+    it.description.toLowerCase().includes(q) ||
+    (it.category || '').toLowerCase().includes(q)
+  )
+})
+
+const intEmpty = computed(() => filteredIntegrations.value.length === 0)
+
+const intSummary = computed(() => {
+  const total = availableIntegrations.value.length
+  const connected = availableIntegrations.value.filter(it => it.connected).length
+  return `${connected}/${total} connected`
+})
 
 onMounted(async () => {
   await Promise.all([
@@ -341,208 +372,129 @@ onMounted(async () => {
 <template>
   <DashboardLayout>
     <div class="integrations-settings">
-      <div class="page-header">
-        <h1 class="page-title">Integrations</h1>
-        <p class="page-description">
-          Connect ChatterMate with your favorite tools and services to enhance your workflow.
-        </p>
+      <!-- Page header + search -->
+      <div class="int-page-header">
+        <div class="int-page-titles">
+          <h1 class="int-title">Integrations</h1>
+          <p class="int-subtitle">Connect ChatterMate with the tools your team already uses.</p>
+        </div>
+        <div class="int-search">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="M21 21l-4-4"></path>
+          </svg>
+          <input v-model="intQuery" type="text" placeholder="Search integrations…" />
+        </div>
       </div>
-      
-      <div class="settings-section">
-        <div class="section-header">
-          <h2>Available Integrations</h2>
-          <p>Connect ChatterMate with your favorite tools and services.</p>
-        </div>
-        
-        <div class="integration-cards">
-          <!-- Dynamic Integration Cards -->
-          <div 
-            v-for="integration in availableIntegrations" 
-            :key="integration.id"
-            class="integration-card"
-            :class="{ 'coming-soon': integration.comingSoon }"
-          >
-            <div class="integration-header">
-              <img 
-                v-if="integration.logo" 
-                :src="integration.logo" 
-                :alt="`${integration.name} Logo`" 
-                class="integration-logo" 
+
+      <!-- Summary bar -->
+      <div class="int-summary-bar">
+        <span class="int-summary">{{ intSummary }}</span>
+      </div>
+
+      <!-- Cards grid -->
+      <div class="integration-cards">
+        <div
+          v-for="integration in filteredIntegrations"
+          :key="integration.id"
+          class="integration-card"
+        >
+          <div class="integration-header">
+            <div class="integration-tile" :class="`tile-${integration.color}`">
+              <img
+                v-if="integration.logo"
+                :src="integration.logo"
+                :alt="`${integration.name} Logo`"
+                class="integration-logo"
               />
-              <div v-else class="integration-logo placeholder">
-                <span>{{ integration.name.charAt(0) }}</span>
-              </div>
-              <div class="integration-info">
-                <h3>{{ integration.name }}</h3>
-                <p>{{ integration.description }}</p>
-              </div>
+              <span v-else>{{ integration.name.charAt(0) }}</span>
             </div>
-            
-            <div class="integration-status">
-              <!-- Jira specific loading state -->
-              <span v-if="integration.id === 'jira' && integration.isLoading" class="loading-indicator">
-                <span class="loading-spinner"></span>
-                Loading...
-              </span>
-              <!-- Shopify loading state -->
-              <span v-else-if="integration.id === 'shopify' && integration.isLoading" class="loading-indicator">
-                <span class="loading-spinner"></span>
-                Loading...
-              </span>
-              <!-- Slack loading state -->
-              <span v-else-if="integration.id === 'slack' && integration.isLoading" class="loading-indicator">
-                <span class="loading-spinner"></span>
-                Loading...
-              </span>
-              <template v-else>
-                <!-- Connected status for Jira -->
-                <div v-if="integration.id === 'jira' && integration.connected" class="connected-info">
-                  <span class="status-badge connected">
-                    <span class="status-icon">✓</span>
-                    Connected
-                  </span>
-                  <a v-if="integration.siteUrl" :href="integration.siteUrl" target="_blank" class="site-link">
-                    <span class="link-icon">↗</span>
-                    Visit {{ integration.name }} Site
-                  </a>
-                </div>
-                <!-- Not connected status for Jira -->
-                <div v-else-if="integration.id === 'jira'" class="not-connected-info">
-                  <span class="status-badge not-connected">
-                    Not Connected
-                  </span>
-                  <div v-if="lastConnectionError" class="connection-error">
-                    <span class="error-icon">⚠️</span>
-                    {{ lastConnectionError }}
-                  </div>
-                </div>
-                <!-- Connected status for Shopify -->
-                <div v-else-if="integration.id === 'shopify' && integration.connected" class="connected-info">
-                  <span class="status-badge connected">
-                    <span class="status-icon">✓</span>
-                    Connected
-                  </span>
-                  <div class="shop-info">
-                    <span class="shop-domain">{{ integration.shopDomain }}</span>
-                    <a 
-                      :href="`https://${integration.shopDomain}/admin`" 
-                      target="_blank" 
-                      class="site-link"
-                    >
-                      <span class="link-icon">↗</span>
-                      Visit Shopify Admin
-                    </a>
-                  </div>
-                </div>
-                <!-- Not connected status for Shopify -->
-                <div v-else-if="integration.id === 'shopify'" class="not-connected-info">
-                  <span class="status-badge not-connected">
-                    Not Connected
-                  </span>
-                </div>
-                <!-- Connected status for Slack -->
-                <div v-else-if="integration.id === 'slack' && integration.connected" class="connected-info">
-                  <span class="status-badge connected">
-                    <span class="status-icon">✓</span>
-                    Connected
-                  </span>
-                  <div class="team-info">
-                    <span class="team-name">{{ integration.teamName }}</span>
-                  </div>
-                </div>
-                <!-- Not connected status for Slack -->
-                <div v-else-if="integration.id === 'slack'" class="not-connected-info">
-                  <span class="status-badge not-connected">
-                    Not Connected
-                  </span>
-                </div>
-                <!-- Coming soon status -->
-                <span v-else-if="integration.comingSoon" class="status-badge coming-soon">
-                  Coming Soon
-                </span>
-              </template>
+            <div class="integration-info">
+              <div class="integration-name">{{ integration.name }}</div>
+              <div class="integration-cat">{{ integration.category }}</div>
             </div>
-            
-            
-            <div class="integration-actions">
-              <!-- Jira connect/disconnect buttons -->
-              <template v-if="integration.id === 'jira'">
-                <button 
-                  v-if="!integration.connected" 
-                  @click="integration.connectAction" 
-                  class="btn btn-primary"
-                  :disabled="integration.isLoading"
-                >
-                  <span class="btn-icon">+</span>
-                  Connect
-                </button>
-                <button 
-                  v-else 
-                  @click="showDisconnectConfirmation(integration.id)" 
-                  class="btn btn-danger"
-                  :disabled="integration.isLoading"
-                >
-                  <span class="btn-icon">×</span>
-                  Disconnect
-                </button>
-              </template>
-              
-              <!-- Shopify install/disconnect buttons -->
-              <template v-else-if="integration.id === 'shopify'">
-                <button
-                  v-if="!integration.connected"
-                  @click="openShopifyInstallation"
-                  class="btn btn-primary"
-                  :disabled="integration.isLoading"
-                >
-                  <span class="btn-icon">↗</span>
-                  Install
-                </button>
-                <button
-                  v-else
-                  @click="showDisconnectConfirmation(integration.id)"
-                  class="btn btn-danger"
-                  :disabled="integration.isLoading"
-                >
-                  <span class="btn-icon">×</span>
-                  Disconnect
-                </button>
-              </template>
-
-              <!-- Slack connect/disconnect buttons -->
-              <template v-else-if="integration.id === 'slack'">
-                <button
-                  v-if="!integration.connected"
-                  @click="integration.connectAction"
-                  class="btn btn-primary"
-                  :disabled="integration.isLoading"
-                >
-                  <span class="btn-icon">+</span>
-                  Connect
-                </button>
-                <button
-                  v-else
-                  @click="showDisconnectConfirmation(integration.id)"
-                  class="btn btn-danger"
-                  :disabled="integration.isLoading"
-                >
-                  <span class="btn-icon">×</span>
-                  Disconnect
-                </button>
-              </template>
-
-              <!-- Coming soon button -->
-              <button 
-                v-else-if="integration.comingSoon" 
-                class="btn btn-coming-soon" 
-                disabled
-              >
-                <span class="btn-icon">⏳</span>
-                Coming Soon
-              </button>
-            </div>
+            <span
+              v-if="integration.connected"
+              class="status-badge connected"
+            >
+              <span class="status-dot"></span>
+              Connected
+            </span>
+            <span
+              v-else-if="!integration.comingSoon"
+              class="status-badge not-connected"
+            >
+              <span class="status-dot"></span>
+              Not connected
+            </span>
+            <span
+              v-else
+              class="status-badge soon"
+            >
+              Soon
+            </span>
           </div>
+
+          <p class="integration-desc">{{ integration.description }}</p>
+
+          <div v-if="integration.connected && integration.siteUrl" class="integration-meta">
+            <a :href="integration.siteUrl" target="_blank" class="meta-link">↗ Visit {{ integration.name }} Site</a>
+          </div>
+          <div v-else-if="integration.connected && integration.shopDomain" class="integration-meta">
+            <span class="meta-text">{{ integration.shopDomain }}</span>
+            <a :href="`https://${integration.shopDomain}/admin`" target="_blank" class="meta-link">↗ Visit Shopify Admin</a>
+          </div>
+          <div v-else-if="integration.connected && integration.teamName" class="integration-meta">
+            <span class="meta-text">{{ integration.teamName }}</span>
+          </div>
+          <div v-else-if="!integration.connected && integration.id === 'jira' && lastConnectionError" class="integration-meta">
+            <span class="meta-error">⚠️ {{ lastConnectionError }}</span>
+          </div>
+
+          <!-- Loading state -->
+          <button
+            v-if="integration.isLoading"
+            class="int-btn int-btn-loading"
+            disabled
+          >
+            <span class="loading-spinner"></span>
+            Loading…
+          </button>
+
+          <!-- Connected: Manage + Disconnect -->
+          <div v-else-if="integration.connected" class="int-actions">
+            <button class="int-btn int-btn-manage">Manage</button>
+            <button class="int-btn int-btn-disconnect" @click="showDisconnectConfirmation(integration.id)">
+              Disconnect
+            </button>
+          </div>
+
+          <!-- Coming soon -->
+          <button
+            v-else-if="integration.comingSoon"
+            class="int-btn int-btn-soon"
+            disabled
+          >
+            Coming soon
+          </button>
+
+          <!-- Not connected: Connect / Install -->
+          <button
+            v-else
+            class="int-btn int-btn-connect"
+            @click="integration.id === 'shopify' ? openShopifyInstallation() : integration.connectAction?.()"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+            {{ integration.id === 'shopify' ? 'Install' : 'Connect' }}
+          </button>
         </div>
+      </div>
+
+      <!-- Empty state -->
+      <div v-if="intEmpty" class="int-empty">
+        No integrations match your search.
       </div>
     </div>
   </DashboardLayout>
@@ -632,134 +584,326 @@ onMounted(async () => {
 
 .integrations-settings {
   padding: var(--space-lg);
-  max-width: 1200px;
+  max-width: 1180px;
   margin: 0 auto;
 }
 
-.page-header {
-  margin-bottom: var(--space-xl);
+/* Page header + search */
+.int-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
 }
 
-.page-title {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  margin-bottom: var(--space-xs);
+.int-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0 0 6px;
 }
 
-.page-description {
-  color: var(--text-muted);
-  font-size: var(--text-md);
+.int-subtitle {
+  font-size: 15px;
+  color: var(--muted);
+  margin: 0;
 }
 
-.settings-section {
-  background: var(--background-color);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  padding: var(--space-lg);
-  margin-bottom: var(--space-xl);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+.int-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: var(--radius-btn);
+  min-width: 230px;
+  color: var(--muted2);
 }
 
-.section-header {
-  margin-bottom: var(--space-lg);
-  padding-bottom: var(--space-md);
-  border-bottom: 1px solid var(--border-color);
+.int-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
 }
 
-.section-header h2 {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  margin-bottom: var(--space-xs);
+.int-search input::placeholder {
+  color: var(--muted2);
 }
 
-.section-header p {
-  color: var(--text-muted);
+/* Summary bar */
+.int-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
 }
 
+.int-summary {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted2);
+  flex-shrink: 0;
+}
+
+/* Cards grid */
 .integration-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: var(--space-lg);
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 18px;
 }
 
 .integration-card {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: var(--space-lg);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
-  background-color: white;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  height: 100%;
-}
-
-.integration-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
-
-.integration-card.coming-soon {
-  opacity: 0.7;
-  background-color: var(--background-soft);
 }
 
 .integration-header {
   display: flex;
-  align-items: center;
-  gap: var(--space-md);
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
-.integration-logo {
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-  border-radius: var(--radius-md);
-}
-
-.integration-logo.placeholder {
-  background-color: var(--background-mute);
+/* Color-coded icon tile */
+.integration-tile {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--text-xl);
-  font-weight: bold;
-  color: var(--text-muted);
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
 }
 
-.integration-info h3 {
-  font-size: var(--text-lg);
+.integration-tile .integration-logo {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.tile-purple {
+  background: var(--purple-bg);
+  color: var(--c-purple);
+}
+
+.tile-teal {
+  background: var(--teal-bg);
+  color: var(--c-teal);
+}
+
+.tile-accent {
+  background: var(--accent-bg-12);
+  color: var(--accent-ink);
+}
+
+.tile-coral {
+  background: var(--coral-bg);
+  color: var(--c-coral);
+}
+
+.integration-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.integration-name {
+  font-family: var(--font-display);
   font-weight: 600;
-  margin-bottom: var(--space-xs);
+  font-size: 16.5px;
+  color: var(--text2);
 }
 
-.integration-info p {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: 1.5;
+.integration-cat {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted2);
+  margin-top: 3px;
 }
 
-.integration-status {
-  display: flex;
+/* Status badge */
+.status-badge {
+  display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
-.loading-indicator {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-badge.connected {
+  background: var(--teal-bg);
+  color: var(--c-teal);
+}
+
+.status-badge.not-connected {
+  background: var(--o05);
+  color: var(--muted2);
+}
+
+.status-badge.soon {
+  background: var(--o05);
+  color: var(--faint);
+}
+
+/* Description */
+.integration-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0 0 18px;
+  flex: 1;
+}
+
+/* Connected meta info */
+.integration-meta {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: -8px 0 16px;
+}
+
+.meta-text {
+  font-size: 13px;
+  color: var(--text2);
+  font-weight: 500;
+}
+
+.meta-link {
+  font-size: 12.5px;
+  color: var(--c-teal);
+  text-decoration: none;
+  width: fit-content;
+}
+
+.meta-link:hover {
+  text-decoration: underline;
+}
+
+.meta-error {
+  font-size: 12px;
+  color: var(--c-coral);
+  background: var(--coral-bg);
+  border: 1px solid var(--coral-border);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  word-break: break-word;
+}
+
+/* Buttons */
+.int-btn {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
+  justify-content: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.int-actions {
+  display: flex;
+  gap: 9px;
+}
+
+.int-btn-connect {
+  width: 100%;
+  padding: 12px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  border: none;
+  border-radius: var(--radius-chip);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.int-btn-connect:hover {
+  filter: brightness(1.05);
+}
+
+.int-btn-manage {
+  flex: 1;
+  padding: 11px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
+  color: var(--text);
+}
+
+.int-btn-manage:hover {
+  background: var(--o10);
+}
+
+.int-btn-disconnect {
+  flex-shrink: 0;
+  padding: 11px 16px;
+  background: transparent;
+  border: 1px solid var(--coral-border);
+  border-radius: var(--radius-chip);
+  color: var(--c-coral);
+}
+
+.int-btn-disconnect:hover {
+  background: var(--coral-bg);
+}
+
+.int-btn-soon {
+  width: 100%;
+  padding: 12px;
+  background: var(--o03);
+  border: 1px solid var(--o08);
+  border-radius: var(--radius-chip);
+  color: var(--faint);
+  font-size: 14px;
+  cursor: not-allowed;
+}
+
+.int-btn-loading {
+  width: 100%;
+  padding: 12px;
+  background: var(--o03);
+  border: 1px solid var(--o08);
+  border-radius: var(--radius-chip);
+  color: var(--muted);
+  font-size: 14px;
+  cursor: default;
 }
 
 .loading-spinner {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(0, 0, 0, 0.1);
-  border-top-color: var(--primary-color);
+  border: 2px solid var(--o10);
+  border-top-color: var(--accent-ink);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -770,193 +914,19 @@ onMounted(async () => {
   }
 }
 
-.connected-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.site-link {
-  font-size: var(--text-sm);
-  color: var(--primary-color);
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  transition: all 0.2s;
-  margin-top: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
-  background-color: #f0f7ff; /* Light blue background */
-  width: fit-content;
-}
-
-.site-link:hover {
-  color: var(--primary-dark);
-  background-color: #e0f0ff; /* Slightly darker blue on hover */
-  transform: translateY(-1px);
-}
-
-.link-icon {
-  font-size: 12px;
-}
-
-.status-badge {
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.status-icon {
-  font-size: 10px;
-}
-
-.status-badge.connected {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-}
-
-.status-badge.not-connected {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
-}
-
-.status-badge.coming-soon {
-  background: linear-gradient(135deg, #9ca3af, #6b7280);
-  color: white;
-}
-
-.installation-instructions {
-  margin-top: var(--space-md);
-  padding: var(--space-md);
-  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
-  border-radius: var(--radius-md);
-  border: 1px solid #bae6fd;
-}
-
-.instructions-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: var(--space-sm);
-}
-
-.instructions-list {
-  margin: 0;
-  padding-left: var(--space-lg);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  line-height: 1.6;
-}
-
-.instructions-list li {
-  margin-bottom: var(--space-xs);
-}
-
-.instructions-list li:last-child {
-  margin-bottom: 0;
-}
-
-.shopify-install-note {
-  padding: var(--space-md);
-  background: linear-gradient(135deg, #fef3c7, #fde68a);
-  border-radius: var(--radius-md);
-  border: 1px solid #fcd34d;
-}
-
-.note-text {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--text-color);
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-sm);
-  line-height: 1.5;
-}
-
-.note-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.integration-actions {
-  margin-top: auto;
-  padding-top: var(--space-md);
-}
-
-.btn {
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-full);
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: all var(--transition-fast);
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-  height: 38px;
-}
-
-.btn-icon {
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  color: white;
-  font-weight: 600;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.1);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.btn-danger {
-  background-color: var(--error-color);
-  color: white;
-}
-
-.btn-danger:hover {
-  background-color: #d63939; /* Slightly darker shade of error color */
-  transform: translateY(-1px);
-}
-
-.btn-coming-soon {
-  background: linear-gradient(135deg, #9ca3af, #6b7280);
-  color: white;
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.btn-disabled {
-  background-color: var(--background-mute);
-  color: var(--text-muted);
-  cursor: not-allowed;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+/* Empty state */
+.int-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--muted2);
+  font-size: 14px;
 }
 
 @media (max-width: 768px) {
   .integration-cards {
     grid-template-columns: 1fr;
   }
-  
+
   .integrations-settings {
     padding: var(--space-md);
   }
@@ -1115,9 +1085,9 @@ onMounted(async () => {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid var(--o30);
   border-radius: 50%;
-  border-top-color: white;
+  border-top-color: var(--text);
   animation: spin 1s linear infinite;
 }
 

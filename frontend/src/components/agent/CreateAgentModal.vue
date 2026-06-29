@@ -74,7 +74,12 @@ const handleCreateAgent = async () => {
                                 :class="{ 'selected': !useWorkflow }"
                                 @click="useWorkflow = false"
                             >
-                                <div class="mode-icon">🤖</div>
+                                <div class="mode-icon">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/>
+                                        <path d="M19 14l.7 1.8L21.5 16.5l-1.8.7L19 19l-.7-1.8L16.5 16.5l1.8-.7z"/>
+                                    </svg>
+                                </div>
                                 <div class="mode-details">
                                     <h4>AI Automode</h4>
                                     <p>Let the AI respond naturally based on instructions</p>
@@ -86,7 +91,14 @@ const handleCreateAgent = async () => {
                                 :class="{ 'selected': useWorkflow }"
                                 @click="useWorkflow = true"
                             >
-                                <div class="mode-icon">🔀</div>
+                                <div class="mode-icon">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="6" cy="6" r="2.4"/>
+                                        <circle cx="6" cy="18" r="2.4"/>
+                                        <circle cx="18" cy="9" r="2.4"/>
+                                        <path d="M8.4 6H13a3 3 0 0 1 3 3M6 8.4v7.2"/>
+                                    </svg>
+                                </div>
                                 <div class="mode-details">
                                     <h4>Workflow Builder</h4>
                                     <p>Create custom conversation flows with drag-and-drop</p>
@@ -137,7 +149,8 @@ const handleCreateAgent = async () => {
 }
 
 .modal-content {
-    background: white;
+    background: var(--surface);
+    border: 1px solid var(--o10);
     border-radius: 24px;
     width: 90%;
     max-width: 600px;
@@ -258,14 +271,23 @@ input:focus {
 }
 
 .mode-icon {
-    font-size: 2rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 60px;
-    height: 60px;
-    background: var(--background-base);
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
     border-radius: var(--radius-md);
+    background: var(--o05);
+    border: 1px solid var(--o10);
+    color: var(--muted);
+    transition: all 0.2s ease;
+}
+
+.mode-option.selected .mode-icon {
+    background: var(--accent-bg-08);
+    border-color: var(--accent-border);
+    color: var(--accent-ink);
 }
 
 .mode-details {
@@ -309,8 +331,8 @@ input:focus {
     padding: var(--space-md) var(--space-lg);
     border: none;
     border-radius: var(--radius-md);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;

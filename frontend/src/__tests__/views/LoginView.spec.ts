@@ -112,7 +112,7 @@ describe('LoginView', () => {
   })
 
   it('renders login form properly', () => {
-    expect(wrapper.find('.login-container').exists()).toBe(true)
+    expect(wrapper.find('.auth-page').exists()).toBe(true)
     expect(wrapper.find('input[type="email"]').exists()).toBe(true)
     expect(wrapper.find('input[type="password"]').exists()).toBe(true)
     expect(wrapper.find('button[type="submit"]').exists()).toBe(true)
@@ -139,7 +139,7 @@ describe('LoginView', () => {
     const submitButton = wrapper.find('button[type="submit"]')
     await submitButton.trigger('submit')
 
-    expect(submitButton.text()).toBe('Signing in...')
+    expect(submitButton.text()).toBe('Signing in…')
     expect(submitButton.attributes('disabled')).toBeDefined()
   })
 
@@ -179,7 +179,7 @@ describe('LoginView', () => {
 
     // Wait for error to be displayed
     await flushPromises()
-    expect(wrapper.find('.error-message').text()).toBe(errorMessage)
+    expect(wrapper.find('.auth-error').text()).toBe(errorMessage)
   })
 
   it('redirects to correct route based on permissions', async () => {

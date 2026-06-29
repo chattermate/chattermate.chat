@@ -379,8 +379,8 @@ const confirmReassign = async () => {
 
 <style scoped>
 .chat-info-sidebar {
-  background: var(--background-color);
-  border-left: 1px solid var(--border-color);
+  background: var(--bg2);
+  border-left: 1px solid var(--o08);
   overflow-y: auto;
   animation: slideInRight 0.3s ease-out;
 }
@@ -398,16 +398,17 @@ const confirmReassign = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-lg);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-soft);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--o07);
+  background: var(--bg2);
 }
 
 .chat-info-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-family: var(--font-display);
+  font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .close-btn {
@@ -416,17 +417,17 @@ const confirmReassign = async () => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
+  border: 1px solid var(--o10);
+  border-radius: 8px;
+  background: var(--o05);
+  color: var(--muted);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .close-btn:hover {
-  background: var(--background-color);
-  color: var(--text-primary);
+  background: var(--o10);
+  color: var(--text);
 }
 
 .chat-info-content {
@@ -443,12 +444,13 @@ const confirmReassign = async () => {
 
 .info-section h4 {
   margin: 0 0 var(--space-md) 0;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--faint);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border-color);
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--o07);
   padding-bottom: var(--space-xs);
 }
 
@@ -467,14 +469,14 @@ const confirmReassign = async () => {
 .info-item .label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--muted);
   min-width: 80px;
   flex-shrink: 0;
 }
 
 .info-item .value {
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--text);
   text-align: right;
   word-break: break-word;
   flex: 1;
@@ -489,17 +491,17 @@ const confirmReassign = async () => {
 }
 
 .status-badge.open {
-  background-color: var(--success-color-soft);
-  color: var(--success-color);
+  background: rgba(201,242,78,.12);
+  color: var(--accent-ink);
 }
 
 .status-badge.closed {
-  background-color: var(--error-color-soft);
-  color: var(--error-color);
+  background: var(--o06);
+  color: var(--muted);
 }
 
 .status-badge.transferred {
-  background-color: var(--warning-color-soft);
+  background: var(--warning-bg);
   color: var(--warning-color);
 }
 
@@ -515,10 +517,10 @@ const confirmReassign = async () => {
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--background-color);
-  color: var(--text-primary);
+  border: 1px solid var(--o10);
+  border-radius: 10px;
+  background: var(--o05);
+  color: var(--text3);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -528,31 +530,32 @@ const confirmReassign = async () => {
 }
 
 .action-btn:hover:not(:disabled) {
-  background: var(--background-soft);
-  border-color: var(--primary-color-soft);
+  background: var(--o10);
+  border-color: var(--o14);
+  color: var(--text);
 }
 
 .action-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .takeover-btn {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: rgba(201,242,78,.3);
+  color: var(--accent-ink);
 }
 
 .takeover-btn:hover:not(:disabled) {
-  background: var(--primary-color-soft);
+  background: rgba(201,242,78,.1);
 }
 
 .end-chat-btn {
-  border-color: var(--error-color);
-  color: var(--error-color);
+  border-color: rgba(255,138,115,.3);
+  color: var(--c-coral);
 }
 
 .end-chat-btn:hover:not(:disabled) {
-  background: var(--error-color-soft);
+  background: rgba(255,138,115,.1);
 }
 
 
@@ -582,12 +585,13 @@ const confirmReassign = async () => {
 }
 
 .end-chat-modal-content {
-  background: var(--background-color);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: 20px;
   padding: var(--space-xl);
   max-width: 400px;
   width: 90%;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-lg);
   animation: slideInUp 0.3s ease-out;
 }
 
@@ -604,14 +608,15 @@ const confirmReassign = async () => {
 
 .end-chat-modal-content h3 {
   margin: 0 0 var(--space-md) 0;
+  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .end-chat-modal-content p {
   margin: 0 0 var(--space-lg) 0;
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.5;
 }
 
@@ -633,23 +638,24 @@ const confirmReassign = async () => {
 }
 
 .cancel-btn {
-  background: var(--background-soft);
-  color: var(--text-muted);
-  border-color: var(--border-color);
+  background: var(--o06);
+  color: var(--text3);
+  border-color: var(--o10);
 }
 
 .cancel-btn:hover {
-  background: var(--background-mute);
-  color: var(--text-primary);
+  background: var(--o10);
+  color: var(--text);
 }
 
 .confirm-btn {
   background: var(--error-color);
   color: white;
+  border-color: transparent;
 }
 
 .confirm-btn:hover:not(:disabled) {
-  background: var(--primary-color);
+  filter: brightness(1.1);
   transform: translateY(-1px);
 }
 

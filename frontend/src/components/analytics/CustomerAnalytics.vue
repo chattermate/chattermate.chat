@@ -470,8 +470,8 @@ onMounted(() => {
 }
 
 .view-details-btn {
-  background-color: var(--primary-color);
-  color: white;
+  background-color: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);
@@ -481,7 +481,7 @@ onMounted(() => {
 }
 
 .view-details-btn:hover {
-  background-color: var(--accent-color);
+  background-color: var(--accent-solid);
 }
 
 /* Pagination Controls */
@@ -572,7 +572,7 @@ onMounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--primary-color);
+  background-color: var(--accent-solid);
   opacity: 0;
   transition: opacity 0.2s ease;
   border-radius: var(--radius-full);

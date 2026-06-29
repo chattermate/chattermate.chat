@@ -91,7 +91,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
     <!-- Analytics Content (when unlocked) -->
     <div v-else>
       <div class="analytics-header">
-        <h1>Analytics Dashboard</h1>
         <div class="time-range-selector">
           <button 
             v-for="range in ['24h', '7d', '30d', '90d']" 
@@ -211,7 +210,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
               v-else
               type="area"
               height="300"
-              :options="getChartOptions('Conversations', '#c2471f')"
+              :options="getChartOptions('Conversations', '#C9F24E')"
               :series="[{
                 name: 'Conversations',
                 data: getChartData(analyticsData?.conversations)
@@ -466,7 +465,7 @@ const getChartOptions = (name: string, color: string) => ({
 
 const getRatingChartOptions = () => ({
   ...getChartOptions('Ratings', '#10B981'),
-  colors: ['#c2471f', '#10B981'],
+  colors: ['#C9F24E', '#5FE3D6'],
   stroke: {
     curve: 'smooth',
     width: 3
@@ -495,7 +494,7 @@ const getRatingChartOptions = () => ({
 
 const getComparisonChartOptions = () => ({
   ...getChartOptions('Closures & Transfers', '#10B981'),
-  colors: ['#10B981', '#c2471f'],
+  colors: ['#5FE3D6', '#C9F24E'],
   stroke: {
     curve: 'smooth',
     width: 2
@@ -552,7 +551,7 @@ fetchAnalytics()
 
 .analytics-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: var(--space-md);
 }
@@ -563,7 +562,7 @@ fetchAnalytics()
 
 .tab-buttons {
   display: flex;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o08);
   margin-bottom: var(--space-lg);
 }
 
@@ -572,14 +571,15 @@ fetchAnalytics()
   background: none;
   border: none;
   cursor: pointer;
-  font-size: var(--text-md);
-  color: var(--text-muted);
+  font-size: var(--text-sm);
+  color: var(--muted);
   transition: all var(--transition-fast);
   position: relative;
+  font-family: var(--font-sans);
 }
 
 .tab-buttons button.active {
-  color: var(--primary-color);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -590,31 +590,34 @@ fetchAnalytics()
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--primary-color);
+  background: var(--accent-solid);
 }
 
 .time-range-selector {
   display: flex;
-  gap: var(--space-xs);
-  background: var(--background-soft);
-  padding: var(--space-xs);
+  gap: 4px;
+  background: var(--o06);
+  border: 1px solid var(--o10);
+  padding: 4px;
   border-radius: var(--radius-full);
 }
 
 .time-range-selector button {
-  padding: var(--space-xs) var(--space-sm);
+  padding: 5px 12px;
   border: none;
   background: none;
   border-radius: var(--radius-full);
   cursor: pointer;
-  color: var(--text-color);
-  font-size: var(--text-sm);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
   transition: all var(--transition-fast);
 }
 
 .time-range-selector button.active {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  font-weight: 600;
 }
 
 .metrics-overview {
@@ -625,33 +628,39 @@ fetchAnalytics()
 }
 
 .metric-card {
-  background: var(--background-soft);
+  background: var(--surface);
   padding: var(--space-lg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  border-radius: 18px;
+  border: 1px solid var(--o08);
 }
 
 .metric-card h3 {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
   margin-bottom: var(--space-sm);
 }
 
 .metric-value {
+  font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   display: flex;
   align-items: baseline;
   gap: var(--space-sm);
+  color: var(--text);
 }
 
 .change {
   font-size: var(--text-sm);
-  color: var(--error-color);
+  color: var(--c-coral);
 }
 
 .change.positive {
-  color: var(--success-color);
+  color: var(--c-teal);
 }
 
 .charts-grid {
@@ -663,14 +672,17 @@ fetchAnalytics()
 
 .chart-container {
   padding: var(--space-lg);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  background: var(--background-soft);
+  border-radius: 18px;
+  border: 1px solid var(--o08);
+  background: var(--surface);
 }
 
 .chart-container h3 {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
   margin-bottom: var(--space-md);
 }
 
@@ -744,8 +756,8 @@ fetchAnalytics()
   right: 0;
   bottom: 0;
   background: 
-    radial-gradient(circle at 20% 80%, rgba(243, 70, 17, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+    radial-gradient(circle at 20% 80%, rgba(201, 242, 78, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(95, 227, 214, 0.04) 0%, transparent 50%);
   pointer-events: none;
 }
 
@@ -771,7 +783,7 @@ fetchAnalytics()
   justify-content: center;
   width: 64px;
   height: 64px;
-  background: var(--primary-color);
+  background: var(--accent-solid);
   border-radius: 50%;
   box-shadow: var(--shadow-lg);
   margin-bottom: var(--space-sm);
@@ -779,7 +791,7 @@ fetchAnalytics()
 
 .locked-icon {
   font-size: 1.5rem;
-  color: white;
+  color: var(--on-accent-solid);
 }
 
 .locked-content h2 {
@@ -793,8 +805,8 @@ fetchAnalytics()
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -884,8 +896,8 @@ fetchAnalytics()
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: var(--radius-lg);
   padding: var(--space-lg) var(--space-xl);

@@ -40,6 +40,9 @@ class KnowledgeSearchByAgent(Toolkit):
         self.agent_id = agent_id
         self.org_id = org_id
         self.source = source
+        # Structured citations for the most recent turn: list of {"name", "type"}.
+        # Read (and reset) by the chat agent after each run to attach to the response.
+        self.collected_sources: List[Dict[str, str]] = []
         
         # Get API key from AI config - use context manager for database session
         with SessionLocal() as db:
@@ -126,6 +129,18 @@ class KnowledgeSearchByAgent(Toolkit):
 
                 # Sort by similarity and format results
                 search_results.sort(key=lambda x: x['similarity'], reverse=True)
+
+                # Record structured citations (deduped by name+type) so the chat agent
+                # can surface them to the widget.
+                seen = {(s['name'], s['type']) for s in self.collected_sources}
+                for result in search_results:
+                    key = (result['name'], result['source_type'])
+                    if key not in seen:
+                        seen.add(key)
+                        self.collected_sources.append({
+                            'name': result['name'],
+                            'type': result['source_type'],
+                        })
 
                 # Return all results (already limited to 3)
                 formatted_results = []

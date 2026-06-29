@@ -24,7 +24,6 @@ import { useConversationFiles } from '@/composables/useConversationFiles'
 import { useJiraTicket } from '@/composables/useJiraTicket'
 import JiraTicketModal from '@/components/jira/JiraTicketModal.vue'
 import FileUpload from '@/components/common/FileUpload.vue'
-import sendIcon from '@/assets/sendbutton.svg'
 import { userService } from '@/services/user'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
@@ -198,7 +197,7 @@ onMounted(async () => {
           v-for="(message, idx) in formattedMessages" 
           :key="idx"
           class="message"
-          :class="message.message_type === 'bot' || message.message_type === 'agent' || message.message_type === 'product' ? 'bot' : 'user'"
+          :class="message.message_type === 'agent' ? 'agent' : ((message.message_type === 'bot' || message.message_type === 'product') ? 'bot' : 'user')"
         >
           <div class="message-content">
             <div class="message-bubble">
@@ -319,12 +318,13 @@ onMounted(async () => {
             @keyup.enter="handleSendMessageWithAttachments"
             :disabled="!canSendMessage"
           >
-          <button 
-            class="send-button" 
+          <button
+            class="send-button"
             @click="handleSendMessageWithAttachments"
             :disabled="(!newMessage.trim() && uploadedFiles.length === 0) || !canSendMessage"
+            aria-label="Send"
           >
-            <img :src="sendIcon" alt="Send" />
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"></path><path d="M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
           </button>
         </div>
       </div>
@@ -356,16 +356,16 @@ onMounted(async () => {
   flex-direction: column;
   height: 70vh;
   width: 100%;
-  background: var(--background-color);
+  background: var(--bg);
   position: relative;
   overflow: hidden;
 }
 
 .chat-header {
   flex: 0 0 auto;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-color);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--o08);
+  background: var(--bg2);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -396,21 +396,23 @@ onMounted(async () => {
 
 .chat-input {
   flex: 0 0 auto;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color);
-  background: var(--background-color);
+  padding: 14px 20px;
+  border-top: 1px solid var(--o08);
+  background: var(--bg2);
   width: 100%;
 }
 
 .user-info h2 {
-  font-size: 16px;
-  color: var(--text-primary);
-  margin-bottom: 4px;
+  font-size: 15px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
 }
 
 .status {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .header-actions {
@@ -421,14 +423,15 @@ onMounted(async () => {
 .action-btn {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--muted);
   cursor: pointer;
   padding: 8px;
-  border-radius: 50%;
+  border-radius: 8px;
 }
 
 .action-btn:hover {
-  background: var(--background-mute);
+  background: var(--o08);
+  color: var(--text);
 }
 
 .message {
@@ -444,32 +447,48 @@ onMounted(async () => {
   max-width: 100%;
 }
 
+/* Customer (incoming) — left */
 .message.user {
-  margin-left: auto;
-  justify-content: flex-end;
-}
-
-.message.bot {
   margin-right: auto;
   justify-content: flex-start;
 }
 
+/* AI + human agent (outbound) — right */
+.message.bot,
+.message.agent {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
 .message-bubble {
-  background: var(--background-soft);
-  padding: 12px 16px;
-  border-radius: 16px;
-  border-bottom-left-radius: 4px;
-  color: var(--text-primary);
+  padding: 11px 15px;
   position: relative;
   max-width: 100%;
   word-wrap: break-word;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
+/* Customer bubble — neutral, sharp top-left */
 .message.user .message-bubble {
-  background: var(--primary-color);
-  color: var(--background-color);
-  border-radius: 16px;
-  border-bottom-right-radius: 4px;
+  background: var(--bubble-customer-bg);
+  color: var(--bubble-customer-fg);
+  border-radius: 4px 15px 15px 15px;
+}
+
+/* AI bubble — teal tint, sharp top-right */
+.message.bot .message-bubble {
+  background: var(--bubble-ai-bg);
+  border: 1px solid var(--bubble-ai-border);
+  color: var(--bubble-ai-fg);
+  border-radius: 15px 15px 4px 15px;
+}
+
+/* Human agent bubble — lime, sharp top-right */
+.message.agent .message-bubble {
+  background: var(--bubble-agent-bg);
+  color: var(--bubble-agent-fg);
+  border-radius: 15px 15px 4px 15px;
 }
 
 .agent-name {
@@ -481,28 +500,29 @@ onMounted(async () => {
 
 .message-time {
   font-size: 11px;
-  color: var(--text-color-light);
+  color: var(--muted);
   margin-top: 4px;
   display: block;
   text-align: right;
 }
 
-.message.user .message-time {
-  color: rgba(255, 255, 255, 0.7);
+.message.user .message-time,
+.message.bot .message-time {
+  color: var(--muted);
 }
 
-.message.bot .message-time {
-  color: var(--text-muted);
+.message.agent .message-time {
+  color: color-mix(in srgb, var(--on-accent) 55%, transparent);
 }
 
 .input-container {
   display: flex;
   align-items: flex-end;
   gap: 12px;
-  background: var(--background-soft);
+  background: var(--surface);
   padding: 8px 16px;
-  border-radius: 24px;
-  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  border: 1px solid var(--o10);
 }
 
 .input-container.disabled {
@@ -543,28 +563,32 @@ onMounted(async () => {
 }
 
 .send-button {
-  background: none;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  padding: 0;
   border: none;
   cursor: pointer;
-  padding: 8px;
-  opacity: 0.7;
-  transition: opacity 0.2s;
   display: flex;
   align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-input);
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  transition: filter 0.2s, opacity 0.2s;
 }
 
-.send-button:hover {
-  opacity: 1;
+.send-button:hover:not(:disabled) {
+  filter: brightness(1.05);
 }
 
 .send-button:disabled {
-  opacity: 0.3;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.send-button img {
-  width: 24px;
-  height: 24px;
+.send-button svg {
+  display: block;
 }
 
 
@@ -608,16 +632,16 @@ onMounted(async () => {
 
 .chat-closed-footer {
   flex: 0 0 auto;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color);
-  background: var(--background-color);
+  padding: 14px 20px;
+  border-top: 1px solid var(--o08);
+  background: var(--bg2);
   width: 100%;
 }
 
 .chat-closed-message {
   text-align: center;
-  color: var(--text-muted);
-  font-size: 14px;
+  color: var(--muted);
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -633,10 +657,10 @@ onMounted(async () => {
 
 
 .create-ticket-btn {
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 16px;
   font-size: 14px;
   cursor: pointer;
@@ -680,8 +704,8 @@ onMounted(async () => {
 }
 
 .product-card-compact {
-  background-color: white;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background-color: var(--surface);
+  border: 1px solid var(--o10);
   border-radius: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06),
               0 1px 2px rgba(0, 0, 0, 0.04);
@@ -749,8 +773,8 @@ onMounted(async () => {
 .view-details-button-compact {
   width: 100%;
   padding: 8px 12px;
-  background-color: white;
-  color: var(--text-primary);
+  background-color: var(--bg2);
+  color: var(--text);
   border: 1px solid var(--border-color);
   border-radius: 16px;
   font-size: var(--text-xs);
@@ -838,20 +862,20 @@ onMounted(async () => {
   margin-left: 4px;
 }
 
-.message.user .attachment-link {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: var(--background-color);
+.message.agent .attachment-link {
+  background: color-mix(in srgb, var(--on-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--on-accent) 22%, transparent);
+  color: var(--on-accent);
 }
 
-.message.user .attachment-link:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
+.message.agent .attachment-link:hover {
+  background: color-mix(in srgb, var(--on-accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--on-accent) 32%, transparent);
 }
 
-.message.user .attachment-link i,
-.message.user .attachment-size {
-  color: rgba(255, 255, 255, 0.9);
+.message.agent .attachment-link i,
+.message.agent .attachment-size {
+  color: var(--on-accent);
 }
 
 /* Image attachment styles */
@@ -877,13 +901,13 @@ onMounted(async () => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.message.user .attachment-image {
-  border-color: rgba(255, 255, 255, 0.3);
+.message.agent .attachment-image {
+  border-color: color-mix(in srgb, var(--on-accent) 22%, transparent);
 }
 
-.message.user .attachment-image:hover {
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+.message.agent .attachment-image:hover {
+  border-color: color-mix(in srgb, var(--on-accent) 40%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .attachment-image-info {

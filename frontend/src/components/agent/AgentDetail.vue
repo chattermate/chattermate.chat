@@ -17,9 +17,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
-import { getAvatarUrl } from '@/utils/avatars'
+import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
+import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle } from '@/utils/orb'
 
 import KnowledgeGrid from './KnowledgeGrid.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
@@ -46,6 +47,74 @@ const props = defineProps<{
 
 const { hasEnterpriseModule } = useEnterpriseFeatures()
 const agentData = ref({ ...props.agent })
+
+// Avatar picker (preset avatars + upload)
+const avatarModules = import.meta.glob('@/assets/avatars/avatar-*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+const presetAvatars = Object.keys(avatarModules).sort().map((k) => avatarModules[k])
+const showAvatarPicker = ref(false)
+// Show the chosen preset instantly while the upload finishes in the background
+const optimisticPhoto = ref<string | null>(null)
+const closeAvatarPicker = () => { showAvatarPicker.value = false }
+const toggleAvatarPicker = () => {
+  if (isUploading.value) return
+  showAvatarPicker.value = !showAvatarPicker.value
+}
+// Aurora orb avatar (generated, no photo). Stored in customization_metadata so no
+// schema change is needed. Selecting a real picture resets this back to 'photo'.
+const orbCount = ORB_PALETTE_COUNT
+const orbMeta = computed(
+  () => (agentData.value.customization?.customization_metadata as Record<string, unknown> | undefined),
+)
+const useOrbAvatar = computed(() => orbMeta.value?.avatar_style === 'orb')
+const currentOrbVariant = computed(() => orbMeta.value?.orb_variant)
+const orbStyle = computed(() => resolveOrbStyle(agentData.value.name || '', currentOrbVariant.value))
+
+const persistAvatarMeta = async (patch: Record<string, unknown>) => {
+  const cust = agentData.value.customization
+  if (!cust) return
+  const meta = { ...(cust.customization_metadata ?? {}), ...patch }
+  const updated = await agentService.updateCustomization(agentData.value.id, {
+    ...cust,
+    customization_metadata: meta,
+  })
+  agentData.value.customization = updated
+}
+
+const selectOrbAvatar = async (variant: number) => {
+  if (isUploading.value) return
+  closeAvatarPicker()
+  try {
+    await persistAvatarMeta({ avatar_style: 'orb', orb_variant: variant })
+  } catch (error) {
+    console.error('Failed to set orb avatar:', error)
+    toast.error('Failed to update avatar')
+  }
+}
+
+const selectPresetAvatar = async (url: string) => {
+  if (isUploading.value) return
+  closeAvatarPicker()
+  optimisticPhoto.value = url
+  try {
+    await applyPresetAvatar(url)
+    // A real picture was chosen — turn off the orb if it was on.
+    if (useOrbAvatar.value) await persistAvatarMeta({ avatar_style: 'photo' })
+  } finally {
+    optimisticPhoto.value = null
+  }
+}
+const chooseUploadAvatar = () => {
+  if (isUploading.value) return
+  closeAvatarPicker()
+  triggerFileUpload()
+}
+onMounted(() => window.addEventListener('click', closeAvatarPicker))
+onUnmounted(() => window.removeEventListener('click', closeAvatarPicker))
+
 const activeTab = ref(props.agent.use_workflow ? 'workflow-builder' : 'agent') // Track the active tab: 'agent', 'integrations', etc.
 const isEditingHeader = ref(false)
 const editDisplayName = ref(agentData.value.display_name || agentData.value.name)
@@ -55,7 +124,7 @@ const previewCustomization = ref<AgentCustomization>({
     agent_id: agentData.value.id,
     chat_background_color: agentData.value.customization?.chat_background_color ?? '#F8F9FA',
     chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? '#E9ECEF',
-    accent_color: agentData.value.customization?.accent_color ?? '#f34611',
+    accent_color: agentData.value.customization?.accent_color ?? '#C9F24E',
     font_family: agentData.value.customization?.font_family ?? 'Inter, system-ui, sans-serif',
     photo_url: agentData.value.customization?.photo_url,
     icon_color: agentData.value.customization?.icon_color ?? '#6C757D',
@@ -140,6 +209,7 @@ const {
   handleFileUpload,
   handleCrop,
   cancelCrop,
+  applyPresetAvatar,
   handleClose: handleCloseAgent,
   initializeWidget,
   copyWidgetCode: copyWidgetCodeFn,
@@ -201,12 +271,17 @@ const handleChatStyleChange = (oldStyle: string, newStyle: string) => {
 }
 
 const photoUrl = computed(() => {
+    // Optimistic preview while an upload is in flight
+    if (optimisticPhoto.value) {
+        return optimisticPhoto.value
+    }
+
     if (!agentData.value.customization?.photo_url) {
         return getAvatarUrl(agentData.value.agent_type.toLowerCase())
     }
-    
-    // If it's an S3 URL (contains amazonaws.com), use it directly
-    if (agentData.value.customization.photo_url.includes('amazonaws.com')) {
+
+    // Absolute S3/CDN URL — use it directly
+    if (isAbsoluteUrl(agentData.value.customization.photo_url)) {
         return agentData.value.customization.photo_url
     }
     
@@ -585,7 +660,9 @@ const handleSaveAgentFromTab = async (data: any) => {
         const updatedAgent = await agentService.updateAgent(agentData.value.id, {
             instructions: instructions,
             transfer_to_human: data.transferToHuman,
-            ask_for_rating: data.askForRating
+            ask_for_rating: data.askForRating,
+            handoff_collect_email: data.handoffCollectEmail,
+            handoff_collect_name: data.handoffCollectName
         })
         
         // Update agent groups if changed
@@ -653,15 +730,56 @@ onMounted(async () => {
                     </svg>
                 </button>
                 <div class="agent-header">
-                    <div class="agent-avatar" @click="triggerFileUpload">
+                    <div class="agent-avatar" :class="{ uploading: isUploading }" @click.stop="toggleAvatarPicker">
                         <input type="file" ref="fileInput" accept="image/jpeg,image/png,image/webp" class="hidden"
                             @change="handleFileUpload">
-                        <img :src="photoUrl" :alt="agentData.name" :class="{ 'opacity-50': isUploading }">
-                        <div class="upload-overlay" v-if="!isUploading">
-                            <span>Change Photo</span>
+                        <div class="agent-avatar-ring">
+                            <div v-if="useOrbAvatar && !optimisticPhoto" class="agent-orb-avatar" :class="{ 'opacity-50': isUploading }" :style="orbStyle"></div>
+                            <img v-else :src="photoUrl" :alt="agentData.name" :class="{ 'opacity-50': isUploading }">
+                            <div class="upload-overlay" v-if="!isUploading">
+                                <span>Change</span>
+                            </div>
+                            <div class="upload-overlay" v-else>
+                                <span>...</span>
+                            </div>
                         </div>
-                        <div class="upload-overlay" v-else>
-                            <span>Uploading...</span>
+                        <span class="avatar-edit-badge" aria-hidden="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"></path></svg>
+                        </span>
+
+                        <!-- Preset avatar picker -->
+                        <div v-if="showAvatarPicker" class="avatar-picker" @click.stop>
+                            <div class="avatar-picker-title">Choose a picture</div>
+                            <div class="avatar-picker-grid">
+                                <button
+                                    v-for="(url, i) in presetAvatars"
+                                    :key="i"
+                                    type="button"
+                                    class="avatar-pick"
+                                    :disabled="isUploading"
+                                    @click="selectPresetAvatar(url)"
+                                    :aria-label="`Avatar ${i + 1}`"
+                                >
+                                    <img :src="url" alt="">
+                                </button>
+                                <button
+                                    v-for="n in orbCount"
+                                    :key="`orb-${n}`"
+                                    type="button"
+                                    class="avatar-pick avatar-pick-orb"
+                                    :class="{ active: useOrbAvatar && (currentOrbVariant ?? -1) === n - 1 }"
+                                    :disabled="isUploading"
+                                    @click="selectOrbAvatar(n - 1)"
+                                    :aria-label="`Orb ${n}`"
+                                    :title="`Orb ${n}`"
+                                >
+                                    <span class="avatar-orb-thumb" :style="getOrbStyleAt(n - 1)"></span>
+                                </button>
+                            </div>
+                            <button type="button" class="avatar-picker-upload" :disabled="isUploading" @click="chooseUploadAvatar">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Upload your own
+                            </button>
                         </div>
                     </div>
                     <div class="agent-info">
@@ -708,7 +826,7 @@ onMounted(async () => {
                                     >
                                     <span class="status-slider"></span>
                                 </label>
-                                <span class="status-text">{{ (isEditingHeader ? editIsActive : agentData.is_active) ? 'Online' : 'Offline' }}</span>
+                                <span class="status-text" :class="{ online: (isEditingHeader ? editIsActive : agentData.is_active) }">{{ (isEditingHeader ? editIsActive : agentData.is_active) ? 'Online' : 'Offline' }}</span>
                             </div>
                             
                             <!-- Mode Selection -->
@@ -846,6 +964,8 @@ onMounted(async () => {
                                 :instructions="instructionsText"
                                 :transfer-to-human="agentData.transfer_to_human"
                                 :ask-for-rating="agentData.ask_for_rating"
+                                :handoff-collect-email="agentData.handoff_collect_email"
+                                :handoff-collect-name="agentData.handoff_collect_name"
                                 :user-groups="userGroups"
                                 :selected-group-ids="selectedGroupIds"
                                 :loading-groups="loadingGroups"
@@ -902,20 +1022,6 @@ onMounted(async () => {
                         <!-- Knowledge Tab -->
                         <div v-if="activeTab === 'knowledge'" class="tab-content">
                             <div class="knowledge-tab-container">
-                                <div class="knowledge-header">
-                                    <div>
-                                        <h3 class="section-title">Knowledge Sources</h3>
-                                        <p class="section-description">
-                                            Connect your agent to various knowledge sources to enhance its responses with context-relevant information.
-                                        </p>
-                                    </div>
-                                    <div class="knowledge-actions">
-                                        <button class="knowledge-action-button" title="Quick tips for managing knowledge" @click="openTips">
-                                            <span class="icon">💡</span>
-                                            <span>Tips</span>
-                                        </button>
-                                    </div>
-                                </div>
                                 <KnowledgeGrid :agent-id="agentData.id" :organization-id="agentData.organization_id" />
                             </div>
                         </div>
@@ -1017,7 +1123,7 @@ onMounted(async () => {
                     }" :default-size="{
                         width: 250,
                         height: 250
-                    }" :stencil-component="CircleStencil" image-restriction="stencil" background="#f0f0f0" />
+                    }" :stencil-component="CircleStencil" image-restriction="stencil" background="var(--o05)" />
                     <div class="cropper-actions">
                         <button @click="handleCrop" :disabled="isUploading">
                             {{ isUploading ? 'Uploading...' : 'Save' }}
@@ -1118,7 +1224,7 @@ onMounted(async () => {
     flex-direction: column;
     min-height: 100vh;
     height: auto;
-    background: var(--background-base);
+    background: var(--bg);
     overflow-x: hidden;
     max-width: 100vw;
     box-sizing: border-box;
@@ -1126,21 +1232,19 @@ onMounted(async () => {
 
 .detail-panel {
     flex: 1;
-    background: white;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    background: var(--surface);
+    border: 1px solid var(--o08);
+    border-radius: var(--radius-card);
     overflow: visible;
     display: flex;
     flex-direction: column;
-    margin: var(--space-sm);
     min-height: calc(100vh - 2 * var(--space-sm));
     max-width: 100%;
 }
 
 .panel-header {
-    padding: var(--space-lg) var(--space-lg) var(--space-md);
-    border-bottom: 1px solid var(--border-color);
-    background: var(--background-soft);
+    padding: 26px 32px var(--space-md);
+    background: transparent;
 }
 
 .header-layout {
@@ -1155,20 +1259,19 @@ onMounted(async () => {
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--background-color);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-full);
+    background: var(--o05);
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-btn);
     cursor: pointer;
-    transition: all 0.2s ease;
-    color: var(--text-muted);
+    transition: all var(--transition-fast);
+    color: var(--text3);
     flex-shrink: 0;
 }
 
 .back-button:hover {
-    background: var(--background-muted);
-    color: var(--text-color);
+    background: var(--o10);
+    color: var(--text);
     transform: translateX(-2px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .back-icon {
@@ -1190,19 +1293,131 @@ onMounted(async () => {
 .agent-avatar {
     position: relative;
     cursor: pointer;
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 3px solid white;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
+    width: 64px;
+    height: 64px;
     flex-shrink: 0;
 }
 
-.agent-avatar:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+/* Preset avatar picker popover */
+.avatar-picker {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    z-index: 40;
+    width: 296px;
+    padding: 14px;
+    background: var(--surface);
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    cursor: default;
+}
+
+.avatar-picker-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text3);
+    margin-bottom: 10px;
+}
+
+.avatar-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.avatar-pick {
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--o05);
+    border: 2px solid var(--o12);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.avatar-pick img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-pick:hover:not(:disabled) {
+    border-color: var(--o25);
+}
+
+.avatar-pick:disabled,
+.avatar-picker-upload:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.agent-avatar.uploading {
+    cursor: progress;
+}
+
+.avatar-pick.selected {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--accent-bg-12);
+}
+
+/* Aurora orb tile in the picker grid */
+.avatar-pick-orb {
+    background: transparent;
+}
+.avatar-orb-thumb {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
+.avatar-pick-orb.active {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--accent-bg-12);
+}
+
+.avatar-picker-upload {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px;
+    background: var(--o05);
+    border: 1px solid var(--o14);
+    border-radius: var(--radius-input);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.avatar-picker-upload:hover {
+    background: var(--o10);
+}
+
+/* Ring around the avatar */
+.agent-avatar-ring {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    padding: 3px;
+    background: var(--o04);
+    border: 1px solid var(--o12);
+    box-sizing: border-box;
+    overflow: hidden;
+    position: relative;
+    transition: border-color 0.2s ease;
+}
+
+.agent-avatar:hover .agent-avatar-ring {
+    border-color: var(--o20);
 }
 
 .hidden {
@@ -1211,27 +1426,25 @@ onMounted(async () => {
 
 .upload-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    top: 3px;
+    left: 3px;
+    right: 3px;
+    bottom: 3px;
     background: rgba(0, 0, 0, 0.6);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--toggle-knob);
     opacity: 0;
-    transition: all 0.3s ease;
+    transition: opacity 0.3s ease;
     border-radius: 50%;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 500;
     text-align: center;
-    backdrop-filter: blur(2px);
 }
 
 .agent-avatar:hover .upload-overlay {
     opacity: 1;
-    transform: scale(1.02);
 }
 
 .agent-avatar img {
@@ -1239,6 +1452,29 @@ onMounted(async () => {
     height: 100%;
     object-fit: cover;
     border-radius: 50%;
+}
+
+/* Generated aurora orb shown in place of the avatar image */
+.agent-orb-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
+
+/* Lime pencil edit badge */
+.avatar-edit-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--o20);
+    color: var(--accent-ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .agent-info {
@@ -1251,11 +1487,13 @@ onMounted(async () => {
 }
 
 .agent-info h3 {
-    font-size: 1.25rem;
+    font-family: var(--font-display);
+    font-size: 1.625rem;
     font-weight: 700;
-    color: var(--text-color);
+    letter-spacing: var(--tracking-display);
+    color: var(--text);
     margin: 0;
-    line-height: 1.3;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1286,19 +1524,21 @@ onMounted(async () => {
 .name-input {
     flex: 1;
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: 1rem;
-    font-weight: 600;
-    background: white;
-    color: var(--text-color);
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-input);
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: var(--tracking-display);
+    background: var(--o05);
+    color: var(--text);
     min-width: 0;
 }
 
 .name-input:focus {
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px var(--primary-soft);
+    border-color: var(--accent-ink);
+    box-shadow: var(--ring-focus);
 }
 
 .edit-actions {
@@ -1335,7 +1575,7 @@ onMounted(async () => {
     border: none;
     background: var(--success-color);
     border-radius: var(--radius-sm);
-    color: white;
+    color: var(--toggle-knob);
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -1361,7 +1601,7 @@ onMounted(async () => {
 
 .cancel-icon-button:hover {
     background: var(--error-color);
-    color: white;
+    color: var(--toggle-knob);
     transform: translateY(-1px);
 }
 
@@ -1374,8 +1614,8 @@ onMounted(async () => {
 .status-switch {
     position: relative;
     display: inline-block;
-    width: 44px;
-    height: 22px;
+    width: 46px;
+    height: 26px;
 }
 
 .status-switch input {
@@ -1391,30 +1631,29 @@ onMounted(async () => {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 22px;
+    background-color: var(--toggle-track-off);
+    transition: .25s;
+    border-radius: var(--radius-pill);
 }
 
 .status-slider:before {
     position: absolute;
     content: "";
-    height: 16px;
-    width: 16px;
+    height: 20px;
+    width: 20px;
     left: 3px;
     bottom: 3px;
-    background-color: white;
-    transition: .4s;
+    background-color: var(--toggle-knob);
+    transition: .25s;
     border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .status-switch input:checked + .status-slider {
-    background-color: var(--success-color);
+    background-color: var(--toggle-on-teal);
 }
 
 .status-switch input:checked + .status-slider:before {
-    transform: translateX(22px);
+    transform: translateX(20px);
 }
 
 .status-switch input:disabled + .status-slider {
@@ -1435,8 +1674,10 @@ onMounted(async () => {
 
 .status-and-mode {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
 }
 
 .status {
@@ -1449,69 +1690,68 @@ onMounted(async () => {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--error-color, #ef4444);
+    background: var(--error-color);
     position: relative;
     animation: pulse-offline 2s infinite;
 }
 
 .status-indicator.online {
-    background: var(--success-color, #22c55e);
+    background: var(--success-color);
     animation: pulse-online 2s infinite;
 }
 
 .status-text {
     font-weight: 500;
-    font-size: var(--text-sm);
-    color: var(--text-muted);
+    font-size: 14px;
+    color: var(--muted2);
 }
 
-/* Mode Selection Styles */
+.status-text.online {
+    color: var(--c-online);
+}
+
+/* Mode Selection Styles — standalone solid pills */
 .mode-selection {
-    margin-top: var(--space-xs);
+    margin-top: 0;
 }
 
 .mode-toggle {
     display: inline-flex;
-    background: var(--background-soft);
-    border-radius: var(--radius-full);
-    padding: 2px;
-    border: 1px solid var(--border-color);
+    gap: 6px;
 }
 
 .mode-button {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
-    background: transparent;
+    gap: 6px;
+    padding: 7px 14px;
+    background: var(--pill-idle-bg);
     border: none;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-pill);
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--text-muted);
+    transition: background var(--transition-fast), color var(--transition-fast), filter var(--transition-fast);
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--pill-idle-fg);
     white-space: nowrap;
     position: relative;
 }
 
-.mode-button:hover {
-    background: var(--background-muted);
-    color: var(--text-color);
+.mode-button:hover:not(.active):not(.locked) {
+    filter: brightness(1.2);
+    color: var(--text3);
 }
 
-.mode-button.active {
-    background: var(--primary-color);
-    color: white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
+/* AI Mode active — solid blue */
 .mode-button:first-child.active {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    background: var(--mode-ai-bg);
+    color: var(--mode-ai-fg);
 }
 
+/* Workflow active — solid purple */
 .mode-button:last-child.active {
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    background: var(--mode-wf-bg);
+    color: var(--mode-wf-fg);
 }
 
 .mode-icon {
@@ -1522,8 +1762,8 @@ onMounted(async () => {
 }
 
 .mode-label {
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
 }
 
 .mode-button.locked {
@@ -1533,9 +1773,7 @@ onMounted(async () => {
 }
 
 .mode-button.locked:hover {
-    background: var(--background-muted);
-    color: var(--text-muted);
-    transform: none;
+    filter: none;
 }
 
 .lock-icon {
@@ -1547,25 +1785,25 @@ onMounted(async () => {
 
 @keyframes pulse-online {
     0% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-color) 70%, transparent);
     }
     70% {
-        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+        box-shadow: 0 0 0 10px color-mix(in srgb, var(--success-color) 0%, transparent);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-color) 0%, transparent);
     }
 }
 
 @keyframes pulse-offline {
     0% {
-        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--error-color) 70%, transparent);
     }
     70% {
-        box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+        box-shadow: 0 0 0 10px color-mix(in srgb, var(--error-color) 0%, transparent);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--error-color) 0%, transparent);
     }
 }
 
@@ -1618,7 +1856,7 @@ onMounted(async () => {
 }
 
 .cropper-container {
-    background: #ffffff;
+    background: var(--bg);
     padding: 2rem;
     border-radius: 12px;
     width: 90%;
@@ -1630,7 +1868,7 @@ onMounted(async () => {
     position: relative;
     width: 100%;
     height: 400px;
-    background: var(--background-soft, #f8f9fa);
+    background: var(--bg2);
 }
 
 .cropper-actions {
@@ -1648,8 +1886,8 @@ onMounted(async () => {
 }
 
 .cropper-actions button:first-child {
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .cropper-actions button:last-child {
@@ -1670,7 +1908,7 @@ onMounted(async () => {
 }
 
 :deep(.vue-advanced-cropper__background) {
-    background: #f0f0f0;
+    background: var(--o05);
 }
 
 .widget-info {
@@ -1775,7 +2013,7 @@ onMounted(async () => {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgb(252, 0, 0);
+    background-color: var(--toggle-track-off);
     transition: .4s;
     border-radius: 24px;
 }
@@ -1787,13 +2025,13 @@ onMounted(async () => {
     width: 18px;
     left: 3px;
     bottom: 3px;
-    background-color: rgb(255, 255, 255);
+    background-color: var(--toggle-knob);
     transition: .4s;
     border-radius: 50%;
 }
 
 input:checked + .slider {
-    background-color: green;
+    background-color: var(--success-color);
 }
 
 input:focus + .slider {
@@ -1939,8 +2177,9 @@ input:checked + .slider:before {
 }
 
 .preview-wrapper {
-    /* Base styles are now handled by computed previewWrapperStyles */
-    flex: 1;
+    /* Width comes from the inline previewWrapperStyles (400px / 500px); don't
+       let flex-grow stretch it. */
+    flex: 0 0 auto;
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -2000,7 +2239,7 @@ input:checked + .slider:before {
 .preview-unavailable-icon {
     width: 80px;
     height: 80px;
-    background: rgba(245, 158, 11, 0.1);
+    background: color-mix(in srgb, var(--warning-color) 10%, transparent);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -2084,8 +2323,8 @@ input:checked + .slider:before {
 }
 
 .connect-link:hover {
-    background-color: var(--primary-color);
-    color: white;
+    background-color: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .jira-config {
@@ -2133,8 +2372,8 @@ input:checked + .slider:before {
 .save-config-btn {
     margin-top: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
+    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-full);
     font-weight: 500;
@@ -2176,9 +2415,7 @@ input:checked + .slider:before {
     overflow: visible;
     display: flex;
     flex-direction: column;
-    background: white;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    background: transparent;
     margin-top: var(--space-md);
     min-height: calc(100vh - 300px);
 }
@@ -2203,30 +2440,32 @@ input:checked + .slider:before {
     overflow: visible;
     display: flex;
     flex-direction: column;
-    background: var(--background-base);
-    padding: var(--space-lg);
+    background: transparent;
+    /* No horizontal padding: each tab's own root padding (24px) sets the inset
+       so content aligns with the tab bar. */
+    padding: var(--space-sm) 0 var(--space-lg);
     min-height: calc(100vh - 200px);
 }
 
 .tab-button {
-    padding: var(--space-lg) var(--space-xl);
+    padding: 14px 18px;
     background: transparent;
     border: none;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
     cursor: pointer;
-    transition: all 0.3s ease;
-    font-weight: 500;
-    font-size: var(--text-sm);
-    color: var(--text-muted);
+    transition: color 0.2s ease, border-color 0.2s ease;
+    font-family: var(--font-sans);
+    font-weight: var(--font-weight-medium);
+    font-size: 14.5px;
+    color: var(--muted);
     position: relative;
     text-align: center;
     white-space: nowrap;
-    border-bottom: 3px solid transparent;
+    border-bottom: 2px solid transparent;
     flex-shrink: 0;
-    min-height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 7px;
 }
 
 .tabs-navigation {
@@ -2235,16 +2474,14 @@ input:checked + .slider:before {
 
 .tabs-navigation.horizontal {
     display: flex;
-    gap: var(--space-md);
-    border-bottom: 1px solid var(--border-color);
-    padding: 0 var(--space-lg);
+    gap: 4px;
+    border-bottom: 1px solid var(--o07);
+    padding: 0 32px;
     margin: 0;
     overflow-x: auto;
-    background: white;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
-    min-height: 64px;
+    background: var(--bg2);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     align-items: flex-end;
 }
 
@@ -2253,18 +2490,15 @@ input:checked + .slider:before {
 }
 
 .tab-button:hover {
-    color: var(--text-color);
-    background: var(--background-soft);
-    transform: translateY(-1px);
-    border-radius: var(--radius-md);
+    color: var(--text2);
+    background: transparent;
 }
 
 .tab-button.active {
-    color: var(--primary-color);
-    font-weight: 600;
-    background: var(--primary-soft);
-    border-bottom-color: var(--primary-color);
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    color: var(--accent-ink);
+    font-weight: var(--font-weight-semibold);
+    background: transparent;
+    border-bottom-color: var(--accent-ink);
 }
 
 .tabs-navigation.horizontal .tab-button.active::after {
@@ -2316,15 +2550,16 @@ input:checked + .slider:before {
 }
 
 .section-title {
+    font-family: var(--font-display);
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--text-color);
+    color: var(--text);
     margin-bottom: var(--space-lg);
     line-height: 1.3;
 }
 
 .section-description {
-    color: var(--text-muted);
+    color: var(--muted);
     font-size: 1rem;
     line-height: 1.6;
     margin-bottom: var(--space-xl);
@@ -2378,7 +2613,7 @@ input:checked + .slider:before {
 }
 
 .tips-dialog {
-    background: #ffffff;
+    background: var(--bg);
     padding: 2rem;
     border-radius: 12px;
     width: 90%;
@@ -2445,8 +2680,8 @@ input:checked + .slider:before {
 
 .close-tips-button {
     padding: var(--space-sm) var(--space-md);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-full);
     cursor: pointer;
@@ -2454,22 +2689,22 @@ input:checked + .slider:before {
 
 .customization-tab-layout {
     display: flex;
+    align-items: flex-start;
     gap: var(--space-xl);
-    height: 100%;
     padding: var(--space-lg);
-    min-height: calc(100vh - 400px);
 }
 
 .customization-panel {
     flex: 1;
     max-width: 480px;
-    height: calc(100vh - 250px);
-    max-height: 800px;
+    /* Match the chat preview window height (.chat-container is 600px) */
+    height: 600px;
+    max-height: 600px;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: var(--space-xs);
     scrollbar-width: thin;
-    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+    scrollbar-color: var(--o25) transparent;
 }
 
 .customization-panel::-webkit-scrollbar {
@@ -2481,13 +2716,13 @@ input:checked + .slider:before {
 }
 
 .customization-panel::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.5);
+    background-color: var(--o25);
     border-radius: 4px;
     transition: background-color 0.2s ease;
 }
 
 .customization-panel::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(156, 163, 175, 0.7);
+    background-color: var(--o25);
 }
 
 .customization-preview {
@@ -2518,85 +2753,69 @@ input:checked + .slider:before {
         width: 64px;
         height: 64px;
     }
-    
+
+    .agent-avatar-ring {
+        width: 64px;
+        height: 64px;
+    }
+
     .agent-info h3 {
-        font-size: 1.125rem;
+        font-size: 1.5rem;
     }
-    
+
     .tabs-navigation.horizontal {
-        padding: 0 var(--space-sm);
-        gap: var(--space-xs);
-        min-height: 60px;
+        padding: 0 var(--space-lg);
+        gap: 4px;
     }
-    
+
     .tab-button {
-        padding: var(--space-md) var(--space-sm);
-        font-size: 0.8rem;
-        min-height: 44px;
+        padding: 12px 16px;
+        font-size: 14px;
     }
-    
+
     .tab-content-container {
-        padding: var(--space-md);
+        padding: var(--space-sm) 0 var(--space-md);
     }
 }
 
 @media (max-width: 1440px) {
     .detail-panel {
-        margin: var(--space-xs);
     }
-    
+
     .panel-header {
-        padding: var(--space-sm) var(--space-sm) var(--space-xs);
+        padding: var(--space-lg) var(--space-lg) var(--space-sm);
     }
-    
-    .agent-avatar {
-        width: 56px;
-        height: 56px;
-    }
-    
+
     .agent-info h3 {
-        font-size: 1rem;
+        font-size: 1.375rem;
     }
-    
-    .mode-button {
-        padding: var(--space-xs) var(--space-xs);
-    }
-    
-    .mode-label {
-        font-size: 0.625rem;
-    }
-    
+
     .status-and-mode {
         gap: var(--space-xs);
     }
-    
-    .mode-toggle {
-        padding: 1px;
-    }
-    
+
     .status-text {
-        font-size: 0.75rem;
+        font-size: 13px;
     }
-    
+
     .tabs-navigation.horizontal {
-        padding: 0 var(--space-xs);
-        gap: var(--space-xs);
-        min-height: 56px;
+        padding: 0 var(--space-lg);
+        gap: 4px;
     }
-    
+
     .tab-button {
-        padding: var(--space-sm) var(--space-xs);
-        font-size: 0.75rem;
-        min-height: 40px;
+        padding: 12px 14px;
+        font-size: 13.5px;
     }
-    
+
     .customization-tab-layout {
         padding: var(--space-sm);
         gap: var(--space-md);
     }
     
     .customization-panel {
-        height: calc(100vh - 350px);
+        /* Keep matching the 600px chat preview, even on laptop widths */
+        height: 600px;
         max-height: 600px;
     }
 }
@@ -2616,7 +2835,6 @@ input:checked + .slider:before {
     }
     
     .detail-panel {
-        margin: 2px;
     }
 }
 
@@ -2636,7 +2854,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal {
-    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    background: linear-gradient(135deg, var(--bg) 0%, var(--surface) 100%);
     border-radius: 16px;
     width: 90%;
     max-width: 500px;
@@ -2660,15 +2878,15 @@ input:checked + .slider:before {
     padding: var(--space-xl);
     text-align: center;
     position: relative;
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
+    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
+    color: var(--on-accent-solid);
 }
 
 .upgrade-icon {
     width: 48px;
     height: 48px;
     margin: 0 auto var(--space-md);
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -2684,19 +2902,19 @@ input:checked + .slider:before {
     font-size: 1.5rem;
     font-weight: 700;
     margin: 0;
-    color: white;
+    color: var(--on-accent-solid);
 }
 
 .upgrade-modal-header .close-button {
     position: absolute;
     top: var(--space-md);
     right: var(--space-md);
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
     border: none;
     border-radius: 50%;
     width: 32px;
     height: 32px;
-    color: white;
+    color: var(--on-accent-solid);
     cursor: pointer;
     font-size: 1.25rem;
     display: flex;
@@ -2706,7 +2924,7 @@ input:checked + .slider:before {
 }
 
 .upgrade-modal-header .close-button:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: color-mix(in srgb, var(--on-accent-solid) 30%, transparent);
     transform: scale(1.1);
 }
 
@@ -2759,8 +2977,8 @@ input:checked + .slider:before {
 }
 
 .upgrade-button {
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
+    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-full);
     padding: var(--space-md) var(--space-xl);

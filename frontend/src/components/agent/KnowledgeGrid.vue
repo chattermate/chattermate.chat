@@ -266,15 +266,17 @@ const closeKnowledgeModal = () => {
     <div class="knowledge-grid-container">
         <div class="knowledge-header">
             <div class="header-left">
-                <h3>Knowledge Sources</h3>
-                <div class="header-actions">
-                    <button class="action-button" @click="showKnowledgeModal = true">
-                        + Add Knowledge
-                    </button>
-                    <button class="action-button" @click="showLinkModal = true">
-                        Link Existing
-                    </button>
-                </div>
+                <h3>Knowledge sources</h3>
+                <p class="header-subtitle">Connect docs and pages — ChatterMate indexes them automatically to ground
+                    every answer.</p>
+            </div>
+            <div class="header-actions">
+                <button class="action-button action-button--primary" @click="showKnowledgeModal = true">
+                    + Add knowledge
+                </button>
+                <button class="action-button action-button--ghost" @click="showLinkModal = true">
+                    Link existing
+                </button>
             </div>
             <div v-if="totalPages > 1" class="pagination">
                 <button :disabled="currentPage === 1" @click="handlePageChange(currentPage - 1)"
@@ -344,50 +346,28 @@ const closeKnowledgeModal = () => {
             <div class="knowledge-grid-header">
                 <div class="header-cell">Source</div>
                 <div class="header-cell">Type</div>
-                <div class="header-cell">Subpages</div>
-                <div class="header-cell">Created</div>
-                <div class="header-cell actions-cell">Actions</div>
+                <div class="header-cell">Status</div>
+                <div class="header-cell"></div>
             </div>
 
             <div v-if="!knowledgeItems.length" class="knowledge-empty">
-                <div class="warning-message">
-                    <span class="warning-icon">⚠️</span>
-                    No knowledge sources configured
-                </div>
-                <p class="warning-description">
-                    Add knowledge sources to improve the agent's responses
-                </p>
+                ⚠ No knowledge sources yet — add a URL or PDF to ground your agent.
             </div>
 
             <template v-for="item in knowledgeItems" :key="item.id">
                 <div class="knowledge-grid-row">
                     <div class="grid-cell source-cell" :title="item.name">{{ item.name }}</div>
-                    <div class="grid-cell">{{ item.type }}</div>
-                    <div class="grid-cell pages-cell">
-                        <div class="pages-list">
-                            <div v-for="page in item.pages.slice(0, 3)" :key="page.subpage" class="page-item">
-                                <a v-if="isValidUrl(page.subpage)" :href="page.subpage" target="_blank"
-                                    rel="noopener noreferrer" class="page-url page-link" :title="page.subpage">
-                                    {{ page.subpage }}
-                                </a>
-                                <span v-else class="page-url" :title="page.subpage">
-                                    {{ page.subpage }}
-                                </span>
-                            </div>
-                            <div v-if="item.pages.length > 3" class="more-pages">
-                                +{{ item.pages.length - 3 }} more
-                            </div>
-                        </div>
-                    </div>
                     <div class="grid-cell">
-                        {{ item.pages.length ? formatDate(getFirstCreated(item.pages)) : 'N/A' }}
+                        <span class="type-tag"
+                            :class="String(item.type).toLowerCase().includes('pdf') || String(item.type).toLowerCase().includes('file') ? 'type-tag--pdf' : 'type-tag--web'">{{
+                                String(item.type).toLowerCase().includes('pdf') || String(item.type).toLowerCase().includes('file') ? 'PDF' : 'Website' }}</span>
                     </div>
-                    <div class="grid-cell actions-cell">
-                        <button class="view-button" @click="viewKnowledgeContent(item.id)" title="View content">
-                            <img :src="EditIcon" alt="View" class="action-icon" />
-                        </button>
-                        <button class="delete-button" @click="confirmDelete(item.id)" title="Delete knowledge source">
-                            <img :src="DeleteIcon" alt="Delete" class="action-icon" />
+                    <div class="grid-cell status-cell">
+                        <span class="status-indexed">✓ indexed</span>
+                    </div>
+                    <div class="grid-cell remove-cell">
+                        <button class="remove-button" @click="confirmDelete(item.id)" title="Remove knowledge source">
+                            Remove
                         </button>
                     </div>
                 </div>
@@ -692,39 +672,83 @@ const closeKnowledgeModal = () => {
 .knowledge-grid-container {
     grid-column: 1 / -1;
     padding: var(--space-md);
-    background: var(--background);
-    border-top: 1px solid var(--border-color);
+    background: var(--bg);
+    border-top: 1px solid var(--o08);
 }
 
 .knowledge-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-lg);
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 22px;
 }
 
 .header-left {
     display: flex;
-    align-items: center;
-    gap: var(--space-md);
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.header-left h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 20px;
+    color: var(--text);
+    margin: 0;
+}
+
+.header-subtitle {
+    font-size: 14px;
+    color: var(--muted);
+    margin: 0;
+    max-width: 520px;
 }
 
 .header-actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: 10px;
+    flex-shrink: 0;
 }
 
 .action-button {
-    padding: var(--space-xs) var(--space-sm);
-    background: var(--primary-soft);
-    color: var(--primary-color);
-    border: none;
-    border-radius: var(--radius-lg);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 11px 18px;
+    border-radius: var(--radius-chip);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.action-button--primary {
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
+    border: none;
+}
+
+.action-button--primary:hover {
+    filter: brightness(1.05);
+}
+
+.action-button--ghost {
+    background: var(--o05);
+    border: 1px solid var(--o14);
+    color: var(--text);
+    font-weight: 500;
+}
+
+.action-button--ghost:hover {
+    background: var(--o08);
 }
 
 .knowledge-grid {
-    border: 1px solid var(--border-color);
+    background: var(--surface);
+    border: 1px solid var(--o08);
     border-radius: var(--radius-lg);
     overflow: hidden;
     width: 100%;
@@ -732,28 +756,81 @@ const closeKnowledgeModal = () => {
 
 .knowledge-grid-header {
     display: grid;
-    grid-template-columns: 2fr 1fr 2fr 1fr 80px;
-    background: var(--background-soft);
-    border-bottom: 1px solid var(--border-color);
+    grid-template-columns: 2fr 1fr 1fr 80px;
+    gap: 12px;
+    border-bottom: 1px solid var(--o08);
 }
 
 .header-cell {
-    padding: var(--space-sm) var(--space-md);
-    font-weight: 500;
-    color: var(--text-muted);
+    padding: 12px 18px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted2);
 }
 
 .knowledge-grid-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 2fr 1fr 80px;
-    border-bottom: 1px solid var(--border-color);
+    grid-template-columns: 2fr 1fr 1fr 80px;
+    gap: 12px;
+    border-bottom: 1px solid var(--o05);
+    align-items: center;
+}
+
+.knowledge-grid-row:last-child {
+    border-bottom: none;
 }
 
 .grid-cell {
-    padding: var(--space-sm) var(--space-md);
+    padding: 14px 18px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text2);
+}
+
+.type-tag {
+    font-size: 12px;
+}
+
+.type-tag--pdf {
+    color: var(--c-coral);
+}
+
+.type-tag--web {
+    color: var(--c-teal);
+}
+
+.status-cell {
+    font-size: 12px;
+}
+
+.status-indexed {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--c-lime);
+}
+
+.remove-cell {
+    overflow: visible;
+}
+
+.remove-button {
+    justify-self: end;
+    padding: 6px 11px;
+    background: transparent;
+    border: 1px solid var(--coral-border);
+    border-radius: var(--radius-md);
+    color: var(--c-coral);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.remove-button:hover {
+    background: var(--coral-bg);
 }
 
 .pages-cell {
@@ -768,13 +845,14 @@ const closeKnowledgeModal = () => {
     justify-content: flex-start;
     align-items: center;
     padding: var(--space-xs) var(--space-sm);
-    background: var(--background-soft);
+    background: var(--o05);
     border-radius: var(--radius-sm);
-    font-size: 0.875rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
 }
 
 .page-url {
-    color: var(--text-muted);
+    color: var(--muted);
     text-decoration: none;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -782,7 +860,7 @@ const closeKnowledgeModal = () => {
 }
 
 .page-link {
-    color: var(--primary-color);
+    color: var(--c-teal);
     cursor: pointer;
 }
 
@@ -816,35 +894,26 @@ const closeKnowledgeModal = () => {
 .loading-state {
     padding: var(--space-xl);
     text-align: center;
-    color: var(--text-muted);
-    background: var(--background-soft);
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--o08);
     border-radius: var(--radius-lg);
 }
 
 .error-state {
     padding: var(--space-xl);
     text-align: center;
-    color: var(--error-color);
-    background: var(--background-soft);
+    color: var(--c-coral);
+    background: var(--surface);
+    border: 1px solid var(--o08);
     border-radius: var(--radius-lg);
 }
 
 .knowledge-empty {
-    padding: var(--space-xl);
+    padding: 40px;
     text-align: center;
-}
-
-.warning-message {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-sm);
-    color: var(--warning-color);
-    margin-bottom: var(--space-sm);
-}
-
-.warning-description {
-    color: var(--text-muted);
+    color: var(--muted2);
+    font-size: 14px;
 }
 
 /* Modal styles */
@@ -854,59 +923,90 @@ const closeKnowledgeModal = () => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
+    padding: 24px;
 }
 
 .modal-content {
-    background: white;
-    border-radius: var(--radius-lg);
-    padding: var(--space-lg);
-    width: 85%;
-    max-width: 500px;
-    max-height: 80vh;
+    background: var(--surface);
+    border-radius: 22px;
+    padding: 30px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 85vh;
     overflow-y: auto;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-    border: 1px solid var(--border-color);
+    box-shadow: 0 40px 100px -30px rgba(0, 0, 0, .8);
+    border: 1px solid var(--o10);
 }
 
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-lg);
+    margin-bottom: 20px;
+}
+
+.modal-header h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--text);
+    margin: 0;
 }
 
 .close-button {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: var(--o05);
+    border: 1px solid var(--o10);
+    font-size: 16px;
     cursor: pointer;
-    color: var(--text-muted);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+}
+
+.close-button:hover {
+    background: var(--o10);
 }
 
 .knowledge-tabs {
     display: flex;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-lg);
+    gap: 8px;
+    margin-bottom: 20px;
 }
 
 .knowledge-tabs button {
     flex: 1;
-    padding: var(--space-sm);
-    border: none;
-    background: var(--background-soft);
-    border-radius: var(--radius-lg);
+    padding: 10px 14px;
+    border: 1px solid var(--o12);
+    background: var(--o05);
+    color: var(--muted);
+    border-radius: var(--radius-chip);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.knowledge-tabs button:hover {
+    background: var(--o08);
 }
 
 .knowledge-tabs button.active {
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
+    border-color: transparent;
+    font-weight: 600;
 }
 
 .tab-content {
@@ -917,16 +1017,42 @@ const closeKnowledgeModal = () => {
     display: none;
 }
 
-.select-files-button,
-.upload-button {
+.select-files-button {
     width: 100%;
-    padding: var(--space-sm);
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: var(--radius-lg);
+    padding: 28px;
+    border: 1.5px dashed var(--o20);
+    border-radius: 14px;
+    background: var(--o05);
+    color: var(--muted);
+    font-family: var(--font-sans);
+    font-size: 14.5px;
     cursor: pointer;
     margin-bottom: var(--space-md);
+    transition: all 0.15s ease;
+}
+
+.select-files-button:hover {
+    border-color: var(--accent-border);
+    color: var(--accent-ink);
+}
+
+.upload-button {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
+    border: none;
+    border-radius: var(--radius-chip);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: var(--space-md);
+    transition: filter 0.15s ease;
+}
+
+.upload-button:hover:not(:disabled) {
+    filter: brightness(1.05);
 }
 
 .select-files-button:disabled,
@@ -941,10 +1067,14 @@ const closeKnowledgeModal = () => {
     justify-content: space-between;
     align-items: center;
     padding: var(--space-sm) var(--space-md);
-    background: var(--background-soft);
-    border-radius: var(--radius-lg);
+    background: var(--o05);
+    border: 1px solid var(--o08);
+    border-radius: var(--radius-md);
     margin-bottom: var(--space-xs);
     gap: var(--space-sm);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text2);
 }
 
 .url-item span {
@@ -956,24 +1086,44 @@ const closeKnowledgeModal = () => {
 
 .url-input-group {
     display: flex;
-    gap: var(--space-sm);
+    gap: 10px;
     margin-bottom: var(--space-md);
 }
 
 .url-input-group input {
     flex: 1;
-    padding: var(--space-sm);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    background: var(--bg);
+    border: 1px solid var(--o12);
+    border-radius: var(--radius-input);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.15s ease;
+}
+
+.url-input-group input:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-bg-12);
 }
 
 .url-input-group button {
-    padding: var(--space-sm) var(--space-md);
-    background: var(--primary-color);
-    color: white;
+    flex-shrink: 0;
+    padding: 14px 22px;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-input);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
+    transition: filter 0.15s ease;
+}
+
+.url-input-group button:hover {
+    filter: brightness(1.05);
 }
 
 .upload-progress {
@@ -990,7 +1140,7 @@ const closeKnowledgeModal = () => {
 
 .progress {
     height: 100%;
-    background: var(--primary-color);
+    background: var(--accent-solid);
     transition: width 0.3s ease;
 }
 
@@ -1047,8 +1197,8 @@ const closeKnowledgeModal = () => {
 }
 
 .link-button {
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .unlink-button {
@@ -1057,11 +1207,11 @@ const closeKnowledgeModal = () => {
 }
 
 .link-button:hover {
-    background: var(--primary-color-dark, #0056b3);
+    background: var(--primary-dark);
 }
 
 .unlink-button:hover {
-    background: var(--error-color-dark, #dc2626);
+    background: color-mix(in srgb, var(--error-color) 80%, black);
 }
 
 .error-message {
@@ -1148,7 +1298,7 @@ const closeKnowledgeModal = () => {
 }
 
 .confirm-actions .delete-button:hover {
-    background: var(--error-color-dark, #dc2626);
+    background: color-mix(in srgb, var(--error-color) 80%, black);
 }
 
 .confirm-content {
@@ -1178,8 +1328,8 @@ const closeKnowledgeModal = () => {
 }
 
 .queue-item {
-    background: white;
-    border: 1px solid var(--border-color);
+    background: var(--surface);
+    border: 1px solid var(--o08);
     border-radius: var(--radius-lg);
     padding: var(--space-md);
     transition: all 0.2s ease;
@@ -1221,24 +1371,24 @@ const closeKnowledgeModal = () => {
 }
 
 .status-badge.pending {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--info-bg);
+    color: var(--c-info);
 }
 
 .status-badge.processing {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--warning-bg);
+    color: var(--warning-color);
     animation: pulse 2s ease-in-out infinite;
 }
 
 .status-badge.failed {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--error-bg);
+    color: var(--error-color);
 }
 
 .status-badge.completed {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--success-bg);
+    color: var(--success-color);
 }
 
 @keyframes pulse {
@@ -1269,7 +1419,7 @@ const closeKnowledgeModal = () => {
 
 .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    background: linear-gradient(90deg, var(--c-info), color-mix(in srgb, var(--c-info) 70%, var(--surface)));
     border-radius: var(--radius-full);
     transition: width 0.3s ease;
 }
@@ -1285,7 +1435,7 @@ const closeKnowledgeModal = () => {
     align-items: center;
     gap: var(--space-xs);
     padding: var(--space-sm);
-    background: #fee2e2;
+    background: var(--error-bg);
     border-radius: var(--radius-sm);
 }
 
@@ -1294,7 +1444,7 @@ const closeKnowledgeModal = () => {
 }
 
 .error-text {
-    color: #991b1b;
+    color: var(--error-color);
     font-size: 0.875rem;
     flex: 1;
 }
@@ -1317,27 +1467,40 @@ const closeKnowledgeModal = () => {
 /* Action Buttons in Grid */
 .view-button,
 .delete-button {
-    padding: 6px;
-    background: none;
-    border: none;
+    padding: 7px;
+    background: var(--o05);
+    border: 1px solid var(--o08);
     cursor: pointer;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
 }
 
-.view-button:hover,
-.delete-button:hover {
-    background: var(--background-soft);
+.view-button:hover {
+    background: var(--o08);
+    border-color: var(--o14);
+}
+
+.actions-cell .delete-button {
+    background: transparent;
+    border: 1px solid var(--coral-border);
+}
+
+.actions-cell .delete-button:hover {
+    background: var(--coral-bg);
+}
+
+.actions-cell .delete-button .action-icon {
+    filter: invert(58%) sepia(40%) saturate(900%) hue-rotate(316deg) brightness(102%) contrast(101%);
 }
 
 .action-icon {
-    width: 18px;
-    height: 18px;
-    opacity: 0.8;
-    filter: invert(37%) sepia(89%) saturate(3207%) hue-rotate(352deg) brightness(98%) contrast(93%);
+    width: 16px;
+    height: 16px;
+    opacity: 0.85;
+    filter: invert(72%) sepia(8%) saturate(380%) hue-rotate(187deg) brightness(95%) contrast(88%);
 }
 
 .view-button:hover .action-icon,
@@ -1375,8 +1538,8 @@ const closeKnowledgeModal = () => {
 
 .add-subpage-btn {
     padding: var(--space-sm) var(--space-md);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1409,8 +1572,8 @@ const closeKnowledgeModal = () => {
 .edit-button,
 .save-button {
     padding: var(--space-xs) var(--space-sm);
-    background: var(--primary-color);
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     border: none;
     border-radius: var(--radius-lg);
     cursor: pointer;
@@ -1420,7 +1583,7 @@ const closeKnowledgeModal = () => {
 
 .edit-button:hover,
 .save-button:hover:not(:disabled) {
-    background: var(--primary-color-dark, #0056b3);
+    background: var(--primary-dark);
     transform: translateY(-1px);
 }
 
@@ -1716,7 +1879,7 @@ const closeKnowledgeModal = () => {
 }
 
 .confirm-modal .delete-button:hover {
-    background: var(--error-color-dark, #dc2626);
+    background: color-mix(in srgb, var(--error-color) 80%, black);
 }
 
 .remove-url-button {
@@ -1752,20 +1915,6 @@ const closeKnowledgeModal = () => {
 }
 
 /* Responsive design for knowledge grid */
-@media (max-width: 1024px) {
-
-    .knowledge-grid-header,
-    .knowledge-grid-row {
-        grid-template-columns: 2fr 1fr 1fr 80px;
-    }
-
-    .header-cell:nth-child(3),
-    .grid-cell:nth-child(3) {
-        display: none;
-        /* Hide subpages column on medium screens */
-    }
-}
-
 @media (max-width: 768px) {
     .knowledge-grid-container {
         padding: var(--space-sm);
@@ -1794,12 +1943,10 @@ const closeKnowledgeModal = () => {
 
     .header-cell:nth-child(2),
     .header-cell:nth-child(3),
-    .header-cell:nth-child(4),
     .grid-cell:nth-child(2),
-    .grid-cell:nth-child(3),
-    .grid-cell:nth-child(4) {
+    .grid-cell:nth-child(3) {
         display: none;
-        /* Hide type, subpages, and created columns on mobile */
+        /* Hide type and status columns on mobile, keep source + remove */
     }
 
     .grid-cell:first-child {
@@ -1881,7 +2028,9 @@ const closeKnowledgeModal = () => {
 
 /* Grid Improvements */
 .source-cell {
-    font-weight: 500;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text2);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

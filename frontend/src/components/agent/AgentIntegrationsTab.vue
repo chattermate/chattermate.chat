@@ -405,14 +405,36 @@ onMounted(async () => {
     <section class="detail-section">
       <h3 class="section-title">Integrations</h3>
       <p class="section-description">
-        Connect your agent with third-party tools to enhance its capabilities and streamline workflows.
+        Let this agent take action in the tools you already use.
       </p>
-      
+
       <!-- Jira Integration -->
       <div class="integration-section">
-        <h4 class="integration-title">Jira Integration</h4>
+        <div class="integration-head">
+          <div class="integration-head-left">
+            <div class="integration-badge badge-teal">Ji</div>
+            <div class="integration-heading">
+              <div class="integration-title">Jira — auto-ticketing</div>
+              <div class="integration-desc">Create Jira tickets for issues that need follow-up.</div>
+            </div>
+          </div>
+          <router-link
+            v-if="!jiraConnected"
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Connect
+          </router-link>
+          <router-link
+            v-else
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Manage
+          </router-link>
+        </div>
         <!-- Jira Ticket Creation Toggle -->
-        <div class="ticket-toggle">
+        <div v-if="jiraConnected" class="ticket-toggle">
           <div class="toggle-header">
             <h5 class="toggle-title">Create Jira Tickets</h5>
             <label class="switch" v-tooltip="ticketTooltipContent">
@@ -498,8 +520,30 @@ onMounted(async () => {
       
       <!-- Shopify Integration -->
       <div class="integration-section">
-        <h4 class="integration-title">Shopify Integration</h4>
-        <div class="ticket-toggle">
+        <div class="integration-head">
+          <div class="integration-head-left">
+            <div class="integration-badge badge-lime">Sh</div>
+            <div class="integration-heading">
+              <div class="integration-title">Shopify — orders &amp; products</div>
+              <div class="integration-desc">Let the agent look up orders and recommend products.</div>
+            </div>
+          </div>
+          <router-link
+            v-if="!shopifyConnected"
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Connect
+          </router-link>
+          <router-link
+            v-else
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Manage
+          </router-link>
+        </div>
+        <div v-if="shopifyConnected" class="ticket-toggle">
           <div class="toggle-header">
             <h5 class="toggle-title">Enable Shopify Features</h5>
             <div class="toggle-with-loader">
@@ -537,7 +581,7 @@ onMounted(async () => {
           </div>
         </div>
         <!-- Add error message display -->
-        <div v-if="shopifyError" class="shopify-error">
+        <div v-if="shopifyConnected && shopifyError" class="shopify-error">
           <span class="error-icon">❌</span>
           {{ shopifyError }}
         </div>
@@ -545,20 +589,32 @@ onMounted(async () => {
 
       <!-- Slack Integration -->
       <div class="integration-section">
-        <h4 class="integration-title">Slack Integration</h4>
-
-        <!-- Slack Connection Status -->
-        <div v-if="slackLoading" class="jira-status loading">
-          Checking Slack connection...
-        </div>
-        <div v-else-if="!slackConnected" class="jira-status not-connected">
-          <span class="status-icon">⚠️</span>
-          Slack is not connected
-          <router-link to="/settings/integrations" class="connect-link">
-            Connect Slack
+        <div class="integration-head">
+          <div class="integration-head-left">
+            <div class="integration-badge badge-purple">Sl</div>
+            <div class="integration-heading">
+              <div class="integration-title">Slack — agent notifications</div>
+              <div class="integration-desc">Notify your team in Slack on handoffs and new tickets.</div>
+            </div>
+          </div>
+          <router-link
+            v-if="!slackConnected"
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Connect
+          </router-link>
+          <router-link
+            v-else
+            to="/settings/integrations"
+            class="connect-btn"
+          >
+            Manage
           </router-link>
         </div>
-        <div v-else class="jira-status connected">
+
+        <!-- Slack Connection Status (connected only) -->
+        <div v-if="slackConnected" class="jira-status connected">
           <span class="status-icon">✓</span>
           Connected to {{ slackTeamName }}
         </div>
@@ -707,45 +763,116 @@ onMounted(async () => {
 }
 
 .section-title {
-  font-size: 1.25rem;
+  font-family: var(--font-display);
+  font-size: 20px;
   font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: var(--space-xs);
+  color: var(--text);
+  margin: 0 0 6px;
 }
 
 .section-description {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  margin-bottom: var(--space-lg);
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 22px;
   line-height: 1.5;
 }
 
 .integration-section {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o08);
   border-radius: var(--radius-lg);
-  padding: var(--space-lg);
-  background-color: var(--background-soft);
-  margin-bottom: var(--space-xl);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  padding: 22px 24px;
+  background: var(--surface);
+  margin-bottom: 14px;
   width: 100%;
 }
 
+.integration-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.integration-head-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.connect-btn {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 10px 18px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  color: var(--text);
+  border-radius: var(--radius-chip);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.connect-btn:hover {
+  background: var(--o14);
+}
+
+.integration-badge {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.badge-teal {
+  background: var(--teal-bg);
+  color: var(--c-teal);
+}
+
+.badge-lime {
+  background: var(--accent-bg-12);
+  color: var(--accent-ink);
+}
+
+.badge-purple {
+  background: var(--purple-bg);
+  color: var(--c-purple);
+}
+
+.integration-heading {
+  min-width: 0;
+}
+
 .integration-title {
-  margin-bottom: var(--space-md);
-  color: var(--text-color);
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  color: var(--text);
+  font-size: 16px;
   font-weight: 600;
+}
+
+.integration-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .toggle-title {
   font-size: 1rem;
   font-weight: 500;
-  color: var(--text-color);
+  color: var(--text);
   margin: 0;
 }
 
 .ticket-toggle {
-  margin-top: var(--space-md);
+  margin-top: var(--space-lg);
 }
 
 .toggle-header {
@@ -756,7 +883,7 @@ onMounted(async () => {
 }
 
 .helper-text {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: var(--text-sm);
   margin-bottom: var(--space-md);
   line-height: 1.5;
@@ -782,7 +909,7 @@ onMounted(async () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgb(224, 224, 224);
+  background-color: var(--toggle-track-off);
   transition: .4s;
   border-radius: 24px;
 }
@@ -794,18 +921,22 @@ onMounted(async () => {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: rgb(255, 255, 255);
+  background-color: var(--toggle-knob);
   transition: .4s;
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 input:checked + .slider {
-  background-color: #4caf50;
+  background-color: var(--accent-solid);
+}
+
+input:checked + .slider:before {
+  background-color: var(--on-accent-solid);
 }
 
 input:focus + .slider {
-  box-shadow: 0 0 1px var(--primary-color);
+  box-shadow: 0 0 1px var(--accent-ink);
 }
 
 input:checked + .slider:before {
@@ -823,47 +954,47 @@ input:checked + .slider:before {
 }
 
 .jira-status.loading {
-  background-color: var(--background-mute);
-  color: var(--text-muted);
+  background-color: var(--o05);
+  color: var(--muted);
 }
 
 .jira-status.connected {
-  background-color: var(--success-light);
-  color: var(--success);
+  background-color: var(--teal-bg);
+  color: var(--c-teal);
 }
 
 .jira-status.not-connected {
-  background-color: var(--warning-light);
-  color: var(--warning);
+  background-color: var(--o05);
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .connect-link {
-  color: var(--primary-color);
+  color: var(--text);
   font-weight: 500;
   text-decoration: none;
-  padding: var(--space-xs) var(--space-sm);
-  background-color: var(--primary-soft);
-  border-radius: var(--radius-full);
+  padding: 10px 18px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
   transition: all var(--transition-fast);
 }
 
 .connect-link:hover {
-  background-color: var(--primary-color);
-  color: white;
+  background: var(--o14);
 }
 
 .jira-config {
   margin-top: var(--space-lg);
   padding: var(--space-lg);
-  background-color: var(--background-alt);
+  background: var(--bg-deep);
   border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o08);
 }
 
 .shopify-info {
@@ -887,15 +1018,15 @@ input:checked + .slider:before {
 .form-group label {
   font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .form-group select {
   padding: var(--space-md);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o14);
   border-radius: var(--radius-md);
-  background-color: var(--background-color);
-  color: var(--text-color);
+  background: var(--surface);
+  color: var(--text);
   font-size: var(--text-sm);
 }
 
@@ -906,18 +1037,19 @@ input:checked + .slider:before {
 
 .loading-indicator {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--muted);
   padding: var(--space-sm);
 }
 
 .save-config-btn {
   margin-top: var(--space-lg);
-  padding: var(--space-sm) var(--space-lg);
-  background: #bb8873;
-  color: white;
+  padding: 10px 18px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
-  border-radius: var(--radius-full);
-  font-weight: 500;
+  border-radius: var(--radius-chip);
+  font-weight: 600;
+  font-size: 13.5px;
   cursor: pointer;
   transition: all var(--transition-fast);
   align-self: flex-start;
@@ -938,8 +1070,8 @@ input:checked + .slider:before {
   margin-top: var(--space-md);
   padding: var(--space-md);
   border-radius: var(--radius-md);
-  background-color: var(--error-light, #FEEAEA);
-  color: var(--error, #EF4444);
+  background-color: var(--coral-bg);
+  color: var(--error-color);
   font-size: var(--text-sm);
   display: flex;
   align-items: center;
@@ -967,7 +1099,7 @@ input:checked + .slider:before {
 .loader-dot {
   width: 6px;
   height: 6px;
-  background-color: var(--primary-color);
+  background-color: var(--accent-solid);
   border-radius: 50%;
   animation: pulse 1.5s infinite ease-in-out;
 }
@@ -1016,8 +1148,8 @@ input:checked + .slider:before {
   margin-top: var(--space-md);
   padding: var(--space-md);
   border-radius: var(--radius-md);
-  background-color: var(--error-light, #FEEAEA);
-  color: var(--error, #EF4444);
+  background-color: var(--coral-bg);
+  color: var(--error-color);
   font-size: var(--text-sm);
   display: flex;
   align-items: center;
@@ -1032,8 +1164,8 @@ input:checked + .slider:before {
 }
 
 .slack-channel-item {
-  background-color: var(--background-alt);
-  border: 1px solid var(--border-color);
+  background: var(--bg-deep);
+  border: 1px solid var(--o08);
   border-radius: var(--radius-md);
   padding: var(--space-md);
 }
@@ -1047,13 +1179,13 @@ input:checked + .slider:before {
 
 .channel-name {
   font-weight: 600;
-  color: var(--text-color);
+  color: var(--text);
 }
 
 .remove-btn {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 1.25rem;
   cursor: pointer;
   padding: 0;
@@ -1061,7 +1193,7 @@ input:checked + .slider:before {
 }
 
 .remove-btn:hover {
-  color: var(--error);
+  color: var(--error-color);
 }
 
 .remove-btn:disabled {
@@ -1080,7 +1212,7 @@ input:checked + .slider:before {
   align-items: center;
   gap: var(--space-xs);
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--muted);
   cursor: pointer;
 }
 
@@ -1091,9 +1223,9 @@ input:checked + .slider:before {
 .no-channels-message,
 .no-channels-available {
   padding: var(--space-md);
-  background-color: var(--background-mute);
+  background: var(--o05);
   border-radius: var(--radius-md);
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: var(--text-sm);
   text-align: center;
   margin-top: var(--space-md);
@@ -1101,14 +1233,19 @@ input:checked + .slider:before {
 
 .add-channel-btn {
   margin-top: var(--space-md);
-  padding: var(--space-sm) var(--space-lg);
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: var(--radius-full);
+  padding: 10px 18px;
+  background: var(--o05);
+  color: var(--text);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
   font-weight: 500;
+  font-size: 13.5px;
   cursor: pointer;
   transition: all var(--transition-fast);
+}
+
+.add-channel-btn:hover {
+  background: var(--o14);
 }
 
 .add-channel-btn:hover {
@@ -1119,9 +1256,9 @@ input:checked + .slider:before {
 .add-channel-form {
   margin-top: var(--space-lg);
   padding: var(--space-lg);
-  background-color: var(--background-alt);
+  background: var(--bg-deep);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o08);
 }
 
 .channel-options-form {
@@ -1130,7 +1267,7 @@ input:checked + .slider:before {
   gap: var(--space-sm);
   margin-top: var(--space-md);
   padding: var(--space-md);
-  background-color: var(--background-soft);
+  background: var(--surface);
   border-radius: var(--radius-md);
 }
 
@@ -1142,18 +1279,19 @@ input:checked + .slider:before {
 }
 
 .cancel-btn {
-  padding: var(--space-sm) var(--space-lg);
-  background: var(--background-mute);
-  color: var(--text-color);
-  border: none;
-  border-radius: var(--radius-full);
+  padding: 10px 18px;
+  background: var(--o05);
+  color: var(--text);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
   font-weight: 500;
+  font-size: 13.5px;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .cancel-btn:hover {
-  background: var(--background-alt);
+  background: var(--o14);
 }
 
 .cancel-btn:disabled {

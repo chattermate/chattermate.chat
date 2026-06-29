@@ -349,7 +349,7 @@ const toggleSection = (section: string) => {
 .form-select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(243, 70, 17, 0.1);
+  box-shadow: 0 0 0 2px rgba(201, 242, 78, 0.15);
 }
 
 .form-input.error,
@@ -533,8 +533,8 @@ const toggleSection = (section: string) => {
 }
 
 .generate-ai-button {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
 }
 
 .generate-ai-button:hover {

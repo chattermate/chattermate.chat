@@ -303,8 +303,8 @@ initModal()
   display: inline-block;
   margin-top: 16px;
   padding: 8px 16px;
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-radius: 4px;
   text-decoration: none;
   font-weight: 500;
@@ -383,8 +383,8 @@ initModal()
 }
 
 .create-btn {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;

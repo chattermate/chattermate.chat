@@ -161,12 +161,7 @@ onMounted(() => {
       <!-- Empty State -->
       <div v-if="!agentMCPTools.length" class="empty-state">
         <div class="empty-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7"/>
-            <rect x="14" y="3" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/>
-          </svg>
+          <span v-for="i in 4" :key="i" class="empty-icon-dot"></span>
         </div>
         <h4>No MCP Tools Connected</h4>
         <p>Connect MCP tools to extend your agent's capabilities with external services and APIs.</p>
@@ -177,64 +172,28 @@ onMounted(() => {
 
       <!-- Tools List -->
       <div v-else class="tools-list">
-        <div class="list-header">
-          <div class="header-cell name-cell">Tool</div>
-          <div class="header-cell type-cell">Type</div>
-          <div class="header-cell config-cell">Configuration</div>
-          <div class="header-cell status-cell">Status</div>
-          <div class="header-cell actions-cell">Actions</div>
-        </div>
-
-        <div v-for="tool in agentMCPTools" :key="tool.id" class="tool-row">
-          <div class="cell name-cell">
-            <div class="tool-name">
-              <h5>{{ tool.name }}</h5>
-              <p v-if="tool.description">{{ tool.description }}</p>
-            </div>
-          </div>
-          
-          <div class="cell type-cell">
-            <span class="transport-badge" :class="tool.transport_type">
-              {{ getTransportTypeInfo(tool.transport_type).label }}
-            </span>
-          </div>
-          
-          <div class="cell config-cell">
-            <div v-if="tool.transport_type === 'stdio'" class="config-info">
-              <div class="config-item">
-                <span class="config-label">Command:</span>
-                <code class="config-value">{{ tool.command }}</code>
-              </div>
-              <div v-if="tool.args && tool.args.length" class="config-item">
-                <span class="config-label">Args:</span>
-                <code class="config-value">{{ tool.args.join(' ') }}</code>
-              </div>
-            </div>
-            <div v-else-if="tool.transport_type === 'http' || tool.transport_type === 'sse'" class="config-info">
-              <div class="config-item">
-                <span class="config-label">URL:</span>
-                <code class="config-value">{{ tool.url }}</code>
-              </div>
-              <div v-if="tool.timeout" class="config-item">
-                <span class="config-label">Timeout:</span>
-                <span class="config-value">{{ tool.timeout }}s</span>
-              </div>
-            </div>
-          </div>
-          
-          <div class="cell status-cell">
-            <span class="status-badge" :class="{ 'enabled': tool.enabled, 'disabled': !tool.enabled }">
-              {{ tool.enabled ? 'Enabled' : 'Disabled' }}
-            </span>
-          </div>
-          
-          <div class="cell actions-cell">
-            <button class="icon-button delete" @click="confirmDelete(tool.id)" title="Remove tool">
+        <div v-for="tool in agentMCPTools" :key="tool.id" class="tool-card">
+          <div class="tool-card-main">
+            <div class="tool-badge">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 6h18"/>
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                <circle cx="12" cy="12" r="3"/>
               </svg>
+            </div>
+            <div class="tool-meta">
+              <div class="tool-name">
+                <span class="tool-name-text">{{ tool.name }}</span>
+                <span class="transport-chip">{{ getTransportTypeInfo(tool.transport_type).label }}</span>
+              </div>
+              <div class="tool-desc">{{ tool.description || 'Custom MCP tool' }}</div>
+            </div>
+          </div>
+          <div class="tool-card-actions">
+            <span class="tool-status">
+              <span class="status-dot"></span>{{ tool.enabled ? 'connected' : 'disabled' }}
+            </span>
+            <button class="remove-button" @click="confirmDelete(tool.id)" title="Remove tool">
+              Remove
             </button>
           </div>
         </div>
@@ -245,19 +204,20 @@ onMounted(() => {
     <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
       <div class="modal-content large">
         <div class="modal-header">
-          <h3>Create MCP Tool</h3>
-          <button class="close-button" @click="showCreateModal = false">×</button>
+          <h3>Create MCP tool</h3>
+          <button class="close-button" @click="showCreateModal = false">✕</button>
         </div>
 
         <div class="modal-body">
           <!-- Presets -->
           <div class="form-section">
-            <h4>Quick Start Presets</h4>
+            <h4>Quick start presets</h4>
             <div class="presets-grid">
-              <button 
-                v-for="preset in mcpPresets" 
+              <button
+                v-for="preset in mcpPresets"
                 :key="preset.name"
                 class="preset-card"
+                :class="{ selected: createForm.name === preset.name }"
                 @click="applyPreset(preset)"
               >
                 <h5>{{ preset.name }}</h5>
@@ -268,10 +228,10 @@ onMounted(() => {
 
           <!-- Basic Info -->
           <div class="form-section">
-            <h4>Basic Information</h4>
+            <h4>Basic information</h4>
             <div class="form-grid">
               <div class="form-group">
-                <label for="tool-name">Tool Name *</label>
+                <label for="tool-name">Tool name <span class="req">*</span></label>
                 <input 
                   id="tool-name"
                   v-model="createForm.name" 
@@ -294,19 +254,20 @@ onMounted(() => {
 
           <!-- Transport Type -->
           <div class="form-section">
-            <h4>Transport Type</h4>
+            <h4>Transport type</h4>
             <div class="transport-types">
-              <label 
-                v-for="type in transportTypes" 
+              <label
+                v-for="type in transportTypes"
                 :key="type.value"
                 class="transport-option"
                 :class="{ 'selected': createForm.transport_type === type.value }"
               >
-                <input 
-                  type="radio" 
-                  :value="type.value" 
+                <input
+                  type="radio"
+                  :value="type.value"
                   v-model="createForm.transport_type"
                 >
+                <span class="radio-circle"><span class="radio-dot"></span></span>
                 <div class="transport-info">
                   <h5>{{ type.label }}</h5>
                   <p>{{ type.description }}</p>
@@ -473,8 +434,8 @@ onMounted(() => {
     <div v-if="showLinkModal" class="modal-overlay" @click.self="showLinkModal = false">
       <div class="modal-content">
         <div class="modal-header">
-          <h3>Link Existing Tools</h3>
-          <button class="close-button" @click="showLinkModal = false">×</button>
+          <h3>Link existing tools</h3>
+          <button class="close-button" @click="showLinkModal = false">✕</button>
         </div>
 
         <div class="modal-body">
@@ -483,7 +444,7 @@ onMounted(() => {
             <p>Loading available tools...</p>
           </div>
 
-          <div v-else-if="!availableMCPTools.length" class="empty-state">
+          <div v-else-if="!availableMCPTools.length" class="empty-state modal-empty">
             <p>No tools available to link. Create a new tool first.</p>
           </div>
 
@@ -543,11 +504,11 @@ onMounted(() => {
       <div class="modal-content small">
         <div class="modal-header">
           <h3>Confirm Deletion</h3>
-          <button class="close-button" @click="cancelDelete">×</button>
+          <button class="close-button" @click="cancelDelete">✕</button>
         </div>
         
         <div class="modal-body">
-          <p>Are you sure you want to remove this MCP tool from the agent? This action cannot be undone.</p>
+          <p class="confirm-text">Are you sure you want to remove this MCP tool from the agent? This action cannot be undone.</p>
         </div>
         
         <div class="modal-footer">
@@ -568,15 +529,19 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
-  padding: var(--space-lg);
-  min-height: calc(100vh - 300px);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 var(--space-lg);
 }
 
+/* ---------- Header ---------- */
 .mcp-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: var(--space-lg);
+  gap: 24px;
+  margin-bottom: 24px;
 }
 
 .header-content {
@@ -584,49 +549,59 @@ onMounted(() => {
 }
 
 .section-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-color);
-  margin-bottom: var(--space-sm);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 6px;
   line-height: 1.3;
 }
 
 .section-description {
-  color: var(--text-muted);
-  font-size: 1rem;
-  line-height: 1.6;
-  max-width: 600px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 560px;
+  margin: 0;
 }
 
 .header-actions {
   display: flex;
-  gap: var(--space-sm);
+  gap: 10px;
   flex-shrink: 0;
 }
 
 .action-button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--primary-color);
-  color: white;
+  gap: 7px;
+  padding: 11px 18px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
-  border-radius: var(--radius-md);
-  font-weight: 500;
+  border-radius: var(--radius-chip);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .action-button.secondary {
-  background: var(--background-soft);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
+  background: var(--o05);
+  color: var(--text);
+  border: 1px solid var(--o14);
+  font-weight: 500;
 }
 
 .action-button:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
   transform: translateY(-1px);
+}
+
+.action-button.secondary:hover {
+  filter: none;
+  background: var(--o08);
 }
 
 .button-icon {
@@ -634,7 +609,7 @@ onMounted(() => {
   height: 16px;
 }
 
-/* Loading and Error States */
+/* ---------- Loading / Error ---------- */
 .loading-state,
 .error-state {
   display: flex;
@@ -643,15 +618,15 @@ onMounted(() => {
   justify-content: center;
   padding: var(--space-xl);
   text-align: center;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid var(--border-color);
+  border: 3px solid var(--o10);
   border-radius: 50%;
-  border-top-color: var(--primary-color);
+  border-top-color: var(--accent-ink);
   animation: spin 1s linear infinite;
   margin-bottom: var(--space-md);
 }
@@ -659,7 +634,7 @@ onMounted(() => {
 .error-icon {
   width: 48px;
   height: 48px;
-  color: var(--error-color);
+  color: var(--c-coral);
   margin-bottom: var(--space-md);
 }
 
@@ -667,562 +642,590 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* Empty State */
+/* ---------- Empty State ---------- */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-xl);
+  border: 1.5px dashed var(--o14);
+  border-radius: var(--radius-card);
+  padding: 58px 30px;
   text-align: center;
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
-  border: 2px dashed var(--border-color);
 }
 
 .empty-icon {
-  width: 64px;
-  height: 64px;
-  color: var(--text-muted);
-  margin-bottom: var(--space-md);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-bottom: 16px;
+}
+
+.empty-icon-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--o12);
 }
 
 .empty-state h4 {
-  margin-bottom: var(--space-sm);
-  color: var(--text-color);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 19px;
+  color: var(--text);
+  margin: 0;
 }
 
 .empty-state p {
-  color: var(--text-muted);
-  margin-bottom: var(--space-lg);
-  max-width: 400px;
+  font-size: 14px;
+  color: var(--muted);
+  margin: 6px 0 20px;
+  max-width: 380px;
+  line-height: 1.5;
 }
 
-/* Tools List */
+/* ---------- Tools List ---------- */
 .tools-list {
-  background: var(--background-base);
-  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tool-card {
+  background: var(--surface);
+  border: 1px solid var(--o08);
   border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-/* Modal-specific tools list layout */
-.modal-tools-list .list-header,
-.modal-tools-list .tool-row {
-  grid-template-columns: 2fr 120px 120px;
-}
-
-.list-header {
-  display: grid;
-  grid-template-columns: 2fr 120px 2fr 100px 80px;
-  background: var(--background-soft);
-  border-bottom: 1px solid var(--border-color);
-  font-weight: 600;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-}
-
-.tool-row {
-  display: grid;
-  grid-template-columns: 2fr 120px 2fr 100px 80px;
-  border-bottom: 1px solid var(--border-color);
-  transition: all 0.2s ease;
-  min-height: 80px;
-}
-
-.tool-row:hover {
-  background: var(--background-soft);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.tool-row:last-child {
-  border-bottom: none;
-}
-
-.header-cell,
-.cell {
-  padding: var(--space-lg) var(--space-md);
+  padding: 18px 22px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  transition: border-color 0.2s ease;
 }
 
-.name-cell {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: var(--space-xs);
+.tool-card:hover {
+  border-color: var(--o14);
 }
 
-.tool-name h5 {
-  margin: 0;
-  font-weight: 600;
-  color: var(--text-color);
-  font-size: 1rem;
-  line-height: 1.3;
-}
-
-.tool-name p {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  line-height: 1.4;
-  max-width: 280px;
-}
-
-.transport-badge {
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.transport-badge.stdio {
-  background: var(--primary-soft);
-  color: var(--primary-color);
-}
-
-.transport-badge.http {
-  background: var(--success-soft);
-  color: var(--success-color);
-}
-
-.transport-badge.sse {
-  background: var(--warning-soft);
-  color: var(--warning-color);
-}
-
-.config-info {
+.tool-card-main {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  width: 100%;
-}
-
-.config-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-sm);
-  font-size: var(--text-sm);
-  flex-wrap: wrap;
-}
-
-.config-label {
-  color: var(--text-muted);
-  font-weight: 500;
-  min-width: 60px;
-  flex-shrink: 0;
-}
-
-.config-value {
-  background: var(--background-muted);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-  font-family: monospace;
-  font-size: 0.75rem;
-  color: var(--text-color);
-  word-break: break-all;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 250px;
-  flex: 1;
+  align-items: center;
+  gap: 14px;
   min-width: 0;
 }
 
-.status-badge {
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  font-weight: 500;
-}
-
-.status-badge.enabled {
-  background: var(--success-soft);
-  color: var(--success-color);
-}
-
-.status-badge.disabled {
-  background: var(--error-soft);
-  color: var(--error-color);
-}
-
-.actions-cell {
-  justify-content: center;
-}
-
-.icon-button {
-  width: 32px;
-  height: 32px;
+.tool-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  background: var(--purple-bg);
+  color: var(--c-purple);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: var(--radius-sm);
+}
+
+.tool-badge svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tool-meta {
+  min-width: 0;
+}
+
+.tool-name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.tool-name-text {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15.5px;
+  color: var(--text);
+}
+
+.transport-chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--o06);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.tool-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.tool-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c-lime);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-lime);
+}
+
+.remove-button {
+  padding: 7px 13px;
   background: transparent;
-  color: var(--text-muted);
+  border: 1px solid var(--coral-border);
+  border-radius: 8px;
+  color: var(--c-coral);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease;
 }
 
-.icon-button:hover {
-  background: var(--background-muted);
-  color: var(--text-color);
+.remove-button:hover {
+  background: var(--coral-bg);
 }
 
-.icon-button.delete:hover {
-  background: var(--error-soft);
-  color: var(--error-color);
-}
-
-.icon-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Modal Styles */
+/* ---------- Modal Shell ---------- */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  inset: 0;
   z-index: 1000;
+  background: var(--scrim);
   backdrop-filter: blur(6px);
-  padding: var(--space-lg);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
 }
 
 .modal-content {
-  background: white;
-  border-radius: var(--radius-xl);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-  border: 1px solid var(--border-color);
   width: 100%;
-  max-width: 500px;
-  max-height: 90vh;
-  overflow-y: auto;
-  position: relative;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  border-radius: 22px;
+  padding: 30px;
+  box-shadow: 0 40px 100px -30px rgba(0, 0, 0, 0.8);
+  margin: auto;
 }
 
 .modal-content.large {
-  max-width: 900px;
+  max-width: 640px;
 }
 
 .modal-content.small {
-  max-width: 450px;
+  max-width: 460px;
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-xl) var(--space-xl) var(--space-lg);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-base);
+  margin-bottom: 22px;
 }
 
 .modal-header h3 {
   margin: 0;
-  font-size: 1.375rem;
+  font-family: var(--font-display);
+  font-size: 22px;
   font-weight: 700;
-  color: var(--text-color);
-  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .close-button {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  color: var(--muted);
   cursor: pointer;
-  color: var(--text-muted);
-  width: 40px;
-  height: 40px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-full);
   transition: all 0.2s ease;
 }
 
 .close-button:hover {
-  background: var(--background-soft);
-  color: var(--text-color);
-  transform: scale(1.05);
+  background: var(--o08);
+  color: var(--text);
 }
 
 .modal-body {
-  padding: var(--space-xl);
-  max-height: calc(90vh - 200px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.confirm-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text3);
 }
 
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-md);
-  padding: var(--space-lg) var(--space-xl) var(--space-xl);
-  border-top: 1px solid var(--border-color);
-  background: var(--background-base);
+  gap: 12px;
+  margin-top: 28px;
 }
 
-/* Form Styles */
+/* ---------- Form ---------- */
 .form-section {
-  margin-bottom: var(--space-xl);
-  padding: var(--space-lg);
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  margin-top: 24px;
+}
+
+.form-section:first-child {
+  margin-top: 0;
 }
 
 .form-section h4 {
-  margin-bottom: var(--space-lg);
-  color: var(--text-color);
-  font-size: 1.125rem;
-  font-weight: 700;
-  border-bottom: 2px solid var(--primary-color);
-  padding-bottom: var(--space-sm);
-  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  margin: 0 0 12px;
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-lg);
+  gap: 14px;
 }
 
 .form-group {
-  margin-bottom: var(--space-lg);
+  margin-bottom: 0;
+}
+
+.form-group + .form-group,
+.form-grid + .form-group,
+.form-group + .input-list {
+  margin-top: 14px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: var(--space-xs);
-  color: var(--text-muted);
+  font-size: 13px;
+  color: var(--text3);
+  margin-bottom: 8px;
   font-weight: 500;
-  font-size: var(--text-sm);
+}
+
+.req {
+  color: var(--c-coral);
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
   width: 100%;
-  padding: var(--space-sm);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--background-base);
-  color: var(--text-color);
-  font-size: var(--text-sm);
+  box-sizing: border-box;
+  padding: 13px 15px;
+  background: var(--bg);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font-size: 14.5px;
+  font-family: var(--font-sans);
+  outline: none;
   transition: border-color 0.2s ease;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: var(--muted);
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 1px var(--primary-color);
+  border-color: var(--accent-border);
 }
 
-/* Presets */
+/* ---------- Presets ---------- */
 .presets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .preset-card {
-  padding: var(--space-lg);
-  background: var(--background-base);
-  border: 2px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: all 0.3s ease;
   text-align: left;
-  position: relative;
-  overflow: hidden;
-}
-
-.preset-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--primary-color);
-  transform: scaleX(0);
-  transition: transform 0.3s ease;
+  padding: 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: var(--bg);
+  border: 1px solid var(--o10);
+  font-family: var(--font-sans);
+  transition: all 0.2s ease;
 }
 
 .preset-card:hover {
-  background: var(--background-base);
-  border-color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  border-color: var(--o16);
 }
 
-.preset-card:hover::before {
-  transform: scaleX(1);
+.preset-card.selected {
+  background: var(--accent-bg-08);
+  border-color: var(--accent-border);
 }
 
 .preset-card h5 {
-  margin: 0 0 var(--space-sm) 0;
-  font-weight: 700;
-  color: var(--text-color);
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  margin: 0;
+}
+
+.preset-card.selected h5 {
+  color: var(--accent-ink);
 }
 
 .preset-card p {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  line-height: 1.5;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 4px 0 0;
+  line-height: 1.4;
 }
 
-/* Transport Types */
+/* ---------- Transport Types ---------- */
 .transport-types {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 10px;
 }
 
 .transport-option {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-md);
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  gap: 13px;
+  text-align: left;
+  padding: 15px 16px;
+  border-radius: 13px;
   cursor: pointer;
+  background: var(--bg);
+  border: 1px solid var(--o10);
   transition: all 0.2s ease;
 }
 
+.transport-option:hover {
+  border-color: var(--o16);
+}
+
 .transport-option.selected {
-  background: var(--primary-soft);
-  border-color: var(--primary-color);
+  background: var(--accent-bg-08);
+  border-color: var(--accent-border);
 }
 
 .transport-option input[type="radio"] {
-  margin: 0;
-  width: auto;
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.radio-circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid var(--o16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s ease;
+}
+
+.transport-option.selected .radio-circle {
+  border-color: var(--accent-ink);
+}
+
+.radio-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-solid);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.transport-option.selected .radio-dot {
+  opacity: 1;
 }
 
 .transport-info h5 {
-  margin: 0 0 var(--space-xs) 0;
+  margin: 0;
   font-weight: 600;
-  color: var(--text-color);
+  font-size: 14.5px;
+  color: var(--text);
+}
+
+.transport-option.selected .transport-info h5 {
+  color: var(--accent-ink);
 }
 
 .transport-info p {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
 }
 
-/* Input Lists */
+/* ---------- Input Lists ---------- */
 .input-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 10px;
 }
 
 .input-add {
   display: flex;
-  gap: var(--space-sm);
+  gap: 10px;
 }
 
 .input-add.dual {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
-  gap: var(--space-sm);
+  gap: 10px;
+}
+
+.input-add input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px 15px;
+  background: var(--bg);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  outline: none;
+}
+
+.input-add input::placeholder {
+  color: var(--muted);
+}
+
+.input-add input:focus {
+  border-color: var(--accent-border);
 }
 
 .input-add button {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--primary-color);
-  color: white;
+  padding: 11px 18px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-chip);
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: var(--font-sans);
   white-space: nowrap;
 }
 
 .input-add button:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .list-items {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  gap: 8px;
 }
 
 .list-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-sm);
-  background: var(--background-muted);
-  border-radius: var(--radius-md);
-  gap: var(--space-sm);
+  padding: 11px 14px;
+  background: var(--bg);
+  border: 1px solid var(--o08);
+  border-radius: var(--radius-btn);
+  gap: 10px;
 }
 
 .list-item code {
   flex: 1;
-  font-family: monospace;
-  font-size: 0.875rem;
-  color: var(--text-color);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text3);
+  word-break: break-all;
 }
 
-.remove-button {
+.remove-button.icon,
+.list-item .remove-button {
   width: 24px;
   height: 24px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--error-soft);
-  color: var(--error-color);
-  border: none;
+  background: var(--coral-bg);
+  color: var(--c-coral);
+  border: 1px solid var(--coral-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: bold;
+  font-size: 14px;
 }
 
-.remove-button:hover {
-  background: var(--error-color);
-  color: white;
+.list-item .remove-button:hover {
+  background: var(--c-coral);
+  color: var(--on-dark);
 }
 
-/* Buttons */
+/* ---------- Buttons ---------- */
 .primary-button,
 .secondary-button,
 .danger-button,
 .link-button,
 .unlink-button {
-  padding: var(--space-sm) var(--space-md);
+  padding: 13px 22px;
   border: none;
-  border-radius: var(--radius-md);
-  font-weight: 500;
+  border-radius: var(--radius-btn);
+  font-weight: 600;
+  font-size: 14.5px;
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: var(--text-sm);
 }
 
 .primary-button {
-  background: var(--primary-color);
-  color: white;
+  padding: 13px 24px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+}
+
+.empty-state .primary-button {
+  padding: 12px 22px;
+  border-radius: var(--radius-btn);
 }
 
 .primary-button:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .primary-button:disabled {
@@ -1231,51 +1234,56 @@ onMounted(() => {
 }
 
 .secondary-button {
-  background: var(--background-soft);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
+  background: var(--o05);
+  color: var(--text);
+  border: 1px solid var(--o14);
 }
 
 .secondary-button:hover {
-  background: var(--background-muted);
+  background: var(--o08);
 }
 
 .danger-button {
-  background: var(--error-color);
-  color: white;
+  background: var(--c-coral);
+  color: var(--on-dark);
 }
 
 .danger-button:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .link-button {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   min-width: 80px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 7px;
   justify-content: center;
+  padding: 9px 16px;
+  font-size: 13px;
 }
 
 .link-button:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
   transform: translateY(-1px);
 }
 
 .unlink-button {
-  background: var(--error-color);
-  color: white;
+  background: transparent;
+  color: var(--c-coral);
+  border: 1px solid var(--coral-border);
   min-width: 80px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 7px;
   justify-content: center;
+  padding: 9px 16px;
+  font-size: 13px;
 }
 
 .unlink-button:hover {
-  filter: brightness(1.1);
+  background: var(--coral-bg);
   transform: translateY(-1px);
 }
 
@@ -1285,30 +1293,94 @@ onMounted(() => {
   height: 14px;
 }
 
+/* ---------- Modal Link/Delete list ---------- */
+.modal-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 
+.modal-tools-list .list-header {
+  display: none;
+}
 
-/* Responsive Design */
+.modal-tools-list .tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--o08);
+  border-radius: var(--radius-lg);
+}
+
+.modal-tools-list .name-cell {
+  min-width: 0;
+}
+
+.modal-tools-list .tool-name h5 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--text);
+}
+
+.modal-tools-list .tool-name p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.modal-tools-list .transport-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--o06);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.modal-tools-list .type-cell,
+.modal-tools-list .actions-cell {
+  display: flex;
+  align-items: center;
+}
+
+.empty-state.modal-empty {
+  border: 1.5px dashed var(--o16);
+  border-radius: 14px;
+  padding: 40px 24px;
+}
+
+.empty-state.modal-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---------- Responsive ---------- */
 @media (max-width: 768px) {
   .mcp-header {
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: 18px;
     align-items: stretch;
   }
 
   .header-actions {
-    justify-content: center;
     flex-wrap: wrap;
   }
 
-  .list-header,
-  .tool-row {
-    grid-template-columns: 1fr auto;
+  .tool-card {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .type-cell,
-  .config-cell,
-  .status-cell {
-    display: none;
+  .tool-card-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .form-grid {
@@ -1319,57 +1391,31 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .transport-types {
-    gap: var(--space-sm);
-  }
-
-  .transport-option {
-    padding: var(--space-md);
-  }
-
   .input-add.dual {
     grid-template-columns: 1fr;
-    gap: var(--space-sm);
   }
 
   .modal-overlay {
-    padding: var(--space-md);
+    padding: 16px;
   }
 
   .modal-content {
-    width: 100%;
-    max-height: 95vh;
-  }
-
-  .modal-header,
-  .modal-body,
-  .modal-footer {
-    padding: var(--space-lg);
-  }
-
-  .form-section {
-    padding: var(--space-md);
+    padding: 22px;
   }
 }
 
 @media (max-width: 480px) {
   .mcp-tools-container {
-    padding: var(--space-md);
-  }
-
-  .modal-header,
-  .modal-body,
-  .modal-footer {
-    padding: var(--space-md);
+    padding: 0 var(--space-md);
   }
 
   .modal-footer {
-    flex-direction: column;
-    gap: var(--space-xs);
+    flex-direction: column-reverse;
+    gap: 10px;
   }
 
   .modal-footer button {
     width: 100%;
   }
 }
-</style> 
+</style>

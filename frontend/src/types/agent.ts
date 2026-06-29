@@ -11,6 +11,8 @@ export interface Agent {
   organization_id: string // UUID
   transfer_to_human: boolean
   ask_for_rating: boolean
+  handoff_collect_email: boolean
+  handoff_collect_name: boolean
   enable_rate_limiting: boolean
   overall_limit_per_ip: number
   requests_per_sec: number
@@ -38,6 +40,8 @@ export interface AgentUpdate {
   is_active?: boolean
   transfer_to_human?: boolean
   ask_for_rating?: boolean
+  handoff_collect_email?: boolean
+  handoff_collect_name?: boolean
   enable_rate_limiting?: boolean
   overall_limit_per_ip?: number
   requests_per_sec?: number
@@ -65,7 +69,7 @@ export interface ChatMessage {
   message_type?: string
 }
 
-export type ChatStyle = 'CHATBOT' | 'ASK_ANYTHING'
+export type ChatStyle = 'CHATBOT' | 'ASK_ANYTHING' | 'GLASS' | 'TERMINAL' | 'PLAYFUL' | 'CALM_MINT' | 'AURORA'
 export type WidgetPosition = 'FLOATING' | 'FIXED'
 
 export interface AgentCustomization {
@@ -87,6 +91,8 @@ export interface AgentCustomization {
   welcome_title?: string
   welcome_subtitle?: string
   chat_initiation_messages?: string[]
+  show_citations?: boolean
+  collect_email?: boolean
 }
 
 export interface AgentWithCustomization extends AgentResponse {

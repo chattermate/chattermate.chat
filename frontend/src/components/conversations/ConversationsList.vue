@@ -339,8 +339,8 @@ onBeforeUnmount(() => {
   gap: 0;
   height: 100%;
   width: 100%;
-  background: var(--background-color);
-  color: var(--text-primary);
+  background: var(--bg);
+  color: var(--text);
   position: relative;
 }
 
@@ -349,8 +349,8 @@ onBeforeUnmount(() => {
 }
 
 .conversations-sidebar {
-  border-right: 1px solid var(--border-color);
-  background: var(--background-color);
+  border-right: 1px solid var(--o08);
+  background: var(--bg2);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -361,46 +361,34 @@ onBeforeUnmount(() => {
 
 .filter-controls {
   display: flex;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-soft);
-  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--o07);
+  background: var(--bg2);
   gap: 4px;
 }
 
 .filter-btn {
   flex: 1;
-  min-width: 70px;
-  padding: 8px 6px;
-  background: var(--background-color);
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  font-size: 11px;
+  padding: 7px 12px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);
-  margin: 0 -1px;
+  border-radius: 8px;
 }
 
-.filter-btn:first-child {
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-  margin-left: 0;
-}
-
-.filter-btn:last-child {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  margin-right: 0;
-}
-
-.filter-btn:not(:first-child) {
-  border-left: none;
+.filter-btn:hover {
+  background: var(--o05);
+  color: var(--text);
 }
 
 .filter-btn.active {
-  background: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
-  z-index: 1;
-  position: relative;
+  background: var(--o10);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .conversations-list {
@@ -430,21 +418,24 @@ onBeforeUnmount(() => {
 
 .conversation-status {
   font-size: 10px;
-  padding: 2px 6px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
   border-radius: var(--radius-full);
   text-transform: uppercase;
   margin-top: 4px;
   display: inline-block;
+  font-weight: 600;
 }
 
 .conversation-status.open {
-  background-color: var(--success-color-soft);
-  color: var(--success-color);
+  background: rgba(201,242,78,.12);
+  color: var(--accent-ink);
 }
 
 .conversation-status.closed {
-  background-color: var(--error-color-soft);
-  color: var(--error-color);
+  background: var(--o06);
+  color: var(--muted);
 }
 
 .conversation-status.transferred {
@@ -478,19 +469,19 @@ onBeforeUnmount(() => {
 
 .conversation-item {
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--o06);
   cursor: pointer;
   transition: all var(--transition-fast);
   min-height: 72px;
 }
 
 .conversation-item:hover {
-  background: var(--background-soft);
+  background: var(--o05);
 }
 
 .conversation-item.active {
-  background: var(--background-soft);
-  border-left: 2px solid var(--primary-color);
+  background: var(--accent-bg-06);
+  border-left: 3px solid var(--accent-ink);
 }
 
 .conversation-item-header {
@@ -502,8 +493,8 @@ onBeforeUnmount(() => {
 
 .conversation-item-header h3 {
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: 600;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -512,7 +503,7 @@ onBeforeUnmount(() => {
 
 .timestamp {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .conversation-preview {
@@ -525,12 +516,12 @@ onBeforeUnmount(() => {
 
 .agent-name {
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .last-message {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -539,12 +530,12 @@ onBeforeUnmount(() => {
 
 .message-count {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--faint);
 }
 
 .unread-bubble {
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-radius: 50%;
   min-width: 18px;
   height: 18px;
@@ -552,7 +543,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   margin-left: auto;
 }
 
@@ -561,7 +552,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-muted);
+  color: var(--muted);
   opacity: 0.7;
 }
 
@@ -570,7 +561,7 @@ onBeforeUnmount(() => {
 .empty-state {
   padding: 16px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 12px;
   max-height: calc(100vh - 120px);
   display: flex;
@@ -581,10 +572,10 @@ onBeforeUnmount(() => {
 
 .refresh-button {
   padding: 4px 8px;
-  background: var(--background-soft);
-  border: none;
+  background: var(--o06);
+  border: 1px solid var(--o10);
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--text3);
   cursor: pointer;
   font-size: 12px;
 }
@@ -641,8 +632,8 @@ onBeforeUnmount(() => {
 }
 
 .load-more-button:hover {
-  background-color: var(--primary-color);
-  color: white;
+  background-color: var(--accent-solid);
+  color: var(--on-accent-solid);
   border-color: var(--primary-color);
 }
 
@@ -664,8 +655,8 @@ onBeforeUnmount(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
   display: flex;
   align-items: center;

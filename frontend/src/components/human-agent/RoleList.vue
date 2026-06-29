@@ -20,11 +20,18 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { onMounted, ref, computed } from 'vue'
 import Modal from '@/components/common/Modal.vue'
 import RoleForm from './RoleForm.vue'
-import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
-import { EllipsisVerticalIcon } from '@heroicons/vue/24/outline'
+import type { Role } from '@/types/user'
 import { useRoles } from '@/composables/useRoles'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+
+const props = defineProps<{
+  searchQuery?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'changed'): void
+}>()
 
 const {
   roles,
@@ -43,6 +50,28 @@ const {
   openCreateModal,
   deleteError
 } = useRoles()
+
+// Wrap create/delete so the parent view can refresh counts after a change
+const createRoleAndNotify = async (data: Partial<Role>) => {
+  await handleCreateRole(data)
+  if (!showCreateModal.value) {
+    emit('changed')
+  }
+}
+
+const deleteRoleAndNotify = async () => {
+  await confirmDeleteRole()
+  if (!showDeleteModal.value) {
+    emit('changed')
+  }
+}
+
+// Filter cards by role name (case-insensitive)
+const filteredRoles = computed(() => {
+  const q = (props.searchQuery || '').trim().toLowerCase()
+  if (!q) return roles.value
+  return roles.value.filter(role => role.name?.toLowerCase().includes(q))
+})
 
 // Subscription and role feature checking
 const subscriptionStorage = useSubscriptionStorage()
@@ -141,121 +170,108 @@ onMounted(() => {
 
     <!-- Roles Content (when unlocked) -->
     <div v-else>
-      <header class="page-header">
-        <h1>Roles</h1>
-        <button class="btn btn-primary" @click="openCreateModal">
-          <span class="icon">+</span>
-          Add Role
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
+
+      <div v-if="loading" class="loading">Loading roles...</div>
+
+      <div v-else class="roles-grid">
+        <div
+          v-for="role in filteredRoles"
+          :key="role.id"
+          class="role-card"
+        >
+          <div class="role-card__header">
+            <h3 class="role-card__name">{{ role.name }}</h3>
+            <span v-if="role.is_default" class="role-card__badge">Default</span>
+          </div>
+
+          <p class="role-card__desc" :class="{ 'is-muted': !role.description }">
+            {{ role.description || 'No description' }}
+          </p>
+
+          <template v-if="role.permissions?.length">
+            <div class="role-card__perm-label">PERMISSIONS</div>
+            <div class="role-card__perm-chips">
+              <span
+                v-for="permission in role.permissions"
+                :key="permission.id"
+                class="role-card__chip"
+              >
+                {{ permission.name }}
+              </span>
+            </div>
+          </template>
+
+          <button
+            class="role-card__edit"
+            @click="handleEditRole(role)"
+            :disabled="role.is_default"
+            :title="role.is_default ? 'Cannot edit default role' : ''"
+          >
+            Edit permissions
+          </button>
+
+          <button
+            v-if="!role.is_default"
+            class="role-card__delete"
+            @click="handleDeleteRole(role)"
+          >
+            Delete role
+          </button>
+        </div>
+
+        <!-- Create a custom role card -->
+        <button class="role-card-add" @click="openCreateModal">
+          <div class="role-card-add__icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </div>
+          <div class="role-card-add__title">Create a custom role</div>
+          <div class="role-card-add__desc">Pick exactly which permissions a group of agents gets</div>
         </button>
-      </header>
+      </div>
 
-    <div v-if="error" class="error-message">
-      {{ error }}
-    </div>
+      <!-- Create/Edit Role Modal -->
+      <Modal v-if="showCreateModal || showEditModal"
+             @close="showCreateModal ? (showCreateModal = false) : (showEditModal = false)">
+        <template #title>{{ showCreateModal ? 'Create Role' : 'Edit Role' }}</template>
+        <template #content>
+          <RoleForm
+            :role="selectedRole"
+            @submit="(data) => showCreateModal ? createRoleAndNotify(data) : handleUpdateRole(data)"
+            @cancel="showCreateModal ? (showCreateModal = false) : (showEditModal = false)"
+          />
+        </template>
+      </Modal>
 
-    <div v-if="loading" class="loading">Loading roles...</div>
-    
-    <div v-else-if="roles.length > 0" class="roles-grid">
-      <div 
-        v-for="role in roles" 
-        :key="role.id" 
-        class="role-card"
-        :data-default="role.is_default"
-      >
-        <div class="role-info">
-          <div class="role-details">
-            <h3>{{ role.name }}</h3>
-            <p v-if="role.description" class="description">{{ role.description }}</p>
-            <div class="permissions-list" v-if="role.permissions?.length">
-              <div class="permissions-label">Permissions:</div>
-              <div class="permission-badges">
-                <span v-for="permission in role.permissions" :key="permission.id" class="permission-badge">
-                  {{ permission.name }}
-                </span>
-              </div>
+      <!-- Delete Confirmation Modal -->
+      <Modal v-if="showDeleteModal" @close="showDeleteModal = false">
+        <template #title>Delete Role</template>
+        <template #content>
+          <div class="delete-confirmation">
+            <div v-if="deleteError" class="error-message">
+              {{ deleteError }}
+            </div>
+            <p>Are you sure you want to delete "{{ selectedRole?.name }}"?</p>
+            <p class="warning">This action cannot be undone.</p>
+            <div class="form-actions">
+              <button class="btn btn-secondary" @click="showDeleteModal = false">
+                Cancel
+              </button>
+              <button
+                class="btn btn-danger"
+                @click="deleteRoleAndNotify"
+                :disabled="loading"
+              >
+                {{ loading ? 'Deleting...' : 'Delete' }}
+              </button>
             </div>
           </div>
-        </div>
-        <Menu as="div" class="role-menu">
-          <MenuButton class="menu-button">
-            <EllipsisVerticalIcon class="h-5 w-5" />
-          </MenuButton>
-
-          <MenuItems class="menu-items">
-            <MenuItem v-slot="{ active }">
-              <button 
-                :class="['menu-item', { active }]"
-                @click="handleEditRole(role)"
-                :disabled="role.is_default"
-                :title="role.is_default ? 'Cannot edit default role' : ''"
-              >
-                Edit Role
-              </button>
-            </MenuItem>
-            <MenuItem v-slot="{ active }">
-              <button 
-                :class="['menu-item delete', { active }]"
-                @click="handleDeleteRole(role)"
-                :disabled="role.is_default"
-                :title="role.is_default ? 'Cannot delete default role' : ''"
-              >
-                Delete Role
-              </button>
-            </MenuItem>
-          </MenuItems>
-        </Menu>
-      </div>
-    </div>
-
-    <div v-else class="empty-state">
-      <div class="empty-content">
-        <h3>No Roles Found</h3>
-        <p>Create your first role to manage user permissions</p>
-        <button class="btn btn-primary" @click="openCreateModal">
-          <span class="icon">+</span>
-          Create Role
-        </button>
-      </div>
-    </div>
-
-    <!-- Create/Edit Role Modal -->
-    <Modal v-if="showCreateModal || showEditModal" 
-           @close="showCreateModal ? (showCreateModal = false) : (showEditModal = false)">
-      <template #title>{{ showCreateModal ? 'Create Role' : 'Edit Role' }}</template>
-      <template #content>
-        <RoleForm
-          :role="selectedRole"
-          @submit="(data) => showCreateModal ? handleCreateRole(data) : handleUpdateRole(data)"
-          @cancel="showCreateModal ? (showCreateModal = false) : (showEditModal = false)"
-        />
-      </template>
-    </Modal>
-
-    <!-- Delete Confirmation Modal -->
-    <Modal v-if="showDeleteModal" @close="showDeleteModal = false">
-      <template #title>Delete Role</template>
-      <template #content>
-        <div class="delete-confirmation">
-          <div v-if="deleteError" class="error-message">
-            {{ deleteError }}
-          </div>
-          <p>Are you sure you want to delete "{{ selectedRole?.name }}"?</p>
-          <p class="warning">This action cannot be undone.</p>
-          <div class="form-actions">
-            <button class="btn btn-secondary" @click="showDeleteModal = false">
-              Cancel
-            </button>
-            <button 
-              class="btn btn-danger" 
-              @click="confirmDeleteRole"
-              :disabled="loading"
-            >
-              {{ loading ? 'Deleting...' : 'Delete' }}
-            </button>
-          </div>
-        </div>
-      </template>
-    </Modal>
+        </template>
+      </Modal>
     </div>
   </div>
 </template>
@@ -265,121 +281,172 @@ onMounted(() => {
   padding: var(--space-lg);
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-lg);
-}
-
 .roles-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--space-lg);
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 18px;
+  align-items: start;
 }
 
 .role-card {
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 18px;
+  padding: 24px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  position: relative;
+  flex-direction: column;
+  transition: border-color var(--transition-fast);
 }
 
-.role-details h3 {
-  font-size: var(--text-lg);
-  margin-bottom: var(--space-xs);
+.role-card:hover {
+  border-color: var(--o16);
 }
 
-.description {
-  color: var(--text-color);
-  opacity: 0.7;
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-sm);
+.role-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
 }
 
-.permissions-list {
-  margin-top: var(--space-sm);
+.role-card__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 19px;
+  color: var(--text);
+  margin: 0;
 }
 
-.permissions-label {
-  font-size: var(--text-xs);
-  color: var(--text-color);
-  opacity: 0.7;
-  margin-bottom: var(--space-xs);
+.role-card__badge {
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg-12);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 500;
 }
 
-.permission-badges {
+.role-card__desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
+.role-card__desc.is-muted {
+  color: var(--muted2);
+}
+
+.role-card__perm-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  margin-bottom: 9px;
+}
+
+.role-card__perm-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-xs);
+  gap: 7px;
 }
 
-.permission-badge {
-  background: var(--background-mute);
-  color: var(--text-color);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  opacity: 0.8;
+.role-card__chip {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: var(--o05);
+  border: 1px solid var(--o08);
+  color: var(--text3);
+  white-space: nowrap;
 }
 
-.role-menu {
-  position: relative;
+.role-card__edit {
+  margin-top: 20px;
+  padding: 11px;
+  background: var(--o05);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-chip);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--transition-fast);
 }
 
-.menu-button {
-  padding: var(--space-xs);
-  border-radius: var(--radius-sm);
-  color: var(--text-color);
-  opacity: 0.7;
-  transition: all var(--transition-fast);
+.role-card__edit:hover:not(:disabled) {
+  background: var(--o10);
 }
 
-.menu-button:hover {
-  opacity: 1;
-  background: var(--background-mute);
-}
-
-.menu-items {
-  position: absolute;
-  right: 0;
-  margin-top: var(--space-xs);
-  background: var(--background-soft);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: var(--space-xs);
-  min-width: 160px;
-  z-index: 10;
-}
-
-.menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  color: black;
-  transition: all var(--transition-fast);
-}
-
-.menu-item:hover,
-.menu-item.active {
-  background: var(--background-mute);
-}
-
-.menu-item.delete {
-  color: var(--error-color);
-}
-
-.menu-item:disabled {
+.role-card__edit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: var(--background-mute);
+}
+
+.role-card__delete {
+  margin-top: 8px;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  color: var(--muted2);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.role-card__delete:hover {
+  color: var(--c-coral);
+}
+
+/* Create a custom role dashed card */
+.role-card-add {
+  background: transparent;
+  border: 1.5px dashed var(--o16);
+  border-radius: 18px;
+  padding: 24px;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted2);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.role-card-add:hover {
+  border-color: var(--accent-border);
+  color: var(--accent-ink);
+}
+
+.role-card-add__icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--o05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.role-card-add__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.role-card-add__desc {
+  font-size: 12.5px;
+  color: var(--muted2);
+  text-align: center;
+  max-width: 200px;
 }
 
 .loading {
@@ -389,17 +456,7 @@ onMounted(() => {
 }
 
 .error-message {
-  color: var(--text-danger);
-  margin-bottom: var(--space-lg);
-}
-
-.empty-state {
-  text-align: center;
-  padding: var(--space-xl);
-  opacity: 0.7;
-}
-
-.empty-content {
+  color: var(--c-coral);
   margin-bottom: var(--space-lg);
 }
 
@@ -419,37 +476,18 @@ onMounted(() => {
   margin-top: var(--space-xl);
 }
 
-/* Add visual indicator for default role */
-.role-card[data-default="true"] {
-  border: 2px solid var(--primary-color);
-}
-
-.role-card[data-default="true"]::after {
-  content: 'Default';
-  position: absolute;
-  top: var(--space-sm);
-  right: var(--space-lg);
-  font-size: var(--text-xs);
-  padding: 2px var(--space-sm);
-  background: var(--background-soft);
-  color: var(--primary-color);
-  border: 1px solid var(--primary-color);
-  border-radius: var(--radius-full);
-  font-weight: 500;
-}
-
 /* Roles Locked Overlay Styles */
 .roles-locked-overlay {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 50vh;
-  background: var(--background-soft);
-  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border-radius: 20px;
   margin: var(--space-md) 0;
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--o08);
 }
 
 .roles-locked-overlay::before {
@@ -459,8 +497,8 @@ onMounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
-    radial-gradient(circle at 20% 80%, rgba(243, 70, 17, 0.05) 0%, transparent 50%),
+  background:
+    radial-gradient(circle at 20% 80%, rgba(201, 242, 78, 0.04) 0%, transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
   pointer-events: none;
 }
@@ -487,7 +525,8 @@ onMounted(() => {
   justify-content: center;
   width: 64px;
   height: 64px;
-  background: var(--primary-color);
+  background: rgba(201, 242, 78, 0.15);
+  border: 1px solid rgba(201, 242, 78, 0.3);
   border-radius: 50%;
   box-shadow: var(--shadow-lg);
   margin-bottom: var(--space-sm);
@@ -495,13 +534,14 @@ onMounted(() => {
 
 .locked-icon {
   font-size: 1.5rem;
-  color: white;
+  color: var(--accent-ink);
 }
 
 .locked-content h2 {
   font-size: var(--text-3xl);
-  font-weight: 600;
-  color: var(--text-primary);
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--text);
   margin-bottom: var(--space-sm);
 }
 
@@ -509,13 +549,13 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  background: var(--primary-color);
-  color: white;
+  background: rgba(201, 242, 78, 0.12);
+  color: var(--accent-ink);
+  border: 1px solid rgba(201, 242, 78, 0.3);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
 }
 
 .badge-icon {
@@ -524,7 +564,7 @@ onMounted(() => {
 
 .locked-description {
   font-size: var(--text-lg);
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.6;
   margin-bottom: var(--space-lg);
   max-width: 600px;
@@ -544,18 +584,17 @@ onMounted(() => {
   align-items: flex-start;
   gap: var(--space-sm);
   padding: var(--space-lg);
-  background: var(--background-color);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
+  background: var(--o05);
+  border-radius: 14px;
+  border: 1px solid var(--o10);
   text-align: left;
   transition: all var(--transition-normal);
 }
 
 .feature-item:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-color-hover);
+  background: var(--o08);
+  border-color: var(--o16);
 }
 
 .feature-icon-wrapper {
@@ -564,14 +603,14 @@ onMounted(() => {
   justify-content: center;
   width: 40px;
   height: 40px;
-  background: var(--success-color);
+  background: rgba(201, 242, 78, 0.12);
   border-radius: var(--radius-md);
   flex-shrink: 0;
 }
 
 .feature-icon {
   font-size: 1rem;
-  color: white;
+  color: var(--accent-ink);
 }
 
 .feature-content {
@@ -583,12 +622,12 @@ onMounted(() => {
 .feature-title {
   font-size: var(--text-base);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .feature-desc {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--muted);
   line-height: 1.4;
 }
 
@@ -600,44 +639,28 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--primary-color);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
   border: none;
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg) var(--space-xl);
+  border-radius: 14px;
+  padding: var(--space-md) var(--space-xl);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all var(--transition-normal);
-  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
 }
 
-.upgrade-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left 0.5s;
-}
-
-.upgrade-button:hover::before {
-  left: 100%;
-}
-
 .upgrade-button:hover {
-  background: var(--primary-dark);
+  opacity: 0.88;
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 8px 24px rgba(201, 242, 78, 0.25);
 }
 
 .upgrade-icon {
   font-size: 1rem;
-  color: #ffd700;
+  color: var(--on-accent-solid);
 }
 
 .arrow-icon {

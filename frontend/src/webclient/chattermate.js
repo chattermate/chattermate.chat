@@ -770,8 +770,10 @@ window.ChatterMate;
     button.id = config.buttonId
     button.innerHTML = `
       <svg class="chat-icon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z" fill="white"/>
-        <path d="M36 27C36 27 32.5 26 30 26C27.5 26 24 27 24 31C24 35 27.5 36 30 36C32.5 36 36 35 36 35V33C36 33 33 34 31.5 34C30 34 27 33 27 31C27 29 30 28 31.5 28C33 28 36 29 36 29V27Z" fill="${config.chatBubbleColor}"/>
+        <rect x="15" y="15" width="30" height="30" rx="8" fill="white"/>
+        <circle cx="23" cy="30" r="3" fill="#0B0C10"/>
+        <circle cx="30" cy="30" r="3" fill="#0B0C10"/>
+        <circle cx="37" cy="30" r="3" fill="#0B0C10"/>
       </svg>
       <svg class="close-icon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;">
         <path d="M20 20L40 40M40 20L20 40" stroke="white" stroke-width="3" stroke-linecap="round"/>
@@ -895,7 +897,8 @@ window.ChatterMate;
       logoSvg.setAttribute('viewBox', '0 0 60 60');
       logoSvg.setAttribute('fill', 'none');
       const logoPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      logoPath.setAttribute('d', 'M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z');
+      logoPath.setAttribute('d', 'M18 12 H42 A6 6 0 0 1 48 18 V42 A6 6 0 0 1 42 48 H18 A6 6 0 0 1 12 42 V18 A6 6 0 0 1 18 12 Z M17 30 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M26 30 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M35 30 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z');
+      logoPath.setAttribute('fill-rule', 'evenodd');
       logoPath.setAttribute('fill', 'currentColor');
       logoPath.setAttribute('opacity', '0.6');
       logoSvg.appendChild(logoPath);

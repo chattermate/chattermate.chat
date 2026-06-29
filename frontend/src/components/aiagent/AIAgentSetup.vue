@@ -23,6 +23,7 @@ import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 // Lazy load components
 const AISetup = defineAsyncComponent(() => import('../ai/AISetup.vue'))
 const AgentList = defineAsyncComponent(() => import('../agent/AgentList.vue'))
+const AIAgentOnboarding = defineAsyncComponent(() => import('./onboarding/AIAgentOnboarding.vue'))
 
 import { useAgentStorage } from '@/utils/storage'
 import { aiService } from '@/services/ai'
@@ -34,6 +35,8 @@ const agentStorage = useAgentStorage()
 const error = ref<string | null>(null)
 const isLoading = ref(false)
 const isAISetupMode = ref(false)
+// First-run guided setup: shown when the org has no agents (and didn't skip)
+const showOnboarding = ref(false)
 
 const props = defineProps<{
     model: string
@@ -82,10 +85,35 @@ const handleFullscreenToggle = (isFullscreen: boolean) => {
     emit('toggle-fullscreen', isFullscreen)
 }
 
+// Onboarding wizard finished (or was skipped) — refresh and show the list
+const handleOnboardingComplete = async () => {
+    showOnboarding.value = false
+    isAISetupMode.value = false
+    await fetchAgents()
+}
+
+const resumeOnboarding = () => {
+    showOnboarding.value = true
+}
+
 onMounted(async () => {
-    const agents = agentStorage.getAgents()
-    if (agents.length === 0) {
-        await checkAIConfig()
+    try {
+        isLoading.value = true
+        // Authoritative check: does this org have any agents yet?
+        const agents = await agentService.getOrganizationAgents()
+        if (agents.length > 0) {
+            agentStorage.setAgents(agents)
+            return
+        }
+        // No agents yet → always show the guided first-agent setup. "Skip for
+        // now" only dismisses it for the current view; it returns on reload /
+        // re-entry until the first agent actually exists.
+        showOnboarding.value = true
+    } catch (err) {
+        error.value = 'Failed to load agents'
+        console.error(err)
+    } finally {
+        isLoading.value = false
     }
 })
 </script>
@@ -101,6 +129,10 @@ onMounted(async () => {
                 {{ error }}
             </div>
 
+            <div v-else-if="showOnboarding" class="onboarding-container">
+                <AIAgentOnboarding @complete="handleOnboardingComplete" />
+            </div>
+
             <div v-else-if="isAISetupMode" class="setup-messages">
                 <div class="ai-provider-setup">
                     <h3>Configure AI Provider</h3>
@@ -110,7 +142,7 @@ onMounted(async () => {
                 </div>
             </div>
             <div v-else class="agent-list-container">
-                <AgentList @toggle-fullscreen="handleFullscreenToggle" />
+                <AgentList @toggle-fullscreen="handleFullscreenToggle" @resume-onboarding="resumeOnboarding" />
             </div>
         </div>
     </div>
@@ -122,14 +154,11 @@ onMounted(async () => {
     flex-direction: column;
     height: 100%;
     margin: 0 auto;
-    background: #fff;
-    border-radius: 24px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    background: transparent;
 }
 
 .messages {
     flex: 1;
-    padding: var(--space-xl);
     background: transparent;
     display: flex;
     flex-direction: column;
@@ -138,13 +167,15 @@ onMounted(async () => {
 
 .ai-provider-setup {
     margin-bottom: var(--space-xl);
+    padding: var(--space-xl);
 }
 
 .ai-provider-setup h3 {
     margin-bottom: var(--space-lg);
-    color: var(--text-primary);
+    color: var(--text);
+    font-family: var(--font-display);
     font-size: var(--text-2xl);
-    font-weight: 600;
+    font-weight: 700;
     text-align: center;
 }
 
@@ -154,7 +185,7 @@ onMounted(async () => {
 
 .error-message {
     padding: var(--space-md);
-    background: var(--secondary-color);
+    background: var(--error-bg);
     color: var(--error-color);
     border-radius: var(--radius-lg);
     text-align: center;
@@ -171,8 +202,8 @@ onMounted(async () => {
 .loader {
     width: 48px;
     height: 48px;
-    border: 5px solid var(--border-color);
-    border-bottom-color: var(--primary-color);
+    border: 3px solid var(--o10);
+    border-bottom-color: var(--accent-ink);
     border-radius: 50%;
     animation: rotation 1s linear infinite;
 }

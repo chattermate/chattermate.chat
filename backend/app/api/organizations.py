@@ -38,9 +38,9 @@ from app.core.logger import get_logger
 from app.models.role import Role
 from app.models.permission import Permission
 from app.repositories.organization import OrganizationRepository
-from app.repositories.agent import AgentRepository
-from app.core.default_templates import DEFAULT_TEMPLATES
-from app.models.agent import AgentType
+from app.models.agent import Agent
+from app.models.session_to_agent import SessionToAgent
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from app.core.cors import update_cors_middleware
 from app.core.application import app  # Import the FastAPI app instance from the new location
@@ -80,30 +80,9 @@ async def create_organization(
             business_hours=org_data.business_hours
         )
 
-        # Create only the default Customer Support agent and make it active
-        template_repo = AgentRepository(db)
-
-        try:
-            default_template = DEFAULT_TEMPLATES[AgentType.CUSTOMER_SUPPORT]
-            template_repo.create_agent(
-                name=default_template["name"],
-                description=default_template["description"],
-                agent_type=AgentType.CUSTOMER_SUPPORT,
-                instructions=default_template["instructions"],
-                tools=default_template["tools"],
-                org_id=organization.id,
-                is_default=True,
-                is_active=True  # Make the default agent active
-            )
-            logger.info(f"Created default active Customer Support agent for org {organization.id}")
-        except Exception as template_error:
-            logger.error(f"Failed to create default agent for org {
-                         organization.id}: {str(template_error)}")
-            db.rollback()  # Rollback transaction on error
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create default agent: {str(template_error)}"
-            )
+        # Note: no default agent is created here. New orgs start with zero
+        # agents so the guided onboarding flow (Create → Teach → Test → Launch)
+        # is what creates the first agent.
 
         # Get or create default permissions
         permissions = {}
@@ -617,11 +596,74 @@ async def get_organization_stats(
             detail="Organization not found"
         )
 
+    # --- Members ---
+    total_users = db.query(User).filter(User.organization_id == org_id).count()
+    active_users = db.query(User).filter(
+        User.organization_id == org_id,
+        User.is_active == True
+    ).count()
+    # Count admins consistently with the team-overview endpoint (users.py):
+    # a user is an admin if their role grants manage_organization/super_admin,
+    # or the role is literally named "Admin". A plain Role.name == "Admin"
+    # match misses custom/renamed roles that still hold admin permissions.
+    org_users = db.query(User).filter(User.organization_id == org_id).all()
+    admins = sum(
+        1
+        for u in org_users
+        if u.role and (
+            {"manage_organization", "super_admin"} & {p.name for p in (u.role.permissions or [])}
+            or u.role.name == "Admin"
+        )
+    )
+    members_agents = total_users - admins
+
+    # --- Active now (online) ---
+    active_now = db.query(User).filter(
+        User.organization_id == org_id,
+        User.is_online == True
+    ).count()
+
+    # --- AI agents (live vs draft) ---
+    agents_total = db.query(Agent).filter(Agent.organization_id == org_id).count()
+    agents_live = db.query(Agent).filter(
+        Agent.organization_id == org_id,
+        Agent.is_active == True
+    ).count()
+    agents_draft = agents_total - agents_live
+
+    # --- Conversations (last 30d vs previous 30d) ---
+    now = datetime.now(timezone.utc)
+    d30 = now - timedelta(days=30)
+    d60 = now - timedelta(days=60)
+    conversations_30d = db.query(SessionToAgent).filter(
+        SessionToAgent.organization_id == org_id,
+        SessionToAgent.assigned_at >= d30
+    ).count()
+    conversations_prev_30d = db.query(SessionToAgent).filter(
+        SessionToAgent.organization_id == org_id,
+        SessionToAgent.assigned_at >= d60,
+        SessionToAgent.assigned_at < d30
+    ).count()
+    if conversations_prev_30d:
+        conversations_change_pct = round(
+            (conversations_30d - conversations_prev_30d) / conversations_prev_30d * 100
+        )
+    else:
+        conversations_change_pct = 100 if conversations_30d else 0
+
     return {
-        "total_users": db.query(User).filter(User.organization_id == org_id).count(),
-        "active_users": db.query(User).filter(
-            User.organization_id == org_id,
-            User.is_active == True
-        ).count(),
-        "settings": org.settings
+        "total_users": total_users,
+        "active_users": active_users,
+        "settings": org.settings,
+        # Design KPI strip
+        "members_total": total_users,
+        "members_admins": admins,
+        "members_agents": members_agents,
+        "active_now": active_now,
+        "agents_total": agents_total,
+        "agents_live": agents_live,
+        "agents_draft": agents_draft,
+        "conversations_30d": conversations_30d,
+        "conversations_prev_30d": conversations_prev_30d,
+        "conversations_change_pct": conversations_change_pct,
     }

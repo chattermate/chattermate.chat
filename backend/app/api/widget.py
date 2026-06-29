@@ -263,13 +263,19 @@ async def get_widget_data(
     agent_has_workflow = bool(agent.use_workflow and agent.active_workflow_id)
     
     # Check if agent has ASK_ANYTHING chat style
-    is_ask_anything_style = (agent.customization and 
-                           agent.customization.chat_style and 
+    is_ask_anything_style = (agent.customization and
+                           agent.customization.chat_style and
                            agent.customization.chat_style.value == "ASK_ANYTHING")
-    
-    # For workflow agents or ASK_ANYTHING style, create customer with blank email if no customer exists
-    # For regular non-authenticated agents, require email before creating customer
-    should_create_customer = (customer_id == "None" or customer_id is None) and (email or agent_has_workflow or is_ask_anything_style)
+
+    # Email is optional unless the agent explicitly opts into collecting it before chat.
+    # When not collecting email we bypass the gate (anonymous customer + token), like
+    # ASK_ANYTHING / workflow agents already do. NOTE: this runs AFTER the require_token_auth
+    # 401 check above, so token-protected widgets are unaffected.
+    email_bypass = not bool(agent.customization and getattr(agent.customization, 'collect_email', False))
+
+    # For workflow agents, ASK_ANYTHING style, or email-optional agents, create a customer with a
+    # blank email if none exists. Only email-collecting regular agents require email up front.
+    should_create_customer = (customer_id == "None" or customer_id is None) and (email or agent_has_workflow or is_ask_anything_style or email_bypass)
 
     logger.debug(f"should_create_customer={should_create_customer}, customer_id={customer_id}, require_token_auth={require_token_auth}")
     
@@ -341,8 +347,8 @@ async def get_widget_data(
             "token": new_token
         }
     else:
-        # If workflow is enabled or ASK_ANYTHING style and no customer_id, create anonymous customer
-        if (customer_id == "None" or customer_id is None) and (agent_has_workflow or is_ask_anything_style):
+        # If workflow / ASK_ANYTHING / email-optional and no customer_id, create anonymous customer
+        if (customer_id == "None" or customer_id is None) and (agent_has_workflow or is_ask_anything_style or email_bypass):
             # Generate unique email with timestamp for workflow agents and ASK_ANYTHING style
             timestamp = int(time.time() * 1000)  # milliseconds for better uniqueness
             anonymous_email = f"{timestamp}@noemail.com"

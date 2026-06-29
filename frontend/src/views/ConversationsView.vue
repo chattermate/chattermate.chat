@@ -340,11 +340,11 @@ const handleChatClosed = (_sessionId?: string) => {
 .main-content {
   display: grid;
   grid-template-columns: 1fr 350px;
-  height: calc(100vh - 80px); /* Adjust for page header only */
+  height: calc(100vh - 80px);
   width: 100%;
   overflow: hidden;
   position: relative;
-  background: var(--background-color);
+  background: var(--bg);
   transition: all 0.3s ease;
 }
 
@@ -353,9 +353,9 @@ const handleChatClosed = (_sessionId?: string) => {
 }
 
 .page-header {
-  padding: var(--space-lg);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-color);
+  padding: 14px var(--space-lg);
+  border-bottom: 1px solid var(--o08);
+  background: var(--bg2);
 }
 
 .header-content {
@@ -366,9 +366,11 @@ const handleChatClosed = (_sessionId?: string) => {
 
 .header-content h1 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .header-actions {
@@ -382,40 +384,36 @@ const handleChatClosed = (_sessionId?: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--background-color);
-  color: var(--text-muted);
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--o10);
+  border-radius: 10px;
+  background: var(--o05);
+  color: var(--muted);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .info-toggle-btn:hover {
-  background: var(--background-soft);
-  color: var(--text-primary);
-  border-color: var(--primary-color-soft);
+  background: var(--o10);
+  color: var(--text);
 }
 
 .info-toggle-btn.active {
-  background: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
+  background: rgba(201,242,78,.12);
+  color: var(--accent-ink);
+  border-color: rgba(201,242,78,.3);
 }
 
 .info-toggle-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
-  background: var(--background-color);
-  color: var(--text-muted);
-  border-color: var(--border-color);
 }
 
 .info-toggle-btn:disabled:hover {
-  background: var(--background-color);
-  color: var(--text-muted);
-  border-color: var(--border-color);
+  background: var(--o05);
+  color: var(--muted);
+  border-color: var(--o10);
 }
 
 /* Responsive design */

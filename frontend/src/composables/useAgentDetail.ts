@@ -104,6 +104,15 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
       const updatedCustomization = await agentService.uploadAgentPhoto(agentData.value.id, croppedFile)
       agentData.value.customization = updatedCustomization
 
+      // A real picture was just uploaded — turn off the aurora orb if it was on.
+      const meta = updatedCustomization?.customization_metadata as Record<string, unknown> | undefined
+      if (meta?.avatar_style === 'orb') {
+        agentData.value.customization = await agentService.updateCustomization(agentData.value.id, {
+          ...updatedCustomization,
+          customization_metadata: { ...meta, avatar_style: 'photo' },
+        })
+      }
+
       showCropper.value = false
       cropperImage.value = ''
     } catch (error) {
@@ -117,6 +126,23 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
   const cancelCrop = () => {
     showCropper.value = false
     cropperImage.value = ''
+  }
+
+  // Apply a bundled preset avatar (fetched into a File) via the photo endpoint
+  const applyPresetAvatar = async (url: string) => {
+    try {
+      isUploading.value = true
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const file = new File([blob], 'profile.png', { type: blob.type || 'image/png' })
+      const updatedCustomization = await agentService.uploadAgentPhoto(agentData.value.id, file)
+      agentData.value.customization = updatedCustomization
+    } catch (error) {
+      console.error('Failed to apply preset avatar:', error)
+      alert('Failed to update photo')
+    } finally {
+      isUploading.value = false
+    }
   }
 
   const handleClose = (cleanup: () => void) => {
@@ -316,6 +342,7 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
     handleFileUpload,
     handleCrop,
     cancelCrop,
+    applyPresetAvatar,
     handleClose,
     initializeWidget,
     copyWidgetCode,

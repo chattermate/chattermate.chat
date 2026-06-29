@@ -191,6 +191,12 @@ class ChatDetailResponse(BaseModel):
             datetime: lambda v: v.isoformat()
         }
 
+class SourceRef(BaseModel):
+    """A knowledge-base source used to ground an answer (for citation chips)."""
+    name: str
+    type: str
+
+
 class ChatResponse(BaseModel):
     message: str = Field(description="The response from the agent. IMPORTANT: When shopify_output is present, DO NOT include product images, URLs, prices, or product details in this field - all product info should ONLY go in the shopify_output field. Keep the message conversational.")
     transfer_to_human: bool = Field(description="Whether to transfer the conversation to a human")
@@ -212,6 +218,14 @@ class ChatResponse(BaseModel):
 
     # Shopify Output Field - Uses LLM model (no products field)
     shopify_output: Optional[ShopifyOutputDataLLM] = Field(default=None, description="Shopify product cache info. ONLY include: product_cache_key, product_ids, shop_domain, total_count. DO NOT include products array.")
+
+    # Knowledge-base citations (system-managed). The LLM must NOT populate this; it is
+    # filled automatically from the knowledge search tool after the response is generated.
+    sources: Optional[List[SourceRef]] = Field(default=None, description="System-managed knowledge citations. Do not populate — set automatically.")
+
+    # System-managed: set when a handoff/ticket happens so the widget shows the contact form
+    # (even when no agents are available and transfer_to_human ends up False).
+    request_contact: Optional[bool] = Field(default=False, description="System-managed. Do not populate — set automatically on handoff.")
 
     class Config:
         from_attributes = True

@@ -34,30 +34,24 @@ defineEmits<{
 
 <style scoped>
 .toggle-btn {
-    position: absolute;
-    right: -12px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    background: #ffffff;
-    border: 1px solid var(--border-color);
-    border-radius: 50%;
-    color: var(--text-muted);
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    background: var(--o05);
+    border: 1px solid var(--o10);
+    border-radius: 7px;
+    color: var(--muted);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background-color var(--transition-fast), color var(--transition-fast),
         border-color var(--transition-fast), box-shadow var(--transition-fast);
-    box-shadow: var(--shadow-sm);
-    z-index: 10;
 }
 
 .toggle-btn:hover {
-    background: var(--primary-soft);
-    color: var(--primary-dark);
-    border-color: var(--primary-color);
+    background: var(--o10);
+    color: var(--text2);
 }
 
 .toggle-btn:focus-visible {
@@ -66,7 +60,7 @@ defineEmits<{
 }
 
 .toggle-icon {
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1;
 }
 </style>

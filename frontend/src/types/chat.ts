@@ -33,6 +33,9 @@ export interface Message {
       image?: ShopifyProductImage // Reuse existing ShopifyProductImage type
     }>
   }
+
+  // Knowledge-base citations used to ground this message (rendered as source chips)
+  sources?: Array<{ name: string; type: string }>
 }
 
 export interface ShopifyProductImage {
