@@ -10,6 +10,8 @@ export interface Message {
   message_type: string
   created_at: string
   session_id: string
+  // Live replies are revealed client-side with a typewriter effect.
+  stream?: boolean
   attributes?: Record<string, any>
   user_name?: string
   agent_name?: string

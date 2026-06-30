@@ -42,7 +42,11 @@ class AgentCustomizationResponse(BaseModel):
     widget_position: Optional[str] = "FLOATING"
     welcome_title: Optional[str] = None
     welcome_subtitle: Optional[str] = None
+    welcome_message: Optional[str] = None
     chat_initiation_messages: Optional[List[str]] = None
+    quick_actions: Optional[List[str]] = None
+    show_citations: Optional[bool] = None
+    collect_email: Optional[bool] = None
 
     @property
     def photo_url_signed(self) -> Optional[str]:

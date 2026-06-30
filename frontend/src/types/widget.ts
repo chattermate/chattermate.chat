@@ -35,7 +35,9 @@ export interface AgentCustomization {
     widget_position?: WidgetPosition;
     welcome_title?: string;
     welcome_subtitle?: string;
+    welcome_message?: string;
     chat_initiation_messages?: string[];
+    quick_actions?: string[];
 }
 
 

@@ -105,6 +105,7 @@ export function useWidgetSocket() {
                     created_at: new Date().toISOString(),
                     session_id: '',
                     agent_name: data.agent_name,
+                    stream: true, // live reply → client-side typewriter reveal
                     attributes: {
                         end_chat: data.end_chat,
                         end_chat_reason: data.end_chat_reason,
@@ -151,6 +152,7 @@ export function useWidgetSocket() {
                     created_at: new Date().toISOString(),
                     session_id: '',
                     agent_name: data.agent_name,
+                    stream: true, // live reply → client-side typewriter reveal
                     // Knowledge-base citations (display gated by show_citations in the widget)
                     sources: Array.isArray(data.sources) && data.sources.length ? data.sources : undefined,
                     attributes: {

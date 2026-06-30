@@ -43,6 +43,7 @@ class ChatStyle(str, enum.Enum):
     PLAYFUL = "PLAYFUL"
     CALM_MINT = "CALM_MINT"
     AURORA = "AURORA"
+    SUNRISE = "SUNRISE"
 
 
 class WidgetPosition(str, enum.Enum):
@@ -69,7 +70,11 @@ class AgentCustomization(Base):
     widget_position = Column(SQLEnum(WidgetPosition), default=WidgetPosition.FLOATING, nullable=False)
     welcome_title = Column(String, nullable=True)
     welcome_subtitle = Column(String, nullable=True)
+    # First in-conversation agent bubble shown on open (distinct from welcome_title/subtitle)
+    welcome_message = Column(Text, nullable=True)
     chat_initiation_messages = Column(JSON, nullable=True)
+    # Predefined quick-action buttons shown beneath the welcome message (list of label strings)
+    quick_actions = Column(JSON, nullable=True)
     show_citations = Column(Boolean, default=False, nullable=False)
     # Optionally require the visitor's email before chatting (off by default)
     collect_email = Column(Boolean, default=False, nullable=False)

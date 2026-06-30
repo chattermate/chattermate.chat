@@ -30,6 +30,9 @@ import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
+import { useTypewriter } from '../composables/useTypewriter'
+import { useUnreadBadge } from '../composables/useUnreadBadge'
+import { themeCssVars } from './widget-theme'
 import { useCurrency } from '../composables/useCurrency'
 import { formatDistanceToNow } from 'date-fns'
 // Add marked configuration before the props definition
@@ -101,6 +104,13 @@ const {
     setToken,
     setWidgetId
 } = useWidgetSocket()
+
+// Client-side typewriter reveal for live agent/bot replies; keep the view pinned
+// to the bottom as text grows.
+const { displayText, isStreaming } = useTypewriter(messages, () => nextTick(() => scrollToBottom()))
+
+// Report unread agent messages (received while minimized) to the embedder badge.
+useUnreadBadge(messages)
 
 const newMessage = ref('')
 const isExpanded = ref(true)
@@ -240,7 +250,7 @@ const cleanupNativeEventListeners = () => {
 // Inputs inside a rendered form (contact/handoff/workflow forms) manage their own state —
 // the message-box native listeners must never hijack them (would steal focus + the value).
 const isFormField = (el: EventTarget | null) =>
-    !!(el && (el as HTMLElement).closest && (el as HTMLElement).closest('.form-message, .form-fullscreen'))
+    !!(el && (el as HTMLElement).closest && (el as HTMLElement).closest('.form-message, .form-fullscreen, .cm-email-gate'))
 
 // Native input handler that bypasses Vue
 const handleNativeInput = (event: Event) => {
@@ -454,6 +464,18 @@ const sendMessage = async () => {
     setTimeout(() => {
         setupNativeEventListeners()
     }, 500)
+}
+
+// Send a predefined quick-action: reuse the normal send path with the label text.
+const sendQuickAction = (label: string) => {
+    if (!isMessageInputEnabled.value) return
+    newMessage.value = label
+    sendMessage()
+}
+
+// Ask the embedder to minimize the widget (reuses the launcher toggle on that side).
+const minimizeWidget = () => {
+    window.parent.postMessage({ type: 'WIDGET_MINIMIZE' }, '*')
 }
 
 // Handle enter key
@@ -1382,14 +1404,66 @@ const THEME_CLASS_MAP: Record<string, string> = {
     TERMINAL: 'theme-terminal',
     PLAYFUL: 'theme-playful',
     CALM_MINT: 'theme-calm',
+    SUNRISE: 'theme-sunrise',
 }
 const themeClass = computed(() => THEME_CLASS_MAP[customization.value.chat_style as string] || '')
+
+// Structural theme tokens (radius/glow/border/agent-surface) as CSS vars on the container.
+const themeVars = computed(() => themeCssVars(customization.value.chat_style as string))
+
+// Welcome message + quick actions shown on open (no history yet); they clear once
+// the visitor sends their first message.
+const quickActions = computed<string[]>(() =>
+    Array.isArray(customization.value.quick_actions)
+        ? customization.value.quick_actions.filter(a => !!a && a.trim().length > 0)
+        : []
+)
+const welcomeMessageText = computed(() => (customization.value.welcome_message || '').trim())
+const showWelcomeBlock = computed(() =>
+    !isAskAnythingStyle.value
+    && messages.value.length === 0
+    && !loadingHistory.value
+    && !showEmailGate.value
+    && (welcomeMessageText.value.length > 0 || quickActions.value.length > 0)
+)
 
 // Citations are shown only when explicitly enabled (off by default for now)
 const showCitations = computed(() => customization.value.show_citations === true)
 
 // Pre-chat email gate: only when the agent opts in (and never for the gate-less Ask AI layout)
 const shouldCollectEmail = computed(() => customization.value.collect_email === true && !isAskAnythingStyle.value)
+
+// Pre-chat email gate: when the agent collects email, show a small form first (like a
+// workflow step). The chat (welcome message + quick actions + input) only appears once a
+// valid email is submitted, so quick actions can never fire before the email is captured.
+const emailCollected = ref(false)
+const emailGateError = ref('')
+const submittingEmail = ref(false)
+const showEmailGate = computed(() =>
+    !hasStartedChat.value && shouldCollectEmail.value && !emailCollected.value)
+
+const submitEmailGate = async () => {
+    const email = emailInput.value.trim()
+    if (!email) {
+        emailGateError.value = 'Please enter your email address.'
+        return
+    }
+    if (!isValidEmail(email)) {
+        emailGateError.value = 'Please enter a valid email address.'
+        return
+    }
+    emailGateError.value = ''
+    submittingEmail.value = true
+    try {
+        // Submit the email to the backend (associates it + (re)connects the socket).
+        await checkAuthorization()
+        emailCollected.value = true
+    } catch {
+        emailGateError.value = 'Something went wrong. Please try again.'
+    } finally {
+        submittingEmail.value = false
+    }
+}
 
 const containerStyles = computed(() => {
     const baseStyles = {
@@ -1500,7 +1574,7 @@ const shouldShowWelcomeMessage = computed(() => {
             </button>
         </div>
     </div>
-    <div v-else-if="widgetId && !showAuthError" class="chat-container" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle, aurora: isAuroraStyle }, themeClass]" :style="{ ...shadowStyle, ...containerStyles, '--cm-accent': customization.accent_color || '#C9F24E' }">
+    <div v-else-if="widgetId && !showAuthError" class="chat-container" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle, aurora: isAuroraStyle }, themeClass]" :style="{ ...shadowStyle, ...containerStyles, ...themeVars, '--cm-accent': customization.accent_color || '#C9F24E' }">
         <!-- Loading State -->
         <div v-if="isInitializing" class="initializing-overlay">
             <div class="loading-spinner">
@@ -1806,9 +1880,15 @@ const shouldShowWelcomeMessage = computed(() => {
         <!-- Chat Panel (Only show when landing page, full screen form, and welcome message are not active) -->
         <div v-else-if="!shouldShowWelcomeMessage" class="chat-panel" :class="{ 'ask-anything-chat': isAskAnythingStyle }" :style="chatStyles" v-if="isExpanded">
             <div v-if="!isAskAnythingStyle" class="chat-header" :style="headerBorderStyles">
+                <div class="cm-header-sheen" :style="{ background: 'linear-gradient(90deg, transparent, ' + (customization.accent_color || '#C9F24E') + ', transparent)' }"></div>
                 <div class="header-content">
+                    <div
+                        v-if="!humanAgentPhotoUrl && (useOrbAvatar || !photoUrl)"
+                        class="header-orb"
+                        :style="orbStyle"
+                    ></div>
                     <img
-                        v-if="humanAgentPhotoUrl || photoUrl"
+                        v-else-if="humanAgentPhotoUrl || photoUrl"
                         :src="humanAgentPhotoUrl || photoUrl"
                         :alt="humanAgent.human_agent_name || agentName"
                         class="header-avatar"
@@ -1817,10 +1897,18 @@ const shouldShowWelcomeMessage = computed(() => {
                         <h3 :style="messageNameStyles">{{ humanAgent.human_agent_name || agentName }}</h3>
                         <div class="status">
                             <span class="status-indicator online"></span>
-                            <span class="status-text" :style="messageNameStyles">Online</span>
+                            <span class="status-text" :style="messageNameStyles">Online · replies instantly</span>
                         </div>
                     </div>
                 </div>
+                <button
+                    type="button"
+                    class="header-minimize"
+                    :style="messageNameStyles"
+                    title="Minimize"
+                    aria-label="Minimize chat"
+                    @click="minimizeWidget"
+                >&#8964;</button>
             </div>
             <div v-else class="ask-anything-top" :style="headerBorderStyles">
                 <div class="ask-anything-header">
@@ -1846,7 +1934,53 @@ const shouldShowWelcomeMessage = computed(() => {
                 </div>
             </div>
 
-            <div class="chat-messages" ref="messagesContainer">
+            <!-- Pre-chat email gate: collect a valid email before the conversation starts -->
+            <div v-if="showEmailGate" class="cm-email-gate" :style="chatStyles">
+                <div class="cm-email-gate-orb" :style="orbStyle"></div>
+                <h3 class="cm-email-gate-title">{{ customization.welcome_title || 'Before we start' }}</h3>
+                <p class="cm-email-gate-text">Enter your email and we'll continue the chat.</p>
+                <input
+                    v-model="emailInput"
+                    type="email"
+                    inputmode="email"
+                    autocomplete="email"
+                    placeholder="you@example.com"
+                    class="cm-email-gate-input"
+                    :class="{ invalid: !!emailGateError }"
+                    :disabled="submittingEmail"
+                    @keyup.enter="submitEmailGate"
+                    @input="emailGateError = ''"
+                >
+                <p v-if="emailGateError" class="cm-email-gate-error">{{ emailGateError }}</p>
+                <button
+                    type="button"
+                    class="cm-email-gate-btn"
+                    :style="userBubbleStyles"
+                    :disabled="submittingEmail"
+                    @click="submitEmailGate"
+                >{{ submittingEmail ? 'Please wait…' : 'Continue to chat' }}</button>
+            </div>
+
+            <div v-show="!showEmailGate" class="chat-messages" ref="messagesContainer">
+                <!-- Welcome message + quick actions on open (cleared after the first send) -->
+                <div v-if="showWelcomeBlock" class="cm-welcome-block">
+                    <div v-if="welcomeMessageText" class="message agent-message cm-welcome-row">
+                        <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
+                        <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
+                        <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ welcomeMessageText }}</div>
+                    </div>
+                    <div v-if="quickActions.length" class="cm-quick-actions">
+                        <button
+                            v-for="action in quickActions"
+                            :key="action"
+                            type="button"
+                            class="cm-quick-action"
+                            :disabled="!isMessageInputEnabled"
+                            @click="sendQuickAction(action)"
+                        >{{ action }}</button>
+                    </div>
+                </div>
+
                 <template v-for="(message, index) in messages" :key="index">
                     <div
                         :class="[
@@ -2157,7 +2291,10 @@ const shouldShowWelcomeMessage = computed(() => {
                                 </div>
                             </template>
                             <template v-else>
-                                <div v-html="renderMarkdown(message.message)"></div>
+                                <!-- Live replies reveal char-by-char as plain text (XSS-safe) with a
+                                     caret; once finished they render as full markdown. -->
+                                <div v-if="isStreaming(index)" class="message-streaming">{{ displayText(index, message.message) }}<span class="cm-caret"></span></div>
+                                <div v-else v-html="renderMarkdown(message.message)"></div>
 
                                 <!-- Display attachments if present -->
                                 <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
@@ -2249,21 +2386,8 @@ const shouldShowWelcomeMessage = computed(() => {
                 </div>
             </div>
 
-            <!-- Chat Input Section (Hidden when conversation is ended in workflow) -->
-            <div v-if="!shouldShowNewConversationOption" class="chat-input" :class="{ 'ask-anything-input': isAskAnythingStyle }" :style="agentBubbleStyles">
-                <div class="email-input" v-if="!hasStartedChat && !hasConversationToken && shouldCollectEmail">
-                    <input
-                        v-model="emailInput"
-                        type="email"
-                        placeholder="Enter your email address to begin"
-                        :disabled="loading || connectionStatus !== 'connected'"
-                        :class="{
-                            'invalid': emailInput.trim() && !isValidEmail(emailInput.trim()),
-                            'disabled': connectionStatus !== 'connected'
-                        }"
-                    >
-                </div>
-
+            <!-- Chat Input Section (hidden during the email gate and workflow end) -->
+            <div v-if="!shouldShowNewConversationOption && !showEmailGate" class="chat-input" :class="{ 'ask-anything-input': isAskAnythingStyle }" :style="agentBubbleStyles">
                 <!-- File upload input (hidden) -->
                 <input
                     ref="fileInputRef"
@@ -2373,7 +2497,7 @@ const shouldShowWelcomeMessage = computed(() => {
             </div>
 
             <!-- New Conversation Section (Shown when conversation is ended in workflow) -->
-            <div v-else class="new-conversation-section" :style="agentBubbleStyles">
+            <div v-else-if="shouldShowNewConversationOption && !showEmailGate" class="new-conversation-section" :style="agentBubbleStyles">
                 <div class="conversation-ended-message">
                     <p class="ended-text">This chat has ended.</p>
                     <button
@@ -2470,6 +2594,23 @@ const shouldShowWelcomeMessage = computed(() => {
     box-shadow: none;
     /* Open/close transition used when container toggles in embed */
     transition: opacity 220ms ease, transform 220ms ease;
+    /* Body/UI typography (design comp). A custom font_family, when set, is applied
+       inline by the font loader and overrides this for body text only. */
+    font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ===== Typography roles (design comp) =====
+   Display (agent name / welcome title): Space Grotesk
+   Labels, citations, system pills: JetBrains Mono */
+.chat-container .header-info h3,
+.chat-container .welcome-title {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+.chat-container .citation-label,
+.chat-container .citation-chip,
+.chat-container .reading-label,
+.chat-container .system-message .message-bubble {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .chat-container::after {
@@ -2506,12 +2647,60 @@ const shouldShowWelcomeMessage = computed(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: relative;
+}
+
+/* Header orb avatar (when no photo) + animated accent sheen */
+.header-orb {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.cm-header-sheen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-size: 200% 100%;
+    animation: cm-sheen 4.5s linear infinite;
+    opacity: 0.75;
+    pointer-events: none;
+}
+@keyframes cm-sheen {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cm-header-sheen { animation: none !important; }
 }
 
 .header-content {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
+}
+
+/* Minimize (chevron) button */
+.header-minimize {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    border: none;
+    background: rgba(127, 127, 127, 0.12);
+    color: inherit;
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+}
+.header-minimize:hover {
+    background: rgba(127, 127, 127, 0.22);
 }
 
 /* Header Menu Styles */
@@ -2753,6 +2942,7 @@ const shouldShowWelcomeMessage = computed(() => {
 .email-input input,
 .message-input input {
     width: 100%;
+    box-sizing: border-box;
     padding: var(--space-sm) var(--space-md);
     /* Border tinted with the agent's accent so it matches each theme (not bright white). */
     border: 1.5px solid rgba(127, 127, 127, 0.3);
@@ -3228,12 +3418,158 @@ const shouldShowWelcomeMessage = computed(() => {
     from { opacity: 0; transform: translateY(10px) scale(0.99); }
     to { opacity: 1; transform: none; }
 }
+
+/* Streaming typewriter: partial text + blinking caret while a reply reveals. */
+.message-streaming {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.cm-caret {
+    display: inline-block;
+    width: 6px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: -0.15em;
+    background: var(--cm-accent, currentColor);
+    animation: cm-blink 1s steps(1) infinite;
+}
+@keyframes cm-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+/* ===== Welcome message + quick actions (shown on open) ===== */
+.cm-welcome-block {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: cm-msg-in 0.4s ease both;
+}
+.cm-welcome-row {
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+}
+.cm-welcome-orb,
+.cm-welcome-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.cm-welcome-avatar { object-fit: cover; }
+.cm-welcome-bubble { max-width: 84%; }
+.cm-quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-left: 37px; /* align under the bubble, past the 28px orb + 9px gap */
+}
+.cm-quick-action {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 66%, transparent);
+    background: color-mix(in srgb, var(--cm-accent, #C9F24E) 18%, transparent);
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.cm-quick-action:hover:not(:disabled) {
+    background: var(--cm-accent, #C9F24E);
+    color: #0B0C10;
+    border-color: var(--cm-accent, #C9F24E);
+}
+.cm-quick-action:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+/* ===== Pre-chat email gate ===== */
+.cm-email-gate {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    padding: 24px 22px;
+    animation: cm-msg-in 0.4s ease both;
+}
+.cm-email-gate-orb {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    margin-bottom: 4px;
+}
+.cm-email-gate-title {
+    margin: 0;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+.cm-email-gate-text {
+    margin: 0 0 6px;
+    font-size: 0.85rem;
+    opacity: 0.7;
+    max-width: 240px;
+}
+.cm-email-gate-input {
+    width: 100%;
+    max-width: 280px;
+    box-sizing: border-box;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-lg);
+    border: 1.5px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent);
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    color: inherit;
+    font: inherit;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cm-email-gate-input::placeholder { color: currentColor; opacity: 0.5; }
+.cm-email-gate-input:focus {
+    border-color: var(--cm-accent, #C9F24E);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--cm-accent, #C9F24E) 22%, transparent);
+}
+.cm-email-gate-input.invalid {
+    border-color: var(--error-color, #e5484d);
+}
+.cm-email-gate-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--error-color, #e5484d);
+}
+.cm-email-gate-btn {
+    margin-top: 6px;
+    padding: 10px 22px;
+    border: none;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.cm-email-gate-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+.cm-email-gate-btn:not(:disabled):hover {
+    transform: translateY(-1px);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .chat-messages .message,
     .chat-panel,
     .citation-chips,
     .reading-bars span,
+    .cm-caret,
     .status-indicator.online { animation: none !important; }
+    .cm-caret { display: none; }
 }
 
 /* ========================================================== */
@@ -3289,6 +3625,17 @@ const shouldShowWelcomeMessage = computed(() => {
     border-radius: 12px;
 }
 .chat-container.theme-calm .chat-input input { border-radius: 10px; }
+
+/* ---- Sunrise (light) — panel finish driven by the shared theme tokens ---- */
+.chat-container.theme-sunrise .chat-panel {
+    border-radius: var(--cm-radius, 24px);
+    box-shadow: 0 30px 80px -28px rgba(0, 0, 0, 0.25), 0 0 60px var(--cm-glow, rgba(0, 0, 0, 0.06));
+    border: 1px solid var(--cm-border, rgba(0, 0, 0, 0.08));
+}
+.chat-container.theme-sunrise .message-bubble { border-radius: 16px; }
+.chat-container.theme-sunrise .user-message .message-bubble { border-radius: 16px 16px 5px 16px; }
+.chat-container.theme-sunrise .agent-message .message-bubble { border-radius: 5px 16px 16px 16px; }
+.chat-container.theme-sunrise .chat-input input { border-radius: 12px; }
 
 /* ===== Dark presets: transient light surfaces need a dark variant =====
    The init/loading/connection overlays and the attach button hardcode a light background,

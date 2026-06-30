@@ -570,14 +570,8 @@ const handleInitiationClick = () => {
         <div class="toggle-container" v-if="!isExpanded || customization.showBubblePreview || customization.showInitiationPreview">
             <button class="chat-toggle" :class="{ preview: customization.showBubblePreview || customization.showInitiationPreview }" :style="chatIconStyles"
                 @click="isExpanded = !isExpanded">
-                <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                        d="M45 15H15C13.3431 15 12 16.3431 12 18V42C12 43.6569 13.3431 45 15 45H25L30 52L35 45H45C46.6569 45 48 43.6569 48 42V18C48 16.3431 46.6569 15 45 15Z"
-                        fill="white" />
-                    <path
-                        d="M36 27C36 27 32.5 26 30 26C27.5 26 24 27 24 31C24 35 27.5 36 30 36C32.5 36 36 35 36 35V33C36 33 33 34 31.5 34C30 34 27 33 27 31C27 29 30 28 31.5 28C33 28 36 29 36 29V27Z"
-                        :fill="customization.chat_bubble_color ? customization.chat_bubble_color : '#ffffff'" />
-                </svg>
+                <!-- New launcher mark: 3 dots in the contrast ink (matches chattermate.js) -->
+                <div class="cm-toggle-dots"><span></span><span></span><span></span></div>
             </button>
         </div>
 
@@ -777,6 +771,19 @@ const handleInitiationClick = () => {
     cursor: pointer;
     box-shadow: 0 16px 36px -8px v-bind('customization.chat_bubble_color || "var(--accent-ink)"');
     transition: all 0.3s ease;
+}
+
+.cm-toggle-dots {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    justify-content: center;
+}
+.cm-toggle-dots span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
 }
 
 .chat-toggle:hover {

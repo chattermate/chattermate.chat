@@ -69,7 +69,7 @@ export interface ChatMessage {
   message_type?: string
 }
 
-export type ChatStyle = 'CHATBOT' | 'ASK_ANYTHING' | 'GLASS' | 'TERMINAL' | 'PLAYFUL' | 'CALM_MINT' | 'AURORA'
+export type ChatStyle = 'CHATBOT' | 'ASK_ANYTHING' | 'GLASS' | 'TERMINAL' | 'PLAYFUL' | 'CALM_MINT' | 'AURORA' | 'SUNRISE'
 export type WidgetPosition = 'FLOATING' | 'FIXED'
 
 export interface AgentCustomization {
@@ -90,7 +90,9 @@ export interface AgentCustomization {
   widget_position?: WidgetPosition
   welcome_title?: string
   welcome_subtitle?: string
+  welcome_message?: string
   chat_initiation_messages?: string[]
+  quick_actions?: string[]
   show_citations?: boolean
   collect_email?: boolean
 }
