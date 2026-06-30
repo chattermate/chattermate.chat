@@ -220,17 +220,8 @@ window.ChatterMate;
       }
 
       /* Clean border around the widget container */
-      #${config.containerId}::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        border-radius: 24px;
-        pointer-events: none;
-        border: 1px solid #e5e7eb;
-      }
+      /* The widget panel (inside the iframe) draws its own theme-aware border, so the
+         container no longer adds one — avoids a double border (and a white line on dark themes). */
 
         .chattermate-iframe {
                 width: 100%;
