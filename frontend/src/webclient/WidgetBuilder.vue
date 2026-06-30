@@ -2232,12 +2232,20 @@ const shouldShowWelcomeMessage = computed(() => {
                     </div>
                 </template>
 
-                <!-- Typing / reading-knowledge-base indicator -->
-                <div v-if="loading" class="typing-indicator reading-indicator">
-                    <div class="reading-bars" aria-hidden="true">
-                        <span></span><span></span><span></span>
-                    </div>
-                    <span class="reading-label">reading knowledge base</span>
+                <!-- Loading indicator: "reading knowledge base" only when citations
+                     are enabled; otherwise a plain typing indicator. -->
+                <div v-if="loading" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
+                    <template v-if="showCitations">
+                        <div class="reading-bars" aria-hidden="true">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <span class="reading-label">reading knowledge base</span>
+                    </template>
+                    <template v-else>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </template>
                 </div>
             </div>
 

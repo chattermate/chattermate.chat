@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
-import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle } from '@/utils/orb'
+import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri } from '@/utils/orb'
 
 import KnowledgeGrid from './KnowledgeGrid.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
@@ -73,12 +73,13 @@ const useOrbAvatar = computed(() => orbMeta.value?.avatar_style === 'orb')
 const currentOrbVariant = computed(() => orbMeta.value?.orb_variant)
 const orbStyle = computed(() => resolveOrbStyle(agentData.value.name || '', currentOrbVariant.value))
 
-const persistAvatarMeta = async (patch: Record<string, unknown>) => {
+const persistAvatarMeta = async (patch: Record<string, unknown>, photoUrl?: string) => {
   const cust = agentData.value.customization
   if (!cust) return
   const meta = { ...(cust.customization_metadata ?? {}), ...patch }
   const updated = await agentService.updateCustomization(agentData.value.id, {
     ...cust,
+    ...(photoUrl !== undefined ? { photo_url: photoUrl } : {}),
     customization_metadata: meta,
   })
   agentData.value.customization = updated
@@ -88,7 +89,10 @@ const selectOrbAvatar = async (variant: number) => {
   if (isUploading.value) return
   closeAvatarPicker()
   try {
-    await persistAvatarMeta({ avatar_style: 'orb', orb_variant: variant })
+    // Store the orb as an SVG data URI in photo_url so it propagates everywhere
+    // (agent list, widget header, previews) via the normal avatar path.
+    const orbUrl = orbSvgDataUri(agentData.value.name || '', variant)
+    await persistAvatarMeta({ avatar_style: 'orb', orb_variant: variant }, orbUrl)
   } catch (error) {
     console.error('Failed to set orb avatar:', error)
     toast.error('Failed to update avatar')
@@ -188,7 +192,7 @@ const previewWrapperStyles = computed(() => {
     
     return {
         ...baseStyles,
-        width: '400px'
+        width: '480px'
     }
 })
 
@@ -2161,11 +2165,16 @@ input:checked + .slider:before {
     gap: var(--space-xl);
     padding: var(--space-lg);
     height: 100%;
+    /* Keep the description + preview grouped and centered instead of spread
+       across ultrawide screens. */
+    max-width: 1040px;
+    margin: 0 auto;
+    justify-content: center;
 }
 
 .preview-header {
-    flex: 1;
-    max-width: 480px;
+    flex: 0 1 460px;
+    max-width: 460px;
     overflow-y: auto;
 }
 
@@ -2692,10 +2701,15 @@ input:checked + .slider:before {
     align-items: flex-start;
     gap: var(--space-xl);
     padding: var(--space-lg);
+    /* Group the options + preview and center them rather than letting the
+       preview column stretch across ultrawide screens. */
+    max-width: 1040px;
+    margin: 0 auto;
+    justify-content: center;
 }
 
 .customization-panel {
-    flex: 1;
+    flex: 0 0 460px;
     max-width: 480px;
     /* Match the chat preview window height (.chat-container is 600px) */
     height: 600px;
@@ -2726,7 +2740,7 @@ input:checked + .slider:before {
 }
 
 .customization-preview {
-    flex: 1;
+    flex: 0 1 auto;
     display: flex;
     align-items: flex-start;
     justify-content: center;

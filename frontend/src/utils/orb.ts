@@ -53,3 +53,34 @@ export const resolveOrbStyle = (seed: string, variant: unknown): Record<string, 
     const idx = typeof variant === 'number' && Number.isFinite(variant) ? variant : orbIndexForSeed(seed)
     return getOrbStyleAt(idx)
 }
+
+// Render an orb variant as a self-contained SVG data URI. Storing this in
+// `photo_url` lets every existing avatar render site (agent list, widget header,
+// previews) show the orb with no orb-specific logic — they just render the image.
+export const orbSvgDataUri = (seed: string, variant?: unknown): string => {
+    const idx = typeof variant === 'number' && Number.isFinite(variant) ? variant : orbIndexForSeed(seed)
+    const p = ORB_PALETTES[((idx % ORB_PALETTES.length) + ORB_PALETTES.length) % ORB_PALETTES.length]
+    const [c1, c2, c3] = p.stops.split(',').map((s) => s.trim())
+    const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
+        '<defs>' +
+        '<radialGradient id="o" cx="50%" cy="50%" r="70%">' +
+        `<stop offset="0%" stop-color="${c1}"/>` +
+        `<stop offset="50%" stop-color="${c2}"/>` +
+        `<stop offset="100%" stop-color="${c3}"/>` +
+        '</radialGradient>' +
+        '<radialGradient id="h" cx="32%" cy="28%" r="45%">' +
+        '<stop offset="0%" stop-color="#ffffff" stop-opacity="0.45"/>' +
+        '<stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>' +
+        '</radialGradient>' +
+        '<radialGradient id="s" cx="68%" cy="72%" r="42%">' +
+        '<stop offset="0%" stop-color="#000000" stop-opacity="0.3"/>' +
+        '<stop offset="100%" stop-color="#000000" stop-opacity="0"/>' +
+        '</radialGradient>' +
+        '</defs>' +
+        '<circle cx="50" cy="50" r="50" fill="url(#o)"/>' +
+        '<circle cx="50" cy="50" r="50" fill="url(#h)"/>' +
+        '<circle cx="50" cy="50" r="50" fill="url(#s)"/>' +
+        '</svg>'
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}

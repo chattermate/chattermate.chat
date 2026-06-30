@@ -26,10 +26,13 @@ function getRuntimeConfig() {
 export const widgetEnv = {
     get API_URL() {
         const config = getRuntimeConfig();
-        return config.API_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+        // Default to the production API so a plain `build:widget` (no VITE_API_URL,
+        // no runtime APP_CONFIG) ships a working widget instead of localhost. Local
+        // dev overrides via VITE_API_URL; self-hosters via window.APP_CONFIG.
+        return config.API_URL || import.meta.env.VITE_API_URL || 'https://api.chattermate.chat/api/v1';
     },
     get WS_URL() {
         const config = getRuntimeConfig();
-        return config.WS_URL || import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+        return config.WS_URL || import.meta.env.VITE_WS_URL || 'wss://api.chattermate.chat';
     }
 }
