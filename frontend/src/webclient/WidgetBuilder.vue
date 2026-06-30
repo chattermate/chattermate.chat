@@ -1419,12 +1419,21 @@ const quickActions = computed<string[]>(() =>
         : []
 )
 const welcomeMessageText = computed(() => (customization.value.welcome_message || '').trim())
-const showWelcomeBlock = computed(() =>
+// The welcome bubble shows at the top of the thread; the quick actions render as a
+// bar just above the input (comp layout). Both only appear before the first message.
+const showOnOpenIntro = computed(() =>
     !isAskAnythingStyle.value
     && messages.value.length === 0
     && !loadingHistory.value
     && !showEmailGate.value
-    && (welcomeMessageText.value.length > 0 || quickActions.value.length > 0)
+)
+const showWelcomeBlock = computed(() =>
+    showOnOpenIntro.value && welcomeMessageText.value.length > 0
+)
+const showQuickActions = computed(() =>
+    showOnOpenIntro.value
+    && !shouldShowNewConversationOption.value
+    && quickActions.value.length > 0
 )
 
 // Citations are shown only when explicitly enabled (off by default for now)
@@ -1543,7 +1552,7 @@ const shouldShowWelcomeMessage = computed(() => {
             </p>
             <div class="widget-unavailable-footer">
                 <svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
@@ -1673,7 +1682,7 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer for welcome message -->
             <div class="powered-by-welcome" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
@@ -1705,7 +1714,7 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer for landing page -->
             <div class="powered-by-landing" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
@@ -1868,7 +1877,7 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer for form -->
             <div class="powered-by-landing" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
@@ -1966,22 +1975,13 @@ const shouldShowWelcomeMessage = computed(() => {
             </div>
 
             <div v-show="!showEmailGate" class="chat-messages" ref="messagesContainer">
-                <!-- Welcome message + quick actions on open (cleared after the first send) -->
+                <!-- Welcome message on open (cleared after the first send). Quick actions
+                     render as a bar above the input — see below. -->
                 <div v-if="showWelcomeBlock" class="cm-welcome-block">
-                    <div v-if="welcomeMessageText" class="message agent-message cm-welcome-row">
+                    <div class="message agent-message cm-welcome-row">
                         <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
                         <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
                         <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ welcomeMessageText }}</div>
-                    </div>
-                    <div v-if="quickActions.length" class="cm-quick-actions">
-                        <button
-                            v-for="action in quickActions"
-                            :key="action"
-                            type="button"
-                            class="cm-quick-action"
-                            :disabled="!isMessageInputEnabled"
-                            @click="sendQuickAction(action)"
-                        >{{ action }}</button>
                     </div>
                 </div>
 
@@ -2383,11 +2383,25 @@ const shouldShowWelcomeMessage = computed(() => {
                         <span class="reading-label">reading knowledge base</span>
                     </template>
                     <template v-else>
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                        <div class="dot"></div>
+                        <div class="cm-typing-bubble" :style="agentBubbleStyles">
+                            <span class="cm-typing-dot"></span>
+                            <span class="cm-typing-dot"></span>
+                            <span class="cm-typing-dot"></span>
+                        </div>
                     </template>
                 </div>
+            </div>
+
+            <!-- Quick actions (shown on open, just above the input — comp layout) -->
+            <div v-if="showQuickActions" class="cm-quick-actions-bar">
+                <button
+                    v-for="action in quickActions"
+                    :key="action"
+                    type="button"
+                    class="cm-quick-action"
+                    :disabled="!isMessageInputEnabled"
+                    @click="sendQuickAction(action)"
+                >{{ action }}</button>
             </div>
 
             <!-- Chat Input Section (hidden during the email gate and workflow end) -->
@@ -2493,7 +2507,7 @@ const shouldShowWelcomeMessage = computed(() => {
                         :disabled="(!newMessage.trim() && uploadedAttachments.length === 0) || !isMessageInputEnabled"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M5 12L3 21L21 12L3 3L5 12ZM5 12L13 12" stroke="currentColor" stroke-width="2"
+                            <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2"
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                     </button>
@@ -2517,7 +2531,7 @@ const shouldShowWelcomeMessage = computed(() => {
             <!-- Powered by footer -->
             <div class="powered-by" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="3" width="54" height="54" rx="16" fill="#C9F24E"/>
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
@@ -2891,7 +2905,9 @@ const shouldShowWelcomeMessage = computed(() => {
 
 .message-bubble {
     padding: 10px 14px;
-    border-radius: 18px;
+    /* Per-theme bubble radius from the shared tokens (single source of truth).
+       The user/agent rules below place the "tail" corner to match the comp. */
+    border-radius: var(--cm-bubble, 16px);
     font-size: 14px;
     line-height: 1.45;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -2909,14 +2925,15 @@ const shouldShowWelcomeMessage = computed(() => {
     flex-direction: row-reverse;
 }
 
+/* Comp bubble shape: user tail at bottom-right, agent tail at top-left. */
 .user-message .message-bubble {
-    border-bottom-right-radius: 6px;
+    border-radius: var(--cm-bubble, 16px) var(--cm-bubble, 16px) var(--cm-bubble-tail, 5px) var(--cm-bubble, 16px);
     background: linear-gradient(135deg, var(--accent-solid) 0%, color-mix(in srgb, var(--accent-solid) 90%, black) 100%);
 }
 
 .assistant-message .message-bubble,
 .agent-message .message-bubble {
-    border-bottom-left-radius: 6px;
+    border-radius: var(--cm-bubble-tail, 5px) var(--cm-bubble, 16px) var(--cm-bubble, 16px) var(--cm-bubble, 16px);
     /* Fallback only — the per-theme color from agentBubbleStyles (inline background-color)
        wins, so dark themes (Aurora/Glass/Calm/Terminal) get a dark bubble, not white. */
     background-color: #ffffff;
@@ -2952,7 +2969,7 @@ const shouldShowWelcomeMessage = computed(() => {
     /* Border tinted with the agent's accent so it matches each theme (not bright white). */
     border: 1.5px solid rgba(127, 127, 127, 0.3);
     border: 1.5px solid color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent);
-    border-radius: var(--radius-lg);
+    border-radius: var(--cm-field-radius, 12px);
     background: rgba(127, 127, 127, 0.08);
     background: color-mix(in srgb, currentColor 7%, transparent);
     color: inherit;
@@ -2993,11 +3010,13 @@ const shouldShowWelcomeMessage = computed(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-sm);
-    min-width: 40px;
-    height: 40px;
+    padding: 0;
+    min-width: 42px;
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
     border: none;
-    border-radius: var(--radius-lg);
+    border-radius: var(--cm-field-radius, 12px);
     cursor: pointer;
     color: white;
 }
@@ -3342,14 +3361,39 @@ const shouldShowWelcomeMessage = computed(() => {
 .typing-indicator {
     display: flex;
     gap: 4px;
-    padding: 12px 16px;
+    padding: 4px 16px;
     margin-top: var(--space-md);
+}
+
+/* Processing dots (comp): 3 dots gently bouncing inside an agent bubble. */
+.cm-typing-bubble {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 13px 16px;
+    border-radius: var(--cm-bubble-tail, 5px) var(--cm-bubble, 16px) var(--cm-bubble, 16px) var(--cm-bubble, 16px);
+}
+.cm-typing-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.45;
+    animation: cm-bounce 1.2s ease-in-out infinite;
+}
+.cm-typing-dot:nth-child(2) { animation-delay: 0.16s; }
+.cm-typing-dot:nth-child(3) { animation-delay: 0.32s; }
+@keyframes cm-bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-5px); opacity: 1; }
 }
 
 /* ===== Reading-knowledge-base indicator ===== */
 .typing-indicator.reading-indicator {
     align-items: center;
     gap: 8px;
+    padding: 12px 16px;
     color: var(--text-muted, #6b7280);
     font-size: 0.78rem;
 }
@@ -3464,11 +3508,12 @@ const shouldShowWelcomeMessage = computed(() => {
 }
 .cm-welcome-avatar { object-fit: cover; }
 .cm-welcome-bubble { max-width: 84%; }
-.cm-quick-actions {
+/* Quick-action pills sit in a bar just above the input (comp layout). */
+.cm-quick-actions-bar {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    padding-left: 37px; /* align under the bubble, past the 28px orb + 9px gap */
+    padding: 0 16px 12px;
 }
 .cm-quick-action {
     padding: 8px 14px;
@@ -3572,6 +3617,7 @@ const shouldShowWelcomeMessage = computed(() => {
     .chat-panel,
     .citation-chips,
     .reading-bars span,
+    .cm-typing-dot,
     .cm-caret,
     .status-indicator.online { animation: none !important; }
     .cm-caret { display: none; }
@@ -3583,9 +3629,14 @@ const shouldShowWelcomeMessage = computed(() => {
 /* rules own the structural finish: radius, shadow, fonts.    */
 /* ========================================================== */
 
-/* ---- Glass (Aurora) ---- */
+/* Bubble shape + field radius are driven by the shared theme tokens
+   (--cm-bubble / --cm-bubble-tail / --cm-field-radius) set on .chat-container, so
+   they live in exactly one place (widget-theme.ts) and match the comp for every
+   theme. The panel fills the embedder iframe (which owns the outer window corner),
+   so these rules only add per-theme finish: shadow, blur, and Terminal monospace. */
+
+/* ---- Glass ---- */
 .chat-container.theme-glass .chat-panel {
-    border-radius: 18px;
     box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.55), 0 0 50px rgba(157, 140, 255, 0.12);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
@@ -3593,54 +3644,31 @@ const shouldShowWelcomeMessage = computed(() => {
 .chat-container.theme-glass .message-bubble {
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.16);
 }
-.chat-container.theme-glass .user-message .message-bubble { border-radius: 16px 16px 5px 16px; }
-.chat-container.theme-glass .agent-message .message-bubble {
-    border-radius: 5px 16px 16px 16px;
-}
-.chat-container.theme-glass .chat-input input { border-radius: 999px; }
 
-/* ---- Terminal ---- */
+/* ---- Terminal: monospace across the panel + footer + quick actions ---- */
 .chat-container.theme-terminal .chat-panel,
 .chat-container.theme-terminal .chat-messages,
 .chat-container.theme-terminal .message-bubble,
 .chat-container.theme-terminal .chat-input,
+.chat-container.theme-terminal .cm-quick-action,
+.chat-container.theme-terminal .powered-by,
 .chat-container.theme-terminal .header-info h3,
 .chat-container.theme-terminal .reading-label,
 .chat-container.theme-terminal .citation-chip {
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-.chat-container.theme-terminal .chat-panel { border-radius: 8px; }
-.chat-container.theme-terminal .message-bubble { border-radius: 4px; }
-.chat-container.theme-terminal .chat-input input { border-radius: 6px; }
 .chat-container.theme-terminal .citation-chip { border-radius: 4px; }
-
-/* ---- Playful (Sunrise) ---- */
-.chat-container.theme-playful .chat-panel { border-radius: 22px; }
-.chat-container.theme-playful .message-bubble { border-radius: 20px; }
-.chat-container.theme-playful .user-message .message-bubble { border-radius: 20px 20px 6px 20px; }
-.chat-container.theme-playful .agent-message .message-bubble { border-radius: 6px 20px 20px 20px; }
-.chat-container.theme-playful .chat-input input { border-radius: 999px; }
 
 /* ---- Calm Mint ---- */
 .chat-container.theme-calm .chat-panel {
-    border-radius: 14px;
     box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5);
 }
-.chat-container.theme-calm .message-bubble {
-    border-radius: 12px;
-}
-.chat-container.theme-calm .chat-input input { border-radius: 10px; }
 
-/* ---- Sunrise (light) — panel finish driven by the shared theme tokens ---- */
+/* ---- Sunrise (light) ---- */
 .chat-container.theme-sunrise .chat-panel {
-    border-radius: var(--cm-radius, 24px);
     box-shadow: 0 30px 80px -28px rgba(0, 0, 0, 0.25), 0 0 60px var(--cm-glow, rgba(0, 0, 0, 0.06));
     border: 1px solid var(--cm-border, rgba(0, 0, 0, 0.08));
 }
-.chat-container.theme-sunrise .message-bubble { border-radius: 16px; }
-.chat-container.theme-sunrise .user-message .message-bubble { border-radius: 16px 16px 5px 16px; }
-.chat-container.theme-sunrise .agent-message .message-bubble { border-radius: 5px 16px 16px 16px; }
-.chat-container.theme-sunrise .chat-input input { border-radius: 12px; }
 
 /* ===== Dark presets: transient light surfaces need a dark variant =====
    The init/loading/connection overlays and the attach button hardcode a light background,
