@@ -31,6 +31,7 @@ class ChatStyle(str, enum.Enum):
     PLAYFUL = "PLAYFUL"
     CALM_MINT = "CALM_MINT"
     AURORA = "AURORA"
+    SUNRISE = "SUNRISE"
 
 
 class WidgetPosition(str, enum.Enum):
@@ -45,6 +46,13 @@ DEFAULT_CHAT_INITIATIONS = [
     "🤝 Welcome! How can I assist you today?",
     "✨ Got questions? Let's chat!",
     "👨‍💼 Need support? Click to chat with us!"
+]
+
+# Predefined quick-action buttons (clicking sends the label as a message)
+DEFAULT_QUICK_ACTIONS = [
+    "Track my order",
+    "Start a return",
+    "Talk to a human"
 ]
 
 
@@ -63,7 +71,9 @@ class CustomizationBase(BaseModel):
     widget_position: Optional[WidgetPosition] = WidgetPosition.FLOATING
     welcome_title: Optional[str] = None
     welcome_subtitle: Optional[str] = None
+    welcome_message: Optional[str] = None
     chat_initiation_messages: Optional[List[str]] = None
+    quick_actions: Optional[List[str]] = None
     show_citations: Optional[bool] = False
     collect_email: Optional[bool] = False
 

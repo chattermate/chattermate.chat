@@ -43,6 +43,13 @@ const DEFAULT_CHAT_INITIATIONS = [
     "👨‍💼 Need support? Click to chat with us!"
 ]
 
+// Predefined quick-action buttons (clicking sends the label as a message)
+const DEFAULT_QUICK_ACTIONS = [
+    "Track my order",
+    "Start a return",
+    "Talk to a human"
+]
+
 // Subscription and feature checking
 const subscriptionStorage = useSubscriptionStorage()
 const { hasEnterpriseModule } = useEnterpriseFeatures()
@@ -91,7 +98,9 @@ const customization = ref<AgentCustomization>({
     chat_style: props.agent.customization?.chat_style ?? 'CHATBOT',
     welcome_title: props.agent.customization?.welcome_title ?? '',
     welcome_subtitle: props.agent.customization?.welcome_subtitle ?? '',
+    welcome_message: props.agent.customization?.welcome_message ?? '',
     chat_initiation_messages: props.agent.customization?.chat_initiation_messages ?? [],
+    quick_actions: props.agent.customization?.quick_actions ?? [],
     show_citations: props.agent.customization?.show_citations ?? false,
     collect_email: props.agent.customization?.collect_email ?? false,
 })
@@ -140,6 +149,12 @@ const chatStyleOptions = [
         description: 'The new ask-me-anything — dark, with a glowing aurora orb avatar.',
         group: 'new' as const,
     },
+    {
+        value: 'SUNRISE' as ChatStyle,
+        label: 'Sunrise',
+        description: 'Bright, warm and airy — a light theme with a soft coral accent.',
+        group: 'new' as const,
+    },
 ]
 
 const legacyStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'legacy'))
@@ -155,6 +170,7 @@ const THEME_PRESETS: Record<string, { chat_background_color: string; chat_bubble
     PLAYFUL: { chat_background_color: '#FFFFFF', chat_bubble_color: '#FF7A6B', accent_color: '#FF7A6B', font_family: 'Instrument Sans, sans-serif' },
     CALM_MINT: { chat_background_color: '#0E1A1A', chat_bubble_color: '#5FE3D6', accent_color: '#5FE3D6', font_family: 'Instrument Sans, sans-serif' },
     AURORA: { chat_background_color: '#14111C', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
+    SUNRISE: { chat_background_color: '#FFFFFF', chat_bubble_color: '#FF8A73', accent_color: '#FF8A73', font_family: 'Instrument Sans, sans-serif' },
 }
 
 const themePreset = (value: string) => THEME_PRESETS[value] || THEME_PRESETS.CHATBOT
@@ -250,7 +266,9 @@ watch(() => props.agent.customization, (newCustomization) => {
             chat_style: newCustomization.chat_style ?? 'CHATBOT',
             welcome_title: newCustomization.welcome_title ?? '',
             welcome_subtitle: newCustomization.welcome_subtitle ?? '',
+            welcome_message: newCustomization.welcome_message ?? '',
             chat_initiation_messages: newCustomization.chat_initiation_messages ?? [],
+            quick_actions: newCustomization.quick_actions ?? [],
             show_citations: newCustomization.show_citations ?? false,
             collect_email: newCustomization.collect_email ?? false,
         }
@@ -387,6 +405,48 @@ const cancelEditInitiationMessage = () => {
 
 const loadDefaultInitiations = () => {
     customization.value.chat_initiation_messages = [...DEFAULT_CHAT_INITIATIONS]
+}
+
+// Quick actions management (mirrors chat initiation messages)
+const newQuickAction = ref('')
+const editingQuickActionIndex = ref<number | null>(null)
+const editingQuickAction = ref('')
+
+const addQuickAction = () => {
+    if (!newQuickAction.value.trim()) return
+    if (!customization.value.quick_actions) {
+        customization.value.quick_actions = []
+    }
+    customization.value.quick_actions.push(newQuickAction.value.trim())
+    newQuickAction.value = ''
+}
+
+const removeQuickAction = (index: number) => {
+    if (customization.value.quick_actions) {
+        customization.value.quick_actions.splice(index, 1)
+    }
+}
+
+const startEditQuickAction = (index: number) => {
+    editingQuickActionIndex.value = index
+    editingQuickAction.value = customization.value.quick_actions?.[index] || ''
+}
+
+const saveEditQuickAction = () => {
+    if (editingQuickActionIndex.value !== null && customization.value.quick_actions && editingQuickAction.value.trim()) {
+        customization.value.quick_actions[editingQuickActionIndex.value] = editingQuickAction.value.trim()
+        editingQuickActionIndex.value = null
+        editingQuickAction.value = ''
+    }
+}
+
+const cancelEditQuickAction = () => {
+    editingQuickActionIndex.value = null
+    editingQuickAction.value = ''
+}
+
+const loadDefaultQuickActions = () => {
+    customization.value.quick_actions = [...DEFAULT_QUICK_ACTIONS]
 }
 
 // Initiation message preview handlers
@@ -704,6 +764,87 @@ const isSectionExpanded = (sectionId: string) => {
                         <span class="init-empty-icon">ⓘ</span>
                         <span>No messages yet. Add your first message above.</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Welcome message + quick actions Section -->
+            <div class="form-section">
+                <h3 class="section-heading">Welcome message &amp; quick actions</h3>
+                <p class="section-subtext">
+                    Shown <strong>inside the chat when it opens</strong> — a greeting bubble and one-tap action buttons. The buttons disappear after the visitor's first message.
+                </p>
+
+                <div class="form-group">
+                    <label for="welcome-message">Welcome message</label>
+                    <textarea
+                        id="welcome-message"
+                        v-model="customization.welcome_message"
+                        placeholder="e.g., Hey! 👋 I can track orders, handle returns, or connect you with a human. What can I help with?"
+                        class="text-textarea"
+                        rows="3"
+                        maxlength="300"
+                    ></textarea>
+                    <small class="input-hint">Leave empty to let the agent's first reply greet the visitor.</small>
+                </div>
+
+                <div class="section-head-row">
+                    <h3 class="section-heading">Quick actions</h3>
+                    <button type="button" class="load-defaults-link" @click="loadDefaultQuickActions">Load defaults</button>
+                </div>
+
+                <div class="init-add-row">
+                    <input
+                        type="text"
+                        v-model="newQuickAction"
+                        placeholder="Track my order"
+                        class="init-input"
+                        maxlength="60"
+                        @keyup.enter="addQuickAction"
+                    >
+                    <button
+                        type="button"
+                        class="init-add-btn"
+                        @click="addQuickAction"
+                        :disabled="!newQuickAction.trim()"
+                        title="Add quick action"
+                    >+</button>
+                </div>
+
+                <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list">
+                    <div
+                        v-for="(action, index) in customization.quick_actions"
+                        :key="index"
+                        class="init-item"
+                    >
+                        <div v-if="editingQuickActionIndex === index" class="init-edit-inline">
+                            <input
+                                type="text"
+                                v-model="editingQuickAction"
+                                class="init-edit-input"
+                                maxlength="60"
+                                @keyup.enter="saveEditQuickAction"
+                                @keyup.esc="cancelEditQuickAction"
+                            >
+                            <button type="button" class="init-icon-btn save" @click="saveEditQuickAction" title="Save">
+                                <font-awesome-icon icon="fa-solid fa-check" />
+                            </button>
+                            <button type="button" class="init-icon-btn cancel" @click="cancelEditQuickAction" title="Cancel">
+                                <font-awesome-icon icon="fa-solid fa-times" />
+                            </button>
+                        </div>
+                        <template v-else>
+                            <span class="init-handle">☰</span>
+                            <span class="init-text">{{ action }}</span>
+                            <button type="button" class="init-icon-btn edit" @click="startEditQuickAction(index)" title="Edit">
+                                <font-awesome-icon icon="fa-solid fa-pen" />
+                            </button>
+                            <button type="button" class="init-remove" @click="removeQuickAction(index)" title="Remove">✕</button>
+                        </template>
+                    </div>
+                </div>
+                <div v-else class="init-empty">
+                    <span class="init-empty-icon">ⓘ</span>
+                    <span>No quick actions yet. Add one above.</span>
                 </div>
             </div>
         </div>

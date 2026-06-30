@@ -164,7 +164,11 @@ async def get_widget_html(widget_id: str, agent_name: str, agent_customization: 
             "widget_position": agent_customization.widget_position.value if agent_customization.widget_position else "FLOATING",
             "welcome_title": agent_customization.welcome_title,
             "welcome_subtitle": agent_customization.welcome_subtitle,
+            "welcome_message": agent_customization.welcome_message,
             "chat_initiation_messages": agent_customization.chat_initiation_messages or [],
+            "quick_actions": agent_customization.quick_actions or [],
+            "show_citations": agent_customization.show_citations,
+            "collect_email": agent_customization.collect_email,
             "customization_metadata": agent_customization.customization_metadata or {}
         }
         
@@ -176,6 +180,9 @@ async def get_widget_html(widget_id: str, agent_name: str, agent_customization: 
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Chat Widget</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
             <script type="module" crossorigin src="{widget_url}/assets/widget.js"></script>
             <link rel="stylesheet" crossorigin href="{widget_url}/assets/widget.css">
             <script>

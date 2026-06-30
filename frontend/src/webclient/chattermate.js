@@ -41,6 +41,31 @@ window.ChatterMate;
     chatInitiationMessages: [], // Will be populated from widget data
     initiationMessageId: 'chattermate-initiation',
     initiationShownKey: 'ctim_shown', // Key for tracking if initiation was shown
+    unreadCount: 0, // unread agent messages (reported by the iframe) once chat opened
+    hasOpened: false, // whether the visitor has opened the chat at least once
+  }
+
+  // Pick a readable ink color (dark/light) for content sitting on a given bg.
+  function onColor(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim())
+    if (!m) return '#0B0C10'
+    const n = parseInt(m[1], 16)
+    const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255
+    return lum > 0.6 ? '#0B0C10' : '#FFFFFF'
+  }
+
+  // Launcher badge: show the nudge count until the chat is first opened, then the
+  // count of unread agent messages reported by the iframe. Hidden when open/empty.
+  function updateBadge() {
+    const btn = document.getElementById(config.buttonId)
+    if (!btn) return
+    const badge = btn.querySelector('.cm-badge')
+    if (!badge) return
+    const count = config.hasOpened
+      ? config.unreadCount
+      : (config.chatInitiationMessages || []).length
+    badge.textContent = count > 99 ? '99+' : String(count)
+    badge.style.display = (count > 0 && !btn.classList.contains('active')) ? 'flex' : 'none'
   }
 
   // Create and inject styles
@@ -48,28 +73,86 @@ window.ChatterMate;
     const style = document.createElement('style')
     style.id = 'chattermate-styles'
     style.textContent = `
+      /* ===== Rounded-square launcher (design comp) ===== */
       #${config.buttonId} {
         position: fixed;
         bottom: 20px;
         right: 20px;
-        width: 60px;
-        height: 60px;
-        border-radius: 30px;
+        width: 64px;
+        height: 64px;
+        border-radius: 20px 20px 20px 6px;
         background: ${config.chatBubbleColor};
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+        color: ${onColor(config.chatBubbleColor)};
+        box-shadow: 0 16px 40px -8px ${config.chatBubbleColor}cc, inset 0 0 0 1px rgba(255,255,255,0.08);
         cursor: pointer;
         z-index: 999999;
-        transition: transform 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.3s cubic-bezier(.34,1.3,.5,1);
+        animation: chattermate-float 4s ease-in-out infinite;
       }
+      #${config.buttonId}.active { animation: none; }
+      #${config.buttonId}:hover { transform: scale(1.06); }
 
-      #${config.buttonId}:hover {
-        transform: scale(1.1);
+      /* Expanding rings (closed state only) */
+      #${config.buttonId} .cm-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 20px 20px 20px 6px;
+        border: 1.5px solid ${config.chatBubbleColor};
+        animation: chattermate-ring 2.4s ease-out infinite;
+        pointer-events: none;
       }
+      #${config.buttonId} .cm-ring.r2 { animation-delay: 1.2s; }
+      #${config.buttonId}.active .cm-ring { display: none; }
 
-      #${config.buttonId}.loading {
-        position: relative;
+      /* Pulsing 3-dot mark (closed) */
+      #${config.buttonId} .cm-dots { display: flex; gap: 5px; }
+      #${config.buttonId} .cm-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: chattermate-pulse 1.5s ease-in-out infinite;
       }
+      #${config.buttonId} .cm-dot:nth-child(2) { animation-delay: .18s; }
+      #${config.buttonId} .cm-dot:nth-child(3) { animation-delay: .36s; }
+      #${config.buttonId}.active .cm-dots { display: none; }
 
+      /* Chevron (open) */
+      #${config.buttonId} .cm-chevron {
+        display: none;
+        font-size: 26px;
+        font-weight: 700;
+        line-height: 1;
+        margin-top: -4px;
+        color: currentColor;
+      }
+      #${config.buttonId}.active .cm-chevron { display: block; }
+
+      /* Unread badge = number of nudges */
+      #${config.buttonId} .cm-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: #FF8A73;
+        color: #0B0C10;
+        font: 700 11.5px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #F5F3EE;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        display: none;
+      }
+      #${config.buttonId}.active .cm-badge { display: none; }
+
+      #${config.buttonId}.loading .cm-dots,
+      #${config.buttonId}.loading .cm-chevron { visibility: hidden; }
       #${config.buttonId}.loading:after {
         content: '';
         position: absolute;
@@ -84,22 +167,16 @@ window.ChatterMate;
         animation: chattermate-spin 0.6s linear infinite;
       }
 
-      #${config.buttonId}.active .chat-icon {
-        display: none;
-      }
+      @keyframes chattermate-spin { to { transform: rotate(360deg); } }
+      @keyframes chattermate-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+      @keyframes chattermate-ring { 0% { transform: scale(.85); opacity: .5; } 100% { transform: scale(1.6); opacity: 0; } }
+      @keyframes chattermate-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 
-      #${config.buttonId}.active .close-icon {
-        display: block !important;
-      }
-
-      @keyframes chattermate-spin {
-        to {transform: rotate(360deg);}
-      }
-
-      /* Subtle idle bounce for the chat button when closed */
-      @keyframes chattermate-bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-3px); }
+      @media (prefers-reduced-motion: reduce) {
+        #${config.buttonId},
+        #${config.buttonId} .cm-ring,
+        #${config.buttonId} .cm-dot,
+        .initiation-orb { animation: none !important; }
       }
 
       #${config.containerId} {
@@ -306,6 +383,21 @@ window.ChatterMate;
         vertical-align: baseline !important;
         overflow: visible !important;
       }
+
+      /* Siri-style orb avatar beside the nudge (design comp) */
+      .initiation-orb {
+        position: absolute !important;
+        left: -34px !important;
+        bottom: 2px !important;
+        width: 26px !important;
+        height: 26px !important;
+        border-radius: 50% !important;
+        background: conic-gradient(from 0deg, #C9F24E, #9D8CFF, #5FE3D6, #FF8A73, #C9F24E) !important;
+        box-shadow: 0 4px 14px rgba(157, 140, 255, 0.4) !important;
+        animation: chattermate-orb-spin 6s linear infinite !important;
+        z-index: 1 !important;
+      }
+      @keyframes chattermate-orb-spin { to { transform: rotate(360deg); } }
 
       #${config.initiationMessageId}.show {
         opacity: 1;
@@ -669,6 +761,7 @@ window.ChatterMate;
     const initiationDiv = document.createElement('div');
     initiationDiv.id = config.initiationMessageId;
     initiationDiv.innerHTML = `
+      <span class="initiation-orb"></span>
       <button class="initiation-close" aria-label="Close"></button>
       <p class="initiation-message-text"></p>
     `;
@@ -769,15 +862,11 @@ window.ChatterMate;
     const button = document.createElement('div')
     button.id = config.buttonId
     button.innerHTML = `
-      <svg class="chat-icon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="15" y="15" width="30" height="30" rx="8" fill="white"/>
-        <circle cx="23" cy="30" r="3" fill="#0B0C10"/>
-        <circle cx="30" cy="30" r="3" fill="#0B0C10"/>
-        <circle cx="37" cy="30" r="3" fill="#0B0C10"/>
-      </svg>
-      <svg class="close-icon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;">
-        <path d="M20 20L40 40M40 20L20 40" stroke="white" stroke-width="3" stroke-linecap="round"/>
-      </svg>
+      <span class="cm-ring"></span>
+      <span class="cm-ring r2"></span>
+      <div class="cm-dots"><span class="cm-dot"></span><span class="cm-dot"></span><span class="cm-dot"></span></div>
+      <span class="cm-chevron">&#8964;</span>
+      <span class="cm-badge"></span>
     `
 
     // Create chat container
@@ -806,6 +895,7 @@ window.ChatterMate;
     document.body.appendChild(container)
     document.body.appendChild(mobileCloseButton)
     document.body.appendChild(mobileTopbar)
+    updateBadge()
 
     let isOpen = false
     let iframe = null
@@ -817,6 +907,15 @@ window.ChatterMate;
       container.classList.toggle('active')
       button.classList.toggle('active')
       mobileCloseButton.classList.toggle('active')
+      if (isOpen) {
+        config.hasOpened = true
+        config.unreadCount = 0
+      }
+      // Tell the iframe whether it's visible so it can track unread messages.
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'WIDGET_VISIBILITY', open: isOpen }, '*')
+      }
+      updateBadge()
 
       // Hide initiation message when chat is opened
       if (isOpen && initiationMessageElement) {
@@ -836,7 +935,7 @@ window.ChatterMate;
           // When closing on mobile, show the button
           button.classList.add('mobile-closed')
           // Add subtle idle bounce when closed
-          button.style.animation = 'chattermate-bounce 2.2s ease-in-out infinite'
+          button.style.animation = 'chattermate-float 4s ease-in-out infinite'
           // Hide topbar when closing
           mobileTopbar.classList.remove('active')
           document.body.classList.remove('ask-anything-mobile')
@@ -979,8 +1078,13 @@ window.ChatterMate;
             container.appendChild(errorUI);
           });
 
-        // Listen for token updates from iframe
+        // Listen for token + unread-count updates from iframe
         window.addEventListener('message', function(event) {
+          if (event.data.type === 'UNREAD_COUNT') {
+            config.unreadCount = Math.max(0, parseInt(event.data.count, 10) || 0)
+            updateBadge()
+            return
+          }
           if (event.data.type === 'TOKEN_UPDATE' && iframe) {
             saveToken(event.data.token);
             // Confirm token storage to iframe
@@ -1021,7 +1125,7 @@ window.ChatterMate;
     if (isMobileDevice() && !isOpen) {
       button.classList.add('mobile-closed')
       // Idle bounce animation when initially closed
-      button.style.animation = 'chattermate-bounce 2.2s ease-in-out infinite'
+      button.style.animation = 'chattermate-float 4s ease-in-out infinite'
     }
 
     // Handle window resize to update mobile behavior
@@ -1031,7 +1135,7 @@ window.ChatterMate;
       if (isMobile && !isOpen) {
         // On mobile when closed, show the button
         button.classList.add('mobile-closed')
-        button.style.animation = 'chattermate-bounce 2.2s ease-in-out infinite'
+        button.style.animation = 'chattermate-float 4s ease-in-out infinite'
         // Ensure mobile close button is hidden when widget is closed
         mobileCloseButton.classList.remove('active')
       } else if (!isMobile) {
@@ -1058,6 +1162,15 @@ window.ChatterMate;
 
   // Add message listener for customization updates
   window.addEventListener('message', function (event) {
+    // Header chevron inside the widget asks to minimize: reuse the launcher toggle
+    // so all close/animation/mobile logic lives in one place.
+    if (event.data.type === 'WIDGET_MINIMIZE') {
+      const btn = document.getElementById(config.buttonId)
+      if (btn && btn.classList.contains('active')) {
+        btn.click()
+      }
+      return
+    }
     if (event.data.type === 'CUSTOMIZATION_UPDATE') {
       const customData = event.data.data;
       const newColor = customData.chat_bubble_color;
@@ -1094,11 +1207,8 @@ window.ChatterMate;
       // Mobile positioning is handled by CSS media queries and should not be affected
       
       updateStyles()
-      // Update the SVG fill color for the chat icon
-      const chatIconPath = document.querySelector(`#${config.buttonId} .chat-icon path:last-child`)
-      if (chatIconPath) {
-        chatIconPath.setAttribute('fill', config.chatBubbleColor)
-      }
+      // Re-inject styles recolors the launcher; refresh the nudge badge count.
+      updateBadge()
     }
   })
 
