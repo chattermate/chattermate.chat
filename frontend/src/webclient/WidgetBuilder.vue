@@ -1908,7 +1908,11 @@ const shouldShowWelcomeMessage = computed(() => {
                     title="Minimize"
                     aria-label="Minimize chat"
                     @click="minimizeWidget"
-                >&#8964;</button>
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M6 9l6 6 6-6"></path>
+                    </svg>
+                </button>
             </div>
             <div v-else class="ask-anything-top" :style="headerBorderStyles">
                 <div class="ask-anything-header">
@@ -2622,7 +2626,8 @@ const shouldShowWelcomeMessage = computed(() => {
     bottom: 0;
     pointer-events: none;
     border-radius: var(--radius-lg);
-    border: 1px solid #e5e7eb;
+    /* Theme-aware so it never paints a hard white line on dark themes. */
+    border: 1px solid var(--cm-border, rgba(0, 0, 0, 0.08));
 }
 
 .chat-container.collapsed {
