@@ -279,7 +279,9 @@ window.ChatterMate;
         margin: 0;
       }
 
-      #chattermate-mobile-close.active {
+      /* Only ASK_ANYTHING (which has no in-panel header chevron) uses the floating
+         mobile-close; other styles close via the header chevron, so don't double up. */
+      .ask-anything-mobile #chattermate-mobile-close.active {
         display: flex;
       }
 
@@ -328,7 +330,7 @@ window.ChatterMate;
           right: 16px !important;
         }
 
-        #chattermate-mobile-close.active {
+        .ask-anything-mobile #chattermate-mobile-close.active {
           display: flex !important;
         }
 
