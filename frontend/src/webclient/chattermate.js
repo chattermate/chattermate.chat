@@ -107,8 +107,17 @@ window.ChatterMate;
       #${config.buttonId} .cm-ring.r2 { animation-delay: 1.2s; }
       #${config.buttonId}.active .cm-ring { display: none; }
 
-      /* Pulsing 3-dot mark (closed) */
-      #${config.buttonId} .cm-dots { display: flex; gap: 5px; }
+      /* Pulsing 3-dot mark (closed). Absolutely centered so it stays pinned to the
+         button's center regardless of the button's display mode (flex on desktop,
+         block when .mobile-closed) or viewport. */
+      #${config.buttonId} .cm-dots {
+        display: flex;
+        gap: 5px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
       #${config.buttonId} .cm-dot {
         width: 7px;
         height: 7px;
@@ -120,13 +129,16 @@ window.ChatterMate;
       #${config.buttonId} .cm-dot:nth-child(3) { animation-delay: .36s; }
       #${config.buttonId}.active .cm-dots { display: none; }
 
-      /* Chevron (open) */
+      /* Chevron (open) — absolutely centered, pinned to the button center. */
       #${config.buttonId} .cm-chevron {
         display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         font-size: 26px;
         font-weight: 700;
         line-height: 1;
-        margin-top: -4px;
         color: currentColor;
       }
       #${config.buttonId}.active .cm-chevron { display: block; }
@@ -316,7 +328,13 @@ window.ChatterMate;
         }
 
         #${config.buttonId}.mobile-closed {
-          display: block !important;
+          /* flex (not block) keeps the launcher's centering context; the dots/chevron
+             are absolutely centered regardless, but this keeps it consistent. */
+          display: flex !important;
+          width: 56px !important;
+          height: 56px !important;
+          bottom: 16px !important;
+          right: 16px !important;
         }
 
         #chattermate-mobile-close.active {
