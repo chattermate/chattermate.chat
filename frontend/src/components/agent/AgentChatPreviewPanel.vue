@@ -629,7 +629,7 @@ const handleInitiationClick = () => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span>Powered by ChatterMate</span>
+                <span class="cm-powered-text">Powered by <strong>ChatterMate</strong></span>
             </div>
         </div>
 
@@ -714,8 +714,8 @@ const handleInitiationClick = () => {
                         @click="() => {}"
                         :disabled="true"
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M5 12L3 21L21 12L3 3L5 12ZM5 12L13 12" stroke="currentColor" stroke-width="2"
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2"
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                     </button>
@@ -730,7 +730,7 @@ const handleInitiationClick = () => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span>Powered by ChatterMate</span>
+                <span class="cm-powered-text">Powered by <strong>ChatterMate</strong></span>
             </div>
         </div>
 
@@ -932,7 +932,7 @@ const handleInitiationClick = () => {
     flex: 1;
     padding: 9px 12px;
     border: 1px solid var(--o12);
-    border-radius: 999px;
+    border-radius: 12px;
     background: var(--o05);
     color: var(--text);
     font-size: 12.5px;
@@ -946,12 +946,13 @@ const handleInitiationClick = () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
     flex-shrink: 0;
     padding: 0;
     border: none;
-    border-radius: 50%;
+    border-radius: 10px;
     cursor: pointer;
     color: white;
 }
@@ -1173,12 +1174,21 @@ const handleInitiationClick = () => {
     gap: 6px;
     padding: var(--space-xs);
     font-size: 0.75rem;
-    opacity: 0.7;
     border-top: 1px solid var(--o08);
 }
 .powered-by .chattermate-logo,
 .powered-by-welcome .chattermate-logo {
     flex-shrink: 0;
+}
+/* "Powered by" is muted; "ChatterMate" is emphasized (comp). */
+.cm-powered-text {
+    color: var(--muted);
+    opacity: 0.85;
+}
+.cm-powered-text strong {
+    color: var(--text);
+    font-weight: 700;
+    opacity: 1;
 }
 
 .message-input input:disabled {
@@ -1451,7 +1461,6 @@ const handleInitiationClick = () => {
 .powered-by-welcome {
     text-align: center;
     font-size: 0.75rem;
-    opacity: 0.6;
     color: var(--text-muted);
     padding: var(--space-md);
     background: transparent;

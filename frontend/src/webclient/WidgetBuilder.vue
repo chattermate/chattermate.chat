@@ -1557,7 +1557,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span>Powered by ChatterMate</span>
+                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
     </div>
@@ -1687,7 +1687,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                Powered by ChatterMate
+                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
 
@@ -1719,7 +1719,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                Powered by ChatterMate
+                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
 
@@ -1882,7 +1882,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                Powered by ChatterMate
+                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
 
@@ -2536,7 +2536,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                Powered by ChatterMate
+                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
 
@@ -3066,7 +3066,6 @@ const shouldShowWelcomeMessage = computed(() => {
     text-align: center;
     padding: var(--space-xs);
     font-size: 0.75rem;
-    opacity: 0.7;
     border-top: 1px solid rgba(0, 0, 0, 0.1);
     margin-top: auto;
     display: flex;
@@ -3074,6 +3073,11 @@ const shouldShowWelcomeMessage = computed(() => {
     justify-content: center;
     gap: 6px;
 }
+
+/* Footer: "Powered by" muted, "ChatterMate" emphasized (comp). Dimming lives on the
+   prefix span (not the container) so the brand keeps the full text colour. */
+.cm-powered-prefix { opacity: 0.6; }
+.cm-brand { font-weight: 700; }
 
 /* New conversation section styles */
 .new-conversation-section {
@@ -5298,7 +5302,6 @@ const shouldShowWelcomeMessage = computed(() => {
 .powered-by-welcome {
     text-align: center;
     font-size: 0.75rem;
-    opacity: 0.6;
     color: var(--text-muted);
     padding: var(--space-md);
     background: transparent;
