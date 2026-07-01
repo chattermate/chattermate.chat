@@ -1,6 +1,6 @@
 # ChatterMate - Open Source AI Customer Support Chatbot Platform
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![npm version](https://img.shields.io/npm/v/chattermate-cli.svg)](https://www.npmjs.com/package/chattermate-cli)
 [![Docker Pulls](https://img.shields.io/docker/pulls/chattermate/backend.svg)](https://hub.docker.com/r/chattermate/backend)
 
@@ -346,21 +346,20 @@ We welcome contributions! Here's how to get started:
 
 ## License
 
-ChatterMate is open source software available under a **dual license**:
+ChatterMate follows an **open-core** model:
 
-**Open Source (AGPL-3.0)**
-- Free for personal and commercial use
-- Source code must be disclosed for modified versions
-- Network users must have access to source code if deployed as a service
-- Derivative works must be licensed under AGPL-3.0
+**Open Source Core ([Apache-2.0](https://opensource.org/licenses/Apache-2.0))**
+- Free for personal and commercial use — including proprietary and SaaS deployments
+- No source-disclosure or copyleft obligations
+- Includes an explicit patent grant
+- See [LICENSE](LICENSE) and [NOTICE](NOTICE)
 
-**Commercial License**
-- Available for proprietary integrations
-- No source disclosure requirements
-- Official support and warranties
+**Enterprise features & support**
+- Advanced/enterprise capabilities are provided separately under a commercial arrangement
+- Priority support, warranties, and indemnification available
 - Contact: [contact@chattermate.chat](mailto:contact@chattermate.chat)
 
-See [LICENSE](license.md) for full details.
+Contributions are accepted under Apache-2.0 with a [Developer Certificate of Origin](DCO) sign-off — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
