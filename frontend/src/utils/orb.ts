@@ -85,9 +85,11 @@ export const orbSvgDataUri = (seed: string, variant?: unknown): string => {
     return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
 
-// Terminal-style avatar mark: a monospace ">" prompt in a rounded square tinted with
-// the accent (matches the Terminal chat theme). Stored in `photo_url` exactly like the
-// orb so every avatar render site shows it with no mark-specific logic.
+// Terminal-style avatar mark: a monospace ">" prompt on a dark, FULL-BLEED tile tinted
+// with the accent (matches the Terminal chat theme). Full-bleed so it fully covers the
+// avatar container at every render site — circular (header/message) or square — with no
+// transparent corners. Stored in `photo_url` exactly like the orb, so every avatar
+// render site shows it with no mark-specific logic.
 export const TERMINAL_MARK_ACCENT = '#C9F24E'
 // Only accept simple, safe colour tokens (hex / rgb[a] / hsl[a] / named) before
 // embedding into the SVG, so a stray quote in a stored value can't break out of the
@@ -97,8 +99,12 @@ export const terminalMarkSvgDataUri = (accent: string = TERMINAL_MARK_ACCENT): s
     const c = accent && SAFE_COLOR.test(accent.trim()) ? accent.trim() : TERMINAL_MARK_ACCENT
     const svg =
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
-        `<rect x="4" y="4" width="92" height="92" rx="16" fill="${c}" fill-opacity="0.10" stroke="${c}" stroke-opacity="0.55" stroke-width="3"/>` +
-        `<text x="50" y="52" font-family="'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="56" font-weight="700" fill="${c}" text-anchor="middle" dominant-baseline="central">&gt;</text>` +
+        // Full-bleed dark base guarantees coverage in any avatar shape.
+        '<rect width="100" height="100" fill="#0B0C10"/>' +
+        `<rect width="100" height="100" fill="${c}" fill-opacity="0.16"/>` +
+        // Inset accent frame for the terminal look.
+        `<rect x="14" y="14" width="72" height="72" rx="14" fill="none" stroke="${c}" stroke-opacity="0.6" stroke-width="4"/>` +
+        `<text x="50" y="52" font-family="'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="52" font-weight="700" fill="${c}" text-anchor="middle" dominant-baseline="central">&gt;</text>` +
         '</svg>'
     return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }

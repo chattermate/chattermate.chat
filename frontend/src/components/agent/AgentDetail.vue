@@ -1413,8 +1413,9 @@ onMounted(async () => {
     width: 100%;
     height: 100%;
     border-radius: 50%;
-    background: rgba(201, 242, 78, 0.10);
-    color: #9bbb2e;
+    background: #0b0c10;
+    box-shadow: inset 0 0 0 2px rgba(201, 242, 78, 0.55);
+    color: #c9f24e;
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-weight: 700;
     font-size: 1.05rem;
