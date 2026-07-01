@@ -21,6 +21,8 @@ import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
 import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
 import { resolveOrbStyle } from '@/utils/orb'
+import { themeCssVars } from '@/webclient/widget-theme'
+import '@/webclient/widget-surface.css'
 import { useAgentChat } from '@/composables/useAgentChat'
 import WebFont from 'webfontloader'
 import { marked } from 'marked'
@@ -245,22 +247,6 @@ const isColorDark = (color: string) => {
     return brightness < 128
 }
 
-// Function to adjust color brightness
-const adjustColorBrightness = (color: string, amount: number) => {
-    const hex = color.replace('#', '')
-    const r = parseInt(hex.substr(0, 2), 16)
-    const g = parseInt(hex.substr(2, 2), 16)
-    const b = parseInt(hex.substr(4, 2), 16)
-
-    // Darken or lighten based on background brightness
-    const isBackgroundDark = isColorDark(color)
-    const newR = isBackgroundDark ? Math.min(255, r + amount) : Math.max(0, r - amount)
-    const newG = isBackgroundDark ? Math.min(255, g + amount) : Math.max(0, g - amount)
-    const newB = isBackgroundDark ? Math.min(255, b + amount) : Math.max(0, b - amount)
-
-    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
-}
-
 // Watch for font family changes and load the font
 watch(() => props.customization.font_family, (newFont) => {
     if (!newFont) return
@@ -301,10 +287,18 @@ const THEME_CLASS_MAP: Record<string, string> = {
 }
 const themeClass = computed(() => THEME_CLASS_MAP[props.customization.chat_style as string] || '')
 
+// Themed colours come from the shared design tokens (widget-theme.ts) — identical to
+// the real widget — so the preview can never drift. These return `var(--cm-*)` refs.
+const themeVars = computed(() => themeCssVars(props.customization.chat_style as string, {
+    chat_background_color: props.customization.chat_background_color,
+    chat_text_color: props.customization.chat_text_color,
+    accent_color: props.customization.accent_color,
+    font_family: props.customization.font_family,
+}))
+
 const chatStyles = computed(() => ({
-    backgroundColor: props.customization.chat_background_color,
-    // Adapt text color to background so dark themes stay legible
-    color: isColorDark(props.customization.chat_background_color ?? '#FFFFFF') ? '#FFFFFF' : '#000000'
+    backgroundColor: 'var(--cm-card)',
+    color: 'var(--cm-text)'
 }))
 
 const chatIconStyles = computed(() => ({
@@ -312,27 +306,23 @@ const chatIconStyles = computed(() => ({
     color: isColorDark(props.customization.chat_bubble_color ?? '#000000') ? '#FFFFFF' : '#000000'
 }))
 
-const agentBubbleStyles = computed(() => {
-    const backgroundColor = props.customization.chat_background_color ?? '#F8F9FA'
-    const adjustedBackground = adjustColorBrightness(backgroundColor, 20) // Adjust by 20 units
-    return {
-        backgroundColor: adjustedBackground,
-        color: isColorDark(adjustedBackground) ? '#FFFFFF' : '#000000'
-    }
-})
+const agentBubbleStyles = computed(() => ({
+    backgroundColor: 'var(--cm-agent-bg)',
+    color: 'var(--cm-text)'
+}))
 
 const userBubbleStyles = computed(() => ({
-    backgroundColor: props.customization.accent_color,
-    color: isColorDark(props.customization.accent_color ?? '#000000') ? '#FFFFFF' : '#000000'
+    backgroundColor: 'var(--cm-accent)',
+    color: 'var(--cm-on-accent)'
 }))
 
 const accentStyles = computed(() => ({
-    backgroundColor: props.customization.accent_color,
-    color: isColorDark(props.customization.accent_color ?? '#C9F24E') ? '#FFFFFF' : '#000000'
+    backgroundColor: 'var(--cm-accent)',
+    color: 'var(--cm-on-accent)'
 }))
 
 const messageNameStyles = computed(() => ({
-    color: isColorDark(props.customization.chat_background_color ?? '#F8F9FA') ? '#FFFFFF' : '#000000'
+    color: 'var(--cm-text)'
 }))
 
 const photoUrl = computed(() => {
@@ -353,13 +343,6 @@ const photoUrl = computed(() => {
     // For local storage, prepend the API URL
     return import.meta.env.VITE_API_URL + props.customization.photo_url
 })
-
-// Add new computed property
-const headerBorderStyles = computed(() => ({
-    borderBottom: `1px solid ${isColorDark(props.customization.chat_background_color ?? '#F8F9FA') ?
-        'rgba(255, 255, 255, 0.1)' :
-        'rgba(0, 0, 0, 0.1)'}`
-}))
 
 // Function to format message content
 const formatMessage = (content: string) => {
@@ -403,11 +386,11 @@ const orbStyle = computed(() => resolveOrbStyle(props.agentName, orbMeta.value?.
 // Computed property for container styles
 const containerStyles = computed(() => {
     const baseStyles = {
-        width: '480px',
-        height: '600px',
-        borderRadius: '24px'
+        width: '384px',
+        height: '560px',
+        borderRadius: 'var(--cm-radius, 24px)'
     }
-    
+
     if (isAskAnythingStyle.value) {
         return {
             ...baseStyles,
@@ -415,7 +398,7 @@ const containerStyles = computed(() => {
             minWidth: '450px'
         }
     }
-    
+
     return baseStyles
 })
 
@@ -551,7 +534,7 @@ const handleInitiationClick = () => {
 </script>
 
 <template>
-    <div class="chat-container" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }, themeClass]" :style="containerStyles">
+    <div class="chat-container cm-surface" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }, themeClass]" :style="{ ...containerStyles, ...themeVars }">
         <!-- Chat Initiation Message -->
         <div 
             v-if="showInitiationMessage && hasChatInitiationMessages && (customization.showBubblePreview || customization.showInitiationPreview || !isExpanded)" 
@@ -623,7 +606,13 @@ const handleInitiationClick = () => {
             
             <!-- Powered by footer for welcome message -->
             <div class="powered-by-welcome" :style="messageNameStyles">
-                Powered by ChatterMate
+                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
+                </svg>
+                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
 
@@ -632,20 +621,14 @@ const handleInitiationClick = () => {
             { disabled: !isActive, 'ask-anything-chat': isAskAnythingStyle },
             `chat-panel-${agentId}`
         ]" :style="chatStyles" v-if="isExpanded && !customization.showBubblePreview && !customization.showInitiationPreview && shouldShowChatPanel">
-            <div v-if="!isAskAnythingStyle" class="chat-header" :style="{
-                background: customization.chat_background_color,
-                ...headerBorderStyles
-            }">
+            <div v-if="!isAskAnythingStyle" class="chat-header">
                 <div class="header-content">
                     <img :src="photoUrl" :alt="agentName" class="header-avatar">
                     <div class="header-info">
                         <h3 :style="messageNameStyles">{{ agentName }}</h3>
                         <div class="status">
-                            <span class="status-indicator" :class="{ online: isActive }"
-                                :style="isActive ? { background: customization.accent_color } : {}"></span>
-                            <span class="status-text"
-                                :style="isActive ? { color: customization.accent_color } : messageNameStyles">{{ isActive ? 'Online' : 'Offline'
-                                }}</span>
+                            <span class="status-indicator" :class="{ online: isActive }"></span>
+                            <span class="status-text cm-presence">{{ isActive ? 'Online · replies instantly' : 'Offline' }}</span>
                         </div>
                     </div>
                 </div>
@@ -664,9 +647,11 @@ const handleInitiationClick = () => {
                 </div>
             </div>
             <div class="chat-messages">
-                <div v-for="(message, index) in messages" :key="index" :class="['message', `${message.role}-message`]">
-                    <div v-if="message.role === 'bot' && useOrbAvatar" class="message-avatar message-orb" :style="orbStyle"></div>
-                    <img v-else-if="message.role === 'bot'" :src="photoUrl" :alt="agentName" class="message-avatar">
+                <div v-for="(message, index) in messages" :key="index" :class="['message', message.role === 'bot' ? 'agent-message' : `${message.role}-message`]">
+                    <div v-if="message.role === 'bot'" class="cm-msg-avatar">
+                        <div v-if="useOrbAvatar" class="cm-msg-avatar-orb" :style="orbStyle"></div>
+                        <img v-else :src="photoUrl" :alt="agentName" class="cm-msg-avatar-img">
+                    </div>
                     <div class="message-bubble"
                         :style="message.role === 'bot' ? agentBubbleStyles : userBubbleStyles"
                         v-html="formatMessage(message.content)">
@@ -708,8 +693,8 @@ const handleInitiationClick = () => {
                         @click="() => {}"
                         :disabled="true"
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M5 12L3 21L21 12L3 3L5 12ZM5 12L13 12" stroke="currentColor" stroke-width="2"
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2"
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                     </button>
@@ -718,7 +703,13 @@ const handleInitiationClick = () => {
 
             <!-- Add powered by footer -->
             <div class="powered-by" :style="messageNameStyles">
-                Powered by ChatterMate
+                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
+                </svg>
+                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
 
@@ -728,7 +719,7 @@ const handleInitiationClick = () => {
 
 <style scoped>
 .chat-container {
-    width: 400px;
+    width: 384px;
     height: 600px;
     display: flex;
     flex-direction: column;
@@ -874,7 +865,7 @@ const handleInitiationClick = () => {
     max-width: 85%;
 }
 
-.bot-message .message-bubble,
+.agent-message .message-bubble,
 .assistant-message .message-bubble {
     border-radius: 4px 14px 14px 14px;
 }
@@ -920,7 +911,7 @@ const handleInitiationClick = () => {
     flex: 1;
     padding: 9px 12px;
     border: 1px solid var(--o12);
-    border-radius: 999px;
+    border-radius: 12px;
     background: var(--o05);
     color: var(--text);
     font-size: 12.5px;
@@ -934,12 +925,13 @@ const handleInitiationClick = () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
     flex-shrink: 0;
     padding: 0;
     border: none;
-    border-radius: 50%;
+    border-radius: 10px;
     cursor: pointer;
     color: white;
 }
@@ -1105,13 +1097,7 @@ const handleInitiationClick = () => {
     background: var(--error-color);
 }
 
-.status-indicator.online {
-    background: v-bind('customization.accent_color || "var(--accent-solid)"');
-}
-
-.status-text {
-    color: v-bind('customization.accent_color || "var(--accent-ink)"');
-}
+/* Presence dot + text colour come from the shared widget-surface.css (accent). */
 
 /* Add styles for markdown content */
 :deep(.message-bubble) {
@@ -1155,12 +1141,23 @@ const handleInitiationClick = () => {
 }
 
 .powered-by {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     padding: var(--space-xs);
     font-size: 0.75rem;
-    opacity: 0.7;
     border-top: 1px solid var(--o08);
 }
+.powered-by .chattermate-logo,
+.powered-by-welcome .chattermate-logo {
+    flex-shrink: 0;
+}
+/* "Powered by" is muted; "ChatterMate" is emphasized (comp). Both inherit the footer's
+   own colour (white on dark themes) so ChatterMate stays visible — dimming is on the
+   prefix only, never a dark app token that would vanish on the dark panel. */
+.cm-powered-prefix { opacity: 0.6; }
+.cm-brand { font-weight: 700; }
 
 .message-input input:disabled {
     cursor: not-allowed;
@@ -1205,45 +1202,11 @@ const handleInitiationClick = () => {
     opacity: 0.5;
 }
 
-/* ============== PREMIUM DESIGN PRESETS (preview) ============== */
-/* Glass (Aurora) — translucent frosted panel + glow */
-.chat-container.theme-glass .chat-panel {
-    background: rgba(23, 21, 31, 0.82) !important;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(157, 140, 255, 0.35);
-    box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6), 0 0 60px rgba(157, 140, 255, 0.14);
-}
-.chat-container.theme-glass .chat-header,
-.chat-container.theme-glass .chat-input { background: transparent !important; }
-.chat-container.theme-glass .message-bubble { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18); }
-.chat-container.theme-glass .bot-message .message-bubble { border: 1px solid rgba(255, 255, 255, 0.08); }
+/* Per-theme appearance is owned by the shared widget-surface.css (token-driven);
+   the preview keeps only its ASK_ANYTHING chrome below. */
 
-/* Terminal — mono, square corners, → / > prefixes */
-.chat-container.theme-terminal,
-.chat-container.theme-terminal .chat-panel,
-.chat-container.theme-terminal .message-bubble,
-.chat-container.theme-terminal .message-input input,
-.chat-container.theme-terminal .header-info h3 {
-    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace !important;
-}
-.chat-container.theme-terminal .chat-panel { border-radius: 10px; }
-.chat-container.theme-terminal .message-bubble { border-radius: 4px !important; }
+/* Terminal: keep the mock's single-line paragraph rendering. */
 .chat-container.theme-terminal :deep(.message-bubble p) { display: inline; margin: 0; }
-.chat-container.theme-terminal .bot-message .message-bubble::before { content: '→ '; opacity: 0.9; }
-.chat-container.theme-terminal .user-message .message-bubble::before { content: '> '; opacity: 0.9; }
-.chat-container.theme-terminal .message-input input { border-radius: 6px; }
-.chat-container.theme-terminal .send-button { border-radius: 6px; }
-
-/* Playful (Sunrise) — light, very rounded */
-.chat-container.theme-playful .chat-panel { border-radius: 24px; }
-.chat-container.theme-playful .message-bubble { border-radius: 18px; }
-.chat-container.theme-playful .bot-message .message-bubble { border-radius: 6px 18px 18px 18px; }
-.chat-container.theme-playful .user-message .message-bubble { border-radius: 18px 18px 6px 18px; }
-
-/* Calm Mint — subtle borders */
-.chat-container.theme-calm .chat-panel { border-radius: 18px; box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5); }
-.chat-container.theme-calm .message-bubble { border: 1px solid rgba(127, 127, 127, 0.14); }
 
 /* ========== ASK_ANYTHING CHAT STYLE ========== */
 
@@ -1434,7 +1397,6 @@ const handleInitiationClick = () => {
 .powered-by-welcome {
     text-align: center;
     font-size: 0.75rem;
-    opacity: 0.6;
     color: var(--text-muted);
     padding: var(--space-md);
     background: transparent;
@@ -1551,9 +1513,9 @@ const handleInitiationClick = () => {
 }
 
 /* ASK_ANYTHING: Bot messages - force left alignment */
-.chat-container.ask-anything-style .chat-messages .message.bot-message,
+.chat-container.ask-anything-style .chat-messages .message.agent-message,
 .chat-container.ask-anything-style .chat-messages .message.assistant-message,
-.chat-container.ask-anything-style .message.bot-message,
+.chat-container.ask-anything-style .message.agent-message,
 .chat-container.ask-anything-style .message.assistant-message,
 .chat-container.ask-anything-style .chat-messages .message.bot,
 .chat-container.ask-anything-style .message.bot {

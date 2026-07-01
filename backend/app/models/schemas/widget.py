@@ -34,6 +34,7 @@ class WidgetCreate(WidgetBase):
 
 class AgentCustomizationResponse(BaseModel):
     chat_background_color: Optional[str] = None
+    chat_text_color: Optional[str] = None
     chat_bubble_color: Optional[str] = None
     accent_color: Optional[str] = None
     font_family: Optional[str] = None

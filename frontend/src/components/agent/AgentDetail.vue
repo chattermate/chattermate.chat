@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
-import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri } from '@/utils/orb'
+import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri, terminalMarkSvgDataUri } from '@/utils/orb'
 
 import KnowledgeGrid from './KnowledgeGrid.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
@@ -70,6 +70,7 @@ const orbMeta = computed(
   () => (agentData.value.customization?.customization_metadata as Record<string, unknown> | undefined),
 )
 const useOrbAvatar = computed(() => orbMeta.value?.avatar_style === 'orb')
+const useTerminalMark = computed(() => orbMeta.value?.avatar_style === 'terminal')
 const currentOrbVariant = computed(() => orbMeta.value?.orb_variant)
 const orbStyle = computed(() => resolveOrbStyle(agentData.value.name || '', currentOrbVariant.value))
 
@@ -83,6 +84,15 @@ const persistAvatarMeta = async (patch: Record<string, unknown>, photoUrl?: stri
     customization_metadata: meta,
   })
   agentData.value.customization = updated
+  // Reflect the new avatar in the live Chat-Customization preview immediately.
+  // The form's props-watch is guarded by isInternalUpdate, so it won't re-emit
+  // `preview` for this external change — sync previewCustomization directly.
+  previewCustomization.value = {
+    ...previewCustomization.value,
+    photo_url: updated.photo_url,
+    photo_url_signed: (updated as AgentCustomization).photo_url_signed,
+    customization_metadata: updated.customization_metadata,
+  }
 }
 
 const selectOrbAvatar = async (variant: number) => {
@@ -95,6 +105,20 @@ const selectOrbAvatar = async (variant: number) => {
     await persistAvatarMeta({ avatar_style: 'orb', orb_variant: variant }, orbUrl)
   } catch (error) {
     console.error('Failed to set orb avatar:', error)
+    toast.error('Failed to update avatar')
+  }
+}
+
+const selectTerminalMark = async () => {
+  if (isUploading.value) return
+  closeAvatarPicker()
+  try {
+    // Tint the ">" mark with the agent's accent (falls back to the Terminal lime).
+    const accent = (agentData.value.customization?.accent_color as string | undefined) || undefined
+    const markUrl = terminalMarkSvgDataUri(accent)
+    await persistAvatarMeta({ avatar_style: 'terminal' }, markUrl)
+  } catch (error) {
+    console.error('Failed to set terminal mark avatar:', error)
     toast.error('Failed to update avatar')
   }
 }
@@ -127,6 +151,7 @@ const previewCustomization = ref<AgentCustomization>({
     id: agentData.value.customization?.id ?? 0,
     agent_id: agentData.value.id,
     chat_background_color: agentData.value.customization?.chat_background_color ?? '#F8F9FA',
+    chat_text_color: agentData.value.customization?.chat_text_color ?? '#212529',
     chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? '#E9ECEF',
     accent_color: agentData.value.customization?.accent_color ?? '#C9F24E',
     font_family: agentData.value.customization?.font_family ?? 'Inter, system-ui, sans-serif',
@@ -779,6 +804,17 @@ onMounted(async () => {
                                 >
                                     <span class="avatar-orb-thumb" :style="getOrbStyleAt(n - 1)"></span>
                                 </button>
+                                <button
+                                    type="button"
+                                    class="avatar-pick avatar-pick-orb"
+                                    :class="{ active: useTerminalMark }"
+                                    :disabled="isUploading"
+                                    @click="selectTerminalMark"
+                                    aria-label="Terminal mark"
+                                    title="Terminal >"
+                                >
+                                    <span class="avatar-terminal-thumb">&gt;</span>
+                                </button>
                             </div>
                             <button type="button" class="avatar-picker-upload" :disabled="isUploading" @click="chooseUploadAvatar">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -1378,6 +1414,22 @@ onMounted(async () => {
     width: 100%;
     height: 100%;
     border-radius: 50%;
+}
+/* Terminal ">" prompt mark tile in the picker grid */
+.avatar-terminal-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: #0b0c10;
+    box-shadow: inset 0 0 0 2px rgba(201, 242, 78, 0.55);
+    color: #c9f24e;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 700;
+    font-size: 1.05rem;
+    line-height: 1;
 }
 .avatar-pick-orb.active {
     border-color: var(--accent-ink);
@@ -2152,7 +2204,8 @@ input:checked + .slider:before {
 
 .widget-preview {
     width: 100%;
-    height: 600px;
+    max-width: 384px;
+    height: 560px;
     border: none;
     background: none;
     border-radius: var(--radius-lg);
