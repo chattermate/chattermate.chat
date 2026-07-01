@@ -1,0 +1,45 @@
+# ChatterMate
+
+> ChatterMate is an open-source AI customer-support chatbot platform. You can sign up, create AI
+> agents, add knowledge sources, and embed a chat widget — all from a browser, the terminal (CLI),
+> or programmatically via an AI agent over MCP.
+
+## Start here (AI agents & automation)
+
+Use the **ChatterMate CLI** (the `chattermate` command, installed with `pip install chattermate-cli`)
+to sign up and manage everything from the terminal. It is the account/config CLI — distinct from the
+self-host Docker tool (`npm install -g chattermate-deploy`).
+
+Minimal end-to-end flow:
+
+```bash
+pip install chattermate-cli
+chattermate signup --name "Acme Inc" --domain acme.com --admin-email you@acme.com --admin-name "You"
+chattermate agent create --name "Support" --type customer_support -i "Be concise" --json
+chattermate knowledge add-url --website https://docs.acme.com --agent-id <agent-id>
+# Embed on your site:
+# <script>window.chattermateId='YOUR_WIDGET_ID';</script>
+# <script src="https://app.chattermate.chat/webclient/chattermate.min.js"></script>
+```
+
+## Docs
+
+- [AI Agent & Automation Quickstart](https://docs.chattermate.chat/features/agents-quickstart): copy-paste path from signup to a live widget, built for AI agents and CI.
+- [CLI reference](https://docs.chattermate.chat/features/cli): the account CLI — signup, login, tokens, agents, workflows, knowledge.
+- [MCP Server](https://docs.chattermate.chat/features/mcp-server): let an AI agent configure ChatterMate over the Model Context Protocol (`chattermate-mcp`).
+- [Quickstart](https://docs.chattermate.chat/quickstart): hosted vs self-host, side by side.
+- [Widget integration](https://docs.chattermate.chat/features/widget): embed the chat widget on any site.
+- [Widget Apps & API keys](https://docs.chattermate.chat/features/widget-apps): authenticated widgets and programmatic tokens.
+
+## Key URLs
+
+- Sign up / dashboard: https://app.chattermate.chat
+- Hosted API base: https://api.chattermate.chat (routes under `/api/v1`)
+- Widget script: https://app.chattermate.chat/webclient/chattermate.min.js
+- Documentation: https://docs.chattermate.chat
+- GitHub: https://github.com/chattermate/chattermate.chat
+
+## Self-hosting (optional)
+
+- [Self-host with Docker](https://docs.chattermate.chat/quickstart#option-b-self-host-with-docker): run the full stack on your own infrastructure with the self-host CLI (`npm install -g chattermate-deploy`, command `chattermate-deploy init/start/stop`).
+- [Docker deployment](https://docs.chattermate.chat/deployment/docker)

@@ -1,14 +1,14 @@
 # ChatterMate - Open Source AI Customer Support Chatbot Platform
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![npm version](https://img.shields.io/npm/v/chattermate-cli.svg)](https://www.npmjs.com/package/chattermate-cli)
+[![npm version](https://img.shields.io/npm/v/chattermate-deploy.svg)](https://www.npmjs.com/package/chattermate-deploy)
 [![Docker Pulls](https://img.shields.io/docker/pulls/chattermate/backend.svg)](https://hub.docker.com/r/chattermate/backend)
 
 ![ChatterMate Logo](frontend/public/assets/images/logo.svg)
 
 > **No-code AI chatbot framework for 24/7 customer support automation.** Self-hosted, multi-model AI support, intelligent human handoff, file attachments, Jira integration, and seamless website embedding. Build AI-powered help desk and live chat solutions without writing code.
 
-**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://chattermate.chat)**
+**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)**
 
 ---
 
@@ -17,7 +17,7 @@
 - [Why ChatterMate?](#why-chattermate)
 - [Features](#features)
 - [Demo](#demo)
-- [Quick Start](#quick-start-with-cli)
+- [Quick Start](#quick-start)
 - [Installation](#installation-methods)
 - [Deployment](#deployment)
 - [Roadmap](#roadmap)
@@ -91,44 +91,76 @@ Build sophisticated conversation flows visually with our intuitive workflow buil
 
 ---
 
-## Quick Start with CLI
+## Quick Start
 
-Get ChatterMate running in minutes:
+There are two ways to run ChatterMate. **Most people want the hosted service** — sign up and
+manage everything from the dashboard, the CLI, or an AI agent. **Self-host with Docker** only if
+you need to run ChatterMate on your own infrastructure.
+
+### Option A — Hosted (fastest)
+
+1. **Sign up:** [app.chattermate.chat](https://app.chattermate.chat) — free, no card required.
+2. **Manage from your terminal, automate, or drive it with an AI agent** using the **ChatterMate CLI**:
 
 ```bash
-# Install the ChatterMate CLI globally
-npm install -g chattermate-cli
+# The ChatterMate CLI — sign up, mint tokens, and manage agents, workflows & knowledge
+pip install chattermate-cli          # installs the `chattermate` command
 
-# Create a new ChatterMate project
-chattermate init my-chattermate-project
+chattermate signup --name "Acme Inc" --domain acme.com --admin-email you@acme.com
+chattermate agent create --name "Support" --type customer_support -i "Be concise and friendly"
+chattermate knowledge add-url --website https://docs.acme.com --agent-id <agent-id>
+```
 
-# Navigate to your project
+➡️ **[AI Agent & Automation Quickstart](https://docs.chattermate.chat/features/agents-quickstart)** · **[CLI reference](https://docs.chattermate.chat/features/cli)** · **[MCP server](https://docs.chattermate.chat/features/mcp-server)**
+
+> 🤖 **Building an AI agent that sets up ChatterMate?** Start at
+> [`chattermate.chat/llms.txt`](https://chattermate.chat/llms.txt), follow the
+> [agent quickstart](https://docs.chattermate.chat/features/agents-quickstart), or connect the
+> [MCP server](https://docs.chattermate.chat/features/mcp-server) to configure ChatterMate over MCP.
+
+### Option B — Self-host with Docker
+
+Run the full ChatterMate stack on your own infrastructure with the **self-host CLI** (Docker-based):
+
+```bash
+# Install the self-host / deployment CLI
+npm install -g chattermate-deploy
+
+# Scaffold a project, then start the full stack (Postgres, Redis, backend, frontend, worker)
+chattermate-deploy init my-chattermate-project
 cd my-chattermate-project
-
-# Start all services with Docker
-chattermate start
-
-# Open http://localhost/ in your browser
+chattermate-deploy start                  # then open http://localhost/
 ```
 
-### CLI Commands
+<details>
+<summary>Self-host CLI commands</summary>
 
 ```bash
-chattermate init <project-name>    # Initialize a new project
-chattermate start                  # Start all services
-chattermate stop                   # Stop all services
-chattermate status                 # Check service status
-chattermate logs                   # View service logs
-chattermate reset                  # Reset and cleanup project
+chattermate-deploy init <project-name>    # Scaffold a new self-hosted project
+chattermate-deploy start                  # Start all services (Docker)
+chattermate-deploy stop                   # Stop all services
+chattermate-deploy status                 # Check service status
+chattermate-deploy logs                   # View service logs
+chattermate-deploy reset                  # Reset and remove all data
 ```
+</details>
+
+> ⚠️ **Two different `chattermate` commands — don't mix them up.** The **hosted CLI**
+> (`pip install chattermate-cli`) signs you up and manages agents/knowledge against the
+> ChatterMate API. The **self-host CLI** (`npm install -g chattermate-deploy`) scaffolds and runs
+> the Docker stack. They are separate tools that happen to share the `chattermate` name.
 
 ---
 
 ## Installation Methods
 
+> Prefer the hosted service? Skip this section — just [sign up](https://app.chattermate.chat)
+> and/or use the [ChatterMate CLI](https://docs.chattermate.chat/features/cli)
+> (`pip install chattermate-cli`). The methods below are for **self-hosting**.
+
 ### Prerequisites
 
-**For CLI Installation (Recommended)**
+**For Self-Host CLI (Recommended)**
 - Node.js 16+
 - Docker & Docker Compose
 - npm or yarn
@@ -139,13 +171,17 @@ chattermate reset                  # Reset and cleanup project
 - Firebase Project (for push notifications)
 - Redis (optional, for rate limiting and multi-server socket deployment)
 
-### Method 1: CLI Installation (Recommended)
+### Method 1: Self-Host CLI (Recommended)
+
+The self-host CLI (`chattermate-deploy`, installed via npm) scaffolds and runs the Docker stack.
+This is **not** the account CLI — for signup and agent management see the
+[ChatterMate CLI](https://docs.chattermate.chat/features/cli).
 
 ```bash
-npm install -g chattermate-cli
-chattermate init my-project
+npm install -g chattermate-deploy
+chattermate-deploy init my-project
 cd my-project
-chattermate start
+chattermate-deploy start
 ```
 
 ### Method 2: Docker Installation

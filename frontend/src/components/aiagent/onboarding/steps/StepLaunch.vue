@@ -40,7 +40,7 @@ const widgetSnippet = computed(() =>
 
 const cliSnippet = computed(
   () => `# install & create from your terminal
-pipx install chattermate-sdk
+pipx install chattermate-cli
 chattermate agent create --name "Support" --type ${props.agentType || 'customer_support'}
 chattermate knowledge add-url --website https://docs.acme.com`,
 )
