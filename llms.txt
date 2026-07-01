@@ -16,7 +16,11 @@ Minimal end-to-end flow:
 pip install chattermate-cli
 chattermate signup --name "Acme Inc" --domain acme.com --admin-email you@acme.com --admin-name "You"
 chattermate agent create --name "Support" --type customer_support -i "Be concise" --json
+# Add knowledge from a URL or a local PDF:
 chattermate knowledge add-url --website https://docs.acme.com --agent-id <agent-id>
+chattermate knowledge add-file ./guide.pdf --agent-id <agent-id>
+# Create a widget to get the embed id:
+chattermate widget create --agent-id <agent-id> --name "Website widget"
 # Embed on your site:
 # <script>window.chattermateId='YOUR_WIDGET_ID';</script>
 # <script src="https://app.chattermate.chat/webclient/chattermate.min.js"></script>

@@ -30,11 +30,13 @@ from app.database import get_db
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
+from app.repositories.agent import AgentRepository
 from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
 from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from app.core.config import settings
 from sqlalchemy.orm import Session
 from app.core.s3 import upload_file_to_s3, get_s3_signed_url
+from app.core.file_validation import read_validated, safe_filename, PDF_MAGIC
 from app.repositories.user import UserRepository
 from app.models.notification import Notification, NotificationType
 from app.services.user import send_fcm_notification
@@ -52,6 +54,11 @@ logger = get_logger(__name__)
 
 # Add this near the top of the file with other constants
 TEMP_DIR = "temp"
+
+# PDF upload limits (see app/core/file_validation.py)
+MAX_PDF_SIZE = 25 * 1024 * 1024  # 25MB per file
+MAX_PDF_FILES = 20  # per request
+ALLOWED_PDF_TYPES = ("application/pdf",)
 
 # Import processor status from shared module
 from app.core.processor import PROCESSOR_STATUS
@@ -186,14 +193,32 @@ async def upload_pdf_files(
     db: Session = Depends(get_db)
 ):
     """Upload PDF files to knowledge base"""
-    saved_files = []
-
     try:
         # Convert org_id string to UUID for comparison
-        org_uuid = UUID(org_id)
-        logger.debug(f"current_user.organization_id: {current_user.organization_id}, org_id: {org_uuid}")
+        try:
+            org_uuid = UUID(org_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid org_id")
         if current_user.organization_id != org_uuid:
             raise HTTPException(status_code=403, detail="Unauthorized access to organization")
+
+        if len(files) > MAX_PDF_FILES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many files: at most {MAX_PDF_FILES} per request",
+            )
+
+        # Validate the agent (format + ownership) once, up front.
+        agent_uuid = None
+        if agent_id:
+            try:
+                agent_uuid = UUID(agent_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid agent_id")
+            agent = AgentRepository(db).get_agent(agent_uuid)
+            if not agent or agent.organization_id != org_uuid:
+                # 404 (not 403) so we don't reveal another org's agent existence.
+                raise HTTPException(status_code=404, detail="Agent not found")
 
         # Check enterprise subscription limits if enterprise module is available
         if HAS_ENTERPRISE:
@@ -231,31 +256,37 @@ async def upload_pdf_files(
 
         # Process each file
         for file in files:
-            file_path = ""
+            # Validate content-type, size, and magic bytes; returns the bytes.
+            content = await read_validated(
+                file,
+                max_size=MAX_PDF_SIZE,
+                allowed_content_types=ALLOWED_PDF_TYPES,
+                magic_prefix=PDF_MAGIC,
+                label="PDF",
+            )
+            # Sanitize the filename (strip path components, add a UUID prefix)
+            # to prevent path traversal and overwrites.
+            stored_name = safe_filename(file.filename)
             source_type = "pdf_file"
+
             # Check if S3 storage is enabled
             if settings.S3_FILE_STORAGE:
-                # Upload to S3
                 folder = f"knowledge/{org_uuid}"
-                file_content = await file.read()
-                file_url = await upload_file_to_s3(file_content, folder, file.filename, content_type="application/pdf")
+                file_url = await upload_file_to_s3(content, folder, stored_name, content_type="application/pdf")
                 logger.debug(f"Uploaded PDF to S3: {file_url}")
                 file_path = await get_s3_signed_url(file_url)
                 source_type = "pdf_url"
             else:
                 # Save file locally
                 os.makedirs(TEMP_DIR, exist_ok=True)
-                file_path = os.path.join(TEMP_DIR, file.filename)
+                file_path = os.path.join(TEMP_DIR, stored_name)
                 with open(file_path, "wb") as f:
-                    content = await file.read()
                     f.write(content)
-                
-            saved_files.append(file_path)
 
             # Create queue item with user_id
             queue_item = KnowledgeQueue(
                 organization_id=org_uuid,
-                agent_id=UUID(agent_id) if agent_id else None,
+                agent_id=agent_uuid,
                 user_id=current_user.id,
                 source_type=source_type,
                 source=file_path,
@@ -271,9 +302,11 @@ async def upload_pdf_files(
             "queue_items": [{"id": item.id, "status": item.status} for item in queued_items]
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error uploading PDFs: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to upload files")
 
 
 @router.post("/explore/add-url")
@@ -462,6 +495,18 @@ async def add_urls(
         if current_user.organization_id != request.org_id:
             raise HTTPException(status_code=403, detail="Unauthorized access to organization")
 
+        # Validate the agent (format + ownership) once, up front.
+        agent_uuid = None
+        if request.agent_id:
+            try:
+                agent_uuid = UUID(request.agent_id)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid agent_id")
+            agent = AgentRepository(db).get_agent(agent_uuid)
+            if not agent or agent.organization_id != request.org_id:
+                # 404 (not 403) so we don't reveal another org's agent existence.
+                raise HTTPException(status_code=404, detail="Agent not found")
+
         # Check enterprise subscription limits if enterprise module is available
         if HAS_ENTERPRISE:
             subscription_repo = SubscriptionRepository(db)
@@ -515,7 +560,7 @@ async def add_urls(
         for url in request.pdf_urls:
             queue_item = KnowledgeQueue(
                 organization_id=request.org_id,
-                agent_id=UUID(request.agent_id) if request.agent_id else None,
+                agent_id=agent_uuid,
                 user_id=current_user.id,
                 source_type='pdf_url',
                 source=url,
@@ -530,7 +575,7 @@ async def add_urls(
         for url in request.websites:
             queue_item = KnowledgeQueue(
                 organization_id=request.org_id,
-                agent_id=UUID(request.agent_id) if request.agent_id else None,
+                agent_id=agent_uuid,
                 user_id=current_user.id,
                 source_type='website',
                 source=url,
@@ -546,9 +591,11 @@ async def add_urls(
             "queue_items": [{"id": item.id, "status": item.status} for item in queued_items]
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error adding URLs: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to add URLs")
 
 
 @router.post("/link")
