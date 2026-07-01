@@ -15,10 +15,9 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { buildWidgetEmbed } from '@/utils/widgetEmbed'
-import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 const props = defineProps<{
   widgetId: string | null
@@ -30,19 +29,8 @@ const emit = defineEmits<{
   (e: 'back'): void
 }>()
 
-const { hasEnterpriseModule } = useEnterpriseFeatures()
-
-const tab = ref<'widget' | 'cli'>('widget')
-
 const widgetSnippet = computed(() =>
   props.widgetId ? buildWidgetEmbed(props.widgetId, false) : '',
-)
-
-const cliSnippet = computed(
-  () => `# install & create from your terminal
-pipx install chattermate-cli
-chattermate agent create --name "Support" --type ${props.agentType || 'customer_support'}
-chattermate knowledge add-url --website https://docs.acme.com`,
 )
 
 const copy = async (text: string, label: string) => {
@@ -60,23 +48,12 @@ const copy = async (text: string, label: string) => {
   <div class="step">
     <header class="step-head">
       <h2 class="step-title">Go live</h2>
-      <p class="step-sub">Embed the widget, or wire it up from your terminal.</p>
+      <p class="step-sub">Embed this snippet on your site to start chatting with visitors.</p>
     </header>
 
-    <div class="tab-row">
-      <button type="button" class="tab" :class="{ active: tab === 'widget' }" @click="tab = 'widget'">Widget snippet</button>
-      <button type="button" class="tab" :class="{ active: tab === 'cli' }" @click="tab = 'cli'">CLI</button>
-    </div>
-
-    <div v-if="tab === 'widget'">
+    <div>
       <pre class="code-block">{{ widgetSnippet }}</pre>
       <button type="button" class="btn-soft" :disabled="!widgetSnippet" @click="copy(widgetSnippet, 'Widget snippet')">Copy snippet</button>
-    </div>
-
-    <div v-else>
-      <pre class="code-block muted-code">{{ cliSnippet }}</pre>
-      <p v-if="!hasEnterpriseModule" class="cli-note">CLI &amp; MCP are part of the Enterprise edition.</p>
-      <button type="button" class="btn-soft" @click="copy(cliSnippet, 'CLI commands')">Copy commands</button>
     </div>
 
     <div class="step-actions">
@@ -113,30 +90,6 @@ const copy = async (text: string, label: string) => {
   margin: 0;
 }
 
-.tab-row {
-  display: flex;
-  gap: 8px;
-}
-
-.tab {
-  padding: 10px 18px;
-  background: var(--o05);
-  border: 1px solid var(--o12);
-  border-radius: var(--radius-pill);
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 500;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.tab.active {
-  background: var(--accent-bg-08);
-  border-color: var(--accent-border);
-  color: var(--accent-ink);
-}
-
 .code-block {
   background: var(--bg);
   border: 1px solid var(--o10);
@@ -150,18 +103,6 @@ const copy = async (text: string, label: string) => {
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0 0 12px;
-}
-
-.muted-code {
-  color: var(--code);
-  word-break: normal;
-}
-
-.cli-note {
-  margin: 0 0 12px;
-  font-size: 12px;
-  font-family: var(--font-mono);
-  color: var(--muted2);
 }
 
 .btn-soft {
