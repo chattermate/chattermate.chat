@@ -88,6 +88,7 @@ const customization = ref<AgentCustomization>({
     id: props.agent.customization?.id ?? 0,
     agent_id: props.agent.id,
     chat_background_color: props.agent.customization?.chat_background_color ?? '#F8F9FA',
+    chat_text_color: props.agent.customization?.chat_text_color ?? '#212529',
     chat_bubble_color: props.agent.customization?.chat_bubble_color ?? '#E9ECEF',
     icon_color: props.agent.customization?.icon_color ?? '#6C757D',
     accent_color: props.agent.customization?.accent_color ?? '#C9F24E',
@@ -162,15 +163,16 @@ const newStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 
 
 // Default palette per design. Selecting a design seeds these color fields so the look
 // matches the marketing presets; the user can still recolor afterwards.
-const THEME_PRESETS: Record<string, { chat_background_color: string; chat_bubble_color: string; accent_color: string; font_family: string }> = {
-    CHATBOT: { chat_background_color: '#FFFFFF', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
-    ASK_ANYTHING: { chat_background_color: '#F8F9FA', chat_bubble_color: '#E9ECEF', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
-    GLASS: { chat_background_color: '#17151F', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
-    TERMINAL: { chat_background_color: '#070907', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'JetBrains Mono, monospace' },
-    PLAYFUL: { chat_background_color: '#FFFFFF', chat_bubble_color: '#FF7A6B', accent_color: '#FF7A6B', font_family: 'Instrument Sans, sans-serif' },
-    CALM_MINT: { chat_background_color: '#0E1A1A', chat_bubble_color: '#5FE3D6', accent_color: '#5FE3D6', font_family: 'Instrument Sans, sans-serif' },
-    AURORA: { chat_background_color: '#14111C', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
-    SUNRISE: { chat_background_color: '#FFFFFF', chat_bubble_color: '#FF8A73', accent_color: '#FF8A73', font_family: 'Instrument Sans, sans-serif' },
+// Per-theme text colours copied from the design comp (Terminal greenish, Glass lavender, …).
+const THEME_PRESETS: Record<string, { chat_background_color: string; chat_text_color: string; chat_bubble_color: string; accent_color: string; font_family: string }> = {
+    CHATBOT: { chat_background_color: '#FFFFFF', chat_text_color: '#212529', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
+    ASK_ANYTHING: { chat_background_color: '#F8F9FA', chat_text_color: '#2A2A33', chat_bubble_color: '#E9ECEF', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
+    GLASS: { chat_background_color: '#17151F', chat_text_color: '#ECEAFA', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
+    TERMINAL: { chat_background_color: '#070907', chat_text_color: '#D7F7C8', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'JetBrains Mono, monospace' },
+    PLAYFUL: { chat_background_color: '#FFFFFF', chat_text_color: '#2A2730', chat_bubble_color: '#FF7A6B', accent_color: '#FF7A6B', font_family: 'Instrument Sans, sans-serif' },
+    CALM_MINT: { chat_background_color: '#0E1A1A', chat_text_color: '#DDF7F3', chat_bubble_color: '#5FE3D6', accent_color: '#5FE3D6', font_family: 'Instrument Sans, sans-serif' },
+    AURORA: { chat_background_color: '#14111C', chat_text_color: '#F2F3F8', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
+    SUNRISE: { chat_background_color: '#FFFFFF', chat_text_color: '#2A2A33', chat_bubble_color: '#FF8A73', accent_color: '#FF8A73', font_family: 'Instrument Sans, sans-serif' },
 }
 
 const themePreset = (value: string) => THEME_PRESETS[value] || THEME_PRESETS.CHATBOT
@@ -181,6 +183,7 @@ const selectChatStyle = (value: ChatStyle) => {
     const preset = THEME_PRESETS[value]
     if (preset) {
         customization.value.chat_background_color = preset.chat_background_color
+        customization.value.chat_text_color = preset.chat_text_color
         customization.value.chat_bubble_color = preset.chat_bubble_color
         customization.value.accent_color = preset.accent_color
         customization.value.font_family = preset.font_family
@@ -256,6 +259,7 @@ watch(() => props.agent.customization, (newCustomization) => {
             id: newCustomization.id ?? 0,
             agent_id: props.agent.id,
             chat_background_color: newCustomization.chat_background_color ?? '#F8F9FA',
+            chat_text_color: newCustomization.chat_text_color ?? '#212529',
             chat_bubble_color: newCustomization.chat_bubble_color ?? '#E9ECEF',
             icon_color: newCustomization.icon_color ?? '#6C757D',
             accent_color: newCustomization.accent_color ?? '#C9F24E',
@@ -582,6 +586,13 @@ const isSectionExpanded = (sectionId: string) => {
                         <span class="aux-color-input">
                             <input type="color" v-model="customization.chat_background_color">
                             <span class="aux-color-value">{{ customization.chat_background_color }}</span>
+                        </span>
+                    </label>
+                    <label class="aux-color">
+                        <span class="aux-color-label">Text color</span>
+                        <span class="aux-color-input">
+                            <input type="color" v-model="customization.chat_text_color">
+                            <span class="aux-color-value">{{ customization.chat_text_color }}</span>
                         </span>
                     </label>
                     <label class="aux-color">

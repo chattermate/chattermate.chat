@@ -156,6 +156,7 @@ async def get_widget_html(widget_id: str, agent_name: str, agent_customization: 
 
         customization_dict = {
             "chat_background_color": agent_customization.chat_background_color,
+            "chat_text_color": agent_customization.chat_text_color,
             "chat_bubble_color": agent_customization.chat_bubble_color,
             "accent_color": agent_customization.accent_color,
             "font_family": agent_customization.font_family,

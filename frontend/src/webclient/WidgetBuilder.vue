@@ -33,6 +33,7 @@ import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
 import { themeCssVars } from './widget-theme'
+import './widget-surface.css'
 import { useCurrency } from '../composables/useCurrency'
 import { formatDistanceToNow } from 'date-fns'
 // Add marked configuration before the props definition
@@ -1409,7 +1410,12 @@ const THEME_CLASS_MAP: Record<string, string> = {
 const themeClass = computed(() => THEME_CLASS_MAP[customization.value.chat_style as string] || '')
 
 // Structural theme tokens (radius/glow/border/agent-surface) as CSS vars on the container.
-const themeVars = computed(() => themeCssVars(customization.value.chat_style as string))
+const themeVars = computed(() => themeCssVars(customization.value.chat_style as string, {
+    chat_background_color: customization.value.chat_background_color,
+    chat_text_color: customization.value.chat_text_color,
+    accent_color: customization.value.accent_color,
+    font_family: customization.value.font_family,
+}))
 
 // Welcome message + quick actions shown on open (no history yet); they clear once
 // the visitor sends their first message.
@@ -1477,7 +1483,9 @@ const submitEmailGate = async () => {
 const containerStyles = computed(() => {
     const baseStyles = {
         width: '100%',
-        height: '580px',
+        // Fill the embed iframe (sized by chattermate.js to the comp's 560px);
+        // must be 100% so the panel isn't a fixed height inside the iframe.
+        height: '100%',
         borderRadius: 'var(--radius-lg)'
     }
 
@@ -1583,7 +1591,7 @@ const shouldShowWelcomeMessage = computed(() => {
             </button>
         </div>
     </div>
-    <div v-else-if="widgetId && !showAuthError" class="chat-container" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle, aurora: isAuroraStyle }, themeClass]" :style="{ ...shadowStyle, ...containerStyles, ...themeVars, '--cm-accent': customization.accent_color || '#C9F24E' }">
+    <div v-else-if="widgetId && !showAuthError" class="chat-container cm-surface" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle, aurora: isAuroraStyle }, themeClass]" :style="{ ...shadowStyle, ...containerStyles, ...themeVars }">
         <!-- Loading State -->
         <div v-if="isInitializing" class="initializing-overlay">
             <div class="loading-spinner">
@@ -1906,7 +1914,7 @@ const shouldShowWelcomeMessage = computed(() => {
                         <h3 :style="messageNameStyles">{{ humanAgent.human_agent_name || agentName }}</h3>
                         <div class="status">
                             <span class="status-indicator online"></span>
-                            <span class="status-text" :style="messageNameStyles">Online · replies instantly</span>
+                            <span class="status-text cm-presence">Online · replies instantly</span>
                         </div>
                     </div>
                 </div>
@@ -1998,6 +2006,16 @@ const shouldShowWelcomeMessage = computed(() => {
                             'user-message'
                         ]"
                     >
+                        <!-- Agent/bot avatar beside every reply (design comp) -->
+                        <div
+                            v-if="message.message_type === 'bot' || message.message_type === 'agent'"
+                            class="cm-msg-avatar"
+                            aria-hidden="true"
+                        >
+                            <img v-if="humanAgentPhotoUrl" :src="humanAgentPhotoUrl" class="cm-msg-avatar-img" alt="">
+                            <img v-else-if="!useOrbAvatar && photoUrl" :src="photoUrl" class="cm-msg-avatar-img" alt="">
+                            <div v-else class="cm-msg-avatar-orb" :style="orbStyle"></div>
+                        </div>
                         <div class="message-bubble"
                             :style="message.message_type === 'system' || message.message_type === 'rating' || message.message_type === 'product' || message.shopify_output ? {} :
                                    message.message_type === 'user' ? userBubbleStyles :
@@ -2405,7 +2423,7 @@ const shouldShowWelcomeMessage = computed(() => {
             </div>
 
             <!-- Chat Input Section (hidden during the email gate and workflow end) -->
-            <div v-if="!shouldShowNewConversationOption && !showEmailGate" class="chat-input" :class="{ 'ask-anything-input': isAskAnythingStyle }" :style="agentBubbleStyles">
+            <div v-if="!shouldShowNewConversationOption && !showEmailGate" class="chat-input" :class="{ 'ask-anything-input': isAskAnythingStyle }">
                 <!-- File upload input (hidden) -->
                 <input
                     ref="fileInputRef"
@@ -2515,7 +2533,7 @@ const shouldShowWelcomeMessage = computed(() => {
             </div>
 
             <!-- New Conversation Section (Shown when conversation is ended in workflow) -->
-            <div v-else-if="shouldShowNewConversationOption && !showEmailGate" class="new-conversation-section" :style="agentBubbleStyles">
+            <div v-else-if="shouldShowNewConversationOption && !showEmailGate" class="new-conversation-section">
                 <div class="conversation-ended-message">
                     <p class="ended-text">This chat has ended.</p>
                     <button
@@ -2600,7 +2618,7 @@ const shouldShowWelcomeMessage = computed(() => {
 <style scoped>
 .chat-container {
     width: 100%;
-    height: 580px;
+    height: 100%;
     display: flex;
     flex-direction: column;
     background: transparent;
@@ -2612,17 +2630,15 @@ const shouldShowWelcomeMessage = computed(() => {
     box-shadow: none;
     /* Open/close transition used when container toggles in embed */
     transition: opacity 220ms ease, transform 220ms ease;
-    /* Body/UI typography (design comp). A custom font_family, when set, is applied
-       inline by the font loader and overrides this for body text only. */
-    font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    /* Body font comes from the shared theme token (mono on Terminal, custom font when set). */
+    font-family: var(--cm-body-font, 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif);
 }
 
 /* ===== Typography roles (design comp) =====
-   Display (agent name / welcome title): Space Grotesk
-   Labels, citations, system pills: JetBrains Mono */
-.chat-container .header-info h3,
+   Body/name: Instrument Sans (var); labels/citations/system pills: JetBrains Mono */
 .chat-container .welcome-title {
-    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-family: var(--cm-body-font, 'Instrument Sans', system-ui, sans-serif);
+    font-weight: 700;
 }
 .chat-container .citation-label,
 .chat-container .citation-chip,
@@ -2673,7 +2689,7 @@ const shouldShowWelcomeMessage = computed(() => {
 .header-orb {
     width: 34px;
     height: 34px;
-    border-radius: 50%;
+    border-radius: var(--cm-avatar-radius, 50%);
     flex-shrink: 0;
 }
 .cm-header-sheen {
@@ -2802,12 +2818,11 @@ const shouldShowWelcomeMessage = computed(() => {
 }
 
 .header-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--cm-avatar-radius, 50%);
     object-fit: cover;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    border: 2px solid white;
+    border: none;
 }
 
 .header-info {
@@ -2852,6 +2867,12 @@ const shouldShowWelcomeMessage = computed(() => {
     background: var(--success-color);
     box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
     animation: pulse-online 2s ease-in-out infinite;
+}
+
+/* Presence line ("Online · replies instantly") in the accent colour (design comp). */
+.cm-presence {
+    color: var(--cm-accent, #C9F24E);
+    font-size: 11.5px;
 }
 
 @keyframes pulse-online {
@@ -2902,6 +2923,21 @@ const shouldShowWelcomeMessage = computed(() => {
     object-fit: cover;
     margin-top: 4px;
 }
+
+/* Per-message agent avatar (28px orb/photo beside each reply, design comp) */
+.cm-msg-avatar {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+}
+.cm-msg-avatar-orb,
+.cm-msg-avatar-img {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--cm-avatar-radius, 50%);
+    display: block;
+}
+.cm-msg-avatar-img { object-fit: cover; }
 
 .message-bubble {
     padding: 10px 14px;
@@ -3066,7 +3102,8 @@ const shouldShowWelcomeMessage = computed(() => {
     text-align: center;
     padding: var(--space-xs);
     font-size: 0.75rem;
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    border-top: none;
+    background: transparent;
     margin-top: auto;
     display: flex;
     align-items: center;
@@ -3507,7 +3544,7 @@ const shouldShowWelcomeMessage = computed(() => {
 .cm-welcome-avatar {
     width: 28px;
     height: 28px;
-    border-radius: 50%;
+    border-radius: var(--cm-avatar-radius, 50%);
     flex-shrink: 0;
 }
 .cm-welcome-avatar { object-fit: cover; }
@@ -3662,6 +3699,7 @@ const shouldShowWelcomeMessage = computed(() => {
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .chat-container.theme-terminal .citation-chip { border-radius: 4px; }
+.chat-container.theme-terminal .cm-quick-action { border-radius: 6px; }
 
 /* ---- Calm Mint ---- */
 .chat-container.theme-calm .chat-panel {

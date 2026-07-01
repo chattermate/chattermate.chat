@@ -1,0 +1,191 @@
+/**
+ * SHARED chat-surface theme — the single place the widget's themed appearance is
+ * defined. Imported by BOTH the real widget (`WidgetBuilder.vue`) and the admin
+ * preview (`AgentChatPreviewPanel.vue`) so they can never drift.
+ *
+ * Every rule is scoped under `.chat-container.cm-surface` (both surfaces add the
+ * `cm-surface` marker class to their panel root). The extra class both contains the
+ * global import to the widget and gives these rules enough specificity to win over
+ * each component's own scoped `[data-v-*]` CSS. Every value comes from the `--cm-*`
+ * custom properties emitted by `themeCssVars()` in `widget-theme.ts` — no hard-coded
+ * per-theme values live here.
+ *
+ * Components keep only their own NON-themed, structural CSS (layout, animations,
+ * socket/streaming bits, admin-mock chrome) in their scoped <style> blocks.
+ */
+
+/* ===== Panel ===== */
+.chat-container.cm-surface {
+    font-family: var(--cm-body-font);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface .chat-panel {
+    background: var(--cm-card);
+    color: var(--cm-text);
+}
+
+/* ===== Header ===== */
+.chat-container.cm-surface .chat-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--cm-hairline);
+    background: transparent;
+}
+.chat-container.cm-surface .header-info h3 {
+    color: var(--cm-text);
+    font-family: var(--cm-body-font);
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.15;
+}
+.chat-container.cm-surface .cm-presence,
+.chat-container.cm-surface .status-text {
+    color: var(--cm-accent);
+    font-size: 11.5px;
+}
+.chat-container.cm-surface .status-indicator.online {
+    background: var(--cm-accent);
+    box-shadow: none;
+}
+
+/* ===== Avatars — circle by default, rounded-square on mono (Terminal); no ring ===== */
+.chat-container.cm-surface .header-orb,
+.chat-container.cm-surface .header-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--cm-avatar-radius);
+    border: none;
+    box-shadow: none;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.chat-container.cm-surface .cm-msg-avatar,
+.chat-container.cm-surface .cm-msg-avatar-orb,
+.chat-container.cm-surface .cm-msg-avatar-img,
+.chat-container.cm-surface .cm-welcome-orb,
+.chat-container.cm-surface .cm-welcome-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--cm-avatar-radius);
+    border: none;
+    box-shadow: none;
+    flex-shrink: 0;
+    display: block;
+}
+.chat-container.cm-surface .cm-msg-avatar-img,
+.chat-container.cm-surface .cm-welcome-avatar { object-fit: cover; }
+
+/* ===== Messages ===== */
+.chat-container.cm-surface .message {
+    max-width: 100%;
+    gap: 9px;
+    align-items: flex-start;
+}
+.chat-container.cm-surface .message-bubble {
+    padding: 10px 14px;
+    font-size: 14px;
+    line-height: 1.5;
+    box-shadow: none;
+    max-width: 84%;
+}
+/* Collapse markdown paragraph margins so a one-line reply is a compact bubble. */
+.chat-container.cm-surface .message-bubble p { margin: 0; }
+.chat-container.cm-surface .message-bubble p + p { margin-top: 0.5em; }
+/* Agent/bot bubble: agent surface + hairline, tail top-left. */
+.chat-container.cm-surface .agent-message .message-bubble,
+.chat-container.cm-surface .assistant-message .message-bubble {
+    background: var(--cm-agent-bg);
+    color: var(--cm-text);
+    border: 1px solid var(--cm-hairline);
+    border-radius: var(--cm-bubble-tail) var(--cm-bubble) var(--cm-bubble) var(--cm-bubble);
+}
+/* User bubble: accent fill, contrast text, tail bottom-right. */
+.chat-container.cm-surface .user-message .message-bubble {
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    border: none;
+    border-radius: var(--cm-bubble) var(--cm-bubble) var(--cm-bubble-tail) var(--cm-bubble);
+}
+
+/* ===== Quick-action pills ===== */
+.chat-container.cm-surface .cm-quick-action {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--cm-accent) 66%, transparent);
+    background: color-mix(in srgb, var(--cm-accent) 18%, transparent);
+    color: var(--cm-text);
+    font-family: var(--cm-body-font);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.chat-container.cm-surface .cm-quick-action:hover:not(:disabled) {
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    border-color: var(--cm-accent);
+}
+.chat-container.cm-surface.theme-terminal .cm-quick-action { border-radius: 6px; }
+
+/* ===== Input bar + send (transparent bar — card shows through, no grey band) ===== */
+.chat-container.cm-surface .chat-input {
+    background: transparent;
+    border-top: 1px solid var(--cm-hairline);
+}
+.chat-container.cm-surface .message-input input,
+.chat-container.cm-surface .email-input input {
+    border-radius: var(--cm-field-radius);
+    border: 1px solid color-mix(in srgb, var(--cm-accent) 30%, var(--cm-hairline));
+    background: color-mix(in srgb, var(--cm-text) 6%, transparent);
+    color: var(--cm-text);
+    font-family: var(--cm-body-font);
+    font-size: 14px;
+}
+.chat-container.cm-surface .message-input input::placeholder,
+.chat-container.cm-surface .email-input input::placeholder {
+    color: var(--cm-muted);
+    opacity: 1;
+}
+.chat-container.cm-surface .message-input input:focus,
+.chat-container.cm-surface .email-input input:focus {
+    border-color: var(--cm-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--cm-accent) 22%, transparent);
+}
+.chat-container.cm-surface .send-button {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: var(--cm-field-radius);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    cursor: pointer;
+}
+
+/* ===== Powered-by footer (transparent — card shows, no grey band) ===== */
+.chat-container.cm-surface .powered-by,
+.chat-container.cm-surface .powered-by-welcome {
+    background: transparent;
+    border-top: none;
+    color: var(--cm-muted);
+    font-family: var(--cm-body-font);
+}
+.chat-container.cm-surface .cm-powered-prefix { color: var(--cm-muted); opacity: 1; }
+.chat-container.cm-surface .cm-brand { color: var(--cm-text); font-weight: 700; }
+
+/* Mono (Terminal): monospace across the whole surface. */
+.chat-container.cm-surface.theme-terminal,
+.chat-container.cm-surface.theme-terminal .chat-panel,
+.chat-container.cm-surface.theme-terminal .header-info h3,
+.chat-container.cm-surface.theme-terminal .message-bubble,
+.chat-container.cm-surface.theme-terminal .cm-quick-action,
+.chat-container.cm-surface.theme-terminal .message-input input,
+.chat-container.cm-surface.theme-terminal .powered-by {
+    font-family: var(--cm-body-font);
+}
+
+/* Glass: frosted panel. */
+.chat-container.cm-surface.theme-glass .chat-panel {
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}

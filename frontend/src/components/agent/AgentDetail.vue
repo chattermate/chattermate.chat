@@ -84,6 +84,15 @@ const persistAvatarMeta = async (patch: Record<string, unknown>, photoUrl?: stri
     customization_metadata: meta,
   })
   agentData.value.customization = updated
+  // Reflect the new avatar in the live Chat-Customization preview immediately.
+  // The form's props-watch is guarded by isInternalUpdate, so it won't re-emit
+  // `preview` for this external change — sync previewCustomization directly.
+  previewCustomization.value = {
+    ...previewCustomization.value,
+    photo_url: updated.photo_url,
+    photo_url_signed: (updated as AgentCustomization).photo_url_signed,
+    customization_metadata: updated.customization_metadata,
+  }
 }
 
 const selectOrbAvatar = async (variant: number) => {
@@ -142,6 +151,7 @@ const previewCustomization = ref<AgentCustomization>({
     id: agentData.value.customization?.id ?? 0,
     agent_id: agentData.value.id,
     chat_background_color: agentData.value.customization?.chat_background_color ?? '#F8F9FA',
+    chat_text_color: agentData.value.customization?.chat_text_color ?? '#212529',
     chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? '#E9ECEF',
     accent_color: agentData.value.customization?.accent_color ?? '#C9F24E',
     font_family: agentData.value.customization?.font_family ?? 'Inter, system-ui, sans-serif',
@@ -2194,7 +2204,8 @@ input:checked + .slider:before {
 
 .widget-preview {
     width: 100%;
-    height: 600px;
+    max-width: 384px;
+    height: 560px;
     border: none;
     background: none;
     border-radius: var(--radius-lg);
