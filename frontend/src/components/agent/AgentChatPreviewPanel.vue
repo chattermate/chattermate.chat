@@ -623,7 +623,13 @@ const handleInitiationClick = () => {
             
             <!-- Powered by footer for welcome message -->
             <div class="powered-by-welcome" :style="messageNameStyles">
-                Powered by ChatterMate
+                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
+                </svg>
+                <span>Powered by ChatterMate</span>
             </div>
         </div>
 
@@ -718,7 +724,13 @@ const handleInitiationClick = () => {
 
             <!-- Add powered by footer -->
             <div class="powered-by" :style="messageNameStyles">
-                Powered by ChatterMate
+                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
+                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
+                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
+                </svg>
+                <span>Powered by ChatterMate</span>
             </div>
         </div>
 
@@ -1155,11 +1167,18 @@ const handleInitiationClick = () => {
 }
 
 .powered-by {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     padding: var(--space-xs);
     font-size: 0.75rem;
     opacity: 0.7;
     border-top: 1px solid var(--o08);
+}
+.powered-by .chattermate-logo,
+.powered-by-welcome .chattermate-logo {
+    flex-shrink: 0;
 }
 
 .message-input input:disabled {
@@ -1230,8 +1249,6 @@ const handleInitiationClick = () => {
 .chat-container.theme-terminal .chat-panel { border-radius: 10px; }
 .chat-container.theme-terminal .message-bubble { border-radius: 4px !important; }
 .chat-container.theme-terminal :deep(.message-bubble p) { display: inline; margin: 0; }
-.chat-container.theme-terminal .bot-message .message-bubble::before { content: '→ '; opacity: 0.9; }
-.chat-container.theme-terminal .user-message .message-bubble::before { content: '> '; opacity: 0.9; }
 .chat-container.theme-terminal .message-input input { border-radius: 6px; }
 .chat-container.theme-terminal .send-button { border-radius: 6px; }
 
