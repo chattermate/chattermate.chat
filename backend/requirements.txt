@@ -85,6 +85,9 @@ fastembed
 # Shopify API
 ShopifyAPI
 
+# Razorpay payment gateway
+razorpay
+
 mcp
 
 # UV tool runner for Python-based MCP servers
