@@ -109,11 +109,12 @@ describe('useBillingSetup', () => {
     })
 
     describe('change classification', () => {
-        it('seat decrease is a scheduled change', async () => {
+        it('seat decrease is a scheduled change with nothing due now', async () => {
             apiGetMock.mockResolvedValue({
                 data: billingStatusFixture({
                     change_type: 'same',
                     current_period_end: new Date(Date.now() + 10 * 86400000).toISOString(),
+                    proration: { remaining_days: 10, total_days: 30, current_cycle_total: 4495 },
                     current_subscription: {
                         id: 's1', quantity: 5, status: 'active', payment_provider: 'razorpay',
                         payment_provider_subscription_id: 'sub_1'
@@ -127,18 +128,18 @@ describe('useBillingSetup', () => {
 
             expect(setup.isQuantityReduction.value).toBe(true)
             expect(setup.isScheduledChange.value).toBe(true)
-            expect(setup.isImmediateReplacement.value).toBe(false)
+            expect(setup.dueNow.value).toBe(0)
+            expect(setup.isPaidUpgrade.value).toBe(false)
             expect(setup.scheduledChangeMessage.value).toContain('current billing period ends')
         })
 
-        it('upgrade with refund is an immediate replacement', async () => {
+        it('upgrade computes the prorated delta due now', async () => {
             apiGetMock.mockResolvedValue({
                 data: billingStatusFixture({
-                    change_type: 'upgrade',
-                    prorata_refund: {
-                        amount: 450.5, currency: 'INR',
-                        billing_cycle: { start: '2026-07-01', end: '2026-07-31' }
-                    },
+                    change_type: 'same',
+                    future_start_date: new Date(Date.now() + 15 * 86400000).toISOString(),
+                    // 2 seats @ 899 paid, 15 of 30 days remaining
+                    proration: { remaining_days: 15, total_days: 30, current_cycle_total: 1798 },
                     current_subscription: {
                         id: 's1', quantity: 2, status: 'active', payment_provider: 'razorpay',
                         payment_provider_subscription_id: 'sub_1'
@@ -148,9 +149,31 @@ describe('useBillingSetup', () => {
             const setup = useBillingSetup('plan-1')
             await setup.fetchBillingStatus()
 
-            expect(setup.isImmediateReplacement.value).toBe(true)
-            expect(setup.replacementMessage.value).toContain('₹450.50')
-            expect(setup.replacementMessage.value).toContain('refunded')
+            setup.quantity.value = 3
+
+            // (2697 - 1798) x 15/30 = 449.5
+            expect(setup.dueNow.value).toBe(449.5)
+            expect(setup.isPaidUpgrade.value).toBe(true)
+            expect(setup.dueNowMessage.value).toContain('₹449.50')
+            expect(setup.dueNowMessage.value).toContain('applies immediately')
+        })
+
+        it('no charge when the delta is below the minimum', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    proration: { remaining_days: 0, total_days: 30, current_cycle_total: 1798 },
+                    current_subscription: {
+                        id: 's1', quantity: 2, status: 'active', payment_provider: 'razorpay',
+                        payment_provider_subscription_id: 'sub_1'
+                    }
+                })
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+            setup.quantity.value = 3
+
+            expect(setup.dueNow.value).toBe(0)
+            expect(setup.isPaidUpgrade.value).toBe(false)
         })
 
         it('flags the UPI cap when total exceeds it', async () => {
@@ -178,7 +201,7 @@ describe('useBillingSetup', () => {
             apiPostMock.mockResolvedValue({
                 data: {
                     subscription_id: 'sub_new', status: 'created', currency: 'INR',
-                    amount: 1798, start_at: null, upi_blocked: false, change_type: 'new'
+                    amount: 1798, due_now: 0, start_at: null, upi_blocked: false, change_type: 'new'
                 }
             })
             const setup = useBillingSetup('plan-1')
@@ -201,7 +224,7 @@ describe('useBillingSetup', () => {
             apiPostMock.mockResolvedValue({
                 data: {
                     subscription_id: 'sub_sched', status: 'created', currency: 'INR',
-                    amount: 899, start_at: new Date(Date.now() + 86400000).toISOString(),
+                    amount: 899, due_now: 0, start_at: new Date(Date.now() + 86400000).toISOString(),
                     upi_blocked: false, change_type: 'scheduled'
                 }
             })
@@ -224,6 +247,34 @@ describe('useBillingSetup', () => {
                 expect.objectContaining({ razorpay_payment_id: 'pay_1' })
             )
             expect(pushMock).toHaveBeenCalledWith('/settings/subscription?scheduled=true')
+        })
+
+        it('paid upgrades route to success - the upgrade applies immediately', async () => {
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
+            apiPostMock.mockResolvedValue({
+                data: {
+                    subscription_id: 'sub_upg', status: 'created', currency: 'INR',
+                    amount: 2697, due_now: 449.5,
+                    start_at: new Date(Date.now() + 15 * 86400000).toISOString(),
+                    upi_blocked: false, change_type: 'upgrade'
+                }
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+            await setup.startCheckout()
+
+            const options = (window as any).Razorpay.mock.calls[0][0]
+            expect(options.description).toContain('Upgrade')
+            apiPostMock.mockClear()
+            apiPostMock.mockResolvedValue({ data: { status: 'verified' } })
+
+            await options.handler({
+                razorpay_payment_id: 'pay_up',
+                razorpay_subscription_id: 'sub_upg',
+                razorpay_signature: 'sig'
+            })
+
+            expect(pushMock).toHaveBeenCalledWith('/settings/subscription?success=true')
         })
 
         it('dismissing the modal clears processing without side effects', async () => {

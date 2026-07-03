@@ -149,7 +149,7 @@ class TestCurrencyResolution:
 
 
 class TestChangeClassification:
-    def test_upgrade_shows_refund_estimate(self, client, db, test_organization):
+    def test_upgrade_billed_from_cycle_end_with_proration(self, client, db, test_organization):
         base_plan = make_plan(db, name="Base", plan_type=PlanType.BASE, usd=3.99, inr=349.0)
         pro_plan = make_plan(db)
         make_subscription(db, test_organization.id, base_plan, unit_price=349.0)
@@ -158,10 +158,13 @@ class TestChangeClassification:
         data = response.json()
 
         assert data["change_type"] == "upgrade"
-        assert "prorata_refund" in data
-        assert data["prorata_refund"]["amount"] > 0
-        assert data["prorata_refund"]["currency"] == "INR"
-        assert "future_start_date" not in data
+        # upgrades bill from the current period end; the prorated difference
+        # is collected at checkout - no refunds
+        assert "future_start_date" in data
+        assert "prorata_refund" not in data
+        assert data["proration"]["remaining_days"] > 0
+        assert data["proration"]["total_days"] >= data["proration"]["remaining_days"]
+        assert data["proration"]["current_cycle_total"] == 698.0  # 349 x 2 seats
 
     def test_downgrade_scheduled_at_period_end(self, client, db, test_organization):
         base_plan = make_plan(db, name="Base", plan_type=PlanType.BASE, usd=3.99, inr=349.0)
@@ -202,7 +205,7 @@ class TestChangeClassification:
         response = client.get(f"{BASE}/{plan.id}")
         assert response.json()["payment_past_due"] is True
 
-    def test_same_plan_active_razorpay_shows_refund_for_seat_changes(
+    def test_same_plan_active_razorpay_shows_proration_blocks(
         self, client, db, test_organization
     ):
         plan = make_plan(db)
@@ -212,8 +215,10 @@ class TestChangeClassification:
         data = response.json()
 
         assert data["change_type"] == "same"
-        # seat increases replace the sub immediately -> refund estimate shown
-        assert "prorata_refund" in data
+        # seat changes bill from cycle end; increases collect the prorated
+        # delta at checkout - frontend computes it from these blocks
+        assert "proration" in data
+        assert data["proration"]["current_cycle_total"] == 1798.0  # 899 x 2
 
     def test_plan_not_found(self, client, db):
         response = client.get(f"{BASE}/{uuid4()}")

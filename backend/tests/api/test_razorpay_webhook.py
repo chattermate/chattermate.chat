@@ -99,7 +99,7 @@ def post_event(client, event_type, payload, event_id=None, secret=WEBHOOK_SECRET
 
 def subscription_payload(rzp_sub_id, org_id, plan, *, rzp_plan_id=None, quantity=2,
                          status="active", start=None, end=None, start_at=None,
-                         payment_amount=None):
+                         payment_amount=None, apply_now=False):
     now = datetime.now(timezone.utc)
     entity = {
         "id": rzp_sub_id,
@@ -109,7 +109,8 @@ def subscription_payload(rzp_sub_id, org_id, plan, *, rzp_plan_id=None, quantity
         "quantity": quantity,
         "current_start": int((start or now).timestamp()),
         "current_end": int((end or (now + timedelta(days=30))).timestamp()),
-        "notes": {"org_id": str(org_id), "plan_id": str(plan.id)},
+        "notes": {"org_id": str(org_id), "plan_id": str(plan.id),
+                  "apply_now": "true" if apply_now else "false"},
     }
     if start_at:
         entity["start_at"] = int(start_at.timestamp())
@@ -303,6 +304,50 @@ class TestActivation:
             db.refresh(user)
         # newest two disabled, oldest kept
         assert [u.is_active for u in users] == [True, False, False]
+
+
+class TestPaidUpgradeAuthentication:
+    def test_authenticated_upgrade_applies_seats_immediately(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        """Paid upgrade: prorated delta collected at checkout -> the current
+        subscription gets the new quantity right away, the old mandate is
+        scheduled to cancel at cycle end, and no refund is attempted."""
+        plan = make_plan(db)
+        old = make_subscription(db, test_organization.id, plan, quantity=2)
+        start_at = datetime.now(timezone.utc) + timedelta(days=15)
+
+        response = post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_upg_paid", test_organization.id, plan,
+                                 quantity=3, status="authenticated",
+                                 start_at=start_at, apply_now=True)
+        )
+
+        assert response.status_code == 200
+        db.refresh(old)
+        assert old.quantity == 3  # seats granted immediately
+        assert old.status == SubscriptionStatus.ACTIVE  # keeps running until cycle end
+        assert (old.payment_provider_subscription_id, True) in rzp_mocks["cancel"]
+        assert rzp_mocks["refund"] == []  # never refunds under the delta model
+
+    def test_authenticated_downgrade_does_not_apply_early(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        plan = make_plan(db)
+        old = make_subscription(db, test_organization.id, plan, quantity=3)
+        start_at = datetime.now(timezone.utc) + timedelta(days=15)
+
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_down_sched", test_organization.id, plan,
+                                 quantity=2, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+
+        db.refresh(old)
+        assert old.quantity == 3  # unchanged until the new sub activates
+        assert (old.payment_provider_subscription_id, True) in rzp_mocks["cancel"]
 
 
 class TestRenewal:

@@ -23,6 +23,7 @@ pytest.importorskip("app.enterprise.services.billing_common")
 
 from app.enterprise.services.billing_common import (  # noqa: E402
     calculate_prorata_refund,
+    classify_change,
     estimate_unused_amount,
     disable_excess_users,
     apply_renewal,
@@ -201,6 +202,71 @@ class TestDisableExcessUsers:
         assert disable_excess_users(db, test_organization.id, allowed_quantity=5) == 0
         db.refresh(user)
         assert user.is_active is True
+
+
+# --------------------------------------------------------------- classify_change
+
+class TestClassifyChange:
+    def test_no_subscription_is_immediate(self, db, test_organization):
+        plan = make_plan(db)
+        change = classify_change(None, plan, 2, 899.0)
+        assert change == {"start_at": None, "change_type": "new",
+                          "due_now": 0.0, "proration_days": 0}
+
+    def test_upgrade_scheduled_with_prorated_delta(self, db, test_organization):
+        plan = make_plan(db)
+        now = datetime.now(timezone.utc)
+        # 2 seats @ 899, 15 of 30 days remaining
+        sub = make_subscription(
+            db, test_organization.id, plan, quantity=2, unit_price=899.0,
+            period_start=now - timedelta(days=15), period_end=now + timedelta(days=15),
+        )
+
+        change = classify_change(sub, plan, 3, 899.0)
+
+        assert change["change_type"] == "upgrade"
+        # billing for 3 seats starts at cycle end, not now
+        assert change["start_at"] is not None
+        # delta = (2697 - 1798) x 15/30 = 449.5 (day-granularity may be 14/30)
+        assert 0 < change["due_now"] <= 449.5
+        assert change["proration_days"] in (14, 15)
+
+    def test_seat_decrease_scheduled_no_charge(self, db, test_organization):
+        plan = make_plan(db)
+        sub = make_subscription(db, test_organization.id, plan, quantity=3, unit_price=899.0)
+
+        change = classify_change(sub, plan, 2, 899.0)
+
+        assert change["change_type"] == "scheduled"
+        assert change["due_now"] == 0.0
+        assert change["start_at"] is not None
+
+    def test_legacy_provider_scheduled_no_charge(self, db, test_organization):
+        plan = make_plan(db)
+        sub = make_subscription(
+            db, test_organization.id, plan, quantity=1, unit_price=9.99,
+        )
+        sub.payment_provider = "paypal"
+        db.commit()
+
+        change = classify_change(sub, plan, 3, 899.0)
+
+        assert change["change_type"] == "scheduled"
+        assert change["due_now"] == 0.0
+
+    def test_tiny_delta_skips_upfront_charge(self, db, test_organization):
+        plan = make_plan(db)
+        now = datetime.now(timezone.utc)
+        # last day of the cycle: delta rounds below Razorpay's minimum
+        sub = make_subscription(
+            db, test_organization.id, plan, quantity=2, unit_price=899.0,
+            period_start=now - timedelta(days=30), period_end=now + timedelta(hours=6),
+        )
+
+        change = classify_change(sub, plan, 3, 899.0)
+
+        assert change["change_type"] == "upgrade"
+        assert change["due_now"] == 0.0
 
 
 # ----------------------------------------------------------------- apply_renewal

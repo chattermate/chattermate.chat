@@ -204,6 +204,38 @@ class TestCreateSubscription:
         assert payload["start_at"] == int(start_at.timestamp())
         assert payload["plan_id"] == "plan_inr_existing"
 
+    def test_upgrade_with_upfront_addon(self, service, db, test_organization):
+        plan = make_plan(db, with_plan_ids=True)
+        service.client.subscription.create.return_value = {"id": "sub_up", "status": "created"}
+        start_at = datetime.now(timezone.utc) + timedelta(days=15)
+
+        service.create_subscription(
+            test_organization.id, plan, quantity=3, currency="INR", db=db,
+            start_at=start_at, upfront_amount=449.5,
+            upfront_description="Prorated upgrade charge - 15 remaining day(s)",
+            apply_now=True,
+        )
+
+        payload = service.client.subscription.create.call_args[0][0]
+        assert payload["start_at"] == int(start_at.timestamp())
+        assert payload["notes"]["apply_now"] == "true"
+        addon = payload["addons"][0]["item"]
+        assert addon["amount"] == 44950  # paise
+        assert addon["currency"] == "INR"
+        assert "Prorated" in addon["name"]
+
+    def test_no_addon_when_nothing_due(self, service, db, test_organization):
+        plan = make_plan(db, with_plan_ids=True)
+        service.client.subscription.create.return_value = {"id": "sub_n", "status": "created"}
+
+        service.create_subscription(
+            test_organization.id, plan, quantity=1, currency="INR", db=db,
+        )
+
+        payload = service.client.subscription.create.call_args[0][0]
+        assert "addons" not in payload
+        assert payload["notes"]["apply_now"] == "false"
+
     def test_yearly_total_count(self, service, db, test_organization):
         plan = make_plan(db, with_plan_ids=True)
         plan.billing_interval = "yearly"
