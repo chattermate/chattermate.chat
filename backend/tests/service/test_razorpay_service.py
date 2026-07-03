@@ -265,7 +265,7 @@ class TestRefundUnused:
         sub = make_subscription(db, test_organization.id, plan)
         _mock_invoices(service)
         service.client.payment.fetch.return_value = {
-            "status": "captured", "amount_refunded": 0,
+            "status": "captured", "amount": 1998, "amount_refunded": 0,
         }
         service.client.payment.refund.return_value = {"id": "rfnd_1"}
 
@@ -284,7 +284,7 @@ class TestRefundUnused:
         _mock_invoices(service)
         # 15.00 already refunded of 19.98 -> at most 4.98 refundable
         service.client.payment.fetch.return_value = {
-            "status": "captured", "amount_refunded": 1500,
+            "status": "captured", "amount": 1998, "amount_refunded": 1500,
         }
         service.client.payment.refund.return_value = {"id": "rfnd_2"}
 
@@ -319,7 +319,7 @@ class TestRefundUnused:
         plan = make_plan(db)
         sub = make_subscription(db, test_organization.id, plan)
         _mock_invoices(service)
-        service.client.payment.fetch.return_value = {"status": "captured", "amount_refunded": 0}
+        service.client.payment.fetch.return_value = {"status": "captured", "amount": 1998, "amount_refunded": 0}
         service.client.payment.refund.return_value = {"id": "rfnd_1"}
 
         first = service.refund_unused(sub, db)
@@ -333,7 +333,7 @@ class TestRefundUnused:
         plan = make_plan(db)
         sub = make_subscription(db, test_organization.id, plan)
         _mock_invoices(service)
-        service.client.payment.fetch.return_value = {"status": "captured", "amount_refunded": 0}
+        service.client.payment.fetch.return_value = {"status": "captured", "amount": 1998, "amount_refunded": 0}
         service.client.payment.refund.side_effect = Exception("gateway down")
 
         result = service.refund_unused(sub, db)  # must not raise
