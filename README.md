@@ -102,9 +102,7 @@ Detailed comparisons: [ChatterMate vs Chatbase](https://chattermate.chat/chatter
 
 ## Demo
 
-### Video Walkthrough
-[![ChatterMate Demo](https://img.youtube.com/vi/bk40VSS2BLU/0.jpg)](https://youtu.be/bk40VSS2BLU)
-[![ChatterMate Demo](https://img.youtube.com/vi/WyMQ8Poqn5E/0.jpg)](https://www.youtube.com/embed/WyMQ8Poqn5E?mute=1&loop=1&playlist=WyMQ8Poqn5E&rel=0&controls=1)
+Try it live at **[chattermate.chat](https://chattermate.chat)** — the widget on the site is ChatterMate itself.
 
 ### Shared Inbox with AI + Human Handoff
 ![AI customer support shared inbox with human handoff](.github/images/inbox-human-handoff.webp)
