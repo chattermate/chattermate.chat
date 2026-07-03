@@ -1,0 +1,269 @@
+/*
+Copyright 2024-2026 ChatterMate
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const pushMock = vi.fn()
+vi.mock('vue-router', () => ({
+    useRouter: () => ({ push: pushMock })
+}))
+
+const apiGetMock = vi.fn()
+const apiPostMock = vi.fn()
+vi.mock('@/services/api', () => ({
+    default: {
+        get: (...args: any[]) => apiGetMock(...args),
+        post: (...args: any[]) => apiPostMock(...args)
+    }
+}))
+
+vi.mock('@/config/api', () => ({
+    getRazorpayKeyId: () => 'rzp_test_key'
+}))
+
+import { useBillingSetup, loadRazorpayScript } from '@/modules/enterprise/composables/useBillingSetup'
+
+const billingStatusFixture = (overrides: Record<string, any> = {}) => ({
+    checkout_provider: 'razorpay',
+    currency: 'INR',
+    currency_locked: false,
+    upi_cap: 15000,
+    new_plan: {
+        id: 'plan-1',
+        name: 'Pro',
+        type: 'pro',
+        price_per_agent: 899.0,
+        prices: { INR: 899.0, USD: 9.99 },
+        max_agents: null
+    },
+    active_human_agents: 2,
+    is_trial: false,
+    ...overrides
+})
+
+describe('useBillingSetup', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        // fresh Razorpay stub per test
+        ;(window as any).Razorpay = undefined
+    })
+
+    describe('fetchBillingStatus', () => {
+        it('loads billing status and seeds quantity from agents/subscription', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    active_human_agents: 2,
+                    current_subscription: {
+                        id: 's1', quantity: 3, status: 'active', payment_provider: 'razorpay',
+                        payment_provider_subscription_id: 'sub_1'
+                    }
+                })
+            })
+            const setup = useBillingSetup('plan-1')
+
+            await setup.fetchBillingStatus()
+
+            expect(setup.currency.value).toBe('INR')
+            expect(setup.quantity.value).toBe(3) // max(agents, current quantity)
+            expect(setup.currencySymbol.value).toBe('₹')
+        })
+
+        it('passes explicit currency to the API', async () => {
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture({ currency: 'USD' }) })
+            const setup = useBillingSetup('plan-1')
+
+            await setup.fetchBillingStatus('USD')
+
+            expect(apiGetMock).toHaveBeenCalledWith(
+                '/enterprise/subscriptions/check-billing-status/plan-1',
+                { params: { currency: 'USD' } }
+            )
+            expect(setup.currencySymbol.value).toBe('$')
+        })
+
+        it('setCurrency is a no-op when locked', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({ currency_locked: true })
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+            apiGetMock.mockClear()
+
+            await setup.setCurrency('USD')
+
+            expect(apiGetMock).not.toHaveBeenCalled()
+        })
+    })
+
+    describe('change classification', () => {
+        it('seat decrease is a scheduled change', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    change_type: 'same',
+                    current_period_end: new Date(Date.now() + 10 * 86400000).toISOString(),
+                    current_subscription: {
+                        id: 's1', quantity: 5, status: 'active', payment_provider: 'razorpay',
+                        payment_provider_subscription_id: 'sub_1'
+                    }
+                })
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            setup.quantity.value = 3
+
+            expect(setup.isQuantityReduction.value).toBe(true)
+            expect(setup.isScheduledChange.value).toBe(true)
+            expect(setup.isImmediateReplacement.value).toBe(false)
+            expect(setup.scheduledChangeMessage.value).toContain('current billing period ends')
+        })
+
+        it('upgrade with refund is an immediate replacement', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    change_type: 'upgrade',
+                    prorata_refund: {
+                        amount: 450.5, currency: 'INR',
+                        billing_cycle: { start: '2026-07-01', end: '2026-07-31' }
+                    },
+                    current_subscription: {
+                        id: 's1', quantity: 2, status: 'active', payment_provider: 'razorpay',
+                        payment_provider_subscription_id: 'sub_1'
+                    }
+                })
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            expect(setup.isImmediateReplacement.value).toBe(true)
+            expect(setup.replacementMessage.value).toContain('₹450.50')
+            expect(setup.replacementMessage.value).toContain('refunded')
+        })
+
+        it('flags the UPI cap when total exceeds it', async () => {
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            setup.quantity.value = 20 // 20 x 899 = 17,980 > 15,000
+
+            expect(setup.upiBlocked.value).toBe(true)
+            expect(setup.upiCapMessage.value).toContain('card payment')
+        })
+    })
+
+    describe('startCheckout', () => {
+        const razorpayOpen = vi.fn()
+        const razorpayOn = vi.fn()
+
+        beforeEach(() => {
+            ;(window as any).Razorpay = vi.fn(() => ({ open: razorpayOpen, on: razorpayOn }))
+        })
+
+        it('opens the Razorpay modal with the created subscription', async () => {
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
+            apiPostMock.mockResolvedValue({
+                data: {
+                    subscription_id: 'sub_new', status: 'created', currency: 'INR',
+                    amount: 1798, start_at: null, upi_blocked: false, change_type: 'new'
+                }
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            await setup.startCheckout()
+
+            expect(apiPostMock).toHaveBeenCalledWith(
+                '/enterprise/payment/razorpay/create-subscription',
+                { plan_id: 'plan-1', quantity: 2, currency: 'INR' }
+            )
+            const options = (window as any).Razorpay.mock.calls[0][0]
+            expect(options.key).toBe('rzp_test_key')
+            expect(options.subscription_id).toBe('sub_new')
+            expect(razorpayOpen).toHaveBeenCalled()
+        })
+
+        it('scheduled subs route to the scheduled confirmation instead of polling', async () => {
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
+            apiPostMock.mockResolvedValue({
+                data: {
+                    subscription_id: 'sub_sched', status: 'created', currency: 'INR',
+                    amount: 899, start_at: new Date(Date.now() + 86400000).toISOString(),
+                    upi_blocked: false, change_type: 'scheduled'
+                }
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+            await setup.startCheckout()
+
+            const options = (window as any).Razorpay.mock.calls[0][0]
+            apiPostMock.mockClear()
+            apiPostMock.mockResolvedValue({ data: { status: 'verified' } })
+
+            await options.handler({
+                razorpay_payment_id: 'pay_1',
+                razorpay_subscription_id: 'sub_sched',
+                razorpay_signature: 'sig'
+            })
+
+            expect(apiPostMock).toHaveBeenCalledWith(
+                '/enterprise/payment/razorpay/verify-payment',
+                expect.objectContaining({ razorpay_payment_id: 'pay_1' })
+            )
+            expect(pushMock).toHaveBeenCalledWith('/settings/subscription?scheduled=true')
+        })
+
+        it('dismissing the modal clears processing without side effects', async () => {
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
+            apiPostMock.mockResolvedValue({
+                data: {
+                    subscription_id: 'sub_x', status: 'created', currency: 'INR',
+                    amount: 899, start_at: null, upi_blocked: false, change_type: 'new'
+                }
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+            await setup.startCheckout()
+
+            const options = (window as any).Razorpay.mock.calls[0][0]
+            options.modal.ondismiss()
+
+            expect(setup.isProcessing.value).toBe(false)
+            expect(setup.error.value).toBe('')
+        })
+
+        it('surfaces backend errors from create-subscription', async () => {
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
+            apiPostMock.mockRejectedValue({
+                response: { data: { detail: 'Quantity exceeds plan limit of 2 agents' } }
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            await setup.startCheckout()
+
+            expect(setup.error.value).toContain('Quantity exceeds plan limit')
+            expect(setup.isProcessing.value).toBe(false)
+        })
+    })
+
+    describe('loadRazorpayScript', () => {
+        it('resolves immediately when Razorpay is already present', async () => {
+            ;(window as any).Razorpay = vi.fn()
+            await expect(loadRazorpayScript()).resolves.toBeUndefined()
+        })
+    })
+})
