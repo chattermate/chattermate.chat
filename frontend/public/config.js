@@ -15,6 +15,9 @@ window.APP_CONFIG = {
   FIREBASE_MEASUREMENT_ID: "your_firebase_measurement_id_here",
   FIREBASE_VAPID_KEY: "your_firebase_vapid_key_here",
   
+  // Razorpay Checkout
+  RAZORPAY_KEY_ID: "rzp_test_T92OR9gqPBht0N",
+
   // Google Fonts API
   GOOGLE_FONTS_API_KEY: "your_google_fonts_api_key_here",
   

@@ -15,6 +15,7 @@ declare global {
       FIREBASE_STORAGE_BUCKET?: string
       FIREBASE_MEASUREMENT_ID?: string
       FIREBASE_VAPID_KEY?: string
+      RAZORPAY_KEY_ID?: string
       GOOGLE_FONTS_API_KEY?: string
       NODE_ENV?: string
       HOST?: string

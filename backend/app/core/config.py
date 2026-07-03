@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
     RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
+    # Where billing alerts (payment disputes/chargebacks) are sent
+    BILLING_ALERT_EMAIL: str = os.getenv("BILLING_ALERT_EMAIL", os.getenv("FROM_EMAIL", "noreply@chattermate.chat"))
+
 
     # Shopify
     SHOPIFY_API_KEY: str = os.getenv("SHOPIFY_API_KEY", "")

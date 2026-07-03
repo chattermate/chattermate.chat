@@ -39,7 +39,6 @@
     "@fortawesome/vue-fontawesome": "3.1.1",
     "@headlessui/vue": "^1.7.23",
     "@heroicons/vue": "^2.2.0",
-    "@paypal/paypal-js": "8.2.0",
     "@primevue/themes": "^4.2.5",
     "@shopify/app-bridge": "3.7.10",
     "@shopify/app-bridge-utils": "3.5.1",

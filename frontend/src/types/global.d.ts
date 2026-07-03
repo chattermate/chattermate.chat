@@ -32,6 +32,9 @@ declare global {
       FIREBASE_MEASUREMENT_ID?: string
       FIREBASE_VAPID_KEY?: string
 
+      // Razorpay Checkout
+      RAZORPAY_KEY_ID?: string
+
       // Google Fonts API
       GOOGLE_FONTS_API_KEY?: string
 

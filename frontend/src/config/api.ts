@@ -34,6 +34,11 @@ export function getWidgetUrl(): string {
   return window.APP_CONFIG?.WIDGET_URL || import.meta.env.VITE_WIDGET_URL || 'http://localhost:8000'
 }
 
+// Razorpay Checkout - Dynamic function
+export function getRazorpayKeyId(): string {
+  return window.APP_CONFIG?.RAZORPAY_KEY_ID || import.meta.env.VITE_RAZORPAY_KEY_ID || ''
+}
+
 // Firebase Configuration - Dynamic functions
 export function getFirebaseApiKey(): string {
   return window.APP_CONFIG?.FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY || ''
