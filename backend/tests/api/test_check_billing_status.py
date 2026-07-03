@@ -223,3 +223,36 @@ class TestChangeClassification:
     def test_plan_not_found(self, client, db):
         response = client.get(f"{BASE}/{uuid4()}")
         assert response.status_code == 404
+
+    def test_cancelled_reactivation_scheduled_despite_future_free_sub(
+        self, client, db, test_organization
+    ):
+        """Cancelling auto-creates a future free-plan row; re-subscribing
+        before the paid period ends must classify against the cancelled paid
+        subscription (scheduled at its period end), not the free row - which
+        would double-charge the already-paid days."""
+        free_plan = make_plan(db, name="Free", plan_type=PlanType.FREE, usd=0.0, inr=0.0)
+        pro_plan = make_plan(db)
+        now = datetime.now(timezone.utc)
+        cancelled = make_subscription(
+            db, test_organization.id, pro_plan,
+            status=SubscriptionStatus.CANCELLED,
+        )
+        # the future free row the /current endpoint creates after cancellation
+        make_subscription(
+            db, test_organization.id, free_plan,
+            payment_provider=None, payment_provider_subscription_id=None,
+            unit_price=0.0, quantity=1, currency="USD",
+            current_period_start=now + timedelta(days=20, hours=1),
+            current_period_end=now + timedelta(days=50),
+        )
+
+        response = client.get(f"{BASE}/{pro_plan.id}")
+        data = response.json()
+
+        # classified against the cancelled paid sub, not the free row
+        assert data["current_subscription"]["status"] == "cancelled"
+        assert data["current_plan"]["name"] == "Pro"
+        assert "future_start_date" in data
+        expected_end = cancelled.current_period_end.replace(tzinfo=timezone.utc)
+        assert data["future_start_date"][:10] == expected_end.isoformat()[:10]

@@ -269,6 +269,52 @@ class TestClassifyChange:
         assert change["due_now"] == 0.0
 
 
+# ----------------------------------------------- cancelled-in-period access/grace
+
+class TestCancelledInPeriod:
+    def test_get_active_subscription_keeps_cancelled_paid_access(self, db, test_organization):
+        from app.enterprise.repositories.subscription import SubscriptionRepository
+        plan = make_plan(db)
+        sub = make_subscription(db, test_organization.id, plan,
+                                status=SubscriptionStatus.CANCELLED)
+
+        found = SubscriptionRepository(db).get_active_subscription(test_organization.id)
+
+        # "you keep full access until <date>" - cancelled paid subs stay
+        # accessible until the paid period ends
+        assert found is not None
+        assert found.id == sub.id
+
+    def test_no_access_after_period_end(self, db, test_organization):
+        from app.enterprise.repositories.subscription import SubscriptionRepository
+        plan = make_plan(db)
+        now = datetime.now(timezone.utc)
+        make_subscription(db, test_organization.id, plan,
+                          status=SubscriptionStatus.CANCELLED,
+                          period_start=now - timedelta(days=45),
+                          period_end=now - timedelta(days=15))
+
+        assert SubscriptionRepository(db).get_active_subscription(test_organization.id) is None
+
+    def test_effective_billing_subscription_prefers_cancelled_paid(self, db, test_organization):
+        from app.enterprise.repositories.subscription import SubscriptionRepository
+        from app.enterprise.services.billing_common import effective_billing_subscription
+        plan = make_plan(db)
+        cancelled = make_subscription(db, test_organization.id, plan,
+                                      status=SubscriptionStatus.CANCELLED)
+
+        effective = effective_billing_subscription(
+            SubscriptionRepository(db), test_organization.id
+        )
+
+        assert effective is not None
+        assert effective.id == cancelled.id
+        # and classify_change schedules the reactivation, no immediate charge
+        change = classify_change(effective, plan, 2, 899.0)
+        assert change["change_type"] == "scheduled"
+        assert change["due_now"] == 0.0
+
+
 # ----------------------------------------------------------------- apply_renewal
 
 class TestApplyRenewal:
