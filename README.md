@@ -6,9 +6,9 @@
 
 ![ChatterMate Logo](frontend/public/assets/images/logo.svg)
 
-> **No-code AI chatbot framework for 24/7 customer support automation.** Self-hosted, multi-model AI support, intelligent human handoff, file attachments, Jira integration, and seamless website embedding. Build AI-powered help desk and live chat solutions without writing code.
+> **Open-source AI customer support platform with human handoff.** A no-code AI chatbot for 24/7 customer service automation — multi-model AI (OpenAI, Groq, Ollama), intelligent AI-to-human handover, **Shopify & e-commerce support**, Slack and Jira integrations, visual workflow builder, and a fully themeable chat widget. Use the free hosted service or self-host it as an **open-source alternative to Intercom, Zendesk, and Chatbase**.
 
-**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)**
+**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)** | **[Shopify App](https://apps.shopify.com/chattermate-chat)**
 
 ---
 
@@ -16,10 +16,12 @@
 
 - [Why ChatterMate?](#why-chattermate)
 - [Features](#features)
+- [ChatterMate vs. Intercom, Zendesk & Chatbase](#chattermate-vs-intercom-zendesk--chatbase)
 - [Demo](#demo)
 - [Quick Start](#quick-start)
 - [Installation](#installation-methods)
 - [Deployment](#deployment)
+- [FAQ](#faq)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [Support](#support)
@@ -28,34 +30,36 @@
 
 ## Why ChatterMate?
 
-ChatterMate is a **no-code AI chatbot agent framework** that enables businesses to provide **24/7 customer support** through intelligent AI agents. Your chatbot can handle common queries, escalate complex issues to human agents when needed, and continuously learn from your knowledge base articles. Integrate the chat widget easily on any website with a single line of code.
+ChatterMate is a **no-code AI customer support platform** that enables businesses to provide **24/7 customer service** through intelligent AI agents. Your AI chatbot handles common queries, escalates complex issues to human agents when needed, and continuously learns from your knowledge base. Integrate the chat widget on any website — or any **Shopify store** — with a single line of code.
 
-**Perfect for:** SaaS companies, e-commerce stores, help desks, customer success teams, and any business looking to automate customer support while maintaining a human touch.
+**Perfect for:** e-commerce and Shopify stores, SaaS companies, help desks, customer success teams, and any business looking to automate customer support while maintaining a human touch.
+
+![ChatterMate AI chat widget on an e-commerce store](.github/images/chat-widget.webp)
 
 ---
 
 ## Features
 
-### NEW Core Features
+### Core Features
 
 | Feature | Description |
 |---------|-------------|
-| 🆕 **Ask Anything Mode** | Let visitors start conversations instantly - no signup or email required. Perfect for Q&A, documentation assistants, and exploratory chat experiences. |
-| 🆕 **Multi-Model AI Support** | Choose your AI provider - **OpenAI GPT-4**, **Groq Llama 3.3**, **Google AI**, **Ollama** (self-hosted), and more. Switch providers anytime without code changes. |
-| 🆕 **Smart Human Handoff** | Intelligent transfer to human agents with **business hours awareness**, real-time availability detection, and context-aware escalation messages. |
-| 🆕 **File Attachments** | Enable customers to share **images, PDFs, Word docs, spreadsheets**, and more directly in chat. Secure uploads with S3 storage and magic byte validation. |
-| 🆕 **Auto Translation** | Multilingual support with configurable **default language per workflow**. Serve customers globally in their preferred language. |
-| 🆕 **Jira Ticket Creation** | Create and manage **Jira tickets directly from chat** conversations. OAuth 2.0 secure integration with automatic ticket tracking. |
-| 🆕 **Widget Authentication** | **Token-based security** for embedded widgets. Support both public Q&A and private authenticated conversations. |
-| 🆕 **Slack Integration** | Connect your **Slack workspace** for internal product support. Enable teams to get AI-powered assistance directly in Slack channels. |
-| 🆕 **Visual Workflow Builder** | Design complex conversation flows with a **drag-and-drop interface**. Create branching logic, conditional responses, and multi-step workflows without coding. |
+| 🤝 **Smart Human Handoff** | Intelligent AI-to-human transfer with **business hours awareness**, real-time availability detection, and context-aware escalation messages. |
+| 🛍️ **Shopify & E-commerce Support** | Native **Shopify integration** ([App Store listing](https://apps.shopify.com/chattermate-chat)) — answer order, shipping, and product questions from store data. Works for any online store. |
+| 🧠 **Multi-Model AI Support** | Choose your AI provider — **OpenAI GPT-4**, **Groq Llama 3.3**, **Google AI**, **Ollama** (self-hosted), and more. Switch providers anytime without code changes. |
+| 💬 **Ask Anything Mode** | Let visitors start conversations instantly — no signup or email required. Perfect for Q&A, documentation assistants, and exploratory chat experiences. |
+| 📎 **File Attachments** | Customers can share **images, PDFs, Word docs, spreadsheets**, and more directly in chat. Secure uploads with S3 storage and magic byte validation. |
+| 🌍 **Auto Translation** | Multilingual support with configurable **default language per workflow**. Serve customers globally in their preferred language. |
+| 🎫 **Jira Ticket Creation** | Create and manage **Jira tickets directly from chat** conversations. OAuth 2.0 secure integration with automatic ticket tracking. |
+| 🔑 **Widget Authentication** | **Token-based security** for embedded widgets. Support both public Q&A and private authenticated conversations. |
+| 💼 **Slack Integration** | Connect your **Slack workspace** for internal product support. Teams get AI-powered assistance directly in Slack channels. |
+| 🧩 **Visual Workflow Builder** | Design conversation flows with a **drag-and-drop interface**. Branching logic, conditional responses, and multi-step workflows without coding. |
 
 ### Workflow Builder
 
 Build sophisticated conversation flows visually with our intuitive workflow builder:
 
-<!-- TODO: Add workflow builder screenshot -->
-![Workflow Builder](frontend/public/images/workflow-builder-placeholder.png)
+![No-code AI chatbot workflow builder with drag-and-drop nodes and human handoff](.github/images/workflow-builder.webp)
 
 **Workflow Builder Features:**
 - **Drag-and-drop nodes** - AI responses, human handoff, conditions, and more
@@ -77,17 +81,36 @@ Build sophisticated conversation flows visually with our intuitive workflow buil
 
 ---
 
+## ChatterMate vs. Intercom, Zendesk & Chatbase
+
+ChatterMate is a **free, open-source alternative to Intercom, Zendesk AI, and Chatbase** — with AI answers *and* human handoff in one inbox:
+
+| | **ChatterMate** | Intercom | Zendesk AI | Chatbase |
+|---|---|---|---|---|
+| Open source (Apache-2.0) | ✅ | ❌ | ❌ | ❌ |
+| Self-hosting / data ownership | ✅ | ❌ | ❌ | ❌ |
+| AI answers from your knowledge base | ✅ | ✅ | ✅ | ✅ |
+| Built-in human handoff + shared inbox | ✅ | ✅ | ✅ | ⚠️ limited |
+| Bring your own AI model (incl. Ollama) | ✅ | ❌ | ❌ | ⚠️ limited |
+| Visual no-code workflow builder | ✅ | ✅ | ⚠️ add-on | ❌ |
+| Free tier | ✅ | trial only | trial only | ✅ |
+| Per-AI-resolution fees | ❌ none | $0.99/resolution | usage-based | credit-based |
+
+Detailed comparisons: [ChatterMate vs Chatbase](https://chattermate.chat/chattermate-vs-chatbase/) · [ChatterMate vs Chatwoot](https://chattermate.chat/chattermate-vs-chatwoot/)
+
+---
+
 ## Demo
 
 ### Video Walkthrough
 [![ChatterMate Demo](https://img.youtube.com/vi/bk40VSS2BLU/0.jpg)](https://youtu.be/bk40VSS2BLU)
 [![ChatterMate Demo](https://img.youtube.com/vi/WyMQ8Poqn5E/0.jpg)](https://www.youtube.com/embed/WyMQ8Poqn5E?mute=1&loop=1&playlist=WyMQ8Poqn5E&rel=0&controls=1)
 
-### Agent Dashboard
-![Agent Dashboard](frontend/public/images/agent-dashboard.gif)
+### Shared Inbox with AI + Human Handoff
+![AI customer support shared inbox with human handoff](.github/images/inbox-human-handoff.webp)
 
 ### Analytics Dashboard
-![Analytics Dashboard](frontend/public/images/analytics-view.gif)
+![AI customer support analytics dashboard — resolution rate, CSAT, AI vs human performance](.github/images/analytics-dashboard.webp)
 
 ---
 
@@ -342,6 +365,28 @@ npm run build
 
 ---
 
+## FAQ
+
+**What is ChatterMate?**
+ChatterMate is an open-source AI customer support platform. It combines an AI chatbot (trained on your knowledge base) with human agents in a shared inbox, so AI handles routine questions 24/7 and hands off to your team when it matters.
+
+**Is ChatterMate free and open source?**
+Yes. The core platform is Apache-2.0 licensed — free for personal and commercial use, including self-hosted production deployments. There's also a free hosted plan at [app.chattermate.chat](https://app.chattermate.chat).
+
+**Can the AI hand off conversations to a human agent?**
+Yes — human handoff is a core feature, not an add-on. ChatterMate detects frustration or explicit requests for a human and transfers the conversation with full context, respecting business hours and agent availability.
+
+**Does ChatterMate work with Shopify?**
+Yes. Install it from the [Shopify App Store](https://apps.shopify.com/chattermate-chat) to answer order-status, shipping, and product questions directly from your store data. The widget also embeds on any other e-commerce or website platform with one line of code.
+
+**Can I self-host ChatterMate?**
+Yes. Run the full stack (Postgres, Redis, backend, frontend) on your own infrastructure with `npm install -g chattermate-deploy` — see [Quick Start](#quick-start). Self-hosting gives you complete data ownership.
+
+**Which AI models does ChatterMate support?**
+OpenAI (GPT-4), Groq (Llama 3.3), Google AI, and self-hosted models via Ollama. You can switch providers at any time without code changes.
+
+---
+
 ## Roadmap
 
 ### Coming Soon
@@ -404,5 +449,5 @@ Contributions are accepted under Apache-2.0 with a [Developer Certificate of Ori
 </p>
 
 <p align="center">
-  <b>Keywords:</b> AI chatbot, customer support automation, open source help desk, live chat software, self-hosted chatbot, no-code chatbot builder, GPT-4 customer service, human handoff, Jira integration, Slack bot, multilingual chatbot
+  <b>Keywords:</b> AI customer support, AI chatbot, Shopify chatbot, ecommerce chatbot, customer support automation, open source help desk, live chat software, self-hosted chatbot, Intercom alternative, Zendesk alternative, Chatbase alternative, no-code chatbot builder, human handoff, Jira integration, Slack bot, multilingual chatbot
 </p>
