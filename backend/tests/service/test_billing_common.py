@@ -247,14 +247,17 @@ class TestClassifyChange:
 
     def test_usd_increase_updates_in_place_now(self, db, test_organization):
         # International card (USD): RBI AFA binds Indian issuers only -> the
-        # mandate is edited silently; nothing due at change time, applies now
+        # mandate is edited silently and Razorpay auto-charges the prorated
+        # difference via an ad-hoc invoice. due_now is our display estimate
+        # of that charge: (29.97 - 19.98) x 15/30 = ~5.0 (day granularity)
         plan = make_plan(db)
         sub = make_subscription(db, test_organization.id, plan, quantity=2, unit_price=9.99)
 
         change = classify_change(sub, plan, 3, 9.99)
 
         assert change["change_type"] == "update_now"
-        assert change["due_now"] == 0.0
+        assert 0 < change["due_now"] <= 5.0
+        assert change["proration_days"] in (14, 15)
         assert change["start_at"] is None
 
     def test_usd_decrease_updates_in_place_at_cycle_end(self, db, test_organization):

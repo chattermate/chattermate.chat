@@ -176,6 +176,65 @@ describe('useBillingSetup', () => {
             expect(setup.isPaidUpgrade.value).toBe(false)
         })
 
+        it('in-place USD increase says the card on file is charged, no re-auth', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    currency: 'USD',
+                    new_plan: {
+                        id: 'plan-1', name: 'Pro', type: 'pro',
+                        price_per_agent: 9.99, prices: { USD: 9.99 }, max_agents: null
+                    },
+                    change_type: 'same',
+                    update_in_place: true,
+                    // 2 seats @ 9.99 paid, 15 of 30 days remaining
+                    proration: { remaining_days: 15, total_days: 30, current_cycle_total: 19.98 },
+                    current_subscription: {
+                        id: 's1', quantity: 2, status: 'active', currency: 'USD',
+                        payment_provider: 'razorpay',
+                        payment_provider_subscription_id: 'sub_1'
+                    }
+                })
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            setup.quantity.value = 3
+
+            // (29.97 - 19.98) x 15/30 = ~5.0 - Razorpay auto-charges it
+            expect(setup.dueNow.value).toBeCloseTo(5.0, 1)
+            expect(setup.isInPlaceUpdate.value).toBe(true)
+            expect(setup.dueNowMessage.value).toContain('card on file will be charged')
+            expect(setup.dueNowMessage.value).toContain('No re-authorization')
+        })
+
+        it('in-place USD decrease is scheduled with no re-authorization', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    currency: 'USD',
+                    new_plan: {
+                        id: 'plan-1', name: 'Pro', type: 'pro',
+                        price_per_agent: 9.99, prices: { USD: 9.99 }, max_agents: null
+                    },
+                    change_type: 'same',
+                    update_in_place: true,
+                    current_period_end: new Date(Date.now() + 10 * 86400000).toISOString(),
+                    proration: { remaining_days: 10, total_days: 30, current_cycle_total: 29.97 },
+                    current_subscription: {
+                        id: 's1', quantity: 3, status: 'active', currency: 'USD',
+                        payment_provider: 'razorpay',
+                        payment_provider_subscription_id: 'sub_1'
+                    }
+                })
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            setup.quantity.value = 2
+
+            expect(setup.dueNow.value).toBe(0)
+            expect(setup.scheduledChangeMessage.value).toContain('no re-authorization is needed')
+        })
+
         it('flags the UPI cap when total exceeds it', async () => {
             apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
             const setup = useBillingSetup('plan-1')
