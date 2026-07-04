@@ -102,7 +102,9 @@ Detailed comparisons: [ChatterMate vs Chatbase](https://chattermate.chat/chatter
 
 ## Demo
 
-Try it live at **[chattermate.chat](https://chattermate.chat)** — the widget on the site is ChatterMate itself.
+### Video Walkthrough
+[![ChatterMate Demo](https://img.youtube.com/vi/bk40VSS2BLU/0.jpg)](https://youtu.be/bk40VSS2BLU)
+[![ChatterMate Demo](https://img.youtube.com/vi/WyMQ8Poqn5E/0.jpg)](https://www.youtube.com/embed/WyMQ8Poqn5E?mute=1&loop=1&playlist=WyMQ8Poqn5E&rel=0&controls=1)
 
 ### Shared Inbox with AI + Human Handoff
 ![AI customer support shared inbox with human handoff](.github/images/inbox-human-handoff.webp)
@@ -125,7 +127,7 @@ you need to run ChatterMate on your own infrastructure.
 
 ```bash
 # The ChatterMate CLI — sign up, mint tokens, and manage agents, workflows & knowledge
-pip install chattermate-cli          # installs the `chattermate` command (or: npm install -g chattermate-cli)
+pip install chattermate-cli          # installs the `chattermate` command
 
 chattermate signup --name "Acme Inc" --domain acme.com --admin-email you@acme.com
 chattermate agent create --name "Support" --type customer_support -i "Be concise and friendly"
