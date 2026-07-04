@@ -72,12 +72,6 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = os.getenv("FROM_EMAIL", "noreply@chattermate.chat")
     FROM_NAME: str = os.getenv("FROM_NAME", "ChatterMate")
 
-    # PayPal (legacy - existing subscription maintenance only)
-    PAYPAL_CLIENT_ID: str = os.getenv("PAYPAL_CLIENT_ID", "test")
-    PAYPAL_CLIENT_SECRET: str = os.getenv("PAYPAL_CLIENT_SECRET", "test")
-    PAYPAL_SANDBOX_MODE: bool = os.getenv("PAYPAL_SANDBOX_MODE", "true").lower() == "true"
-    PAYPAL_WEBHOOK_ID: str = os.getenv("PAYPAL_WEBHOOK_ID", "test")
-
     # Shopify
     SHOPIFY_API_KEY: str = os.getenv("SHOPIFY_API_KEY", "")
     SHOPIFY_API_SECRET: str = os.getenv("SHOPIFY_API_SECRET", "")
