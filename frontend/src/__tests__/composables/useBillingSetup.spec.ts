@@ -393,6 +393,55 @@ describe('useBillingSetup', () => {
         })
     })
 
+    describe('payment method visibility', () => {
+        it('USD checkout hides INR-only recurring methods', async () => {
+            const razorpayCtor = vi.fn(() => ({ open: vi.fn(), on: vi.fn() }))
+            ;(window as any).Razorpay = razorpayCtor
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    currency: 'USD',
+                    new_plan: {
+                        id: 'plan-1', name: 'Pro', type: 'pro',
+                        price_per_agent: 9.99, prices: { USD: 9.99 }, max_agents: null
+                    }
+                })
+            })
+            apiPostMock.mockResolvedValue({
+                data: { subscription_id: 'sub_x', status: 'created', currency: 'USD',
+                        amount: 9.99, due_now: 0, start_at: null, upi_blocked: false,
+                        change_type: 'new' }
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            await setup.startCheckout()
+
+            const options = razorpayCtor.mock.calls[0][0] as any
+            const hidden = options.config.display.hide.map((h: any) => h.method)
+            expect(hidden).toContain('emandate')
+            expect(hidden).toContain('upi')
+        })
+
+        it('INR checkout hides only emandate (UPI AutoPay stays)', async () => {
+            const razorpayCtor = vi.fn(() => ({ open: vi.fn(), on: vi.fn() }))
+            ;(window as any).Razorpay = razorpayCtor
+            apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
+            apiPostMock.mockResolvedValue({
+                data: { subscription_id: 'sub_x', status: 'created', currency: 'INR',
+                        amount: 899, due_now: 0, start_at: null, upi_blocked: false,
+                        change_type: 'new' }
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            await setup.startCheckout()
+
+            const options = razorpayCtor.mock.calls[0][0] as any
+            const hidden = options.config.display.hide.map((h: any) => h.method)
+            expect(hidden).toEqual(['emandate'])
+        })
+    })
+
     describe('loadRazorpayScript', () => {
         it('resolves immediately when Razorpay is already present', async () => {
             ;(window as any).Razorpay = vi.fn()
