@@ -428,6 +428,74 @@ class TestPaidUpgradeAuthentication:
         assert old.scheduled_change["quantity"] == 1
 
 
+class TestCancelledReactivation:
+    def make_transition_state(self, db, org_id, plan):
+        """Post-cancellation state: cancelled paid sub (still in period) plus
+        the future free-fallback row that /current serves (no mandate)."""
+        now = datetime.now(timezone.utc)
+        cancelled = make_subscription(
+            db, org_id, plan, quantity=3, unit_price=899.0, currency="INR",
+            status=SubscriptionStatus.CANCELLED,
+        )
+        free_row = make_subscription(
+            db, org_id, plan, quantity=1, unit_price=0.0, currency="USD",
+            payment_provider=None, payment_provider_subscription_id=None,
+            current_period_start=now + timedelta(days=20),
+            current_period_end=now + timedelta(days=50),
+        )
+        return cancelled, free_row
+
+    def test_resubscribe_records_pending_mandate_on_both_rows(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        plan = make_plan(db)
+        cancelled, free_row = self.make_transition_state(db, test_organization.id, plan)
+        start_at = datetime.now(timezone.utc) + timedelta(days=20)
+
+        response = post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_reactivate", test_organization.id, plan,
+                                 quantity=3, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+
+        assert response.status_code == 200
+        db.refresh(free_row); db.refresh(cancelled)
+        # nothing to cancel at the provider - the current row has no mandate
+        assert rzp_mocks["cancel"] == []
+        # recorded on the nominal row (/current) AND the effective billing row
+        for row in (free_row, cancelled):
+            assert row.scheduled_change["razorpay_subscription_id"] == "sub_reactivate"
+            assert row.scheduled_change["quantity"] == 3
+            # currency follows the cancelled paid sub, not the free row's USD default
+            assert row.scheduled_change["currency"] == "INR"
+            assert row.scheduled_change["unit_price"] == 899.0
+
+    def test_second_resubscribe_supersedes_first_mandate(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        plan = make_plan(db)
+        cancelled, free_row = self.make_transition_state(db, test_organization.id, plan)
+        start_at = datetime.now(timezone.utc) + timedelta(days=20)
+
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_react_a", test_organization.id, plan,
+                                 quantity=3, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_react_b", test_organization.id, plan,
+                                 quantity=2, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+
+        db.refresh(free_row)
+        assert "sub_react_a" in rzp_mocks["cancel_unstarted"]
+        assert free_row.scheduled_change["razorpay_subscription_id"] == "sub_react_b"
+
+
 class TestRenewal:
     def test_charged_extends_period(self, client, db, test_organization, rzp_mocks):
         plan = make_plan(db)
