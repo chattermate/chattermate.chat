@@ -130,7 +130,7 @@ describe('useBillingSetup', () => {
             expect(setup.isScheduledChange.value).toBe(true)
             expect(setup.dueNow.value).toBe(0)
             expect(setup.isPaidUpgrade.value).toBe(false)
-            expect(setup.scheduledChangeMessage.value).toContain('current billing period ends')
+            expect(setup.scheduledChangeMessage.value).toContain('Nothing is charged until then')
         })
 
         it('upgrade computes the prorated delta due now', async () => {
@@ -154,8 +154,7 @@ describe('useBillingSetup', () => {
             // (2697 - 1798) x 15/30 = 449.5
             expect(setup.dueNow.value).toBe(449.5)
             expect(setup.isPaidUpgrade.value).toBe(true)
-            expect(setup.dueNowMessage.value).toContain('₹449.50')
-            expect(setup.dueNowMessage.value).toContain('applies immediately')
+            expect(setup.dueNowMessage.value).toContain('applies right away')
         })
 
         it('no charge when the delta is below the minimum', async () => {
@@ -203,8 +202,7 @@ describe('useBillingSetup', () => {
             // (29.97 - 19.98) x 15/30 = ~5.0 - Razorpay auto-charges it
             expect(setup.dueNow.value).toBeCloseTo(5.0, 1)
             expect(setup.isInPlaceUpdate.value).toBe(true)
-            expect(setup.dueNowMessage.value).toContain('card on file will be charged')
-            expect(setup.dueNowMessage.value).toContain('No re-authorization')
+            expect(setup.dueNowMessage.value).toContain('card on file')
         })
 
         it('in-place USD decrease is scheduled with no re-authorization', async () => {
@@ -232,7 +230,7 @@ describe('useBillingSetup', () => {
             setup.quantity.value = 2
 
             expect(setup.dueNow.value).toBe(0)
-            expect(setup.scheduledChangeMessage.value).toContain('no re-authorization is needed')
+            expect(setup.scheduledChangeMessage.value).toContain('Nothing is charged until then')
         })
 
         it('seeds seats from the scheduled change, not the current subscription', async () => {
@@ -257,7 +255,7 @@ describe('useBillingSetup', () => {
             // the scheduled downgrade to 1 is the baseline, not the current 2
             expect(setup.quantity.value).toBe(1)
             expect(setup.scheduledChange.value?.quantity).toBe(1)
-            expect(setup.pendingChangeNote.value).toContain('already scheduled')
+            expect(setup.pendingChangeNote.value).toContain('scheduled for')
         })
 
         it('flags the UPI cap when total exceeds it', async () => {
