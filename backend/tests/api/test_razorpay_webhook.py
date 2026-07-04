@@ -73,8 +73,15 @@ def rzp_mocks(monkeypatch):
         calls["cancel"].append((rzp_sub_id, at_cycle_end))
         return {"status": "cancelled"}
 
+    calls["cancel_unstarted"] = []
+
+    def fake_cancel_unstarted(self, rzp_sub_id):
+        calls["cancel_unstarted"].append(rzp_sub_id)
+        return {"status": "cancelled"}
+
     monkeypatch.setattr(RazorpayService, "refund_unused", fake_refund_unused)
     monkeypatch.setattr(RazorpayService, "cancel_subscription", fake_cancel)
+    monkeypatch.setattr(RazorpayService, "cancel_unstarted_subscription", fake_cancel_unstarted)
     return calls
 
 
@@ -330,6 +337,37 @@ class TestPaidUpgradeAuthentication:
         assert old.status == SubscriptionStatus.ACTIVE  # keeps running until cycle end
         assert (old.payment_provider_subscription_id, True) in rzp_mocks["cancel"]
         assert rzp_mocks["refund"] == []  # never refunds under the delta model
+        # the future mandate is tracked so a later change can supersede it
+        assert old.scheduled_change["razorpay_subscription_id"] == "sub_upg_paid"
+        assert old.scheduled_change["quantity"] == 3
+
+    def test_scheduled_downgrade_supersedes_upgrade_mandate(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        """Upgrade (apply_now) then downgrade before cycle end: the upgrade's
+        future mandate must be cancelled or both start at the boundary."""
+        plan = make_plan(db)
+        old = make_subscription(db, test_organization.id, plan, quantity=2)
+        start_at = datetime.now(timezone.utc) + timedelta(days=15)
+
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_upg_mandate", test_organization.id, plan,
+                                 quantity=3, status="authenticated",
+                                 start_at=start_at, apply_now=True)
+        )
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_down_mandate", test_organization.id, plan,
+                                 quantity=1, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+
+        db.refresh(old)
+        assert "sub_upg_mandate" in rzp_mocks["cancel_unstarted"]
+        assert old.scheduled_change["razorpay_subscription_id"] == "sub_down_mandate"
+        assert old.scheduled_change["quantity"] == 1
+        assert old.quantity == 3  # granted seats stay until the boundary
 
     def test_authenticated_downgrade_does_not_apply_early(
         self, client, db, test_organization, rzp_mocks
@@ -348,6 +386,40 @@ class TestPaidUpgradeAuthentication:
         db.refresh(old)
         assert old.quantity == 3  # unchanged until the new sub activates
         assert (old.payment_provider_subscription_id, True) in rzp_mocks["cancel"]
+        # ...but the pending change is persisted for the subscription page
+        sc = old.scheduled_change
+        assert sc is not None
+        assert sc["razorpay_subscription_id"] == "sub_down_sched"
+        assert sc["quantity"] == 2
+        assert sc["plan_name"] == "Pro"
+        assert sc["start_at"].startswith(start_at.date().isoformat())
+
+    def test_new_scheduled_change_supersedes_previous(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        """Scheduling change B after change A must cancel A's future mandate,
+        or both would start (and charge) at the cycle boundary."""
+        plan = make_plan(db)
+        old = make_subscription(db, test_organization.id, plan, quantity=3)
+        start_at = datetime.now(timezone.utc) + timedelta(days=15)
+
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_sched_a", test_organization.id, plan,
+                                 quantity=2, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_sched_b", test_organization.id, plan,
+                                 quantity=1, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+
+        db.refresh(old)
+        assert "sub_sched_a" in rzp_mocks["cancel_unstarted"]
+        assert old.scheduled_change["razorpay_subscription_id"] == "sub_sched_b"
+        assert old.scheduled_change["quantity"] == 1
 
 
 class TestRenewal:
