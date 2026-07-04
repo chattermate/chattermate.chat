@@ -21,6 +21,8 @@ window.APP_CONFIG = {
   
   // Razorpay Checkout
   RAZORPAY_KEY_ID: "${VITE_RAZORPAY_KEY_ID:-}",
+  // Google Tag Manager container (enables purchase/checkout analytics)
+  GTM_ID: "${VITE_GTM_ID:-}",
 
   // Google Fonts API
   GOOGLE_FONTS_API_KEY: "${VITE_GOOGLE_FONTS_API_KEY:-}",
