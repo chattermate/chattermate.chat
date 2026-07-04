@@ -104,7 +104,7 @@ you need to run ChatterMate on your own infrastructure.
 
 ```bash
 # The ChatterMate CLI — sign up, mint tokens, and manage agents, workflows & knowledge
-pip install chattermate-cli          # installs the `chattermate` command
+pip install chattermate-cli          # installs the `chattermate` command (or: npm install -g chattermate-cli)
 
 chattermate signup --name "Acme Inc" --domain acme.com --admin-email you@acme.com
 chattermate agent create --name "Support" --type customer_support -i "Be concise and friendly"

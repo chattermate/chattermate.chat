@@ -13,7 +13,7 @@ self-host Docker tool (`npm install -g chattermate-deploy`).
 Minimal end-to-end flow:
 
 ```bash
-pip install chattermate-cli
+pip install chattermate-cli   # or: npm install -g chattermate-cli
 chattermate signup --name "Acme Inc" --domain acme.com --admin-email you@acme.com --admin-name "You"
 chattermate agent create --name "Support" --type customer_support -i "Be concise" --json
 # Add knowledge from a URL or a local PDF:
