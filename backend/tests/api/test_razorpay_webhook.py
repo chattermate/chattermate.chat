@@ -107,7 +107,7 @@ def post_event(client, event_type, payload, event_id=None, secret=WEBHOOK_SECRET
 
 def subscription_payload(rzp_sub_id, org_id, plan, *, rzp_plan_id=None, quantity=2,
                          status="active", start=None, end=None, start_at=None,
-                         payment_amount=None, apply_now=False):
+                         payment_amount=None, apply_now=False, created_at=None):
     now = datetime.now(timezone.utc)
     entity = {
         "id": rzp_sub_id,
@@ -122,6 +122,8 @@ def subscription_payload(rzp_sub_id, org_id, plan, *, rzp_plan_id=None, quantity
     }
     if start_at:
         entity["start_at"] = int(start_at.timestamp())
+    if created_at:
+        entity["created_at"] = int(created_at.timestamp())
     payload = {"subscription": {"entity": entity}}
     if payment_amount is not None:
         payload["payment"] = {"entity": {"id": f"pay_{uuid4().hex[:10]}", "amount": payment_amount}}
@@ -504,6 +506,39 @@ class TestCancelledReactivation:
         assert "sub_react_a" in rzp_mocks["cancel_unstarted"]
         pending = get_pending(db, test_organization.id)
         assert pending.razorpay_subscription_id == "sub_react_b"
+
+
+class TestOutOfOrderAuthentication:
+    def test_late_event_for_older_mandate_does_not_supersede(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        """Webhooks are unordered: the customer authorized A then B, but B's
+        event arrives first. A's late event must cancel A (the stale choice),
+        not B (the customer's latest)."""
+        plan = make_plan(db)
+        make_subscription(db, test_organization.id, plan, quantity=3)
+        now = datetime.now(timezone.utc)
+        start_at = now + timedelta(days=15)
+
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_newer_b", test_organization.id, plan,
+                                 quantity=1, status="authenticated",
+                                 start_at=start_at, created_at=now)
+        )
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_older_a", test_organization.id, plan,
+                                 quantity=2, status="authenticated",
+                                 start_at=start_at,
+                                 created_at=now - timedelta(minutes=5))
+        )
+
+        # the stale incoming mandate is cancelled, the newest choice survives
+        assert "sub_older_a" in rzp_mocks["cancel_unstarted"]
+        assert "sub_newer_b" not in rzp_mocks["cancel_unstarted"]
+        pending = get_pending(db, test_organization.id)
+        assert pending.razorpay_subscription_id == "sub_newer_b"
 
 
 class TestPendingClearedOnActivation:

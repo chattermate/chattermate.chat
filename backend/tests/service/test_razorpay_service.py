@@ -266,6 +266,9 @@ class TestCancelSubscription:
 
     def test_unstarted_falls_back_to_pause(self, service):
         # Razorpay rejects cancel for created/authenticated subs
+        service.client.subscription.fetch.return_value = {
+            "id": "sub_a", "status": "authenticated"
+        }
         service.client.subscription.cancel.side_effect = Exception(
             "Subscription is not cancellable in authenticated status"
         )
@@ -275,6 +278,29 @@ class TestCancelSubscription:
 
         service.client.subscription.pause.assert_called_once_with("sub_a", {"pause_at": "now"})
         assert result["status"] == "cancelled"
+
+    def test_unstarted_cancel_refuses_started_subscription(self, service):
+        """The plain cancel would SUCCEED on an active sub - the status guard
+        must refuse rather than kill a live, paid mandate (supersede races)."""
+        service.client.subscription.fetch.return_value = {
+            "id": "sub_a", "status": "active"
+        }
+
+        with pytest.raises(ValueError):
+            service.cancel_unstarted_subscription("sub_a")
+
+        service.client.subscription.cancel.assert_not_called()
+        service.client.subscription.pause.assert_not_called()
+
+    def test_unstarted_cancel_noop_when_already_dead(self, service):
+        service.client.subscription.fetch.return_value = {
+            "id": "sub_a", "status": "cancelled"
+        }
+
+        result = service.cancel_unstarted_subscription("sub_a")
+
+        assert result["status"] == "cancelled"
+        service.client.subscription.cancel.assert_not_called()
 
 
 # ---------------------------------------------------------------- refund_unused
