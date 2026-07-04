@@ -17,6 +17,7 @@ window.APP_CONFIG = {
     
     // Razorpay Checkout
     RAZORPAY_KEY_ID: "rzp_test_T92OR9gqPBht0N",
+    GTM_ID: "",
 
     // Google Fonts API
     GOOGLE_FONTS_API_KEY: "AIzaSyCTQCSK_ybLEglabeusbyekQGEyvFr2C5o",
