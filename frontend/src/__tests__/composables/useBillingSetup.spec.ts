@@ -235,6 +235,31 @@ describe('useBillingSetup', () => {
             expect(setup.scheduledChangeMessage.value).toContain('no re-authorization is needed')
         })
 
+        it('seeds seats from the scheduled change, not the current subscription', async () => {
+            apiGetMock.mockResolvedValue({
+                data: billingStatusFixture({
+                    active_human_agents: 1,
+                    current_subscription: {
+                        id: 's1', quantity: 2, status: 'active', payment_provider: 'razorpay',
+                        payment_provider_subscription_id: 'sub_1'
+                    },
+                    scheduled_change: {
+                        razorpay_subscription_id: 'sub_sched',
+                        plan_id: 'plan-1', plan_name: 'Pro', quantity: 1,
+                        unit_price: 899.0, currency: 'INR',
+                        start_at: new Date(Date.now() + 15 * 86400000).toISOString()
+                    }
+                })
+            })
+            const setup = useBillingSetup('plan-1')
+            await setup.fetchBillingStatus()
+
+            // the scheduled downgrade to 1 is the baseline, not the current 2
+            expect(setup.quantity.value).toBe(1)
+            expect(setup.scheduledChange.value?.quantity).toBe(1)
+            expect(setup.pendingChangeNote.value).toContain('already scheduled')
+        })
+
         it('flags the UPI cap when total exceeds it', async () => {
             apiGetMock.mockResolvedValue({ data: billingStatusFixture() })
             const setup = useBillingSetup('plan-1')
