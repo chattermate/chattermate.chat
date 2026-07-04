@@ -32,6 +32,7 @@ from app.core.config import settings  # noqa: E402
 from app.core.security import get_password_hash  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.enterprise.models.plan import Plan, PlanType  # noqa: E402
+from app.enterprise.models.pending_plan_change import PendingPlanChange
 from app.enterprise.models.subscription import Subscription, SubscriptionStatus  # noqa: E402
 from app.enterprise.routes.razorpay import router as razorpay_router  # noqa: E402
 from app.enterprise.services.razorpay_service import RazorpayService  # noqa: E402
@@ -171,6 +172,14 @@ def make_subscription(db, org_id, plan, **overrides):
     db.commit()
     db.refresh(subscription)
     return subscription
+
+
+
+
+def get_pending(db, org_id):
+    return db.query(PendingPlanChange).filter(
+        PendingPlanChange.organization_id == org_id
+    ).first()
 
 
 def get_db_sub(db, rzp_sub_id):
@@ -344,8 +353,9 @@ class TestPaidUpgradeAuthentication:
         # next change's proration baseline depend on it
         assert old.unit_price == 899.0
         # the future mandate is tracked so a later change can supersede it
-        assert old.scheduled_change["razorpay_subscription_id"] == "sub_upg_paid"
-        assert old.scheduled_change["quantity"] == 3
+        pending = get_pending(db, test_organization.id)
+        assert pending.razorpay_subscription_id == "sub_upg_paid"
+        assert pending.quantity == 3
 
     def test_scheduled_downgrade_supersedes_upgrade_mandate(
         self, client, db, test_organization, rzp_mocks
@@ -371,8 +381,9 @@ class TestPaidUpgradeAuthentication:
 
         db.refresh(old)
         assert "sub_upg_mandate" in rzp_mocks["cancel_unstarted"]
-        assert old.scheduled_change["razorpay_subscription_id"] == "sub_down_mandate"
-        assert old.scheduled_change["quantity"] == 1
+        pending = get_pending(db, test_organization.id)
+        assert pending.razorpay_subscription_id == "sub_down_mandate"
+        assert pending.quantity == 1
         assert old.quantity == 3  # granted seats stay until the boundary
 
     def test_authenticated_downgrade_does_not_apply_early(
@@ -393,12 +404,12 @@ class TestPaidUpgradeAuthentication:
         assert old.quantity == 3  # unchanged until the new sub activates
         assert (old.payment_provider_subscription_id, True) in rzp_mocks["cancel"]
         # ...but the pending change is persisted for the subscription page
-        sc = old.scheduled_change
-        assert sc is not None
-        assert sc["razorpay_subscription_id"] == "sub_down_sched"
-        assert sc["quantity"] == 2
-        assert sc["plan_name"] == "Pro"
-        assert sc["start_at"].startswith(start_at.date().isoformat())
+        pending = get_pending(db, test_organization.id)
+        assert pending is not None
+        assert pending.razorpay_subscription_id == "sub_down_sched"
+        assert pending.quantity == 2
+        assert pending.plan_name == "Pro"
+        assert pending.start_at.date() == start_at.date()
 
     def test_new_scheduled_change_supersedes_previous(
         self, client, db, test_organization, rzp_mocks
@@ -424,8 +435,9 @@ class TestPaidUpgradeAuthentication:
 
         db.refresh(old)
         assert "sub_sched_a" in rzp_mocks["cancel_unstarted"]
-        assert old.scheduled_change["razorpay_subscription_id"] == "sub_sched_b"
-        assert old.scheduled_change["quantity"] == 1
+        pending = get_pending(db, test_organization.id)
+        assert pending.razorpay_subscription_id == "sub_sched_b"
+        assert pending.quantity == 1
 
 
 class TestCancelledReactivation:
@@ -460,16 +472,14 @@ class TestCancelledReactivation:
         )
 
         assert response.status_code == 200
-        db.refresh(free_row); db.refresh(cancelled)
         # nothing to cancel at the provider - the current row has no mandate
         assert rzp_mocks["cancel"] == []
-        # recorded on the nominal row (/current) AND the effective billing row
-        for row in (free_row, cancelled):
-            assert row.scheduled_change["razorpay_subscription_id"] == "sub_reactivate"
-            assert row.scheduled_change["quantity"] == 3
-            # currency follows the cancelled paid sub, not the free row's USD default
-            assert row.scheduled_change["currency"] == "INR"
-            assert row.scheduled_change["unit_price"] == 899.0
+        pending = get_pending(db, test_organization.id)
+        assert pending.razorpay_subscription_id == "sub_reactivate"
+        assert pending.quantity == 3
+        # currency follows the cancelled paid sub, not the free row's USD default
+        assert pending.currency == "INR"
+        assert pending.unit_price == 899.0
 
     def test_second_resubscribe_supersedes_first_mandate(
         self, client, db, test_organization, rzp_mocks
@@ -491,9 +501,59 @@ class TestCancelledReactivation:
                                  start_at=start_at, apply_now=False)
         )
 
-        db.refresh(free_row)
         assert "sub_react_a" in rzp_mocks["cancel_unstarted"]
-        assert free_row.scheduled_change["razorpay_subscription_id"] == "sub_react_b"
+        pending = get_pending(db, test_organization.id)
+        assert pending.razorpay_subscription_id == "sub_react_b"
+
+
+class TestPendingClearedOnActivation:
+    def test_activation_of_pending_mandate_deletes_record(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        plan = make_plan(db)
+        old = make_subscription(db, test_organization.id, plan, quantity=3)
+        start_at = datetime.now(timezone.utc) + timedelta(days=15)
+
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_boundary", test_organization.id, plan,
+                                 quantity=2, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+        assert get_pending(db, test_organization.id) is not None
+
+        # the boundary arrives: the scheduled mandate activates
+        post_event(
+            client, "subscription.activated",
+            subscription_payload("sub_boundary", test_organization.id, plan, quantity=2)
+        )
+
+        assert get_pending(db, test_organization.id) is None
+        new_sub = get_db_sub(db, "sub_boundary")
+        assert new_sub is not None and new_sub.quantity == 2
+
+    def test_activation_of_other_mandate_supersedes_stale_pending(
+        self, client, db, test_organization, rzp_mocks
+    ):
+        """An immediate activation must kill a stale scheduled mandate, or
+        both would charge."""
+        plan = make_plan(db)
+        old = make_subscription(db, test_organization.id, plan, quantity=3)
+        start_at = datetime.now(timezone.utc) + timedelta(days=15)
+
+        post_event(
+            client, "subscription.authenticated",
+            subscription_payload("sub_stale_sched", test_organization.id, plan,
+                                 quantity=2, status="authenticated",
+                                 start_at=start_at, apply_now=False)
+        )
+        post_event(
+            client, "subscription.activated",
+            subscription_payload("sub_fresh_now", test_organization.id, plan, quantity=1)
+        )
+
+        assert "sub_stale_sched" in rzp_mocks["cancel_unstarted"]
+        assert get_pending(db, test_organization.id) is None
 
 
 class TestRenewal:
