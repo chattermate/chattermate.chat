@@ -343,40 +343,41 @@ def test_delete_knowledge(client: TestClient, test_knowledge):
 # Negative test cases
 
 def test_upload_invalid_file(client: TestClient, test_organization):
-    """Test uploading invalid file type"""
-    # Create a test text file
+    """Test uploading invalid file type is rejected"""
+    # A text file must be rejected by content-type validation
     text_content = b"This is not a PDF file"
     files = [
         ("files", ("test.txt", io.BytesIO(text_content), "text/plain"))
     ]
 
-    # Create temp directory if it doesn't exist
-    os.makedirs("temp", exist_ok=True)
+    response = client.post(
+        "/api/v1/knowledge/upload/pdf",
+        files=files,
+        data={
+            "org_id": str(test_organization.id)
+        }
+    )
 
-    # Mock S3 configuration and upload
-    mock_s3_client = MagicMock()
-    mock_s3_client.put_object.return_value = {'ResponseMetadata': {'HTTPStatusCode': 200}}
-    mock_s3_client.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test.txt"
-    
-    with patch('app.core.config.settings.S3_FILE_STORAGE', True), \
-         patch('app.core.s3.upload_file_to_s3') as mock_upload, \
-         patch('app.core.s3.get_s3_signed_url') as mock_signed_url, \
-         patch('app.core.s3.get_s3_client', return_value=mock_s3_client):
-        # Configure mocks
-        mock_upload.return_value = "s3://test-bucket/test.txt"
-        mock_signed_url.return_value = "https://test-bucket.s3.amazonaws.com/test.txt"
+    assert response.status_code == 400
+    assert "unsupported content type" in response.json()["detail"]
 
-        response = client.post(
-            "/api/v1/knowledge/upload/pdf",
-            files=files,
-            data={
-                "org_id": str(test_organization.id)
-            }
-        )
+def test_upload_fake_pdf_rejected(client: TestClient, test_organization):
+    """Test uploading a file with a PDF content type but non-PDF bytes is rejected"""
+    # Correct content type, but the magic-byte check must reject it
+    files = [
+        ("files", ("fake.pdf", io.BytesIO(b"This is not a PDF file"), "application/pdf"))
+    ]
 
-        assert response.status_code == 200  # The API accepts all files and processes them later
-        assert "queue_items" in response.json()
-        assert len(response.json()["queue_items"]) == 1
+    response = client.post(
+        "/api/v1/knowledge/upload/pdf",
+        files=files,
+        data={
+            "org_id": str(test_organization.id)
+        }
+    )
+
+    assert response.status_code == 400
+    assert "not a valid PDF" in response.json()["detail"]
 
 def test_add_invalid_urls(client: TestClient, test_organization):
     """Test adding invalid URLs"""
