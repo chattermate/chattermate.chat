@@ -35,10 +35,6 @@ export function getWidgetUrl(): string {
 }
 
 // Razorpay Checkout - Dynamic function
-export function getRazorpayKeyId(): string {
-  return window.APP_CONFIG?.RAZORPAY_KEY_ID || import.meta.env.VITE_RAZORPAY_KEY_ID || ''
-}
-
 // Firebase Configuration - Dynamic functions
 export function getFirebaseApiKey(): string {
   return window.APP_CONFIG?.FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY || ''
