@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
     RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
     RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+    # Silent in-place updates on international-card (USD) subscriptions need
+    # the account's non-3DS capability (Razorpay Risk-team approval). Until
+    # approved, USD changes use checkout re-authorization like INR. Flip to
+    # true once Razorpay enables non-3DS merchant-initiated charges.
+    RAZORPAY_INTL_SILENT_UPDATES: bool = os.getenv("RAZORPAY_INTL_SILENT_UPDATES", "false").lower() == "true"
 
     # Where billing alerts (payment disputes/chargebacks) are sent
     BILLING_ALERT_EMAIL: str = os.getenv("BILLING_ALERT_EMAIL", os.getenv("FROM_EMAIL", "noreply@chattermate.chat"))

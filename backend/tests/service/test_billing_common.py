@@ -253,18 +253,33 @@ class TestClassifyChange:
         plan = make_plan(db)
         sub = make_subscription(db, test_organization.id, plan, quantity=2, unit_price=9.99)
 
-        change = classify_change(sub, plan, 3, 9.99)
+        change = classify_change(sub, plan, 3, 9.99, allow_in_place=True)
 
         assert change["change_type"] == "update_now"
         assert 0 < change["due_now"] <= 5.0
         assert change["proration_days"] in (14, 15)
         assert change["start_at"] is None
 
+    def test_usd_without_silent_updates_uses_checkout_like_inr(self, db, test_organization):
+        """Default (non-3DS not approved): USD changes go through checkout
+        re-authorization exactly like INR - upgrade with prorated addon."""
+        plan = make_plan(db)
+        sub = make_subscription(db, test_organization.id, plan, quantity=2, unit_price=9.99)
+
+        increase = classify_change(sub, plan, 3, 9.99, allow_in_place=False)
+        assert increase["change_type"] == "upgrade"
+        assert increase["start_at"] is not None
+        assert 0 < increase["due_now"] <= 5.0
+
+        decrease = classify_change(sub, plan, 1, 9.99, allow_in_place=False)
+        assert decrease["change_type"] == "scheduled"
+        assert decrease["due_now"] == 0.0
+
     def test_usd_decrease_updates_in_place_at_cycle_end(self, db, test_organization):
         plan = make_plan(db)
         sub = make_subscription(db, test_organization.id, plan, quantity=3, unit_price=9.99)
 
-        change = classify_change(sub, plan, 2, 9.99)
+        change = classify_change(sub, plan, 2, 9.99, allow_in_place=True)
 
         assert change["change_type"] == "update_cycle_end"
         assert change["due_now"] == 0.0
