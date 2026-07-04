@@ -78,10 +78,6 @@ class Settings(BaseSettings):
     PAYPAL_SANDBOX_MODE: bool = os.getenv("PAYPAL_SANDBOX_MODE", "true").lower() == "true"
     PAYPAL_WEBHOOK_ID: str = os.getenv("PAYPAL_WEBHOOK_ID", "test")
 
-
-    # Where billing alerts (payment disputes/chargebacks) are sent
-
-
     # Shopify
     SHOPIFY_API_KEY: str = os.getenv("SHOPIFY_API_KEY", "")
     SHOPIFY_API_SECRET: str = os.getenv("SHOPIFY_API_SECRET", "")
