@@ -213,13 +213,15 @@ class TestClassifyChange:
         assert change == {"start_at": None, "change_type": "new",
                           "due_now": 0.0, "proration_days": 0}
 
-    def test_upgrade_scheduled_with_prorated_delta(self, db, test_organization):
+    def test_inr_upgrade_scheduled_with_prorated_delta(self, db, test_organization):
         plan = make_plan(db)
         now = datetime.now(timezone.utc)
-        # 2 seats @ 899, 15 of 30 days remaining
+        # INR (domestic mandate): RBI AFA on modification -> checkout re-auth
+        # with the prorated delta collected upfront. 2 seats @ 899, 15/30 days.
         sub = make_subscription(
             db, test_organization.id, plan, quantity=2, unit_price=899.0,
             period_start=now - timedelta(days=15), period_end=now + timedelta(days=15),
+            currency="INR",
         )
 
         change = classify_change(sub, plan, 3, 899.0)
@@ -231,13 +233,37 @@ class TestClassifyChange:
         assert 0 < change["due_now"] <= 449.5
         assert change["proration_days"] in (14, 15)
 
-    def test_seat_decrease_scheduled_no_charge(self, db, test_organization):
+    def test_inr_seat_decrease_scheduled_no_charge(self, db, test_organization):
         plan = make_plan(db)
-        sub = make_subscription(db, test_organization.id, plan, quantity=3, unit_price=899.0)
+        sub = make_subscription(
+            db, test_organization.id, plan, quantity=3, unit_price=899.0, currency="INR",
+        )
 
         change = classify_change(sub, plan, 2, 899.0)
 
         assert change["change_type"] == "scheduled"
+        assert change["due_now"] == 0.0
+        assert change["start_at"] is not None
+
+    def test_usd_increase_updates_in_place_now(self, db, test_organization):
+        # International card (USD): RBI AFA binds Indian issuers only -> the
+        # mandate is edited silently; nothing due at change time, applies now
+        plan = make_plan(db)
+        sub = make_subscription(db, test_organization.id, plan, quantity=2, unit_price=9.99)
+
+        change = classify_change(sub, plan, 3, 9.99)
+
+        assert change["change_type"] == "update_now"
+        assert change["due_now"] == 0.0
+        assert change["start_at"] is None
+
+    def test_usd_decrease_updates_in_place_at_cycle_end(self, db, test_organization):
+        plan = make_plan(db)
+        sub = make_subscription(db, test_organization.id, plan, quantity=3, unit_price=9.99)
+
+        change = classify_change(sub, plan, 2, 9.99)
+
+        assert change["change_type"] == "update_cycle_end"
         assert change["due_now"] == 0.0
         assert change["start_at"] is not None
 
@@ -261,6 +287,7 @@ class TestClassifyChange:
         sub = make_subscription(
             db, test_organization.id, plan, quantity=2, unit_price=899.0,
             period_start=now - timedelta(days=30), period_end=now + timedelta(hours=6),
+            currency="INR",
         )
 
         change = classify_change(sub, plan, 3, 899.0)
