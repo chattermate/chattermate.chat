@@ -318,10 +318,13 @@ class TestPaidUpgradeAuthentication:
         self, client, db, test_organization, rzp_mocks
     ):
         """Paid upgrade: prorated delta collected at checkout -> the current
-        subscription gets the new quantity right away, the old mandate is
-        scheduled to cancel at cycle end, and no refund is attempted."""
+        subscription gets the new quantity, plan AND unit price right away,
+        the old mandate is scheduled to cancel at cycle end, and no refund is
+        attempted."""
         plan = make_plan(db)
-        old = make_subscription(db, test_organization.id, plan, quantity=2)
+        # sub still on the old (cheaper) plan's rate - the upgrade must move it
+        old = make_subscription(db, test_organization.id, plan, quantity=2,
+                                unit_price=349.0)
         start_at = datetime.now(timezone.utc) + timedelta(days=15)
 
         response = post_event(
@@ -337,6 +340,9 @@ class TestPaidUpgradeAuthentication:
         assert old.status == SubscriptionStatus.ACTIVE  # keeps running until cycle end
         assert (old.payment_provider_subscription_id, True) in rzp_mocks["cancel"]
         assert rzp_mocks["refund"] == []  # never refunds under the delta model
+        # unit price follows the upgraded plan - the display total and the
+        # next change's proration baseline depend on it
+        assert old.unit_price == 899.0
         # the future mandate is tracked so a later change can supersede it
         assert old.scheduled_change["razorpay_subscription_id"] == "sub_upg_paid"
         assert old.scheduled_change["quantity"] == 3
