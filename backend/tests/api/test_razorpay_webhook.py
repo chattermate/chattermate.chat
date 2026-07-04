@@ -33,6 +33,7 @@ from app.core.security import get_password_hash  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.enterprise.models.plan import Plan, PlanType  # noqa: E402
 from app.enterprise.models.pending_plan_change import PendingPlanChange
+from app.enterprise.models.webhook_event import WebhookEvent
 from app.enterprise.models.subscription import Subscription, SubscriptionStatus  # noqa: E402
 from app.enterprise.routes.razorpay import router as razorpay_router  # noqa: E402
 from app.enterprise.services.razorpay_service import RazorpayService  # noqa: E402
@@ -218,6 +219,48 @@ class TestWebhookSecurity:
         assert second.status_code == 200
         assert second.json()["status"] == "duplicate"
         assert get_db_sub(db, "sub_dup") is not None
+
+    def test_crashed_claim_is_reclaimed_by_retry(self, client, db, test_organization, rzp_mocks):
+        """A worker crash mid-handler leaves an unprocessed claim; the retry
+        must reprocess the event instead of swallowing it as a duplicate."""
+        plan = make_plan(db)
+        # simulate the crash: claim exists, never marked processed, and stale
+        db.add(WebhookEvent(
+            provider="razorpay", event_id="evt_crash",
+            event_type="subscription.activated", processed=False,
+            received_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+        ))
+        db.commit()
+
+        response = post_event(
+            client, "subscription.activated",
+            subscription_payload("sub_crash", test_organization.id, plan),
+            event_id="evt_crash",
+        )
+
+        assert response.status_code == 200
+        assert response.json().get("status") == "success"
+        assert get_db_sub(db, "sub_crash") is not None
+
+    def test_fresh_in_flight_claim_defers_to_retry(self, client, db, test_organization, rzp_mocks):
+        """A fresh unprocessed claim means another worker is mid-handler:
+        answer non-2xx so Razorpay retries later, never a false duplicate."""
+        plan = make_plan(db)
+        db.add(WebhookEvent(
+            provider="razorpay", event_id="evt_inflight",
+            event_type="subscription.activated", processed=False,
+            received_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+
+        response = post_event(
+            client, "subscription.activated",
+            subscription_payload("sub_inflight", test_organization.id, plan),
+            event_id="evt_inflight",
+        )
+
+        assert response.status_code == 409
+        assert get_db_sub(db, "sub_inflight") is None
 
 
 class TestActivation:
