@@ -803,6 +803,18 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     )
                     return response_content
 
+                # Reaching here means no live transfer happened — either transfer is
+                # disabled for this agent, the model didn't actually request one, or the
+                # agent has no groups to route to. Clear any stray transfer flag the model
+                # may have set so the widget does not prompt the visitor for contact
+                # details or tell them it will connect them to a teammate.
+                if response_content.transfer_to_human:
+                    logger.debug(
+                        "Clearing model-set transfer_to_human flag (no transfer performed)")
+                    response_content.transfer_to_human = False
+                    response_content.transfer_reason = None
+                    response_content.transfer_description = None
+
                 # Store AI response with all attributes
                 attributes = {
                     "transfer_to_human": response_content.transfer_to_human,

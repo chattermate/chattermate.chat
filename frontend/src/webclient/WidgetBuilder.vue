@@ -1443,6 +1443,27 @@ const showQuickActions = computed(() =>
 // Citations are shown only when explicitly enabled (off by default for now)
 const showCitations = computed(() => customization.value.show_citations === true)
 
+// Some knowledge documents are stored under an opaque id/hash rather than a
+// human-readable title. Showing that raw id in a chip looks broken, so fall back to
+// a friendly label derived from the source type (e.g. "Knowledge base").
+const looksLikeOpaqueId = (name: string) =>
+    /^[0-9a-f]{16,}$/i.test(name) || /^[0-9a-f-]{32,}$/i.test(name)
+const prettyType = (type?: string) => {
+    const t = (type || '').trim().toLowerCase()
+    if (!t || t === 'unknown') return 'Knowledge base'
+    return t.charAt(0).toUpperCase() + t.slice(1)
+}
+const citationLabel = (src: { name?: string; type?: string }) => {
+    const name = (src?.name || '').trim()
+    if (!name || looksLikeOpaqueId(name)) return prettyType(src?.type)
+    return name
+}
+const citationTooltip = (src: { name?: string; type?: string }) => {
+    const label = citationLabel(src)
+    const type = prettyType(src?.type)
+    return label === type ? type : `${label} · ${type}`
+}
+
 // Pre-chat email gate: only when the agent opts in (and never for the gate-less Ask AI layout)
 const shouldCollectEmail = computed(() => customization.value.collect_email === true && !isAskAnythingStyle.value)
 
@@ -2014,6 +2035,7 @@ const shouldShowWelcomeMessage = computed(() => {
                             <img v-else-if="!useOrbAvatar && photoUrl" :src="photoUrl" class="cm-msg-avatar-img" alt="">
                             <div v-else class="cm-msg-avatar-orb" :style="orbStyle"></div>
                         </div>
+                        <div class="message-col">
                         <div class="message-bubble"
                             :style="message.message_type === 'system' || message.message_type === 'rating' || message.message_type === 'product' || message.shopify_output ? {} :
                                    message.message_type === 'user' ? userBubbleStyles :
@@ -2378,13 +2400,14 @@ const shouldShowWelcomeMessage = computed(() => {
                                 v-for="(src, sIdx) in message.sources"
                                 :key="sIdx"
                                 class="citation-chip"
-                                :title="src.type"
-                            >{{ src.name }}</span>
+                                :title="citationTooltip(src)"
+                            >{{ citationLabel(src) }}</span>
                         </div>
                         <div class="message-info">
                             <span v-if="message.message_type === 'user'" class="agent-name">
                                 You
                             </span>
+                        </div>
                         </div>
                     </div>
                 </template>
@@ -2892,6 +2915,26 @@ const shouldShowWelcomeMessage = computed(() => {
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
     margin-top: var(--space-sm);
+    /* Slim, themed scrollbar instead of the chunky browser default (Firefox). */
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--primary-color, #C9F24E) 45%, transparent) transparent;
+}
+/* Slim, themed scrollbar (WebKit/Chromium). Track stays transparent so it blends into
+   the panel; the thumb picks up the widget's accent colour and thickens on hover. */
+.chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+.chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+.chat-messages::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--primary-color, #C9F24E) 40%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--primary-color, #C9F24E) 65%, transparent);
 }
 
 .message {
@@ -3459,6 +3502,22 @@ const shouldShowWelcomeMessage = computed(() => {
     50% { transform: scaleY(1); }
 }
 
+/* Stack the bubble, its citations and the meta line vertically. Without this the
+   citation chips sit as a flex sibling of the bubble inside the `.message` row and
+   squeeze the bubble down to one word per line. min-width:0 lets long words wrap. */
+.message-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    /* Fill the row (after the avatar) so wide content like the product carousel has
+       room, while each bubble still hugs its own content via its own max-width. */
+    flex: 1 1 auto;
+}
+.user-message .message-col {
+    align-items: flex-end;
+}
+
 /* ===== Knowledge-base citation chips ===== */
 .citation-chips {
     display: flex;
@@ -3467,6 +3526,7 @@ const shouldShowWelcomeMessage = computed(() => {
     gap: 6px;
     margin-top: 6px;
     padding-left: 2px;
+    max-width: 100%;
     animation: cm-msg-in 0.4s ease both;
 }
 .citation-label {
@@ -3477,15 +3537,15 @@ const shouldShowWelcomeMessage = computed(() => {
 }
 .citation-chip {
     font-size: 0.72rem;
-    line-height: 1;
+    line-height: 1.2;
     padding: 4px 9px;
     border-radius: 999px;
     background: rgba(127, 127, 127, 0.1);
-    background: color-mix(in srgb, var(--primary-color, #C9F24E) 12%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #C9F24E) 14%, transparent);
     border: 1px solid rgba(127, 127, 127, 0.25);
-    border-color: color-mix(in srgb, var(--primary-color, #C9F24E) 35%, transparent);
+    border-color: color-mix(in srgb, var(--primary-color, #C9F24E) 40%, transparent);
     color: var(--text-color, inherit);
-    max-width: 180px;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
