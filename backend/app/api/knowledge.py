@@ -44,7 +44,7 @@ from app.workers.knowledge_processor import process_queue_item, run_processor
 
 # Try to import enterprise modules
 try:
-    from app.enterprise.repositories.subscription import SubscriptionRepository
+    from app.enterprise.services.feature_access import require_accessible_subscription
     HAS_ENTERPRISE = True
 except ImportError:
     HAS_ENTERPRISE = False
@@ -222,23 +222,11 @@ async def upload_pdf_files(
 
         # Check enterprise subscription limits if enterprise module is available
         if HAS_ENTERPRISE:
-            subscription_repo = SubscriptionRepository(db)
             knowledge_repo = KnowledgeRepository(db)
 
-            # Get current subscription
-            subscription = subscription_repo.get_by_organization(str(org_uuid))
-            if not subscription:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No active subscription found"
-                )
-
-            # Check subscription status
-            if not subscription.is_active() and not subscription.is_trial():
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Subscription is not active"
-                )
+            # Accessible = active/trial/past-due-in-period OR cancelled-but-
+            # still-in-paid-period; raises 403 when the org has no plan.
+            subscription = require_accessible_subscription(db, org_uuid)
 
             # Get current knowledge sources count
             current_count = knowledge_repo.count_by_organization(org_uuid)
@@ -509,23 +497,11 @@ async def add_urls(
 
         # Check enterprise subscription limits if enterprise module is available
         if HAS_ENTERPRISE:
-            subscription_repo = SubscriptionRepository(db)
             knowledge_repo = KnowledgeRepository(db)
 
-            # Get current subscription
-            subscription = subscription_repo.get_by_organization(str(request.org_id))
-            if not subscription:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No active subscription found"
-                )
-
-            # Check subscription status
-            if not subscription.is_active() and not subscription.is_trial():
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Subscription is not active"
-                )
+            # Accessible = active/trial/past-due-in-period OR cancelled-but-
+            # still-in-paid-period; raises 403 when the org has no plan.
+            subscription = require_accessible_subscription(db, request.org_id)
 
             # Get current knowledge sources count
             current_count = knowledge_repo.count_by_organization(request.org_id)

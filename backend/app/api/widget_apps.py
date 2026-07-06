@@ -32,8 +32,8 @@ from app.core.logger import get_logger
 
 # Enterprise feature check
 try:
-    from app.enterprise.repositories.subscription import SubscriptionRepository
     from app.enterprise.repositories.plan import PlanRepository
+    from app.enterprise.services.feature_access import require_accessible_subscription
     HAS_ENTERPRISE = True
 except ImportError:
     HAS_ENTERPRISE = False
@@ -47,23 +47,10 @@ def check_widget_app_feature_access(current_user: User, db: Session):
     if not HAS_ENTERPRISE:
         return  # Allow access in non-enterprise mode
 
-    subscription_repo = SubscriptionRepository(db)
+    # Accessible subscription = active/trial/past-due-in-period OR cancelled-but-
+    # still-in-paid-period. Raises 403 when the org has no accessible plan.
+    subscription = require_accessible_subscription(db, current_user.organization_id)
     plan_repo = PlanRepository(db)
-
-    # Get current subscription
-    subscription = subscription_repo.get_by_organization(str(current_user.organization_id))
-    if not subscription:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No active subscription found"
-        )
-
-    # Check subscription status
-    if not subscription.is_active() and not subscription.is_trial():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Subscription is not active"
-        )
 
     # Check if api_access feature is available in the plan (required for widget apps)
     if not plan_repo.check_feature_availability(str(subscription.plan_id), 'api_access'):

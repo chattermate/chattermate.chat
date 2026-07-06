@@ -46,6 +46,7 @@ from app.core.application import app
 try:
     from app.enterprise.repositories.subscription import SubscriptionRepository
     from app.enterprise.repositories.plan import PlanRepository
+    from app.enterprise.services.feature_access import require_accessible_subscription
 
     HAS_ENTERPRISE = True
 except ImportError:
@@ -109,22 +110,9 @@ async def create_user(
 
         # Check enterprise subscription limits if enterprise module is available
         if HAS_ENTERPRISE:
-            # Get organization's subscription and plan
-            subscription_repo = SubscriptionRepository(db)
-            subscription = subscription_repo.get_by_organization(str(current_user.organization_id))
-            
-            if not subscription:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No active subscription found"
-                )
-
-            # Check subscription status
-            if not subscription.is_active() and not subscription.is_trial():
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Subscription is not active"
-                )
+            # Accessible = active/trial/past-due-in-period OR cancelled-but-
+            # still-in-paid-period; raises 403 when the org has no plan.
+            subscription = require_accessible_subscription(db, current_user.organization_id)
 
             # Check if max_users feature exists in plan
             plan_repo = PlanRepository(db)
@@ -845,28 +833,19 @@ async def update_user(
     
 
     if HAS_ENTERPRISE and hasattr(user_data, 'is_active') and user_data.is_active != user.is_active:
-        subscription_repo = SubscriptionRepository(db)
-        
-        # Get current subscription
-        subscription = subscription_repo.get_by_organization(str(user.organization_id))
-        if subscription:
-            # Check subscription status when activating user
-            if user_data.is_active and not (subscription.is_active() or subscription.is_trial()):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Cannot activate user: Subscription is not active"
-                )
-
-            # When activating a user, check against subscription limit if max_users feature exists
-            if user_data.is_active:
-                plan_repo = PlanRepository(db)
-                if plan_repo.check_feature_availability(subscription.plan_id, 'max_users'):
-                    active_users = user_repo.get_active_users_count(str(user.organization_id))
-                    if subscription.quantity is not None and active_users >= subscription.quantity:
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail=f"Cannot activate user: Maximum number of users ({subscription.quantity}) reached for your plan. Please upgrade your plan to add more users."
-                        )
+        # Accessible sub (incl. cancelled-but-still-in-paid-period), or None.
+        subscription = SubscriptionRepository(db).get_active_subscription(str(user.organization_id))
+        # When activating a user, enforce the plan's seat limit. A returned
+        # subscription is always currently accessible, so no is_active recheck.
+        if subscription and user_data.is_active:
+            plan_repo = PlanRepository(db)
+            if plan_repo.check_feature_availability(subscription.plan_id, 'max_users'):
+                active_users = user_repo.get_active_users_count(str(user.organization_id))
+                if subscription.quantity is not None and active_users >= subscription.quantity:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Cannot activate user: Maximum number of users ({subscription.quantity}) reached for your plan. Please upgrade your plan to add more users."
+                    )
     
     try:
         updated_user = user_repo.update_user(user_id, **user_data.dict(exclude_unset=True))
