@@ -1505,26 +1505,15 @@ const submitEmailGate = async () => {
 }
 
 const containerStyles = computed(() => {
+    // Always fill the embed iframe exactly. chattermate.js sizes the iframe itself
+    // (fixed size on desktop, full-screen on mobile), so 100%/100% here guarantees the
+    // panel fills it with no right-side gap. (Previously this branched on a one-shot,
+    // non-reactive window.innerWidth check + 100vw, which could leave the panel narrower
+    // than the iframe and clip the header's minimize control on mobile.)
     const baseStyles = {
         width: '100%',
-        // Fill the embed iframe (sized by chattermate.js to the comp's 560px);
-        // must be 100% so the panel isn't a fixed height inside the iframe.
         height: '100%',
         borderRadius: 'var(--radius-lg)'
-    }
-
-    // Override for mobile devices
-    if (window.innerWidth <= 768) {
-        baseStyles.width = '100vw'
-        baseStyles.height = '100vh'
-        baseStyles.borderRadius = '0'
-        baseStyles.position = 'fixed'
-        baseStyles.top = '0'
-        baseStyles.left = '0'
-        baseStyles.bottom = '0'
-        baseStyles.right = '0'
-        baseStyles.maxWidth = '100vw'
-        baseStyles.maxHeight = '100vh'
     }
 
     if (isAskAnythingStyle.value) {
