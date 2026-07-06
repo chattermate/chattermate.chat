@@ -139,28 +139,15 @@ async def create_agent(
         
         # Check enterprise subscription limits if enterprise module is available
         try:
-            from app.enterprise.repositories.subscription import SubscriptionRepository
+            from app.enterprise.services.feature_access import require_accessible_subscription
             HAS_ENTERPRISE = True
         except ImportError:
             HAS_ENTERPRISE = False
 
         if HAS_ENTERPRISE:
-            subscription_repo = SubscriptionRepository(db)
-
-            # Get current subscription
-            subscription = subscription_repo.get_by_organization(str(current_user.organization_id))
-            if not subscription:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No active subscription found"
-                )
-
-            # Check subscription status
-            if not subscription.is_active() and not subscription.is_trial():
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Subscription is not active"
-                )
+            # Accessible = active/trial/past-due-in-period OR cancelled-but-
+            # still-in-paid-period; raises 403 when the org has no plan.
+            subscription = require_accessible_subscription(db, current_user.organization_id)
 
             # Get current agents count
             current_agents_count = agent_repo.count_by_organization(current_user.organization_id)
@@ -279,8 +266,10 @@ async def update_agent(
         if HAS_ENTERPRISE and auth_info['auth_type'] in ('jwt', 'pat'):
             from app.enterprise.repositories.plan import PlanRepository
             subscription_repo = SubscriptionRepository(db)
-            subscription = subscription_repo.get_by_organization(auth_info["organization_id"])
-            
+            # Accessible sub (incl. cancelled-but-still-in-paid-period) so a
+            # cancelled Pro keeps its rating feature until the period ends.
+            subscription = subscription_repo.get_active_subscription(auth_info["organization_id"])
+
             if subscription:
                 plan_repo = PlanRepository(db)
                 if not plan_repo.check_feature_availability(str(subscription.plan_id), 'rating'):
