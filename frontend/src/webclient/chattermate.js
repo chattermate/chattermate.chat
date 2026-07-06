@@ -298,6 +298,12 @@ window.ChatterMate;
           width: 100vw !important;
           height: 100vh !important;
           height: 100dvh !important; /* Dynamic viewport height for mobile browsers */
+          /* Reset the desktop max-width/height clamp — without this the desktop rule's
+             max-width: calc(100vw - 48px) / max-height: calc(100vh - 132px) keeps the
+             window a floating panel instead of going full-screen on mobile. */
+          max-width: 100vw !important;
+          max-height: 100vh !important;
+          max-height: 100dvh !important;
           top: 0 !important;
           left: 0 !important;
           bottom: 0 !important;
@@ -334,8 +340,10 @@ window.ChatterMate;
           display: flex !important;
           width: 56px !important;
           height: 56px !important;
-          bottom: 16px !important;
-          right: 16px !important;
+          /* Respect the configured position on mobile too, so the closed launcher can
+             clear a fixed bottom nav bar (the main reason to move it up). */
+          bottom: ${config.launcherBottom}px !important;
+          right: ${config.launcherRight}px !important;
         }
 
         .ask-anything-mobile #chattermate-mobile-close.active {
@@ -622,6 +630,29 @@ window.ChatterMate;
         position: relative;
         z-index: 1;
         max-width: 90%;
+      }
+
+      .chattermate-error-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        z-index: 2;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 50%;
+        background: rgba(120, 120, 140, 0.12);
+        color: #4b5563;
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+      .chattermate-error-close:hover {
+        background: rgba(120, 120, 140, 0.22);
       }
 
       .chattermate-error-icon-wrapper {
@@ -978,6 +1009,20 @@ window.ChatterMate;
 
       const card = document.createElement('div');
       card.className = 'chattermate-error-card';
+
+      // Close button (top-right). Without this there's no way to dismiss the error on
+      // mobile, where the launcher is hidden while the widget is open.
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'chattermate-error-close';
+      closeBtn.setAttribute('aria-label', 'Close chat');
+      closeBtn.textContent = '×';
+      closeBtn.addEventListener('click', function () {
+        if (isOpen) toggleChat();
+      });
+      // Anchored to the full-panel wrapper so it sits at the top-right of the screen
+      // when the error is shown full-screen on mobile.
+      errorDiv.appendChild(closeBtn);
 
       // Icon wrapper
       const iconWrapper = document.createElement('div');
