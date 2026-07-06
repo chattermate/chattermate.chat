@@ -202,6 +202,7 @@ async def test_get_chat_detail(chat_repo, test_data):
     
     assert detail is not None
     assert detail["customer"]["email"] == "customer@test.com"
+    assert detail["customer"]["meta_data"] is None
     assert detail["agent"]["name"] == "test-agent"
     assert detail["status"] == SessionStatus.OPEN
     assert detail["group_id"] == str(test_data["group"].id)
@@ -213,4 +214,24 @@ async def test_get_chat_detail(chat_repo, test_data):
 async def test_get_nonexistent_chat_detail(chat_repo):
     """Test retrieving detail for nonexistent chat"""
     detail = await chat_repo.get_chat_detail(uuid4(), uuid4())
-    assert detail is None 
+    assert detail is None
+
+@pytest.mark.asyncio
+async def test_get_chat_detail_includes_customer_meta_data(chat_repo, db, test_data):
+    """meta_data set on the customer (e.g. via /generate-token custom_data) is
+    surfaced in the chat detail response so the inbox can display it."""
+    test_data["customer"].meta_data = {
+        "student_name": "Aarav Krishnan",
+        "center_name": "Special Academy U12"
+    }
+    db.commit()
+
+    detail = await chat_repo.get_chat_detail(
+        test_data["session_id"],
+        test_data["org_id"]
+    )
+
+    assert detail["customer"]["meta_data"] == {
+        "student_name": "Aarav Krishnan",
+        "center_name": "Special Academy U12"
+    } 

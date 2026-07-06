@@ -1060,6 +1060,94 @@ class TestTokenCustomData:
 
         app.dependency_overrides.clear()
 
+    def test_generate_token_existing_customer_merges_custom_data(
+        self, mock_db, mock_widget_app, mock_widget, mock_customer, valid_api_key
+    ):
+        """custom_data for a returning customer is merged into their stored meta_data
+        (not just embedded in the JWT), so it shows up in the agent inbox."""
+        def override_get_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_get_db
+
+        mock_widget_filter = MagicMock()
+        mock_widget_filter.first.return_value = mock_widget
+
+        mock_customer_filter = MagicMock()
+        mock_customer_filter.first.return_value = mock_customer
+
+        mock_query = MagicMock()
+        mock_query.filter.side_effect = [mock_widget_filter, mock_customer_filter]
+        mock_db.query.return_value = mock_query
+
+        custom_data = {"student_name": "Aarav Krishnan", "center_name": "Special Academy U12"}
+
+        with patch('app.api.token.WidgetAppRepository') as MockRepo, \
+             patch('app.api.token.get_existing_valid_token_jti', return_value=None), \
+             patch('app.api.token._store_token_in_redis'), \
+             patch('app.api.token.CustomerRepository') as MockCustomerRepo:
+
+            mock_repo = MagicMock()
+            mock_repo.validate_api_key.return_value = mock_widget_app
+            MockRepo.return_value = mock_repo
+
+            mock_customer_repo = MagicMock()
+            mock_customer_repo.update_meta_data.return_value = mock_customer
+            MockCustomerRepo.return_value = mock_customer_repo
+
+            mock_db.commit = MagicMock()
+
+            client = TestClient(app)
+
+            response = client.post(
+                "/api/v1/generate-token",
+                json={
+                    "widget_id": mock_widget.id,
+                    "customer_email": mock_customer.email,
+                    "custom_data": custom_data,
+                    "ttl_seconds": 3600
+                },
+                headers={"Authorization": f"Bearer {valid_api_key}"}
+            )
+
+            assert response.status_code == 201
+            # The merge happens on the existing customer, not the create path
+            mock_customer_repo.update_meta_data.assert_called_once_with(
+                mock_customer.id, custom_data
+            )
+
+        app.dependency_overrides.clear()
+
+    def test_generate_token_custom_data_too_many_keys_rejected(
+        self, mock_db, mock_widget_app, mock_widget, valid_api_key
+    ):
+        """custom_data past the key-count cap is rejected with a 422 before touching the DB."""
+        def override_get_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_get_db
+
+        with patch('app.api.token.WidgetAppRepository') as MockRepo:
+            mock_repo = MagicMock()
+            mock_repo.validate_api_key.return_value = mock_widget_app
+            MockRepo.return_value = mock_repo
+
+            client = TestClient(app)
+
+            response = client.post(
+                "/api/v1/generate-token",
+                json={
+                    "widget_id": mock_widget.id,
+                    "custom_data": {f"key_{i}": "v" for i in range(21)},
+                    "ttl_seconds": 3600
+                },
+                headers={"Authorization": f"Bearer {valid_api_key}"}
+            )
+
+            assert response.status_code == 422
+
+        app.dependency_overrides.clear()
+
     def test_generate_token_ttl_too_large(self, mock_db, mock_widget_app, mock_widget, valid_api_key):
         """Test token generation with TTL too large."""
         def override_get_db():
