@@ -38,6 +38,8 @@ window.ChatterMate;
     containerBottom: 100, // Default bottom position
     containerRight: 20, // Default right position
     containerWidth: 400, // Default width
+    launcherBottom: 20, // Launcher button distance from the bottom edge (configurable)
+    launcherRight: 20, // Launcher button distance from the right edge (configurable)
     chatInitiationMessages: [], // Will be populated from widget data
     initiationMessageId: 'chattermate-initiation',
     initiationShownKey: 'ctim_shown', // Key for tracking if initiation was shown
@@ -76,8 +78,8 @@ window.ChatterMate;
       /* ===== Rounded-square launcher (design comp) ===== */
       #${config.buttonId} {
         position: fixed;
-        bottom: 20px;
-        right: 20px;
+        bottom: ${config.launcherBottom}px;
+        right: ${config.launcherRight}px;
         width: 64px;
         height: 64px;
         border-radius: 20px 20px 20px 6px;
@@ -193,8 +195,12 @@ window.ChatterMate;
 
       #${config.containerId} {
         position: fixed;
-        bottom: ${config.containerBottom || 100}px;
-        right: ${config.containerRight || 20}px;
+        /* The window sits above the launcher; when the launcher is moved (via
+           ChatterMate.init position / setPosition) the window shifts by the same
+           delta so the two stay together. Mobile is full-screen (media query below)
+           and is unaffected. */
+        bottom: ${(config.containerBottom || 100) + ((config.launcherBottom || 20) - 20)}px;
+        right: ${(config.containerRight || 20) + ((config.launcherRight || 20) - 20)}px;
         width: ${config.containerWidth || 384}px;
         max-width: calc(100vw - 48px);
         height: ${config.containerHeight || 560}px;
@@ -1086,8 +1092,15 @@ window.ChatterMate;
           .catch(error => {
             console.error('Failed to load widget:', error)
             button.classList.remove('loading')
-            // Show generic error UI
-            const errorUI = createErrorUI('Unable to load chat. Please try again later.');
+            // A failed fetch here is almost always the browser blocking the request
+            // because this domain isn't in the organization's allowed domains (CORS).
+            // Point the site owner at the fix instead of a dead-end "try again later".
+            const host = window.location.hostname || 'this domain';
+            const isLocal = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)$/i.test(host) || /\.local$/i.test(host);
+            const message = isLocal
+              ? 'Chat can’t load on “' + host + '”. To test locally, set your organization’s domain to “' + host + '” in the ChatterMate dashboard (Organization settings).'
+              : 'Chat can’t load on “' + host + '”. Add this domain to your organization in the ChatterMate dashboard (Organization settings) to enable chat here.';
+            const errorUI = createErrorUI(message);
             container.appendChild(errorUI);
           });
 
@@ -1225,13 +1238,40 @@ window.ChatterMate;
     }
   })
 
+  // Move the launcher (and, with it, the chat window) to a custom position.
+  // Accepts { bottom, right } in pixels — distance from the bottom/right edges.
+  // Use this to lift the widget above a fixed bottom nav bar, for example.
+  // No effect on mobile, where the window is full-screen.
+  function applyPosition(position) {
+    if (!position || typeof position !== 'object') return
+    if (typeof position.bottom === 'number' && isFinite(position.bottom)) {
+      config.launcherBottom = Math.max(0, position.bottom)
+    }
+    if (typeof position.right === 'number' && isFinite(position.right)) {
+      config.launcherRight = Math.max(0, position.right)
+    }
+    // Re-inject styles so an already-rendered widget repositions immediately.
+    if (document.getElementById('chattermate-styles')) {
+      updateStyles()
+    }
+  }
+
   // Expose global configuration function
   window.ChatterMate = {
     init: function (options) {
+      if (!options || typeof options !== 'object') return
       if (options.baseUrl) {
         config.baseUrl = options.baseUrl
       }
       window.chattermateId = options.id
+      // Optional custom placement, e.g. init({ id, position: { bottom: 100, right: 24 } })
+      if (options.position) {
+        applyPosition(options.position)
+      }
+    },
+    // Runtime reposition, e.g. ChatterMate.setPosition({ bottom: 100, right: 24 })
+    setPosition: function (position) {
+      applyPosition(position)
     },
   }
 })()
