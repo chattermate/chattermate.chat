@@ -1454,7 +1454,12 @@ const prettyType = (type?: string) => {
     return t.charAt(0).toUpperCase() + t.slice(1)
 }
 const citationLabel = (src: { name?: string; type?: string }) => {
-    const name = (src?.name || '').trim()
+    let name = (src?.name || '').trim()
+    if (!name) return prettyType(src?.type)
+    // Knowledge docs are often stored as "<hash>_<real name>" (e.g.
+    // "ce983…497_coachiq-faq"). Drop the leading hash so the chip shows the
+    // readable part, then strip a common file extension for a cleaner label.
+    name = name.replace(/^[0-9a-f]{16,}[_-]/i, '').replace(/\.(pdf|txt|md|html?|docx?|csv|json)$/i, '')
     if (!name || looksLikeOpaqueId(name)) return prettyType(src?.type)
     return name
 }
@@ -2915,12 +2920,13 @@ const shouldShowWelcomeMessage = computed(() => {
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
     margin-top: var(--space-sm);
-    /* Slim, themed scrollbar instead of the chunky browser default (Firefox). */
+    /* Slim, themed scrollbar instead of the chunky browser default (Firefox).
+       Uses the resolved theme accent so it matches the surface. */
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--primary-color, #C9F24E) 45%, transparent) transparent;
+    scrollbar-color: color-mix(in srgb, var(--cm-accent, #C9F24E) 40%, transparent) transparent;
 }
 /* Slim, themed scrollbar (WebKit/Chromium). Track stays transparent so it blends into
-   the panel; the thumb picks up the widget's accent colour and thickens on hover. */
+   the panel; the thumb picks up the theme accent colour and thickens on hover. */
 .chat-messages::-webkit-scrollbar {
     width: 8px;
 }
@@ -2928,13 +2934,13 @@ const shouldShowWelcomeMessage = computed(() => {
     background: transparent;
 }
 .chat-messages::-webkit-scrollbar-thumb {
-    background-color: color-mix(in srgb, var(--primary-color, #C9F24E) 40%, transparent);
+    background-color: color-mix(in srgb, var(--cm-accent, #C9F24E) 35%, transparent);
     border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
 .chat-messages::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--primary-color, #C9F24E) 65%, transparent);
+    background-color: color-mix(in srgb, var(--cm-accent, #C9F24E) 60%, transparent);
 }
 
 .message {
@@ -3533,19 +3539,22 @@ const shouldShowWelcomeMessage = computed(() => {
     font-size: 0.66rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    opacity: 0.55;
+    color: var(--cm-muted, currentColor);
+    opacity: 0.85;
 }
+/* Subtle, theme-tinted pill that hugs its label (not a full-width orange bar).
+   Colours come from the resolved theme accent/text so they match the surface. */
 .citation-chip {
     font-size: 0.72rem;
-    line-height: 1.2;
-    padding: 4px 9px;
+    line-height: 1.3;
+    padding: 3px 10px;
     border-radius: 999px;
-    background: rgba(127, 127, 127, 0.1);
-    background: color-mix(in srgb, var(--primary-color, #C9F24E) 14%, transparent);
-    border: 1px solid rgba(127, 127, 127, 0.25);
-    border-color: color-mix(in srgb, var(--primary-color, #C9F24E) 40%, transparent);
-    color: var(--text-color, inherit);
-    max-width: 100%;
+    background: rgba(127, 127, 127, 0.08);
+    background: color-mix(in srgb, var(--cm-accent, #C9F24E) 9%, transparent);
+    border: 1px solid rgba(127, 127, 127, 0.22);
+    border-color: color-mix(in srgb, var(--cm-accent, #C9F24E) 26%, transparent);
+    color: var(--cm-text, inherit);
+    max-width: 240px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
