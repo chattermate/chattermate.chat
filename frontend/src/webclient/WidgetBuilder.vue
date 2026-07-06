@@ -1560,6 +1560,7 @@ const shouldShowWelcomeMessage = computed(() => {
 <template>
     <!-- API Key Not Configured Error (Widget not set up) -->
     <div v-if="showAuthError && isApiKeyAuthRequired" class="widget-unavailable-overlay">
+        <button type="button" class="cm-error-close" aria-label="Close chat" title="Close" @click="minimizeWidget">×</button>
         <div class="widget-unavailable-card">
             <div class="widget-unavailable-icon-wrapper">
                 <svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1585,6 +1586,7 @@ const shouldShowWelcomeMessage = computed(() => {
 
     <!-- Generic Auth Error (Token expired/invalid) -->
     <div v-else-if="showAuthError" class="auth-error-overlay">
+        <button type="button" class="cm-error-close" aria-label="Close chat" title="Close" @click="minimizeWidget">×</button>
         <div class="auth-error-card">
             <div class="auth-error-header">
                 <svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -6269,6 +6271,32 @@ const shouldShowWelcomeMessage = computed(() => {
   border-radius: var(--radius-lg);
   overflow: hidden;
   position: relative;
+}
+
+/* Close control for the full-screen error overlays (widget-unavailable / auth-error).
+   Fixed to the viewport top-right so it's reachable even on mobile, where these
+   screens replace the whole widget and there is no header chevron to minimize. */
+.cm-error-close {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(120, 120, 140, 0.12);
+  color: #4b5563;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.cm-error-close:hover {
+  background: rgba(120, 120, 140, 0.22);
 }
 
 .widget-unavailable-overlay::before {
