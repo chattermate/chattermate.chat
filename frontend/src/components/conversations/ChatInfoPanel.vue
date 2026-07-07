@@ -193,6 +193,21 @@ const formatDate = (dateString: string): string => {
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
 }
 
+// Integrator-supplied fields (e.g. student_name, center_name) passed via
+// POST /generate-token's `custom_data`. Shown as a label/value list below the
+// customer's name and email; snake_case keys are prettified for display.
+const metaDataEntries = computed(() => {
+  const metaData = props.chatInfo?.customer?.meta_data
+  if (!metaData || typeof metaData !== 'object') return []
+  return Object.entries(metaData)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([key, value]) => ({
+      key,
+      label: key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      value: typeof value === 'object' ? JSON.stringify(value) : String(value)
+    }))
+})
+
 // Load users for reassign dropdown
 const loadUsers = async () => {
   if (loadingUsers.value) return
@@ -258,8 +273,12 @@ const confirmReassign = async () => {
           <span class="label">Email:</span>
           <span class="value">{{ chatInfo.customer.email || 'N/A' }}</span>
         </div>
+        <div v-for="entry in metaDataEntries" :key="entry.key" class="info-item">
+          <span class="label">{{ entry.label }}:</span>
+          <span class="value">{{ entry.value }}</span>
+        </div>
       </div>
-      
+
       <div class="info-section">
         <h4>Assignment</h4>
         <div class="info-item">

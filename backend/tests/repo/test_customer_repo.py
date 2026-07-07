@@ -152,4 +152,77 @@ def test_get_or_create_customer_no_name(customer_repo, test_organization_id):
     assert customer is not None
     assert customer.email == email
     assert customer.full_name is None
-    assert customer.organization_id == test_organization_id 
+    assert customer.organization_id == test_organization_id
+
+def test_create_customer_with_meta_data(customer_repo, test_organization_id):
+    """Test creating a customer with integrator-supplied meta_data"""
+    email = "student@example.com"
+    meta_data = {"student_name": "Aarav Krishnan", "center_name": "Special Academy U12"}
+
+    customer = customer_repo.create_customer(
+        email=email,
+        organization_id=test_organization_id,
+        full_name="Parent Name",
+        meta_data=meta_data
+    )
+
+    assert customer is not None
+    assert customer.meta_data == meta_data
+
+def test_create_customer_without_meta_data(customer_repo, test_organization_id):
+    """Test creating a customer with no meta_data leaves the column null"""
+    customer = customer_repo.create_customer(
+        email="nometa@example.com",
+        organization_id=test_organization_id
+    )
+
+    assert customer.meta_data is None
+
+def test_update_meta_data_merges_new_keys(customer_repo, test_organization_id):
+    """A second call adds new keys and overwrites changed ones, keeping the rest"""
+    customer = customer_repo.create_customer(
+        email="merge@example.com",
+        organization_id=test_organization_id,
+        meta_data={"student_name": "Aarav", "grade": "U12"}
+    )
+
+    updated = customer_repo.update_meta_data(
+        customer.id,
+        {"student_name": "Aarav Krishnan", "center_name": "Special Academy U12"}
+    )
+
+    assert updated is not None
+    assert updated.meta_data == {
+        "student_name": "Aarav Krishnan",  # overwritten
+        "grade": "U12",                    # preserved
+        "center_name": "Special Academy U12"  # added
+    }
+
+def test_update_meta_data_on_customer_with_no_existing_data(customer_repo, test_organization_id):
+    """Merging onto a customer created without meta_data starts from an empty dict"""
+    customer = customer_repo.create_customer(
+        email="firstmeta@example.com",
+        organization_id=test_organization_id
+    )
+
+    updated = customer_repo.update_meta_data(customer.id, {"plan": "premium"})
+
+    assert updated.meta_data == {"plan": "premium"}
+
+def test_update_meta_data_empty_input_is_noop(customer_repo, test_organization_id):
+    """Calling with no data returns None and leaves the customer untouched"""
+    customer = customer_repo.create_customer(
+        email="noop@example.com",
+        organization_id=test_organization_id,
+        meta_data={"a": "b"}
+    )
+
+    result = customer_repo.update_meta_data(customer.id, {})
+
+    assert result is None
+    assert customer_repo.get_by_id(customer.id).meta_data == {"a": "b"}
+
+def test_update_meta_data_nonexistent_customer(customer_repo):
+    """Updating meta_data for a customer that doesn't exist returns None"""
+    result = customer_repo.update_meta_data(uuid4(), {"a": "b"})
+    assert result is None 

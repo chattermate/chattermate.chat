@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, func, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, func, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -30,6 +30,9 @@ class Customer(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, nullable=False)
     full_name = Column(String)
+    # Arbitrary integrator-supplied fields (e.g. student_name, center_name) passed via
+    # POST /generate-token's `custom_data` and surfaced to agents in the chat inbox.
+    meta_data = Column(JSON, nullable=True)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())

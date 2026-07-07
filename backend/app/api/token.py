@@ -40,10 +40,17 @@ from app.core.security import (
     get_all_active_sessions as security_get_all_active_sessions
 )
 from app.repositories.widget_app import WidgetAppRepository
-from pydantic import BaseModel
+from app.repositories.customer import CustomerRepository
+from pydantic import BaseModel, field_validator
+import json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# custom_data is embedded in both the JWT and the customer's stored meta_data, so cap
+# its size to keep tokens small and prevent unbounded growth of the DB column.
+CUSTOM_DATA_MAX_KEYS = 20
+CUSTOM_DATA_MAX_BYTES = 4096
 
 # ============================================================================
 # MODELS
@@ -56,6 +63,18 @@ class GenerateTokenRequest(BaseModel):
     customer_name: Optional[str] = None
     custom_data: Optional[Dict[str, Any]] = None
     ttl_seconds: Optional[int] = 3600  # Default 1 hour
+
+    @field_validator('custom_data')
+    @classmethod
+    def validate_custom_data_size(cls, value):
+        if value is None:
+            return value
+        if len(value) > CUSTOM_DATA_MAX_KEYS:
+            raise ValueError(f"custom_data supports at most {CUSTOM_DATA_MAX_KEYS} keys")
+        size = len(json.dumps(value))
+        if size > CUSTOM_DATA_MAX_BYTES:
+            raise ValueError(f"custom_data must be at most {CUSTOM_DATA_MAX_BYTES} bytes when serialized")
+        return value
 
 class RevokeTokenRequest(BaseModel):
     """Request to revoke a token"""
@@ -242,6 +261,7 @@ async def generate_widget_token(
                 customer = Customer(
                     email=body.customer_email,
                     full_name=body.customer_name,
+                    meta_data=body.custom_data,
                     organization_id=widget.organization_id
                 )
                 db.add(customer)
@@ -254,16 +274,22 @@ async def generate_widget_token(
                     customer.full_name = body.customer_name
                     db.commit()
                     logger.info(f"Updated customer {customer.id} name to {body.customer_name}")
+                # Merge in any new/changed custom_data (e.g. student_name, center_name)
+                # so agents see the latest values in the inbox; existing keys not
+                # present in this call are preserved.
+                if body.custom_data:
+                    customer = CustomerRepository(db).update_meta_data(customer.id, body.custom_data) or customer
         else:
             # No email provided - create anonymous customer
             # Generate a unique email for anonymous customers
             import time
             timestamp = int(time.time() * 1000)
             anonymous_email = f"anonymous-{timestamp}@{widget.organization_id}.local"
-            
+
             customer = Customer(
                 email=anonymous_email,
                 full_name=body.customer_name or "Anonymous",
+                meta_data=body.custom_data,
                 organization_id=widget.organization_id
             )
             db.add(customer)

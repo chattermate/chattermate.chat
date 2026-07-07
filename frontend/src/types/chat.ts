@@ -18,6 +18,9 @@ export interface CustomerInfo {
   id: string
   email: string
   full_name?: string
+  // Integrator-supplied fields (e.g. student_name, center_name) set via
+  // POST /generate-token's `custom_data`.
+  meta_data?: Record<string, unknown>
 }
 
 export interface Message {

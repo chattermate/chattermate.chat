@@ -26,6 +26,9 @@ class CustomerInfo(BaseModel):
     id: UUID
     email: Optional[str]
     full_name: Optional[str]
+    # Integrator-supplied fields (e.g. student_name, center_name) set via
+    # POST /generate-token's `custom_data`, shown to agents in the chat inbox.
+    meta_data: Optional[Dict[str, Any]] = None
 class AgentInfo(BaseModel):
     id: UUID
     name: str

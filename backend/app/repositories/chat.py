@@ -388,6 +388,7 @@ class ChatRepository:
                 Customer.id.label('customer_id'),
                 Customer.email.label('customer_email'),
                 Customer.full_name.label('customer_full_name'),
+                Customer.meta_data.label('customer_meta_data'),
                 Agent.id.label('agent_id'),
                 Agent.name.label('agent_name'),
                 Agent.display_name.label('agent_display_name'),
@@ -411,6 +412,7 @@ class ChatRepository:
                 Customer.id,
                 Customer.email,
                 Customer.full_name,
+                Customer.meta_data,
                 Agent.id,
                 Agent.name,
                 Agent.display_name,
@@ -460,7 +462,8 @@ class ChatRepository:
             'customer': {
                 'id': result.customer_id,
                 'email': result.customer_email,
-                'full_name': result.customer_full_name
+                'full_name': result.customer_full_name,
+                'meta_data': result.customer_meta_data
             },
             'agent': {
                 'id': result.agent_id,

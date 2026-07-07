@@ -45,13 +45,15 @@ class CustomerRepository:
         self,
         email: str,
         organization_id: UUID,
-        full_name: str = None
+        full_name: str = None,
+        meta_data: dict = None
     ) -> Customer:
         """Create a new customer"""
         try:
             customer = Customer(
                 email=email,
                 full_name=full_name,
+                meta_data=meta_data,
                 organization_id=organization_id
             )
             self.db.add(customer)
@@ -62,6 +64,30 @@ class CustomerRepository:
             logger.error(f"Error creating customer: {str(e)}")
             self.db.rollback()
             raise
+
+    def update_meta_data(
+        self,
+        customer_id: UUID,
+        meta_data: dict
+    ) -> Customer | None:
+        """Merge integrator-supplied fields (e.g. student_name, center_name) into a
+        customer's existing meta_data, so agents see the latest values in the inbox.
+        New keys are added and existing keys are overwritten; unrelated keys are kept.
+        """
+        if not meta_data:
+            return None
+        try:
+            customer = self.get_by_id(customer_id)
+            if not customer:
+                return None
+            customer.meta_data = {**(customer.meta_data or {}), **meta_data}
+            self.db.commit()
+            self.db.refresh(customer)
+            return customer
+        except Exception as e:
+            logger.error(f"Error updating customer meta_data: {str(e)}")
+            self.db.rollback()
+            return None
 
     def get_or_create_customer(
         self,
