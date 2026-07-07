@@ -343,8 +343,10 @@ const layoutClasses = computed(() => ({
                 <slot></slot>
             </main>
 
-            <!-- Footer -->
-            <footer class="footer">
+            <!-- Footer: omitted for full-page layouts (hideHeader, e.g. ConversationsView) —
+                 those pages size .content to a fixed 100vh, so a footer still taking up
+                 real space at the bottom clips the last message / message input out of view. -->
+            <footer v-if="!props.hideHeader" class="footer">
                 <div class="footer-content">
                     <p>&copy; 2024 ChatterMate. All rights reserved.</p>
                     <nav class="footer-links">
