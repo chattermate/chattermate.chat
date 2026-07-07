@@ -409,10 +409,14 @@ class ChatRepository:
                 SessionToAgent.organization_id == org_id
             )
             .group_by(
+                # Customer.meta_data is deliberately NOT grouped: Postgres' `json` type
+                # has no equality operator, so grouping by it raises "could not identify
+                # an equality operator for type json". Customer.id (the PK) is already
+                # grouped, so Postgres' functional-dependency rule lets other columns of
+                # the same table (email, full_name, meta_data) be selected ungrouped.
                 Customer.id,
                 Customer.email,
                 Customer.full_name,
-                Customer.meta_data,
                 Agent.id,
                 Agent.name,
                 Agent.display_name,

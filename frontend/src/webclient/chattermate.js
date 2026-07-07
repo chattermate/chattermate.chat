@@ -56,6 +56,29 @@ window.ChatterMate;
     return lum > 0.6 ? '#0B0C10' : '#FFFFFF'
   }
 
+  // The launcher stays invisible (`.chattermate-pending`, see updateStyles) until
+  // revealButton() runs, so the correct brand color is applied before it's ever seen —
+  // no orange-then-green flash on a cold cache. Reveal fires on whichever happens
+  // first: the real color arrives (CUSTOMIZATION_UPDATE), the widget fails to load
+  // (so the "Chat Unavailable" card stays reachable), or a timeout as a last resort.
+  let buttonRevealed = false
+  let revealTimeoutId = null
+  const onRevealCallbacks = []
+
+  function revealButton() {
+    if (buttonRevealed) return
+    buttonRevealed = true
+    if (revealTimeoutId) {
+      clearTimeout(revealTimeoutId)
+      revealTimeoutId = null
+    }
+    const btn = document.getElementById(config.buttonId)
+    if (btn) btn.classList.remove('chattermate-pending')
+    onRevealCallbacks.splice(0).forEach((cb) => {
+      try { cb() } catch (e) { /* no-op */ }
+    })
+  }
+
   // Launcher badge: show the nudge count until the chat is first opened, then the
   // count of unread agent messages reported by the iframe. Hidden when open/empty.
   function updateBadge() {
@@ -91,10 +114,16 @@ window.ChatterMate;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: transform 0.3s cubic-bezier(.34,1.3,.5,1);
+        transition: transform 0.3s cubic-bezier(.34,1.3,.5,1), opacity 320ms ease;
         animation: chattermate-float 4s ease-in-out infinite;
       }
       #${config.buttonId}.active { animation: none; }
+      /* Stay fully invisible until the org's real brand color is known (or the
+         widget errors out / times out) — avoids ever flashing the wrong color. */
+      #${config.buttonId}.chattermate-pending {
+        opacity: 0;
+        pointer-events: none;
+      }
       #${config.buttonId}:hover { transform: scale(1.06); }
 
       /* Expanding rings (closed state only) */
@@ -911,6 +940,7 @@ window.ChatterMate;
     // Create chat button with icon
     const button = document.createElement('div')
     button.id = config.buttonId
+    button.classList.add('chattermate-pending')
     button.innerHTML = `
       <span class="cm-ring"></span>
       <span class="cm-ring r2"></span>
@@ -918,6 +948,10 @@ window.ChatterMate;
       <span class="cm-chevron">&#8964;</span>
       <span class="cm-badge"></span>
     `
+    // Safety net: reveal anyway if nothing else does within a few seconds (e.g. an
+    // unexpected error before the fetch's own error handling runs), so the launcher
+    // is never left permanently invisible.
+    revealTimeoutId = setTimeout(revealButton, 8000)
 
     // Create chat container
     const container = document.createElement('div')
@@ -1112,6 +1146,9 @@ window.ChatterMate;
                   removeToken();
                   const errorUI = createErrorUI('This chat widget is not currently configured. Please contact the website administrator to enable chat support.');
                   container.appendChild(errorUI);
+                  // Reveal (with the default color) so this error is reachable —
+                  // it'll never get a real color since the widget never loaded.
+                  revealButton();
                   return null;
                 }
               } catch {
@@ -1147,6 +1184,9 @@ window.ChatterMate;
               : 'Chat can’t load on “' + host + '”. Add this domain to your organization in the ChatterMate dashboard (Organization settings) to enable chat here.';
             const errorUI = createErrorUI(message);
             container.appendChild(errorUI);
+            // Reveal (with the default color) so this error is reachable — it'll
+            // never get a real color since the widget never loaded.
+            revealButton();
           });
 
         // Listen for token + unread-count updates from iframe
@@ -1169,6 +1209,7 @@ window.ChatterMate;
       } catch (error) {
         console.error('Failed to load widget:', error)
         button.classList.remove('loading')
+        revealButton()
       } finally {
         isLoading = false
       }
@@ -1177,13 +1218,17 @@ window.ChatterMate;
     // Start prefetching immediately
     prefetchWidget()
 
-    // Show initiation message after widget loads (with delay)
-    setTimeout(() => {
-      if (!isOpen && config.chatInitiationMessages.length > 0) {
-        initiationMessageElement = createInitiationMessage();
-        showInitiationMessage(initiationMessageElement, toggleChat);
-      }
-    }, 2000);
+    // Show initiation message shortly after the launcher becomes visible — scheduling
+    // this from page-load time (rather than from reveal) could show a nudge bubble
+    // pointing at a launcher that isn't on screen yet.
+    onRevealCallbacks.push(() => {
+      setTimeout(() => {
+        if (!isOpen && config.chatInitiationMessages.length > 0) {
+          initiationMessageElement = createInitiationMessage();
+          showInitiationMessage(initiationMessageElement, toggleChat);
+        }
+      }, 2000)
+    })
 
     // Don't auto-open on mobile devices - let user initiate
     // Mobile users will see the chat button and can tap to open
@@ -1280,6 +1325,8 @@ window.ChatterMate;
       updateStyles()
       // Re-inject styles recolors the launcher; refresh the nudge badge count.
       updateBadge()
+      // The real color is applied above, so it's now safe to show the launcher.
+      revealButton()
     }
   })
 
