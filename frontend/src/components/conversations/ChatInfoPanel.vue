@@ -507,6 +507,13 @@ const confirmReassign = async () => {
   text-transform: uppercase;
 }
 
+/* Higher specificity than ".info-item .value" so the pill hugs the status text
+   instead of inheriting .value's flex:1 and stretching its background across
+   the rest of the row. */
+.info-item .value.status-badge {
+  flex: none;
+}
+
 .status-badge.open {
   background: rgba(201,242,78,.12);
   color: var(--accent-ink);
