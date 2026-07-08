@@ -15,12 +15,13 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, defineAsyncComponent, onMounted } from 'vue'
+import { ref, computed, defineAsyncComponent, onMounted } from 'vue'
 import { AxiosError } from 'axios'
 import { aiService } from '@/services/ai'
 import { agentService } from '@/services/agent'
 import { leadCaptureService } from '@/services/leadCapture'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { subscriptionStorage } from '@/utils/storage'
 import type { Agent } from '@/types/agent'
 
 // Lazy-load the provider setup form — only needed on OSS builds without ChatterMate AI
@@ -76,9 +77,17 @@ const isSubmitting = ref(false)
 const isGenerating = ref(false)
 const error = ref('')
 
+// Lead capture is a Pro-plan feature — hide/disable it where the enterprise module
+// is present and the plan doesn't include it (mirrors the Lead Capture tab gate).
+const leadCaptureLocked = computed(() =>
+  hasEnterpriseModule &&
+  (!subscriptionStorage.hasFeature('lead_capture') || !subscriptionStorage.isSubscriptionActive())
+)
+
 // Lead capture — a simple on/off here; the agent collects details in conversation.
 // Refined later in the agent's Lead Capture tab (consent, guidance, custom fields).
-const leadEnabled = ref(true)
+// Default off when locked so we never try to save it on a non-Pro plan.
+const leadEnabled = ref(!leadCaptureLocked.value)
 const LEAD_FIELDS = [
   { key: 'name', label: 'Name' },
   { key: 'email', label: 'Email' },
@@ -90,6 +99,8 @@ const leadFields = ref<Record<string, boolean>>({ name: true, email: true, compa
 // Persist the chosen lead-capture config onto the freshly-created/updated agent.
 // Non-fatal: the agent is already created and this is fully editable in its tab.
 const applyLeadCapture = async (agentId: string) => {
+  // Skip entirely on non-Pro plans — the backend gate would 403.
+  if (leadCaptureLocked.value) return
   try {
     const fields = LEAD_FIELDS
       .filter(f => leadFields.value[f.key])
@@ -392,21 +403,24 @@ const onAiConfigured = async () => {
       <div class="field lead-field">
         <div class="lead-enable-row">
           <div>
-            <label class="field-label">Lead capture</label>
-            <p class="lead-sub">The agent collects contact details in conversation — helps first, then asks at the natural moment.</p>
+            <label class="field-label">Lead capture <span v-if="leadCaptureLocked" class="lead-pro">Pro</span></label>
+            <p class="lead-sub">
+              <template v-if="leadCaptureLocked">Capture and qualify leads in conversation. Upgrade to Pro to enable it.</template>
+              <template v-else>The agent collects contact details in conversation — helps first, then asks at the natural moment.</template>
+            </p>
           </div>
           <button
             type="button"
             class="lead-switch"
             :class="{ on: leadEnabled }"
-            :disabled="isSubmitting"
+            :disabled="isSubmitting || leadCaptureLocked"
             :aria-pressed="leadEnabled"
             @click="leadEnabled = !leadEnabled"
           >
             <span class="lead-knob"></span>
           </button>
         </div>
-        <div v-if="leadEnabled" class="lead-details">
+        <div v-if="leadEnabled && !leadCaptureLocked" class="lead-details">
           <div class="lead-details-label">Details to collect</div>
           <div class="lead-chips">
             <button
@@ -899,5 +913,16 @@ const onAiConfigured = async () => {
   font-size: 10.5px;
   color: var(--c-coral, #e0653f);
   margin-left: 2px;
+}
+.lead-pro {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+  background: var(--purple-bg, rgba(124, 58, 237, .14));
+  color: var(--c-purple, #7c3aed);
+  vertical-align: middle;
 }
 </style>

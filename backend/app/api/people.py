@@ -28,6 +28,15 @@ from app.models.schemas.people import (
     PeopleListResponse, PeopleStats, PersonDetail, PersonListItem,
 )
 
+# Enterprise gating — People is part of Lead Management, a Pro-plan feature where
+# the enterprise module is installed; OSS/community deployments are unrestricted.
+try:
+    from app.enterprise.repositories.plan import PlanRepository
+    from app.enterprise.services.feature_access import require_accessible_subscription
+    HAS_ENTERPRISE = True
+except ImportError:
+    HAS_ENTERPRISE = False
+
 router = APIRouter()
 logger = get_logger(__name__)
 
@@ -36,10 +45,18 @@ logger = get_logger(__name__)
 _VIEW_PERMISSIONS = {"view_all_chats", "manage_chats"}
 
 
-def _require_people_access(current_user: User) -> None:
+def _require_people_access(current_user: User, db: Session) -> None:
     perms = {p.name for p in current_user.role.permissions}
     if perms.isdisjoint(_VIEW_PERMISSIONS):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    # Pro-plan gate (Lead Management) where the enterprise module is present.
+    if HAS_ENTERPRISE:
+        subscription = require_accessible_subscription(db, current_user.organization_id)
+        if not PlanRepository(db).check_feature_availability(str(subscription.plan_id), 'lead_capture'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="People / Lead Management is not available in your current plan. Please upgrade to Pro.",
+            )
 
 
 @router.get("", response_model=PeopleListResponse)
@@ -52,7 +69,7 @@ async def list_people(
     db: Session = Depends(get_db),
 ):
     """Paginated, filterable list of everyone the org's agents have touched."""
-    _require_people_access(current_user)
+    _require_people_access(current_user, db)
     items, total = PeopleRepository(db).list_people(
         current_user.organization_id, stage=stage, search=search, page=page, page_size=page_size,
     )
@@ -68,7 +85,7 @@ async def people_stats(
     db: Session = Depends(get_db),
 ):
     """KPI counters for the People page header."""
-    _require_people_access(current_user)
+    _require_people_access(current_user, db)
     return PeopleStats(**PeopleRepository(db).get_stats(current_user.organization_id))
 
 
@@ -79,7 +96,7 @@ async def get_person(
     db: Session = Depends(get_db),
 ):
     """Full profile: captured attributes, lifecycle timeline, conversations."""
-    _require_people_access(current_user)
+    _require_people_access(current_user, db)
     detail = PeopleRepository(db).get_detail(current_user.organization_id, customer_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Person not found")
@@ -93,7 +110,7 @@ async def mark_as_customer(
     db: Session = Depends(get_db),
 ):
     """Manually promote a person to the Customer stage (phase 1: no automated signal)."""
-    _require_people_access(current_user)
+    _require_people_access(current_user, db)
     repo = PeopleRepository(db)
     customer = repo.mark_customer(current_user.organization_id, customer_id)
     if not customer:

@@ -20,6 +20,20 @@ import { peopleService } from '@/services/people'
 import type { PersonListItem, PeopleStats } from '@/types/people'
 import PersonDetailDrawer from '@/components/people/PersonDetailDrawer.vue'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { subscriptionStorage } from '@/utils/storage'
+
+const { hasEnterpriseModule } = useEnterpriseFeatures()
+
+// People / Lead Management is a Pro-plan feature. Locked where the enterprise
+// module is present and the plan doesn't include 'lead_capture' (Free/Base).
+const isPeopleLocked = computed(() =>
+  hasEnterpriseModule &&
+  (!subscriptionStorage.hasFeature('lead_capture') || !subscriptionStorage.isSubscriptionActive())
+)
+function goToUpgrade() {
+  window.location.href = '/settings/subscription'
+}
 
 const stats = ref<PeopleStats | null>(null)
 const items = ref<PersonListItem[]>([])
@@ -104,12 +118,39 @@ function onPersonUpdated(updatedStage?: string) {
   loadList(); loadStats()
 }
 
-onMounted(() => { loadStats(); loadList() })
+onMounted(() => {
+  if (isPeopleLocked.value) return  // don't hit the API on a non-Pro plan
+  loadStats(); loadList()
+})
 </script>
 
 <template>
   <DashboardLayout>
-  <div class="people-view">
+  <!-- Locked screen (Pro feature, enterprise builds on a non-Pro plan) -->
+  <div v-if="isPeopleLocked" class="pv-locked">
+    <div class="pv-locked-card">
+      <div class="pv-locked-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="11" width="14" height="9" rx="2"/>
+          <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+        </svg>
+      </div>
+      <div class="pv-locked-badge">Pro feature</div>
+      <h2 class="pv-locked-title">People &amp; Lead Management</h2>
+      <p class="pv-locked-desc">
+        See every visitor, lead and customer your agents capture — deduplicated into one
+        profile, with AI qualification summaries, lifecycle stages and captured contact details.
+      </p>
+      <ul class="pv-locked-feats">
+        <li>Org-wide lead directory with stage filters &amp; search</li>
+        <li>AI-qualified lead summaries and captured attributes</li>
+        <li>Automatic visitor → lead → customer lifecycle</li>
+      </ul>
+      <button class="pv-locked-btn" @click="goToUpgrade">Upgrade to Pro</button>
+    </div>
+  </div>
+
+  <div v-else class="people-view">
     <div class="pv-header">
       <div>
         <h1 class="pv-title">People</h1>
@@ -182,6 +223,20 @@ onMounted(() => { loadStats(); loadList() })
 
 <style scoped>
 .people-view { padding: 28px 32px; max-width: 1200px; margin: 0 auto; }
+
+/* Locked (Pro-feature) screen */
+.pv-locked { display: flex; align-items: center; justify-content: center; min-height: 70vh; padding: 32px; }
+.pv-locked-card { max-width: 440px; width: 100%; text-align: center; background: var(--surface); border: 1px solid var(--border-color); border-radius: 18px; padding: 36px 32px; }
+.pv-locked-icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg-12, rgba(163,214,0,.14)); color: var(--accent-solid); }
+.pv-locked-icon svg { width: 26px; height: 26px; }
+.pv-locked-badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: var(--purple-bg, rgba(124,58,237,.14)); color: var(--c-purple, #7c3aed); margin-bottom: 12px; }
+.pv-locked-title { font-size: 20px; font-weight: 600; margin: 0 0 8px; color: var(--text); }
+.pv-locked-desc { font-size: 14px; line-height: 1.55; color: var(--muted); margin: 0 0 18px; }
+.pv-locked-feats { list-style: none; padding: 0; margin: 0 0 24px; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+.pv-locked-feats li { position: relative; padding-left: 26px; font-size: 13.5px; color: var(--text2, var(--text)); line-height: 1.4; }
+.pv-locked-feats li::before { content: '✓'; position: absolute; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-bg-12, rgba(163,214,0,.14)); color: var(--accent-solid); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.pv-locked-btn { width: 100%; padding: 12px 18px; background: var(--accent-solid); color: var(--on-accent-solid); border: none; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.pv-locked-btn:hover { opacity: .92; }
 .pv-header { margin-bottom: 22px; }
 .pv-title { font-size: 28px; font-weight: 700; margin: 0 0 6px; }
 .pv-sub { font-size: 15px; color: var(--muted); margin: 0; }
