@@ -30,6 +30,7 @@ import AgentAdvancedTab from './AgentAdvancedTab.vue'
 import AgentInstructionsTab from './AgentInstructionsTab.vue'
 import AgentWorkflowTab from './AgentWorkflowTab.vue'
 import AgentMCPToolsTab from './AgentMCPToolsTab.vue'
+import AgentLeadCaptureTab from './AgentLeadCaptureTab.vue'
 import { Cropper, CircleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
 import { useAgentChat } from '@/composables/useAgentChat'
@@ -365,7 +366,7 @@ const showTips = ref(false)
 
 // Dialog state for upgrade modal
 const showUpgradeModal = ref(false)
-const upgradeModalType = ref<'workflow' | 'mcp' | 'advanced'>('workflow')
+const upgradeModalType = ref<'workflow' | 'mcp' | 'advanced' | 'lead-capture'>('workflow')
 
 const openTips = () => {
     showTips.value = true
@@ -442,6 +443,21 @@ const isAdvancedLocked = computed(() => {
     return !hasAdvancedFeature.value || !isSubscriptionActive.value
 })
 
+// Check if lead capture feature is available in current plan (Pro+ only)
+const hasLeadCaptureFeature = computed(() => {
+    return subscriptionStorage.hasFeature('lead_capture')
+})
+
+// Determine if lead capture is locked. Lead Capture is a Pro-plan feature — the
+// 'lead_capture' flag is true only for Pro/Enterprise (not Free/Base), matching the
+// backend gate (check_feature_availability). OSS deployments are never locked.
+const isLeadCaptureLocked = computed(() => {
+    if (!hasEnterpriseModule) {
+        return false
+    }
+    return !hasLeadCaptureFeature.value || !isSubscriptionActive.value
+})
+
 // Computed properties for dynamic modal content
 const modalTitle = computed(() => {
     switch (upgradeModalType.value) {
@@ -451,6 +467,8 @@ const modalTitle = computed(() => {
             return 'Unlock MCP Tools'
         case 'advanced':
             return 'Unlock Advanced Settings'
+        case 'lead-capture':
+            return 'Unlock Lead Capture'
         default:
             return 'Unlock Premium Features'
     }
@@ -464,6 +482,8 @@ const modalDescription = computed(() => {
             return 'MCP Tools enable integration with Model Context Protocol servers to extend your agent\'s capabilities with external data sources and services.'
         case 'advanced':
             return 'Advanced settings provide fine-grained control over your agent\'s behavior, performance tuning, and enterprise-grade configuration options.'
+        case 'lead-capture':
+            return 'Lead Capture lets your agent collect and qualify contact details from visitors — with triggers, qualifying questions, and custom fields — then routes qualified leads to your team.'
         default:
             return 'Upgrade your plan to access premium features and unlock the full potential of your AI agent.'
     }
@@ -963,8 +983,18 @@ onMounted(async () => {
                         >
                             Integrations
                         </button>
-                        <button 
-                            class="tab-button" 
+                        <button
+                            class="tab-button"
+                            :class="{ 'active': activeTab === 'lead-capture', 'locked': isLeadCaptureLocked }"
+                            :disabled="isLeadCaptureLocked"
+                            @click="isLeadCaptureLocked ? (upgradeModalType = 'lead-capture', showUpgradeModal = true) : switchTab('lead-capture')"
+                            :title="isLeadCaptureLocked ? 'Upgrade your plan to unlock Lead Capture' : 'Lead Capture'"
+                        >
+                            Lead Capture
+                            <font-awesome-icon v-if="hasEnterpriseModule && isLeadCaptureLocked" icon="fa-solid fa-lock" class="lock-icon-small" />
+                        </button>
+                        <button
+                            class="tab-button"
                             :class="{ 'active': activeTab === 'mcp-tools', 'locked': isMCPLocked }"
                             :disabled="isMCPLocked"
                             @click="isMCPLocked ? (upgradeModalType = 'mcp', showUpgradeModal = true) : switchTab('mcp-tools')"
@@ -1085,6 +1115,13 @@ onMounted(async () => {
                                 @save-jira-config="(config) => saveJiraConfig(config.projectKey, config.issueTypeId)"
                                 @toggle-shopify-integration="toggleShopifyIntegration"
                                 @save-shopify-config="saveShopifyConfig"
+                            />
+                        </div>
+
+                        <!-- Lead Capture Tab -->
+                        <div v-if="activeTab === 'lead-capture'" class="tab-content">
+                            <AgentLeadCaptureTab
+                                :agent-id="agentData.id"
                             />
                         </div>
 

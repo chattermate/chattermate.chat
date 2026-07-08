@@ -28,6 +28,7 @@ const NAV_ICONS: Record<string, string> = {
     agents: '<rect x="5" y="8" width="14" height="11" rx="3"/><line x1="12" y1="4" x2="12" y2="8"/><circle cx="9" cy="13" r="1" fill="currentColor"/><circle cx="15" cy="13" r="1" fill="currentColor"/>',
     humans: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5 0 0 1 11 0"/><circle cx="16.5" cy="9" r="2.3"/><path d="M15 19a4.5 4 0 0 1 5.5-3.6"/>',
     inbox: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 13h5l1.5 2.5h4L19 13h2"/>',
+    people: '<circle cx="9" cy="8" r="2.6"/><path d="M4 18a5 4.5 0 0 1 10 0"/><path d="M15.5 6.2a2.6 2.6 0 0 1 0 4.6"/><path d="M16 13.6A5 4.5 0 0 1 20 18"/>',
     analytics: '<line x1="5" y1="17" x2="5" y2="13"/><line x1="10" y1="17" x2="10" y2="9"/><line x1="15" y1="17" x2="15" y2="6"/><line x1="20" y1="17" x2="20" y2="11"/>',
     org: '<rect x="4" y="4" width="14" height="16" rx="2"/><line x1="20" y1="20" x2="20" y2="11"/><line x1="18" y1="11" x2="22" y2="11"/><circle cx="8" cy="9" r=".6" fill="currentColor"/><circle cx="12" cy="9" r=".6" fill="currentColor"/><circle cx="8" cy="13" r=".6" fill="currentColor"/><circle cx="12" cy="13" r=".6" fill="currentColor"/>',
     subscription: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="7" y1="14" x2="11" y2="14"/>',
@@ -82,6 +83,12 @@ const navItems = computed(() => [
         to: '/conversations',
         icon: 'inbox',
         label: 'Inbox',
+        show: permissionChecks.canViewChats()
+    },
+    {
+        to: '/people',
+        icon: 'people',
+        label: 'People',
         show: permissionChecks.canViewChats()
     },
     {

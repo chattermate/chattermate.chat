@@ -730,6 +730,14 @@ window.ChatterMate;
         opacity: 0.8;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       }
+      .chattermate-error-footer-link {
+        color: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .chattermate-error-footer-link:hover {
+        text-decoration: underline;
+      }
 
       @media (max-width: 768px) {
         .chattermate-error-ui {
@@ -1099,7 +1107,11 @@ window.ChatterMate;
       logoPath.setAttribute('fill', 'currentColor');
       logoPath.setAttribute('opacity', '0.6');
       logoSvg.appendChild(logoPath);
-      const footerText = document.createElement('span');
+      const footerText = document.createElement('a');
+      footerText.href = 'https://chattermate.chat';
+      footerText.target = '_blank';
+      footerText.rel = 'noopener noreferrer';
+      footerText.className = 'chattermate-error-footer-link';
       footerText.textContent = 'Powered by ChatterMate';
       footer.appendChild(logoSvg);
       footer.appendChild(footerText);

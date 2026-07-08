@@ -143,6 +143,9 @@ class Agent(Base):
         "MCPToolToAgent", back_populates="agent", cascade="all, delete-orphan")
     customization = relationship(
         "AgentCustomization", back_populates="agent", uselist=False)
+    lead_capture_config = relationship(
+        "LeadCaptureConfig", back_populates="agent", uselist=False,
+        cascade="all, delete-orphan")
     widgets = relationship("Widget", back_populates="agent")
     chat_histories = relationship("ChatHistory", back_populates="agent")
     session_assignments = relationship("SessionToAgent", back_populates="agent")

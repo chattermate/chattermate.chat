@@ -180,9 +180,11 @@ async def test_authenticate_socket_conversation_token_success(mock_db, mock_widg
     
     # Create auth data
     auth = {'conversation_token': conversation_token}
-    
+
     mock_db.query.return_value.filter.return_value.first.return_value = mock_widget
-    
+    # No merged-into pointer for this customer (merge-resolution query returns None).
+    mock_db.query.return_value.filter.return_value.scalar.return_value = None
+
     with patch('app.core.auth_utils.verify_conversation_token') as mock_verify, \
          patch('app.core.auth_utils.SessionLocal') as mock_session_local:
         mock_verify.return_value = {

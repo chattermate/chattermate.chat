@@ -36,22 +36,13 @@ DOMPurify.addHook('uponSanitizeElement', (node, data) => {
     return
   }
 
-  // SECURITY: Remove any remaining <a>, <img>, <area>, and <map> tags completely
+  // SECURITY: Remove <img>, <area>, and <map> tags completely. Anchors are kept
+  // (clickable links) but hardened in afterSanitizeAttributes: protocol-restricted
+  // to http(s)/mailto and forced target="_blank" rel="noopener noreferrer nofollow".
   const element = node as HTMLElement
   const tagName = data.tagName?.toUpperCase()
-  if (tagName === 'A' || tagName === 'IMG' || tagName === 'AREA' || tagName === 'MAP') {
-    // For links, keep the text content if it exists
-    if (tagName === 'A') {
-      const textContent = element.textContent
-      if (textContent) {
-        element.replaceWith(textContent)
-      } else {
-        element.parentNode?.removeChild(element)
-      }
-    } else {
-      // For images and maps, just remove them
-      element.parentNode?.removeChild(element)
-    }
+  if (tagName === 'IMG' || tagName === 'AREA' || tagName === 'MAP') {
+    element.parentNode?.removeChild(element)
   }
 })
 
@@ -82,6 +73,18 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       ) {
         node.removeAttribute('href')
       }
+    }
+  }
+
+  // Harden anchors so markdown links render clickable but safely: positively allow
+  // only http(s)/mailto, and always open in a new tab with noopener.
+  if (node.nodeName === 'A') {
+    const href = (node.getAttribute('href') || '').trim()
+    if (!/^(https?:|mailto:)/i.test(href)) {
+      node.removeAttribute('href')
+    } else {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer nofollow')
     }
   }
 
@@ -166,14 +169,17 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 export function sanitizeHtml(html: string): string {
   // Configure DOMPurify with strict security settings
   const config = {
-    // Block all dangerous tags including SVG, form elements, links and images
+    // Block all dangerous tags including SVG, form elements and images.
+    // NOTE: 'a' must NOT be in this list — FORBID_TAGS beats ALLOWED_TAGS, and
+    // anchors are intentionally kept (markdown links) then hardened by the
+    // afterSanitizeAttributes hook (http(s)/mailto only, forced target+rel).
     FORBID_TAGS: [
       'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'script',
       'base', 'link', 'meta', 'style', 'svg', 'math', 'form', 'input',
       'button', 'textarea', 'select', 'option', 'xml', 'xss', 'import',
       'video', 'audio', 'track', 'source', 'canvas', 'details', 'template',
       'slot', 'noscript', 'marquee', 'bgsound', 'keygen', 'command',
-      'a', 'img', 'area', 'map'  // SECURITY: Remove link and image tags completely
+      'img', 'area', 'map'  // SECURITY: Remove image/map tags completely
     ],
 
     // Block dangerous attributes
@@ -211,7 +217,10 @@ export function sanitizeHtml(html: string): string {
       'ping', 'poster', 'background', 'code', 'codebase', 'archive', 'profile',
       'xmlns', 'xlink:href', 'attributename', 'from', 'to', 'values', 'begin',
       'autofocus', 'autoplay', 'controls', 'manifest', 'sandbox',
-      'href', 'src', 'data'  // SECURITY: Block resource loading attributes
+      // SECURITY: block resource-loading attributes. 'href' is intentionally NOT
+      // here (FORBID_ATTR beats ALLOWED_ATTR): markdown links need it, and the
+      // afterSanitizeAttributes hook strips any href that isn't http(s)/mailto.
+      'src', 'data'
     ],
 
     // Only allow safe protocols
@@ -220,6 +229,7 @@ export function sanitizeHtml(html: string): string {
     // SECURITY: Strip ALL HTML tags to prevent rendering exploits
     // Only allow basic text formatting for markdown (no links, images, or any potentially dangerous tags)
     ALLOWED_TAGS: [
+      'a',
       'b', 'i', 'u', 'strong', 'em', 'p', 'br', 'ul', 'ol', 'li',
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre',
       'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div',
@@ -227,8 +237,10 @@ export function sanitizeHtml(html: string): string {
       'q', 'samp', 'small', 'time', 'var'
     ],
 
-    // SECURITY: No href, src, or any attributes that can load external resources
+    // Allow safe link attributes only (href is protocol-restricted + target/rel are
+    // forced by the afterSanitizeAttributes hook above). No src or resource-loading attrs.
     ALLOWED_ATTR: [
+      'href', 'target', 'rel',
       'title', 'class', 'id', 'align', 'colspan', 'rowspan'
     ],
 
@@ -237,10 +249,11 @@ export function sanitizeHtml(html: string): string {
     RETURN_DOM_FRAGMENT: false,
 
     // Keep HTML comments removed
-    ALLOW_DATA_ATTR: false,
-
-    // Forbid unknown protocols
-    USE_PROFILES: { html: true }
+    ALLOW_DATA_ATTR: false
+    // NOTE: do NOT set USE_PROFILES here — it overrides ALLOWED_TAGS/ALLOWED_ATTR,
+    // which would drop the <a> tags we explicitly allow above. The explicit
+    // ALLOWED_TAGS/ALLOWED_ATTR allowlist is authoritative; protocols are still
+    // restricted by the afterSanitizeAttributes hook (href → http/https/mailto only).
   }
 
   // Sanitize the HTML using the pre-configured hooks

@@ -42,6 +42,7 @@ from app.core.s3 import get_s3_signed_url
 from app.models.session_to_agent import SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
 from app.repositories.agent import AgentRepository
+from app.services.lead_capture import has_captured_lead, record_lead_capture
 from app.repositories.rating import RatingRepository
 from app.repositories.jira import JiraRepository
 from app.models.ai_config import AIModelType
@@ -241,7 +242,10 @@ async def widget_connect(sid, environ, auth):
             'message_limit_reached': message_limit_reached,
             'use_workflow': agent.use_workflow if agent else False,
             'active_workflow_id': agent.active_workflow_id if agent else None,
-            'source': source
+            'source': source,
+            # Host page that embeds the widget (sent by the webclient). Recorded on
+            # lead capture as lead_source.page_url so you can see WHERE leads convert.
+            'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
         }
 
         # Log rate limiting settings
@@ -260,7 +264,7 @@ async def widget_connect(sid, environ, auth):
             'customer_id': customer_id,
             'agent_id': str(widget.agent_id)
         }, to=sid, namespace='/widget')
-        
+
         return True
 
     except Exception as e:
@@ -773,6 +777,48 @@ async def handle_widget_chat(sid, data):
                             }, room=session_id, namespace='/widget')
                 except Exception as contact_err:
                     logger.error(f"Failed to emit handoff contact form: {contact_err}")
+
+            # Lead capture: the agent collected the details conversationally and set
+            # request_lead_capture (like transfer_to_human). Persist the structured
+            # lead_data + AI summary — no form. Skipped on transfer/handoff (the elif
+            # above takes precedence), but NOT on end_chat: the model naturally captures
+            # and signs off in the same turn, and this runs before the close block below.
+            # record_lead_capture enforces valid-email + consent and captures once.
+            elif getattr(response, 'request_lead_capture', False):
+                try:
+                    lc_agent = AgentRepository(db).get_agent(session['agent_id'])
+                    lcc = getattr(lc_agent, 'lead_capture_config', None) if lc_agent else None
+                    if (lcc and lcc.enabled
+                            and not has_captured_lead(db, customer_id, session['agent_id'])):
+                        # Assemble lead_data from the explicit scalar fields (reliable under
+                        # strict structured outputs) plus any free-form lead_data dict.
+                        lead_data = dict(getattr(response, 'lead_data', None) or {})
+                        for key, attr in (('email', 'lead_email'), ('name', 'lead_name'),
+                                          ('company', 'lead_company'), ('phone', 'lead_phone')):
+                            val = getattr(response, attr, None)
+                            if val and not lead_data.get(key):
+                                lead_data[key] = val
+                        lc_resp = record_lead_capture(
+                            db, lcc,
+                            organization_id=org_id,
+                            agent_id=session['agent_id'],
+                            customer_id=customer_id,
+                            session_id=session_id,
+                            lead_data=lead_data,
+                            summary=getattr(response, 'lead_summary', None),
+                            consent=getattr(response, 'lead_consent', False),
+                            page_url=session.get('page_url'),
+                        )
+                        # If the capture merged this anonymous visitor into an existing
+                        # customer (email already known), repoint the live socket session
+                        # so the rest of this conversation writes to the merged customer.
+                        if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
+                            session['customer_id'] = str(lc_resp.customer_id)
+                            await sio.save_session(sid, session, namespace='/widget')
+                            logger.info(
+                                f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
+                except Exception as lc_err:
+                    logger.error(f"Lead-capture record error: {lc_err}")
 
             # If end_chat is true, close the session
             if response.end_chat:
