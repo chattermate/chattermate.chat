@@ -443,14 +443,19 @@ const isAdvancedLocked = computed(() => {
     return !hasAdvancedFeature.value || !isSubscriptionActive.value
 })
 
-// Lead Capture is a paid-plan feature where enterprise is installed. Unlike
-// MCP/advanced there's no dedicated plan-feature flag yet, so it unlocks with any
-// active subscription — matching the backend gate (require_accessible_subscription).
+// Check if lead capture feature is available in current plan (Pro+ only)
+const hasLeadCaptureFeature = computed(() => {
+    return subscriptionStorage.hasFeature('lead_capture')
+})
+
+// Determine if lead capture is locked. Lead Capture is a Pro-plan feature — the
+// 'lead_capture' flag is true only for Pro/Enterprise (not Free/Base), matching the
+// backend gate (check_feature_availability). OSS deployments are never locked.
 const isLeadCaptureLocked = computed(() => {
     if (!hasEnterpriseModule) {
         return false
     }
-    return !isSubscriptionActive.value
+    return !hasLeadCaptureFeature.value || !isSubscriptionActive.value
 })
 
 // Computed properties for dynamic modal content

@@ -28,10 +28,11 @@ from app.models.schemas.lead_capture import (
     LeadCaptureConfigUpdate, LeadCaptureConfigResponse,
 )
 
-# Enterprise gating — Lead Capture is a paid-plan feature where the enterprise
+# Enterprise gating — Lead Capture is a Pro-plan feature where the enterprise
 # module is installed; OSS/community deployments are unrestricted (same shape as
-# the MCP/Workflow gates).
+# the MCP/Workflow/Advanced gates, which are all Pro+ only).
 try:
+    from app.enterprise.repositories.plan import PlanRepository
     from app.enterprise.services.feature_access import require_accessible_subscription
     HAS_ENTERPRISE = True
 except ImportError:
@@ -42,14 +43,18 @@ logger = get_logger(__name__)
 
 
 def check_lead_capture_access(current_user: User, db: Session) -> None:
-    """Gate Lead Capture behind an accessible (paid) subscription when the
-    enterprise module is present. A dedicated 'lead_capture' plan-feature key can
-    be added to the plan matrix later to differentiate tiers; until then, any
-    accessible plan unlocks it."""
+    """Gate Lead Capture behind the Pro plan when the enterprise module is present.
+    Requires an accessible subscription whose plan has the 'lead_capture' feature
+    (Pro/Enterprise only — Free and Base do not). OSS deployments are unrestricted."""
     if not HAS_ENTERPRISE:
         return
     # Raises 403 when the org has no accessible plan.
-    require_accessible_subscription(db, current_user.organization_id)
+    subscription = require_accessible_subscription(db, current_user.organization_id)
+    if not PlanRepository(db).check_feature_availability(str(subscription.plan_id), 'lead_capture'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Lead Capture is not available in your current plan. Please upgrade to Pro to access this feature.",
+        )
 
 
 def _get_owned_agent(agent_id: UUID, current_user: User, db: Session) -> Agent:
