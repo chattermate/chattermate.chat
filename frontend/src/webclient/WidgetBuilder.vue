@@ -55,7 +55,8 @@ marked.use({ renderer })
 
 // Create helper function to render and sanitize markdown
 const renderMarkdown = (text: string) => {
-    return sanitizeHtml(marked(text, { renderer }))
+    const rawHtml = marked(text, { renderer }) as string
+    return sanitizeHtml(rawHtml)
 }
 
 const props = defineProps<{
@@ -1579,7 +1580,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
+                <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
     </div>
@@ -1710,7 +1711,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
+                <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
 
@@ -1742,7 +1743,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
+                <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
 
@@ -1905,7 +1906,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
+                <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
 
@@ -2571,7 +2572,7 @@ const shouldShowWelcomeMessage = computed(() => {
                     <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
                     <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
                 </svg>
-                <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
+                <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
 
@@ -3153,6 +3154,8 @@ const shouldShowWelcomeMessage = computed(() => {
    prefix span (not the container) so the brand keeps the full text colour. */
 .cm-powered-prefix { opacity: 0.6; }
 .cm-brand { font-weight: 700; }
+.cm-powered-link { color: inherit; text-decoration: none; cursor: pointer; }
+.cm-powered-link:hover .cm-brand { text-decoration: underline; }
 
 /* New conversation section styles */
 .new-conversation-section {

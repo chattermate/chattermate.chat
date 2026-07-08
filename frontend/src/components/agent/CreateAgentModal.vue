@@ -18,12 +18,12 @@ limitations under the License.
 import type { Agent } from '@/types/agent'
 import { useAgentCreate } from '@/composables/useAgentCreate'
 
-const { 
-    agentName, 
-    useWorkflow, 
-    isCreating, 
-    error, 
-    createAgent 
+const {
+    agentName,
+    useWorkflow,
+    isCreating,
+    error,
+    createAgent
 } = useAgentCreate()
 
 const emit = defineEmits<{

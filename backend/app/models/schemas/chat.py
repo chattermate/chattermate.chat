@@ -228,6 +228,21 @@ class ChatResponse(BaseModel):
     # (even when no agents are available and transfer_to_human ends up False).
     request_contact: Optional[bool] = Field(default=False, description="System-managed. Do not populate — set automatically on handoff.")
 
+    # LLM-set (only when lead capture is enabled): the agent collects details
+    # conversationally and reports them here, mirroring how transfer_to_human works.
+    request_lead_capture: bool = Field(default=False, description="Set to true ONLY when you have collected the visitor's contact details (at least a valid email in lead_email) and — if consent is required — they have explicitly agreed to be contacted. This records the lead.")
+    # Explicit scalar fields for the standard contact details. These are used INSTEAD of a
+    # free-form dict because OpenAI strict structured outputs cannot emit an open-ended
+    # object (additionalProperties) — a Dict field always comes back empty. Named scalar
+    # fields populate reliably. The widget records the lead from these.
+    lead_email: Optional[str] = Field(default=None, description="The visitor's email address exactly as they gave it, e.g. 'jane@acme.com'. Fill this as soon as they share it.")
+    lead_name: Optional[str] = Field(default=None, description="The visitor's name, if they share it.")
+    lead_company: Optional[str] = Field(default=None, description="The visitor's company/organization, if they share it.")
+    lead_phone: Optional[str] = Field(default=None, description="The visitor's phone number, if they share it.")
+    lead_data: Optional[Dict[str, Any]] = Field(default=None, description="System-managed. Do not populate — use lead_email/lead_name/lead_company/lead_phone instead.")
+    lead_summary: Optional[str] = Field(default=None, description="A 1-2 sentence qualification summary of this lead from the whole conversation (e.g. '40-person fintech replacing Intercom, ~800 Shopify orders/week, wants a demo this week').")
+    lead_consent: bool = Field(default=False, description="Set to true only when the visitor has explicitly agreed to be contacted / share their details.")
+
     class Config:
         from_attributes = True
     
@@ -247,6 +262,8 @@ class ChatResponse(BaseModel):
                 'endchat': 'end_chat',
                 'createTicket': 'create_ticket',
                 'createticket': 'create_ticket',
+                'requestLeadCapture': 'request_lead_capture',
+                'requestleadcapture': 'request_lead_capture',
                 'transferReason': 'transfer_reason',
                 'transferreason': 'transfer_reason',
                 'transferDescription': 'transfer_description',

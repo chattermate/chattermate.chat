@@ -35,6 +35,11 @@ from app.models.workflow_node import WorkflowNode, ExitCondition
 from app.models.workflow_connection import WorkflowConnection
 from app.models.mcp_tool import MCPTool, MCPToolToAgent, MCPTransportType
 from app.models.file_attachment import FileAttachment
+from app.models.customer import LeadStage
+from app.models.lead_capture import (
+    LeadCaptureConfig, LeadCaptureResponse,
+    LeadAssignmentMode, CrmSyncTarget,
+)
 
 
 
@@ -69,4 +74,9 @@ __all__ = [
     "MCPToolToAgent",
     "MCPTransportType",
     "FileAttachment",
+    "LeadStage",
+    "LeadCaptureConfig",
+    "LeadCaptureResponse",
+    "LeadAssignmentMode",
+    "CrmSyncTarget",
 ]

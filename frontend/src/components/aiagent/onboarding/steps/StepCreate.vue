@@ -15,10 +15,11 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, defineAsyncComponent } from 'vue'
+import { ref, defineAsyncComponent, onMounted } from 'vue'
 import { AxiosError } from 'axios'
 import { aiService } from '@/services/ai'
 import { agentService } from '@/services/agent'
+import { leadCaptureService } from '@/services/leadCapture'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import type { Agent } from '@/types/agent'
 
@@ -74,6 +75,55 @@ const instructions = ref<string>(existingInstructions || TYPE_DEFAULTS[selectedT
 const isSubmitting = ref(false)
 const isGenerating = ref(false)
 const error = ref('')
+
+// Lead capture — a simple on/off here; the agent collects details in conversation.
+// Refined later in the agent's Lead Capture tab (consent, guidance, custom fields).
+const leadEnabled = ref(true)
+const LEAD_FIELDS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'company', label: 'Company' },
+  { key: 'phone', label: 'Phone' },
+]
+const leadFields = ref<Record<string, boolean>>({ name: true, email: true, company: true, phone: false })
+
+// Persist the chosen lead-capture config onto the freshly-created/updated agent.
+// Non-fatal: the agent is already created and this is fully editable in its tab.
+const applyLeadCapture = async (agentId: string) => {
+  try {
+    const fields = LEAD_FIELDS
+      .filter(f => leadFields.value[f.key])
+      .map(f => ({ key: f.key, standard: true, enabled: true, required: f.key === 'email' }))
+    await leadCaptureService.updateConfig(agentId, {
+      enabled: leadEnabled.value,
+      require_consent: true,
+      guidance: null,
+      fields,
+      assignment_mode: 'none',
+      assignment_target_user_id: null,
+      crm_sync_target: 'none',
+      slack_notify_enabled: false,
+    })
+  } catch (err) {
+    console.error('Failed to apply lead capture config:', err)
+  }
+}
+
+// When returning to edit an existing agent, prefill from its saved config.
+onMounted(async () => {
+  if (!props.existingAgent) return
+  try {
+    const cfg = await leadCaptureService.getConfig(props.existingAgent.id)
+    leadEnabled.value = !!cfg.enabled
+    if (cfg.fields && cfg.fields.length) {
+      const on = new Set(cfg.fields.filter(f => f.enabled).map(f => f.key))
+      leadFields.value = {
+        name: on.has('name'), email: on.has('email'),
+        company: on.has('company'), phone: on.has('phone'),
+      }
+    }
+  } catch { /* keep defaults */ }
+})
 
 // Avatar: a chosen preset URL, or a custom uploaded file.
 // For an existing agent, start with nothing selected so we keep its current
@@ -205,6 +255,7 @@ const createAgent = async () => {
     const customization = await applyAvatar(agent.id)
     if (customization) agent.customization = customization
   }
+  await applyLeadCapture(agent.id)
   emit('created', agent)
 }
 
@@ -336,6 +387,42 @@ const onAiConfigured = async () => {
           placeholder="Be concise and friendly. Escalate billing questions to a human."
           :disabled="isSubmitting"
         ></textarea>
+      </div>
+
+      <div class="field lead-field">
+        <div class="lead-enable-row">
+          <div>
+            <label class="field-label">Lead capture</label>
+            <p class="lead-sub">The agent collects contact details in conversation — helps first, then asks at the natural moment.</p>
+          </div>
+          <button
+            type="button"
+            class="lead-switch"
+            :class="{ on: leadEnabled }"
+            :disabled="isSubmitting"
+            :aria-pressed="leadEnabled"
+            @click="leadEnabled = !leadEnabled"
+          >
+            <span class="lead-knob"></span>
+          </button>
+        </div>
+        <div v-if="leadEnabled" class="lead-details">
+          <div class="lead-details-label">Details to collect</div>
+          <div class="lead-chips">
+            <button
+              v-for="f in LEAD_FIELDS"
+              :key="f.key"
+              type="button"
+              class="lead-chip"
+              :class="{ on: leadFields[f.key] }"
+              :disabled="isSubmitting"
+              @click="leadFields[f.key] = !leadFields[f.key]"
+            >
+              <span class="lead-check">{{ leadFields[f.key] ? '✔' : '' }}</span>{{ f.label }}
+              <span v-if="f.key === 'email'" class="lead-req">required</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="ai-note">
@@ -624,5 +711,193 @@ const onAiConfigured = async () => {
   color: var(--muted);
   margin: 0 0 16px;
   text-align: center;
+}
+
+/* Lead capture */
+.lead-reco {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.lead-sub {
+  font-size: 13px;
+  color: var(--muted2);
+  margin: -2px 0 4px;
+  line-height: 1.5;
+  max-width: 460px;
+}
+
+.lead-enable-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.lead-switch {
+  flex-shrink: 0;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: none;
+  background: var(--o12);
+  padding: 3px;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.lead-switch.on {
+  background: var(--accent-solid);
+}
+
+.lead-switch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lead-knob {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.16s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.lead-switch.on .lead-knob {
+  transform: translateX(20px);
+}
+
+.lead-details {
+  margin-top: 16px;
+}
+
+.lead-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.lead-mode {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-lg, 14px);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.lead-mode.selected {
+  border-color: var(--accent-border);
+  background: var(--accent-bg-08);
+}
+
+.lead-mode:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lead-mode-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.lead-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--o25);
+  flex-shrink: 0;
+}
+
+.lead-radio.on {
+  border-color: var(--accent-ink);
+  background: var(--accent-ink);
+  box-shadow: inset 0 0 0 3px var(--surface, var(--bg));
+}
+
+.lead-badge {
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg-12);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.lead-mode-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--text);
+}
+
+.lead-mode-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.lead-details {
+  margin-top: 14px;
+}
+
+.lead-details-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text3);
+  margin-bottom: 10px;
+}
+
+.lead-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.lead-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-md, 10px);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.lead-chip.on {
+  background: var(--accent-bg-08);
+  border-color: var(--accent-border);
+}
+
+.lead-chip:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lead-check {
+  width: 12px;
+  font-size: 11px;
+  color: var(--accent-ink);
+}
+
+.lead-req {
+  font-size: 10.5px;
+  color: var(--c-coral, #e0653f);
+  margin-left: 2px;
 }
 </style>

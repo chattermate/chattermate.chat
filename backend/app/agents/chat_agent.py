@@ -191,6 +191,31 @@ class ChatAgent(ChatAgentMCPMixin):
                 except Exception as e:
                     logger.error(f"Failed to get Shopify config: {e}")
                     shopify_config = None
+
+            # Load lead-capture config (prompt-driven, like transfer_to_human: a toggle;
+            # the agent collects details conversationally and reports structured output).
+            # Extract plain values while the session is open so they survive the block.
+            self.lead_capture_enabled = False
+            self.lead_capture_fields = []
+            self.lead_capture_require_consent = True
+            self.lead_capture_guidance = None
+            # Whether this visitor's lead was already captured on this agent. When true we
+            # stop prompting for details (no nagging) and let the chat close normally.
+            self.lead_already_captured = False
+            if agent_id:
+                try:
+                    from app.repositories.lead_capture import LeadCaptureConfigRepository
+                    lcc = LeadCaptureConfigRepository(db).get_by_agent(agent_id)
+                    if lcc:
+                        self.lead_capture_enabled = bool(lcc.enabled)
+                        self.lead_capture_fields = lcc.fields or []
+                        self.lead_capture_require_consent = bool(lcc.require_consent)
+                        self.lead_capture_guidance = lcc.guidance
+                        if self.lead_capture_enabled and customer_id:
+                            from app.services.lead_capture import has_captured_lead
+                            self.lead_already_captured = has_captured_lead(db, customer_id, agent_id)
+                except Exception as e:
+                    logger.error(f"Failed to load lead capture config: {e}")
         
         self.api_key = api_key
         self.model_name = model_name
@@ -306,8 +331,109 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 system_message += """
                 Transfer to human is disabled for this agent. You should not transfer the conversation to a human.
                 """
-            # Add end chat instructions
-            if self.agent_data.ask_for_rating:
+
+            # Add lead-capture instructions (enabled = a toggle, like transfer_to_human).
+            # The agent collects details conversationally and reports them as structured
+            # output (lead_data / lead_summary / request_lead_capture). No form, no triggers.
+            # Only prompt while the lead is still pending — once captured, don't nag.
+            lead_pending = self.lead_capture_enabled and not self.lead_already_captured
+            if lead_pending:
+                # Standard contact fields map to explicit scalar response fields
+                # (lead_email/lead_name/lead_company/lead_phone) — these populate reliably
+                # under strict structured outputs, unlike a free-form dict. Split the
+                # configured fields into required vs optional and describe how to report each.
+                STANDARD_FIELD_SLOT = {
+                    'email': 'lead_email', 'name': 'lead_name',
+                    'company': 'lead_company', 'phone': 'lead_phone',
+                }
+                required_labels, optional_labels = [], []
+                for f in self.lead_capture_fields:
+                    if not f.get('enabled', True):
+                        continue
+                    label = f.get('label') or f.get('key')
+                    if not label:
+                        continue
+                    options = [str(o) for o in (f.get('options') or []) if str(o).strip()]
+                    if options:
+                        label = f"{label} (one of: {', '.join(options)})"
+                    (required_labels if f.get('required') else optional_labels).append(label)
+                # Email is always the minimum needed to record a lead.
+                if not required_labels:
+                    required_labels = ['email']
+                lc_prompt = (
+                    "\n\nLEAD CAPTURE (IMPORTANT): This is a lead-generation agent — collecting the visitor's "
+                    "contact details is a primary goal. Help and deliver value first, then PROACTIVELY ask for "
+                    "their details at a natural moment (a great time is right after you have answered their "
+                    "question or given them something useful). Ask conversationally, one detail at a time — never "
+                    "on the very first message, never mid-answer."
+                )
+                lc_prompt += " Collect these details, asking naturally one at a time. REQUIRED: " + \
+                    ", ".join(required_labels) + "."
+                if optional_labels:
+                    lc_prompt += (
+                        " ALSO TRY TO COLLECT (optional — they enrich the lead; genuinely ask for each one, but "
+                        "do not insist if the visitor skips or declines): " + ", ".join(optional_labels) + "."
+                        " Ask for these optional details EARLY, while collecting — do not skip straight to "
+                        "recording after only getting the email. Ask for each optional field AT MOST ONCE."
+                    )
+                lc_prompt += (
+                    " As you learn each standard detail, set the matching response field: email in lead_email, "
+                    "name in lead_name, company in lead_company, phone in lead_phone. Only fill a field with what "
+                    "the visitor ACTUALLY told you — never guess or infer a value (e.g. do not use the company as "
+                    "the name); leave a field empty if they did not give it."
+                    " EMAIL VALIDATION: a valid email must contain an '@' and a domain with a dot (e.g. "
+                    "jane@acme.com). If what the visitor gives is NOT a valid email (e.g. 'arun.com', a bare "
+                    "domain, or just a name), do NOT accept it, do NOT set lead_email, and do NOT claim you "
+                    "recorded it — politely point out it looks incomplete and ask again for a full email address."
+                )
+                # The record trigger is: a valid email + every REQUIRED field + consent.
+                # Required fields (beyond email) genuinely gate recording; optional ones
+                # never do. Build the trigger text from the required fields so marking a
+                # field "required" in the UI actually makes the agent insist on it.
+                extra_required = [l for l in required_labels if l.strip().lower() != 'email']
+                trigger = "a valid email (in lead_email)"
+                if extra_required:
+                    trigger += " AND the required details (" + ", ".join(extra_required) + ")"
+                if self.lead_capture_require_consent:
+                    lc_prompt += (
+                        " ORDER: ask for the email and the other details first, and ask for consent LAST. "
+                        " CONSENT REQUIRED: before recording you MUST get the visitor's explicit agreement to be "
+                        "contacted (a clear yes). If the visitor clearly agrees to be contacted (e.g. 'yes', 'yes "
+                        "you can contact me', 'sure, go ahead'), treat that as consent immediately — set "
+                        "lead_consent=true and do NOT ask for consent again."
+                    )
+                    trigger += " AND consent"
+                lc_prompt += (
+                    " RECORD NOW — the MOMENT you have " + trigger + ", you MUST in that SAME response "
+                    "(1) make sure lead_email holds the exact email the visitor gave, (2) set request_lead_capture "
+                    "to true, (3) set lead_consent to true, and (4) write a short lead_summary qualifying this "
+                    "lead. Do this even if OPTIONAL fields are still missing — NEVER keep asking for an optional "
+                    "field once you have " + trigger + ", and never ask for the same field twice. Required fields "
+                    "above DO gate recording: keep asking for a required field until you have it (or the visitor "
+                    "clearly refuses). CRITICAL: request_lead_capture=true is INVALID unless lead_email is set. "
+                    "Confirm back what you captured (e.g. 'Great — I'll have someone reach out at jane@acme.com'). "
+                    "Make ONE genuine attempt overall; if they decline to share details, respect it and keep helping."
+                )
+                if self.lead_capture_guidance:
+                    lc_prompt += " Additional guidance from the business: " + self.lead_capture_guidance
+                system_message += lc_prompt
+
+            # Add end chat instructions. While a lead-capture attempt is still pending, the
+            # normal "end on natural conclusion / thank you" rules would let the model bail
+            # before ever asking, so replace them with a gated version that forces the ask
+            # first. Once the lead is captured (or capture is off), use the normal rules.
+            if lead_pending:
+                system_message += (
+                    "\nEND CHAT (lead-capture pending): You have NOT yet collected this visitor's contact "
+                    "details, so do NOT set end_chat=true yet — not even if the conversation seems to be "
+                    "wrapping up or the visitor says \"thank you\", \"thanks\", \"bye\", or \"that's all\". "
+                    "If the visitor is wrapping up and you have not asked yet, reply by asking for their "
+                    "contact details now (see LEAD CAPTURE above) instead of ending. You may set end_chat=true "
+                    "ONLY after you have recorded their details (request_lead_capture=true) OR they have clearly "
+                    "declined to share them. When you do end, also generate a closing message in the message "
+                    "field, e.g: Thank you for your time. Have a great day!"
+                )
+            elif self.agent_data.ask_for_rating:
                 system_message += f"\n{end_chat_with_rating}"
             else:
                 system_message += f"\n{end_chat_without_rating}"

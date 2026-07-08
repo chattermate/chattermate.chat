@@ -80,6 +80,12 @@ const baseRoutes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/people',
+    name: 'people',
+    component: () => import('../views/PeopleView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/human-agents',
     name: 'human-agents',
     component: HumanAgentView,

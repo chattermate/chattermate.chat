@@ -147,7 +147,24 @@ async def authenticate_socket_conversation_token(sid: str, auth: dict) -> Tuple[
                 return None, None, None, None
 
             org_id = widget.organization_id
-        db.close()
+
+            # Resolve merged customers: if this device's token still carries an
+            # anonymous customer that was merged into an identified one (lead
+            # capture matched an existing email), continue as the merged target so
+            # returning visitors keep their identity and history.
+            if customer_id:
+                from app.models.customer import Customer
+                seen = set()
+                current = customer_id
+                while current and current not in seen:
+                    seen.add(current)
+                    merged_into = db.query(Customer.merged_into_customer_id).filter(
+                        Customer.id == current).scalar()
+                    if not merged_into:
+                        break
+                    logger.info(f"Customer {current} was merged; continuing as {merged_into}")
+                    current = str(merged_into)
+                customer_id = current
         return widget_id, org_id, customer_id, conversation_token
 
     except Exception as e:

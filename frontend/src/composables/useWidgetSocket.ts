@@ -69,6 +69,16 @@ export function useWidgetSocket() {
         if (widgetIdAuth) {
             auth.widget_id = widgetIdAuth
         }
+        // Host page embedding the widget, recorded server-side on lead capture
+        // (lead_source.page_url). The widget runs in a srcdoc iframe, so the parent
+        // page is same-origin when embedded via chattermate.js; fall back to referrer.
+        try {
+            auth.page_url = (window.parent !== window && window.parent.location?.href)
+                ? window.parent.location.href
+                : (document.referrer || window.location.href)
+        } catch {
+            auth.page_url = document.referrer || ''
+        }
         
         socket = io(`${widgetEnv.WS_URL}/widget`, {
             transports: ['websocket'],

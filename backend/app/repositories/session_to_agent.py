@@ -109,15 +109,19 @@ class SessionToAgentRepository:
             self.db.rollback()
             return False
 
-    def close_session(self, session_id: UUID | str) -> bool:
-        """Close a session"""
+    def close_session(self, session_id: UUID | str, reason=None, description=None) -> bool:
+        """Close a session, optionally recording why (end_chat reason/description)."""
         try:
             session = self.get_session(session_id)
             if not session:
                 return False
-            
+
             session.status = SessionStatus.CLOSED
             session.closed_at = datetime.utcnow()
+            if reason is not None:
+                session.end_chat_reason = reason
+            if description is not None:
+                session.end_chat_description = description
             self.db.commit()
             return True
         except Exception as e:

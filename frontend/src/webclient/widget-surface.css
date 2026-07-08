@@ -90,6 +90,17 @@
 /* Collapse markdown paragraph margins so a one-line reply is a compact bubble. */
 .chat-container.cm-surface .message-bubble p { margin: 0; }
 .chat-container.cm-surface .message-bubble p + p { margin-top: 0.5em; }
+/* Markdown links inside messages: clearly a link and clickable (v-html content, so
+   this must be a global rule — scoped styles don't reach it). Inherits the bubble
+   colour so it's readable on both the agent surface and the accent user bubble. */
+.chat-container.cm-surface .message-bubble a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface .message-bubble a:hover { opacity: 0.82; }
 /* Agent/bot bubble: agent surface + hairline, tail top-left. */
 .chat-container.cm-surface .agent-message .message-bubble,
 .chat-container.cm-surface .assistant-message .message-bubble {
