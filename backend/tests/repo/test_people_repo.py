@@ -98,6 +98,24 @@ def test_get_detail_missing_returns_none(repo, test_organization_id):
     assert repo.get_detail(test_organization_id, uuid4()) is None
 
 
+def test_authenticated_customers_excluded(repo, db, test_organization_id):
+    """Integration-authenticated people (meta_data from generate-token) are the
+    business's existing customers, not leads — excluded from People + stats."""
+    organic = _customer(db, test_organization_id, email="organic@acme.com",
+                        full_name="Organic", lead_stage=LeadStage.LEAD)
+    _customer(db, test_organization_id, email="portal@acme.com", full_name="Portal User",
+              meta_data={"student_name": "Sam", "center_name": "MMCA"})
+
+    items, total = repo.list_people(test_organization_id)
+    emails = {i["email"] for i in items}
+    assert "organic@acme.com" in emails
+    assert "portal@acme.com" not in emails
+    assert total == 1
+
+    stats = repo.get_stats(test_organization_id)
+    assert stats["total_people"] == 1  # the authenticated customer is not counted
+
+
 def test_merged_rows_hidden_and_resolved(repo, db, test_organization_id):
     target = _customer(db, test_organization_id, email="t@acme.com", full_name="Target",
                        lead_stage=LeadStage.LEAD)

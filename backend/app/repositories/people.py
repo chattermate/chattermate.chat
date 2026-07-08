@@ -107,6 +107,10 @@ class PeopleRepository:
             .filter(Customer.organization_id == org_id)
             # Hide rows merged into another customer — the target row represents them.
             .filter(Customer.merged_into_customer_id.is_(None))
+            # Exclude integration-authenticated people: meta_data is only ever set from
+            # generate-token (the embedding app passed a known identity), so these are the
+            # business's existing customers, not leads the agent captured.
+            .filter(Customer.meta_data.is_(None))
         )
 
         if stage and stage != "all":
@@ -146,18 +150,21 @@ class PeopleRepository:
 
     def get_stats(self, org_id: UUID) -> dict:
         week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        # Same scoping as list_people: exclude merged rows and integration-authenticated
+        # (generate-token) customers so the KPIs count only organic visitors/leads.
         not_merged = Customer.merged_into_customer_id.is_(None)
+        organic = Customer.meta_data.is_(None)
         total = self.db.query(func.count(Customer.id)).filter(
-            Customer.organization_id == org_id, not_merged).scalar() or 0
+            Customer.organization_id == org_id, not_merged, organic).scalar() or 0
         new_leads = self.db.query(func.count(Customer.id)).filter(
             Customer.organization_id == org_id,
-            not_merged,
+            not_merged, organic,
             Customer.lead_stage == LeadStage.LEAD,
             Customer.lead_qualified_at >= week_ago,
         ).scalar() or 0
         customers = self.db.query(func.count(Customer.id)).filter(
             Customer.organization_id == org_id,
-            not_merged,
+            not_merged, organic,
             Customer.lead_stage == LeadStage.CUSTOMER,
         ).scalar() or 0
         return {
