@@ -270,10 +270,14 @@ class TestChatAgentURLInstructions:
              patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_knowledge_session_local, \
              patch('app.agents.chat_agent.JiraRepository') as mock_jira_repo, \
              patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_repo, \
+             patch('app.repositories.lead_capture.LeadCaptureConfigRepository') as mock_lead_repo, \
              patch('app.agents.chat_agent.PostgresAgentStorage') as mock_storage, \
              patch('app.agents.chat_agent.create_model') as mock_create_model, \
              patch('app.agents.chat_agent.Agent') as mock_agent_class, \
              patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo:
+
+            # No lead-capture config for this agent (returns None → capture off).
+            mock_lead_repo.return_value.get_by_agent.return_value = None
 
             # Mock database session
             mock_db = MagicMock()
