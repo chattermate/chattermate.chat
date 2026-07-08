@@ -556,7 +556,14 @@ Keep your responses concise and focused. Provide clear, actionable information i
            structured_outputs=True,
            system_message_role="system",
            user_message_role="user",
-           show_tool_calls=settings.ENVIRONMENT == "development"
+           show_tool_calls=settings.ENVIRONMENT == "development",
+           # Retry transient model errors (e.g. OpenAI 429 rate limits, which
+           # typically clear within a few hundred ms) with exponential backoff so
+           # they recover instead of surfacing "I encountered an error" to visitors.
+           # The LLM call fails before any reply/side-effect, so retrying is safe.
+           retries=2,
+           delay_between_retries=1,
+           exponential_backoff=True,
           )
 
     async def _get_llm_response_only(self, message: str, session_id: str = None, org_id: str = None, agent_id: str = None, customer_id: str = None) -> ChatResponse:
