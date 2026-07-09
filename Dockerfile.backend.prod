@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install -U crawl4ai
 RUN crawl4ai-setup
 
 # Copy application code
@@ -56,4 +55,4 @@ ENV PYTORCH_TRANSFORMERS_CACHE=/app/.cache/pytorch_transformers
 EXPOSE 8000
 
 # Run the startup script
-CMD ["./scripts/start.sh"] 
+CMD ["./scripts/start.sh"]
