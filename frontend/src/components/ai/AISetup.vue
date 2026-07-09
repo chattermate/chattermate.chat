@@ -89,24 +89,57 @@ watch([hasExistingConfig, setupConfig], ([hasConfig, config]) => {
 // API key is always required for our supported providers
 const showApiKey = computed(() => true)
 
-// Model options based on provider
+// Sentinel value for the "Custom model ID" dropdown option
+const CUSTOM_MODEL = '__custom__'
+
+// Catalog entry for the currently selected provider (carries its suggested models)
+const selectedProvider = computed(() =>
+  providers.value.find((p) => p.value === setupConfig.value.provider)
+)
+
+// Suggested models for the provider, plus a "Custom model ID" option when allowed
 const modelOptions = computed(() => {
-  const provider = setupConfig.value.provider.toUpperCase();
-  switch (provider) {
-    case 'GROQ':
-      return [
-        { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile' },
-      ]
-    case 'OPENAI':
-      return [
-        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-        { value: 'o1-mini', label: 'O1 Mini' },
-        { value: 'o3-mini', label: 'O3 Mini' }
-      ]
-    default:
-      return []
+  const provider = selectedProvider.value
+  if (!provider) return []
+  const options = [...provider.models]
+  if (provider.custom_allowed) {
+    options.push({ value: CUSTOM_MODEL, label: 'Custom model ID…' })
   }
+  return options
 })
+
+// Whether the user is entering a custom (typed) model ID
+const useCustomModel = ref(false)
+
+// Dropdown binding: shows the sentinel while in custom mode, otherwise the selected
+// model id. Selecting the sentinel switches to the free-text input.
+const modelDropdown = computed({
+  get: () => (useCustomModel.value ? CUSTOM_MODEL : setupConfig.value.model),
+  set: (val: string) => {
+    if (val === CUSTOM_MODEL) {
+      useCustomModel.value = true
+      setupConfig.value.model = ''
+    } else {
+      useCustomModel.value = false
+      setupConfig.value.model = val
+    }
+  },
+})
+
+// When an existing config loads (or the catalog arrives) with a model that isn't in
+// the suggested list, switch to custom mode so the text field shows it.
+watch(
+  [providers, () => setupConfig.value.provider, () => setupConfig.value.model],
+  () => {
+    const provider = selectedProvider.value
+    if (!provider || !setupConfig.value.model) return
+    const isSuggested = provider.models.some((m) => m.value === setupConfig.value.model)
+    if (!isSuggested && provider.custom_allowed) {
+      useCustomModel.value = true
+    }
+  },
+  { immediate: true }
+)
 
 // Plan computed properties
 const currentPlan = computed(() => currentSubscription.value?.plan)
@@ -233,12 +266,18 @@ const rateLimitText = computed(() => {
   return `Rate limit: ${rateLimit} messages/minute`
 })
 
-// Reset model when provider changes (but only for new configurations, not existing ones)
-watch(() => setupConfig.value.provider, (newProvider, oldProvider) => {
-  // Only reset model if this is not the initial load of existing config
-  if (oldProvider !== undefined && !hasExistingConfig.value) {
-    setupConfig.value.model = ''
+// Clear the model + custom-mode whenever the user switches provider, so a stale
+// model from the previous provider can't be carried over (and submitted). The very
+// first assignment — the initial load of an existing config — is skipped so the
+// saved model is preserved.
+let providerInitialized = false
+watch(() => setupConfig.value.provider, () => {
+  if (!providerInitialized) {
+    providerInitialized = true
+    return
   }
+  setupConfig.value.model = ''
+  useCustomModel.value = false
 })
 
 const selectTab = (tab: 'chattermate' | 'custom') => {
@@ -559,7 +598,7 @@ const chatterMateButtonText = computed(() => {
                   <label for="model">Model Name</label>
                   <select
                     id="model"
-                    v-model="setupConfig.model"
+                    v-model="modelDropdown"
                     required
                     class="form-control"
                     :disabled="!setupConfig.provider || modelOptions.length === 0"
@@ -573,6 +612,18 @@ const chatterMateButtonText = computed(() => {
                       {{ model.label }}
                     </option>
                   </select>
+                  <input
+                    v-if="useCustomModel"
+                    id="customModel"
+                    type="text"
+                    v-model="setupConfig.model"
+                    required
+                    placeholder="Enter the exact model ID (e.g. gpt-4o)"
+                    class="form-control form-control-mono custom-model-input"
+                  />
+                  <p v-if="useCustomModel" class="key-hint">
+                    Enter any model ID your provider supports — we'll validate it with your API key.
+                  </p>
                 </div>
 
                 <div v-if="showApiKey" class="form-group">
@@ -585,7 +636,14 @@ const chatterMateButtonText = computed(() => {
                     placeholder="sk-..."
                     class="form-control form-control-mono"
                   />
-                  <p class="key-hint">Your API key will be encrypted and stored securely</p>
+                  <p class="key-hint">
+                    Your API key will be encrypted and stored securely.<template v-if="selectedProvider?.api_key_url">&nbsp;&nbsp;<a
+                      :href="selectedProvider.api_key_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="key-help-link"
+                    >Get your {{ selectedProvider.label }} API key ↗</a></template>
+                  </p>
                 </div>
 
                 <button
@@ -777,6 +835,10 @@ const chatterMateButtonText = computed(() => {
   font-family: var(--font-mono);
 }
 
+.custom-model-input {
+  margin-top: 8px;
+}
+
 .form-control:focus {
   border-color: var(--accent-ink);
   box-shadow: var(--ring-focus);
@@ -838,6 +900,16 @@ const chatterMateButtonText = computed(() => {
   font-size: var(--text-sm);
   color: var(--muted2);
   margin-top: var(--space-xs);
+}
+
+.key-help-link {
+  color: var(--accent-ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.key-help-link:hover {
+  text-decoration: underline;
 }
 
 .btn {

@@ -6,7 +6,7 @@
 
 ![ChatterMate Logo](frontend/public/assets/images/logo.svg)
 
-> **Open-source AI customer support platform with human handoff.** A no-code AI chatbot for 24/7 customer service automation — multi-model AI (OpenAI, Groq, Ollama), intelligent AI-to-human handover, **Shopify & e-commerce support**, Slack and Jira integrations, visual workflow builder, and a fully themeable chat widget. Use the free hosted service or self-host it as an **open-source alternative to Intercom, Zendesk, and Chatbase**.
+> **Open-source AI customer support platform with human handoff.** A no-code AI chatbot for 24/7 customer service automation — multi-model AI (OpenAI, Anthropic Claude, Google Gemini, Mistral, xAI Grok, DeepSeek, Groq), intelligent AI-to-human handover, **Shopify & e-commerce support**, Slack and Jira integrations, visual workflow builder, and a fully themeable chat widget. Use the free hosted service or self-host it as an **open-source alternative to Intercom, Zendesk, and Chatbase**.
 
 **[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)** | **[Shopify App](https://apps.shopify.com/chattermate-chat)**
 
@@ -46,7 +46,7 @@ ChatterMate is a **no-code AI customer support platform** that enables businesse
 |---------|-------------|
 | 🤝 **Smart Human Handoff** | Intelligent AI-to-human transfer with **business hours awareness**, real-time availability detection, and context-aware escalation messages. |
 | 🛍️ **Shopify & E-commerce Support** | Native **Shopify integration** ([App Store listing](https://apps.shopify.com/chattermate-chat)) — answer order, shipping, and product questions from store data. Works for any online store. |
-| 🧠 **Multi-Model AI Support** | Choose your AI provider — **OpenAI GPT-4**, **Groq Llama 3.3**, **Google AI**, **Ollama** (self-hosted), and more. Switch providers anytime without code changes. |
+| 🧠 **Multi-Model AI Support** | Choose your AI provider — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **Mistral**, **xAI (Grok)**, **DeepSeek**, and **Groq** — with your own API key, or enter a custom model ID. Switch providers anytime without code changes. |
 | 💬 **Ask Anything Mode** | Let visitors start conversations instantly — no signup or email required. Perfect for Q&A, documentation assistants, and exploratory chat experiences. |
 | 📎 **File Attachments** | Customers can share **images, PDFs, Word docs, spreadsheets**, and more directly in chat. Secure uploads with S3 storage and magic byte validation. |
 | 🌍 **Auto Translation** | Multilingual support with configurable **default language per workflow**. Serve customers globally in their preferred language. |
@@ -91,7 +91,7 @@ ChatterMate is a **free, open-source alternative to Intercom, Zendesk AI, and Ch
 | Self-hosting / data ownership | ✅ | ❌ | ❌ | ❌ |
 | AI answers from your knowledge base | ✅ | ✅ | ✅ | ✅ |
 | Built-in human handoff + shared inbox | ✅ | ✅ | ✅ | ⚠️ limited |
-| Bring your own AI model (incl. Ollama) | ✅ | ❌ | ❌ | ⚠️ limited |
+| Bring your own AI model (OpenAI, Claude, Gemini, Grok, +more) | ✅ | ❌ | ❌ | ⚠️ limited |
 | Visual no-code workflow builder | ✅ | ✅ | ⚠️ add-on | ❌ |
 | Free tier | ✅ | trial only | trial only | ✅ |
 | Per-AI-resolution fees | ❌ none | $0.99/resolution | usage-based | credit-based |
@@ -383,7 +383,7 @@ Yes. Install it from the [Shopify App Store](https://apps.shopify.com/chattermat
 Yes. Run the full stack (Postgres, Redis, backend, frontend) on your own infrastructure with `npm install -g chattermate-deploy` — see [Quick Start](#quick-start). Self-hosting gives you complete data ownership.
 
 **Which AI models does ChatterMate support?**
-OpenAI (GPT-4), Groq (Llama 3.3), Google AI, and self-hosted models via Ollama. You can switch providers at any time without code changes.
+OpenAI, Anthropic (Claude), Google Gemini, Mistral, xAI (Grok), DeepSeek, and Groq — bring your own API key, or enter a custom model ID for any model a provider supports. You can switch providers at any time without code changes.
 
 ---
 

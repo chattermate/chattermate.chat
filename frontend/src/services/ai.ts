@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import  api  from './api'
-import type { AIConfigResponse, AISetupResponse } from '@/types/ai'
+import type { AIConfigResponse, AISetupResponse, AIProvider } from '@/types/ai'
 
 export interface AIConfig {
   model_type: string;
@@ -24,6 +24,11 @@ export interface AIConfig {
 }
 
 export const aiService = {
+  async getProviders(): Promise<AIProvider[]> {
+    const response = await api.get('/ai/providers')
+    return response.data.providers
+  },
+
   async getOrganizationConfig(): Promise<AIConfig> {
     const response = await api.get('/ai/config')
     return response.data

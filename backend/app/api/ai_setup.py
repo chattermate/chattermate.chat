@@ -26,9 +26,9 @@ from app.agents.chat_agent import ChatAgent
 from app.models.schemas.ai_config import AIConfigCreate, AIConfigResponse, AISetupResponse, AIConfigUpdate
 from sqlalchemy.orm import Session
 import os
-from enum import Enum
 
 from app.models.ai_config import AIModelType
+from app.core.model_catalog import is_known_provider, list_providers
 
 # Try to import enterprise modules
 try:
@@ -60,27 +60,18 @@ def check_custom_models_feature_access(current_user: User, db: Session):
         )
 
 
-# Define allowed models as Enum to restrict choices
-class ModelType(str, Enum):
-    GROQ = "GROQ"
-    OPENAI = "OPENAI"
-    # ANTHROPIC = "ANTHROPIC"
-    # OLLAMA = "OLLAMA"
-    # CLAUDE = "CLAUDE"
-    # MISTRAL = "MISTRAL"
-    # COHERE = "COHERE"
-    CHATTERMATE = "CHATTERMATE"
+# Providers and their suggested models live in app.core.model_catalog (single
+# source of truth, also served by GET /ai/providers). Model IDs are not hard-coded
+# here anymore: orgs may enter a custom model ID, so validation only checks that the
+# provider is known — the live API-key test rejects a bad model ID.
 
 
-# Define allowed models per provider
-class GroqModels(str, Enum):
-    LLAMA_3_70B = "llama-3.3-70b-versatile"
-
-
-class OpenAIModels(str, Enum):
-    GPT_4O_MINI = "gpt-4o-mini"
-    O1_MINI = "o1-mini"
-    O3_MINI = "o3-mini"
+@router.get("/providers")
+async def get_providers(
+    current_user: User = Depends(require_permissions("manage_ai_config")),
+):
+    """Return the catalog of selectable providers and their suggested models."""
+    return {"providers": list_providers()}
 
 
 # Override model validation in the schemas
@@ -147,9 +138,10 @@ async def setup_ai(
         # Regular custom model setup
         # Test API key before creating config
         try:
-            # Only validate API keys for supported providers
+            # Live-validate the key+model for any BYO-key provider. This is also
+            # what catches an invalid custom (typed) model ID.
             model_type_upper = config_data.model_type.upper()
-            if model_type_upper in ["GROQ", "OPENAI"]:
+            if is_known_provider(model_type_upper):
                 is_valid = await ChatAgent.test_api_key(
                     api_key=config_data.api_key.get_secret_value(),
                     model_type=config_data.model_type,
@@ -307,7 +299,7 @@ async def update_ai_config(
             # For custom model, validate API key first if provided
             if config_data.api_key:
                 model_type_upper = config_data.model_type.upper()
-                if model_type_upper in ["GROQ", "OPENAI"]:
+                if is_known_provider(model_type_upper):
                     try:
                         is_valid = await ChatAgent.test_api_key(
                             api_key=config_data.api_key.get_secret_value(),
@@ -374,45 +366,20 @@ async def update_ai_config(
 
 
 def validate_model_selection(model_type: str, model_name: str):
-    """Validate that the selected model is allowed for the chosen provider"""
-    
+    """Validate the chosen provider and that a model name is present.
+
+    The catalog models are suggestions, not a hard allowlist — an org may enter a
+    custom model ID for any known provider. So we only enforce that the provider is
+    known and the model name is non-empty; the live API-key test (see setup/update)
+    is what actually rejects a bad model ID.
+    """
+
     # ChatterMate is a special case handled separately
     if model_type.upper() == "CHATTERMATE" and model_name.lower() == "chattermate":
         return True
-    
-    # For GROQ, only allow specific models
-    if model_type.upper() == "GROQ":
-        try:
-            GroqModels(model_name)
-        except ValueError:
-            valid_models = ", ".join([m.value for m in GroqModels])
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Invalid model selection",
-                    "type": "invalid_model",
-                    "details": f"For Groq, only these models are supported: {valid_models}"
-                }
-            )
-    
-    # For OpenAI, only allow specific models
-    elif model_type.upper() == "OPENAI":
-        try:
-            OpenAIModels(model_name)
-        except ValueError:
-            valid_models = ", ".join([m.value for m in OpenAIModels])
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Invalid model selection",
-                    "type": "invalid_model",
-                    "details": f"For OpenAI, only these models are supported: {valid_models}"
-                }
-            )
-    
-    # Other providers are not supported for now
-    else:
-        valid_providers = ", ".join([m.value for m in ModelType])
+
+    if not is_known_provider(model_type):
+        valid_providers = ", ".join(p["value"] for p in list_providers())
         raise HTTPException(
             status_code=400,
             detail={
@@ -421,3 +388,15 @@ def validate_model_selection(model_type: str, model_name: str):
                 "details": f"Currently only these providers are supported: {valid_providers}"
             }
         )
+
+    if not model_name or not model_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Invalid model selection",
+                "type": "invalid_model",
+                "details": "A model ID is required for the selected provider."
+            }
+        )
+
+    return True
