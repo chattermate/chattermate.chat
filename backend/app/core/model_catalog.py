@@ -44,6 +44,8 @@ class CatalogProvider(TypedDict):
     label: str
     requires_api_key: bool
     custom_allowed: bool
+    # Console URL where the user creates/copies their API key for this provider.
+    api_key_url: str
     models: List[CatalogModel]
 
 
@@ -58,6 +60,7 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "OpenAI",
         "requires_api_key": True,
         "custom_allowed": True,
+        "api_key_url": "https://platform.openai.com/api-keys",
         "models": [
             _m("gpt-4.1", "GPT-4.1"),
             _m("gpt-4o", "GPT-4o"),
@@ -70,6 +73,7 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "Anthropic (Claude)",
         "requires_api_key": True,
         "custom_allowed": True,
+        "api_key_url": "https://console.anthropic.com/settings/keys",
         # Current-gen Claude IDs are complete stable strings — do NOT append a date.
         "models": [
             _m("claude-opus-4-8", "Claude Opus 4.8"),
@@ -82,6 +86,7 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "Google Gemini",
         "requires_api_key": True,
         "custom_allowed": True,
+        "api_key_url": "https://aistudio.google.com/app/apikey",
         # gemini-2.0-flash is shut down; use bare 2.5 IDs (avoid -latest/-preview).
         "models": [
             _m("gemini-2.5-pro", "Gemini 2.5 Pro"),
@@ -94,6 +99,7 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "Mistral",
         "requires_api_key": True,
         "custom_allowed": True,
+        "api_key_url": "https://console.mistral.ai/api-keys",
         # -latest aliases auto-advance to the current dated snapshot.
         "models": [
             _m("mistral-large-latest", "Mistral Large"),
@@ -105,6 +111,9 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "xAI (Grok)",
         "requires_api_key": True,
         "custom_allowed": True,
+        # The Grok inference API uses a single xai-... key from console.x.ai — NOT the
+        # X/Twitter OAuth app credentials (consumer key / access token / bearer token).
+        "api_key_url": "https://console.x.ai",
         "models": [
             _m("grok-4", "Grok 4"),
             _m("grok-4-fast-reasoning", "Grok 4 Fast (Reasoning)"),
@@ -116,6 +125,7 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "DeepSeek",
         "requires_api_key": True,
         "custom_allowed": True,
+        "api_key_url": "https://platform.deepseek.com/api_keys",
         # deepseek-chat/reasoner scheduled for EOL 2026-07-24; successors are
         # deepseek-v4-flash / deepseek-v4-pro — add here once live.
         "models": [
@@ -127,6 +137,7 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "label": "Groq",
         "requires_api_key": True,
         "custom_allowed": True,
+        "api_key_url": "https://console.groq.com/keys",
         # GPT-OSS models are the durable picks. llama-3.3-70b-versatile is kept for
         # continuity but is deprecated (EOL 2026-08-16). Org-prefixed IDs must be
         # passed exactly.
@@ -152,6 +163,7 @@ def list_providers() -> List[dict]:
             "label": entry["label"],
             "requires_api_key": entry["requires_api_key"],
             "custom_allowed": entry["custom_allowed"],
+            "api_key_url": entry["api_key_url"],
             "models": entry["models"],
         }
         for provider_value, entry in MODEL_CATALOG.items()

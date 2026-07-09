@@ -24,6 +24,7 @@ export interface AIProvider {
   label: string
   requires_api_key: boolean
   custom_allowed: boolean
+  api_key_url: string
   models: AIModel[]
 }
 

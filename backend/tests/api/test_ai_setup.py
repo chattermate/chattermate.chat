@@ -359,6 +359,9 @@ def test_get_providers(client, db, test_user):
     assert openai["custom_allowed"] is True
     assert len(openai["models"]) > 0
     assert all("value" in m and "label" in m for m in openai["models"])
+    # Every provider exposes a console URL for obtaining an API key
+    for p in data["providers"]:
+        assert p["api_key_url"].startswith("https://"), f"{p['value']} missing api_key_url"
 
 def test_get_ai_config_success(client, db, test_user, test_ai_config):
     """Test getting AI configuration"""

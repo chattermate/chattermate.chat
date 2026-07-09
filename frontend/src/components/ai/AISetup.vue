@@ -636,7 +636,15 @@ const chatterMateButtonText = computed(() => {
                     placeholder="sk-..."
                     class="form-control form-control-mono"
                   />
-                  <p class="key-hint">Your API key will be encrypted and stored securely</p>
+                  <p class="key-hint">
+                    Your API key will be encrypted and stored securely.<template v-if="selectedProvider?.api_key_url">
+                    <a
+                      :href="selectedProvider.api_key_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="key-help-link"
+                    >Get your {{ selectedProvider.label }} API key ↗</a></template>
+                  </p>
                 </div>
 
                 <button
@@ -893,6 +901,16 @@ const chatterMateButtonText = computed(() => {
   font-size: var(--text-sm);
   color: var(--muted2);
   margin-top: var(--space-xs);
+}
+
+.key-help-link {
+  color: var(--accent-ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.key-help-link:hover {
+  text-decoration: underline;
 }
 
 .btn {
