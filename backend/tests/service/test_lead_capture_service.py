@@ -70,6 +70,33 @@ def test_has_captured_lead(db, test_agent, test_organization_id, config):
     assert has_captured_lead(db, customer.id, test_agent.id) is True
 
 
+def test_no_capture_when_disabled(db, test_agent, test_organization_id, config):
+    config.enabled = False
+    db.commit()
+    customer = _anon(db, test_organization_id)
+    resp = record_lead_capture(
+        db, config, organization_id=test_organization_id, agent_id=test_agent.id,
+        customer_id=customer.id, session_id=None,
+        lead_data={"email": "jane@acme.com"}, summary="s", consent=True,
+    )
+    assert resp is None
+    assert has_captured_lead(db, customer.id, test_agent.id) is False
+
+
+def test_no_capture_for_authenticated_customer(db, test_agent, test_organization_id, config):
+    # Integration-authenticated customer (generate-token set meta_data) — never a lead.
+    authed = Customer(email="portal@acme.com", organization_id=test_organization_id,
+                      meta_data={"student_name": "Sam", "center_name": "MMCA"})
+    db.add(authed); db.commit(); db.refresh(authed)
+    resp = record_lead_capture(
+        db, config, organization_id=test_organization_id, agent_id=test_agent.id,
+        customer_id=authed.id, session_id=None,
+        lead_data={"email": "portal@acme.com"}, summary="s", consent=True,
+    )
+    assert resp is None
+    assert has_captured_lead(db, authed.id, test_agent.id) is False
+
+
 def test_record_requires_valid_email(db, test_agent, test_organization_id, config):
     customer = _anon(db, test_organization_id)
     resp = record_lead_capture(

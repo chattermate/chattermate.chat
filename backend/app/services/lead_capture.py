@@ -54,6 +54,10 @@ def record_lead_capture(
     an AI qualification summary). Returns None — recording nothing — when there is
     no valid email, or consent is required but not given (GDPR).
 
+    Never records when lead capture is disabled for the agent, or when the customer
+    is integration-authenticated (meta_data set by generate-token) — those are the
+    business's existing customers, not leads.
+
     If the captured email already belongs to ANOTHER customer in the org, the
     anonymous visitor is MERGED into that existing customer (history/sessions
     reassigned, visitor row marked merged) so People shows one entry. The returned
@@ -62,6 +66,18 @@ def record_lead_capture(
     No CRM/Slack/assignment side effects in phase 1 — routing config is stored only.
     """
     from app.models.customer import Customer
+
+    # Never capture when lead capture is off for this agent (authoritative guard,
+    # independent of any caller-side check).
+    if not (config and config.enabled):
+        return None
+
+    # Never capture integration-authenticated people: meta_data is only set from
+    # generate-token (the embedding app passed a known identity), so they're already
+    # the business's customers, not leads — regardless of the agent's toggle.
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if customer is not None and customer.meta_data:
+        return None
 
     lead_data = lead_data or {}
     # Keep only configured field keys (defensive: the model shouldn't inject others).
