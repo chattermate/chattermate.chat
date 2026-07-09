@@ -73,17 +73,25 @@ class CustomizationBase(BaseModel):
     customization_metadata: Optional[Dict] = {}
     chat_style: Optional[ChatStyle] = ChatStyle.CHATBOT
     widget_position: Optional[WidgetPosition] = WidgetPosition.FLOATING
-    welcome_title: Optional[str] = Field(default=None, max_length=100)
-    welcome_subtitle: Optional[str] = Field(default=None, max_length=250)
-    welcome_message: Optional[str] = Field(default=None, max_length=500)
-    chat_initiation_messages: Optional[List[InitiationMessage]] = None
+    # NOTE: length caps live on CustomizationCreate (input), NOT here — the response
+    # model also inherits this base, and existing rows may exceed a newly-lowered cap;
+    # enforcing on the response would 500 the whole agent list.
+    welcome_title: Optional[str] = None
+    welcome_subtitle: Optional[str] = None
+    welcome_message: Optional[str] = None
+    chat_initiation_messages: Optional[List[str]] = None
     quick_actions: Optional[List[str]] = None
     show_citations: Optional[bool] = False
     collect_email: Optional[bool] = False
 
 
 class CustomizationCreate(CustomizationBase):
-    pass
+    # Enforce length caps on write only, so the UI can't submit values the widget
+    # can't display. Reads (CustomizationResponse) intentionally stay unconstrained.
+    welcome_title: Optional[str] = Field(default=None, max_length=100)
+    welcome_subtitle: Optional[str] = Field(default=None, max_length=250)
+    welcome_message: Optional[str] = Field(default=None, max_length=500)
+    chat_initiation_messages: Optional[List[InitiationMessage]] = None
 
 
 class CustomizationResponse(CustomizationBase):
