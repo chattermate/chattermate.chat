@@ -257,11 +257,14 @@ async def generate_widget_token(
             ).first()
             
             if not customer:
-                # Create new customer with email
+                # Create new customer with email. The embedding app supplied a known
+                # identity, so this is an authenticated/integration customer (excluded
+                # from the People/leads views), not an organic lead.
                 customer = Customer(
                     email=body.customer_email,
                     full_name=body.customer_name,
                     meta_data=body.custom_data,
+                    is_authenticated=True,
                     organization_id=widget.organization_id
                 )
                 db.add(customer)
@@ -269,6 +272,10 @@ async def generate_widget_token(
                 db.refresh(customer)
                 logger.info(f"Created new customer: {customer.id} with email {body.customer_email}")
             else:
+                # An existing customer identified via the authenticated integration flow.
+                if not customer.is_authenticated:
+                    customer.is_authenticated = True
+                    db.commit()
                 # Update existing customer with new name if provided
                 if body.customer_name and customer.full_name != body.customer_name:
                     customer.full_name = body.customer_name

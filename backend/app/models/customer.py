@@ -42,6 +42,14 @@ class Customer(Base):
     # Arbitrary integrator-supplied fields (e.g. student_name, center_name) passed via
     # POST /generate-token's `custom_data` and surfaced to agents in the chat inbox.
     meta_data = Column(JSON, nullable=True)
+    # True when the embedding app identified this person via POST /generate-token with a
+    # known identity (customer_email) — an existing/authenticated customer of the business,
+    # not an organic lead the agent captured. Used to exclude them from the People/leads
+    # views. Deliberately an explicit flag, NOT inferred from meta_data: meta_data can be
+    # absent for an authenticated user and present for an anonymous one, and SQLAlchemy
+    # persists an empty JSON value as JSON null (not SQL NULL), so `meta_data IS NULL`
+    # never matched reliably.
+    is_authenticated = Column(Boolean, default=False, server_default="false", nullable=False)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     is_active = Column(Boolean, default=True)
     # Lead lifecycle — denormalized onto the customer so the People page can filter/aggregate
