@@ -637,8 +637,7 @@ const chatterMateButtonText = computed(() => {
                     class="form-control form-control-mono"
                   />
                   <p class="key-hint">
-                    Your API key will be encrypted and stored securely.<template v-if="selectedProvider?.api_key_url">
-                    <a
+                    Your API key will be encrypted and stored securely.<template v-if="selectedProvider?.api_key_url">&nbsp;&nbsp;<a
                       :href="selectedProvider.api_key_url"
                       target="_blank"
                       rel="noopener noreferrer"
