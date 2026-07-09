@@ -56,7 +56,9 @@ anthropic
 mistralai<2  # agno 1.7.6 uses the mistralai 1.x API (mistralai.models); 2.x breaks the import
 
 #ocr
-rapidocr-onnxruntime
+rapidocr-onnxruntime==1.4.4
+onnxruntime==1.23.0
+opencv-python==4.12.0.88
 
 #pdf
 pypdf
@@ -80,9 +82,12 @@ boto3
 
 groq
 
-sentence-transformers
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
+transformers==4.57.0
+sentence-transformers==5.1.1
 
-fastembed
+fastembed==0.7.3
 
 # Shopify API
 ShopifyAPI
@@ -97,4 +102,6 @@ uv
 
 # Web Crawling
 httpx
+pyOpenSSL==26.0.0
+cryptography==46.0.3
 crawl4ai>=0.7.0

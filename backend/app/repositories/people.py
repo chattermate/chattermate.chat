@@ -107,10 +107,9 @@ class PeopleRepository:
             .filter(Customer.organization_id == org_id)
             # Hide rows merged into another customer — the target row represents them.
             .filter(Customer.merged_into_customer_id.is_(None))
-            # Exclude integration-authenticated people: meta_data is only ever set from
-            # generate-token (the embedding app passed a known identity), so these are the
-            # business's existing customers, not leads the agent captured.
-            .filter(Customer.meta_data.is_(None))
+            # Exclude integration-authenticated people (identified via generate-token) —
+            # they're the business's existing customers, not leads the agent captured.
+            .filter(Customer.is_authenticated.is_(False))
             # Only people who actually engaged (have chat history) — drops the huge tail of
             # empty widget-loads that created a customer but never sent a message.
             .filter(last_activity_sq.c.cid.isnot(None))
@@ -156,7 +155,7 @@ class PeopleRepository:
         # Same scoping as list_people: exclude merged rows and integration-authenticated
         # (generate-token) customers so the KPIs count only organic visitors/leads.
         not_merged = Customer.merged_into_customer_id.is_(None)
-        organic = Customer.meta_data.is_(None)
+        organic = Customer.is_authenticated.is_(False)
         # Engaged = actually chatted (has chat history) — excludes empty widget-loads.
         engaged = exists().where(ChatHistory.customer_id == Customer.id)
         total = self.db.query(func.count(Customer.id)).filter(

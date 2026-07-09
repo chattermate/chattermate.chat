@@ -84,8 +84,9 @@ def test_no_capture_when_disabled(db, test_agent, test_organization_id, config):
 
 
 def test_no_capture_for_authenticated_customer(db, test_agent, test_organization_id, config):
-    # Integration-authenticated customer (generate-token set meta_data) — never a lead.
+    # Integration-authenticated customer (identified via generate-token) — never a lead.
     authed = Customer(email="portal@acme.com", organization_id=test_organization_id,
+                      is_authenticated=True,
                       meta_data={"student_name": "Sam", "center_name": "MMCA"})
     db.add(authed); db.commit(); db.refresh(authed)
     resp = record_lead_capture(
@@ -95,6 +96,22 @@ def test_no_capture_for_authenticated_customer(db, test_agent, test_organization
     )
     assert resp is None
     assert has_captured_lead(db, authed.id, test_agent.id) is False
+
+
+def test_capture_for_customer_with_meta_data_but_not_authenticated(db, test_agent, test_organization_id, config):
+    # meta_data present but not authenticated (e.g. UTM data on an organic visitor) —
+    # must still be captured as a lead (regression: meta_data alone must not block).
+    from app.models.customer import Customer as _Customer
+    visitor = _Customer(email="anon@acme.com", organization_id=test_organization_id,
+                        meta_data={"utm": "google"})
+    db.add(visitor); db.commit(); db.refresh(visitor)
+    resp = record_lead_capture(
+        db, config, organization_id=test_organization_id, agent_id=test_agent.id,
+        customer_id=visitor.id, session_id=None,
+        lead_data={"email": "lead@acme.com"}, summary="s", consent=True,
+    )
+    assert resp is not None
+    assert has_captured_lead(db, resp.customer_id, test_agent.id) is True
 
 
 def test_record_requires_valid_email(db, test_agent, test_organization_id, config):
