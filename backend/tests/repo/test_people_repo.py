@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from app.models.customer import Customer, LeadStage
 from app.models.lead_capture import LeadCaptureResponse
+from app.models.chat_history import ChatHistory
 from app.repositories.people import PeopleRepository
 
 
@@ -27,10 +28,17 @@ def repo(db):
     return PeopleRepository(db)
 
 
-def _customer(db, org_id, **kw):
+def _customer(db, org_id, chatted=True, **kw):
+    """Create a customer. By default also adds a chat message so it counts as
+    'engaged' (People only shows people who actually chatted). Pass chatted=False
+    to simulate an empty widget-load."""
     c = Customer(email=kw.pop("email", f"{uuid4().hex}@noemail.com"),
                  organization_id=org_id, **kw)
     db.add(c); db.commit(); db.refresh(c)
+    if chatted:
+        db.add(ChatHistory(organization_id=org_id, customer_id=c.id,
+                           message="hi", message_type="user"))
+        db.commit()
     return c
 
 
@@ -96,6 +104,18 @@ def test_get_detail_and_mark_customer(repo, db, test_organization_id, test_agent
 
 def test_get_detail_missing_returns_none(repo, test_organization_id):
     assert repo.get_detail(test_organization_id, uuid4()) is None
+
+
+def test_unengaged_widget_loads_excluded(repo, db, test_organization_id):
+    """A customer that never chatted (empty widget-load) is excluded from People."""
+    _customer(db, test_organization_id, email="chatted@acme.com", chatted=True,
+              lead_stage=LeadStage.LEAD)
+    _customer(db, test_organization_id, chatted=False)  # loaded widget, never messaged
+
+    items, total = repo.list_people(test_organization_id)
+    assert total == 1
+    assert items[0]["email"] == "chatted@acme.com"
+    assert repo.get_stats(test_organization_id)["total_people"] == 1
 
 
 def test_authenticated_customers_excluded(repo, db, test_organization_id):

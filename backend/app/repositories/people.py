@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, desc
+from sqlalchemy import func, or_, desc, exists
 from typing import Optional, Tuple, List
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
@@ -111,6 +111,9 @@ class PeopleRepository:
             # generate-token (the embedding app passed a known identity), so these are the
             # business's existing customers, not leads the agent captured.
             .filter(Customer.meta_data.is_(None))
+            # Only people who actually engaged (have chat history) — drops the huge tail of
+            # empty widget-loads that created a customer but never sent a message.
+            .filter(last_activity_sq.c.cid.isnot(None))
         )
 
         if stage and stage != "all":
@@ -154,8 +157,10 @@ class PeopleRepository:
         # (generate-token) customers so the KPIs count only organic visitors/leads.
         not_merged = Customer.merged_into_customer_id.is_(None)
         organic = Customer.meta_data.is_(None)
+        # Engaged = actually chatted (has chat history) — excludes empty widget-loads.
+        engaged = exists().where(ChatHistory.customer_id == Customer.id)
         total = self.db.query(func.count(Customer.id)).filter(
-            Customer.organization_id == org_id, not_merged, organic).scalar() or 0
+            Customer.organization_id == org_id, not_merged, organic, engaged).scalar() or 0
         new_leads = self.db.query(func.count(Customer.id)).filter(
             Customer.organization_id == org_id,
             not_merged, organic,
