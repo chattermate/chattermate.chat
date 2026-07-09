@@ -55,7 +55,7 @@ def record_lead_capture(
     no valid email, or consent is required but not given (GDPR).
 
     Never records when lead capture is disabled for the agent, or when the customer
-    is integration-authenticated (meta_data set by generate-token) — those are the
+    is integration-authenticated (identified via generate-token) — those are the
     business's existing customers, not leads.
 
     If the captured email already belongs to ANOTHER customer in the org, the
@@ -72,11 +72,11 @@ def record_lead_capture(
     if not (config and config.enabled):
         return None
 
-    # Never capture integration-authenticated people: meta_data is only set from
-    # generate-token (the embedding app passed a known identity), so they're already
-    # the business's customers, not leads — regardless of the agent's toggle.
+    # Never capture integration-authenticated people (identified via generate-token) —
+    # they're already the business's customers, not leads, regardless of the agent's
+    # toggle. Uses the explicit flag, not meta_data (see Customer.is_authenticated).
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if customer is not None and customer.meta_data:
+    if customer is not None and customer.is_authenticated:
         return None
 
     lead_data = lead_data or {}

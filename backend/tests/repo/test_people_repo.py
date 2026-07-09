@@ -119,17 +119,25 @@ def test_unengaged_widget_loads_excluded(repo, db, test_organization_id):
 
 
 def test_authenticated_customers_excluded(repo, db, test_organization_id):
-    """Integration-authenticated people (meta_data from generate-token) are the
-    business's existing customers, not leads — excluded from People + stats."""
-    organic = _customer(db, test_organization_id, email="organic@acme.com",
-                        full_name="Organic", lead_stage=LeadStage.LEAD)
+    """Integration-authenticated people (identified via generate-token) are the
+    business's existing customers, not leads — excluded from People + stats.
+
+    Having meta_data must NOT by itself exclude a customer: meta_data is orthogonal
+    to authentication (and is stored as JSON null when empty, so the old
+    `meta_data IS NULL` test hid every organic visitor)."""
+    # Organic lead that happens to carry meta_data (e.g. UTM) — must still show.
+    _customer(db, test_organization_id, email="organic@acme.com",
+              full_name="Organic", lead_stage=LeadStage.LEAD,
+              meta_data={"utm": "google"})
+    # Integration-authenticated customer — excluded.
     _customer(db, test_organization_id, email="portal@acme.com", full_name="Portal User",
+              is_authenticated=True,
               meta_data={"student_name": "Sam", "center_name": "MMCA"})
 
     items, total = repo.list_people(test_organization_id)
     emails = {i["email"] for i in items}
-    assert "organic@acme.com" in emails
-    assert "portal@acme.com" not in emails
+    assert "organic@acme.com" in emails      # meta_data alone no longer excludes
+    assert "portal@acme.com" not in emails   # authenticated flag excludes
     assert total == 1
 
     stats = repo.get_stats(test_organization_id)
