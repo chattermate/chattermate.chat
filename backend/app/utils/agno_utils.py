@@ -56,7 +56,8 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
             return DeepSeek(api_key=api_key, id=model_name, max_tokens=max_tokens)
         elif model_type == 'GOOGLE':
             from agno.models.google import Gemini
-            return Gemini(api_key=api_key, id=model_name, max_tokens=max_tokens)
+            # Gemini's agno model exposes max_output_tokens, not max_tokens.
+            return Gemini(api_key=api_key, id=model_name, max_output_tokens=max_tokens)
         elif model_type == 'GOOGLEVERTEX':
             from agno.models.vertexai import Gemini
             return Gemini(api_key=api_key, id=model_name, max_tokens=max_tokens)

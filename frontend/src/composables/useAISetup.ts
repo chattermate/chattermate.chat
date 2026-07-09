@@ -16,6 +16,7 @@ limitations under the License.
 
 import { ref, onMounted } from 'vue'
 import { aiService, type AIConfig } from '@/services/ai'
+import type { AIProvider } from '@/types/ai'
 
 export function useAISetup() {
   const isLoading = ref(false)
@@ -29,22 +30,23 @@ export function useAISetup() {
     model: '',
     apiKey: '',
   })
-  
+
   const hasExistingConfig = ref(false)
 
-  const providers = [
-    { value: 'openai', label: 'OpenAI' },
-    { value: 'groq', label: 'Groq' }
-    // Below providers are temporarily disabled
-    // { value: 'anthropic', label: 'Anthropic' },
-    // { value: 'deepseek', label: 'DeepSeek' },
-    // { value: 'google', label: 'Google Gemini' },
-    // { value: 'googlevertex', label: 'Google Vertex AI' },
-    // { value: 'mistral', label: 'Mistral' },
-    // { value: 'huggingface', label: 'HuggingFace' },
-    // { value: 'ollama', label: 'Ollama' },
-    // { value: 'xai', label: 'xAI' }
-  ]
+  // Provider catalog is served by the backend (GET /ai/providers) — single source
+  // of truth. Values are normalized to lowercase to match the save/load flow, which
+  // upper-cases on save and lower-cases the stored model_type on load.
+  const providers = ref<AIProvider[]>([])
+
+  const loadProviders = async () => {
+    try {
+      const fetched = await aiService.getProviders()
+      providers.value = fetched.map((p) => ({ ...p, value: p.value.toLowerCase() }))
+    } catch (err: unknown) {
+      const apiError = (err as { response?: { data?: { detail?: { details?: string; error?: string } } } }).response?.data?.detail;
+      error.value = apiError?.details || apiError?.error || 'Failed to load providers'
+    }
+  }
 
   const loadExistingConfig = async () => {
     try {
@@ -113,6 +115,7 @@ export function useAISetup() {
   }
 
   onMounted(() => {
+    loadProviders()
     loadExistingConfig()
   })
 
@@ -123,6 +126,7 @@ export function useAISetup() {
     providers,
     saveAISetup,
     updateAISetup,
+    loadProviders,
     loadExistingConfig,
     hasExistingConfig
   }

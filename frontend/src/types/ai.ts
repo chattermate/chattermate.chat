@@ -14,14 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-export interface AIProvider {
+export interface AIModel {
   value: string
   label: string
 }
 
-export interface AIModel {
+export interface AIProvider {
   value: string
   label: string
+  requires_api_key: boolean
+  custom_allowed: boolean
+  models: AIModel[]
 }
 
 export interface AIConfig {

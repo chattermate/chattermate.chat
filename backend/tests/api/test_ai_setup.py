@@ -214,13 +214,17 @@ def test_setup_ai_failed_validation(client, db, test_user):
     assert data["detail"]["type"] == "invalid_api_key"
 
 def test_setup_ai_invalid_model(client, db, test_user):
-    """Test AI setup with invalid model type"""
+    """A model ID that fails the live API-key/model test is rejected.
+
+    Model IDs are no longer statically allowlisted (orgs may enter custom ones), so
+    an unusable model is caught by the live test returning False, not by validation.
+    """
     config_data = {
         "model_type": "OPENAI",
-        "model_name": "invalid-model",
-        "api_key": "test_valid_key"
+        "model_name": "nonexistent-model",
+        "api_key": "failed_validation"  # mock_test_api_key returns False for this key
     }
-    
+
     response = client.post(
         "/api/ai/setup",
         json=config_data
@@ -228,7 +232,21 @@ def test_setup_ai_invalid_model(client, db, test_user):
     assert response.status_code == 400
     data = response.json()
     assert "error" in data["detail"]
-    assert data["detail"]["type"] == "invalid_model"
+    assert data["detail"]["type"] == "invalid_api_key"
+
+def test_setup_ai_custom_model_id_succeeds(client, db, test_user):
+    """A custom (non-catalog) model ID with a working key is accepted."""
+    config_data = {
+        "model_type": "OPENAI",
+        "model_name": "gpt-some-future-model",
+        "api_key": "test_valid_key"
+    }
+
+    response = client.post(
+        "/api/ai/setup",
+        json=config_data
+    )
+    assert response.status_code == 200
 
 def test_setup_ai_invalid_provider(client, db, test_user):
     """Test AI setup with invalid provider"""
@@ -323,6 +341,24 @@ def test_setup_ai_general_exception(client, db, test_user):
         )
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to setup AI configuration"
+
+def test_get_providers(client, db, test_user):
+    """The /providers endpoint returns the catalog of selectable providers."""
+    response = client.get("/api/ai/providers")
+    assert response.status_code == 200
+    data = response.json()
+    providers = {p["value"]: p for p in data["providers"]}
+    # Newly enabled providers are present alongside OpenAI/Groq
+    for expected in ("OPENAI", "GROQ", "ANTHROPIC", "GOOGLE", "MISTRAL", "XAI", "DEEPSEEK"):
+        assert expected in providers, f"{expected} missing from /providers"
+    # ChatterMate (managed) is not a user-selectable BYO-key provider
+    assert "CHATTERMATE" not in providers
+    # Each provider exposes suggested models and BYO-key metadata
+    openai = providers["OPENAI"]
+    assert openai["requires_api_key"] is True
+    assert openai["custom_allowed"] is True
+    assert len(openai["models"]) > 0
+    assert all("value" in m and "label" in m for m in openai["models"])
 
 def test_get_ai_config_success(client, db, test_user, test_ai_config):
     """Test getting AI configuration"""
@@ -501,14 +537,15 @@ def test_validate_model_selection_groq_valid():
     # Should not raise any exception
     ai_setup_router.validate_model_selection("GROQ", "llama-3.3-70b-versatile")
 
-def test_validate_model_selection_groq_invalid():
-    """Test validate_model_selection with invalid Groq model"""
-    with pytest.raises(ai_setup_router.HTTPException) as exc_info:
-        ai_setup_router.validate_model_selection("GROQ", "invalid-model")
-    
-    assert exc_info.value.status_code == 400
-    assert "Invalid model selection" in exc_info.value.detail["error"]
-    assert "invalid_model" in exc_info.value.detail["type"]
+def test_validate_model_selection_custom_model_allowed():
+    """Custom (non-catalog) model IDs are allowed for any known provider.
+
+    Model IDs are no longer a hard allowlist — orgs may type their own; the live
+    API-key test is what rejects a bad model ID.
+    """
+    # Should not raise — custom model IDs are permitted for known providers
+    ai_setup_router.validate_model_selection("GROQ", "some-custom-groq-model")
+    ai_setup_router.validate_model_selection("OPENAI", "gpt-custom-preview")
 
 def test_validate_model_selection_openai_valid():
     """Test validate_model_selection with valid OpenAI model"""
@@ -516,20 +553,28 @@ def test_validate_model_selection_openai_valid():
     ai_setup_router.validate_model_selection("OPENAI", "gpt-4o-mini")
     ai_setup_router.validate_model_selection("OPENAI", "o1-mini")
 
-def test_validate_model_selection_openai_invalid():
-    """Test validate_model_selection with invalid OpenAI model"""
+def test_validate_model_selection_empty_model_name():
+    """A known provider still requires a non-empty model ID."""
     with pytest.raises(ai_setup_router.HTTPException) as exc_info:
-        ai_setup_router.validate_model_selection("OPENAI", "gpt-invalid")
-    
+        ai_setup_router.validate_model_selection("OPENAI", "   ")
+
     assert exc_info.value.status_code == 400
     assert "Invalid model selection" in exc_info.value.detail["error"]
     assert "invalid_model" in exc_info.value.detail["type"]
 
+def test_validate_model_selection_newly_enabled_providers():
+    """Providers added to the catalog (Anthropic, Google, etc.) now validate."""
+    # Should not raise — these are known providers in the catalog now
+    ai_setup_router.validate_model_selection("ANTHROPIC", "claude-sonnet-5")
+    ai_setup_router.validate_model_selection("GOOGLE", "gemini-2.5-flash")
+    ai_setup_router.validate_model_selection("MISTRAL", "mistral-large-latest")
+    ai_setup_router.validate_model_selection("XAI", "grok-4")
+
 def test_validate_model_selection_unsupported_provider():
-    """Test validate_model_selection with unsupported provider"""
+    """Test validate_model_selection with a provider that is not in the catalog"""
     with pytest.raises(ai_setup_router.HTTPException) as exc_info:
-        ai_setup_router.validate_model_selection("ANTHROPIC", "claude-3")
-    
+        ai_setup_router.validate_model_selection("FAKE_PROVIDER", "some-model")
+
     assert exc_info.value.status_code == 400
     assert "Unsupported provider" in exc_info.value.detail["error"]
     assert "invalid_provider" in exc_info.value.detail["type"]

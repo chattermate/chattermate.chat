@@ -52,6 +52,8 @@ pgvector
 google-generativeai
 google-cloud-aiplatform
 ollama
+anthropic
+mistralai<2  # agno 1.7.6 uses the mistralai 1.x API (mistralai.models); 2.x breaks the import
 
 #ocr
 rapidocr-onnxruntime
