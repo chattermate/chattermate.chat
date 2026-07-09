@@ -411,9 +411,11 @@ window.ChatterMate;
       /* Chat Initiation Message Styles */
       #${config.initiationMessageId} {
         position: fixed !important;
-        bottom: 95px !important;
-        right: 20px !important;
-        max-width: 240px !important;
+        /* Sit above the 64px launcher (+12px gap) and align to its right edge, so it
+           never overlaps the icon regardless of the configured launcher position. */
+        bottom: ${(config.launcherBottom || 20) + 64 + 12}px !important;
+        right: ${config.launcherRight || 20}px !important;
+        max-width: 260px !important;
         background: white !important;
         padding: 12px 36px 12px 14px !important;
         border-radius: 14px !important;
@@ -425,6 +427,7 @@ window.ChatterMate;
         transform: translateY(10px) scale(0.95);
         transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1) !important;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+        font-size: 14px !important;
         box-sizing: border-box !important;
         margin: 0 !important;
         border: none !important;
@@ -434,10 +437,20 @@ window.ChatterMate;
         min-width: 0 !important;
         min-height: 0 !important;
         max-height: none !important;
-        line-height: normal !important;
+        line-height: 1.4 !important;
         text-align: left !important;
         vertical-align: baseline !important;
         overflow: visible !important;
+      }
+      /* Clamp the nudge text to 4 lines with an ellipsis so a long welcome/initiation
+         message can never balloon the bubble over the page or into the launcher.
+         Applied to the text node only, so the orb (left:-34px) is never clipped. */
+      #${config.initiationMessageId} .initiation-message-text {
+        margin: 0 !important;
+        display: -webkit-box !important;
+        -webkit-line-clamp: 4 !important;
+        -webkit-box-orient: vertical !important;
+        overflow: hidden !important;
       }
 
       /* Siri-style orb avatar beside the nudge (design comp) */

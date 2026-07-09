@@ -14,10 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, List
+from typing_extensions import Annotated
 from uuid import UUID
 import enum
+
+# Cap launcher/welcome copy so it can't balloon the widget (the launcher nudge is
+# also clamped to 4 lines client-side). Kept generous but bounded.
+InitiationMessage = Annotated[str, Field(max_length=200)]
 
 
 class ChatStyle(str, enum.Enum):
@@ -67,10 +72,10 @@ class CustomizationBase(BaseModel):
     customization_metadata: Optional[Dict] = {}
     chat_style: Optional[ChatStyle] = ChatStyle.CHATBOT
     widget_position: Optional[WidgetPosition] = WidgetPosition.FLOATING
-    welcome_title: Optional[str] = None
-    welcome_subtitle: Optional[str] = None
-    welcome_message: Optional[str] = None
-    chat_initiation_messages: Optional[List[str]] = None
+    welcome_title: Optional[str] = Field(default=None, max_length=80)
+    welcome_subtitle: Optional[str] = Field(default=None, max_length=140)
+    welcome_message: Optional[str] = Field(default=None, max_length=300)
+    chat_initiation_messages: Optional[List[InitiationMessage]] = None
     quick_actions: Optional[List[str]] = None
     show_citations: Optional[bool] = False
     collect_email: Optional[bool] = False
