@@ -131,12 +131,34 @@ class Crawl4AIFallback:
                 ]
             )
             
+            # Wait out short bot-check interstitials (WordPress.com / Cloudflare
+            # "Checking your browser… Secured by wp.com") which JS-redirect to the
+            # real page after a few seconds. Only *unambiguous* interstitial
+            # markers are used, so the predicate is immediately true for normal
+            # pages (no added latency, no false timeouts); it only waits when a
+            # real challenge is present, and if it never clears it times out and
+            # we fall back to whatever HTML we have (the reader then skips it).
+            wait_for_real_content = (
+                "js:() => { const t = document.body ? "
+                "document.body.innerText.toLowerCase() : ''; "
+                "return t.length > 0 "
+                "&& !t.includes('secured by wp.com') "
+                "&& !t.includes('cf-browser-verification') "
+                "&& !t.includes('verifying you are human'); }"
+            )
             crawler_config = CrawlerRunConfig(
                 cache_mode=CacheMode.BYPASS,
                 wait_until="domcontentloaded",
                 page_timeout=self.timeout * 1000,
+                wait_for=wait_for_real_content,
                 delay_before_return_html=2.0,
                 screenshot=False,
+                # Anti-bot: simulate a real user and hide automation flags so
+                # WordPress.com / Cloudflare interstitials clear for the headless
+                # browser instead of looping on "Checking your browser…".
+                magic=True,
+                simulate_user=True,
+                override_navigator=True,
             )
             
             logger.info(f"🌐 Starting Crawl4AI for content extraction: {url}")
