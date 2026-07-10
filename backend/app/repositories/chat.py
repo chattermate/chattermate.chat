@@ -131,6 +131,18 @@ class ChatRepository:
             self.db.rollback()
             raise
 
+    def update_message_attributes(self, message_id: int, attributes: Dict[str, Any]) -> None:
+        """Merge keys into a message's attributes JSON (e.g. delivery_status)."""
+        try:
+            message = self.db.query(ChatHistory).filter(ChatHistory.id == message_id).first()
+            if not message:
+                return
+            message.attributes = {**(message.attributes or {}), **attributes}
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Error updating message attributes: {str(e)}")
+            self.db.rollback()
+
     def _update_session_sentiment(self, session_id) -> None:
         """Recompute and update the overall session sentiment from customer messages."""
         try:

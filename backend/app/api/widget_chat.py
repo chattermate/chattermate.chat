@@ -43,6 +43,7 @@ from app.models.session_to_agent import SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
 from app.repositories.agent import AgentRepository
 from app.services.lead_capture import has_captured_lead, record_lead_capture
+from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
 from app.repositories.jira import JiraRepository
 from app.models.ai_config import AIModelType
@@ -1198,8 +1199,23 @@ async def handle_agent_message(sid, data):
             response_payload['attachments'] = attachments_data
             response_payload['message_id'] = created_message.id
 
-        await sio.emit('chat_response', response_payload, room=session_id, namespace='/widget')
-
+        delivery = await deliver_to_customer(db, session_data, response_payload)
+        if not delivery.ok:
+            if delivery.reason == 'window_expired':
+                error_message = (
+                    "The customer's messaging window has expired — "
+                    "send an approved template message to re-open the conversation."
+                    if delivery.can_template else
+                    "The customer's messaging window has expired; this message could not be delivered."
+                )
+            else:
+                error_message = 'Message saved but could not be delivered to the customer.'
+            chat_repo.update_message_attributes(created_message.id, {'delivery_status': delivery.reason or 'failed'})
+            await sio.emit('error', {
+                'error': error_message,
+                'type': 'delivery_error',
+                'session_id': session_id
+            }, to=sid, namespace='/agent')
 
     except Exception as e:
         logger.error(f"Agent message error for sid {sid}: {str(e)}")
