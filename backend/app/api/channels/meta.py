@@ -129,6 +129,12 @@ async def connect_instagram(
     if not ok:
         raise HTTPException(status_code=400,
                             detail=f"Could not verify Instagram credentials: {data.get('error', {}).get('message', 'invalid token or account id')}")
+    # Webhook routing matches entry.id against this value, so reject anything
+    # that isn't the actual IG business-account id (e.g. a pasted Page id —
+    # the page token can read that node too, so ok=True alone isn't enough).
+    if str(data.get("id")) != request.ig_id:
+        raise HTTPException(status_code=400,
+                            detail="The ID entered is not an Instagram professional account ID")
 
     account = _upsert_account(
         db, organization, ChannelType.INSTAGRAM.value,

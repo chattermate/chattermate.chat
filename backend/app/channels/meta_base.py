@@ -112,11 +112,13 @@ async def graph_post(path: str, access_token: str, payload: dict) -> SendResult:
 
 async def graph_get(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
     """GET a Graph node (used to validate tokens during onboarding).
-    Returns (ok, decoded-json)."""
+    Returns (ok, decoded-json). Token goes in the Authorization header (like
+    graph_post) so it never appears in URLs/proxy logs."""
     try:
         response = await _get_http_client().get(
             graph_url(path),
-            params={**(params or {}), "access_token": access_token},
+            params=params or {},
+            headers={"Authorization": f"Bearer {access_token}"},
         )
         data = response.json()
         return (response.status_code < 300, data)
