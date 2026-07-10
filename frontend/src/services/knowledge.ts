@@ -138,6 +138,11 @@ export const knowledgeService = {
     return response.data
   },
 
+  async getOrgQueueItems(orgId: string) {
+    const response = await api.get(`/knowledge/queue/organization/${orgId}`)
+    return response.data
+  },
+
   async deleteQueueItem(queueId: number) {
     const response = await api.delete(`/knowledge/queue/${queueId}`)
     return response.data

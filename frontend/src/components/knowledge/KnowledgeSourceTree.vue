@@ -84,18 +84,22 @@ function sourceGlyph(type: string): string {
           <button
             class="src__toggle"
             type="button"
-            :aria-expanded="source.expanded"
-            @click="emit('toggle', source)"
+            :aria-expanded="source.queued ? undefined : source.expanded"
+            :disabled="source.queued"
+            @click="!source.queued && emit('toggle', source)"
           >
-            <svg class="chev" :class="{ 'chev--open': source.expanded }" viewBox="0 0 24 24" width="14" height="14"
-              fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
-              aria-hidden="true">
+            <svg v-if="!source.queued" class="chev" :class="{ 'chev--open': source.expanded }" viewBox="0 0 24 24"
+              width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
               <path d="M9 6l6 6-6 6" />
             </svg>
+            <span v-else class="chev-spacer"></span>
             <span class="src__glyph" :class="`src__glyph--${sourceGlyph(source.type).toLowerCase()}`">{{ sourceGlyph(source.type) }}</span>
             <span class="src__meta">
               <span class="src__name" :title="source.name">{{ source.name }}</span>
-              <span class="src__count">{{ (source.pages ?? source.pageStubs).length }} sub-pages</span>
+              <span class="src__count">
+                {{ source.queued ? statusLabel[statusOf(source)] : (source.pages ?? source.pageStubs).length + ' sub-pages' }}
+              </span>
             </span>
           </button>
           <span class="dot" :class="`dot--${statusOf(source)}`" :title="statusLabel[statusOf(source)]"></span>
@@ -113,7 +117,7 @@ function sourceGlyph(type: string): string {
           </button>
         </div>
 
-        <div v-if="source.expanded" class="src__pages">
+        <div v-if="source.expanded && !source.queued" class="src__pages">
           <div v-if="source.loadingContent" class="src__hint">Loading pages…</div>
           <div v-else-if="source.contentError" class="src__hint src__hint--error">{{ source.contentError }}</div>
           <template v-else>
@@ -218,6 +222,15 @@ function sourceGlyph(type: string): string {
   flex-shrink: 0;
   color: var(--muted2);
   transition: transform 0.18s ease;
+}
+
+.chev-spacer {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.src__toggle:disabled {
+  cursor: default;
 }
 
 .chev--open {

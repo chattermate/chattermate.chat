@@ -40,6 +40,9 @@ export interface ExplorerSource {
   loadingContent: boolean
   contentError: string | null
   pages: KnowledgeSubPage[] | null
+  // True for a placeholder built from an in-flight queue item that has not yet
+  // produced a real Knowledge source (id is the negated queue-item id).
+  queued?: boolean
 }
 
 const POLL_INTERVAL_MS = 10000
@@ -74,6 +77,19 @@ export function useKnowledgeExplorer(
   // Source names that were crawling on the previous poll tick, so we can force a
   // final content refresh once a crawl finishes.
   let crawlingNames = new Set<string>()
+  // Queue-item ids seen on the previous tick, so we detect a crawl finishing
+  // (an item leaving the queue) even if it was never observed as active.
+  let lastQueueIds = new Set<number>()
+
+  const queueIds = () => new Set(queueItems.value.map((q) => q.id))
+  const activeCrawlNames = () =>
+    new Set(
+      queueItems.value
+        .filter((q) => q.status === 'pending' || q.status === 'processing')
+        .map((q) => q.source),
+    )
+  const setsDiffer = (a: Set<number>, b: Set<number>) =>
+    a.size !== b.size || [...a].some((id) => !b.has(id))
 
   const findSource = (id: number) => sources.value.find((s) => s.id === id)
 
@@ -121,14 +137,52 @@ export function useKnowledgeExplorer(
   }
 
   const fetchQueue = async () => {
-    if (mode !== 'agent' || !agentId) return
     try {
-      const response = await knowledgeService.getAgentQueueItems(agentId)
+      const response =
+        mode === 'agent' && agentId
+          ? await knowledgeService.getAgentQueueItems(agentId)
+          : await knowledgeService.getOrgQueueItems(organizationId)
       queueItems.value = response.queue_items || []
     } catch (err) {
       console.error('Failed to load knowledge queue:', err)
     }
   }
+
+  // A queue item's source_type ('website' | 'pdf_url' | 'pdf_file') mapped to the
+  // tree's source-kind glyph.
+  const queueKind = (sourceType: string): string => {
+    if (sourceType.includes('pdf')) return 'pdf'
+    if (sourceType.includes('web')) return 'web'
+    return 'custom'
+  }
+
+  // Placeholder source for an in-flight queue item (negative id = queue-item id).
+  const toSyntheticSource = (item: QueueItem): ExplorerSource => ({
+    id: -item.id,
+    name: item.source,
+    type: queueKind(item.source_type),
+    pageStubs: [],
+    expanded: false,
+    loadingContent: false,
+    contentError: null,
+    pages: [],
+    queued: true,
+  })
+
+  // Real sources plus a placeholder for every in-flight queue item that has not
+  // yet produced a real source — so a just-queued crawl shows immediately and is
+  // replaced by the real source once indexing completes and the poll refetches.
+  const allSources = computed<ExplorerSource[]>(() => {
+    const realNames = new Set(sources.value.map((s) => s.name))
+    const seen = new Set<string>()
+    const placeholders: ExplorerSource[] = []
+    for (const item of queueItems.value) {
+      if (realNames.has(item.source) || seen.has(item.source)) continue
+      seen.add(item.source)
+      placeholders.push(toSyntheticSource(item))
+    }
+    return [...placeholders, ...sources.value]
+  })
 
   // Resolve the source by id on every mutation. A concurrent (poll-driven)
   // fetchSources() replaces the objects in `sources.value`, so writing to the
@@ -211,8 +265,8 @@ export function useKnowledgeExplorer(
 
   const filteredSources = computed(() => {
     const q = normalizedQuery.value
-    if (!q) return sources.value
-    return sources.value.filter((source) => {
+    if (!q) return allSources.value
+    return allSources.value.filter((source) => {
       if (source.name.toLowerCase().includes(q)) return true
       const rows = pageRows(source)
       return rows.some((r) => r.title.toLowerCase().includes(q) || r.page_id.toLowerCase().includes(q))
@@ -276,12 +330,17 @@ export function useKnowledgeExplorer(
     isDeleting.value = true
     error.value = null
     try {
-      await knowledgeService.deleteKnowledge(source.id)
+      // A queued placeholder isn't a real source yet — cancel its queue item.
+      if (source.queued) {
+        await knowledgeService.deleteQueueItem(-source.id)
+      } else {
+        await knowledgeService.deleteKnowledge(source.id)
+      }
       if (selectedSourceId.value === source.id) {
         selectedSourceId.value = null
         selectedPageId.value = null
       }
-      await fetchSources()
+      await Promise.all([fetchSources(), fetchQueue()])
     } catch (err: unknown) {
       console.error('Failed to delete source:', err)
       error.value = err instanceof Error ? err.message : 'Failed to delete source'
@@ -346,20 +405,22 @@ export function useKnowledgeExplorer(
 
   const refresh = async () => {
     await Promise.all([fetchSources(), fetchQueue()])
+    // Baseline the queue snapshot so the first poll can detect a crawl that
+    // finishes before it is ever observed as active.
+    lastQueueIds = queueIds()
+    crawlingNames = activeCrawlNames()
   }
 
   const startPolling = () => {
-    if (pollTimer || mode !== 'agent') return
+    if (pollTimer) return
     pollTimer = setInterval(async () => {
       await fetchQueue()
-      const active = new Set(
-        queueItems.value
-          .filter((q) => q.status === 'pending' || q.status === 'processing')
-          .map((q) => q.source),
-      )
-      // Reconcile only while a crawl is in flight, or on the tick a crawl just
-      // finished, to avoid needless refetches when the tab sits idle.
-      if (active.size || crawlingNames.size) {
+      const active = activeCrawlNames()
+      const currentIds = queueIds()
+      // Reconcile when a crawl is in flight OR the queue changed since the last
+      // tick (an item was added or finished/removed) — the latter catches a
+      // crawl that completed within a single poll window.
+      if (active.size || setsDiffer(currentIds, lastQueueIds)) {
         await fetchSources(true)
         // Force-refresh the content of any expanded source that is (or just was)
         // crawling, so newly-extracted pages appear without a manual re-expand.
@@ -371,6 +432,7 @@ export function useKnowledgeExplorer(
         }
       }
       crawlingNames = active
+      lastQueueIds = currentIds
     }, POLL_INTERVAL_MS)
   }
 

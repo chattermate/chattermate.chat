@@ -321,6 +321,20 @@ def test_get_queue_status(client: TestClient, test_knowledge_queue):
     assert data["id"] == test_knowledge_queue.id
     assert data["status"] == "pending"
 
+def test_get_organization_queue_items(client: TestClient, test_organization, test_knowledge_queue):
+    """The org queue endpoint returns in-flight items for the org."""
+    response = client.get(f"/api/v1/knowledge/queue/organization/{test_organization.id}")
+    assert response.status_code == 200
+    sources = [item["source"] for item in response.json()["queue_items"]]
+    assert test_knowledge_queue.source in sources
+
+
+def test_get_organization_queue_items_wrong_org(client: TestClient):
+    """The org queue endpoint rejects a different organization."""
+    response = client.get(f"/api/v1/knowledge/queue/organization/{uuid4()}")
+    assert response.status_code == 403
+
+
 def test_get_processor_status(client: TestClient):
     """Test getting processor status"""
     response = client.get("/api/v1/knowledge/processor/status")

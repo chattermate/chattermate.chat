@@ -46,8 +46,15 @@ const addInitialUrl = ref('')
 const addInitialType = ref<'website' | 'sitemap' | 'pdf' | 'text'>('website')
 const isSubmittingSource = ref(false)
 
-// A single, reusable confirm dialog for the two destructive actions.
-const confirmState = ref<{ title: string; message: string; action: () => Promise<void> } | null>(null)
+// A single, reusable confirm dialog for the destructive actions.
+interface ConfirmState {
+  title: string
+  message: string
+  actionLabel: string
+  busyLabel: string
+  action: () => Promise<void>
+}
+const confirmState = ref<ConfirmState | null>(null)
 
 const largestSource = computed(() =>
   ex.sources.value.reduce<ExplorerSource | null>((max, s) => {
@@ -83,11 +90,21 @@ async function onSubmitSource(payload: AddSourcePayload) {
 }
 
 function askDeleteSource(source: ExplorerSource) {
-  confirmState.value = {
-    title: 'Delete source',
-    message: `Delete “${source.name}” and all of its pages? This cannot be undone.`,
-    action: () => ex.deleteSource(source),
-  }
+  confirmState.value = source.queued
+    ? {
+        title: 'Cancel crawl',
+        message: `Cancel the queued crawl of “${source.name}”?`,
+        actionLabel: 'Cancel crawl',
+        busyLabel: 'Cancelling…',
+        action: () => ex.deleteSource(source),
+      }
+    : {
+        title: 'Delete source',
+        message: `Delete “${source.name}” and all of its pages? This cannot be undone.`,
+        actionLabel: 'Delete',
+        busyLabel: 'Deleting…',
+        action: () => ex.deleteSource(source),
+      }
 }
 
 function askDeletePage() {
@@ -96,6 +113,8 @@ function askDeletePage() {
   confirmState.value = {
     title: 'Delete page',
     message: `Delete “${page.title}” from this source? This cannot be undone.`,
+    actionLabel: 'Delete',
+    busyLabel: 'Deleting…',
     action: () => ex.deletePage(),
   }
 }
@@ -206,7 +225,7 @@ onUnmounted(() => {
         <div class="confirm__actions">
           <button class="btn btn--ghost" type="button" :disabled="ex.isDeleting.value" @click="confirmState = null">Cancel</button>
           <button class="btn btn--danger-solid" type="button" :disabled="ex.isDeleting.value" @click="runConfirm">
-            {{ ex.isDeleting.value ? 'Deleting…' : 'Delete' }}
+            {{ ex.isDeleting.value ? confirmState.busyLabel : confirmState.actionLabel }}
           </button>
         </div>
       </div>

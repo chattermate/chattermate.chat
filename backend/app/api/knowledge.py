@@ -958,6 +958,28 @@ async def get_knowledge_by_agent(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _enum_value(enum_field):
+    """Safely unwrap an enum field to its string value (or None)."""
+    if enum_field is None:
+        return None
+    return enum_field.value if hasattr(enum_field, 'value') else str(enum_field)
+
+
+def _serialize_queue_item(item: KnowledgeQueue) -> dict:
+    """Shape a KnowledgeQueue row for the queue-list API responses."""
+    return {
+        "id": item.id,
+        "source": item.source,
+        "source_type": item.source_type,
+        "status": _enum_value(item.status),
+        "error": item.error,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        "processing_stage": _enum_value(item.processing_stage),
+        "progress_percentage": item.progress_percentage or 0,
+    }
+
+
 @router.get("/queue/agent/{agent_id}")
 async def get_agent_queue_items(
     agent_id: str,
@@ -973,7 +995,6 @@ async def get_agent_queue_items(
             raise HTTPException(status_code=400, detail="Invalid agent ID format")
 
         logger.debug(f"Getting queue items for agent {agent_uuid}")
-        queue_repo = KnowledgeQueueRepository(db)
 
         # Get queue items for this agent (excluding completed ones)
         queue_items = db.query(KnowledgeQueue).filter(
@@ -982,32 +1003,37 @@ async def get_agent_queue_items(
             KnowledgeQueue.status.in_([QueueStatus.PENDING, QueueStatus.PROCESSING, QueueStatus.FAILED])
         ).order_by(KnowledgeQueue.created_at.desc()).all()
 
-        result = []
-        for item in queue_items:
-            # Safely get enum values
-            def get_enum_value(enum_field):
-                if enum_field is None:
-                    return None
-                return enum_field.value if hasattr(enum_field, 'value') else str(enum_field)
-
-            result.append({
-                "id": item.id,
-                "source": item.source,
-                "source_type": item.source_type,
-                "status": get_enum_value(item.status),
-                "error": item.error,
-                "created_at": item.created_at.isoformat() if item.created_at else None,
-                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-                "processing_stage": get_enum_value(item.processing_stage),
-                "progress_percentage": item.progress_percentage or 0
-            })
-
-        return {"queue_items": result}
+        return {"queue_items": [_serialize_queue_item(item) for item in queue_items]}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting queue items for agent: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/queue/organization/{org_id}")
+async def get_organization_queue_items(
+    org_id: UUID,
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Get all in-flight queue items (pending, processing, failed) for an org."""
+    try:
+        if current_user.organization_id != org_id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to organization")
+
+        queue_items = db.query(KnowledgeQueue).filter(
+            KnowledgeQueue.organization_id == org_id,
+            KnowledgeQueue.status.in_([QueueStatus.PENDING, QueueStatus.PROCESSING, QueueStatus.FAILED])
+        ).order_by(KnowledgeQueue.created_at.desc()).all()
+
+        return {"queue_items": [_serialize_queue_item(item) for item in queue_items]}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting queue items for org: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
