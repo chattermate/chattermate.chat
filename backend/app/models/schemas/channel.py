@@ -39,6 +39,34 @@ class TelegramConnectRequest(BaseModel):
     bot_token: str
 
 
+class WhatsAppConnectRequest(BaseModel):
+    """Manual WhatsApp Cloud API credentials (self-hosters with their own Meta app)."""
+    phone_number_id: str
+    access_token: str
+    waba_id: Optional[str] = None
+    display_name: Optional[str] = None
+
+
+class MessengerConnectRequest(BaseModel):
+    page_id: str
+    page_access_token: str
+    display_name: Optional[str] = None
+
+
+class InstagramConnectRequest(BaseModel):
+    ig_id: str
+    page_access_token: str
+    display_name: Optional[str] = None
+
+
+class TemplateSendRequest(BaseModel):
+    """Reopen an expired WhatsApp window with an approved template."""
+    session_id: UUID
+    template_name: str
+    language: str = "en_US"
+    components: Optional[list] = None
+
+
 class AgentChannelConfigRequest(BaseModel):
     agent_id: UUID
     is_active: bool = True

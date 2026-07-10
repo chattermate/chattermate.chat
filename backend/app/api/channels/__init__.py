@@ -18,10 +18,12 @@ from fastapi import APIRouter
 
 from app.api.channels.accounts import router as accounts_router
 from app.api.channels.telegram import router as telegram_router
+from app.api.channels.meta import router as meta_router
 from app.api.channels.agent_config import router as agent_config_router
 
 # Aggregates channel onboarding/management routes under /channels
 router = APIRouter()
 router.include_router(accounts_router, tags=["channels"])
 router.include_router(telegram_router, prefix="/telegram", tags=["channels"])
+router.include_router(meta_router, prefix="/meta", tags=["channels"])
 router.include_router(agent_config_router, prefix="/agent-config", tags=["channels"])

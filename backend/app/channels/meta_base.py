@@ -110,6 +110,31 @@ async def graph_post(path: str, access_token: str, payload: dict) -> SendResult:
     return SendResult(ok=False, error=last_error)
 
 
+async def graph_get(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
+    """GET a Graph node (used to validate tokens during onboarding).
+    Returns (ok, decoded-json)."""
+    try:
+        response = await _get_http_client().get(
+            graph_url(path),
+            params={**(params or {}), "access_token": access_token},
+        )
+        data = response.json()
+        return (response.status_code < 300, data)
+    except Exception as e:
+        logger.error(f"Graph GET {path} failed: {e}")
+        return (False, {"error": {"message": str(e)}})
+
+
+async def subscribe_app(node_id: str, access_token: str, subscribed_fields: Optional[str] = None) -> bool:
+    """Subscribe our app to a Page/WABA so its messages reach our webhook.
+    Best-effort: onboarding still succeeds if this fails (can be retried)."""
+    payload = {}
+    if subscribed_fields:
+        payload["subscribed_fields"] = subscribed_fields
+    result = await graph_post(f"{node_id}/subscribed_apps", access_token, payload)
+    return result.ok
+
+
 def _extract_message_id(data: dict) -> Optional[str]:
     # WhatsApp: {"messages":[{"id":...}]}; Messenger/IG: {"message_id":...}
     if isinstance(data.get("messages"), list) and data["messages"]:
