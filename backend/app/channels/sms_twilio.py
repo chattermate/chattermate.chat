@@ -49,12 +49,14 @@ def credentials(account: ChannelAccount) -> dict:
     return json.loads(decrypt_api_key(account.encrypted_credentials))
 
 
-def verify_twilio_signature(auth_token: str, url: str, form_params: dict, signature: str) -> bool:
-    """Twilio X-Twilio-Signature: base64(HMAC-SHA1(auth_token, url + sorted
-    concatenated form key/values))."""
+def verify_twilio_signature(auth_token: str, url: str, form_params, signature: str) -> bool:
+    """Twilio X-Twilio-Signature: base64(HMAC-SHA1(auth_token, url + form
+    key/values concatenated sorted by key)). form_params may be a dict or a
+    list of (key, value) pairs — pairs preserve repeated keys."""
     if not auth_token or not signature:
         return False
-    payload = url + "".join(f"{k}{form_params[k]}" for k in sorted(form_params))
+    pairs = list(form_params.items()) if isinstance(form_params, dict) else list(form_params)
+    payload = url + "".join(f"{k}{v}" for k, v in sorted(pairs, key=lambda kv: kv[0]))
     expected = base64.b64encode(
         hmac.new(auth_token.encode(), payload.encode(), hashlib.sha1).digest()
     ).decode()

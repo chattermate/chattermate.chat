@@ -56,7 +56,17 @@ class TestEmailAdapter:
 
     def test_parse_no_sender_or_body_yields_nothing(self):
         assert get_adapter("email").parse_inbound({"text": "x"}) == []
-        assert get_adapter("email").parse_inbound({"from": "a@b.co", "text": "> all quoted"}) == []
+        assert get_adapter("email").parse_inbound({"from": "a@b.co", "text": "  "}) == []
+
+    def test_all_quoted_body_falls_back_to_raw(self):
+        # Over-eager stripping must never drop a message entirely
+        m = get_adapter("email").parse_inbound({"from": "a@b.co", "text": "> all quoted"})[0]
+        assert m.text == "> all quoted"
+
+    def test_auto_generated_mail_dropped(self):
+        payload = {"from": "a@b.co", "text": "I am out of office",
+                   "headers": "Auto-Submitted: auto-replied\nMessage-ID: <x@y>"}
+        assert get_adapter("email").parse_inbound(payload) == []
 
     def test_strip_quoted_reply(self):
         text = "New content\n> old line\nOn Tue, someone wrote:\nmore old"

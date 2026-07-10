@@ -57,6 +57,11 @@ async def email_webhook(
 
     adapter = get_adapter(ChannelType.EMAIL.value)
     for inbound in adapter.parse_inbound(payload):
+        # A forward-all inbox can echo our own outbound reply back — never
+        # answer mail from the connected address itself.
+        if inbound.external_user_id == account.external_account_id:
+            logger.info(f"Ignoring self-addressed email on {account.external_account_id}")
+            continue
         if is_duplicate_message(ChannelType.EMAIL.value,
                                 f"{account.id}:{inbound.external_message_id}"):
             continue

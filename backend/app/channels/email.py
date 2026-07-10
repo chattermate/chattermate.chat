@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import asyncio
+import hashlib
 import hmac
 import re
 import smtplib
@@ -36,7 +37,6 @@ _REPLY_MARKERS = (
     re.compile(r"^On .{5,80} wrote:\s*$", re.M),
     re.compile(r"^-{2,}\s*Original Message\s*-{2,}", re.M | re.I),
     re.compile(r"^_{10,}\s*$", re.M),
-    re.compile(r"^From:\s.+$", re.M),
 )
 
 
@@ -48,7 +48,9 @@ def strip_quoted_reply(text: str) -> str:
         if match:
             cut = min(cut, match.start())
     lines = [line for line in text[:cut].splitlines() if not line.startswith(">")]
-    return "\n".join(lines).strip()
+    stripped = "\n".join(lines).strip()
+    # Never lose a message to over-eager stripping — fall back to the raw body
+    return stripped or text.strip()
 
 
 class EmailAdapter(ChannelAdapter):
@@ -70,7 +72,10 @@ class EmailAdapter(ChannelAdapter):
     def parse_inbound(self, payload: dict) -> List[InboundMessage]:
         """Normalize a parsed-email payload. Accepts the common field names of
         SendGrid Inbound Parse (from/to/subject/text/headers) and Brevo
-        (From/To/Subject/RawTextBody/MessageId)."""
+        (From/To/Subject/RawTextBody/MessageId). Machine-generated mail
+        (autoresponders, bounces) is dropped to prevent reply loops."""
+        if self._is_auto_generated(payload):
+            return []
         sender = payload.get("from") or payload.get("From") or ""
         if isinstance(sender, dict):  # Brevo: {"Address": ..., "Name": ...}
             sender_name, sender_email = sender.get("Name"), sender.get("Address", "")
@@ -93,7 +98,8 @@ class EmailAdapter(ChannelAdapter):
             external_account_id="",  # resolved from the webhook path
             external_conversation_id=sender_email,
             external_user_id=sender_email,
-            external_message_id=message_id or f"{sender_email}:{hash(text)}",
+            external_message_id=message_id or
+                f"{sender_email}:{hashlib.sha256(text.encode()).hexdigest()[:32]}",
             text=text,
             profile={"name": sender_name or None, "email": sender_email,
                      "subject": subject, "inbound_message_id": message_id},
@@ -133,10 +139,35 @@ class EmailAdapter(ChannelAdapter):
 
     @staticmethod
     def _smtp_send(message: EmailMessage) -> None:
-        with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS) as smtp:
-            smtp.starttls()
+        # Port 465 is implicit TLS; other ports use STARTTLS when offered
+        if int(settings.SMTP_PORT) == 465:
+            smtp = smtplib.SMTP_SSL(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
+        else:
+            smtp = smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
+            try:
+                smtp.starttls()
+            except smtplib.SMTPNotSupportedError:
+                logger.warning("SMTP server does not support STARTTLS; sending unencrypted")
+        with smtp:
             smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
             smtp.send_message(message)
+
+    @staticmethod
+    def _is_auto_generated(payload: dict) -> bool:
+        """True for autoresponders/bounces (Auto-Submitted, Precedence bulk,
+        X-Auto-Response-Suppress) — answering those creates mail loops."""
+        headers = payload.get("headers")
+        text = headers if isinstance(headers, str) else ""
+        if isinstance(headers, dict):
+            text = "\n".join(f"{k}: {v}" for k, v in headers.items())
+        lowered = text.lower()
+        if re.search(r"^auto-submitted:\s*(?!no)", lowered, re.M):
+            return True
+        if re.search(r"^precedence:\s*(bulk|junk|auto_reply|list)", lowered, re.M):
+            return True
+        if "x-auto-response-suppress:" in lowered:
+            return True
+        return False
 
     @staticmethod
     def _header(payload: dict, name: str) -> Optional[str]:

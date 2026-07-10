@@ -89,7 +89,11 @@ class LineAdapter(ChannelAdapter):
         if account is None:
             return False
         signature = headers.get("x-line-signature", "")
-        secret = credentials(account).get("channel_secret", "")
+        try:
+            secret = credentials(account).get("channel_secret", "")
+        except Exception as e:
+            logger.error(f"LINE credential decrypt failed for {account.id}: {e}")
+            return False
         if not signature or not secret:
             return False
         expected = base64.b64encode(

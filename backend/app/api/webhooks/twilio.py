@@ -54,10 +54,12 @@ async def twilio_webhook(
         raise HTTPException(status_code=404, detail="Unknown account")
 
     form = await request.form()
-    params = {key: str(value) for key, value in form.items()}
+    # multi_items preserves repeated keys — the signature covers all of them
+    param_pairs = [(key, str(value)) for key, value in form.multi_items()]
+    params = dict(param_pairs)
     signature = request.headers.get("x-twilio-signature", "")
     auth_token = credentials(account).get("auth_token", "")
-    if not verify_twilio_signature(auth_token, _public_url(account_id), params, signature):
+    if not verify_twilio_signature(auth_token, _public_url(account_id), param_pairs, signature):
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     adapter = get_adapter(ChannelType.SMS.value)
