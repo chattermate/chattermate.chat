@@ -44,3 +44,6 @@ def _ensure_loaded() -> None:
         return
     _loaded = True
     from app.channels import telegram  # noqa: F401
+    from app.channels import whatsapp  # noqa: F401
+    from app.channels import messenger  # noqa: F401
+    from app.channels import instagram  # noqa: F401

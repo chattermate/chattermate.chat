@@ -14,13 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from fastapi import APIRouter
+from typing import ClassVar
 
-from app.api.webhooks.telegram import router as telegram_router
-from app.api.webhooks.meta import router as meta_router
+from app.channels.messenger import MessengerAdapter
+from app.channels.registry import register_adapter
+from app.models.channels import ChannelType
 
-# Aggregates every channel's webhook routes under /webhooks
-router = APIRouter()
-router.include_router(telegram_router, prefix="/telegram", tags=["webhooks"])
-# One endpoint for all three Meta products (WhatsApp / Messenger / Instagram)
-router.include_router(meta_router, prefix="/meta", tags=["webhooks"])
+# Instagram DM uses the same Messenger Platform envelope (entry[].messaging[],
+# sender.id = IGSID) and the same `me/messages` Graph send with the linked
+# page token, so the only difference from Messenger is the channel identity.
+
+
+class InstagramAdapter(MessengerAdapter):
+    channel_type: ClassVar[str] = ChannelType.INSTAGRAM.value
+
+
+register_adapter(InstagramAdapter())
