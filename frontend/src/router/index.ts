@@ -68,6 +68,17 @@ const baseRoutes = [
     },
   },
   {
+    path: '/knowledge',
+    name: 'knowledge',
+    component: () => import('@/views/KnowledgeView.vue'),
+    meta: {
+      requiresAuth: true,
+      layout: 'dashboard',
+      title: 'Knowledge Base',
+      permissions: ['manage_knowledge'],
+    },
+  },
+  {
     path: '/widget/:id',
     name: 'widget',
     component: () => import('@/webclient/WidgetBuilder.vue'),

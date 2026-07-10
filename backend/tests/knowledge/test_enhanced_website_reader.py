@@ -33,6 +33,16 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
             max_links=5,
             min_content_length=50
         )
+
+        # The fetch path now runs an SSRF guard (url_safety.resolves_to_blocked_host)
+        # which does a DNS lookup — stub it to a fixed public IP so tests don't hit
+        # the network and aren't blocked.
+        dns_patcher = patch(
+            'app.knowledge.url_safety.socket.getaddrinfo',
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        self.addCleanup(dns_patcher.stop)
+        dns_patcher.start()
         
         # Create a simple HTML response for testing
         self.test_html = """
@@ -158,19 +168,69 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         self.assertIsNotNone(soup_copy.find('footer'))
         self.assertIsNotNone(soup_copy.find('main'))
         
+    def test_canonical_url(self):
+        """Fragments/trailing slashes are stripped so page variants collapse."""
+        c = self.reader._canonical_url
+        self.assertEqual(c('https://x.com/'), 'https://x.com')
+        self.assertEqual(c('https://x.com/#features'), 'https://x.com')
+        self.assertEqual(c('https://x.com/#pricing'), 'https://x.com')
+        self.assertEqual(c('https://x.com/pricing/'), 'https://x.com/pricing')
+        self.assertEqual(c('https://x.com/blogs#top'), 'https://x.com/blogs')
+        # The homepage and its anchored variants all canonicalize to one id.
+        variants = {c(u) for u in [
+            'https://x.com', 'https://x.com/', 'https://x.com/#a', 'https://x.com/#b'
+        ]}
+        self.assertEqual(len(variants), 1)
+
+    def test_looks_like_bot_challenge(self):
+        """Bot-check interstitials are detected so they aren't stored as content."""
+        f = self.reader._looks_like_bot_challenge
+        # The exact wp.com interstitial from the reported bug (strong marker).
+        self.assertTrue(f(
+            "Checking your browser This will only take a few seconds... "
+            "Secured by wp.com (URL: https://wordpress.com)"
+        ))
+        # Cloudflare markers.
+        self.assertTrue(f("cf-browser-verification"))
+        self.assertTrue(f("Just a moment..."))  # weak, but short
+        # Real content is not flagged, even if long and mentioning a weak phrase.
+        long_text = ("Our pricing is simple. " * 40) + "checking your browser settings is optional."
+        self.assertFalse(f(long_text))
+        self.assertFalse(f("Welcome to our pricing page. Plans start at $10 per seat."))
+        self.assertFalse(f(""))
+        self.assertFalse(f(None))
+
+    def test_extract_links_dedupes_page_variants(self):
+        """The homepage linked via #anchors and trailing slash yields one link."""
+        html = """
+        <html><body>
+          <a href="https://site.com/#features">Features</a>
+          <a href="https://site.com/#pricing">Pricing</a>
+          <a href="https://site.com/">Home</a>
+          <a href="https://site.com/docs">Docs</a>
+          <a href="https://site.com/docs/">Docs slash</a>
+        </body></html>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        links = self.reader._extract_links(soup, 'https://site.com')
+        # All homepage variants collapse (and equal the base, so are dropped);
+        # /docs and /docs/ collapse to a single canonical link.
+        self.assertEqual(links, ['https://site.com/docs'])
+
     @patch('httpx.Client')
     def test_crawl_with_successful_request(self, mock_client):
         """Test crawling with successful HTTP requests"""
         # Mock HTTP client response
         mock_response = MagicMock()
         mock_response.text = self.test_html
+        mock_response.is_redirect = False
         mock_response.raise_for_status = MagicMock()
-        
+
         # Setup mock client
         mock_client_instance = MagicMock()
         mock_client_instance.get.return_value = mock_response
         mock_client.return_value.__enter__.return_value = mock_client_instance
-        
+
         # Test crawling
         result = self.reader.crawl('https://example.com')
         
@@ -188,17 +248,24 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         """Test crawling with retries on failed requests"""
         # Mock HTTP errors for the first two attempts, then success
         mock_response_error = MagicMock()
+        mock_response_error.is_redirect = False
         mock_response_error.raise_for_status.side_effect = httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock(status_code=500))
-        
+
+        mock_response_request_error = MagicMock(
+            is_redirect=False,
+            raise_for_status=MagicMock(side_effect=httpx.RequestError("Timeout", request=MagicMock())),
+        )
+
         mock_response_success = MagicMock()
         mock_response_success.text = self.test_html
+        mock_response_success.is_redirect = False
         mock_response_success.raise_for_status = MagicMock()
-        
+
         # Setup mock client - the parallel processing may create multiple client instances
         mock_client_instance = MagicMock()
         mock_client_instance.get.side_effect = [
             mock_response_error,  # First attempt fails with HTTP error
-            MagicMock(raise_for_status=MagicMock(side_effect=httpx.RequestError("Timeout", request=MagicMock()))),  # Second attempt fails with request error
+            mock_response_request_error,  # Second attempt fails with request error
             mock_response_success  # Third attempt succeeds
         ]
         mock_client.return_value.__enter__.return_value = mock_client_instance
@@ -219,13 +286,14 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         # Mock HTTP response
         mock_response = MagicMock()
         mock_response.text = self.test_html
+        mock_response.is_redirect = False
         mock_response.raise_for_status = MagicMock()
-        
+
         # Setup mock client
         mock_client_instance = MagicMock()
         mock_client_instance.get.return_value = mock_response
         mock_client.return_value.__enter__.return_value = mock_client_instance
-        
+
         # Test read method
         documents = self.reader.read('https://example.com')
         

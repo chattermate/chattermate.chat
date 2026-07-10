@@ -59,6 +59,7 @@ export const knowledgeService = {
     urls: string[],
     agentId?: string,
     onProgress?: (progress: number) => void,
+    maxLinks?: number,
   ): Promise<KnowledgeUploadResponse> {
     try {
       let completed = 0
@@ -67,6 +68,8 @@ export const knowledgeService = {
         agent_id: agentId,
         pdf_urls: urls.filter((url) => url.toLowerCase().endsWith('.pdf')),
         websites: urls.filter((url) => !url.toLowerCase().endsWith('.pdf')),
+        // Optional crawl-scope cap for websites (e.g. 1 = "this page only").
+        ...(maxLinks ? { max_links: maxLinks } : {}),
       })
       if (onProgress) {
         const interval = setInterval(() => {
@@ -135,6 +138,11 @@ export const knowledgeService = {
     return response.data
   },
 
+  async getOrgQueueItems(orgId: string) {
+    const response = await api.get(`/knowledge/queue/organization/${orgId}`)
+    return response.data
+  },
+
   async deleteQueueItem(queueId: number) {
     const response = await api.delete(`/knowledge/queue/${queueId}`)
     return response.data
@@ -156,12 +164,64 @@ export const knowledgeService = {
     return response.data
   },
 
-  async addSubpage(knowledgeId: number, subpageName: string, content: string) {
-    const response = await api.post(`/knowledge/${knowledgeId}/subpage`, { 
+  async addSubpage(knowledgeId: number, subpageName: string, content: string, url?: string) {
+    const response = await api.post(`/knowledge/${knowledgeId}/subpage`, {
       subpage_name: subpageName,
-      content 
+      content,
+      ...(url ? { url } : {}),
     })
     return response.data
+  },
+
+  // Replace a whole sub-page's content and re-embed it. `pageId` is the page's
+  // base id (its URL/name) — encoded for the backend `:path` route param.
+  async updatePage(knowledgeId: number, pageId: string, content: string, title?: string) {
+    const response = await api.put(
+      `/knowledge/${knowledgeId}/page/${encodeURIComponent(pageId)}`,
+      { content, title },
+    )
+    return response.data
+  },
+
+  // Delete an entire sub-page (all of its chunks) from a knowledge source.
+  async deletePage(knowledgeId: number, pageId: string) {
+    const response = await api.delete(
+      `/knowledge/${knowledgeId}/page/${encodeURIComponent(pageId)}`,
+    )
+    return response.data
+  },
+
+  // Add a sitemap source — the backend discovers and crawls its listed pages.
+  async addSitemap(orgId: string, url: string, agentId?: string): Promise<KnowledgeUploadResponse> {
+    try {
+      const response = await api.post('/knowledge/add/urls', {
+        org_id: orgId,
+        agent_id: agentId,
+        sitemaps: [url],
+      })
+      return response.data
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.detail || error.response?.data?.message || 'Failed to add sitemap'
+      throw new Error(errorMessage)
+    }
+  },
+
+  // Create a knowledge source from pasted text; indexed immediately (no crawl).
+  async addText(orgId: string, title: string, content: string, agentId?: string) {
+    try {
+      const response = await api.post('/knowledge/add/text', {
+        org_id: orgId,
+        title,
+        content,
+        agent_id: agentId,
+      })
+      return response.data
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.detail || error.response?.data?.message || 'Failed to add text source'
+      throw new Error(errorMessage)
+    }
   },
 }
 

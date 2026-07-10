@@ -20,7 +20,8 @@ import time
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Callable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urldefrag, urlunparse
+from app.knowledge.url_safety import safe_get, BlockedHostError
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -35,6 +36,12 @@ from app.knowledge.content_summarizer import get_content_summarizer
 
 # Initialize logger for this module
 logger = get_logger(__name__)
+
+
+class BotProtectionError(Exception):
+    """Raised when a crawl produced no content because the site's bot protection
+    (Cloudflare / WordPress.com "Checking your browser…" interstitial) blocked the
+    automated browser. Signals the user should add the content manually."""
 
 
 @dataclass
@@ -83,6 +90,7 @@ class EnhancedWebsiteReader(WebsiteReader):
     _crawled_pages_count: int = 0
     _successful_crawls: int = 0
     _failed_crawls: int = 0
+    _challenge_blocked: int = 0  # Pages skipped because a bot-check couldn't be cleared
     _current_url: str = None  # Track current URL being processed for link resolution
     
     def _normalize_url(self, url: str) -> str:
@@ -105,7 +113,59 @@ class EnhancedWebsiteReader(WebsiteReader):
         # Add https:// by default if no protocol is present
         logger.debug(f"URL '{url}' is missing protocol, adding 'https://'")
         return f"https://{url}"
-    
+
+    def _canonical_url(self, url: str) -> str:
+        """Canonicalize a URL so variants of the same page collapse to one id.
+
+        Drops the ``#fragment`` and any query string, and strips a trailing
+        slash (the root path stays as-is). Without this the same page linked as
+        ``/``, ``/#features`` and ``/#pricing`` would be crawled and stored three
+        times under distinct ids, producing duplicate sub-pages.
+        """
+        if not url:
+            return url
+        url = urldefrag(url).url  # remove #fragment
+        parsed = urlparse(url)
+        path = parsed.path.rstrip('/') or ('/' if not parsed.netloc else '')
+        return urlunparse((parsed.scheme, parsed.netloc, path, '', '', ''))
+
+    # Unambiguous bot-challenge / interstitial signatures.
+    _STRONG_CHALLENGE_MARKERS = (
+        "secured by wp.com",
+        "cf-browser-verification",
+        "cf_chl_",
+        "ddos protection by cloudflare",
+        "verifying you are human",
+        "attention required! | cloudflare",
+    )
+    # Weaker signatures — only treated as a challenge on a short page, since these
+    # phrases can legitimately appear inside real content.
+    _WEAK_CHALLENGE_MARKERS = (
+        "checking your browser",
+        "just a moment",
+        "please enable javascript",
+        "please turn javascript on",
+        "enable cookies and reload",
+        "please stand by, while we are checking",
+    )
+
+    def _looks_like_bot_challenge(self, text: str) -> bool:
+        """True if the extracted text is a bot-check/interstitial, not real content.
+
+        Sites behind Cloudflare / WordPress.com serve a short "Checking your
+        browser…" page to non-browser clients. Its text is just long enough to
+        pass the min-length check, so without this it would be stored as the
+        page's content.
+        """
+        if not text:
+            return False
+        lowered = text.lower()
+        if any(marker in lowered for marker in self._STRONG_CHALLENGE_MARKERS):
+            return True
+        if len(text) < 500 and any(marker in lowered for marker in self._WEAK_CHALLENGE_MARKERS):
+            return True
+        return False
+
     def _get_primary_domain(self, url: str) -> str:
         """
         Extract primary domain from the given URL.
@@ -474,14 +534,14 @@ class EnhancedWebsiteReader(WebsiteReader):
         :return: Tuple of (URL, content, new_links) or None if failed
         """
         current_url, current_depth = url_info
-        
+
         # Normalize URL to ensure it has a protocol
         current_url = self._normalize_url(current_url)
-        
+
         # Skip if URL meets any skip conditions
         if current_url in self._visited:
             return None
-            
+
         if not urlparse(current_url).netloc.endswith(primary_domain):
             return None
             
@@ -522,7 +582,8 @@ class EnhancedWebsiteReader(WebsiteReader):
                     verify=self.verify_ssl
                 ) as client:
                     logger.debug(f"Making HTTP GET request to {current_url}")
-                    response = client.get(current_url)
+                    # Follows redirects manually, re-validating each hop's host (SSRF).
+                    response = safe_get(client, current_url)
                     logger.info(f"Received response: status={response.status_code}, url={response.url}")
                     response.raise_for_status()
                     
@@ -586,10 +647,17 @@ class EnhancedWebsiteReader(WebsiteReader):
                 # Log extracted content length for debugging
                 logger.info(f"Extracted content length: {len(content) if content else 0} characters from {current_url}")
 
-                # For JavaScript-heavy sites, always try Crawl4AI for better content
-                # Even if we extracted some content, it might just be static elements
-                if is_javascript_heavy:
-                    logger.info(f"🔄 JavaScript-heavy site detected - attempting Crawl4AI for better content extraction")
+                # A bot-challenge interstitial (wp.com / Cloudflare "Checking your
+                # browser…") is short enough to pass the length check, so detect it
+                # explicitly and route it through the JS browser, which can clear it.
+                is_challenge = self._looks_like_bot_challenge(content)
+                if is_challenge:
+                    logger.warning(f"🛡️  Bot-challenge interstitial detected for {current_url} - routing through Crawl4AI")
+
+                # For JavaScript-heavy sites (or a detected challenge), try Crawl4AI
+                # for real content. Even static extraction may just be interstitials.
+                if is_javascript_heavy or is_challenge:
+                    logger.info(f"🔄 Attempting Crawl4AI for better content extraction: {current_url}")
                     crawl4ai = get_crawl4ai_fallback(timeout=self.timeout, verify_ssl=self.verify_ssl)
 
                     if crawl4ai.is_available:
@@ -616,6 +684,15 @@ class EnhancedWebsiteReader(WebsiteReader):
                     else:
                         logger.warning(f"⚠️  Crawl4AI not available for JS-heavy site. Install with: pip install crawl4ai>=0.7.0")
                         logger.warning(f"   Falling back to BeautifulSoup (may have incomplete content)")
+
+                # If the content is still a bot-challenge interstitial (the browser
+                # fallback couldn't clear it or wasn't available), skip the page
+                # rather than storing the "Checking your browser…" text as content.
+                if self._looks_like_bot_challenge(content):
+                    logger.warning(f"⚠️  Skipping {current_url}: bot-challenge interstitial could not be cleared")
+                    self._failed_crawls += 1
+                    self._challenge_blocked += 1
+                    return None
 
                 # Check content quality
                 if not content or len(content) < self.min_content_length:
@@ -683,6 +760,12 @@ class EnhancedWebsiteReader(WebsiteReader):
                     new_links = [(link, next_depth) for link in links 
                                 if link not in self._visited]
                     
+            except BlockedHostError as e:
+                # A redirect pointed at an internal host — abort, don't retry or
+                # fall back to the browser (which would also reach it).
+                logger.warning(str(e))
+                self._failed_crawls += 1
+                return None
             except httpx.HTTPStatusError as e:
                 retry_count += 1
                 status_code = e.response.status_code
@@ -809,67 +892,20 @@ class EnhancedWebsiteReader(WebsiteReader):
         self._crawled_pages_count = 0
         self._successful_crawls = 0
         self._failed_crawls = 0
-        
+        self._challenge_blocked = 0
+
         crawl_start_time = time.time()
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting parallel crawl of {url} with max_depth={self.max_depth}, max_links={self.max_links}, and max_workers={self.max_workers}")
         
-        crawler_result: Dict[str, str] = {}
         primary_domain = self._get_primary_domain(url)
-        
+
         # Add starting URL with its depth to the queue
         urls_to_process = [(url, starting_depth)]
         logger.info(f"Added starting URL to crawl queue: {url} (depth: {starting_depth})")
-        
-        # Use ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Process URLs in batches until no more URLs or max_links reached
-            while urls_to_process and len(crawler_result) < self.max_links:
-                # Take a batch of URLs to process
-                batch_size = min(self.max_workers, len(urls_to_process))
-                current_batch = urls_to_process[:batch_size]
-                urls_to_process = urls_to_process[batch_size:]
-                
 
-                
-                # Submit all URLs in the current batch for parallel processing
-                future_to_url = {
-                    executor.submit(self._process_url, url_info, primary_domain): url_info[0]
-                    for url_info in current_batch
-                }
-                
-                # Process completed futures as they finish
-                for future in as_completed(future_to_url):
-                    url = future_to_url[future]
-                    try:
-                        result = future.result()
-                        if result:
-                            processed_url, content, new_links = result
-                            
-                            # Add the content to our results
-                            crawler_result[processed_url] = content
-                            
-                            # Call the URL crawled callback first (for progress tracking)
-                            if on_url_crawled_callback:
-                                logger.debug(f"📞 Calling URL crawled callback for: {processed_url}")
-                                on_url_crawled_callback(processed_url)
-                            
-                            # Call the callback for immediate processing if provided
-                            if on_document_callback:
-                                on_document_callback(processed_url, content)
-                            
-                            # Add new links to the processing queue
-                            for new_link, depth in new_links:
-                                if new_link not in self._visited and (new_link, depth) not in urls_to_process:
-                                    urls_to_process.append((new_link, depth))
-                            
-                            # If we've reached max_links, break early
-                            if len(crawler_result) >= self.max_links:
-                                logger.info(f"Reached maximum number of links ({self.max_links}), stopping further crawling")
-                                break
-                                
-                    except Exception as exc:
-                        logger.error(f"URL {url} generated an exception: {exc}")
-                        self._failed_crawls += 1
+        crawler_result = self._run_crawl_queue(
+            urls_to_process, primary_domain, on_document_callback, on_url_crawled_callback
+        )
 
         # Log crawling summary
         crawl_end_time = time.time()
@@ -877,7 +913,72 @@ class EnhancedWebsiteReader(WebsiteReader):
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Parallel crawl completed: {len(crawler_result)} pages crawled successfully")
         logger.info(f"Crawling statistics: Total: {self._crawled_pages_count}, Successful: {self._successful_crawls}, Failed: {self._failed_crawls}")
         logger.info(f"Total crawling time: {crawl_duration:.2f}s, Average time per page: {crawl_duration/max(1, self._crawled_pages_count):.2f}s")
-        
+
+        return crawler_result
+
+    def _run_crawl_queue(
+        self,
+        urls_to_process: List[Tuple[str, int]],
+        primary_domain: str,
+        on_document_callback: Optional[Callable[[str, str], None]] = None,
+        on_url_crawled_callback: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, str]:
+        """Process a seed queue of (url, depth) in parallel until it drains or the
+        ``max_links`` cap is hit, extracting content per URL and enqueuing any new
+        links a page yields. Shared by website crawling (seeds one URL, follows
+        links) and sitemap crawling (seeds the listed pages, which yield no links).
+        """
+        crawler_result: Dict[str, str] = {}
+        urls_to_process = list(urls_to_process)
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Process URLs in batches until no more URLs or max_links reached
+            while urls_to_process and len(crawler_result) < self.max_links:
+                # Take a batch of URLs to process
+                batch_size = min(self.max_workers, len(urls_to_process))
+                current_batch = urls_to_process[:batch_size]
+                urls_to_process = urls_to_process[batch_size:]
+
+                # Submit all URLs in the current batch for parallel processing
+                future_to_url = {
+                    executor.submit(self._process_url, url_info, primary_domain): url_info[0]
+                    for url_info in current_batch
+                }
+
+                # Process completed futures as they finish
+                for future in as_completed(future_to_url):
+                    url = future_to_url[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            processed_url, content, new_links = result
+
+                            # Add the content to our results
+                            crawler_result[processed_url] = content
+
+                            # Call the URL crawled callback first (for progress tracking)
+                            if on_url_crawled_callback:
+                                logger.debug(f"📞 Calling URL crawled callback for: {processed_url}")
+                                on_url_crawled_callback(processed_url)
+
+                            # Call the callback for immediate processing if provided
+                            if on_document_callback:
+                                on_document_callback(processed_url, content)
+
+                            # Add new links to the processing queue
+                            for new_link, depth in new_links:
+                                if new_link not in self._visited and (new_link, depth) not in urls_to_process:
+                                    urls_to_process.append((new_link, depth))
+
+                            # If we've reached max_links, break early
+                            if len(crawler_result) >= self.max_links:
+                                logger.info(f"Reached maximum number of links ({self.max_links}), stopping further crawling")
+                                break
+
+                    except Exception as exc:
+                        logger.error(f"URL {url} generated an exception: {exc}")
+                        self._failed_crawls += 1
+
         return crawler_result
 
     def _extract_links(self, soup: BeautifulSoup, base_url: str) -> List[str]:
@@ -889,41 +990,51 @@ class EnhancedWebsiteReader(WebsiteReader):
         :return: A list of absolute URLs.
         """
         links = []
+        seen = set()
         primary_domain = self._get_primary_domain(base_url)
-        
+        base_canonical = self._canonical_url(base_url)
+
         all_links = soup.find_all("a", href=True)
-        
+
         for link in all_links:
             if not isinstance(link, Tag):
                 continue
-            
+
             href_str = str(link["href"])
             full_url = urljoin(base_url, href_str)
-            
+
             if not isinstance(full_url, str):
                 continue
-                
+
+            # Skip query-string URLs before canonicalizing (kept for simplicity).
+            if "?" in full_url:
+                continue
+
+            # Canonicalize (drop #fragment / trailing slash) so page variants
+            # collapse to a single link and don't get crawled/stored twice.
+            full_url = self._canonical_url(full_url)
+
             # Filter out unwanted URLs
             parsed_url = urlparse(full_url)
-            
-            # Ignore self-links
-            if full_url == base_url:
+
+            # Ignore self-links and already-collected duplicates
+            if full_url == base_canonical or full_url in seen:
                 continue
-                
+
             # Check if it's in the same domain
             link_domain = parsed_url.netloc
             is_same_domain = link_domain.endswith(primary_domain)
-            
+
             if (
                 is_same_domain
                 and not any(parsed_url.path.endswith(ext) for ext in [
                     ".pdf", ".jpg", ".png", ".gif", ".zip", ".mp3", ".mp4", ".exe", ".dll"
                 ])
                 and not parsed_url.path.startswith("#")  # Skip anchors
-                and "?" not in full_url  # Skip query parameters for simplicity
             ):
+                seen.add(full_url)
                 links.append(full_url)
-                
+
         logger.info(f"Extracted {len(links)} valid links from {base_url}")
         return links
 

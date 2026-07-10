@@ -33,8 +33,8 @@ logger = get_logger(__name__)
 def get_user_friendly_filename(source: str, source_type: str) -> str:
     """Extract a user-friendly filename from the source URL or path"""
     try:
-        if source_type == 'website':
-            # For websites, just return the domain
+        if source_type in ('website', 'sitemap'):
+            # For websites/sitemaps, just return the domain
             parsed = urlparse(source)
             return parsed.netloc or source
         
@@ -115,6 +115,8 @@ async def process_queue_item(queue_item_id: int):
             logger.error(f"Error processing queue item {queue_item_id}: {str(e)}")
             try:
                 queue_item.status = QueueStatus.FAILED
+                # Persist the reason so the UI can show why it failed.
+                queue_item.error = str(e)
 
                 # Create notification for failed processing
                 user_friendly_name = get_user_friendly_filename(queue_item.source, queue_item.source_type)

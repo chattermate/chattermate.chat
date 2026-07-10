@@ -236,6 +236,22 @@ def test_add_urls(client: TestClient, test_organization):
     assert len(data["queue_items"]) == 2  # One for PDF, one for website
     assert all(item["status"] == "pending" for item in data["queue_items"])
 
+def test_add_sitemap(client: TestClient, test_organization, db):
+    """A sitemaps request enqueues one source_type='sitemap' queue item."""
+    response = client.post("/api/v1/knowledge/add/urls", json={
+        "org_id": str(test_organization.id),
+        "sitemaps": ["https://example.com/sitemap.xml"],
+    })
+    assert response.status_code == 200
+    assert len(response.json()["queue_items"]) == 1
+    item = db.query(KnowledgeQueue).filter(
+        KnowledgeQueue.source == "https://example.com/sitemap.xml"
+    ).first()
+    assert item is not None
+    assert item.source_type == "sitemap"
+    assert item.queue_metadata.get("max_links") == 10  # non-enterprise default
+
+
 def test_link_knowledge_to_agent(client: TestClient, test_knowledge, test_agent):
     """Test linking knowledge to an agent"""
     response = client.post(
@@ -320,6 +336,20 @@ def test_get_queue_status(client: TestClient, test_knowledge_queue):
     data = response.json()
     assert data["id"] == test_knowledge_queue.id
     assert data["status"] == "pending"
+
+def test_get_organization_queue_items(client: TestClient, test_organization, test_knowledge_queue):
+    """The org queue endpoint returns in-flight items for the org."""
+    response = client.get(f"/api/v1/knowledge/queue/organization/{test_organization.id}")
+    assert response.status_code == 200
+    sources = [item["source"] for item in response.json()["queue_items"]]
+    assert test_knowledge_queue.source in sources
+
+
+def test_get_organization_queue_items_wrong_org(client: TestClient):
+    """The org queue endpoint rejects a different organization."""
+    response = client.get(f"/api/v1/knowledge/queue/organization/{uuid4()}")
+    assert response.status_code == 403
+
 
 def test_get_processor_status(client: TestClient):
     """Test getting processor status"""
@@ -587,4 +617,165 @@ def test_add_subpage_with_enterprise_limits_mocked():
                 ))
 
             assert exc_info.value.status_code == 402
-            assert "Subpage limit reached" in exc_info.value.detail 
+            assert "Subpage limit reached" in exc_info.value.detail
+
+
+# Test cases for update_page_content / delete_page endpoints
+def test_update_page_empty_content(client: TestClient, test_knowledge):
+    """Empty page content is rejected before any DB work."""
+    response = client.put(
+        f"/api/v1/knowledge/{test_knowledge.id}/page/some-page",
+        json={"content": "   "}
+    )
+    assert response.status_code == 400
+    assert "Page content cannot be empty" in response.json()["detail"]
+
+
+def test_update_page_knowledge_not_found(client: TestClient):
+    """Updating a page on a non-existent knowledge source returns 404."""
+    response = client.put(
+        "/api/v1/knowledge/999999/page/some-page",
+        json={"content": "New content"}
+    )
+    assert response.status_code == 404
+    assert "Knowledge source not found" in response.json()["detail"]
+
+
+def test_update_page_no_table_name(client: TestClient, test_knowledge):
+    """Updating a page when the source has no vector table returns 400."""
+    response = client.put(
+        f"/api/v1/knowledge/{test_knowledge.id}/page/some-page",
+        json={"content": "New content"}
+    )
+    assert response.status_code == 400
+    assert "Knowledge source has no vector database table" in response.json()["detail"]
+
+
+def test_delete_page_knowledge_not_found(client: TestClient):
+    """Deleting a page on a non-existent knowledge source returns 404."""
+    response = client.delete("/api/v1/knowledge/999999/page/some-page")
+    assert response.status_code == 404
+    assert "Knowledge source not found" in response.json()["detail"]
+
+
+def test_delete_page_no_table_name(client: TestClient, test_knowledge):
+    """Deleting a page when the source has no vector table returns 400."""
+    response = client.delete(f"/api/v1/knowledge/{test_knowledge.id}/page/some-page")
+    assert response.status_code == 400
+    assert "Knowledge source has no vector database table" in response.json()["detail"]
+
+
+def test_page_endpoints_registered():
+    """The page update/delete endpoints are registered on the router."""
+    from app.api.knowledge import router
+    paths = [route.path for route in router.routes if hasattr(route, 'path')]
+    assert any('/{knowledge_id}/page/{page_id:path}' in p for p in paths), \
+        "page endpoints should be registered"
+
+
+def test_replace_page_upserts_before_deleting(monkeypatch):
+    """replace_page persists the new content (upsert) before clearing old chunks,
+    so an insert failure can never leave the page empty. Ordering is asserted via
+    a call log."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from app.knowledge import page_editor
+
+    calls = []
+
+    knowledge = SimpleNamespace(
+        schema="ai", table_name="d_test", source="site.com",
+        organization_id=uuid4(), agent_links=[],
+    )
+
+    # One existing chunk for the page so replace_page proceeds.
+    existing_chunk = SimpleNamespace(id="site.com/docs", content="old", meta_data={"url": "site.com/docs"})
+    monkeypatch.setattr(page_editor, "get_page_chunks", lambda db, k, pid: [existing_chunk])
+
+    fake_manager = MagicMock()
+    fake_manager.vector_db.embedder = object()
+    fake_manager.vector_db.upsert.side_effect = lambda *a, **kw: calls.append("upsert")
+    monkeypatch.setattr(page_editor, "get_manager", lambda org_id: fake_manager)
+    monkeypatch.setattr(page_editor, "embed_document", lambda *a, **kw: SimpleNamespace(embedding=[0.1]))
+
+    def fake_delete(db, k, pid, exclude_canonical=False):
+        calls.append(("delete", exclude_canonical))
+        return 1
+    monkeypatch.setattr(page_editor, "delete_page_chunks", fake_delete)
+
+    db = MagicMock()
+    db.commit.side_effect = lambda: calls.append("commit")
+
+    replaced = page_editor.replace_page(db, knowledge, "site.com/docs", "new content", title="Docs")
+
+    assert replaced == 1
+    # upsert (persist new content) must happen before the destructive delete.
+    assert calls[0] == "upsert"
+    assert calls[1] == ("delete", True)
+    assert "commit" in calls
+
+
+# Test cases for crawl-scope (max_links) on add/urls
+def test_add_urls_crawl_scope_clamps_max_links(client: TestClient, test_organization, db):
+    """A website queued with max_links=1 ('this page only') records that cap."""
+    response = client.post("/api/v1/knowledge/add/urls", json={
+        "org_id": str(test_organization.id),
+        "websites": ["https://scope.example.com"],
+        "max_links": 1,
+    })
+    assert response.status_code == 200
+    item = db.query(KnowledgeQueue).filter(
+        KnowledgeQueue.source == "https://scope.example.com"
+    ).first()
+    assert item is not None
+    assert item.queue_metadata.get("max_links") == 1
+
+
+def test_add_urls_rejects_zero_max_links(client: TestClient, test_organization):
+    """max_links below 1 is rejected by request validation."""
+    response = client.post("/api/v1/knowledge/add/urls", json={
+        "org_id": str(test_organization.id),
+        "websites": ["https://scope2.example.com"],
+        "max_links": 0,
+    })
+    assert response.status_code == 422
+
+
+# Test cases for add/text endpoint
+def test_add_text_unauthorized_org(client: TestClient):
+    """Adding a text source for a different org is rejected."""
+    response = client.post("/api/v1/knowledge/add/text", json={
+        "org_id": str(uuid4()),
+        "title": "Refund policy",
+        "content": "Full refund within 14 days.",
+    })
+    assert response.status_code == 403
+
+
+def test_add_text_empty_content_rejected(client: TestClient, test_organization):
+    """Blank content is rejected by request validation."""
+    response = client.post("/api/v1/knowledge/add/text", json={
+        "org_id": str(test_organization.id),
+        "title": "Refund policy",
+        "content": "   ",
+    })
+    assert response.status_code == 422
+
+
+def test_add_text_agent_not_found(client: TestClient, test_organization):
+    """A text source targeting a non-existent agent returns 404."""
+    response = client.post("/api/v1/knowledge/add/text", json={
+        "org_id": str(test_organization.id),
+        "title": "Refund policy",
+        "content": "Full refund within 14 days.",
+        "agent_id": str(uuid4()),
+    })
+    assert response.status_code == 404
+
+
+def test_add_text_endpoint_registered():
+    """The add/text endpoint is registered on the router."""
+    from app.api.knowledge import router
+    assert any(
+        hasattr(route, 'path') and route.path == '/add/text' for route in router.routes
+    ), "add/text endpoint should be registered" 
