@@ -138,12 +138,13 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "requires_api_key": True,
         "custom_allowed": True,
         "api_key_url": "https://console.groq.com/keys",
-        # GPT-OSS models are the durable picks. llama-3.3-70b-versatile is kept for
-        # continuity but is deprecated (EOL 2026-08-16). Org-prefixed IDs must be
-        # passed exactly.
+        # gpt-oss-120b is the durable pick. gpt-oss-20b is intentionally NOT listed: the
+        # smaller model leaks OpenAI "harmony" formatting (calls the response tool as
+        # `functions/json`), which Groq rejects, making structured output unreliable.
+        # llama-3.3-70b-versatile is kept for continuity but is deprecated (EOL
+        # 2026-08-16). Org-prefixed IDs must be passed exactly.
         "models": [
             _m("openai/gpt-oss-120b", "GPT-OSS 120B"),
-            _m("openai/gpt-oss-20b", "GPT-OSS 20B"),
             _m("llama-3.3-70b-versatile", "Llama 3.3 70B Versatile"),
         ],
     },
