@@ -31,11 +31,18 @@ export interface KnowledgePage {
   updated_at: string | null
 }
 
+// An agent a knowledge source is linked to, as reported by the source list.
+export interface KnowledgeLinkedAgent {
+  id: string
+  name: string
+}
+
 export interface KnowledgeItem {
   id: number
   name: string
   type: string
   pages: KnowledgePage[]
+  agents?: KnowledgeLinkedAgent[]
   error?: string
 }
 

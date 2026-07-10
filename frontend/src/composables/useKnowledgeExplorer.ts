@@ -16,7 +16,13 @@ limitations under the License.
 
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import type { KnowledgeItem, KnowledgePage, KnowledgeSubPage, QueueItem } from '@/types/knowledge'
+import type {
+  KnowledgeItem,
+  KnowledgeLinkedAgent,
+  KnowledgePage,
+  KnowledgeSubPage,
+  QueueItem,
+} from '@/types/knowledge'
 import { knowledgeService } from '@/services/knowledge'
 import { basePageId, groupChunksIntoPages, titleFromId } from '@/utils/knowledgePages'
 
@@ -35,6 +41,8 @@ export interface ExplorerSource {
   id: number
   name: string
   type: string
+  // Agents this source is linked to (for the "Used by" chips).
+  agents: KnowledgeLinkedAgent[]
   pageStubs: KnowledgePage[]
   expanded: boolean
   loadingContent: boolean
@@ -104,6 +112,7 @@ export function useKnowledgeExplorer(
     id: item.id,
     name: item.name,
     type: item.type,
+    agents: item.agents || [],
     pageStubs: item.pages || [],
     expanded: false,
     loadingContent: false,
@@ -183,6 +192,7 @@ export function useKnowledgeExplorer(
     id: -item.id,
     name: queueSourceName(item),
     type: queueKind(item.source_type),
+    agents: [],
     pageStubs: [],
     expanded: false,
     loadingContent: false,

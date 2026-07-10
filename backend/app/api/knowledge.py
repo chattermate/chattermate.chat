@@ -28,6 +28,7 @@ from sqlalchemy import text
 from uuid import UUID
 from app.database import get_db
 from app.models.knowledge_to_agent import KnowledgeToAgent
+from app.models.agent import Agent
 from app.models.knowledge import Knowledge
 from app.repositories.knowledge import KnowledgeRepository
 from app.knowledge import page_editor
@@ -879,6 +880,28 @@ async def unlink_knowledge_from_agent(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _linked_agents_map(db: Session, knowledge_items) -> dict:
+    """Map knowledge_id -> [{id, name}] of the agents each source is linked to.
+
+    Batched into a single query over the page's sources to avoid N+1 lookups.
+    """
+    ids = [k.id for k in knowledge_items]
+    if not ids:
+        return {}
+    rows = (
+        db.query(KnowledgeToAgent.knowledge_id, Agent.id, Agent.name, Agent.display_name)
+        .join(Agent, Agent.id == KnowledgeToAgent.agent_id)
+        .filter(KnowledgeToAgent.knowledge_id.in_(ids))
+        .all()
+    )
+    result: dict = {}
+    for knowledge_id, agent_id, name, display_name in rows:
+        result.setdefault(knowledge_id, []).append(
+            {"id": str(agent_id), "name": display_name or name}
+        )
+    return result
+
+
 @router.get("/agent/{agent_id}")
 async def get_knowledge_by_agent(
     agent_id: str,
@@ -909,6 +932,7 @@ async def get_knowledge_by_agent(
         )
 
 
+        agents_map = _linked_agents_map(db, knowledge_items)
         result = []
         for k in knowledge_items:
             # Base knowledge data
@@ -916,6 +940,7 @@ async def get_knowledge_by_agent(
                 "id": k.id,
                 "name": k.source,
                 "type": k.source_type.value,
+                "agents": agents_map.get(k.id, []),
                 "pages": []
             }
 
@@ -1126,6 +1151,7 @@ async def get_knowledge_by_organization(
         )
         logger.debug(f"Knowledge items for organization {org_uuid}: {knowledge_items}")
 
+        agents_map = _linked_agents_map(db, knowledge_items)
         result = []
         for k in knowledge_items:
             # Base knowledge data
@@ -1133,6 +1159,7 @@ async def get_knowledge_by_organization(
                 "id": k.id,
                 "name": k.source,
                 "type": k.source_type.value,
+                "agents": agents_map.get(k.id, []),
                 "pages": []
             }
 
