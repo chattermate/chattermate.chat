@@ -170,6 +170,7 @@ class ChatOverviewResponse(BaseModel):
     updated_at: datetime
     message_count: int
     status: SessionStatus
+    channel: str = 'web'
     group_id: Optional[UUID]
     session_id: UUID
 
@@ -178,6 +179,7 @@ class ChatDetailResponse(BaseModel):
     agent: AgentInfo
     messages: List[Message]
     status: SessionStatus
+    channel: str = 'web'
     group_id: Optional[UUID]
     session_id: UUID
     user_id: Optional[UUID]

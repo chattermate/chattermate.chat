@@ -22,12 +22,15 @@ import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import { checkSlackConnection, getSlackAuthUrl, disconnectSlack } from '@/services/slack'
+import channelsService, { type ChannelAccount } from '@/services/channels'
+import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
 
 // Import logos
 import jiraLogo from '@/assets/jira-logo.svg'
 import slackLogo from '@/assets/slack-logo.svg'
 import zendeskLogo from '@/assets/zendesk-logo.svg'
 import shopifyLogo from '@/assets/shopify-logo.svg'
+import telegramLogo from '@/assets/telegram-logo.svg'
 
 // Define interface for Shopify shop
 interface ShopifyShop {
@@ -46,6 +49,45 @@ const shopifyLoading = ref(true)
 const slackConnected = ref(false)
 const slackTeamName = ref('')
 const slackLoading = ref(true)
+
+// Telegram state variables
+const telegramAccounts = ref<ChannelAccount[]>([])
+const telegramLoading = ref(true)
+const showTelegramModal = ref(false)
+
+const fetchChannelAccounts = async () => {
+  try {
+    telegramLoading.value = true
+    const accounts = await channelsService.listAccounts()
+    telegramAccounts.value = accounts.filter(a => a.channel_type === 'telegram')
+  } catch (error) {
+    console.error('Error loading channel accounts:', error)
+  } finally {
+    telegramLoading.value = false
+  }
+}
+
+const onTelegramConnected = async () => {
+  showTelegramModal.value = false
+  await fetchChannelAccounts()
+}
+
+const handleDisconnectTelegram = async () => {
+  try {
+    telegramLoading.value = true
+    for (const account of telegramAccounts.value) {
+      await channelsService.disconnectTelegram(account.id)
+    }
+    telegramAccounts.value = []
+    toast.success('Telegram disconnected successfully')
+  } catch (error: any) {
+    toast.error(error?.response?.data?.detail || 'Error disconnecting Telegram')
+  } finally {
+    telegramLoading.value = false
+    showDisconnectConfirm.value = false
+    disconnectingIntegration.value = null
+  }
+}
 
 
 const route = useRoute()
@@ -283,6 +325,19 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     connectAction: connectSlack,
     disconnectAction: handleDisconnectSlack
   },
+  {
+    id: 'telegram',
+    name: 'Telegram',
+    description: 'Connect a Telegram bot so customers can chat with your AI agent on Telegram.',
+    logo: telegramLogo,
+    category: 'MESSAGING',
+    color: 'accent',
+    connected: telegramAccounts.value.length > 0,
+    teamName: telegramAccounts.value.map(a => a.display_name).filter(Boolean).join(', '),
+    isLoading: telegramLoading.value,
+    connectAction: () => { showTelegramModal.value = true },
+    disconnectAction: handleDisconnectTelegram
+  },
   // Future integrations
   {
     id: 'zendesk',
@@ -321,7 +376,8 @@ onMounted(async () => {
   await Promise.all([
     fetchJiraStatus(),
     fetchShopifyStatus(),
-    fetchSlackStatus()
+    fetchSlackStatus(),
+    fetchChannelAccounts()
   ])
   
   // Check if we're returning from an OAuth flow
@@ -539,6 +595,15 @@ onMounted(async () => {
             <li>Require you to reconnect and reconfigure if you want to use it again</li>
           </ul>
         </div>
+
+        <div v-if="disconnectingIntegration === 'telegram'" class="integration-specific-warning">
+          <p>Disconnecting Telegram will:</p>
+          <ul>
+            <li>Remove the bot's webhook so it stops receiving messages</li>
+            <li>Remove the agent routing for this bot</li>
+            <li>Require you to reconnect the bot token to use it again</li>
+          </ul>
+        </div>
       </div>
       <div class="disconnect-modal-actions">
         <button class="btn-cancel" @click="cancelDisconnect">Cancel</button>
@@ -568,9 +633,25 @@ onMounted(async () => {
           <span v-if="slackLoading" class="loading-spinner"></span>
           <span v-else>Disconnect Slack</span>
         </button>
+        <button
+          v-if="disconnectingIntegration === 'telegram'"
+          class="btn-disconnect"
+          @click="handleDisconnectTelegram"
+          :disabled="telegramLoading"
+        >
+          <span v-if="telegramLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect Telegram</span>
+        </button>
       </div>
     </div>
   </div>
+
+  <!-- Telegram Connect Modal -->
+  <TelegramConnectModal
+    v-if="showTelegramModal"
+    @close="showTelegramModal = false"
+    @connected="onTelegramConnected"
+  />
 
 </template>
 

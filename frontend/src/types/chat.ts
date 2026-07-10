@@ -77,6 +77,7 @@ export interface Conversation {
   session_id: string
   user_id: string | null
   status: 'open' | 'closed' | 'transferred'
+  channel?: string
   attributes?: {
     message_type?: string
     shopify_output?: {
@@ -108,4 +109,5 @@ export interface ChatDetail {
   user_name?: string | null
   group_id: string | null
   status: 'open' | 'transferred' | 'closed'
+  channel?: string
 }

@@ -27,6 +27,7 @@ import {
   type SlackChannel,
   type AgentSlackConfig
 } from '@/services/slack'
+import channelsService, { type ChannelAccount } from '@/services/channels'
 
 interface JiraProject {
   id: string;
@@ -115,6 +116,35 @@ const slackChannels = ref<SlackChannel[]>([])
 const slackConfigs = ref<AgentSlackConfig[]>([])
 const slackSaving = ref(false)
 const slackError = ref('')
+
+// Local state for Telegram channel routing
+const telegramAccounts = ref<ChannelAccount[]>([])
+const telegramSaving = ref(false)
+
+const fetchTelegramAccounts = async () => {
+  try {
+    const accounts = await channelsService.listAccounts()
+    telegramAccounts.value = accounts.filter(a => a.channel_type === 'telegram')
+  } catch (error) {
+    console.error('Error loading channel accounts:', error)
+  }
+}
+
+const toggleTelegramAccount = async (account: ChannelAccount) => {
+  try {
+    telegramSaving.value = true
+    if (account.agent_id === props.agentId) {
+      await channelsService.clearAccountAgent(account.id)
+    } else {
+      await channelsService.setAccountAgent(account.id, props.agentId)
+    }
+    await fetchTelegramAccounts()
+  } catch (error: any) {
+    console.error('Error updating Telegram routing:', error)
+  } finally {
+    telegramSaving.value = false
+  }
+}
 
 // Slack new channel config form
 const showSlackChannelForm = ref(false)
@@ -393,7 +423,8 @@ const availableSlackChannels = computed(() => {
 onMounted(async () => {
   await Promise.all([
     fetchShopifyStatus(),
-    fetchSlackStatus()
+    fetchSlackStatus(),
+    fetchTelegramAccounts()
   ])
 })
 </script>
@@ -742,6 +773,52 @@ onMounted(async () => {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Telegram Integration -->
+      <div class="integration-section">
+        <div class="integration-head">
+          <div class="integration-head-left">
+            <div class="integration-badge badge-purple">Tg</div>
+            <div class="integration-heading">
+              <div class="integration-title">Telegram — customer chat</div>
+              <div class="integration-desc">Let customers chat with this agent through connected Telegram bots.</div>
+            </div>
+          </div>
+          <router-link to="/settings/integrations" class="connect-btn">
+            {{ telegramAccounts.length > 0 ? 'Manage' : 'Connect' }}
+          </router-link>
+        </div>
+
+        <div v-if="telegramAccounts.length > 0" class="slack-config">
+          <p class="helper-text">
+            Each bot is answered by one agent. Toggle a bot to route its conversations to this agent.
+          </p>
+          <div class="slack-channels-list">
+            <div v-for="account in telegramAccounts" :key="account.id" class="slack-channel-item">
+              <div class="channel-header">
+                <span class="channel-name">{{ account.display_name || account.external_account_id }}</span>
+              </div>
+              <div class="channel-options">
+                <label class="option-item">
+                  <input
+                    type="checkbox"
+                    :checked="account.agent_id === props.agentId"
+                    @change="toggleTelegramAccount(account)"
+                    :disabled="telegramSaving"
+                  />
+                  <span>Answered by this agent</span>
+                </label>
+                <span v-if="account.agent_id && account.agent_id !== props.agentId" class="helper-text">
+                  currently routed to another agent
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="no-channels-message">
+          No Telegram bots connected yet. Connect one from Settings → Integrations.
         </div>
       </div>
     </section>
