@@ -20,7 +20,7 @@ import time
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Callable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urldefrag, urlunparse
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -105,7 +105,22 @@ class EnhancedWebsiteReader(WebsiteReader):
         # Add https:// by default if no protocol is present
         logger.debug(f"URL '{url}' is missing protocol, adding 'https://'")
         return f"https://{url}"
-    
+
+    def _canonical_url(self, url: str) -> str:
+        """Canonicalize a URL so variants of the same page collapse to one id.
+
+        Drops the ``#fragment`` and any query string, and strips a trailing
+        slash (the root path stays as-is). Without this the same page linked as
+        ``/``, ``/#features`` and ``/#pricing`` would be crawled and stored three
+        times under distinct ids, producing duplicate sub-pages.
+        """
+        if not url:
+            return url
+        url = urldefrag(url).url  # remove #fragment
+        parsed = urlparse(url)
+        path = parsed.path.rstrip('/') or ('/' if not parsed.netloc else '')
+        return urlunparse((parsed.scheme, parsed.netloc, path, '', '', ''))
+
     def _get_primary_domain(self, url: str) -> str:
         """
         Extract primary domain from the given URL.
@@ -889,41 +904,51 @@ class EnhancedWebsiteReader(WebsiteReader):
         :return: A list of absolute URLs.
         """
         links = []
+        seen = set()
         primary_domain = self._get_primary_domain(base_url)
-        
+        base_canonical = self._canonical_url(base_url)
+
         all_links = soup.find_all("a", href=True)
-        
+
         for link in all_links:
             if not isinstance(link, Tag):
                 continue
-            
+
             href_str = str(link["href"])
             full_url = urljoin(base_url, href_str)
-            
+
             if not isinstance(full_url, str):
                 continue
-                
+
+            # Skip query-string URLs before canonicalizing (kept for simplicity).
+            if "?" in full_url:
+                continue
+
+            # Canonicalize (drop #fragment / trailing slash) so page variants
+            # collapse to a single link and don't get crawled/stored twice.
+            full_url = self._canonical_url(full_url)
+
             # Filter out unwanted URLs
             parsed_url = urlparse(full_url)
-            
-            # Ignore self-links
-            if full_url == base_url:
+
+            # Ignore self-links and already-collected duplicates
+            if full_url == base_canonical or full_url in seen:
                 continue
-                
+
             # Check if it's in the same domain
             link_domain = parsed_url.netloc
             is_same_domain = link_domain.endswith(primary_domain)
-            
+
             if (
                 is_same_domain
                 and not any(parsed_url.path.endswith(ext) for ext in [
                     ".pdf", ".jpg", ".png", ".gif", ".zip", ".mp3", ".mp4", ".exe", ".dll"
                 ])
                 and not parsed_url.path.startswith("#")  # Skip anchors
-                and "?" not in full_url  # Skip query parameters for simplicity
             ):
+                seen.add(full_url)
                 links.append(full_url)
-                
+
         logger.info(f"Extracted {len(links)} valid links from {base_url}")
         return links
 

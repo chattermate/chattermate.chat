@@ -158,6 +158,37 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         self.assertIsNotNone(soup_copy.find('footer'))
         self.assertIsNotNone(soup_copy.find('main'))
         
+    def test_canonical_url(self):
+        """Fragments/trailing slashes are stripped so page variants collapse."""
+        c = self.reader._canonical_url
+        self.assertEqual(c('https://x.com/'), 'https://x.com')
+        self.assertEqual(c('https://x.com/#features'), 'https://x.com')
+        self.assertEqual(c('https://x.com/#pricing'), 'https://x.com')
+        self.assertEqual(c('https://x.com/pricing/'), 'https://x.com/pricing')
+        self.assertEqual(c('https://x.com/blogs#top'), 'https://x.com/blogs')
+        # The homepage and its anchored variants all canonicalize to one id.
+        variants = {c(u) for u in [
+            'https://x.com', 'https://x.com/', 'https://x.com/#a', 'https://x.com/#b'
+        ]}
+        self.assertEqual(len(variants), 1)
+
+    def test_extract_links_dedupes_page_variants(self):
+        """The homepage linked via #anchors and trailing slash yields one link."""
+        html = """
+        <html><body>
+          <a href="https://site.com/#features">Features</a>
+          <a href="https://site.com/#pricing">Pricing</a>
+          <a href="https://site.com/">Home</a>
+          <a href="https://site.com/docs">Docs</a>
+          <a href="https://site.com/docs/">Docs slash</a>
+        </body></html>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        links = self.reader._extract_links(soup, 'https://site.com')
+        # All homepage variants collapse (and equal the base, so are dropped);
+        # /docs and /docs/ collapse to a single canonical link.
+        self.assertEqual(links, ['https://site.com/docs'])
+
     @patch('httpx.Client')
     def test_crawl_with_successful_request(self, mock_client):
         """Test crawling with successful HTTP requests"""
