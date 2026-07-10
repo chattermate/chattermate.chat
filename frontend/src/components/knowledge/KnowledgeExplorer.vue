@@ -88,21 +88,32 @@ async function onSubmitSource(payload: AddSourcePayload) {
 }
 
 function askDeleteSource(source: ExplorerSource) {
-  confirmState.value = source.queued
-    ? {
-        title: 'Cancel crawl',
-        message: `Cancel the queued crawl of “${source.name}”?`,
-        actionLabel: 'Cancel crawl',
-        busyLabel: 'Cancelling…',
-        action: () => ex.deleteSource(source),
-      }
-    : {
-        title: 'Delete source',
-        message: `Delete “${source.name}” and all of its pages? This cannot be undone.`,
-        actionLabel: 'Delete',
-        busyLabel: 'Deleting…',
-        action: () => ex.deleteSource(source),
-      }
+  if (source.queued && source.queuedStatus === 'error') {
+    // A failed crawl — not an in-flight one to "cancel".
+    confirmState.value = {
+      title: 'Dismiss source',
+      message: `Dismiss the failed source “${source.name}”?`,
+      actionLabel: 'Dismiss',
+      busyLabel: 'Dismissing…',
+      action: () => ex.deleteSource(source),
+    }
+  } else if (source.queued) {
+    confirmState.value = {
+      title: 'Cancel crawl',
+      message: `Cancel the queued crawl of “${source.name}”?`,
+      actionLabel: 'Cancel crawl',
+      busyLabel: 'Cancelling…',
+      action: () => ex.deleteSource(source),
+    }
+  } else {
+    confirmState.value = {
+      title: 'Delete source',
+      message: `Delete “${source.name}” and all of its pages? This cannot be undone.`,
+      actionLabel: 'Delete',
+      busyLabel: 'Deleting…',
+      action: () => ex.deleteSource(source),
+    }
+  }
 }
 
 function askDeletePage() {

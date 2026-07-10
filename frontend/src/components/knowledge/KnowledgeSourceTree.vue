@@ -53,6 +53,13 @@ const statusLabel: Record<SourceStatus, string> = {
   error: 'Needs sync',
 }
 
+// A queued placeholder's error state is a failed crawl, not a source that
+// merely "needs sync".
+function queuedLabel(source: ExplorerSource): string {
+  const status = props.statusOf(source)
+  return status === 'error' ? 'Failed' : statusLabel[status]
+}
+
 function sourceGlyph(type: string): string {
   const t = (type || '').toLowerCase()
   if (t.includes('pdf') || t === 'file') return 'P'
@@ -98,8 +105,8 @@ function sourceGlyph(type: string): string {
             <span class="src__glyph" :class="`src__glyph--${sourceGlyph(source.type).toLowerCase()}`">{{ sourceGlyph(source.type) }}</span>
             <span class="src__meta">
               <span class="src__name" :title="source.name">{{ source.name }}</span>
-              <span class="src__count">
-                {{ source.queued ? statusLabel[statusOf(source)] : (source.pages ?? source.pageStubs).length + ' sub-pages' }}
+              <span class="src__count" :class="{ 'src__count--error': source.queued && statusOf(source) === 'error' }">
+                {{ source.queued ? queuedLabel(source) : (source.pages ?? source.pageStubs).length + ' sub-pages' }}
               </span>
             </span>
           </button>
@@ -107,7 +114,7 @@ function sourceGlyph(type: string): string {
           <button
             class="src__del"
             type="button"
-            title="Delete this source"
+            :title="!source.queued ? 'Delete this source' : (statusOf(source) === 'error' ? 'Dismiss failed source' : 'Cancel crawl')"
             @click="emit('delete-source', source)"
           >
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9"
@@ -282,6 +289,10 @@ function sourceGlyph(type: string): string {
   font-size: 10.5px;
   color: var(--muted2);
   margin-top: 2px;
+}
+
+.src__count--error {
+  color: var(--c-coral);
 }
 
 .dot {
