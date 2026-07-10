@@ -213,6 +213,7 @@ onUnmounted(() => {
           :page="ex.selectedPage.value"
           :source-name="ex.selectedSource.value.name"
           :source-type="ex.selectedSource.value.type"
+          :agents="ex.selectedSource.value.agents"
           :status="ex.sourceStatus(ex.selectedSource.value)"
           :deleting="ex.isDeleting.value"
           @edit="ex.startEdit"

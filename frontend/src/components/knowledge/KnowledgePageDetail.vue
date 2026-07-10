@@ -15,16 +15,20 @@ limitations under the License.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { KnowledgeSubPage } from '@/types/knowledge'
+import type { KnowledgeLinkedAgent, KnowledgeSubPage } from '@/types/knowledge'
 import type { SourceStatus } from '@/composables/useKnowledgeExplorer'
 
 const props = defineProps<{
   page: KnowledgeSubPage
   sourceName: string
   sourceType: string
+  agents?: KnowledgeLinkedAgent[]
   status: SourceStatus
   deleting: boolean
 }>()
+
+// First-letter avatar for an agent chip.
+const initial = (name: string) => (name.trim()[0] || '?').toUpperCase()
 
 defineEmits<{
   (e: 'edit'): void
@@ -104,6 +108,14 @@ const updatedLabel = computed(() => {
         <span class="meta__sep"></span>
         <span class="pill" :class="`pill--${status}`">
           <span class="pill__dot"></span>{{ statusText[status] }}
+        </span>
+      </div>
+
+      <div v-if="agents && agents.length" class="usedby">
+        <span class="usedby__label">Used by</span>
+        <span v-for="agent in agents" :key="agent.id" class="agent-chip" :title="agent.name">
+          <span class="agent-chip__avatar">{{ initial(agent.name) }}</span>
+          <span class="agent-chip__name">{{ agent.name }}</span>
         </span>
       </div>
     </div>
@@ -270,6 +282,57 @@ const updatedLabel = computed(() => {
   height: 6px;
   border-radius: 50%;
   background: currentColor;
+}
+
+.usedby {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.usedby__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  border: 1px solid var(--o12);
+  background: var(--o05);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  max-width: 180px;
+}
+
+.agent-chip__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--teal-bg);
+  color: var(--c-teal);
+  font-size: 10.5px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.agent-chip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pill--crawling {

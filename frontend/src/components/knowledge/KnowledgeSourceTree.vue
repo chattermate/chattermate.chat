@@ -68,6 +68,12 @@ function sourceGlyph(type: string): string {
   if (t.includes('web')) return 'W'
   return 'T'
 }
+
+// First-letter avatar for a linked agent.
+const agentInitial = (name: string) => (name.trim()[0] || '?').toUpperCase()
+
+// Show at most this many agent avatars on a source row; the rest fold into "+N".
+const MAX_AVATARS = 3
 </script>
 
 <template>
@@ -111,6 +117,20 @@ function sourceGlyph(type: string): string {
               </span>
             </span>
           </button>
+          <span
+            v-if="!source.queued && source.agents.length"
+            class="agents"
+            :title="`Used by ${source.agents.map((a) => a.name).join(', ')}`"
+          >
+            <span
+              v-for="agent in source.agents.slice(0, MAX_AVATARS)"
+              :key="agent.id"
+              class="agents__avatar"
+            >{{ agentInitial(agent.name) }}</span>
+            <span v-if="source.agents.length > MAX_AVATARS" class="agents__more">
+              +{{ source.agents.length - MAX_AVATARS }}
+            </span>
+          </span>
           <span class="dot" :class="`dot--${statusOf(source)}`" :title="statusLabel[statusOf(source)]"></span>
           <button
             v-if="!source.queued"
@@ -309,6 +329,38 @@ function sourceGlyph(type: string): string {
 
 .src__count--error {
   color: var(--c-coral);
+}
+
+.agents {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.agents__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--teal-bg);
+  color: var(--c-teal);
+  font-size: 10px;
+  font-weight: 700;
+  border: 1.5px solid var(--surface);
+  margin-left: -6px;
+}
+
+.agents__avatar:first-child {
+  margin-left: 0;
+}
+
+.agents__more {
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted2);
 }
 
 .dot {

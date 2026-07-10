@@ -308,6 +308,10 @@ def test_get_knowledge_by_agent(client: TestClient, test_knowledge, test_agent, 
     assert "knowledge" in data
     assert len(data["knowledge"]) == 1
     assert data["knowledge"][0]["id"] == test_knowledge.id
+    # The source reports which agents it is linked to.
+    agents = data["knowledge"][0]["agents"]
+    assert [a["id"] for a in agents] == [str(test_agent.id)]
+    assert agents[0]["name"] == (test_agent.display_name or test_agent.name)
     assert "pagination" in data
     assert data["pagination"]["page"] == 1
     assert data["pagination"]["page_size"] == 10
