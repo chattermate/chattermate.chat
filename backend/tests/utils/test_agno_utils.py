@@ -140,9 +140,9 @@ class TestCreateModel:
             )
             
             mock_gemini.assert_called_once_with(
-                api_key="test-api-key", 
-                id="gemini-pro", 
-                max_tokens=1000
+                api_key="test-api-key",
+                id="gemini-pro",
+                max_output_tokens=1000  # Gemini's agno model uses max_output_tokens
             )
             assert result == mock_model
 
@@ -211,16 +211,23 @@ class TestCreateModel:
         assert "tools" not in params_without_tools
 
     def test_create_model_mistral(self):
-        """Test creating Mistral model (should trigger import error)"""
-        with pytest.raises(HTTPException) as excinfo:
-            agno_utils.create_model(
+        """Test creating Mistral model (mistralai is now a dependency)"""
+        with patch("agno.models.mistral.MistralChat") as mock_mistral:
+            mock_model = MagicMock()
+            mock_mistral.return_value = mock_model
+
+            result = agno_utils.create_model(
                 model_type="MISTRAL",
                 api_key="test-api-key",
-                model_name="mistral-large"
+                model_name="mistral-large-latest"
             )
-        
-        assert excinfo.value.status_code == 400
-        assert "is not available in this installation" in excinfo.value.detail
+
+            mock_mistral.assert_called_once_with(
+                api_key="test-api-key",
+                id="mistral-large-latest",
+                max_tokens=1000
+            )
+            assert result == mock_model
 
     def test_create_model_huggingface(self):
         """Test creating HuggingFace model"""
