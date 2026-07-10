@@ -121,6 +121,43 @@ class EnhancedWebsiteReader(WebsiteReader):
         path = parsed.path.rstrip('/') or ('/' if not parsed.netloc else '')
         return urlunparse((parsed.scheme, parsed.netloc, path, '', '', ''))
 
+    # Unambiguous bot-challenge / interstitial signatures.
+    _STRONG_CHALLENGE_MARKERS = (
+        "secured by wp.com",
+        "cf-browser-verification",
+        "cf_chl_",
+        "ddos protection by cloudflare",
+        "verifying you are human",
+        "attention required! | cloudflare",
+    )
+    # Weaker signatures — only treated as a challenge on a short page, since these
+    # phrases can legitimately appear inside real content.
+    _WEAK_CHALLENGE_MARKERS = (
+        "checking your browser",
+        "just a moment",
+        "please enable javascript",
+        "please turn javascript on",
+        "enable cookies and reload",
+        "please stand by, while we are checking",
+    )
+
+    def _looks_like_bot_challenge(self, text: str) -> bool:
+        """True if the extracted text is a bot-check/interstitial, not real content.
+
+        Sites behind Cloudflare / WordPress.com serve a short "Checking your
+        browser…" page to non-browser clients. Its text is just long enough to
+        pass the min-length check, so without this it would be stored as the
+        page's content.
+        """
+        if not text:
+            return False
+        lowered = text.lower()
+        if any(marker in lowered for marker in self._STRONG_CHALLENGE_MARKERS):
+            return True
+        if len(text) < 500 and any(marker in lowered for marker in self._WEAK_CHALLENGE_MARKERS):
+            return True
+        return False
+
     def _get_primary_domain(self, url: str) -> str:
         """
         Extract primary domain from the given URL.
@@ -601,10 +638,17 @@ class EnhancedWebsiteReader(WebsiteReader):
                 # Log extracted content length for debugging
                 logger.info(f"Extracted content length: {len(content) if content else 0} characters from {current_url}")
 
-                # For JavaScript-heavy sites, always try Crawl4AI for better content
-                # Even if we extracted some content, it might just be static elements
-                if is_javascript_heavy:
-                    logger.info(f"🔄 JavaScript-heavy site detected - attempting Crawl4AI for better content extraction")
+                # A bot-challenge interstitial (wp.com / Cloudflare "Checking your
+                # browser…") is short enough to pass the length check, so detect it
+                # explicitly and route it through the JS browser, which can clear it.
+                is_challenge = self._looks_like_bot_challenge(content)
+                if is_challenge:
+                    logger.warning(f"🛡️  Bot-challenge interstitial detected for {current_url} - routing through Crawl4AI")
+
+                # For JavaScript-heavy sites (or a detected challenge), try Crawl4AI
+                # for real content. Even static extraction may just be interstitials.
+                if is_javascript_heavy or is_challenge:
+                    logger.info(f"🔄 Attempting Crawl4AI for better content extraction: {current_url}")
                     crawl4ai = get_crawl4ai_fallback(timeout=self.timeout, verify_ssl=self.verify_ssl)
 
                     if crawl4ai.is_available:
@@ -631,6 +675,14 @@ class EnhancedWebsiteReader(WebsiteReader):
                     else:
                         logger.warning(f"⚠️  Crawl4AI not available for JS-heavy site. Install with: pip install crawl4ai>=0.7.0")
                         logger.warning(f"   Falling back to BeautifulSoup (may have incomplete content)")
+
+                # If the content is still a bot-challenge interstitial (the browser
+                # fallback couldn't clear it or wasn't available), skip the page
+                # rather than storing the "Checking your browser…" text as content.
+                if self._looks_like_bot_challenge(content):
+                    logger.warning(f"⚠️  Skipping {current_url}: bot-challenge interstitial could not be cleared")
+                    self._failed_crawls += 1
+                    return None
 
                 # Check content quality
                 if not content or len(content) < self.min_content_length:

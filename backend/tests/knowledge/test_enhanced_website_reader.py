@@ -172,6 +172,24 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         ]}
         self.assertEqual(len(variants), 1)
 
+    def test_looks_like_bot_challenge(self):
+        """Bot-check interstitials are detected so they aren't stored as content."""
+        f = self.reader._looks_like_bot_challenge
+        # The exact wp.com interstitial from the reported bug (strong marker).
+        self.assertTrue(f(
+            "Checking your browser This will only take a few seconds... "
+            "Secured by wp.com (URL: https://wordpress.com)"
+        ))
+        # Cloudflare markers.
+        self.assertTrue(f("cf-browser-verification"))
+        self.assertTrue(f("Just a moment..."))  # weak, but short
+        # Real content is not flagged, even if long and mentioning a weak phrase.
+        long_text = ("Our pricing is simple. " * 40) + "checking your browser settings is optional."
+        self.assertFalse(f(long_text))
+        self.assertFalse(f("Welcome to our pricing page. Plans start at $10 per seat."))
+        self.assertFalse(f(""))
+        self.assertFalse(f(None))
+
     def test_extract_links_dedupes_page_variants(self):
         """The homepage linked via #anchors and trailing slash yields one link."""
         html = """
