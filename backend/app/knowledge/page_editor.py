@@ -275,17 +275,26 @@ def create_text_source(
     return knowledge
 
 
-def insert_subpage(knowledge: Knowledge, subpage_name: str, content: str) -> None:
+def insert_subpage(
+    knowledge: Knowledge,
+    subpage_name: str,
+    content: str,
+    url: Optional[str] = None,
+) -> None:
     """Embed and insert a brand-new sub-page chunk.
 
-    The write happens on the vector store's own session (which commits itself);
-    there is nothing to commit on the request session.
+    ``subpage_name`` is the page id/title; ``url`` is an optional source link
+    stored in metadata so the UI can render it (and derive the title from the
+    name rather than from a URL the user pasted). The write happens on the vector
+    store's own session (which commits itself); there is nothing to commit on the
+    request session.
     """
     agent_ids = agent_ids_for(knowledge)
+    meta_data: Dict[str, Any] = {"agent_id": agent_ids, "title": subpage_name}
+    if url:
+        meta_data["url"] = url
     manager = get_manager(knowledge.organization_id)
-    doc = embed_document(
-        manager, knowledge.source, subpage_name, content, {"agent_id": agent_ids}
-    )
+    doc = embed_document(manager, knowledge.source, subpage_name, content, meta_data)
     filters = {
         "name": knowledge.source,
         "agent_id": agent_ids,

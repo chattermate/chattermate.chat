@@ -1523,6 +1523,7 @@ async def add_subpage(
     knowledge_id: int,
     subpage_name: str = Body(..., embed=True),
     content: str = Body(..., embed=True),
+    url: Optional[str] = Body(None, embed=True),
     current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db)
 ):
@@ -1591,7 +1592,7 @@ async def add_subpage(
                 )
 
             # Embed and insert the new subpage into the vector database
-            page_editor.insert_subpage(knowledge, subpage_name, content)
+            page_editor.insert_subpage(knowledge, subpage_name, content, (url or "").strip() or None)
 
             logger.info(f"Added new subpage '{subpage_name}' to knowledge {knowledge_id}")
             

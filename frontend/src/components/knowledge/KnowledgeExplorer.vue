@@ -200,8 +200,11 @@ onUnmounted(() => {
           :content="ex.draftContent.value"
           :saving="ex.isSaving.value"
           :submit-label="ex.isAddingPage.value ? 'Add sub-page' : 'Save page'"
+          :url="ex.draftUrl.value"
+          :show-url="ex.isAddingPage.value"
           @update:title="ex.draftTitle.value = $event"
           @update:content="ex.draftContent.value = $event"
+          @update:url="ex.draftUrl.value = $event"
           @save="ex.savePage"
           @cancel="ex.cancelEdit"
         />

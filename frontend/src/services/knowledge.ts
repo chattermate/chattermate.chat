@@ -164,10 +164,11 @@ export const knowledgeService = {
     return response.data
   },
 
-  async addSubpage(knowledgeId: number, subpageName: string, content: string) {
+  async addSubpage(knowledgeId: number, subpageName: string, content: string, url?: string) {
     const response = await api.post(`/knowledge/${knowledgeId}/subpage`, {
       subpage_name: subpageName,
-      content
+      content,
+      ...(url ? { url } : {}),
     })
     return response.data
   },

@@ -76,6 +76,7 @@ export function useKnowledgeExplorer(
   const isAddingPage = ref(false)
   const draftTitle = ref('')
   const draftContent = ref('')
+  const draftUrl = ref('')
   const isSaving = ref(false)
   const isDeleting = ref(false)
 
@@ -315,6 +316,7 @@ export function useKnowledgeExplorer(
     selectedPageId.value = null
     draftTitle.value = ''
     draftContent.value = ''
+    draftUrl.value = ''
     isAddingPage.value = true
     editing.value = true
     source.expanded = true
@@ -341,7 +343,7 @@ export function useKnowledgeExplorer(
     isSaving.value = true
     error.value = null
     try {
-      await knowledgeService.addSubpage(source.id, title, content)
+      await knowledgeService.addSubpage(source.id, title, content, draftUrl.value.trim() || undefined)
       await loadSourceContent(source.id, true)
       selectedPageId.value = basePageId(title)
       isAddingPage.value = false
@@ -531,6 +533,7 @@ export function useKnowledgeExplorer(
     isAddingPage,
     draftTitle,
     draftContent,
+    draftUrl,
     isSaving,
     isDeleting,
     // computed

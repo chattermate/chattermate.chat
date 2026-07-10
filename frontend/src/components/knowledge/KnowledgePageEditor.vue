@@ -22,13 +22,16 @@ const props = withDefaults(
     content: string
     saving: boolean
     submitLabel?: string
+    url?: string
+    showUrl?: boolean
   }>(),
-  { submitLabel: 'Save page' },
+  { submitLabel: 'Save page', url: '', showUrl: false },
 )
 
 const emit = defineEmits<{
   (e: 'update:title', value: string): void
   (e: 'update:content', value: string): void
+  (e: 'update:url', value: string): void
   (e: 'save'): void
   (e: 'cancel'): void
 }>()
@@ -48,6 +51,18 @@ const canSave = computed(() => props.content.trim().length > 0 && !props.saving)
         placeholder="Page title"
         @input="emit('update:title', ($event.target as HTMLInputElement).value)"
       />
+
+      <template v-if="showUrl">
+        <label class="editor__label" for="kb-page-url">SOURCE URL (OPTIONAL)</label>
+        <input
+          id="kb-page-url"
+          class="editor__title editor__url"
+          :value="url"
+          type="url"
+          placeholder="https://example.com/page"
+          @input="emit('update:url', ($event.target as HTMLInputElement).value)"
+        />
+      </template>
 
       <label class="editor__label" for="kb-page-content">PAGE CONTENT</label>
       <textarea
@@ -108,6 +123,13 @@ const canSave = computed(() => props.content.trim().length > 0 && !props.saving)
   color: var(--text);
   padding: 10px 12px;
   margin-bottom: 16px;
+}
+
+.editor__url {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--c-teal);
 }
 
 .editor__title:focus,
