@@ -43,6 +43,155 @@ import json
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Groq structured-output tool
+#
+# Groq's API rejects response_format (JSON mode) whenever tools are present
+# ("json mode cannot be combined with tool/function calling"), so agno's
+# structured-output path degrades to prompt-only JSON — which GPT-OSS/Llama drift
+# away from (emitting the fields as prose), losing end_chat and lead capture.
+#
+# GPT-OSS's native structured-output convention on Groq IS a tool call named
+# `json`. So instead of response_format we register a real `json` tool whose
+# parameters are the ChatResponse fields and mark it stop_after_tool_call — the
+# model reliably calls it (even right after a knowledge search) and we read the
+# final ChatResponse straight from its validated arguments. OpenAI/Anthropic/etc.
+# keep using agno's native response_model path untouched.
+# ---------------------------------------------------------------------------
+_GROQ_JSON_TOOL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "message": {"type": "string", "description": "The reply text shown to the visitor."},
+        "transfer_to_human": {"type": ["boolean", "null"]},
+        "transfer_reason": {"type": ["string", "null"],
+                            "enum": [*[t.value for t in TransferReasonType], None]},
+        "transfer_description": {"type": ["string", "null"]},
+        "end_chat": {"type": ["boolean", "null"], "description": "true when the conversation is over (goodbye / task complete)."},
+        "end_chat_reason": {"type": ["string", "null"],
+                            "enum": [*[e.value for e in EndChatReasonType], None]},
+        "end_chat_description": {"type": ["string", "null"]},
+        "request_rating": {"type": ["boolean", "null"]},
+        "create_ticket": {"type": ["boolean", "null"]},
+        "request_lead_capture": {"type": ["boolean", "null"], "description": "true once a valid email is collected (and consent, if required)."},
+        "lead_email": {"type": ["string", "null"]},
+        "lead_name": {"type": ["string", "null"]},
+        "lead_company": {"type": ["string", "null"]},
+        "lead_phone": {"type": ["string", "null"]},
+        "lead_summary": {"type": ["string", "null"]},
+        "lead_consent": {"type": ["boolean", "null"]},
+        "request_contact": {"type": ["boolean", "null"]},
+    },
+    "required": ["message"],
+    "additionalProperties": False,
+}
+
+_GROQ_JSON_INSTRUCTION = (
+    "\n\nCRITICAL OUTPUT RULE: You MUST end every single turn by calling the `json` tool "
+    "with your final structured reply. Never write the reply as plain text and never put the "
+    "JSON in your message — always deliver it through the `json` tool call, after any searching. "
+    "Put the visitor-facing reply in `message`. Set `end_chat`=true when the conversation is "
+    "ending. Set `request_lead_capture`=true and fill `lead_email` as soon as the visitor shares "
+    "a valid email (and `lead_consent`=true once they agree to be contacted)."
+)
+
+
+def build_groq_response_tool(capture: dict):
+    """Return an agno `json` tool that captures the final structured turn into `capture`.
+
+    `capture` is mutated in place with the model's tool-call arguments; the caller reads
+    it after `agent.arun()` and builds the ChatResponse from it.
+    """
+    from agno.tools.function import Function
+
+    def _record(**kwargs):
+        capture.clear()
+        capture.update(kwargs)
+        return "recorded"
+
+    return Function(
+        name="json",
+        description="Return your final structured reply to the visitor. Call this exactly once to end the turn, after any searching.",
+        parameters=_GROQ_JSON_TOOL_SCHEMA,
+        entrypoint=_record,
+        stop_after_tool_call=True,
+        skip_entrypoint_processing=True,
+    )
+
+def _lenient_json_load(s: str):
+    """Best-effort parse of a possibly-truncated JSON object. Returns dict or None.
+
+    When Groq truncates a `json` tool call, the trailing field (usually `message`) is
+    cut mid-value. We progressively try closers, then fall back to dropping the last
+    (incomplete) key so the earlier complete fields survive.
+    """
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    for suffix in ('"}', '}', '"}}', '}}', 'null}'):
+        try:
+            return json.loads(s + suffix)
+        except json.JSONDecodeError:
+            continue
+    last_comma = s.rfind(',')
+    if last_comma != -1:
+        try:
+            return json.loads(s[:last_comma] + '}')
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _salvage_groq_json_error(exc: Exception):
+    """Recover a ChatResponse dict from a Groq `tool_use_failed` error.
+
+    Groq returns the (truncated) tool-call text in `failed_generation`; every field
+    before the truncation point is intact, so the lead/end_chat flags are recoverable
+    even when the message got cut. Returns a dict of arguments or None.
+    """
+    text = getattr(exc, "message", None) or str(exc)
+    if "failed_generation" not in text:
+        return None
+    fg = None
+    try:
+        fg = json.loads(text).get("error", {}).get("failed_generation")
+    except Exception:
+        m = re.search(r'"failed_generation"\s*:\s*"(.*)"\s*\}\s*\}\s*$', text, re.DOTALL)
+        if m:
+            try:
+                # Decode JSON string escapes (\n, \", \uXXXX, non-ASCII) correctly —
+                # unicode_escape would corrupt emoji/accented characters.
+                fg = json.loads('"' + m.group(1) + '"')
+            except Exception:
+                fg = m.group(1)
+    if not fg:
+        return None
+    # fg looks like: {"name": "json", "arguments": {<fields, possibly truncated>}}
+    idx = fg.find('"arguments"')
+    brace = fg.find('{', idx) if idx != -1 else -1
+    if brace == -1:
+        return None
+    return _lenient_json_load(fg[brace:])
+
+
+def _build_chat_response_from_capture(capture: dict) -> ChatResponse:
+    """Build a ChatResponse from the Groq `json` tool arguments.
+
+    Drops None values so ChatResponse's own field defaults apply (the model may
+    emit explicit nulls for optional fields), then lets pydantic validate/coerce
+    (e.g. enum reasons). Falls back to a plain message on validation failure.
+    """
+    cleaned = {k: v for k, v in capture.items() if v is not None}
+    try:
+        return ChatResponse(**cleaned)
+    except Exception as e:
+        logger.error(f"Groq json-tool args failed ChatResponse validation: {e}; args={cleaned}")
+        return ChatResponse(message=str(cleaned.get("message") or "").strip() or "No response generated")
+
+
 # Add a function to remove URLs from message content
 def remove_urls_from_message(message: str) -> str:
     """Remove URLs from message text, but preserve markdown image URLs"""
@@ -310,7 +459,12 @@ Keep your responses concise and focused. Provide clear, actionable information i
 - If you need information from the user to complete a task, ASK them directly. DO NOT repeatedly call tools hoping to find the information.
 - If a tool returns an error or indicates missing information, STOP calling tools and respond to the user.
 - DO NOT call the same tool multiple times with the same parameters if it failed the first time.
-- DO NOT call tools in a loop. If you've tried a few tools and haven't found what you need, ask the user for help."""
+- DO NOT call tools in a loop. If you've tried a few tools and haven't found what you need, ask the user for help.
+
+**CRITICAL: Accuracy & Grounding (never invent facts):**
+- NEVER make up or guess URLs, domain names, email addresses, phone numbers, prices, plan names, dates, or any other specific detail. Do not "complete" or "correct" a domain or link from memory.
+- Only state a URL, contact detail, price, or fact if it appears in the knowledge base, tool results, or your configuration. Reproduce it exactly as written — do not alter the spelling, domain (e.g. .com vs .club), or path.
+- If you don't have a specific detail from those sources, say you don't have it and offer to connect the visitor with the team, rather than providing a plausible-looking guess."""
 
 
             
@@ -516,11 +670,17 @@ Keep your responses concise and focused. Provide clear, actionable information i
             ]
 
         # Initialize model with utility function
+        base_max_tokens = 2000 if (self.shopify_instructions_added or self.mcp_instructions_added) else 1000
+        # Groq's GPT-OSS/reasoning models spend output tokens on internal reasoning
+        # BEFORE emitting the `json` tool call; too small a budget truncates the tool
+        # arguments into invalid JSON (Groq 400). Give the Groq path extra headroom.
+        if model_type.upper() == 'GROQ':
+            base_max_tokens = max(base_max_tokens, 4000)
         model = create_model(
             model_type=model_type,
             api_key=api_key,
             model_name=model_name,
-            max_tokens=2000 if (self.shopify_instructions_added or self.mcp_instructions_added) else 1000,
+            max_tokens=base_max_tokens,
             # response_format={"type": "json_object"} if model_type.upper() != 'GROQ' else {"type": "text"}
         )
 
@@ -534,8 +694,22 @@ Keep your responses concise and focused. Provide clear, actionable information i
         if hasattr(self, 'tools') and self.tools:
            all_tools.extend(self.tools)
 
-        # Enable structured outputs for all models including Groq
-        # The PatchedGroq class handles the response_format conflict when tools are present
+        # Groq can't combine response_format (JSON mode) with tools, so its native
+        # structured-output path degrades to unreliable prompt-only JSON. For Groq we
+        # instead register a `json` tool (GPT-OSS's own structured-output convention)
+        # and read the ChatResponse from its arguments; other providers keep agno's
+        # native response_model path. See build_groq_response_tool above.
+        self._groq_json_capture = {}
+        self._use_groq_json_tool = model_type.upper() == 'GROQ'
+        if self._use_groq_json_tool:
+            all_tools.append(build_groq_response_tool(self._groq_json_capture))
+            system_message = (system_message or "") + _GROQ_JSON_INSTRUCTION
+            response_model = None
+            structured_outputs = False
+        else:
+            response_model = ChatResponse
+            structured_outputs = True
+
         self.agent = Agent(
            name=self.agent_data.name if self.agent_data else "Default Agent",
            session_id=session_id,
@@ -552,8 +726,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
            debug_mode=settings.ENVIRONMENT == "development",
            user_id=str(customer_id),
            session_state={"status": "active"},
-           response_model=ChatResponse,
-           structured_outputs=True,
+           response_model=response_model,
+           structured_outputs=structured_outputs,
            system_message_role="system",
            user_message_role="user",
            show_tool_calls=settings.ENVIRONMENT == "development"
@@ -578,14 +752,31 @@ Keep your responses concise and focused. Provide clear, actionable information i
             self.agent.session_id = session_id
 
             # Get AI response WITHOUT storing user message
-            response = await self.agent.arun(
-                message=message,
-                session_id=session_id,
-                stream=False
-            )
-
-            # Use the utility function to parse the response
-            response_content = parse_response_content(response)
+            self._groq_json_capture.clear()
+            try:
+                response = await self.agent.arun(
+                    message=message,
+                    session_id=session_id,
+                    stream=False
+                )
+            except Exception as arun_exc:
+                # Groq only: a truncated `json` tool call is rejected as invalid JSON;
+                # salvage the (mostly-complete) fields so the lead/end_chat survive.
+                # Non-Groq providers re-raise unchanged — no behavior change for them.
+                salvaged = _salvage_groq_json_error(arun_exc) if self._use_groq_json_tool else None
+                # Empty salvage means nothing usable survived — re-raise so the normal
+                # error reply is shown instead of a bare "No response generated".
+                if not salvaged:
+                    raise
+                logger.warning("Groq json tool call unparseable (likely truncated); salvaged structured fields")
+                response_content = _build_chat_response_from_capture(salvaged)
+            else:
+                # Groq path returns the structured turn via the `json` tool; everything
+                # else parses agno's native structured output.
+                if self._use_groq_json_tool and self._groq_json_capture:
+                    response_content = _build_chat_response_from_capture(self._groq_json_capture)
+                else:
+                    response_content = parse_response_content(response)
 
             logger.debug(f"Response content: {response_content}")
 
@@ -877,14 +1068,32 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     self.knowledge_tool.collected_sources = []
 
                 # Get AI response
-                response = await self.agent.arun(
-                    message=message,
-                    session_id=session_id,
-                    stream=False
-                )
+                self._groq_json_capture.clear()
+                _salvaged_content = None
+                try:
+                    response = await self.agent.arun(
+                        message=message,
+                        session_id=session_id,
+                        stream=False
+                    )
+                except Exception as arun_exc:
+                    # Groq only: salvage a truncated `json` tool call (see get_response).
+                    salvaged = _salvage_groq_json_error(arun_exc) if self._use_groq_json_tool else None
+                    # Empty salvage → nothing usable; re-raise for the normal error reply.
+                    if not salvaged:
+                        raise
+                    logger.warning("Groq json tool call unparseable (likely truncated); salvaged structured fields")
+                    _salvaged_content = _build_chat_response_from_capture(salvaged)
+                    response = None
 
-                # Use the utility function to parse the response
-                response_content = parse_response_content(response)
+                # Groq path returns the structured turn via the `json` tool; everything
+                # else parses agno's native structured output.
+                if _salvaged_content is not None:
+                    response_content = _salvaged_content
+                elif self._use_groq_json_tool and self._groq_json_capture:
+                    response_content = _build_chat_response_from_capture(self._groq_json_capture)
+                else:
+                    response_content = parse_response_content(response)
 
                 # Attach knowledge-base citations gathered during this turn (overrides any
                 # value the LLM may have produced — this field is system-managed).
