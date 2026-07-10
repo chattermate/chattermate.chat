@@ -26,6 +26,7 @@ interface PageRow {
 const props = defineProps<{
   sources: ExplorerSource[]
   selectedPageId: string | null
+  selectedSourceId: number | null
   query: string
   statusOf: (source: ExplorerSource) => SourceStatus
   pageRowsOf: (source: ExplorerSource) => PageRow[]
@@ -126,7 +127,7 @@ function sourceGlyph(type: string): string {
               :key="row.page_id"
               type="button"
               class="pg"
-              :class="{ 'pg--active': row.page_id === selectedPageId }"
+              :class="{ 'pg--active': source.id === selectedSourceId && row.page_id === selectedPageId }"
               @click="emit('select', source, row.page_id)"
             >
               <span class="pg__dot"></span>

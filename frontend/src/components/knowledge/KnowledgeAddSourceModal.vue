@@ -21,11 +21,9 @@ type SourceKind = 'website' | 'sitemap' | 'pdf' | 'text'
 
 const props = withDefaults(
   defineProps<{
-    initialUrl?: string
-    initialType?: SourceKind
     submitting?: boolean
   }>(),
-  { initialUrl: '', initialType: 'website', submitting: false },
+  { submitting: false },
 )
 
 const emit = defineEmits<{
@@ -33,8 +31,8 @@ const emit = defineEmits<{
   (e: 'submit', payload: AddSourcePayload): void
 }>()
 
-const kind = ref<SourceKind>(props.initialType)
-const url = ref(props.initialUrl)
+const kind = ref<SourceKind>('website')
+const url = ref('')
 const followLinks = ref(true)
 const files = ref<File[]>([])
 const title = ref('')
@@ -69,15 +67,20 @@ function pickFiles() {
   fileInput.value?.click()
 }
 
+const isPdf = (file: File) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+
 function onFilesSelected(event: Event) {
   const input = event.target as HTMLInputElement
-  if (input.files) files.value = Array.from(input.files)
+  if (input.files) files.value = Array.from(input.files).filter(isPdf)
 }
 
 function onDrop(event: DragEvent) {
   dragOver.value = false
   const dropped = event.dataTransfer?.files
-  if (dropped && dropped.length) files.value = Array.from(dropped)
+  if (!dropped) return
+  // Only accept PDFs — the backend upload endpoint validates PDF magic bytes.
+  const pdfs = Array.from(dropped).filter(isPdf)
+  if (pdfs.length) files.value = pdfs
 }
 
 function submit() {

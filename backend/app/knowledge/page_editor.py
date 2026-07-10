@@ -198,18 +198,23 @@ def reembed_chunk(
     knowledge: Knowledge,
     chunk_id: str,
     content: str,
-    meta_data: Dict[str, Any],
 ) -> None:
-    """Re-embed one chunk's content in place. Caller commits."""
+    """Re-embed one chunk's content in place (scoped to its source). Caller commits."""
     manager = get_manager(knowledge.organization_id)
-    doc = embed_document(manager, knowledge.source, chunk_id, content, meta_data)
+    doc = embed_document(manager, knowledge.source, chunk_id, content)
     update_query = text(
         f'UPDATE {knowledge.schema}."{knowledge.table_name}" '
-        "SET content = :content, embedding = :embedding WHERE id = :chunk_id"
+        "SET content = :content, embedding = :embedding "
+        "WHERE id = :chunk_id AND name = :source"
     )
     db.execute(
         update_query,
-        {"content": content, "embedding": doc.embedding, "chunk_id": chunk_id},
+        {
+            "content": content,
+            "embedding": doc.embedding,
+            "chunk_id": chunk_id,
+            "source": knowledge.source,
+        },
     )
 
 

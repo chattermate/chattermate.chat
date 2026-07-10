@@ -43,6 +43,9 @@ export interface ExplorerSource {
   // True for a placeholder built from an in-flight queue item that has not yet
   // produced a real Knowledge source (id is the negated queue-item id).
   queued?: boolean
+  // Status carried from the queue item for a placeholder (its display name may
+  // differ from the queue `source`, so it can't be re-derived by name lookup).
+  queuedStatus?: SourceStatus
 }
 
 const POLL_INTERVAL_MS = 10000
@@ -156,10 +159,24 @@ export function useKnowledgeExplorer(
     return 'custom'
   }
 
+  // A queue item's `source` is a URL for websites but an internal temp path or
+  // S3 signed URL for PDFs — show a readable filename for the placeholder.
+  const queueSourceName = (item: QueueItem): string => {
+    if (!item.source_type.includes('pdf')) return item.source
+    const path = item.source.split(/[?#]/)[0]
+    const base = decodeURIComponent(path.slice(path.lastIndexOf('/') + 1))
+      .replace(/\.[^.]+$/, '') // drop extension
+      .replace(/^[0-9a-f-]{8,}[_-]/i, '') // drop a leading uuid_ prefix
+    return base || item.source
+  }
+
+  const queueStatusToSource = (status: string): SourceStatus =>
+    status === 'failed' ? 'error' : status === 'processing' ? 'crawling' : 'queued'
+
   // Placeholder source for an in-flight queue item (negative id = queue-item id).
   const toSyntheticSource = (item: QueueItem): ExplorerSource => ({
     id: -item.id,
-    name: item.source,
+    name: queueSourceName(item),
     type: queueKind(item.source_type),
     pageStubs: [],
     expanded: false,
@@ -167,6 +184,7 @@ export function useKnowledgeExplorer(
     contentError: null,
     pages: [],
     queued: true,
+    queuedStatus: queueStatusToSource(item.status),
   })
 
   // Real sources plus a placeholder for every in-flight queue item that has not
@@ -238,6 +256,9 @@ export function useKnowledgeExplorer(
   })
 
   const sourceStatus = (source: ExplorerSource): SourceStatus => {
+    // Placeholders carry their own status (their display name differs from the
+    // queue source, so a name lookup wouldn't find the item).
+    if (source.queued) return source.queuedStatus ?? 'queued'
     const item = queueItems.value.find((q) => q.source === source.name)
     if (item?.status === 'failed') return 'error'
     if (item?.status === 'processing') return 'crawling'

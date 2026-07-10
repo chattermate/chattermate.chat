@@ -171,6 +171,7 @@ onUnmounted(() => {
         class="grid__tree"
         :sources="ex.filteredSources.value"
         :selected-page-id="ex.selectedPageId.value"
+        :selected-source-id="ex.selectedSourceId.value"
         :query="ex.query.value"
         :status-of="ex.sourceStatus"
         :page-rows-of="ex.pageRows"

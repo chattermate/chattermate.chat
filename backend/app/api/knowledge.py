@@ -1419,24 +1419,25 @@ async def update_chunk_content(
         knowledge = _require_editable_knowledge(db, knowledge_id, current_user)
 
         try:
-            # Get existing chunk to preserve metadata
+            # Verify the chunk exists AND belongs to this source (the vector
+            # table is shared across the org's sources, so scope by name).
             query = text(f"""
-                SELECT meta_data
+                SELECT 1
                 FROM {knowledge.schema}."{knowledge.table_name}"
-                WHERE id = :chunk_id
+                WHERE id = :chunk_id AND name = :source
             """)
-            row = db.execute(query, {"chunk_id": chunk_id}).fetchone()
-            
+            row = db.execute(
+                query, {"chunk_id": chunk_id, "source": knowledge.source}
+            ).fetchone()
+
             if not row:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Chunk not found"
                 )
 
-            # Re-embed the updated content in place (preserving metadata)
-            page_editor.reembed_chunk(
-                db, knowledge, chunk_id, content, row.meta_data
-            )
+            # Re-embed the updated content in place
+            page_editor.reembed_chunk(db, knowledge, chunk_id, content)
             db.commit()
             
             logger.info(f"Updated chunk {chunk_id} for knowledge {knowledge_id}")
@@ -1475,13 +1476,16 @@ async def delete_chunk(
         knowledge = _require_editable_knowledge(db, knowledge_id, current_user)
 
         try:
-            # Delete the chunk from the database
+            # Delete the chunk from the database (scoped to this source, since the
+            # vector table is shared across the org's sources).
             delete_query = text(f"""
                 DELETE FROM {knowledge.schema}."{knowledge.table_name}"
-                WHERE id = :chunk_id
+                WHERE id = :chunk_id AND name = :source
             """)
-            
-            result = db.execute(delete_query, {"chunk_id": chunk_id})
+
+            result = db.execute(
+                delete_query, {"chunk_id": chunk_id, "source": knowledge.source}
+            )
             db.commit()
             
             if result.rowcount == 0:
@@ -1571,12 +1575,14 @@ async def add_subpage(
                 pass
         
         try:
-            # Check if subpage name already exists
+            # Check if subpage name already exists within this source
             check_query = text(f"""
                 SELECT id FROM {knowledge.schema}."{knowledge.table_name}"
-                WHERE id = :subpage_name
+                WHERE id = :subpage_name AND name = :source
             """)
-            existing = db.execute(check_query, {"subpage_name": subpage_name}).fetchone()
+            existing = db.execute(
+                check_query, {"subpage_name": subpage_name, "source": knowledge.source}
+            ).fetchone()
             
             if existing:
                 raise HTTPException(
