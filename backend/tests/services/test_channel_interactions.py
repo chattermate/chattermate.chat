@@ -100,7 +100,7 @@ async def test_rating_records_and_asks_feedback(db, account, conversation, use_t
     fake_adapter.acknowledge_interaction.assert_awaited()
     # awaiting-feedback flag set on the conversation
     db.refresh(conversation)
-    assert conversation.extra.get(_AWAITING_FEEDBACK) == str(rating.id)
+    assert conversation.extra.get(_AWAITING_FEEDBACK)["rating_id"] == str(rating.id)
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -35,14 +36,17 @@ from app.repositories.channels import (
     ChannelConversationRepository,
     AgentChannelConfigRepository,
 )
+from app.core.dedupe import claim_once
 from app.repositories.rating import RatingRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.lead_capture import record_lead_from_response
 from app.services.message_delivery import deliver_to_customer
 
 # Key under channel_conversations.extra marking that the next text reply should
-# be captured as feedback for the given rating id.
+# be captured as feedback for the given rating id. Value: {"rating_id", "at"}.
 _AWAITING_FEEDBACK = "awaiting_feedback_for_rating"
+# A reply this long after the rating is a new conversation, not feedback.
+_FEEDBACK_WINDOW_SECONDS = 30 * 60
 
 # Optional enterprise message-limit check (same seam as the widget path)
 try:
@@ -189,8 +193,13 @@ async def process_channel_interaction(account_id, interaction: ChannelInteractio
 async def _handle_rating(db, adapter, account, conversation, interaction: ChannelInteraction) -> None:
     """Record a star rating, acknowledge the tap, and ask for optional feedback."""
     rating_repo = RatingRepository(db)
-    # Capture once per session
-    if rating_repo.get_rating_by_session(conversation.session_id) is not None:
+    # Capture once per session: atomic Redis claim guards concurrent double-taps,
+    # the DB check guards the no-Redis fallback and long-lived retries.
+    already_rated = (
+        not claim_once("rating_session", str(conversation.session_id))
+        or rating_repo.get_rating_by_session(conversation.session_id) is not None
+    )
+    if already_rated:
         if adapter is not None:
             await adapter.acknowledge_interaction(account, interaction, "You've already rated — thank you!")
         return
@@ -206,9 +215,13 @@ async def _handle_rating(db, adapter, account, conversation, interaction: Channe
     )
     if adapter is not None:
         await adapter.acknowledge_interaction(account, interaction, f"Thanks for the {value}-star rating!")
-        # Ask for optional written feedback; the next text reply is captured as it
+        # Ask for optional written feedback; the next text reply (within the
+        # feedback window) is captured as it
         ChannelConversationRepository(db).set_extra(
-            conversation, {**(conversation.extra or {}), _AWAITING_FEEDBACK: str(rating.id)})
+            conversation, {**(conversation.extra or {}), _AWAITING_FEEDBACK: {
+                "rating_id": str(rating.id),
+                "at": datetime.now(timezone.utc).isoformat(),
+            }})
         await adapter.send_text(
             account, conversation,
             "Thank you! If you'd like, reply with any feedback — or send /skip.")
@@ -230,14 +243,16 @@ def _handle_contact(db, conversation, interaction: ChannelInteraction) -> None:
 
 
 async def _consume_pending_feedback(db, account, adapter, inbound: InboundMessage) -> bool:
-    """If the conversation is awaiting written feedback, capture this text reply
-    as the rating's feedback (or skip it) and return True. Else return False."""
+    """If the conversation is awaiting written feedback (rated within the
+    feedback window), capture this text reply as the rating's feedback (or skip
+    it) and return True. An expired flag is cleared and the message flows on to
+    normal processing — a question asked a day later must reach the agent."""
     conversation = ChannelConversationRepository(db).get_latest(
         account.id, inbound.external_conversation_id)
     if conversation is None:
         return False
-    rating_id = (conversation.extra or {}).get(_AWAITING_FEEDBACK)
-    if not rating_id:
+    pending = (conversation.extra or {}).get(_AWAITING_FEEDBACK)
+    if not pending:
         return False
 
     # Clear the awaiting state regardless of outcome
@@ -245,12 +260,22 @@ async def _consume_pending_feedback(db, account, adapter, inbound: InboundMessag
     extra.pop(_AWAITING_FEEDBACK, None)
     ChannelConversationRepository(db).set_extra(conversation, extra)
 
+    rating_id = pending.get("rating_id") if isinstance(pending, dict) else pending
+    rated_at = pending.get("at") if isinstance(pending, dict) else None
+    if rated_at:
+        try:
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(rated_at)).total_seconds()
+            if age > _FEEDBACK_WINDOW_SECONDS:
+                return False  # too old — treat as a fresh customer message
+        except ValueError:
+            pass
+
     text = (inbound.text or "").strip()
     if text.lower() != "/skip":
         RatingRepository(db).update_feedback(rating_id, text)
     if adapter is not None:
-        conv_repo_msg = "Thanks for your feedback!" if text.lower() != "/skip" else "No problem — thanks!"
-        await adapter.send_text(account, conversation, conv_repo_msg)
+        reply = "Thanks for your feedback!" if text.lower() != "/skip" else "No problem — thanks!"
+        await adapter.send_text(account, conversation, reply)
     return True
 
 

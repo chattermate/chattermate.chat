@@ -160,6 +160,10 @@ class TelegramAdapter(ChannelAdapter):
         chat = message.get("chat") or {}
         if contact and "id" in chat:
             sender = message.get("from") or {}
+            # Only accept the sender's OWN contact (the share-phone button flow);
+            # a forwarded third-party contact card has a different/absent user_id.
+            if contact.get("user_id") != sender.get("id"):
+                return None
             return ChannelInteraction(
                 type="contact",
                 external_account_id="",
