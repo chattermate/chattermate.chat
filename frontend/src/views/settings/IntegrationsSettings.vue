@@ -24,6 +24,7 @@ import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import { checkSlackConnection, getSlackAuthUrl, disconnectSlack } from '@/services/slack'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
+import MetaChannelConnect from '@/components/integrations/MetaChannelConnect.vue'
 
 // Import logos
 import jiraLogo from '@/assets/jira-logo.svg'
@@ -31,6 +32,9 @@ import slackLogo from '@/assets/slack-logo.svg'
 import zendeskLogo from '@/assets/zendesk-logo.svg'
 import shopifyLogo from '@/assets/shopify-logo.svg'
 import telegramLogo from '@/assets/telegram-logo.svg'
+import whatsappLogo from '@/assets/whatsapp-logo.svg'
+import messengerLogo from '@/assets/messenger-logo.svg'
+import instagramLogo from '@/assets/instagram-logo.svg'
 
 // Define interface for Shopify shop
 interface ShopifyShop {
@@ -50,44 +54,61 @@ const slackConnected = ref(false)
 const slackTeamName = ref('')
 const slackLoading = ref(true)
 
-// Telegram state variables
-const telegramAccounts = ref<ChannelAccount[]>([])
-const telegramLoading = ref(true)
+// Messaging channel state (Telegram + Meta channels share one accounts list)
+const channelAccounts = ref<ChannelAccount[]>([])
+const channelsLoading = ref(true)
 const showTelegramModal = ref(false)
+// Which Meta connect modal is open (null = none)
+const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
+
+const accountsFor = (channelType: string) =>
+  channelAccounts.value.filter(a => a.channel_type === channelType)
+
+const telegramAccounts = computed(() => accountsFor('telegram'))
 
 const fetchChannelAccounts = async () => {
   try {
-    telegramLoading.value = true
-    const accounts = await channelsService.listAccounts()
-    telegramAccounts.value = accounts.filter(a => a.channel_type === 'telegram')
+    channelsLoading.value = true
+    channelAccounts.value = await channelsService.listAccounts()
   } catch (error) {
     console.error('Error loading channel accounts:', error)
   } finally {
-    telegramLoading.value = false
+    channelsLoading.value = false
   }
 }
 
-const onTelegramConnected = async () => {
+const onChannelConnected = async () => {
   showTelegramModal.value = false
+  metaModalChannel.value = null
   await fetchChannelAccounts()
 }
 
-const handleDisconnectTelegram = async () => {
+// Shared disconnect for messaging channels; Telegram also removes its webhook
+const disconnectChannelAccounts = async (channelType: string, label: string) => {
   try {
-    telegramLoading.value = true
-    for (const account of telegramAccounts.value) {
-      await channelsService.disconnectTelegram(account.id)
+    channelsLoading.value = true
+    for (const account of accountsFor(channelType)) {
+      if (channelType === 'telegram') {
+        await channelsService.disconnectTelegram(account.id)
+      } else {
+        await channelsService.disconnectMeta(account.id)
+      }
     }
-    telegramAccounts.value = []
-    toast.success('Telegram disconnected successfully')
+    channelAccounts.value = channelAccounts.value.filter(a => a.channel_type !== channelType)
+    toast.success(`${label} disconnected successfully`)
   } catch (error: any) {
-    toast.error(error?.response?.data?.detail || 'Error disconnecting Telegram')
+    toast.error(error?.response?.data?.detail || `Error disconnecting ${label}`)
   } finally {
-    telegramLoading.value = false
+    channelsLoading.value = false
     showDisconnectConfirm.value = false
     disconnectingIntegration.value = null
   }
 }
+
+const handleDisconnectTelegram = () => disconnectChannelAccounts('telegram', 'Telegram')
+const handleDisconnectWhatsApp = () => disconnectChannelAccounts('whatsapp', 'WhatsApp')
+const handleDisconnectMessenger = () => disconnectChannelAccounts('messenger', 'Messenger')
+const handleDisconnectInstagram = () => disconnectChannelAccounts('instagram', 'Instagram')
 
 
 const route = useRoute()
@@ -334,10 +355,34 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     color: 'accent',
     connected: telegramAccounts.value.length > 0,
     teamName: telegramAccounts.value.map(a => a.display_name).filter(Boolean).join(', '),
-    isLoading: telegramLoading.value,
+    isLoading: channelsLoading.value,
     connectAction: () => { showTelegramModal.value = true },
     disconnectAction: handleDisconnectTelegram
   },
+  ...(['whatsapp', 'messenger', 'instagram'] as const).map(channel => {
+    const meta = {
+      whatsapp: { name: 'WhatsApp', logo: whatsappLogo, color: 'teal',
+        description: 'Connect a WhatsApp Business number so customers can message your AI agent on WhatsApp.' },
+      messenger: { name: 'Messenger', logo: messengerLogo, color: 'accent',
+        description: 'Connect a Facebook Page so customers can chat with your AI agent on Messenger.' },
+      instagram: { name: 'Instagram', logo: instagramLogo, color: 'purple',
+        description: 'Connect an Instagram professional account so customers can DM your AI agent.' },
+    }[channel]
+    const accounts = accountsFor(channel)
+    return {
+      id: channel,
+      name: meta.name,
+      description: meta.description,
+      logo: meta.logo,
+      category: 'MESSAGING',
+      color: meta.color,
+      connected: accounts.length > 0,
+      teamName: accounts.map(a => a.display_name).filter(Boolean).join(', '),
+      isLoading: channelsLoading.value,
+      connectAction: () => { metaModalChannel.value = channel },
+      disconnectAction: { whatsapp: handleDisconnectWhatsApp, messenger: handleDisconnectMessenger, instagram: handleDisconnectInstagram }[channel]
+    }
+  }),
   // Future integrations
   {
     id: 'zendesk',
@@ -604,6 +649,15 @@ onMounted(async () => {
             <li>Require you to reconnect the bot token to use it again</li>
           </ul>
         </div>
+
+        <div v-if="disconnectingIntegration === 'whatsapp' || disconnectingIntegration === 'messenger' || disconnectingIntegration === 'instagram'" class="integration-specific-warning">
+          <p>Disconnecting this channel will:</p>
+          <ul>
+            <li>Stop the AI agent from receiving and answering its messages</li>
+            <li>Remove the agent routing for the connected account</li>
+            <li>Require re-entering credentials to use it again</li>
+          </ul>
+        </div>
       </div>
       <div class="disconnect-modal-actions">
         <button class="btn-cancel" @click="cancelDisconnect">Cancel</button>
@@ -637,10 +691,19 @@ onMounted(async () => {
           v-if="disconnectingIntegration === 'telegram'"
           class="btn-disconnect"
           @click="handleDisconnectTelegram"
-          :disabled="telegramLoading"
+          :disabled="channelsLoading"
         >
-          <span v-if="telegramLoading" class="loading-spinner"></span>
+          <span v-if="channelsLoading" class="loading-spinner"></span>
           <span v-else>Disconnect Telegram</span>
+        </button>
+        <button
+          v-if="disconnectingIntegration === 'whatsapp' || disconnectingIntegration === 'messenger' || disconnectingIntegration === 'instagram'"
+          class="btn-disconnect"
+          @click="disconnectingIntegration === 'whatsapp' ? handleDisconnectWhatsApp() : disconnectingIntegration === 'messenger' ? handleDisconnectMessenger() : handleDisconnectInstagram()"
+          :disabled="channelsLoading"
+        >
+          <span v-if="channelsLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect {{ disconnectingIntegration === 'whatsapp' ? 'WhatsApp' : disconnectingIntegration === 'messenger' ? 'Messenger' : 'Instagram' }}</span>
         </button>
       </div>
     </div>
@@ -650,7 +713,15 @@ onMounted(async () => {
   <TelegramConnectModal
     v-if="showTelegramModal"
     @close="showTelegramModal = false"
-    @connected="onTelegramConnected"
+    @connected="onChannelConnected"
+  />
+
+  <!-- Meta Channel Connect Modal (WhatsApp / Messenger / Instagram) -->
+  <MetaChannelConnect
+    v-if="metaModalChannel"
+    :channel="metaModalChannel"
+    @close="metaModalChannel = null"
+    @connected="onChannelConnected"
   />
 
 </template>

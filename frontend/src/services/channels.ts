@@ -56,6 +56,33 @@ const channelsService = {
     await api.delete(`/channels/telegram/${accountId}`)
   },
 
+  /** Connect a WhatsApp Cloud API number (manual credentials from a Meta app) */
+  async connectWhatsApp(payload: {
+    phone_number_id: string
+    access_token: string
+    waba_id?: string
+  }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/meta/whatsapp', payload)
+    return response.data
+  },
+
+  /** Connect a Facebook Page for Messenger */
+  async connectMessenger(payload: { page_id: string; page_access_token: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/meta/messenger', payload)
+    return response.data
+  },
+
+  /** Connect an Instagram professional account (via its linked page token) */
+  async connectInstagram(payload: { ig_id: string; page_access_token: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/meta/instagram', payload)
+    return response.data
+  },
+
+  /** Disconnect any Meta channel account (WhatsApp/Messenger/Instagram) */
+  async disconnectMeta(accountId: string): Promise<void> {
+    await api.delete(`/channels/meta/${accountId}`)
+  },
+
   /** Route a connected account to an AI agent */
   async setAccountAgent(accountId: string, agentId: string, isActive = true): Promise<ChannelAccount> {
     const response = await api.post(`/channels/agent-config/${accountId}`, {

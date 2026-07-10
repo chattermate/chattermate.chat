@@ -117,32 +117,36 @@ const slackConfigs = ref<AgentSlackConfig[]>([])
 const slackSaving = ref(false)
 const slackError = ref('')
 
-// Local state for Telegram channel routing
-const telegramAccounts = ref<ChannelAccount[]>([])
-const telegramSaving = ref(false)
+// Local state for messaging-channel routing (Telegram, WhatsApp, Messenger, Instagram)
+const MESSAGING_CHANNELS = ['telegram', 'whatsapp', 'messenger', 'instagram']
+const CHANNEL_LABELS: Record<string, string> = {
+  telegram: 'Telegram', whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram'
+}
+const channelAccounts = ref<ChannelAccount[]>([])
+const channelSaving = ref(false)
 
-const fetchTelegramAccounts = async () => {
+const fetchChannelAccounts = async () => {
   try {
     const accounts = await channelsService.listAccounts()
-    telegramAccounts.value = accounts.filter(a => a.channel_type === 'telegram')
+    channelAccounts.value = accounts.filter(a => MESSAGING_CHANNELS.includes(a.channel_type))
   } catch (error) {
     console.error('Error loading channel accounts:', error)
   }
 }
 
-const toggleTelegramAccount = async (account: ChannelAccount) => {
+const toggleChannelAccount = async (account: ChannelAccount) => {
   try {
-    telegramSaving.value = true
+    channelSaving.value = true
     if (account.agent_id === props.agentId) {
       await channelsService.clearAccountAgent(account.id)
     } else {
       await channelsService.setAccountAgent(account.id, props.agentId)
     }
-    await fetchTelegramAccounts()
+    await fetchChannelAccounts()
   } catch (error: any) {
-    console.error('Error updating Telegram routing:', error)
+    console.error('Error updating channel routing:', error)
   } finally {
-    telegramSaving.value = false
+    channelSaving.value = false
   }
 }
 
@@ -424,7 +428,7 @@ onMounted(async () => {
   await Promise.all([
     fetchShopifyStatus(),
     fetchSlackStatus(),
-    fetchTelegramAccounts()
+    fetchChannelAccounts()
   ])
 })
 </script>
@@ -776,37 +780,39 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Telegram Integration -->
+      <!-- Messaging Channels (Telegram / WhatsApp / Messenger / Instagram) -->
       <div class="integration-section">
         <div class="integration-head">
           <div class="integration-head-left">
-            <div class="integration-badge badge-purple">Tg</div>
+            <div class="integration-badge badge-purple">Ch</div>
             <div class="integration-heading">
-              <div class="integration-title">Telegram — customer chat</div>
-              <div class="integration-desc">Let customers chat with this agent through connected Telegram bots.</div>
+              <div class="integration-title">Messaging channels — customer chat</div>
+              <div class="integration-desc">Let customers chat with this agent on Telegram, WhatsApp, Messenger and Instagram.</div>
             </div>
           </div>
           <router-link to="/settings/integrations" class="connect-btn">
-            {{ telegramAccounts.length > 0 ? 'Manage' : 'Connect' }}
+            {{ channelAccounts.length > 0 ? 'Manage' : 'Connect' }}
           </router-link>
         </div>
 
-        <div v-if="telegramAccounts.length > 0" class="slack-config">
+        <div v-if="channelAccounts.length > 0" class="slack-config">
           <p class="helper-text">
-            Each bot is answered by one agent. Toggle a bot to route its conversations to this agent.
+            Each connected account is answered by one agent. Toggle an account to route its conversations to this agent.
           </p>
           <div class="slack-channels-list">
-            <div v-for="account in telegramAccounts" :key="account.id" class="slack-channel-item">
+            <div v-for="account in channelAccounts" :key="account.id" class="slack-channel-item">
               <div class="channel-header">
-                <span class="channel-name">{{ account.display_name || account.external_account_id }}</span>
+                <span class="channel-name">
+                  {{ CHANNEL_LABELS[account.channel_type] || account.channel_type }} · {{ account.display_name || account.external_account_id }}
+                </span>
               </div>
               <div class="channel-options">
                 <label class="option-item">
                   <input
                     type="checkbox"
                     :checked="account.agent_id === props.agentId"
-                    @change="toggleTelegramAccount(account)"
-                    :disabled="telegramSaving"
+                    @change="toggleChannelAccount(account)"
+                    :disabled="channelSaving"
                   />
                   <span>Answered by this agent</span>
                 </label>
@@ -818,7 +824,7 @@ onMounted(async () => {
           </div>
         </div>
         <div v-else class="no-channels-message">
-          No Telegram bots connected yet. Connect one from Settings → Integrations.
+          No messaging channels connected yet. Connect one from Settings → Integrations.
         </div>
       </div>
     </section>
