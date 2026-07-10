@@ -22,6 +22,9 @@ from sqlalchemy.orm import Session
 
 from app.models.lead_capture import LeadCaptureConfig, LeadCaptureResponse
 from app.repositories.customer import CustomerRepository
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -49,6 +52,7 @@ def record_lead_capture(
     summary: Optional[str],
     consent: bool,
     page_url: Optional[str] = None,
+    channel: str = "widget",
 ) -> Optional[LeadCaptureResponse]:
     """Persist an AI-captured lead (fields the agent extracted conversationally +
     an AI qualification summary). Returns None — recording nothing — when there is
@@ -133,7 +137,7 @@ def record_lead_capture(
         CustomerRepository(db).update_contact(target_customer_id, email=email or None, full_name=name)
 
         # Promote Visitor -> Lead; never downgrade an existing Customer.
-        _promote_to_lead(db, target_customer_id, session_id, page_url=page_url)
+        _promote_to_lead(db, target_customer_id, session_id, page_url=page_url, channel=channel)
 
         db.commit()
     except Exception:
@@ -172,7 +176,8 @@ def _merge_customer(db: Session, source_id, target) -> None:
     source.is_active = False
 
 
-def _promote_to_lead(db: Session, customer_id, session_id, page_url: Optional[str] = None) -> None:
+def _promote_to_lead(db: Session, customer_id, session_id, page_url: Optional[str] = None,
+                     channel: str = "widget") -> None:
     from app.models.customer import Customer, LeadStage
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
@@ -182,9 +187,64 @@ def _promote_to_lead(db: Session, customer_id, session_id, page_url: Optional[st
         customer.lead_qualified_at = datetime.now(timezone.utc)
     # Always keep the capture context fresh (also for repeat captures on a Lead).
     source = dict(customer.lead_source or {})
-    source.setdefault("channel", "widget")
+    source.setdefault("channel", channel)
     source["captured_at"] = datetime.now(timezone.utc).isoformat()
     source["session_id"] = str(session_id) if session_id else None
     if page_url:
         source["page_url"] = page_url[:500]
     customer.lead_source = source
+
+
+def record_lead_from_response(
+    db: Session,
+    response,
+    organization_id,
+    agent_id,
+    customer_id,
+    session_id,
+    page_url: Optional[str] = None,
+    channel: str = "widget",
+) -> Optional[LeadCaptureResponse]:
+    """Persist a lead from a ChatResponse whose request_lead_capture is set.
+
+    Shared by the widget socket handler and external channel processors so
+    every channel records leads identically: loads the agent's lead-capture
+    config, assembles lead_data from the explicit scalar fields (reliable
+    under strict structured outputs) plus any free-form lead_data dict, and
+    delegates validation/merge/promotion to record_lead_capture. Returns the
+    LeadCaptureResponse (whose customer_id may differ from the input when the
+    visitor was merged into an existing customer), or None if nothing was
+    recorded. Never raises.
+    """
+    try:
+        if not getattr(response, 'request_lead_capture', False):
+            return None
+        from app.repositories.agent import AgentRepository
+        agent = AgentRepository(db).get_agent(agent_id)
+        config = getattr(agent, 'lead_capture_config', None) if agent else None
+        if not (config and config.enabled) or has_captured_lead(db, customer_id, agent_id):
+            return None
+
+        lead_data = dict(getattr(response, 'lead_data', None) or {})
+        for key, attr in (('email', 'lead_email'), ('name', 'lead_name'),
+                          ('company', 'lead_company'), ('phone', 'lead_phone')):
+            val = getattr(response, attr, None)
+            if val and not lead_data.get(key):
+                lead_data[key] = val
+
+        return record_lead_capture(
+            db, config,
+            organization_id=organization_id,
+            agent_id=agent_id,
+            customer_id=customer_id,
+            session_id=session_id,
+            lead_data=lead_data,
+            summary=getattr(response, 'lead_summary', None),
+            consent=getattr(response, 'lead_consent', False),
+            page_url=page_url,
+            channel=channel,
+        )
+    except Exception as e:
+        # Lead capture must never break the conversation flow.
+        logger.error(f"Lead-capture record error: {e}")
+        return None

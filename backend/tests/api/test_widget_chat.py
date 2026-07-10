@@ -230,9 +230,11 @@ async def test_widget_connect(db, test_widget, test_ai_config, test_customer, mo
 async def test_widget_chat_message(db, test_widget, test_ai_config, test_customer, mock_sio, monkeypatch):
     """Test widget chat message handler"""
     from app.api import widget_chat
+    from app.services import message_delivery
     
     # Mock dependencies
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
+    monkeypatch.setattr(message_delivery, "sio", mock_sio)
     monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
     
     # Create a test session
@@ -336,9 +338,11 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, test_custome
 async def test_widget_chat_history(db, test_widget, test_customer, mock_sio, monkeypatch):
     """Test widget chat history handler"""
     from app.api import widget_chat
+    from app.services import message_delivery
     
     # Mock dependencies
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
+    monkeypatch.setattr(message_delivery, "sio", mock_sio)
     monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
     
     # Create a test session
@@ -429,9 +433,11 @@ async def test_agent_connect(db, mock_sio, monkeypatch):
 async def test_agent_message(db, test_widget, test_customer, test_user, mock_sio, monkeypatch):
     """Test agent message handler"""
     from app.api import widget_chat
+    from app.services import message_delivery
     
     # Mock dependencies
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
+    monkeypatch.setattr(message_delivery, "sio", mock_sio)
     monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
     
     # Create a test session
@@ -1323,8 +1329,10 @@ class TestComplexScenarios:
     async def test_agent_message_with_end_chat(self, db, test_widget, test_customer, test_user, mock_sio, monkeypatch):
         """Test agent message that ends chat"""
         from app.api import widget_chat
+        from app.services import message_delivery
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        monkeypatch.setattr(message_delivery, "sio", mock_sio)
         monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
         
         # Create a test session
@@ -1379,8 +1387,10 @@ class TestComplexScenarios:
     async def test_agent_message_with_shopify_output(self, db, test_widget, test_customer, test_user, mock_sio, monkeypatch):
         """Test agent message with Shopify output"""
         from app.api import widget_chat
+        from app.services import message_delivery
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        monkeypatch.setattr(message_delivery, "sio", mock_sio)
         monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
         
         # Create a test session

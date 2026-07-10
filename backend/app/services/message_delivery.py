@@ -47,7 +47,9 @@ async def deliver_to_customer(db: Session, session_record: SessionToAgent, paylo
     the session room stay consistent.
     """
     session_id = str(session_record.session_id)
-    channel = getattr(session_record, 'channel', None) or WEB_CHANNEL
+    channel = getattr(session_record, 'channel', None)
+    if not isinstance(channel, str) or not channel:
+        channel = WEB_CHANNEL
 
     if channel == WEB_CHANNEL:
         await sio.emit('chat_response', payload, room=session_id, namespace='/widget')

@@ -42,7 +42,7 @@ from app.core.s3 import get_s3_signed_url
 from app.models.session_to_agent import SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
 from app.repositories.agent import AgentRepository
-from app.services.lead_capture import has_captured_lead, record_lead_capture
+from app.services.lead_capture import record_lead_from_response
 from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
 from app.repositories.jira import JiraRepository
@@ -786,40 +786,22 @@ async def handle_widget_chat(sid, data):
             # and signs off in the same turn, and this runs before the close block below.
             # record_lead_capture enforces valid-email + consent and captures once.
             elif getattr(response, 'request_lead_capture', False):
-                try:
-                    lc_agent = AgentRepository(db).get_agent(session['agent_id'])
-                    lcc = getattr(lc_agent, 'lead_capture_config', None) if lc_agent else None
-                    if (lcc and lcc.enabled
-                            and not has_captured_lead(db, customer_id, session['agent_id'])):
-                        # Assemble lead_data from the explicit scalar fields (reliable under
-                        # strict structured outputs) plus any free-form lead_data dict.
-                        lead_data = dict(getattr(response, 'lead_data', None) or {})
-                        for key, attr in (('email', 'lead_email'), ('name', 'lead_name'),
-                                          ('company', 'lead_company'), ('phone', 'lead_phone')):
-                            val = getattr(response, attr, None)
-                            if val and not lead_data.get(key):
-                                lead_data[key] = val
-                        lc_resp = record_lead_capture(
-                            db, lcc,
-                            organization_id=org_id,
-                            agent_id=session['agent_id'],
-                            customer_id=customer_id,
-                            session_id=session_id,
-                            lead_data=lead_data,
-                            summary=getattr(response, 'lead_summary', None),
-                            consent=getattr(response, 'lead_consent', False),
-                            page_url=session.get('page_url'),
-                        )
-                        # If the capture merged this anonymous visitor into an existing
-                        # customer (email already known), repoint the live socket session
-                        # so the rest of this conversation writes to the merged customer.
-                        if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
-                            session['customer_id'] = str(lc_resp.customer_id)
-                            await sio.save_session(sid, session, namespace='/widget')
-                            logger.info(
-                                f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
-                except Exception as lc_err:
-                    logger.error(f"Lead-capture record error: {lc_err}")
+                lc_resp = record_lead_from_response(
+                    db, response,
+                    organization_id=org_id,
+                    agent_id=session['agent_id'],
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    page_url=session.get('page_url'),
+                )
+                # If the capture merged this anonymous visitor into an existing
+                # customer (email already known), repoint the live socket session
+                # so the rest of this conversation writes to the merged customer.
+                if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
+                    session['customer_id'] = str(lc_resp.customer_id)
+                    await sio.save_session(sid, session, namespace='/widget')
+                    logger.info(
+                        f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
 
             # If end_chat is true, close the session
             if response.end_chat:
