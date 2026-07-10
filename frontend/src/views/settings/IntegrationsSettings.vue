@@ -482,7 +482,14 @@ onMounted(async () => {
             <circle cx="11" cy="11" r="7"></circle>
             <path d="M21 21l-4-4"></path>
           </svg>
-          <input v-model="intQuery" type="text" placeholder="Search integrations…" />
+          <input
+            v-model="intQuery"
+            type="search"
+            name="integration-search"
+            autocomplete="off"
+            aria-label="Search integrations"
+            placeholder="Search integrations…"
+          />
         </div>
       </div>
 

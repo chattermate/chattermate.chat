@@ -99,7 +99,8 @@ const saveAgent = async () => {
           type="password"
           class="tg-input"
           placeholder="123456789:AAF…"
-          autocomplete="off"
+          name="tg-bot-token"
+          autocomplete="new-password"
           @keyup.enter="connect"
         />
         <div class="tg-actions">

@@ -141,7 +141,8 @@ const saveAgent = async () => {
             :type="field.secret ? 'password' : 'text'"
             class="meta-input"
             :placeholder="field.placeholder"
-            autocomplete="off"
+            :name="`meta-${channel}-${field.key}`"
+            :autocomplete="field.secret ? 'new-password' : 'off'"
           />
         </div>
         <div class="meta-actions">
