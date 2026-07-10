@@ -682,4 +682,70 @@ def test_replace_page_upserts_before_deleting(monkeypatch):
     # upsert (persist new content) must happen before the destructive delete.
     assert calls[0] == "upsert"
     assert calls[1] == ("delete", True)
-    assert "commit" in calls 
+    assert "commit" in calls
+
+
+# Test cases for crawl-scope (max_links) on add/urls
+def test_add_urls_crawl_scope_clamps_max_links(client: TestClient, test_organization, db):
+    """A website queued with max_links=1 ('this page only') records that cap."""
+    response = client.post("/api/v1/knowledge/add/urls", json={
+        "org_id": str(test_organization.id),
+        "websites": ["https://scope.example.com"],
+        "max_links": 1,
+    })
+    assert response.status_code == 200
+    item = db.query(KnowledgeQueue).filter(
+        KnowledgeQueue.source == "https://scope.example.com"
+    ).first()
+    assert item is not None
+    assert item.queue_metadata.get("max_links") == 1
+
+
+def test_add_urls_rejects_zero_max_links(client: TestClient, test_organization):
+    """max_links below 1 is rejected by request validation."""
+    response = client.post("/api/v1/knowledge/add/urls", json={
+        "org_id": str(test_organization.id),
+        "websites": ["https://scope2.example.com"],
+        "max_links": 0,
+    })
+    assert response.status_code == 422
+
+
+# Test cases for add/text endpoint
+def test_add_text_unauthorized_org(client: TestClient):
+    """Adding a text source for a different org is rejected."""
+    response = client.post("/api/v1/knowledge/add/text", json={
+        "org_id": str(uuid4()),
+        "title": "Refund policy",
+        "content": "Full refund within 14 days.",
+    })
+    assert response.status_code == 403
+
+
+def test_add_text_empty_content_rejected(client: TestClient, test_organization):
+    """Blank content is rejected by request validation."""
+    response = client.post("/api/v1/knowledge/add/text", json={
+        "org_id": str(test_organization.id),
+        "title": "Refund policy",
+        "content": "   ",
+    })
+    assert response.status_code == 422
+
+
+def test_add_text_agent_not_found(client: TestClient, test_organization):
+    """A text source targeting a non-existent agent returns 404."""
+    response = client.post("/api/v1/knowledge/add/text", json={
+        "org_id": str(test_organization.id),
+        "title": "Refund policy",
+        "content": "Full refund within 14 days.",
+        "agent_id": str(uuid4()),
+    })
+    assert response.status_code == 404
+
+
+def test_add_text_endpoint_registered():
+    """The add/text endpoint is registered on the router."""
+    from app.api.knowledge import router
+    assert any(
+        hasattr(route, 'path') and route.path == '/add/text' for route in router.routes
+    ), "add/text endpoint should be registered" 

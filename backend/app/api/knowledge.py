@@ -71,7 +71,18 @@ class UrlsRequest(BaseModel):
     pdf_urls: List[str] = []
     websites: List[str] = []
     agent_id: Optional[str] = None
-    
+    # Optional crawl-scope cap for websites (e.g. 1 = "this page only"). Always
+    # clamped to the plan's max_sub_pages server-side; None uses the plan limit.
+    max_links: Optional[int] = None
+
+    @field_validator('max_links')
+    @classmethod
+    def validate_max_links(cls, v):
+        if v is not None and v < 1:
+            raise ValueError('max_links must be at least 1')
+        return v
+
+
     @field_validator('websites')
     @classmethod
     def validate_website_url_format(cls, v):
@@ -523,6 +534,14 @@ async def add_urls(
         knowledge_repo = KnowledgeRepository(db)
         queued_items = []
 
+        # Per-source sub-page cap: the plan limit, optionally narrowed by the
+        # request's crawl scope (e.g. "this page only" -> max_links=1), never
+        # allowed to exceed the plan limit.
+        plan_sub_pages = subscription.plan.max_sub_pages if (HAS_ENTERPRISE and subscription) else 10
+        website_max_links = (
+            min(request.max_links, plan_sub_pages) if request.max_links else plan_sub_pages
+        )
+
         # Check for duplicate URLs
         all_urls = request.pdf_urls + request.websites
         existing_sources = knowledge_repo.get_by_sources(request.org_id, all_urls)
@@ -543,9 +562,7 @@ async def add_urls(
                 source_type='pdf_url',
                 source=url,
                 status=QueueStatus.PENDING,
-                queue_metadata={
-                    "max_links": subscription.plan.max_sub_pages if HAS_ENTERPRISE and subscription else 10
-                }
+                queue_metadata={"max_links": plan_sub_pages}
             )
             queued_items.append(queue_repo.create(queue_item))
 
@@ -558,9 +575,7 @@ async def add_urls(
                 source_type='website',
                 source=url,
                 status=QueueStatus.PENDING,
-                queue_metadata={
-                    "max_links": subscription.plan.max_sub_pages if HAS_ENTERPRISE and subscription else 10
-                }
+                queue_metadata={"max_links": website_max_links}
             )
             queued_items.append(queue_repo.create(queue_item))
 
@@ -574,6 +589,84 @@ async def add_urls(
     except Exception as e:
         logger.error(f"Error adding URLs: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to add URLs")
+
+
+class TextSourceRequest(BaseModel):
+    org_id: UUID
+    title: str
+    content: str
+    agent_id: Optional[str] = None
+
+    @field_validator('title')
+    @classmethod
+    def validate_title(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Title cannot be empty')
+        return v.strip()
+
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Content cannot be empty')
+        return v
+
+
+@router.post("/add/text")
+async def add_text_source(
+    request: TextSourceRequest = Body(...),
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Create a knowledge source from pasted text and index it immediately."""
+    try:
+        if current_user.organization_id != request.org_id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to organization")
+
+        # Validate the agent (format + ownership) up front.
+        agent_uuid = None
+        if request.agent_id:
+            try:
+                agent_uuid = UUID(request.agent_id)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid agent_id")
+            agent = AgentRepository(db).get_agent(agent_uuid)
+            if not agent or agent.organization_id != request.org_id:
+                raise HTTPException(status_code=404, detail="Agent not found")
+
+        knowledge_repo = KnowledgeRepository(db)
+
+        # Enforce the source-count limit (enterprise only).
+        if HAS_ENTERPRISE:
+            subscription = require_accessible_subscription(db, request.org_id)
+            current_count = knowledge_repo.count_by_organization(request.org_id)
+            max_sources = subscription.plan.max_knowledge_sources
+            if max_sources is not None and current_count + 1 > max_sources:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cannot add source: Maximum number of knowledge sources ({max_sources}) would be exceeded"
+                )
+
+        # Reject a duplicate source title.
+        if knowledge_repo.get_by_sources(request.org_id, [request.title]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A knowledge source with this title already exists"
+            )
+
+        knowledge = page_editor.create_text_source(
+            db, request.org_id, request.title, request.content, agent_uuid
+        )
+        return {
+            "message": "Text source added",
+            "knowledge": {"id": knowledge.id, "name": knowledge.source, "type": knowledge.source_type.value},
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error adding text source: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to add text source")
 
 
 @router.post("/link")

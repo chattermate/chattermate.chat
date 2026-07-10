@@ -15,12 +15,20 @@ limitations under the License.
 */
 
 import { computed, ref } from 'vue'
+import { toast } from 'vue-sonner'
 import type { KnowledgeItem, KnowledgePage, KnowledgeSubPage, QueueItem } from '@/types/knowledge'
 import { knowledgeService } from '@/services/knowledge'
 import { groupChunksIntoPages, titleFromId } from '@/utils/knowledgePages'
 
 export type ExplorerMode = 'agent' | 'org'
-export type SourceStatus = 'synced' | 'crawling' | 'error'
+export type SourceStatus = 'queued' | 'crawling' | 'synced' | 'error'
+
+// What the add-source modal submits; discriminated by `type`.
+export type AddSourcePayload =
+  | { type: 'website'; url: string; followLinks: boolean }
+  | { type: 'sitemap'; url: string }
+  | { type: 'pdf'; files: File[] }
+  | { type: 'text'; title: string; content: string }
 
 /** A knowledge source enriched with lazily-loaded, grouped sub-page content. */
 export interface ExplorerSource {
@@ -178,7 +186,8 @@ export function useKnowledgeExplorer(
   const sourceStatus = (source: ExplorerSource): SourceStatus => {
     const item = queueItems.value.find((q) => q.source === source.name)
     if (item?.status === 'failed') return 'error'
-    if (item && (item.status === 'pending' || item.status === 'processing')) return 'crawling'
+    if (item?.status === 'processing') return 'crawling'
+    if (item?.status === 'pending') return 'queued'
     return 'synced'
   }
 
@@ -281,17 +290,57 @@ export function useKnowledgeExplorer(
     }
   }
 
-  const addSource = async (rawUrl: string) => {
-    const url = rawUrl.trim()
-    if (!url) return
+  const linkedAgentId = mode === 'agent' ? agentId : undefined
+
+  // Handle add/urls responses that report duplicates instead of throwing.
+  const throwIfError = (res: { error?: string } | undefined) => {
+    if (res?.error) throw new Error(res.error)
+  }
+
+  // Submit a new source from the add-source modal. Resolves true on success.
+  // Crawl sources (website/sitemap/pdf) are queued and indexed in the
+  // background; text is indexed immediately. Toasts announce the outcome.
+  const submitSource = async (payload: AddSourcePayload): Promise<boolean> => {
     error.value = null
     try {
-      await knowledgeService.addUrls(organizationId, [url], mode === 'agent' ? agentId : undefined)
+      if (payload.type === 'website') {
+        throwIfError(
+          await knowledgeService.addUrls(
+            organizationId,
+            [payload.url],
+            linkedAgentId,
+            undefined,
+            payload.followLinks ? undefined : 1,
+          ),
+        )
+        toast.success('Queued for crawling', {
+          description: `${payload.url} — we’ll notify you when indexing is done.`,
+        })
+      } else if (payload.type === 'sitemap') {
+        throwIfError(await knowledgeService.addUrls(organizationId, [payload.url], linkedAgentId))
+        toast.success('Queued for crawling', {
+          description: `${payload.url} — pages are being discovered and indexed.`,
+        })
+      } else if (payload.type === 'pdf') {
+        await knowledgeService.uploadPdfFiles(payload.files, organizationId, linkedAgentId)
+        toast.success('Queued for crawling', {
+          description: 'Your document is being parsed and indexed.',
+        })
+      } else {
+        await knowledgeService.addText(organizationId, payload.title, payload.content, linkedAgentId)
+        toast.success('Page added', {
+          description: `${payload.title} is now in your knowledge base.`,
+        })
+      }
       await Promise.all([fetchSources(), fetchQueue()])
+      return true
     } catch (err: unknown) {
+      // Surface add-source failures via toast only (the inline error banner is
+      // reserved for the read/edit pane), so the user doesn't see it twice.
+      const msg = err instanceof Error ? err.message : 'Failed to add source'
       console.error('Failed to add source:', err)
-      error.value = err instanceof Error ? err.message : 'Failed to add source'
-      throw err
+      toast.error('Could not add source', { description: msg })
+      return false
     }
   }
 
@@ -364,7 +413,7 @@ export function useKnowledgeExplorer(
     savePage,
     deletePage,
     deleteSource,
-    addSource,
+    submitSource,
     startPolling,
     stopPolling,
   }

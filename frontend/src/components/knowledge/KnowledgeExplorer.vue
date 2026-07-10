@@ -15,12 +15,16 @@ limitations under the License.
 -->
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useKnowledgeExplorer, type ExplorerSource } from '@/composables/useKnowledgeExplorer'
-import { knowledgeService } from '@/services/knowledge'
+import {
+  useKnowledgeExplorer,
+  type ExplorerSource,
+  type AddSourcePayload,
+} from '@/composables/useKnowledgeExplorer'
 import KnowledgeSourceTree from './KnowledgeSourceTree.vue'
 import KnowledgePageDetail from './KnowledgePageDetail.vue'
 import KnowledgePageEditor from './KnowledgePageEditor.vue'
 import KnowledgePlanMeters from './KnowledgePlanMeters.vue'
+import KnowledgeAddSourceModal from './KnowledgeAddSourceModal.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -35,9 +39,12 @@ const props = withDefaults(
 const ex = useKnowledgeExplorer(props.mode, props.agentId, props.organizationId)
 
 const srcInput = ref('')
-const isAddingSource = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
-const isUploading = ref(false)
+
+// Add-source modal state.
+const addOpen = ref(false)
+const addInitialUrl = ref('')
+const addInitialType = ref<'website' | 'sitemap' | 'pdf' | 'text'>('website')
+const isSubmittingSource = ref(false)
 
 // A single, reusable confirm dialog for the two destructive actions.
 const confirmState = ref<{ title: string; message: string; action: () => Promise<void> } | null>(null)
@@ -53,38 +60,25 @@ const largestSubpageCount = computed(() => {
   return s ? (s.pages ?? s.pageStubs).length : 0
 })
 
-async function addSource() {
+// Open the modal, prefilling type/URL from whatever was typed in the quick bar.
+function openAddModal() {
   const value = srcInput.value.trim()
-  if (!value || isAddingSource.value) return
-  isAddingSource.value = true
-  try {
-    await ex.addSource(value)
-    srcInput.value = ''
-  } catch {
-    // error surfaced via ex.error
-  } finally {
-    isAddingSource.value = false
-  }
+  addInitialType.value = /\.xml(\?|$)/i.test(value) ? 'sitemap' : 'website'
+  addInitialUrl.value = value
+  addOpen.value = true
 }
 
-function pickFiles() {
-  fileInput.value?.click()
-}
-
-async function onFilesSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = input.files ? Array.from(input.files) : []
-  if (!files.length) return
-  isUploading.value = true
-  ex.error.value = null
+async function onSubmitSource(payload: AddSourcePayload) {
+  if (isSubmittingSource.value) return
+  isSubmittingSource.value = true
   try {
-    await knowledgeService.uploadPdfFiles(files, props.organizationId, props.agentId)
-    await ex.refresh()
-  } catch (err: unknown) {
-    ex.error.value = err instanceof Error ? err.message : 'Failed to upload files'
+    const ok = await ex.submitSource(payload)
+    if (ok) {
+      addOpen.value = false
+      srcInput.value = ''
+    }
   } finally {
-    isUploading.value = false
-    if (fileInput.value) fileInput.value.value = ''
+    isSubmittingSource.value = false
   }
 }
 
@@ -143,17 +137,12 @@ onUnmounted(() => {
         <input
           v-model="srcInput"
           type="text"
-          placeholder="Paste a URL or sitemap to crawl…"
+          placeholder="Paste a URL or sitemap, or add a document or text…"
           aria-label="Knowledge source URL"
-          @keyup.enter="addSource"
+          @keyup.enter="openAddModal"
         />
       </div>
-      <input ref="fileInput" type="file" accept="application/pdf" multiple class="hidden-file"
-        @change="onFilesSelected" />
-      <button class="btn btn--ghost" type="button" :disabled="isUploading" @click="pickFiles">
-        {{ isUploading ? 'Uploading…' : 'Upload PDF' }}
-      </button>
-      <button class="btn btn--primary" type="button" :disabled="isAddingSource || !srcInput.trim()" @click="addSource">
+      <button class="btn btn--primary" type="button" @click="openAddModal">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
           stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         Add source
@@ -222,6 +211,15 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <KnowledgeAddSourceModal
+      v-if="addOpen"
+      :initial-url="addInitialUrl"
+      :initial-type="addInitialType"
+      :submitting="isSubmittingSource"
+      @close="addOpen = false"
+      @submit="onSubmitSource"
+    />
   </div>
 </template>
 
@@ -270,10 +268,6 @@ onUnmounted(() => {
   color: var(--text);
   font-size: 14px;
   padding: 13px 0;
-}
-
-.hidden-file {
-  display: none;
 }
 
 .btn {

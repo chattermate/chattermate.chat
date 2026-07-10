@@ -28,6 +28,7 @@ replacing a whole page all go through one code path.
 """
 
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from agno.document import Document
 from sqlalchemy import text
@@ -35,7 +36,10 @@ from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
 from app.knowledge.knowledge_base import KnowledgeManager
-from app.models.knowledge import Knowledge
+from app.models.knowledge import Knowledge, SourceType
+from app.models.knowledge_to_agent import KnowledgeToAgent
+from app.repositories.knowledge import KnowledgeRepository
+from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
 
 logger = get_logger(__name__)
 
@@ -207,6 +211,63 @@ def reembed_chunk(
         update_query,
         {"content": content, "embedding": doc.embedding, "chunk_id": chunk_id},
     )
+
+
+def create_text_source(
+    db: Session,
+    organization_id: UUID,
+    title: str,
+    content: str,
+    agent_id: Optional[UUID] = None,
+) -> Knowledge:
+    """Create a knowledge source from pasted text and embed it as one page.
+
+    Unlike a URL/PDF source (which is crawled asynchronously via the queue), a
+    text source is indexed inline and is immediately ``synced``. Returns the new
+    ``Knowledge`` row. Caller is responsible for the enclosing request context;
+    the vector write commits on its own session.
+    """
+    manager = KnowledgeManager(
+        org_id=organization_id, agent_id=str(agent_id) if agent_id else None
+    )
+    agent_ids = [str(agent_id)] if agent_id else []
+
+    # Embed first — an embedding failure then creates no source row at all.
+    doc = embed_document(
+        manager, title, title, content, {"agent_id": agent_ids, "url": title, "title": title}
+    )
+
+    repo = KnowledgeRepository(db)
+    # KnowledgeRepository.create dedupes on (org, source); track whether the row
+    # already existed so we only compensate-delete a row we actually created.
+    pre_existing = bool(repo.get_by_sources(organization_id, [title]))
+    knowledge = repo.create(
+        Knowledge(
+            organization_id=organization_id,
+            source=title,
+            source_type=SourceType.CUSTOM,
+            table_name=manager.vector_db.table_name,
+            schema=manager.vector_db.schema,
+        )
+    )
+    try:
+        if agent_id is not None:
+            KnowledgeToAgentRepository(db).create(
+                KnowledgeToAgent(knowledge_id=knowledge.id, agent_id=agent_id)
+            )
+        # upsert (not insert) is idempotent on the id, so a raced duplicate title
+        # overwrites its own chunk instead of raising a duplicate-key error.
+        manager.vector_db.upsert(
+            [doc],
+            filters={"name": title, "agent_id": agent_ids, "org_id": str(organization_id)},
+        )
+    except Exception:
+        # Don't leave a chunkless orphan source behind if indexing fails.
+        if not pre_existing:
+            repo.delete(knowledge.id)
+        raise
+    logger.info(f"Created text knowledge source '{title}' for org {organization_id}")
+    return knowledge
 
 
 def insert_subpage(knowledge: Knowledge, subpage_name: str, content: str) -> None:

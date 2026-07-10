@@ -59,6 +59,7 @@ export const knowledgeService = {
     urls: string[],
     agentId?: string,
     onProgress?: (progress: number) => void,
+    maxLinks?: number,
   ): Promise<KnowledgeUploadResponse> {
     try {
       let completed = 0
@@ -67,6 +68,8 @@ export const knowledgeService = {
         agent_id: agentId,
         pdf_urls: urls.filter((url) => url.toLowerCase().endsWith('.pdf')),
         websites: urls.filter((url) => !url.toLowerCase().endsWith('.pdf')),
+        // Optional crawl-scope cap for websites (e.g. 1 = "this page only").
+        ...(maxLinks ? { max_links: maxLinks } : {}),
       })
       if (onProgress) {
         const interval = setInterval(() => {
@@ -180,6 +183,23 @@ export const knowledgeService = {
       `/knowledge/${knowledgeId}/page/${encodeURIComponent(pageId)}`,
     )
     return response.data
+  },
+
+  // Create a knowledge source from pasted text; indexed immediately (no crawl).
+  async addText(orgId: string, title: string, content: string, agentId?: string) {
+    try {
+      const response = await api.post('/knowledge/add/text', {
+        org_id: orgId,
+        title,
+        content,
+        agent_id: agentId,
+      })
+      return response.data
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.detail || error.response?.data?.message || 'Failed to add text source'
+      throw new Error(errorMessage)
+    }
   },
 }
 

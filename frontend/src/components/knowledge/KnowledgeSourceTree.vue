@@ -46,8 +46,9 @@ const emit = defineEmits<{
 }>()
 
 const statusLabel: Record<SourceStatus, string> = {
-  synced: 'Synced',
+  queued: 'Pending',
   crawling: 'Crawling',
+  synced: 'Synced',
   error: 'Needs sync',
 }
 
@@ -275,6 +276,7 @@ function sourceGlyph(type: string): string {
 
 .dot--synced { background: var(--c-teal); box-shadow: 0 0 6px var(--c-teal); }
 .dot--crawling { background: var(--warning-color); }
+.dot--queued { background: var(--c-purple); }
 .dot--error { background: var(--c-coral); }
 
 .src__del {

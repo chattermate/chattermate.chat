@@ -32,8 +32,9 @@ defineEmits<{
 }>()
 
 const statusText: Record<SourceStatus, string> = {
-  synced: 'Synced',
+  queued: 'Pending',
   crawling: 'Crawling',
+  synced: 'Synced',
   error: 'Needs sync',
 }
 
@@ -275,6 +276,12 @@ const updatedLabel = computed(() => {
   border-color: var(--warning-border, var(--o12));
   background: var(--warning-bg);
   color: var(--warning-color);
+}
+
+.pill--queued {
+  border-color: var(--purple-border, var(--o12));
+  background: var(--purple-bg, var(--o06));
+  color: var(--c-purple);
 }
 
 .pill--error {
