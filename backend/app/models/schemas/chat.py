@@ -292,7 +292,14 @@ class ChatResponse(BaseModel):
             for key in list(normalized.keys()):
                 if key in key_mappings:
                     normalized[key_mappings[key]] = normalized.pop(key)
-            
+
+            # Drop explicit nulls so each field's default applies. Models often emit
+            # `"transfer_to_human": null` / `"create_ticket": null` for the flags they
+            # aren't setting; without this, pydantic rejects null on the non-nullable
+            # boolean fields and the whole response is discarded (losing end_chat,
+            # lead_email, etc.). Optional fields default to None anyway, so dropping is safe.
+            normalized = {k: v for k, v in normalized.items() if v is not None}
+
             # Set default values for missing fields
             if 'message' not in normalized:
                 normalized['message'] = "No response generated"
