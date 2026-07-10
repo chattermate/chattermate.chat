@@ -63,17 +63,24 @@ async def get_me(bot_token: str) -> Optional[dict]:
         return None
 
 
-async def set_webhook(bot_token: str, url: str, secret_token: str) -> bool:
+async def set_webhook(bot_token: str, url: str, secret_token: str) -> tuple[bool, str]:
+    """Register our webhook with Telegram. Returns (ok, error_description) —
+    the description surfaces Telegram's reason (e.g. 'an HTTPS URL must be
+    provided for webhook' when BACKEND_URL points at localhost)."""
     try:
         data = await _call_api(bot_token, "setWebhook", {
             "url": url,
             "secret_token": secret_token,
             "allowed_updates": ["message"],
         })
-        return bool(data.get("ok"))
+        if data.get("ok"):
+            return True, ""
+        description = str(data.get("description") or "setWebhook failed")
+        logger.error(f"Telegram setWebhook rejected for {url}: {description}")
+        return False, description
     except Exception as e:
         logger.error(f"Telegram setWebhook failed: {e}")
-        return False
+        return False, str(e)
 
 
 async def delete_webhook(bot_token: str) -> bool:

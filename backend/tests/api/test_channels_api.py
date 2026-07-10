@@ -64,7 +64,7 @@ class TestConnectTelegram:
         with patch("app.api.channels.telegram.telegram_api.get_me",
                    AsyncMock(return_value={"id": 555, "username": "newbot"})), \
              patch("app.api.channels.telegram.telegram_api.set_webhook",
-                   AsyncMock(return_value=True)) as set_webhook:
+                   AsyncMock(return_value=(True, ""))) as set_webhook:
             response = client.post(f"{BASE}/telegram", json={"bot_token": "555:tok"})
 
         assert response.status_code == 200
@@ -87,7 +87,7 @@ class TestConnectTelegram:
         with patch("app.api.channels.telegram.telegram_api.get_me",
                    AsyncMock(return_value={"id": 556, "username": "failbot"})), \
              patch("app.api.channels.telegram.telegram_api.set_webhook",
-                   AsyncMock(return_value=False)):
+                   AsyncMock(return_value=(False, "bad webhook: an HTTPS URL must be provided"))):
             response = client.post(f"{BASE}/telegram", json={"bot_token": "556:tok"})
         assert response.status_code == 502
         assert ChannelAccountRepository(db).get_by_external_id("telegram", "556") is None

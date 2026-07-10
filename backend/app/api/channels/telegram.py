@@ -71,12 +71,17 @@ async def connect_telegram(
         )
         created = True
 
-    if not await telegram_api.set_webhook(bot_token, _webhook_url(account.id), account.webhook_secret):
+    webhook_ok, webhook_error = await telegram_api.set_webhook(
+        bot_token, _webhook_url(account.id), account.webhook_secret)
+    if not webhook_ok:
         # Roll back only a freshly created account; keep an existing one (and
         # its conversation history) intact on a transient webhook failure.
         if created:
             repo.delete(account)
-        raise HTTPException(status_code=502, detail="Failed to register Telegram webhook")
+        detail = f"Failed to register Telegram webhook: {webhook_error}"
+        if "https" in webhook_error.lower():
+            detail += " — set BACKEND_URL to a public HTTPS URL (e.g. your ngrok domain)"
+        raise HTTPException(status_code=502, detail=detail)
 
     logger.info(f"Connected Telegram bot @{bot.get('username')} for org {organization.id}")
     return to_account_out(db, account)
