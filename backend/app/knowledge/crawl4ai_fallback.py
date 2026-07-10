@@ -132,26 +132,29 @@ class Crawl4AIFallback:
             )
             
             # Wait out short bot-check interstitials (WordPress.com / Cloudflare
-            # "Checking your browser… Secured by wp.com") which JS-redirect to the
-            # real page after a few seconds. Only *unambiguous* interstitial
-            # markers are used, so the predicate is immediately true for normal
-            # pages (no added latency, no false timeouts); it only waits when a
-            # real challenge is present, and if it never clears it times out and
-            # we fall back to whatever HTML we have (the reader then skips it).
+            # "Checking your browser… will only take a few seconds") which
+            # JS-redirect to the real page after a few seconds. Resolve as soon as
+            # the page has substantial real content (>800 chars — fast for normal
+            # pages), OR, on a still-short page, once the visible interstitial
+            # phrases are gone. This actually waits through the redirect instead
+            # of returning the challenge immediately; if it never clears it times
+            # out and the reader skips the page.
             wait_for_real_content = (
-                "js:() => { const t = document.body ? "
-                "document.body.innerText.toLowerCase() : ''; "
+                "js:() => { const t = document.body ? document.body.innerText : ''; "
+                "if (t.length > 800) return true; "
+                "const low = t.toLowerCase(); "
                 "return t.length > 0 "
-                "&& !t.includes('secured by wp.com') "
-                "&& !t.includes('cf-browser-verification') "
-                "&& !t.includes('verifying you are human'); }"
+                "&& !low.includes('checking your browser') "
+                "&& !low.includes('just a moment') "
+                "&& !low.includes('secured by wp.com') "
+                "&& !low.includes('verifying you are human'); }"
             )
             crawler_config = CrawlerRunConfig(
                 cache_mode=CacheMode.BYPASS,
                 wait_until="domcontentloaded",
                 page_timeout=self.timeout * 1000,
                 wait_for=wait_for_real_content,
-                delay_before_return_html=2.0,
+                delay_before_return_html=3.0,
                 screenshot=False,
                 # Anti-bot: simulate a real user and hide automation flags so
                 # WordPress.com / Cloudflare interstitials clear for the headless

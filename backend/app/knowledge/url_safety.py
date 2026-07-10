@@ -24,7 +24,9 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-MAX_REDIRECTS = 5
+# Match httpx's default so the manual (SSRF-checked) redirect following doesn't
+# reject legitimate sites with longer redirect chains.
+MAX_REDIRECTS = 20
 
 
 class BlockedHostError(Exception):
