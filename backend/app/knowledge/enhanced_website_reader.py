@@ -21,7 +21,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Callable
 from urllib.parse import urljoin, urlparse, urldefrag, urlunparse
-from app.knowledge.url_safety import is_blocked_host
+from app.knowledge.url_safety import safe_get, BlockedHostError
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -542,11 +542,6 @@ class EnhancedWebsiteReader(WebsiteReader):
         if current_url in self._visited:
             return None
 
-        # SSRF guard: never fetch a literal private/loopback/link-local IP.
-        if is_blocked_host(current_url):
-            logger.warning(f"Refusing to crawl blocked host: {current_url}")
-            return None
-
         if not urlparse(current_url).netloc.endswith(primary_domain):
             return None
             
@@ -587,7 +582,8 @@ class EnhancedWebsiteReader(WebsiteReader):
                     verify=self.verify_ssl
                 ) as client:
                     logger.debug(f"Making HTTP GET request to {current_url}")
-                    response = client.get(current_url)
+                    # Follows redirects manually, re-validating each hop's host (SSRF).
+                    response = safe_get(client, current_url)
                     logger.info(f"Received response: status={response.status_code}, url={response.url}")
                     response.raise_for_status()
                     
@@ -764,6 +760,12 @@ class EnhancedWebsiteReader(WebsiteReader):
                     new_links = [(link, next_depth) for link in links 
                                 if link not in self._visited]
                     
+            except BlockedHostError as e:
+                # A redirect pointed at an internal host — abort, don't retry or
+                # fall back to the browser (which would also reach it).
+                logger.warning(str(e))
+                self._failed_crawls += 1
+                return None
             except httpx.HTTPStatusError as e:
                 retry_count += 1
                 status_code = e.response.status_code

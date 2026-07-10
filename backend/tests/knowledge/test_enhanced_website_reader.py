@@ -33,6 +33,16 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
             max_links=5,
             min_content_length=50
         )
+
+        # The fetch path now runs an SSRF guard (url_safety.resolves_to_blocked_host)
+        # which does a DNS lookup — stub it to a fixed public IP so tests don't hit
+        # the network and aren't blocked.
+        dns_patcher = patch(
+            'app.knowledge.url_safety.socket.getaddrinfo',
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        self.addCleanup(dns_patcher.stop)
+        dns_patcher.start()
         
         # Create a simple HTML response for testing
         self.test_html = """
@@ -213,13 +223,14 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         # Mock HTTP client response
         mock_response = MagicMock()
         mock_response.text = self.test_html
+        mock_response.is_redirect = False
         mock_response.raise_for_status = MagicMock()
-        
+
         # Setup mock client
         mock_client_instance = MagicMock()
         mock_client_instance.get.return_value = mock_response
         mock_client.return_value.__enter__.return_value = mock_client_instance
-        
+
         # Test crawling
         result = self.reader.crawl('https://example.com')
         
@@ -237,17 +248,24 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         """Test crawling with retries on failed requests"""
         # Mock HTTP errors for the first two attempts, then success
         mock_response_error = MagicMock()
+        mock_response_error.is_redirect = False
         mock_response_error.raise_for_status.side_effect = httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock(status_code=500))
-        
+
+        mock_response_request_error = MagicMock(
+            is_redirect=False,
+            raise_for_status=MagicMock(side_effect=httpx.RequestError("Timeout", request=MagicMock())),
+        )
+
         mock_response_success = MagicMock()
         mock_response_success.text = self.test_html
+        mock_response_success.is_redirect = False
         mock_response_success.raise_for_status = MagicMock()
-        
+
         # Setup mock client - the parallel processing may create multiple client instances
         mock_client_instance = MagicMock()
         mock_client_instance.get.side_effect = [
             mock_response_error,  # First attempt fails with HTTP error
-            MagicMock(raise_for_status=MagicMock(side_effect=httpx.RequestError("Timeout", request=MagicMock()))),  # Second attempt fails with request error
+            mock_response_request_error,  # Second attempt fails with request error
             mock_response_success  # Third attempt succeeds
         ]
         mock_client.return_value.__enter__.return_value = mock_client_instance
@@ -268,13 +286,14 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         # Mock HTTP response
         mock_response = MagicMock()
         mock_response.text = self.test_html
+        mock_response.is_redirect = False
         mock_response.raise_for_status = MagicMock()
-        
+
         # Setup mock client
         mock_client_instance = MagicMock()
         mock_client_instance.get.return_value = mock_response
         mock_client.return_value.__enter__.return_value = mock_client_instance
-        
+
         # Test read method
         documents = self.reader.read('https://example.com')
         

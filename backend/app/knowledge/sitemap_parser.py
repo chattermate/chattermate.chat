@@ -30,14 +30,14 @@ index can't fan out to arbitrary hosts.
 import gzip
 import io
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from defusedxml import ElementTree as DefusedET
 
 from app.core.logger import get_logger
-from app.knowledge.url_safety import is_blocked_host as _is_blocked_host
+from app.knowledge.url_safety import BlockedHostError, MAX_REDIRECTS, guard_url
 
 logger = get_logger(__name__)
 
@@ -85,25 +85,41 @@ def _maybe_gunzip(url: str, content: bytes) -> bytes:
 
 
 def _fetch(client: httpx.Client, url: str) -> Optional[bytes]:
-    """GET a sitemap URL (size-capped, SSRF-guarded); (gunzipped) bytes or None."""
-    if _is_blocked_host(url):
-        logger.warning(f"Refusing to fetch sitemap at blocked host: {url}")
-        return None
-    try:
-        with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            chunks: List[bytes] = []
-            total = 0
-            for chunk in resp.iter_bytes():
-                total += len(chunk)
-                if total > MAX_DOWNLOAD_BYTES:
-                    logger.warning(f"Sitemap '{url}' exceeds size cap; rejecting")
-                    return None
-                chunks.append(chunk)
-        return _maybe_gunzip(url, b"".join(chunks))
-    except Exception as e:
-        logger.warning(f"Failed to fetch sitemap '{url}': {e}")
-        return None
+    """GET a sitemap URL (size-capped, SSRF-guarded); (gunzipped) bytes or None.
+
+    Redirects are followed manually so each hop's host is re-validated against
+    internal addresses before it is fetched.
+    """
+    current = url
+    for _ in range(MAX_REDIRECTS + 1):
+        try:
+            guard_url(current)
+        except BlockedHostError as e:
+            logger.warning(str(e))
+            return None
+        try:
+            with client.stream("GET", current, follow_redirects=False) as resp:
+                if resp.is_redirect:
+                    location = resp.headers.get("location")
+                    if not location:
+                        return None
+                    current = urljoin(str(resp.url), location)
+                    continue
+                resp.raise_for_status()
+                chunks: List[bytes] = []
+                total = 0
+                for chunk in resp.iter_bytes():
+                    total += len(chunk)
+                    if total > MAX_DOWNLOAD_BYTES:
+                        logger.warning(f"Sitemap '{current}' exceeds size cap; rejecting")
+                        return None
+                    chunks.append(chunk)
+            return _maybe_gunzip(current, b"".join(chunks))
+        except Exception as e:
+            logger.warning(f"Failed to fetch sitemap '{current}': {e}")
+            return None
+    logger.warning(f"Too many redirects while fetching sitemap {url}")
+    return None
 
 
 def _parse(content: bytes) -> Tuple[List[str], List[str]]:

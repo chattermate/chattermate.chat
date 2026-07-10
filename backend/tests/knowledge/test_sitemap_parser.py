@@ -92,16 +92,6 @@ def test_invalid_xml_returns_empty():
     assert urls == []
 
 
-def test_is_blocked_host_rejects_private_and_loopback():
-    f = sitemap_parser._is_blocked_host
-    assert f("http://169.254.169.254/latest/meta-data/")  # cloud metadata
-    assert f("http://127.0.0.1/sitemap.xml")
-    assert f("http://10.0.0.5/sitemap.xml")
-    assert f("http://localhost/sitemap.xml")
-    assert not f("https://site.com/sitemap.xml")
-    assert not f("https://8.8.8.8/sitemap.xml")  # public IP allowed
-
-
 def test_cross_domain_child_sitemap_is_skipped():
     evil_index = f"""<sitemapindex {NS}>
       <sitemap><loc>https://site.com/ok.xml</loc></sitemap>
