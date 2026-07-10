@@ -40,6 +40,9 @@ from app.models.lead_capture import (
     LeadCaptureConfig, LeadCaptureResponse,
     LeadAssignmentMode, CrmSyncTarget,
 )
+from app.models.channels import (
+    ChannelAccount, ChannelType, ChannelConversation, AgentChannelConfig,
+)
 
 
 
@@ -79,4 +82,8 @@ __all__ = [
     "LeadCaptureResponse",
     "LeadAssignmentMode",
     "CrmSyncTarget",
+    "ChannelAccount",
+    "ChannelType",
+    "ChannelConversation",
+    "AgentChannelConfig",
 ]

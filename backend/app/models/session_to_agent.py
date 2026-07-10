@@ -49,6 +49,9 @@ class SessionToAgent(Base):
     group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id", ondelete="SET NULL"), nullable=True)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     status = Column(SQLEnum(SessionStatus), nullable=False, default=SessionStatus.OPEN)
+    # Messaging channel the session belongs to ('web' = widget, 'telegram',
+    # 'whatsapp', ...). Routing key for outbound delivery of replies.
+    channel = Column(String, nullable=False, server_default='web', index=True)
     assigned_at = Column(DateTime(timezone=True), server_default=func.now())
 
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
