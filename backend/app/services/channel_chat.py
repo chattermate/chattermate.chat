@@ -87,7 +87,7 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             await _relay_to_human(session_record, inbound)
             return
 
-        ai_config = AIConfigRepository(db).get_active_config(org_id)
+        ai_config = AIConfigRepository(db).get_active_config(account.organization_id)
         if ai_config is None:
             logger.error(f"No AI config for org {org_id}; dropping {account.channel_type} message")
             return
