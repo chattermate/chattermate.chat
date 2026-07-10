@@ -16,11 +16,15 @@ limitations under the License.
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps<{
-  title: string
-  content: string
-  saving: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    title: string
+    content: string
+    saving: boolean
+    submitLabel?: string
+  }>(),
+  { submitLabel: 'Save page' },
+)
 
 const emit = defineEmits<{
   (e: 'update:title', value: string): void
@@ -62,7 +66,7 @@ const canSave = computed(() => props.content.trim().length > 0 && !props.saving)
       <div class="editor__buttons">
         <button class="btn btn--ghost" type="button" :disabled="saving" @click="emit('cancel')">Cancel</button>
         <button class="btn btn--primary" type="button" :disabled="!canSave" @click="emit('save')">
-          {{ saving ? 'Saving…' : 'Save page' }}
+          {{ saving ? 'Saving…' : submitLabel }}
         </button>
       </div>
     </div>

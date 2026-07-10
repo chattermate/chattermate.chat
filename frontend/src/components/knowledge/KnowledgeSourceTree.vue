@@ -44,6 +44,7 @@ const emit = defineEmits<{
   (e: 'toggle', source: ExplorerSource): void
   (e: 'select', source: ExplorerSource, pageId: string): void
   (e: 'delete-source', source: ExplorerSource): void
+  (e: 'add-page', source: ExplorerSource): void
 }>()
 
 const statusLabel: Record<SourceStatus, string> = {
@@ -112,6 +113,16 @@ function sourceGlyph(type: string): string {
           </button>
           <span class="dot" :class="`dot--${statusOf(source)}`" :title="statusLabel[statusOf(source)]"></span>
           <button
+            v-if="!source.queued"
+            class="src__add"
+            type="button"
+            title="Add a sub-page to this source"
+            @click="emit('add-page', source)"
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"
+              stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+          <button
             class="src__del"
             type="button"
             :title="!source.queued ? 'Delete this source' : (statusOf(source) === 'error' ? 'Dismiss failed source' : 'Cancel crawl')"
@@ -146,6 +157,11 @@ function sourceGlyph(type: string): string {
               <span v-if="row.words !== null" class="pg__words">{{ row.words }}w</span>
             </button>
             <div v-if="(rowsBySource.get(source.id) || []).length === 0" class="src__hint">No pages extracted yet.</div>
+            <button type="button" class="pg pg--add" @click="emit('add-page', source)">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              Add sub-page
+            </button>
           </template>
         </div>
       </div>
@@ -308,6 +324,7 @@ function sourceGlyph(type: string): string {
 .dot--queued { background: var(--c-purple); }
 .dot--error { background: var(--c-coral); }
 
+.src__add,
 .src__del {
   width: 26px;
   height: 26px;
@@ -324,7 +341,14 @@ function sourceGlyph(type: string): string {
   transition: opacity 0.15s ease;
 }
 
+.src__row:hover .src__add,
 .src__row:hover .src__del { opacity: 1; }
+
+.src__add:hover {
+  background: var(--accent-bg-08);
+  color: var(--accent-ink);
+  border-color: var(--accent-border, var(--o12));
+}
 
 .src__del:hover {
   background: var(--coral-bg);
@@ -353,6 +377,18 @@ function sourceGlyph(type: string): string {
 
 .pg:hover { background: var(--o04); }
 .pg--active { background: var(--accent-bg-08); }
+
+.pg--add {
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--muted2);
+}
+
+.pg--add:hover {
+  color: var(--accent-ink);
+}
 
 .pg__dot {
   width: 6px;

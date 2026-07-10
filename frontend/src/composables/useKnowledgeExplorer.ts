@@ -18,7 +18,7 @@ import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import type { KnowledgeItem, KnowledgePage, KnowledgeSubPage, QueueItem } from '@/types/knowledge'
 import { knowledgeService } from '@/services/knowledge'
-import { groupChunksIntoPages, titleFromId } from '@/utils/knowledgePages'
+import { basePageId, groupChunksIntoPages, titleFromId } from '@/utils/knowledgePages'
 
 export type ExplorerMode = 'agent' | 'org'
 export type SourceStatus = 'queued' | 'crawling' | 'synced' | 'error'
@@ -73,6 +73,7 @@ export function useKnowledgeExplorer(
   const selectedPageId = ref<string | null>(null)
 
   const editing = ref(false)
+  const isAddingPage = ref(false)
   const draftTitle = ref('')
   const draftContent = ref('')
   const isSaving = ref(false)
@@ -243,6 +244,7 @@ export function useKnowledgeExplorer(
     selectedSourceId.value = source.id
     selectedPageId.value = pageId
     editing.value = false
+    isAddingPage.value = false
     if (source.pages === null) {
       await loadSourceContent(source.id)
     }
@@ -302,17 +304,66 @@ export function useKnowledgeExplorer(
     if (!page) return
     draftTitle.value = page.title
     draftContent.value = page.content
+    isAddingPage.value = false
     editing.value = true
+  }
+
+  // Open the editor with empty fields to add a new sub-page to `source`.
+  const startAddPage = async (source: ExplorerSource) => {
+    if (source.queued) return
+    selectedSourceId.value = source.id
+    selectedPageId.value = null
+    draftTitle.value = ''
+    draftContent.value = ''
+    isAddingPage.value = true
+    editing.value = true
+    source.expanded = true
+    if (source.pages === null) await loadSourceContent(source.id)
   }
 
   const cancelEdit = () => {
     editing.value = false
+    isAddingPage.value = false
+  }
+
+  const addNewPage = async (source: ExplorerSource) => {
+    const title = draftTitle.value.trim()
+    const content = draftContent.value.trim()
+    if (!title) {
+      error.value = 'Give the sub-page a title'
+      toast.error('Give the sub-page a title')
+      return
+    }
+    if (!content) {
+      error.value = 'Sub-page content cannot be empty'
+      return
+    }
+    isSaving.value = true
+    error.value = null
+    try {
+      await knowledgeService.addSubpage(source.id, title, content)
+      await loadSourceContent(source.id, true)
+      selectedPageId.value = basePageId(title)
+      isAddingPage.value = false
+      editing.value = false
+      toast.success('Sub-page added')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to add sub-page'
+      console.error('Failed to add sub-page:', err)
+      error.value = msg
+      toast.error('Could not add sub-page', { description: msg })
+    } finally {
+      isSaving.value = false
+    }
   }
 
   const savePage = async () => {
     const source = selectedSource.value
+    if (!source) return
+    if (isAddingPage.value) return addNewPage(source)
+
     const page = selectedPage.value
-    if (!source || !page) return
+    if (!page) return
     const content = draftContent.value.trim()
     if (!content) {
       error.value = 'Page content cannot be empty'
@@ -477,6 +528,7 @@ export function useKnowledgeExplorer(
     selectedSourceId,
     selectedPageId,
     editing,
+    isAddingPage,
     draftTitle,
     draftContent,
     isSaving,
@@ -495,6 +547,7 @@ export function useKnowledgeExplorer(
     toggleSource,
     selectPage,
     startEdit,
+    startAddPage,
     cancelEdit,
     savePage,
     deletePage,

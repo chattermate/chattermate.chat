@@ -190,14 +190,16 @@ onUnmounted(() => {
         @toggle="ex.toggleSource"
         @select="(source, pageId) => ex.selectPage(source, pageId)"
         @delete-source="askDeleteSource"
+        @add-page="ex.startAddPage"
       />
 
       <div class="grid__detail">
         <KnowledgePageEditor
-          v-if="ex.editing.value && ex.selectedPage.value"
+          v-if="ex.editing.value && (ex.selectedPage.value || ex.isAddingPage.value)"
           :title="ex.draftTitle.value"
           :content="ex.draftContent.value"
           :saving="ex.isSaving.value"
+          :submit-label="ex.isAddingPage.value ? 'Add sub-page' : 'Save page'"
           @update:title="ex.draftTitle.value = $event"
           @update:content="ex.draftContent.value = $event"
           @save="ex.savePage"
