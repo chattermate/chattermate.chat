@@ -28,7 +28,9 @@ from sqlalchemy import text
 from uuid import UUID
 from app.database import get_db
 from app.models.knowledge_to_agent import KnowledgeToAgent
+from app.models.knowledge import Knowledge
 from app.repositories.knowledge import KnowledgeRepository
+from app.knowledge import page_editor
 from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
 from app.repositories.agent import AgentRepository
 from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
@@ -815,11 +817,7 @@ async def get_knowledge_by_agent(
                     # Create a safe query to get unique records with cleaned source
                     query = text(f"""
                         SELECT DISTINCT
-                            CASE
-                                WHEN id LIKE '%\\_%%' ESCAPE '\\'
-                                THEN substring(id, 1, length(id) - position('_' in reverse(id)))
-                                ELSE id
-                            END as subpage,
+                            {page_editor.PAGE_ID_EXPR} as subpage,
                             id,
                             created_at,
                             updated_at
@@ -1010,11 +1008,7 @@ async def get_knowledge_by_organization(
                     # Create a safe query to get unique records with cleaned source
                     query = text(f"""
                         SELECT DISTINCT
-                            CASE
-                                WHEN id LIKE '%\\_%%' ESCAPE '\\'
-                                THEN substring(id, 1, length(id) - position('_' in reverse(id)))
-                                ELSE id
-                            END as subpage,
+                            {page_editor.PAGE_ID_EXPR} as subpage,
                             id,
                             created_at,
                             updated_at
@@ -1266,6 +1260,33 @@ async def get_knowledge_content(
         )
 
 
+def _require_editable_knowledge(
+    db: Session, knowledge_id: int, current_user: User
+) -> Knowledge:
+    """Load a knowledge source, enforcing ownership and a usable vector table.
+
+    Raises 404 if missing, 403 if it belongs to another org, 400 if it has no
+    vector table yet (e.g. a crawl that has not produced any rows).
+    """
+    knowledge = KnowledgeRepository(db).get_by_id(knowledge_id)
+    if not knowledge:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge source not found"
+        )
+    if knowledge.organization_id != current_user.organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized access to knowledge source"
+        )
+    if not knowledge.table_name or not knowledge.schema:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Knowledge source has no vector database table"
+        )
+    return knowledge
+
+
 @router.put("/{knowledge_id}/chunk/{chunk_id:path}")
 async def update_chunk_content(
     knowledge_id: int,
@@ -1276,28 +1297,8 @@ async def update_chunk_content(
 ):
     """Update a single chunk's content in vector database"""
     try:
-        knowledge_repo = KnowledgeRepository(db)
-        
-        # Verify knowledge exists and belongs to user's org
-        knowledge = knowledge_repo.get_by_id(knowledge_id)
-        if not knowledge:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Knowledge source not found"
-            )
-        
-        if knowledge.organization_id != current_user.organization_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Unauthorized access to knowledge source"
-            )
-        
-        if not knowledge.table_name or not knowledge.schema:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Knowledge source has no vector database table"
-            )
-        
+        knowledge = _require_editable_knowledge(db, knowledge_id, current_user)
+
         try:
             # Get existing chunk to preserve metadata
             query = text(f"""
@@ -1312,41 +1313,11 @@ async def update_chunk_content(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Chunk not found"
                 )
-            
-            # Re-embed the updated content
-            from app.knowledge.knowledge_base import KnowledgeManager
-            from agno.document import Document
-            
-            # Initialize KnowledgeManager for re-embedding
-            manager = KnowledgeManager(
-                org_id=knowledge.organization_id,
-                agent_id=None
+
+            # Re-embed the updated content in place (preserving metadata)
+            page_editor.reembed_chunk(
+                db, knowledge, chunk_id, content, row.meta_data
             )
-            
-            # Create document with new content
-            doc = Document(
-                name=knowledge.source,
-                id=chunk_id,
-                content=content,
-                meta_data=row.meta_data
-            )
-            
-            # Embed the document using the vector_db's embedder
-            doc.embed(embedder=manager.vector_db.embedder)
-            
-            # Update the chunk in the database
-            update_query = text(f"""
-                UPDATE {knowledge.schema}."{knowledge.table_name}"
-                SET content = :content,
-                    embedding = :embedding
-                WHERE id = :chunk_id
-            """)
-            
-            db.execute(update_query, {
-                "content": content,
-                "embedding": doc.embedding,
-                "chunk_id": chunk_id
-            })
             db.commit()
             
             logger.info(f"Updated chunk {chunk_id} for knowledge {knowledge_id}")
@@ -1382,28 +1353,8 @@ async def delete_chunk(
 ):
     """Delete a single chunk from vector database"""
     try:
-        knowledge_repo = KnowledgeRepository(db)
-        
-        # Verify knowledge exists and belongs to user's org
-        knowledge = knowledge_repo.get_by_id(knowledge_id)
-        if not knowledge:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Knowledge source not found"
-            )
-        
-        if knowledge.organization_id != current_user.organization_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Unauthorized access to knowledge source"
-            )
-        
-        if not knowledge.table_name or not knowledge.schema:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Knowledge source has no vector database table"
-            )
-        
+        knowledge = _require_editable_knowledge(db, knowledge_id, current_user)
+
         try:
             # Delete the chunk from the database
             delete_query = text(f"""
@@ -1486,13 +1437,7 @@ async def add_subpage(
 
                 if subscription and subscription.plan:
                     # Count existing subpages for this knowledge source
-                    count_query = text(f"""
-                        SELECT COUNT(*) as count
-                        FROM {knowledge.schema}."{knowledge.table_name}"
-                        WHERE name = :source
-                    """)
-                    result = db.execute(count_query, {"source": knowledge.source}).fetchone()
-                    current_count = result.count if result else 0
+                    current_count = page_editor.count_subpages(db, knowledge)
 
                     # Check against max_sub_pages limit from the plan
                     subpages_limit = subscription.plan.max_sub_pages
@@ -1519,40 +1464,10 @@ async def add_subpage(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Subpage name already exists. Please use a unique name."
                 )
-            
-            # Create and embed the new subpage
-            from app.knowledge.knowledge_base import KnowledgeManager
-            from agno.document import Document
-            
-            # Initialize KnowledgeManager for embedding
-            manager = KnowledgeManager(
-                org_id=knowledge.organization_id,
-                agent_id=None
-            )
-            
-            # Get agent_ids for metadata
-            agent_ids = [str(link.agent_id) for link in knowledge.agent_links]
-            
-            # Create document with new content
-            doc = Document(
-                name=knowledge.source,
-                id=subpage_name,
-                content=content,
-                meta_data={"agent_id": agent_ids}
-            )
-            
-            # Embed the document using the vector_db's embedder
-            doc.embed(embedder=manager.vector_db.embedder)
-            
-            # Insert into vector database
-            filters = {
-                "name": knowledge.source,
-                "agent_id": agent_ids,
-                "org_id": str(knowledge.organization_id)
-            }
-            
-            manager.vector_db.insert([doc], filters=filters)
-            
+
+            # Embed and insert the new subpage into the vector database
+            page_editor.insert_subpage(knowledge, subpage_name, content)
+
             logger.info(f"Added new subpage '{subpage_name}' to knowledge {knowledge_id}")
             
             return {"message": "Subpage added successfully", "subpage_id": subpage_name}
@@ -1573,6 +1488,79 @@ async def add_subpage(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
+        )
+
+
+@router.put("/{knowledge_id}/page/{page_id:path}")
+async def update_page_content(
+    knowledge_id: int,
+    page_id: str,
+    content: str = Body(..., embed=True),
+    title: Optional[str] = Body(None, embed=True),
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Replace a sub-page's content and re-embed it.
+
+    A page may span several ``_N`` chunks; this collapses it into one freshly
+    embedded chunk keyed by the page id, keeping the source's answers current.
+    """
+    if not (content or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Page content cannot be empty"
+        )
+
+    knowledge = _require_editable_knowledge(db, knowledge_id, current_user)
+    try:
+        replaced = page_editor.replace_page(db, knowledge, page_id, content, title)
+        if replaced == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Page not found"
+            )
+        logger.info(f"Updated page '{page_id}' for knowledge {knowledge_id}")
+        return {"message": "Page updated successfully", "page_id": page_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating page '{page_id}': {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating page: {str(e)}"
+        )
+
+
+@router.delete("/{knowledge_id}/page/{page_id:path}")
+async def delete_page(
+    knowledge_id: int,
+    page_id: str,
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db)
+):
+    """Delete a whole sub-page (all of its chunks) from a knowledge source."""
+    knowledge = _require_editable_knowledge(db, knowledge_id, current_user)
+    try:
+        removed = page_editor.delete_page_chunks(db, knowledge, page_id)
+        if removed == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Page not found"
+            )
+        db.commit()
+        logger.info(
+            f"Deleted page '{page_id}' ({removed} chunk(s)) from knowledge {knowledge_id}"
+        )
+        return {"message": "Page deleted successfully", "removed_chunks": removed}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting page '{page_id}': {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting page: {str(e)}"
         )
 
 

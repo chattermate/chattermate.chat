@@ -20,7 +20,7 @@ import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
 import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri, terminalMarkSvgDataUri } from '@/utils/orb'
 
-import KnowledgeGrid from './KnowledgeGrid.vue'
+import KnowledgeExplorer from '@/components/knowledge/KnowledgeExplorer.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
 import AgentChatPreviewPanel from './AgentChatPreviewPanel.vue'
 import AgentIntegrationsTab from './AgentIntegrationsTab.vue'
@@ -1090,7 +1090,11 @@ onMounted(async () => {
                         <!-- Knowledge Tab -->
                         <div v-if="activeTab === 'knowledge'" class="tab-content">
                             <div class="knowledge-tab-container">
-                                <KnowledgeGrid :agent-id="agentData.id" :organization-id="agentData.organization_id" />
+                                <KnowledgeExplorer
+                                    mode="agent"
+                                    :agent-id="agentData.id"
+                                    :organization-id="agentData.organization_id"
+                                />
                             </div>
                         </div>
 

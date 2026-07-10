@@ -587,4 +587,99 @@ def test_add_subpage_with_enterprise_limits_mocked():
                 ))
 
             assert exc_info.value.status_code == 402
-            assert "Subpage limit reached" in exc_info.value.detail 
+            assert "Subpage limit reached" in exc_info.value.detail
+
+
+# Test cases for update_page_content / delete_page endpoints
+def test_update_page_empty_content(client: TestClient, test_knowledge):
+    """Empty page content is rejected before any DB work."""
+    response = client.put(
+        f"/api/v1/knowledge/{test_knowledge.id}/page/some-page",
+        json={"content": "   "}
+    )
+    assert response.status_code == 400
+    assert "Page content cannot be empty" in response.json()["detail"]
+
+
+def test_update_page_knowledge_not_found(client: TestClient):
+    """Updating a page on a non-existent knowledge source returns 404."""
+    response = client.put(
+        "/api/v1/knowledge/999999/page/some-page",
+        json={"content": "New content"}
+    )
+    assert response.status_code == 404
+    assert "Knowledge source not found" in response.json()["detail"]
+
+
+def test_update_page_no_table_name(client: TestClient, test_knowledge):
+    """Updating a page when the source has no vector table returns 400."""
+    response = client.put(
+        f"/api/v1/knowledge/{test_knowledge.id}/page/some-page",
+        json={"content": "New content"}
+    )
+    assert response.status_code == 400
+    assert "Knowledge source has no vector database table" in response.json()["detail"]
+
+
+def test_delete_page_knowledge_not_found(client: TestClient):
+    """Deleting a page on a non-existent knowledge source returns 404."""
+    response = client.delete("/api/v1/knowledge/999999/page/some-page")
+    assert response.status_code == 404
+    assert "Knowledge source not found" in response.json()["detail"]
+
+
+def test_delete_page_no_table_name(client: TestClient, test_knowledge):
+    """Deleting a page when the source has no vector table returns 400."""
+    response = client.delete(f"/api/v1/knowledge/{test_knowledge.id}/page/some-page")
+    assert response.status_code == 400
+    assert "Knowledge source has no vector database table" in response.json()["detail"]
+
+
+def test_page_endpoints_registered():
+    """The page update/delete endpoints are registered on the router."""
+    from app.api.knowledge import router
+    paths = [route.path for route in router.routes if hasattr(route, 'path')]
+    assert any('/{knowledge_id}/page/{page_id:path}' in p for p in paths), \
+        "page endpoints should be registered"
+
+
+def test_replace_page_upserts_before_deleting(monkeypatch):
+    """replace_page persists the new content (upsert) before clearing old chunks,
+    so an insert failure can never leave the page empty. Ordering is asserted via
+    a call log."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from app.knowledge import page_editor
+
+    calls = []
+
+    knowledge = SimpleNamespace(
+        schema="ai", table_name="d_test", source="site.com",
+        organization_id=uuid4(), agent_links=[],
+    )
+
+    # One existing chunk for the page so replace_page proceeds.
+    existing_chunk = SimpleNamespace(id="site.com/docs", content="old", meta_data={"url": "site.com/docs"})
+    monkeypatch.setattr(page_editor, "get_page_chunks", lambda db, k, pid: [existing_chunk])
+
+    fake_manager = MagicMock()
+    fake_manager.vector_db.embedder = object()
+    fake_manager.vector_db.upsert.side_effect = lambda *a, **kw: calls.append("upsert")
+    monkeypatch.setattr(page_editor, "get_manager", lambda org_id: fake_manager)
+    monkeypatch.setattr(page_editor, "embed_document", lambda *a, **kw: SimpleNamespace(embedding=[0.1]))
+
+    def fake_delete(db, k, pid, exclude_canonical=False):
+        calls.append(("delete", exclude_canonical))
+        return 1
+    monkeypatch.setattr(page_editor, "delete_page_chunks", fake_delete)
+
+    db = MagicMock()
+    db.commit.side_effect = lambda: calls.append("commit")
+
+    replaced = page_editor.replace_page(db, knowledge, "site.com/docs", "new content", title="Docs")
+
+    assert replaced == 1
+    # upsert (persist new content) must happen before the destructive delete.
+    assert calls[0] == "upsert"
+    assert calls[1] == ("delete", True)
+    assert "commit" in calls 

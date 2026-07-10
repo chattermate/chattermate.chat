@@ -75,3 +75,16 @@ export interface KnowledgeContent {
   chunks: KnowledgeContentChunk[]
 }
 
+// A crawled sub-page, reconstructed on the client by grouping the content chunks
+// of a source by their base id (the page URL/name, minus any `_N` chunk suffix).
+export interface KnowledgeSubPage {
+  page_id: string
+  url: string
+  title: string
+  content: string
+  word_count: number
+  chunk_count: number
+  updated_at: string | null
+  chunk_ids: string[]
+}
+

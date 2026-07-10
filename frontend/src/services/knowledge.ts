@@ -157,10 +157,28 @@ export const knowledgeService = {
   },
 
   async addSubpage(knowledgeId: number, subpageName: string, content: string) {
-    const response = await api.post(`/knowledge/${knowledgeId}/subpage`, { 
+    const response = await api.post(`/knowledge/${knowledgeId}/subpage`, {
       subpage_name: subpageName,
-      content 
+      content
     })
+    return response.data
+  },
+
+  // Replace a whole sub-page's content and re-embed it. `pageId` is the page's
+  // base id (its URL/name) — encoded for the backend `:path` route param.
+  async updatePage(knowledgeId: number, pageId: string, content: string, title?: string) {
+    const response = await api.put(
+      `/knowledge/${knowledgeId}/page/${encodeURIComponent(pageId)}`,
+      { content, title },
+    )
+    return response.data
+  },
+
+  // Delete an entire sub-page (all of its chunks) from a knowledge source.
+  async deletePage(knowledgeId: number, pageId: string) {
+    const response = await api.delete(
+      `/knowledge/${knowledgeId}/page/${encodeURIComponent(pageId)}`,
+    )
     return response.data
   },
 }
