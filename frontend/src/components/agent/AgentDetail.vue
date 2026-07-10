@@ -1092,9 +1092,19 @@ onMounted(async () => {
                             <div class="knowledge-tab-container">
                                 <KnowledgeExplorer
                                     mode="agent"
+                                    variant="section"
+                                    title="Knowledge sources"
+                                    description="Every page this agent learns from. Review the extracted content and choose what grounds its answers."
                                     :agent-id="agentData.id"
                                     :organization-id="agentData.organization_id"
-                                />
+                                >
+                                    <template #actions>
+                                        <router-link to="/knowledge" class="kb-open-link">
+                                            Open knowledge base
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path></svg>
+                                        </router-link>
+                                    </template>
+                                </KnowledgeExplorer>
                             </div>
                         </div>
 
@@ -2648,6 +2658,26 @@ input:checked + .slider:before {
   margin: 0 auto;
   width: 100%;
   padding: 0 var(--space-lg);
+}
+
+.kb-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 47px;
+  padding: 0 18px;
+  border-radius: 11px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  color: var(--text2);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.kb-open-link:hover {
+  background: var(--o08);
 }
 
 .section-title {

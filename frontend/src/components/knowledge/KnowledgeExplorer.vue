@@ -32,18 +32,23 @@ const props = withDefaults(
     organizationId: string
     agentId?: string
     showPlanMeters?: boolean
+    title?: string
+    description?: string
+    variant?: 'page' | 'section'
   }>(),
-  { agentId: undefined, showPlanMeters: false },
+  {
+    agentId: undefined,
+    showPlanMeters: false,
+    title: '',
+    description: '',
+    variant: 'section',
+  },
 )
 
 const ex = useKnowledgeExplorer(props.mode, props.agentId, props.organizationId)
 
-const srcInput = ref('')
-
 // Add-source modal state.
 const addOpen = ref(false)
-const addInitialUrl = ref('')
-const addInitialType = ref<'website' | 'sitemap' | 'pdf' | 'text'>('website')
 const isSubmittingSource = ref(false)
 
 // A single, reusable confirm dialog for the destructive actions.
@@ -67,11 +72,7 @@ const largestSubpageCount = computed(() => {
   return s ? (s.pages ?? s.pageStubs).length : 0
 })
 
-// Open the modal, prefilling type/URL from whatever was typed in the quick bar.
-function openAddModal() {
-  const value = srcInput.value.trim()
-  addInitialType.value = /\.xml(\?|$)/i.test(value) ? 'sitemap' : 'website'
-  addInitialUrl.value = value
+function openAdd() {
   addOpen.value = true
 }
 
@@ -80,10 +81,7 @@ async function onSubmitSource(payload: AddSourcePayload) {
   isSubmittingSource.value = true
   try {
     const ok = await ex.submitSource(payload)
-    if (ok) {
-      addOpen.value = false
-      srcInput.value = ''
-    }
+    if (ok) addOpen.value = false
   } finally {
     isSubmittingSource.value = false
   }
@@ -138,6 +136,23 @@ onUnmounted(() => {
 
 <template>
   <div class="explorer">
+    <header class="explorer__header">
+      <div class="explorer__heading">
+        <component :is="variant === 'page' ? 'h1' : 'h3'" class="explorer__title" :class="`explorer__title--${variant}`">
+          {{ title }}
+        </component>
+        <p v-if="description" class="explorer__desc">{{ description }}</p>
+      </div>
+      <div class="explorer__actions">
+        <slot name="actions" />
+        <button class="btn btn--primary" type="button" @click="openAdd">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          Add source
+        </button>
+      </div>
+    </header>
+
     <KnowledgePlanMeters
       v-if="showPlanMeters"
       class="explorer__meters"
@@ -145,28 +160,6 @@ onUnmounted(() => {
       :largest-source-name="largestSource?.name ?? null"
       :largest-subpage-count="largestSubpageCount"
     />
-
-    <div class="addbar">
-      <div class="addbar__field">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
-          <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
-        </svg>
-        <input
-          v-model="srcInput"
-          type="text"
-          placeholder="Paste a URL or sitemap, or add a document or text…"
-          aria-label="Knowledge source URL"
-          @keyup.enter="openAddModal"
-        />
-      </div>
-      <button class="btn btn--primary" type="button" @click="openAddModal">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-        Add source
-      </button>
-    </div>
 
     <div v-if="ex.error.value" class="banner" role="alert">
       {{ ex.error.value }}
@@ -233,8 +226,6 @@ onUnmounted(() => {
 
     <KnowledgeAddSourceModal
       v-if="addOpen"
-      :initial-url="addInitialUrl"
-      :initial-type="addInitialType"
       :submitting="isSubmittingSource"
       @close="addOpen = false"
       @submit="onSubmitSource"
@@ -249,44 +240,52 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.explorer__meters {
-  margin-bottom: 14px;
-}
-
-.addbar {
+.explorer__header {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px;
-  background: var(--surface);
-  border: 1px solid var(--o08);
-  border-radius: 16px;
-  margin-bottom: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
-.addbar__field {
-  flex: 1;
-  min-width: 220px;
+.explorer__heading {
+  min-width: 0;
+}
+
+.explorer__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+
+.explorer__title--page {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+.explorer__title--section {
+  font-size: 20px;
+}
+
+.explorer__desc {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+  max-width: 560px;
+  line-height: 1.55;
+}
+
+.explorer__actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--bg);
-  border: 1px solid var(--o10);
-  border-radius: 11px;
-  padding: 0 14px;
-  color: var(--muted2);
+  flex-shrink: 0;
 }
 
-.addbar__field input {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text);
-  font-size: 14px;
-  padding: 13px 0;
+.explorer__meters {
+  margin-bottom: 14px;
 }
 
 .btn {
