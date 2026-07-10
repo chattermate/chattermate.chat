@@ -37,6 +37,8 @@ export interface ChannelAccount {
   is_active: boolean
   agent_id?: string
   created_at?: string
+  /** For email/SMS/LINE: the webhook URL to configure on the provider */
+  webhook_url?: string
 }
 
 const channelsService = {
@@ -81,6 +83,36 @@ const channelsService = {
   /** Disconnect any Meta channel account (WhatsApp/Messenger/Instagram) */
   async disconnectMeta(accountId: string): Promise<void> {
     await api.delete(`/channels/meta/${accountId}`)
+  },
+
+  /** Connect a support inbox; reply-to threading uses platform SMTP */
+  async connectEmail(payload: { inbound_address: string; display_name?: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/email', payload)
+    return response.data
+  },
+
+  async disconnectEmail(accountId: string): Promise<void> {
+    await api.delete(`/channels/email/${accountId}`)
+  },
+
+  /** Connect a Twilio number for SMS */
+  async connectSms(payload: { account_sid: string; auth_token: string; phone_number: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/twilio', payload)
+    return response.data
+  },
+
+  async disconnectSms(accountId: string): Promise<void> {
+    await api.delete(`/channels/twilio/${accountId}`)
+  },
+
+  /** Connect a LINE Official Account */
+  async connectLine(payload: { channel_secret: string; channel_access_token: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/line', payload)
+    return response.data
+  },
+
+  async disconnectLine(accountId: string): Promise<void> {
+    await api.delete(`/channels/line/${accountId}`)
   },
 
   /** Browser URL that starts the Slack OAuth install (redirects to Slack) */

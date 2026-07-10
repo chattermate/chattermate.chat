@@ -24,6 +24,7 @@ import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
 import MetaChannelConnect from '@/components/integrations/MetaChannelConnect.vue'
+import ChannelConnectModal from '@/components/integrations/ChannelConnectModal.vue'
 
 // Import logos
 import jiraLogo from '@/assets/jira-logo.svg'
@@ -34,6 +35,9 @@ import telegramLogo from '@/assets/telegram-logo.svg'
 import whatsappLogo from '@/assets/whatsapp-logo.svg'
 import messengerLogo from '@/assets/messenger-logo.svg'
 import instagramLogo from '@/assets/instagram-logo.svg'
+import emailLogo from '@/assets/email-logo.svg'
+import smsLogo from '@/assets/sms-logo.svg'
+import lineLogo from '@/assets/line-logo.svg'
 
 // Define interface for Shopify shop
 interface ShopifyShop {
@@ -54,6 +58,8 @@ const channelsLoading = ref(true)
 const showTelegramModal = ref(false)
 // Which Meta connect modal is open (null = none)
 const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
+// Which credential connect modal is open (null = none)
+const credentialModalChannel = ref<'email' | 'sms' | 'line' | null>(null)
 
 const accountsFor = (channelType: string) =>
   channelAccounts.value.filter(a => a.channel_type === channelType)
@@ -74,6 +80,7 @@ const fetchChannelAccounts = async () => {
 const onChannelConnected = async () => {
   showTelegramModal.value = false
   metaModalChannel.value = null
+  credentialModalChannel.value = null
   await fetchChannelAccounts()
 }
 
@@ -86,6 +93,12 @@ const disconnectChannelAccounts = async (channelType: string, label: string) => 
         await channelsService.disconnectTelegram(account.id)
       } else if (channelType === 'slack') {
         await channelsService.disconnectSlack(account.id)
+      } else if (channelType === 'email') {
+        await channelsService.disconnectEmail(account.id)
+      } else if (channelType === 'sms') {
+        await channelsService.disconnectSms(account.id)
+      } else if (channelType === 'line') {
+        await channelsService.disconnectLine(account.id)
       } else {
         await channelsService.disconnectMeta(account.id)
       }
@@ -107,6 +120,9 @@ const connectSlack = () => { window.location.href = channelsService.getSlackInst
 const handleDisconnectWhatsApp = () => disconnectChannelAccounts('whatsapp', 'WhatsApp')
 const handleDisconnectMessenger = () => disconnectChannelAccounts('messenger', 'Messenger')
 const handleDisconnectInstagram = () => disconnectChannelAccounts('instagram', 'Instagram')
+const handleDisconnectEmail = () => disconnectChannelAccounts('email', 'Email')
+const handleDisconnectSms = () => disconnectChannelAccounts('sms', 'SMS')
+const handleDisconnectLine = () => disconnectChannelAccounts('line', 'LINE')
 
 
 const route = useRoute()
@@ -329,6 +345,33 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       isLoading: channelsLoading.value,
       connectAction: () => { metaModalChannel.value = channel },
       disconnectAction: { whatsapp: handleDisconnectWhatsApp, messenger: handleDisconnectMessenger, instagram: handleDisconnectInstagram }[channel]
+    }
+  }),
+  ...(['email', 'sms', 'line'] as const).map(channel => {
+    const meta = {
+      email: { name: 'Email', logo: emailLogo, color: 'purple',
+        description: 'Connect a support inbox so email conversations are answered by your AI agent.',
+        disconnect: handleDisconnectEmail },
+      sms: { name: 'SMS', logo: smsLogo, color: 'coral',
+        description: 'Connect a Twilio number so customers can text your AI agent.',
+        disconnect: handleDisconnectSms },
+      line: { name: 'LINE', logo: lineLogo, color: 'teal',
+        description: 'Connect a LINE Official Account so customers can chat with your AI agent on LINE.',
+        disconnect: handleDisconnectLine },
+    }[channel]
+    const accounts = accountsFor(channel)
+    return {
+      id: channel,
+      name: meta.name,
+      description: meta.description,
+      logo: meta.logo,
+      category: 'MESSAGING',
+      color: meta.color,
+      connected: accounts.length > 0,
+      teamName: accounts.map(a => a.display_name).filter(Boolean).join(', '),
+      isLoading: channelsLoading.value,
+      connectAction: () => { credentialModalChannel.value = channel },
+      disconnectAction: meta.disconnect
     }
   }),
   // Future integrations
@@ -651,6 +694,15 @@ onMounted(async () => {
           <span v-else>Disconnect Telegram</span>
         </button>
         <button
+          v-if="disconnectingIntegration === 'email' || disconnectingIntegration === 'sms' || disconnectingIntegration === 'line'"
+          class="btn-disconnect"
+          @click="disconnectingIntegration === 'email' ? handleDisconnectEmail() : disconnectingIntegration === 'sms' ? handleDisconnectSms() : handleDisconnectLine()"
+          :disabled="channelsLoading"
+        >
+          <span v-if="channelsLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect {{ disconnectingIntegration === 'email' ? 'Email' : disconnectingIntegration === 'sms' ? 'SMS' : 'LINE' }}</span>
+        </button>
+        <button
           v-if="disconnectingIntegration === 'whatsapp' || disconnectingIntegration === 'messenger' || disconnectingIntegration === 'instagram'"
           class="btn-disconnect"
           @click="disconnectingIntegration === 'whatsapp' ? handleDisconnectWhatsApp() : disconnectingIntegration === 'messenger' ? handleDisconnectMessenger() : handleDisconnectInstagram()"
@@ -675,6 +727,14 @@ onMounted(async () => {
     v-if="metaModalChannel"
     :channel="metaModalChannel"
     @close="metaModalChannel = null"
+    @connected="onChannelConnected"
+  />
+
+  <!-- Credential Connect Modal (Email / SMS / LINE) -->
+  <ChannelConnectModal
+    v-if="credentialModalChannel"
+    :channel="credentialModalChannel"
+    @close="credentialModalChannel = null"
     @connected="onChannelConnected"
   />
 

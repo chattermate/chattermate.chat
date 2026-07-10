@@ -93,6 +93,14 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         )
         session_id = str(session_record.session_id)
 
+        # Merge channel-specific per-conversation state (e.g. email threading
+        # headers) so outbound replies can use it.
+        if adapter is not None:
+            state = adapter.conversation_state(inbound)
+            if state:
+                ChannelConversationRepository(db).set_extra(
+                    conversation, {**(conversation.extra or {}), **state})
+
         # Human is handling (or transfer is pending): store + relay to the
         # agent dashboard, never run the bot.
         if session_record.user_id is not None or session_record.status == SessionStatus.TRANSFERRED:

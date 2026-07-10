@@ -30,6 +30,9 @@ class ChannelAccountOut(BaseModel):
     is_active: bool
     agent_id: Optional[UUID] = None   # agent currently routed to this account
     created_at: Optional[datetime] = None
+    # For channels the customer must point at us (email inbound-parse, SMS):
+    # the exact webhook URL to configure on their provider.
+    webhook_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -70,3 +73,19 @@ class TemplateSendRequest(BaseModel):
 class AgentChannelConfigRequest(BaseModel):
     agent_id: UUID
     is_active: bool = True
+
+
+class EmailConnectRequest(BaseModel):
+    inbound_address: str      # e.g. support@acme.com (the address customers write to)
+    display_name: Optional[str] = None
+
+
+class TwilioConnectRequest(BaseModel):
+    account_sid: str
+    auth_token: str
+    phone_number: str         # E.164, e.g. +15551234567
+
+
+class LineConnectRequest(BaseModel):
+    channel_secret: str
+    channel_access_token: str

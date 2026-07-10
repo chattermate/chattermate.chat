@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.webhooks.common import is_duplicate_message
 from app.channels import get_adapter
-from app.channels.slack import verify_slack_signature
 from app.core.logger import get_logger
 from app.database import get_db
 from app.models.channels import ChannelType
@@ -30,41 +31,27 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-@router.post("")
-async def slack_webhook(
+@router.post("/{account_id}")
+async def line_webhook(
+    account_id: UUID,
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """Slack Events API endpoint: URL verification handshake plus @mention and
-    DM events, verified against the app signing secret, acked immediately and
-    processed in the background."""
-    raw_body = await request.body()
+    """LINE Messaging API webhook, verified via X-Line-Signature."""
+    account = ChannelAccountRepository(db).get_by_id(account_id)
+    if account is None or account.channel_type != ChannelType.LINE.value:
+        raise HTTPException(status_code=404, detail="Unknown account")
 
-    # Verify before parsing — unsigned garbage gets a clean 403, not a 500.
-    if not verify_slack_signature(dict(request.headers), raw_body):
+    adapter = get_adapter(ChannelType.LINE.value)
+    raw_body = await request.body()
+    if not await adapter.verify_webhook(dict(request.headers), raw_body, account):
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()
-
-    if payload.get("type") == "url_verification":
-        return {"challenge": payload.get("challenge")}
-
-    if payload.get("type") != "event_callback":
-        return {"status": "ignored"}
-
-    adapter = get_adapter(ChannelType.SLACK.value)
-    account_repo = ChannelAccountRepository(db)
-
     for inbound in adapter.parse_inbound(payload):
-        account = account_repo.get_by_external_id(ChannelType.SLACK.value, inbound.external_account_id)
-        if account is None or not account.is_active:
-            logger.info(f"No active Slack account for team {inbound.external_account_id}")
-            continue
-        # event_id is globally unique; Slack redelivers with X-Slack-Retry-Num
-        if is_duplicate_message(ChannelType.SLACK.value,
+        if is_duplicate_message(ChannelType.LINE.value,
                                 f"{account.id}:{inbound.external_message_id}"):
-            logger.info(f"Skipping duplicate Slack event {inbound.external_message_id}")
             continue
         background_tasks.add_task(process_channel_message, account.id, inbound)
 

@@ -99,9 +99,10 @@ const shopifyToggleInProgress = ref(false)
 const shopifyError = ref('')
 
 // Local state for messaging-channel routing (Telegram, WhatsApp, Messenger, Instagram)
-const MESSAGING_CHANNELS = ['telegram', 'whatsapp', 'messenger', 'instagram', 'slack']
+const MESSAGING_CHANNELS = ['telegram', 'whatsapp', 'messenger', 'instagram', 'slack', 'email', 'sms', 'line']
 const CHANNEL_LABELS: Record<string, string> = {
-  telegram: 'Telegram', whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram', slack: 'Slack'
+  telegram: 'Telegram', whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram', slack: 'Slack',
+  email: 'Email', sms: 'SMS', line: 'LINE'
 }
 const channelAccounts = ref<ChannelAccount[]>([])
 const channelSaving = ref(false)
@@ -457,7 +458,7 @@ onMounted(async () => {
             <div class="integration-badge badge-purple">Ch</div>
             <div class="integration-heading">
               <div class="integration-title">Messaging channels — customer chat</div>
-              <div class="integration-desc">Let customers chat with this agent on Telegram, WhatsApp, Messenger, Instagram and Slack.</div>
+              <div class="integration-desc">Let customers chat with this agent on Telegram, WhatsApp, Messenger, Instagram, Slack, Email, SMS and LINE.</div>
             </div>
           </div>
           <router-link to="/settings/integrations" class="connect-btn">

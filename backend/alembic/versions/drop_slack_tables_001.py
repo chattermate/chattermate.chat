@@ -50,7 +50,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Recreate empty legacy tables by re-running the original migration's DDL.
-    from alembic.runtime import migration  # noqa: F401 — keep import local
-    import importlib
-    legacy = importlib.import_module('add_slack_integration_001')
+    # Version scripts aren't importable by module name — load by file path.
+    import importlib.util
+    import os
+    legacy_path = os.path.join(os.path.dirname(__file__), 'add_slack_integration_001.py')
+    spec = importlib.util.spec_from_file_location('add_slack_integration_001', legacy_path)
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
     legacy.upgrade()

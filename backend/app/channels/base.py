@@ -107,6 +107,12 @@ class ChannelAdapter(ABC):
         length caps. Default: pass through unchanged."""
         return markdown
 
+    def conversation_state(self, inbound: InboundMessage) -> dict:
+        """Channel-specific state to merge into the conversation's extra JSON
+        on each inbound message (e.g. email subject + Message-ID for reply
+        threading). Default: nothing."""
+        return {}
+
     # --- Optional interactive capabilities (default: unsupported no-ops so
     # channels without them are simply skipped) ---
 

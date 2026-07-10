@@ -1,0 +1,3 @@
+# Local runtime credentials — never commit
+*
+!.gitignore
