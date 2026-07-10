@@ -37,6 +37,12 @@ from app.knowledge.content_summarizer import get_content_summarizer
 logger = get_logger(__name__)
 
 
+class BotProtectionError(Exception):
+    """Raised when a crawl produced no content because the site's bot protection
+    (Cloudflare / WordPress.com "Checking your browser…" interstitial) blocked the
+    automated browser. Signals the user should add the content manually."""
+
+
 @dataclass
 class EnhancedWebsiteReader(WebsiteReader):
     """Enhanced Reader for Websites with more robust content extraction"""
@@ -83,6 +89,7 @@ class EnhancedWebsiteReader(WebsiteReader):
     _crawled_pages_count: int = 0
     _successful_crawls: int = 0
     _failed_crawls: int = 0
+    _challenge_blocked: int = 0  # Pages skipped because a bot-check couldn't be cleared
     _current_url: str = None  # Track current URL being processed for link resolution
     
     def _normalize_url(self, url: str) -> str:
@@ -682,6 +689,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                 if self._looks_like_bot_challenge(content):
                     logger.warning(f"⚠️  Skipping {current_url}: bot-challenge interstitial could not be cleared")
                     self._failed_crawls += 1
+                    self._challenge_blocked += 1
                     return None
 
                 # Check content quality
@@ -876,7 +884,8 @@ class EnhancedWebsiteReader(WebsiteReader):
         self._crawled_pages_count = 0
         self._successful_crawls = 0
         self._failed_crawls = 0
-        
+        self._challenge_blocked = 0
+
         crawl_start_time = time.time()
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting parallel crawl of {url} with max_depth={self.max_depth}, max_links={self.max_links}, and max_workers={self.max_workers}")
         

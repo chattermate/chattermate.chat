@@ -98,10 +98,30 @@ class TestEnhancedWebsiteKnowledgeBase:
         """Test initialization with a custom reader"""
         custom_reader = EnhancedWebsiteReader(max_depth=4, max_links=15)
         kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=custom_reader)
-        
+
         assert kb.reader is custom_reader
         assert kb.reader.max_depth == 4
         assert kb.reader.max_links == 15
+
+    def test_raise_if_bot_blocked(self):
+        """A fully bot-blocked crawl (0 docs, pages skipped) raises, so the queue
+        item fails with a clear reason instead of silently completing."""
+        from app.knowledge.enhanced_website_reader import BotProtectionError
+        reader = EnhancedWebsiteReader(max_links=5)
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=reader)
+
+        # Nothing blocked → never raises, regardless of doc count.
+        reader._challenge_blocked = 0
+        kb._raise_if_bot_blocked(0)
+        kb._raise_if_bot_blocked(5)
+
+        # Blocked pages AND zero documents extracted → raise.
+        reader._challenge_blocked = 3
+        with pytest.raises(BotProtectionError):
+            kb._raise_if_bot_blocked(0)
+
+        # Blocked some pages but others succeeded → don't raise.
+        kb._raise_if_bot_blocked(2)
     
     def test_document_lists_property(self, mock_reader):
         """Test the document_lists property"""

@@ -115,6 +115,8 @@ async def process_queue_item(queue_item_id: int):
             logger.error(f"Error processing queue item {queue_item_id}: {str(e)}")
             try:
                 queue_item.status = QueueStatus.FAILED
+                # Persist the reason so the UI can show why it failed.
+                queue_item.error = str(e)
 
                 # Create notification for failed processing
                 user_friendly_name = get_user_friendly_filename(queue_item.source, queue_item.source_type)

@@ -46,6 +46,8 @@ export interface ExplorerSource {
   // Status carried from the queue item for a placeholder (its display name may
   // differ from the queue `source`, so it can't be re-derived by name lookup).
   queuedStatus?: SourceStatus
+  // Failure reason for a failed queue item (e.g. blocked by bot protection).
+  queuedError?: string | null
 }
 
 const POLL_INTERVAL_MS = 10000
@@ -185,6 +187,7 @@ export function useKnowledgeExplorer(
     pages: [],
     queued: true,
     queuedStatus: queueStatusToSource(item.status),
+    queuedError: item.status === 'failed' ? item.error ?? null : null,
   })
 
   // Real sources plus a placeholder for every in-flight queue item that has not

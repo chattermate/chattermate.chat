@@ -118,6 +118,10 @@ function sourceGlyph(type: string): string {
           </button>
         </div>
 
+        <div v-if="source.queued && source.queuedError" class="src__error">
+          {{ source.queuedError }}
+        </div>
+
         <div v-if="source.expanded && !source.queued" class="src__pages">
           <div v-if="source.loadingContent" class="src__hint">Loading pages…</div>
           <div v-else-if="source.contentError" class="src__hint src__hint--error">{{ source.contentError }}</div>
@@ -377,6 +381,17 @@ function sourceGlyph(type: string): string {
 }
 
 .src__hint--error { color: var(--c-coral); }
+
+.src__error {
+  margin: 2px 10px 6px 44px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--c-coral);
+  background: var(--coral-bg);
+  border: 1px solid var(--coral-border);
+  border-radius: 8px;
+}
 
 .tree__empty {
   padding: 40px 20px;
