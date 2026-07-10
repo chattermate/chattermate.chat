@@ -34,13 +34,23 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 MAX_MESSAGE_LENGTH = 4096
 REQUEST_TIMEOUT_SECONDS = 15.0
 
+# Shared client: keep-alive connection pooling to api.telegram.org instead of
+# a TCP+TLS handshake per call (process-lifetime, like the DB engine).
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS)
+    return _http_client
+
 
 async def _call_api(bot_token: str, method: str, payload: Optional[dict] = None) -> dict:
     """Call a Telegram Bot API method; returns the decoded JSON envelope."""
     url = f"{TELEGRAM_API_BASE}/bot{bot_token}/{method}"
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        response = await client.post(url, json=payload or {})
-        return response.json()
+    response = await _get_http_client().post(url, json=payload or {})
+    return response.json()
 
 
 async def get_me(bot_token: str) -> Optional[dict]:

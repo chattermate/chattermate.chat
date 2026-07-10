@@ -31,6 +31,9 @@ from app.core.logger import get_logger
 router = APIRouter()
 logger = get_logger(__name__)
 
+# Sentinel: distinguishes "config not passed, look it up" from "no config"
+_UNRESOLVED = object()
+
 
 def get_org_account_or_404(db: Session, account_id: UUID, organization: Organization):
     """Load a channel account and enforce org ownership."""
@@ -40,8 +43,9 @@ def get_org_account_or_404(db: Session, account_id: UUID, organization: Organiza
     return account
 
 
-def to_account_out(db: Session, account) -> ChannelAccountOut:
-    config = AgentChannelConfigRepository(db).get_by_account(account.id)
+def to_account_out(db: Session, account, config=_UNRESOLVED) -> ChannelAccountOut:
+    if config is _UNRESOLVED:
+        config = AgentChannelConfigRepository(db).get_by_account(account.id)
     out = ChannelAccountOut.model_validate(account)
     out.agent_id = config.agent_id if config and config.is_active else None
     return out
@@ -55,4 +59,5 @@ async def list_channel_accounts(
 ):
     """All connected channel accounts for the organization."""
     accounts = ChannelAccountRepository(db).list_by_org(organization.id)
-    return [to_account_out(db, account) for account in accounts]
+    configs = AgentChannelConfigRepository(db).map_by_accounts([a.id for a in accounts])
+    return [to_account_out(db, account, configs.get(account.id)) for account in accounts]

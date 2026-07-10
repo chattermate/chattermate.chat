@@ -299,7 +299,8 @@ async def test_widget_chat_message(db, test_widget, test_ai_config, test_custome
         shopify_output=MagicMock(model_dump=MagicMock(return_value={}))
     ))
     mock_chat_agent.agent.session_id = session_id
-    
+    mock_chat_agent.safe_cleanup_mcp_tools = AsyncMock()
+
     # Mock workflow execution to avoid database errors
     mock_workflow_execution = MagicMock()
     mock_result = MagicMock()

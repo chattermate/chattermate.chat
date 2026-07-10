@@ -480,15 +480,7 @@ async def handle_widget_chat(sid, data):
                     agent_id=session['agent_id'],
                     customer_id=customer_id)
             finally:
-                # Clean up MCP tools
-                # Use asyncio.create_task to ensure cleanup doesn't block the main flow
-                try:
-                    cleanup_task = asyncio.create_task(chat_agent.cleanup_mcp_tools())
-                    await asyncio.wait_for(cleanup_task, timeout=2.0)
-                except asyncio.TimeoutError:
-                    logger.debug("MCP cleanup timed out in widget chat (non-critical)")
-                except Exception as cleanup_error:
-                    logger.debug(f"MCP cleanup warning in widget chat (non-critical): {str(cleanup_error)}")
+                await chat_agent.safe_cleanup_mcp_tools()
         elif active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
             logger.debug(f"Transferring chat to human for session {session_id}")
             # Get response from agent transfer ai agent
@@ -797,11 +789,16 @@ async def handle_widget_chat(sid, data):
                 # If the capture merged this anonymous visitor into an existing
                 # customer (email already known), repoint the live socket session
                 # so the rest of this conversation writes to the merged customer.
+                # Isolated so a session-store failure can't skip the end_chat
+                # close block below.
                 if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
-                    session['customer_id'] = str(lc_resp.customer_id)
-                    await sio.save_session(sid, session, namespace='/widget')
-                    logger.info(
-                        f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
+                    try:
+                        session['customer_id'] = str(lc_resp.customer_id)
+                        await sio.save_session(sid, session, namespace='/widget')
+                        logger.info(
+                            f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
+                    except Exception as merge_err:
+                        logger.error(f"Failed to repoint socket session after merge: {merge_err}")
 
             # If end_chat is true, close the session
             if response.end_chat:

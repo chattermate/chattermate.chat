@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import asyncio
 import uuid
 
 from sqlalchemy.orm import Session
@@ -48,8 +47,6 @@ except ImportError:
     HAS_ENTERPRISE = False
 
 logger = get_logger(__name__)
-
-MCP_CLEANUP_TIMEOUT_SECONDS = 2.0
 
 
 async def process_channel_message(account_id, inbound: InboundMessage) -> None:
@@ -247,12 +244,7 @@ async def _run_chat_agent(db: Session, account: ChannelAccount, ai_config,
         logger.error(f"Chat agent error on {account.channel_type} session {session_id}: {e}")
         return None
     finally:
-        try:
-            await asyncio.wait_for(chat_agent.cleanup_mcp_tools(), timeout=MCP_CLEANUP_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
-            logger.debug("MCP cleanup timed out in channel chat (non-critical)")
-        except Exception as cleanup_error:
-            logger.debug(f"MCP cleanup warning in channel chat (non-critical): {cleanup_error}")
+        await chat_agent.safe_cleanup_mcp_tools()
 
 
 async def _send_via_adapter(db: Session, session_record, text: str) -> None:

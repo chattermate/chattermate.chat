@@ -63,6 +63,7 @@ class TestWorkflowChatServiceEndChat:
         
         # Mock chat agent and its _handle_end_chat method
         mock_chat_agent = Mock()
+        mock_chat_agent.safe_cleanup_mcp_tools = AsyncMock()
         mock_updated_response = Mock(spec=ChatResponse)
         mock_updated_response.message = "Thank you for chatting with us. Goodbye!\n\nThank you for chatting with us! Would you please take a moment to rate your experience? Your feedback helps us improve our service."
         mock_updated_response.request_rating = True
@@ -109,6 +110,7 @@ class TestWorkflowChatServiceEndChat:
         
         # Mock chat agent and its _handle_end_chat method
         mock_chat_agent = Mock()
+        mock_chat_agent.safe_cleanup_mcp_tools = AsyncMock()
         mock_updated_response = Mock(spec=ChatResponse)
         mock_updated_response.message = "Thank you for chatting with us. Goodbye!"
         mock_updated_response.request_rating = False
@@ -153,6 +155,7 @@ class TestWorkflowChatServiceEndChat:
         )
         
         mock_chat_agent = Mock()
+        mock_chat_agent.safe_cleanup_mcp_tools = AsyncMock()
         mock_chat_agent._handle_end_chat = AsyncMock(return_value=response)
         
         with patch('app.services.workflow_chat.ChatAgent.create_async', AsyncMock(return_value=mock_chat_agent)) as mock_create_async:

@@ -96,7 +96,7 @@ async def test_ai_path_creates_session_and_delivers(db, routed_account, use_test
                                end_chat=False, request_lead_capture=False)
     fake_agent = MagicMock()
     fake_agent.get_response = AsyncMock(return_value=response)
-    fake_agent.cleanup_mcp_tools = AsyncMock()
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
 
     with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)) as create_async, \
          patch.object(channel_chat, "deliver_to_customer", AsyncMock()) as deliver:
@@ -104,7 +104,7 @@ async def test_ai_path_creates_session_and_delivers(db, routed_account, use_test
 
         assert create_async.await_args.kwargs["channel"] == "telegram"
         fake_agent.get_response.assert_awaited_once()
-        fake_agent.cleanup_mcp_tools.assert_awaited()
+        fake_agent.safe_cleanup_mcp_tools.assert_awaited()
         deliver.assert_awaited_once()
         payload = deliver.await_args.args[2]
         assert payload["message"] == "hi there"
@@ -122,7 +122,7 @@ async def test_reuses_open_session_for_same_conversation(db, routed_account, use
                                end_chat=False, request_lead_capture=False)
     fake_agent = MagicMock()
     fake_agent.get_response = AsyncMock(return_value=response)
-    fake_agent.cleanup_mcp_tools = AsyncMock()
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
 
     with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
          patch.object(channel_chat, "deliver_to_customer", AsyncMock()):
@@ -139,7 +139,7 @@ async def test_human_handling_relays_and_skips_bot(db, routed_account, use_test_
                                end_chat=False, request_lead_capture=False)
     fake_agent = MagicMock()
     fake_agent.get_response = AsyncMock(return_value=response)
-    fake_agent.cleanup_mcp_tools = AsyncMock()
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
     with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
          patch.object(channel_chat, "deliver_to_customer", AsyncMock()):
         await process_channel_message(routed_account.id, make_inbound("first"))

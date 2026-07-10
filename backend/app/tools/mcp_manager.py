@@ -304,6 +304,18 @@ class ChatAgentMCPMixin:
             await self._mcp_manager.cleanup_mcp_tools()
         elif hasattr(self, 'mcp_tools') and self.mcp_tools:
             await cleanup_mcp_tools(self.mcp_tools)
+
+    async def safe_cleanup_mcp_tools(self, timeout: float = 2.0):
+        """
+        Best-effort MCP cleanup after a chat turn: bounded by a timeout and
+        never raises, so cleanup can't break or block the response flow.
+        """
+        try:
+            await asyncio.wait_for(self.cleanup_mcp_tools(), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.debug("MCP cleanup timed out (non-critical)")
+        except Exception as e:
+            logger.debug(f"MCP cleanup warning (non-critical): {e}")
     
     def __del__(self):
         """

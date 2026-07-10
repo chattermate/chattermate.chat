@@ -51,8 +51,9 @@ async def telegram_webhook(
 
     payload = await request.json()
     for inbound in adapter.parse_inbound(payload):
+        # Telegram message_id is only unique within a chat — key by conversation too
         if is_duplicate_message(ChannelType.TELEGRAM.value,
-                                f"{account.id}:{inbound.external_message_id}"):
+                                f"{account.id}:{inbound.external_conversation_id}:{inbound.external_message_id}"):
             logger.info(f"Skipping duplicate Telegram message {inbound.external_message_id}")
             continue
         background_tasks.add_task(process_channel_message, account.id, inbound)

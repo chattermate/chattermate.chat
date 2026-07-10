@@ -607,15 +607,7 @@ class WorkflowExecutionService:
                     customer_id=customer_id
                 )
             finally:
-                # Always clean up MCP tools, even if there's an error
-                # Use asyncio.create_task to ensure cleanup doesn't block the main flow
-                try:
-                    cleanup_task = asyncio.create_task(chat_agent.cleanup_mcp_tools())
-                    await asyncio.wait_for(cleanup_task, timeout=2.0)
-                except asyncio.TimeoutError:
-                    logger.debug("MCP cleanup timed out (non-critical)")
-                except Exception as cleanup_error:
-                    logger.debug(f"MCP cleanup warning in workflow (non-critical): {str(cleanup_error)}")
+                await chat_agent.safe_cleanup_mcp_tools()
             
             logger.debug(f"Response: {response}")
             # Handle exit conditions

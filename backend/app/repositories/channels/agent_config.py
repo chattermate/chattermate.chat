@@ -45,6 +45,19 @@ class AgentChannelConfigRepository:
             return config.agent_id
         return None
 
+    def map_by_accounts(self, channel_account_ids: List[UUID]) -> dict:
+        """Configs for many accounts in one query, keyed by channel_account_id."""
+        if not channel_account_ids:
+            return {}
+        try:
+            configs = self.db.query(AgentChannelConfig).filter(
+                AgentChannelConfig.channel_account_id.in_(channel_account_ids)
+            ).all()
+            return {config.channel_account_id: config for config in configs}
+        except Exception as e:
+            logger.error(f"Error mapping agent channel configs: {str(e)}")
+            return {}
+
     def list_by_agent(self, agent_id: UUID) -> List[AgentChannelConfig]:
         try:
             return self.db.query(AgentChannelConfig).filter(
