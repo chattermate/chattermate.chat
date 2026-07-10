@@ -159,6 +159,7 @@ export function useKnowledgeExplorer(
   // tree's source-kind glyph.
   const queueKind = (sourceType: string): string => {
     if (sourceType.includes('pdf')) return 'pdf'
+    if (sourceType.includes('site')) return 'sitemap'
     if (sourceType.includes('web')) return 'web'
     return 'custom'
   }
@@ -453,9 +454,9 @@ export function useKnowledgeExplorer(
           description: `${payload.url} — we’ll notify you when indexing is done.`,
         })
       } else if (payload.type === 'sitemap') {
-        throwIfError(await knowledgeService.addUrls(organizationId, [payload.url], linkedAgentId))
+        throwIfError(await knowledgeService.addSitemap(organizationId, payload.url, linkedAgentId))
         toast.success('Queued for crawling', {
-          description: `${payload.url} — pages are being discovered and indexed.`,
+          description: `${payload.url} — discovering pages from the sitemap.`,
         })
       } else if (payload.type === 'pdf') {
         await knowledgeService.uploadPdfFiles(payload.files, organizationId, linkedAgentId)

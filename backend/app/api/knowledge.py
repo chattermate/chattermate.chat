@@ -70,6 +70,7 @@ class UrlsRequest(BaseModel):
     org_id: UUID
     pdf_urls: List[str] = []
     websites: List[str] = []
+    sitemaps: List[str] = []
     agent_id: Optional[str] = None
     # Optional crawl-scope cap for websites (e.g. 1 = "this page only"). Always
     # clamped to the plan's max_sub_pages server-side; None uses the plan limit.
@@ -83,10 +84,10 @@ class UrlsRequest(BaseModel):
         return v
 
 
-    @field_validator('websites')
+    @field_validator('websites', 'sitemaps')
     @classmethod
     def validate_website_url_format(cls, v):
-        """Validate that each website URL is in https://domainname format"""
+        """Validate that each website/sitemap URL is in https://domainname format"""
         import re
         validated_urls = []
         
@@ -519,8 +520,8 @@ async def add_urls(
             # Get current knowledge sources count
             current_count = knowledge_repo.count_by_organization(request.org_id)
 
-            # Calculate total new URLs to be added
-            total_new_urls = len(request.pdf_urls) + len(request.websites)
+            # Calculate total new URLs to be added (each sitemap is one source)
+            total_new_urls = len(request.pdf_urls) + len(request.websites) + len(request.sitemaps)
 
             # Check if adding these URLs would exceed the limit
             new_count = current_count + total_new_urls
@@ -543,7 +544,7 @@ async def add_urls(
         )
 
         # Check for duplicate URLs
-        all_urls = request.pdf_urls + request.websites
+        all_urls = request.pdf_urls + request.websites + request.sitemaps
         existing_sources = knowledge_repo.get_by_sources(request.org_id, all_urls)
 
         if existing_sources:
@@ -576,6 +577,20 @@ async def add_urls(
                 source=url,
                 status=QueueStatus.PENDING,
                 queue_metadata={"max_links": website_max_links}
+            )
+            queued_items.append(queue_repo.create(queue_item))
+
+        # Queue sitemaps — one source each; pages are discovered from the sitemap
+        # and capped at the plan's sub-page limit (no per-request crawl scope).
+        for url in request.sitemaps:
+            queue_item = KnowledgeQueue(
+                organization_id=request.org_id,
+                agent_id=agent_uuid,
+                user_id=current_user.id,
+                source_type='sitemap',
+                source=url,
+                status=QueueStatus.PENDING,
+                queue_metadata={"max_links": plan_sub_pages}
             )
             queued_items.append(queue_repo.create(queue_item))
 

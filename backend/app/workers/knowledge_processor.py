@@ -33,8 +33,8 @@ logger = get_logger(__name__)
 def get_user_friendly_filename(source: str, source_type: str) -> str:
     """Extract a user-friendly filename from the source URL or path"""
     try:
-        if source_type == 'website':
-            # For websites, just return the domain
+        if source_type in ('website', 'sitemap'):
+            # For websites/sitemaps, just return the domain
             parsed = urlparse(source)
             return parsed.netloc or source
         

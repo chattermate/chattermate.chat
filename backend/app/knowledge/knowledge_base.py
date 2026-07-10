@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.knowledge.enhanced_website_kb import EnhancedWebsiteKnowledgeBase
 from app.knowledge.enhanced_website_reader import EnhancedWebsiteReader
+from app.knowledge.sitemap_reader import SitemapReader
 from app.knowledge.enhanced_pdf_kb import EnhancedPDFKnowledgeBase
 from app.knowledge.enhanced_pdf_url_kb import EnhancedPDFUrlKnowledgeBase
 from app.core.s3 import delete_file_from_s3
@@ -492,8 +493,64 @@ class KnowledgeManager:
                     logger.info(f"Completed website processing for {queue_item.source}")
                     self._add_knowledge_source(queue_item.source, SourceType.WEBSITE)
                     success = True
-                    
+
                     # Completion status is handled internally by EnhancedWebsiteKnowledgeBase
+
+                elif queue_item.source_type == 'sitemap':
+                    # Crawl exactly the pages listed in the sitemap.xml (parsed
+                    # from <loc> entries, incl. sitemap-index recursion) — no BFS.
+                    queue_repo.update_progress(queue_item.id, ProcessingStage.CRAWLING)
+
+                    max_links = queue_item.queue_metadata.get(
+                        'max_links', 10) if queue_item.queue_metadata else 10
+
+                    logger.info(f"Using SitemapReader for queue item: {queue_item.source}")
+                    reader = SitemapReader(
+                        max_depth=1,  # never follow <a href>; pages come from the sitemap
+                        max_links=max_links,
+                        min_content_length=settings.KB_MIN_CONTENT_LENGTH,
+                        timeout=settings.KB_TIMEOUT,
+                        max_retries=settings.KB_MAX_RETRIES,
+                        max_workers=settings.KB_MAX_WORKERS,
+                        verify_ssl=False
+                    )
+
+                    # One source (the sitemap URL); its listed pages are the sub-pages.
+                    knowledge_base = EnhancedWebsiteKnowledgeBase(
+                        urls=[queue_item.source],
+                        max_links=max_links,
+                        vector_db=self.vector_db,
+                        reader=reader
+                    )
+                    knowledge_base.queue_item = queue_item
+                    knowledge_base.queue_repo = queue_repo
+
+                    agent_id_filter = [str(self.agent_id)] if self.agent_id else []
+                    filters = {
+                        "name": queue_item.source,
+                        "agent_id": agent_id_filter,
+                        "org_id": str(self.org_id)
+                    }
+
+                    await asyncio.to_thread(
+                        knowledge_base.load,
+                        recreate=False,
+                        upsert=True,
+                        filters=filters
+                    )
+
+                    # Fail clearly if the sitemap listed no pages (wrong URL / not a
+                    # sitemap) rather than creating an empty knowledge source.
+                    if getattr(reader, '_sitemap_page_count', 0) == 0:
+                        raise ValueError(
+                            "No pages found in the sitemap. Make sure the URL points "
+                            "to a valid sitemap.xml."
+                        )
+
+                    logger.info(f"Completed sitemap processing for {queue_item.source}")
+                    self._add_knowledge_source(queue_item.source, SourceType.WEBSITE)
+                    success = True
+
                 else:
                     raise ValueError(f"Unsupported source type: {
                                      queue_item.source_type}")

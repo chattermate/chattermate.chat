@@ -191,6 +191,22 @@ export const knowledgeService = {
     return response.data
   },
 
+  // Add a sitemap source — the backend discovers and crawls its listed pages.
+  async addSitemap(orgId: string, url: string, agentId?: string): Promise<KnowledgeUploadResponse> {
+    try {
+      const response = await api.post('/knowledge/add/urls', {
+        org_id: orgId,
+        agent_id: agentId,
+        sitemaps: [url],
+      })
+      return response.data
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.detail || error.response?.data?.message || 'Failed to add sitemap'
+      throw new Error(errorMessage)
+    }
+  },
+
   // Create a knowledge source from pasted text; indexed immediately (no crawl).
   async addText(orgId: string, title: string, content: string, agentId?: string) {
     try {

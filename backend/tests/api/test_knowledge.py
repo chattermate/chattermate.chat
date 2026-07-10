@@ -236,6 +236,22 @@ def test_add_urls(client: TestClient, test_organization):
     assert len(data["queue_items"]) == 2  # One for PDF, one for website
     assert all(item["status"] == "pending" for item in data["queue_items"])
 
+def test_add_sitemap(client: TestClient, test_organization, db):
+    """A sitemaps request enqueues one source_type='sitemap' queue item."""
+    response = client.post("/api/v1/knowledge/add/urls", json={
+        "org_id": str(test_organization.id),
+        "sitemaps": ["https://example.com/sitemap.xml"],
+    })
+    assert response.status_code == 200
+    assert len(response.json()["queue_items"]) == 1
+    item = db.query(KnowledgeQueue).filter(
+        KnowledgeQueue.source == "https://example.com/sitemap.xml"
+    ).first()
+    assert item is not None
+    assert item.source_type == "sitemap"
+    assert item.queue_metadata.get("max_links") == 10  # non-enterprise default
+
+
 def test_link_knowledge_to_agent(client: TestClient, test_knowledge, test_agent):
     """Test linking knowledge to an agent"""
     response = client.post(

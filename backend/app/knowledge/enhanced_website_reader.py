@@ -21,6 +21,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Callable
 from urllib.parse import urljoin, urlparse, urldefrag, urlunparse
+from app.knowledge.url_safety import is_blocked_host
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -533,14 +534,19 @@ class EnhancedWebsiteReader(WebsiteReader):
         :return: Tuple of (URL, content, new_links) or None if failed
         """
         current_url, current_depth = url_info
-        
+
         # Normalize URL to ensure it has a protocol
         current_url = self._normalize_url(current_url)
-        
+
         # Skip if URL meets any skip conditions
         if current_url in self._visited:
             return None
-            
+
+        # SSRF guard: never fetch a literal private/loopback/link-local IP.
+        if is_blocked_host(current_url):
+            logger.warning(f"Refusing to crawl blocked host: {current_url}")
+            return None
+
         if not urlparse(current_url).netloc.endswith(primary_domain):
             return None
             
@@ -889,63 +895,15 @@ class EnhancedWebsiteReader(WebsiteReader):
         crawl_start_time = time.time()
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting parallel crawl of {url} with max_depth={self.max_depth}, max_links={self.max_links}, and max_workers={self.max_workers}")
         
-        crawler_result: Dict[str, str] = {}
         primary_domain = self._get_primary_domain(url)
-        
+
         # Add starting URL with its depth to the queue
         urls_to_process = [(url, starting_depth)]
         logger.info(f"Added starting URL to crawl queue: {url} (depth: {starting_depth})")
-        
-        # Use ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Process URLs in batches until no more URLs or max_links reached
-            while urls_to_process and len(crawler_result) < self.max_links:
-                # Take a batch of URLs to process
-                batch_size = min(self.max_workers, len(urls_to_process))
-                current_batch = urls_to_process[:batch_size]
-                urls_to_process = urls_to_process[batch_size:]
-                
 
-                
-                # Submit all URLs in the current batch for parallel processing
-                future_to_url = {
-                    executor.submit(self._process_url, url_info, primary_domain): url_info[0]
-                    for url_info in current_batch
-                }
-                
-                # Process completed futures as they finish
-                for future in as_completed(future_to_url):
-                    url = future_to_url[future]
-                    try:
-                        result = future.result()
-                        if result:
-                            processed_url, content, new_links = result
-                            
-                            # Add the content to our results
-                            crawler_result[processed_url] = content
-                            
-                            # Call the URL crawled callback first (for progress tracking)
-                            if on_url_crawled_callback:
-                                logger.debug(f"📞 Calling URL crawled callback for: {processed_url}")
-                                on_url_crawled_callback(processed_url)
-                            
-                            # Call the callback for immediate processing if provided
-                            if on_document_callback:
-                                on_document_callback(processed_url, content)
-                            
-                            # Add new links to the processing queue
-                            for new_link, depth in new_links:
-                                if new_link not in self._visited and (new_link, depth) not in urls_to_process:
-                                    urls_to_process.append((new_link, depth))
-                            
-                            # If we've reached max_links, break early
-                            if len(crawler_result) >= self.max_links:
-                                logger.info(f"Reached maximum number of links ({self.max_links}), stopping further crawling")
-                                break
-                                
-                    except Exception as exc:
-                        logger.error(f"URL {url} generated an exception: {exc}")
-                        self._failed_crawls += 1
+        crawler_result = self._run_crawl_queue(
+            urls_to_process, primary_domain, on_document_callback, on_url_crawled_callback
+        )
 
         # Log crawling summary
         crawl_end_time = time.time()
@@ -953,7 +911,72 @@ class EnhancedWebsiteReader(WebsiteReader):
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Parallel crawl completed: {len(crawler_result)} pages crawled successfully")
         logger.info(f"Crawling statistics: Total: {self._crawled_pages_count}, Successful: {self._successful_crawls}, Failed: {self._failed_crawls}")
         logger.info(f"Total crawling time: {crawl_duration:.2f}s, Average time per page: {crawl_duration/max(1, self._crawled_pages_count):.2f}s")
-        
+
+        return crawler_result
+
+    def _run_crawl_queue(
+        self,
+        urls_to_process: List[Tuple[str, int]],
+        primary_domain: str,
+        on_document_callback: Optional[Callable[[str, str], None]] = None,
+        on_url_crawled_callback: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, str]:
+        """Process a seed queue of (url, depth) in parallel until it drains or the
+        ``max_links`` cap is hit, extracting content per URL and enqueuing any new
+        links a page yields. Shared by website crawling (seeds one URL, follows
+        links) and sitemap crawling (seeds the listed pages, which yield no links).
+        """
+        crawler_result: Dict[str, str] = {}
+        urls_to_process = list(urls_to_process)
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Process URLs in batches until no more URLs or max_links reached
+            while urls_to_process and len(crawler_result) < self.max_links:
+                # Take a batch of URLs to process
+                batch_size = min(self.max_workers, len(urls_to_process))
+                current_batch = urls_to_process[:batch_size]
+                urls_to_process = urls_to_process[batch_size:]
+
+                # Submit all URLs in the current batch for parallel processing
+                future_to_url = {
+                    executor.submit(self._process_url, url_info, primary_domain): url_info[0]
+                    for url_info in current_batch
+                }
+
+                # Process completed futures as they finish
+                for future in as_completed(future_to_url):
+                    url = future_to_url[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            processed_url, content, new_links = result
+
+                            # Add the content to our results
+                            crawler_result[processed_url] = content
+
+                            # Call the URL crawled callback first (for progress tracking)
+                            if on_url_crawled_callback:
+                                logger.debug(f"📞 Calling URL crawled callback for: {processed_url}")
+                                on_url_crawled_callback(processed_url)
+
+                            # Call the callback for immediate processing if provided
+                            if on_document_callback:
+                                on_document_callback(processed_url, content)
+
+                            # Add new links to the processing queue
+                            for new_link, depth in new_links:
+                                if new_link not in self._visited and (new_link, depth) not in urls_to_process:
+                                    urls_to_process.append((new_link, depth))
+
+                            # If we've reached max_links, break early
+                            if len(crawler_result) >= self.max_links:
+                                logger.info(f"Reached maximum number of links ({self.max_links}), stopping further crawling")
+                                break
+
+                    except Exception as exc:
+                        logger.error(f"URL {url} generated an exception: {exc}")
+                        self._failed_crawls += 1
+
         return crawler_result
 
     def _extract_links(self, soup: BeautifulSoup, base_url: str) -> List[str]:
