@@ -46,6 +46,19 @@ class RatingRepository:
         """Get rating by session ID"""
         return self.db.query(Rating).filter(Rating.session_id == session_id).first()
 
+    def update_feedback(self, rating_id: UUID | str, feedback: Optional[str]) -> Optional[Rating]:
+        """Attach written feedback to an existing rating (e.g. collected as a
+        follow-up on a messaging channel)."""
+        if isinstance(rating_id, str):
+            rating_id = UUID(rating_id)
+        rating = self.db.query(Rating).filter(Rating.id == rating_id).first()
+        if rating is None:
+            return None
+        rating.feedback = feedback
+        self.db.commit()
+        self.db.refresh(rating)
+        return rating
+
     def get_ratings_by_agent(self, agent_id: UUID) -> List[Rating]:
         """Get all ratings for an agent"""
         return self.db.query(Rating).filter(Rating.agent_id == agent_id).all()

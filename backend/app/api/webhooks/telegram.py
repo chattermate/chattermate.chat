@@ -25,7 +25,7 @@ from app.core.logger import get_logger
 from app.database import get_db
 from app.models.channels import ChannelType
 from app.repositories.channels import ChannelAccountRepository
-from app.services.channel_chat import process_channel_message
+from app.services.channel_chat import process_channel_message, process_channel_interaction
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -50,6 +50,14 @@ async def telegram_webhook(
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
     payload = await request.json()
+
+    # Button taps (rating) and shared contacts (phone) are interactions, not
+    # customer text turns — dispatch them separately.
+    interaction = adapter.parse_interaction(payload)
+    if interaction is not None:
+        background_tasks.add_task(process_channel_interaction, account.id, interaction)
+        return {"ok": True}
+
     for inbound in adapter.parse_inbound(payload):
         # Telegram message_id is only unique within a chat — key by conversation too
         if is_duplicate_message(ChannelType.TELEGRAM.value,

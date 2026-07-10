@@ -65,6 +65,33 @@ class ChannelConversationRepository:
             logger.error(f"Error getting channel conversation by session: {str(e)}")
             return None
 
+    def get_latest(self, channel_account_id: UUID, external_conversation_id: str) -> Optional[ChannelConversation]:
+        """Most recent conversation row regardless of session status — used for
+        interactions (rating taps, feedback) that arrive after the chat closed."""
+        try:
+            return (
+                self.db.query(ChannelConversation)
+                .filter(
+                    ChannelConversation.channel_account_id == channel_account_id,
+                    ChannelConversation.external_conversation_id == external_conversation_id,
+                )
+                .order_by(ChannelConversation.created_at.desc())
+                .first()
+            )
+        except Exception as e:
+            logger.error(f"Error getting latest channel conversation: {str(e)}")
+            return None
+
+    def set_extra(self, conversation: ChannelConversation, extra: dict) -> None:
+        """Replace the conversation's extra JSON (per-conversation state such as
+        an awaiting-feedback flag)."""
+        try:
+            conversation.extra = extra
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Error updating conversation extra: {str(e)}")
+            self.db.rollback()
+
     def create(
         self,
         channel_account_id: UUID,

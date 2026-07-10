@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from app.channels.base import ChannelAdapter, InboundMessage, SendResult, WindowStatus
+from app.channels.base import (
+    ChannelAdapter, InboundMessage, SendResult, WindowStatus, ChannelInteraction,
+)
 from app.channels.registry import get_adapter, register_adapter
 
 __all__ = [
@@ -22,6 +24,7 @@ __all__ = [
     "InboundMessage",
     "SendResult",
     "WindowStatus",
+    "ChannelInteraction",
     "get_adapter",
     "register_adapter",
 ]

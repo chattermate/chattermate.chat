@@ -19,7 +19,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.agents.chat_agent import ChatAgent
-from app.channels import InboundMessage
+from app.channels import InboundMessage, ChannelInteraction, get_adapter
 from app.core.socketio import sio
 from app.core.security import decrypt_api_key
 from app.core.logger import get_logger
@@ -35,9 +35,14 @@ from app.repositories.channels import (
     ChannelConversationRepository,
     AgentChannelConfigRepository,
 )
+from app.repositories.rating import RatingRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.lead_capture import record_lead_from_response
 from app.services.message_delivery import deliver_to_customer
+
+# Key under channel_conversations.extra marking that the next text reply should
+# be captured as feedback for the given rating id.
+_AWAITING_FEEDBACK = "awaiting_feedback_for_rating"
 
 # Optional enterprise message-limit check (same seam as the widget path)
 try:
@@ -63,6 +68,13 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         account = account_repo.get_by_id(account_id)
         if account is None or not account.is_active:
             logger.warning(f"Ignoring message for missing/inactive channel account {account_id}")
+            return
+
+        adapter = get_adapter(account.channel_type)
+
+        # A text reply right after a rating is the customer's written feedback,
+        # not a new conversation — consume it before anything else.
+        if await _consume_pending_feedback(db, account, adapter, inbound):
             return
 
         agent_id = AgentChannelConfigRepository(db).get_active_agent_id(account.id)
@@ -96,6 +108,10 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             )
             return
 
+        # Show a typing indicator while the agent composes its reply
+        if adapter is not None:
+            await adapter.send_typing(account, conversation)
+
         response = await _run_chat_agent(
             db, account, ai_config, inbound,
             org_id=org_id, agent_id=str(agent_id),
@@ -119,10 +135,123 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             'transfer_to_human': getattr(response, 'transfer_to_human', False),
             'end_chat': getattr(response, 'end_chat', False),
         })
+
+        await _send_channel_prompts(db, adapter, account, conversation, response)
     except Exception as e:
         logger.error(f"Error processing channel message: {e}", exc_info=True)
     finally:
         db.close()
+
+
+async def _send_channel_prompts(db, adapter, account, conversation, response) -> None:
+    """After the reply, surface channel-native prompts the widget would render:
+    a phone-share request when the agent asks for contact, and a rating prompt
+    when a chat ends with rating enabled."""
+    if adapter is None:
+        return
+    try:
+        if getattr(response, 'request_contact', False):
+            await adapter.request_phone(
+                account, conversation,
+                "To help us follow up, tap below to share your phone number.")
+        elif getattr(response, 'request_rating', False) and getattr(response, 'end_chat', False):
+            await adapter.send_rating_prompt(
+                account, conversation,
+                "How would you rate your experience? Tap a star below.")
+    except Exception as e:
+        logger.error(f"Failed sending channel prompt: {e}")
+
+
+async def process_channel_interaction(account_id, interaction: ChannelInteraction) -> None:
+    """Handle a non-message interaction (rating tap or shared phone) from a
+    channel. Runs from a BackgroundTask with its own DB session."""
+    db = SessionLocal()
+    try:
+        account = ChannelAccountRepository(db).get_by_id(account_id)
+        if account is None or not account.is_active:
+            return
+        adapter = get_adapter(account.channel_type)
+        conversation = ChannelConversationRepository(db).get_latest(
+            account.id, interaction.external_conversation_id)
+        if conversation is None:
+            return
+
+        if interaction.type == "rating":
+            await _handle_rating(db, adapter, account, conversation, interaction)
+        elif interaction.type == "contact":
+            _handle_contact(db, conversation, interaction)
+    except Exception as e:
+        logger.error(f"Error processing channel interaction: {e}", exc_info=True)
+    finally:
+        db.close()
+
+
+async def _handle_rating(db, adapter, account, conversation, interaction: ChannelInteraction) -> None:
+    """Record a star rating, acknowledge the tap, and ask for optional feedback."""
+    rating_repo = RatingRepository(db)
+    # Capture once per session
+    if rating_repo.get_rating_by_session(conversation.session_id) is not None:
+        if adapter is not None:
+            await adapter.acknowledge_interaction(account, interaction, "You've already rated — thank you!")
+        return
+
+    value = max(1, min(5, interaction.rating or 0))
+    rating = rating_repo.create_rating(
+        session_id=conversation.session_id,
+        customer_id=conversation.customer_id,
+        user_id=None,
+        agent_id=conversation.agent_id,
+        organization_id=conversation.organization_id,
+        rating=value,
+    )
+    if adapter is not None:
+        await adapter.acknowledge_interaction(account, interaction, f"Thanks for the {value}-star rating!")
+        # Ask for optional written feedback; the next text reply is captured as it
+        ChannelConversationRepository(db).set_extra(
+            conversation, {**(conversation.extra or {}), _AWAITING_FEEDBACK: str(rating.id)})
+        await adapter.send_text(
+            account, conversation,
+            "Thank you! If you'd like, reply with any feedback — or send /skip.")
+
+
+def _handle_contact(db, conversation, interaction: ChannelInteraction) -> None:
+    """Store a shared phone number on the customer record."""
+    if not interaction.phone or conversation.customer_id is None:
+        return
+    from app.models.customer import Customer
+    customer = db.query(Customer).filter(Customer.id == conversation.customer_id).first()
+    if customer is None:
+        return
+    meta = dict(customer.meta_data or {})
+    meta["phone"] = interaction.phone
+    customer.meta_data = meta
+    db.commit()
+    logger.info(f"Stored shared phone for customer {conversation.customer_id}")
+
+
+async def _consume_pending_feedback(db, account, adapter, inbound: InboundMessage) -> bool:
+    """If the conversation is awaiting written feedback, capture this text reply
+    as the rating's feedback (or skip it) and return True. Else return False."""
+    conversation = ChannelConversationRepository(db).get_latest(
+        account.id, inbound.external_conversation_id)
+    if conversation is None:
+        return False
+    rating_id = (conversation.extra or {}).get(_AWAITING_FEEDBACK)
+    if not rating_id:
+        return False
+
+    # Clear the awaiting state regardless of outcome
+    extra = dict(conversation.extra or {})
+    extra.pop(_AWAITING_FEEDBACK, None)
+    ChannelConversationRepository(db).set_extra(conversation, extra)
+
+    text = (inbound.text or "").strip()
+    if text.lower() != "/skip":
+        RatingRepository(db).update_feedback(rating_id, text)
+    if adapter is not None:
+        conv_repo_msg = "Thanks for your feedback!" if text.lower() != "/skip" else "No problem — thanks!"
+        await adapter.send_text(account, conversation, conv_repo_msg)
+    return True
 
 
 def _get_or_create_customer(db: Session, account: ChannelAccount,
