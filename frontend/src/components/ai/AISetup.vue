@@ -624,6 +624,9 @@ const chatterMateButtonText = computed(() => {
                   <p v-if="useCustomModel" class="key-hint">
                     Enter any model ID your provider supports — we'll validate it with your API key.
                   </p>
+                  <p v-if="useCustomModel" class="model-warning">
+                    ⚠️ Custom models aren't verified by ChatterMate. Smaller or older models may not reliably support tool calling and structured output, which can affect knowledge search, lead capture, and ending chats. Prefer a larger, tool-calling-capable model.
+                  </p>
                 </div>
 
                 <div v-if="showApiKey" class="form-group">
@@ -837,6 +840,17 @@ const chatterMateButtonText = computed(() => {
 
 .custom-model-input {
   margin-top: 8px;
+}
+
+.model-warning {
+  margin-top: var(--space-xs);
+  padding: 8px 10px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-light);
+  border-radius: 8px;
 }
 
 .form-control:focus {
