@@ -83,6 +83,15 @@ const channelsService = {
     await api.delete(`/channels/meta/${accountId}`)
   },
 
+  /** Browser URL that starts the Slack OAuth install (redirects to Slack) */
+  getSlackInstallUrl(): string {
+    return `${import.meta.env.VITE_API_URL}/channels/slack/install`
+  },
+
+  async disconnectSlack(accountId: string): Promise<void> {
+    await api.delete(`/channels/slack/${accountId}`)
+  },
+
   /** Route a connected account to an AI agent */
   async setAccountAgent(accountId: string, agentId: string, isActive = true): Promise<ChannelAccount> {
     const response = await api.post(`/channels/agent-config/${accountId}`, {

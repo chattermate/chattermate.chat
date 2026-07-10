@@ -21,7 +21,7 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 # Add users import
 from fastapi.staticfiles import StaticFiles
 import socketio
-from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_apps, user_groups, roles, analytics, jira, shopify, slack, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, people
+from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_apps, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, people
 from app.api import channels as channels_api
 from app.api import webhooks as channel_webhooks
 # Import widget_chat to register socket.io event handlers for /widget namespace
@@ -221,12 +221,6 @@ app.include_router(
     shopify.router,
     prefix=f"{settings.API_V1_STR}/shopify",
     tags=["shopify"]
-)
-
-app.include_router(
-    slack.router,
-    prefix=f"{settings.API_V1_STR}/slack",
-    tags=["slack"]
 )
 
 app.include_router(

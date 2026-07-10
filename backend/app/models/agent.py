@@ -166,12 +166,6 @@ class Agent(Base):
         foreign_keys="[Workflow.agent_id]",
         back_populates="agent"
     )
-    slack_configs = relationship(
-        "AgentSlackConfig",
-        back_populates="agent",
-        cascade="all, delete-orphan"
-    )
-
     @property
     def instructions(self):
         """Get instructions as a list"""

@@ -17,16 +17,6 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue'
 import { checkShopifyConnection } from '@/services/shopify'
-import {
-  checkSlackConnection,
-  getSlackChannels,
-  getAgentSlackConfig,
-  createAgentSlackConfig,
-  updateAgentSlackConfig,
-  deleteAgentSlackConfig,
-  type SlackChannel,
-  type AgentSlackConfig
-} from '@/services/slack'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 
 interface JiraProject {
@@ -108,19 +98,10 @@ const localShopifyEnabled = ref(props.shopifyIntegrationEnabled)
 const shopifyToggleInProgress = ref(false)
 const shopifyError = ref('')
 
-// Local state for Slack integration
-const slackConnected = ref(false)
-const slackTeamName = ref('')
-const slackLoading = ref(true)
-const slackChannels = ref<SlackChannel[]>([])
-const slackConfigs = ref<AgentSlackConfig[]>([])
-const slackSaving = ref(false)
-const slackError = ref('')
-
 // Local state for messaging-channel routing (Telegram, WhatsApp, Messenger, Instagram)
-const MESSAGING_CHANNELS = ['telegram', 'whatsapp', 'messenger', 'instagram']
+const MESSAGING_CHANNELS = ['telegram', 'whatsapp', 'messenger', 'instagram', 'slack']
 const CHANNEL_LABELS: Record<string, string> = {
-  telegram: 'Telegram', whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram'
+  telegram: 'Telegram', whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram', slack: 'Slack'
 }
 const channelAccounts = ref<ChannelAccount[]>([])
 const channelSaving = ref(false)
@@ -149,16 +130,6 @@ const toggleChannelAccount = async (account: ChannelAccount) => {
     channelSaving.value = false
   }
 }
-
-// Slack new channel config form
-const showSlackChannelForm = ref(false)
-const newSlackChannel = ref({
-  channel_id: '',
-  channel_name: '',
-  enabled: true,
-  respond_to_mentions: true,
-  respond_to_commands: true
-})
 
 const emit = defineEmits([
   'toggle-create-ticket',
@@ -283,151 +254,10 @@ const fetchShopifyStatus = async () => {
   }
 }
 
-// Fetch Slack connection status
-const fetchSlackStatus = async () => {
-  try {
-    slackLoading.value = true
-    const data = await checkSlackConnection()
-    console.log('Slack connection status:', data)
-    slackConnected.value = data.connected
-    slackTeamName.value = data.team_name || ''
-
-    if (data.connected) {
-      // Fetch channels
-      try {
-        const channels = await getSlackChannels()
-        console.log('Slack channels:', channels)
-        slackChannels.value = channels
-      } catch (channelError) {
-        console.error('Error fetching Slack channels:', channelError)
-        slackError.value = 'Failed to load Slack channels'
-      }
-
-      // Fetch agent configs if agentId available
-      if (props.agentId) {
-        try {
-          const configs = await getAgentSlackConfig(props.agentId)
-          console.log('Slack configs:', configs)
-          slackConfigs.value = configs
-        } catch (configError) {
-          console.error('Error fetching Slack configs:', configError)
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error checking Slack connection:', error)
-    slackConnected.value = false
-  } finally {
-    slackLoading.value = false
-  }
-}
-
-// Add a new Slack channel config
-const addSlackChannelConfig = async () => {
-  if (!newSlackChannel.value.channel_id) {
-    slackError.value = 'Please select a channel'
-    return
-  }
-
-  try {
-    slackSaving.value = true
-    slackError.value = ''
-
-    const config = await createAgentSlackConfig(props.agentId, {
-      channel_id: newSlackChannel.value.channel_id,
-      channel_name: newSlackChannel.value.channel_name,
-      enabled: newSlackChannel.value.enabled,
-      respond_to_mentions: newSlackChannel.value.respond_to_mentions,
-      respond_to_reactions: false,
-      respond_to_commands: newSlackChannel.value.respond_to_commands
-    })
-
-    slackConfigs.value.push(config)
-
-    // Reset form
-    newSlackChannel.value = {
-      channel_id: '',
-      channel_name: '',
-      enabled: true,
-      respond_to_mentions: true,
-      respond_to_commands: true
-    }
-    showSlackChannelForm.value = false
-  } catch (error: any) {
-    console.error('Error adding Slack channel config:', error)
-    slackError.value = error.response?.data?.detail || 'Failed to add channel configuration'
-  } finally {
-    slackSaving.value = false
-  }
-}
-
-// Update a Slack channel config
-const updateSlackConfig = async (config: AgentSlackConfig, field: string, value: boolean) => {
-  try {
-    slackSaving.value = true
-    slackError.value = ''
-
-    const updateData: Record<string, boolean> = {}
-    updateData[field] = value
-
-    const updatedConfig = await updateAgentSlackConfig(props.agentId, config.id, updateData)
-
-    // Update local state
-    const index = slackConfigs.value.findIndex(c => c.id === config.id)
-    if (index !== -1) {
-      slackConfigs.value[index] = updatedConfig
-    }
-  } catch (error: any) {
-    console.error('Error updating Slack config:', error)
-    slackError.value = error.response?.data?.detail || 'Failed to update configuration'
-  } finally {
-    slackSaving.value = false
-  }
-}
-
-// Remove a Slack channel config
-const removeSlackChannelConfig = async (config: AgentSlackConfig) => {
-  if (!confirm(`Remove Slack channel "${config.channel_name}" configuration?`)) {
-    return
-  }
-
-  try {
-    slackSaving.value = true
-    slackError.value = ''
-
-    await deleteAgentSlackConfig(props.agentId, config.channel_id)
-
-    // Remove from local state
-    slackConfigs.value = slackConfigs.value.filter(c => c.id !== config.id)
-  } catch (error: any) {
-    console.error('Error removing Slack config:', error)
-    slackError.value = error.response?.data?.detail || 'Failed to remove configuration'
-  } finally {
-    slackSaving.value = false
-  }
-}
-
-// Handle channel selection in form
-const handleChannelSelect = (event: Event) => {
-  const select = event.target as HTMLSelectElement
-  const channel = slackChannels.value.find(c => c.id === select.value)
-  if (channel) {
-    newSlackChannel.value.channel_id = channel.id
-    newSlackChannel.value.channel_name = channel.name
-  }
-}
-
-// Computed: available channels (not already configured and bot is a member)
-const availableSlackChannels = computed(() => {
-  const configuredIds = slackConfigs.value.map(c => c.channel_id)
-  return slackChannels.value.filter(ch => ch.is_member && !configuredIds.includes(ch.id))
-})
-
 // Fetch connection status on component mount
 onMounted(async () => {
   await Promise.all([
     fetchShopifyStatus(),
-    fetchSlackStatus(),
     fetchChannelAccounts()
   ])
 })
@@ -620,166 +450,6 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Slack Integration -->
-      <div class="integration-section">
-        <div class="integration-head">
-          <div class="integration-head-left">
-            <div class="integration-badge badge-purple">Sl</div>
-            <div class="integration-heading">
-              <div class="integration-title">Slack — agent notifications</div>
-              <div class="integration-desc">Notify your team in Slack on handoffs and new tickets.</div>
-            </div>
-          </div>
-          <router-link
-            v-if="!slackConnected"
-            to="/settings/integrations"
-            class="connect-btn"
-          >
-            Connect
-          </router-link>
-          <router-link
-            v-else
-            to="/settings/integrations"
-            class="connect-btn"
-          >
-            Manage
-          </router-link>
-        </div>
-
-        <!-- Slack Connection Status (connected only) -->
-        <div v-if="slackConnected" class="jira-status connected">
-          <span class="status-icon">✓</span>
-          Connected to {{ slackTeamName }}
-        </div>
-
-        <!-- Slack Channel Configuration -->
-        <div v-if="slackConnected" class="slack-config">
-          <p class="helper-text">
-            Configure which Slack channels this agent responds to. The agent can respond to @mentions and the /chattermate command. Slack won't work with the workflow mode.
-          </p>
-
-          <!-- Error display -->
-          <div v-if="slackError" class="slack-error">
-            <span class="error-icon">❌</span>
-            {{ slackError }}
-          </div>
-
-          <!-- Configured Channels List -->
-          <div v-if="slackConfigs.length > 0" class="slack-channels-list">
-            <div v-for="config in slackConfigs" :key="config.id" class="slack-channel-item">
-              <div class="channel-header">
-                <span class="channel-name">#{{ config.channel_name }}</span>
-                <button class="remove-btn" @click="removeSlackChannelConfig(config)" :disabled="slackSaving">
-                  ×
-                </button>
-              </div>
-              <div class="channel-options">
-                <label class="option-item">
-                  <input
-                    type="checkbox"
-                    :checked="config.enabled"
-                    @change="updateSlackConfig(config, 'enabled', !config.enabled)"
-                    :disabled="slackSaving"
-                  />
-                  <span>Enabled</span>
-                </label>
-                <label class="option-item">
-                  <input
-                    type="checkbox"
-                    :checked="config.respond_to_mentions"
-                    @change="updateSlackConfig(config, 'respond_to_mentions', !config.respond_to_mentions)"
-                    :disabled="slackSaving"
-                  />
-                  <span>@mentions</span>
-                </label>
-                <label class="option-item">
-                  <input
-                    type="checkbox"
-                    :checked="config.respond_to_commands"
-                    @change="updateSlackConfig(config, 'respond_to_commands', !config.respond_to_commands)"
-                    :disabled="slackSaving"
-                  />
-                  <span>/chattermate</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <!-- No channels configured message -->
-          <div v-else class="no-channels-message">
-            No Slack channels configured for this agent. Add a channel below.
-          </div>
-
-          <!-- Add Channel Button -->
-          <button
-            v-if="!showSlackChannelForm && availableSlackChannels.length > 0"
-            class="add-channel-btn"
-            @click="showSlackChannelForm = true"
-          >
-            + Add Channel
-          </button>
-
-          <!-- No more channels available message -->
-          <div v-else-if="!showSlackChannelForm && slackChannels.filter(ch => ch.is_member).length > 0" class="no-channels-available">
-            All available channels have been configured.
-          </div>
-
-          <!-- No channels where bot is member -->
-          <div v-else-if="!showSlackChannelForm && slackChannels.length > 0 && slackChannels.filter(ch => ch.is_member).length === 0" class="no-channels-available">
-            The bot is not a member of any channels. Add the bot to a channel in Slack first.
-          </div>
-
-          <!-- Add Channel Form -->
-          <div v-if="showSlackChannelForm" class="add-channel-form">
-            <div class="form-group">
-              <label for="slack-channel">Select Channel</label>
-              <select
-                id="slack-channel"
-                @change="handleChannelSelect"
-                :value="newSlackChannel.channel_id"
-              >
-                <option value="">Select a channel</option>
-                <option
-                  v-for="channel in availableSlackChannels"
-                  :key="channel.id"
-                  :value="channel.id"
-                >
-                  #{{ channel.name }} {{ channel.is_private ? '(private)' : '' }}
-                </option>
-              </select>
-            </div>
-
-            <div class="channel-options-form">
-              <label class="option-item">
-                <input type="checkbox" v-model="newSlackChannel.respond_to_mentions" />
-                <span>Respond to @mentions</span>
-              </label>
-              <label class="option-item">
-                <input type="checkbox" v-model="newSlackChannel.respond_to_commands" />
-                <span>Respond to /chattermate command</span>
-              </label>
-            </div>
-
-            <div class="form-actions">
-              <button
-                class="cancel-btn"
-                @click="showSlackChannelForm = false"
-                :disabled="slackSaving"
-              >
-                Cancel
-              </button>
-              <button
-                class="save-config-btn"
-                @click="addSlackChannelConfig"
-                :disabled="!newSlackChannel.channel_id || slackSaving"
-              >
-                {{ slackSaving ? 'Saving...' : 'Add Channel' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Messaging Channels (Telegram / WhatsApp / Messenger / Instagram) -->
       <div class="integration-section">
         <div class="integration-head">
@@ -787,7 +457,7 @@ onMounted(async () => {
             <div class="integration-badge badge-purple">Ch</div>
             <div class="integration-heading">
               <div class="integration-title">Messaging channels — customer chat</div>
-              <div class="integration-desc">Let customers chat with this agent on Telegram, WhatsApp, Messenger and Instagram.</div>
+              <div class="integration-desc">Let customers chat with this agent on Telegram, WhatsApp, Messenger, Instagram and Slack.</div>
             </div>
           </div>
           <router-link to="/settings/integrations" class="connect-btn">

@@ -21,7 +21,6 @@ import { toast } from 'vue-sonner'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
-import { checkSlackConnection, getSlackAuthUrl, disconnectSlack } from '@/services/slack'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
 import MetaChannelConnect from '@/components/integrations/MetaChannelConnect.vue'
@@ -48,11 +47,6 @@ interface ShopifyShop {
 const shopifyConnected = ref(false)
 const shopifyShopDomain = ref('')
 const shopifyLoading = ref(true)
-
-// Slack state variables
-const slackConnected = ref(false)
-const slackTeamName = ref('')
-const slackLoading = ref(true)
 
 // Messaging channel state (Telegram + Meta channels share one accounts list)
 const channelAccounts = ref<ChannelAccount[]>([])
@@ -90,6 +84,8 @@ const disconnectChannelAccounts = async (channelType: string, label: string) => 
     for (const account of accountsFor(channelType)) {
       if (channelType === 'telegram') {
         await channelsService.disconnectTelegram(account.id)
+      } else if (channelType === 'slack') {
+        await channelsService.disconnectSlack(account.id)
       } else {
         await channelsService.disconnectMeta(account.id)
       }
@@ -106,6 +102,8 @@ const disconnectChannelAccounts = async (channelType: string, label: string) => 
 }
 
 const handleDisconnectTelegram = () => disconnectChannelAccounts('telegram', 'Telegram')
+const handleDisconnectSlack = () => disconnectChannelAccounts('slack', 'Slack')
+const connectSlack = () => { window.location.href = channelsService.getSlackInstallUrl() }
 const handleDisconnectWhatsApp = () => disconnectChannelAccounts('whatsapp', 'WhatsApp')
 const handleDisconnectMessenger = () => disconnectChannelAccounts('messenger', 'Messenger')
 const handleDisconnectInstagram = () => disconnectChannelAccounts('instagram', 'Instagram')
@@ -238,56 +236,6 @@ const handleDisconnectShopify = () => {
   }
 }
 
-// Check if Slack is connected
-const fetchSlackStatus = async () => {
-  try {
-    slackLoading.value = true
-    const data = await checkSlackConnection()
-    slackConnected.value = data.connected
-    slackTeamName.value = data.team_name || ''
-  } catch (error) {
-    console.error('Error checking Slack connection:', error)
-    slackConnected.value = false
-  } finally {
-    slackLoading.value = false
-  }
-}
-
-// Connect to Slack directly (agent selection happens in Slack when bot joins channel)
-const connectSlack = () => {
-  try {
-    lastConnectionError.value = null
-    window.location.href = getSlackAuthUrl()
-  } catch (error) {
-    console.error('Error connecting to Slack:', error)
-    toast.error('Error connecting to Slack')
-  }
-}
-
-// Disconnect from Slack
-const handleDisconnectSlack = async () => {
-  try {
-    slackLoading.value = true
-    await disconnectSlack()
-    slackConnected.value = false
-    slackTeamName.value = ''
-    toast.success('Slack disconnected successfully')
-  } catch (error: any) {
-    console.error('Error disconnecting from Slack:', error)
-    let errorMessage = 'Error disconnecting from Slack'
-
-    if (error.response && error.response.data && error.response.data.detail) {
-      errorMessage = error.response.data.detail
-    }
-
-    toast.error(errorMessage)
-  } finally {
-    slackLoading.value = false
-    showDisconnectConfirm.value = false
-    disconnectingIntegration.value = null
-  }
-}
-
 // Define interface for IntegrationCard
 interface IntegrationCard {
   id: string;
@@ -336,13 +284,13 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
   {
     id: 'slack',
     name: 'Slack',
-    description: 'Connect to Slack to allow users to chat with your AI agent directly from Slack channels.',
+    description: 'Connect a Slack workspace so users can chat with your AI agent via @mentions and DMs.',
     logo: slackLogo,
     category: 'MESSAGING',
     color: 'accent',
-    connected: slackConnected.value,
-    teamName: slackTeamName.value,
-    isLoading: slackLoading.value,
+    connected: accountsFor('slack').length > 0,
+    teamName: accountsFor('slack').map(a => a.display_name).filter(Boolean).join(', '),
+    isLoading: channelsLoading.value,
     connectAction: connectSlack,
     disconnectAction: handleDisconnectSlack
   },
@@ -421,7 +369,6 @@ onMounted(async () => {
   await Promise.all([
     fetchJiraStatus(),
     fetchShopifyStatus(),
-    fetchSlackStatus(),
     fetchChannelAccounts()
   ])
   
@@ -689,9 +636,9 @@ onMounted(async () => {
           v-if="disconnectingIntegration === 'slack'"
           class="btn-disconnect"
           @click="handleDisconnectSlack"
-          :disabled="slackLoading"
+          :disabled="channelsLoading"
         >
-          <span v-if="slackLoading" class="loading-spinner"></span>
+          <span v-if="channelsLoading" class="loading-spinner"></span>
           <span v-else>Disconnect Slack</span>
         </button>
         <button

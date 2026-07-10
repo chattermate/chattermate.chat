@@ -47,3 +47,4 @@ def _ensure_loaded() -> None:
     from app.channels import whatsapp  # noqa: F401
     from app.channels import messenger  # noqa: F401
     from app.channels import instagram  # noqa: F401
+    from app.channels import slack  # noqa: F401

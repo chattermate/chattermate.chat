@@ -17,10 +17,12 @@ limitations under the License.
 from fastapi import APIRouter
 
 from app.api.webhooks.telegram import router as telegram_router
+from app.api.webhooks.slack import router as slack_router
 from app.api.webhooks.meta import router as meta_router
 
 # Aggregates every channel's webhook routes under /webhooks
 router = APIRouter()
 router.include_router(telegram_router, prefix="/telegram", tags=["webhooks"])
+router.include_router(slack_router, prefix="/slack", tags=["webhooks"])
 # One endpoint for all three Meta products (WhatsApp / Messenger / Instagram)
 router.include_router(meta_router, prefix="/meta", tags=["webhooks"])
