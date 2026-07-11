@@ -92,7 +92,10 @@ async def sms_webhook(
         return {"status": "ok"}
 
     for inbound in sms_provider.parse_inbound(sms_req, account):
-        if is_duplicate_message(ChannelType.SMS.value, f"{account.id}:{inbound.external_message_id}"):
+        # Only dedupe when the provider supplied a real message id — an empty
+        # id means "unknown", and deduping on text would drop repeat replies.
+        if inbound.external_message_id and is_duplicate_message(
+                ChannelType.SMS.value, f"{account.id}:{inbound.external_message_id}"):
             continue
         background_tasks.add_task(process_channel_message, account.id, inbound)
 

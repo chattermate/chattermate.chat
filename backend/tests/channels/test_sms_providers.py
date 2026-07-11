@@ -141,15 +141,28 @@ class TestSns:
         assert get_provider("sns").parse_inbound(req, account_with({})) == []
 
     @pytest.mark.asyncio
-    async def test_bad_cert_host_rejected(self):
-        req = make_req(json_body={"Type": "Notification", "SigningCertURL": "https://evil.com/c.pem",
-                                  "Signature": "x", "Message": "{}", "MessageId": "1", "Timestamp": "t",
-                                  "TopicArn": "arn"})
+    async def test_non_sns_cert_host_rejected(self):
+        # An attacker-hosted cert on S3 (or anywhere off sns.<region>.amazonaws.com) is refused
+        for host in ("https://evil.com/c.pem",
+                     "https://attacker.s3.amazonaws.com/c.pem",
+                     "https://sns.amazonaws.com/c.pem"):  # no region segment
+            req = make_req(json_body={"Type": "Notification", "SigningCertURL": host,
+                                      "Signature": "x", "Message": "{}", "MessageId": "1",
+                                      "Timestamp": "t", "TopicArn": "arn"})
+            assert await get_provider("sns").verify_webhook(req, account_with({})) is False
+
+    @pytest.mark.asyncio
+    async def test_valid_sns_host_bad_signature_rejected(self):
+        req = make_req(json_body={"Type": "Notification",
+                                  "SigningCertURL": "https://sns.us-east-1.amazonaws.com/c.pem",
+                                  "Signature": base64.b64encode(b"bad").decode(),
+                                  "Message": "{}", "MessageId": "1", "Timestamp": "t", "TopicArn": "arn"})
+        # Valid host but signature verification fails (no real cert)
         assert await get_provider("sns").verify_webhook(req, account_with({})) is False
 
     @pytest.mark.asyncio
     async def test_topic_arn_mismatch_rejected(self):
         req = make_req(json_body={"Type": "Notification", "TopicArn": "arn:other",
-                                  "SigningCertURL": "https://sns.amazonaws.com/c.pem", "Signature": "x"})
+                                  "SigningCertURL": "https://sns.us-east-1.amazonaws.com/c.pem", "Signature": "x"})
         assert await get_provider("sns").verify_webhook(
             req, account_with({"topic_arn": "arn:mine"})) is False

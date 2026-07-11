@@ -17,6 +17,7 @@ limitations under the License.
 import asyncio
 import base64
 import json
+import re
 from typing import ClassVar, List, Optional
 from urllib.parse import urlparse
 
@@ -54,10 +55,15 @@ def _string_to_sign(body: dict) -> Optional[str]:
     return "".join(parts)
 
 
-def _valid_cert_host(url: str) -> bool:
+# Only genuine SNS endpoints — NOT any *.amazonaws.com (e.g. an attacker could
+# host a spoofed cert on *.s3.amazonaws.com). AWS SNS uses sns.<region>.amazonaws.com.
+_SNS_HOST_RE = re.compile(r"^sns\.[a-z0-9-]+\.amazonaws\.com$")
+
+
+def _valid_sns_host(url: str) -> bool:
     parsed = urlparse(url)
     return parsed.scheme == "https" and parsed.hostname is not None and \
-        parsed.hostname.endswith(".amazonaws.com")
+        bool(_SNS_HOST_RE.match(parsed.hostname))
 
 
 class SnsProvider(SmsProvider):
@@ -80,7 +86,7 @@ class SnsProvider(SmsProvider):
         if configured_topic and body.get("TopicArn") != configured_topic:
             return False
         cert_url = body.get("SigningCertURL", "")
-        if not _valid_cert_host(cert_url):
+        if not _valid_sns_host(cert_url):
             return False
         string_to_sign = _string_to_sign(body)
         signature = body.get("Signature")
@@ -101,6 +107,11 @@ class SnsProvider(SmsProvider):
         """Auto-confirm the SNS HTTPS subscription by visiting SubscribeURL."""
         body = req.json_body or {}
         if body.get("Type") == "SubscriptionConfirmation" and body.get("SubscribeURL"):
+            # Only fetch AWS-hosted SubscribeURLs — verify_webhook already ran,
+            # but restrict here too to avoid any SSRF to an attacker URL.
+            if not _valid_sns_host(body["SubscribeURL"]):
+                logger.warning(f"Refusing non-SNS SubscribeURL for account {account.id}")
+                return True
             try:
                 await get_http_client().get(body["SubscribeURL"])
                 logger.info(f"Confirmed SNS subscription for account {account.id}")

@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import hashlib
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -121,12 +120,13 @@ def list_providers() -> List[SmsProvider]:
 
 def inbound(to: str, sender: str, text: str, message_id: str) -> InboundMessage:
     """Build a normalized InboundMessage for an SMS (conversation keyed by the
-    customer's number)."""
-    fallback = f"{sender}:{hashlib.sha256(text.encode()).hexdigest()[:24]}"
+    customer's number). external_message_id is left empty when the provider
+    gives none — the webhook skips dedupe rather than risk collapsing two
+    legitimate identical replies (e.g. "Yes", "Yes") into one."""
     return InboundMessage(
         external_account_id=to,
         external_conversation_id=sender,
         external_user_id=sender,
-        external_message_id=message_id or fallback,
+        external_message_id=message_id or "",
         text=text,
     )
