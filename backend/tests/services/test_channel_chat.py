@@ -158,3 +158,43 @@ async def test_human_handling_relays_and_skips_bot(db, routed_account, use_test_
     rooms = [call.kwargs.get("room") for call in mock_sio.emit.await_args_list]
     assert f"user_{test_user.id}" in rooms
     assert str(session.session_id) in rooms
+
+
+@pytest.mark.asyncio
+async def test_email_channel_uses_real_customer_email(db, test_organization):
+    """Email sender address is used verbatim as the customer email (unifies
+    the person across channels + widget) — not the synthetic @email.channel."""
+    from app.services.channel_chat import _get_or_create_customer
+    from app.models.channels import ChannelAccount
+    from app.models.customer import Customer
+    from app.channels.base import InboundMessage
+    import uuid as _uuid
+
+    account = MagicMock(spec=ChannelAccount)
+    account.channel_type = "email"
+    inbound = InboundMessage(
+        external_account_id="", external_conversation_id="jane@acme.com",
+        external_user_id="jane@acme.com", external_message_id="m1", text="hi",
+        profile={"name": "Jane Roe", "email": "Jane@Acme.com"})
+    customer_id = _get_or_create_customer(db, account, inbound, str(test_organization.id))
+    customer = db.query(Customer).filter(Customer.id == _uuid.UUID(customer_id)).one()
+    assert customer.email == "jane@acme.com"  # lowercased real address, no suffix
+
+
+@pytest.mark.asyncio
+async def test_non_email_channel_synthesizes_address(db, test_organization):
+    from app.services.channel_chat import _get_or_create_customer
+    from app.models.channels import ChannelAccount
+    from app.models.customer import Customer
+    from app.channels.base import InboundMessage
+    import uuid as _uuid
+
+    account = MagicMock(spec=ChannelAccount)
+    account.channel_type = "telegram"
+    inbound = InboundMessage(
+        external_account_id="", external_conversation_id="555",
+        external_user_id="555", external_message_id="m1", text="hi",
+        profile={"name": "Bob"})
+    customer_id = _get_or_create_customer(db, account, inbound, str(test_organization.id))
+    customer = db.query(Customer).filter(Customer.id == _uuid.UUID(customer_id)).one()
+    assert customer.email == "555@telegram.channel"

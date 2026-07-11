@@ -289,8 +289,17 @@ async def _consume_pending_feedback(db, account, adapter, inbound: InboundMessag
 
 def _get_or_create_customer(db: Session, account: ChannelAccount,
                             inbound: InboundMessage, org_id: str) -> str:
-    """Resolve the platform user to a Customer via a synthetic channel email."""
-    channel_email = f"{inbound.external_user_id}@{account.channel_type}.channel"
+    """Resolve the platform user to a Customer.
+
+    When the channel already gives us the customer's real email (e.g. the
+    email channel), use it verbatim so the same person is unified across
+    channels and the widget. Otherwise synthesize a stable per-channel address.
+    """
+    real_email = (inbound.profile or {}).get('email')
+    if real_email and '@' in real_email:
+        channel_email = real_email.lower()
+    else:
+        channel_email = f"{inbound.external_user_id}@{account.channel_type}.channel"
     display = (inbound.profile or {}).get('name') or \
         f"{account.channel_type.capitalize()} user {inbound.external_user_id[:8]}"
     customer = CustomerRepository(db).get_or_create_customer(
