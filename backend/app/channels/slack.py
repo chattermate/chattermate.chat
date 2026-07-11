@@ -67,8 +67,19 @@ async def slack_api(method: str, access_token: str, payload: dict, form: bool = 
 # Placeholder "typing…" message ts per (account, conversation) — set by
 # send_typing, consumed by send_text which edits it into the real reply.
 # In-memory is fine: a message's send_typing + send_text run in the same
-# background task / worker.
+# background task / worker. Each entry is (ts, created_at); stale entries are
+# pruned so a bypassed send_text (e.g. AI error, empty reply) can't leak them.
 _typing_placeholders: dict = {}
+# A placeholder is only useful for the seconds between typing and the reply;
+# anything older is a leak from a path that never called send_text.
+_PLACEHOLDER_TTL_SECONDS = 300
+
+
+def _prune_placeholders(now: float) -> None:
+    stale = [key for key, (_, created) in _typing_placeholders.items()
+             if now - created > _PLACEHOLDER_TTL_SECONDS]
+    for key in stale:
+        _typing_placeholders.pop(key, None)
 
 
 def verify_slack_signature(headers: dict, raw_body: bytes) -> bool:
@@ -169,9 +180,10 @@ class SlackAdapter(ChannelAdapter):
         if thread_ts:
             payload["thread_ts"] = thread_ts
         try:
+            _prune_placeholders(time.time())
             data = await slack_api("chat.postMessage", self._access_token(account), payload)
             if data.get("ok"):
-                _typing_placeholders[self._placeholder_key(account, conversation)] = data["ts"]
+                _typing_placeholders[self._placeholder_key(account, conversation)] = (data["ts"], time.time())
         except Exception as e:
             logger.debug(f"Slack typing placeholder failed (non-critical): {e}")
 
@@ -180,13 +192,17 @@ class SlackAdapter(ChannelAdapter):
         token = self._access_token(account)
 
         # If we posted a "typing…" placeholder, edit it into the reply
-        placeholder_ts = _typing_placeholders.pop(self._placeholder_key(account, conversation), None)
+        entry = _typing_placeholders.pop(self._placeholder_key(account, conversation), None)
+        placeholder_ts = entry[0] if entry else None
         if placeholder_ts:
             try:
                 data = await slack_api("chat.update", token,
                                        {"channel": channel, "ts": placeholder_ts, "text": text})
                 if data.get("ok"):
                     return SendResult(ok=True, external_message_id=str(data.get("ts", "")))
+                # Update failed (e.g. placeholder deleted) — remove the stale
+                # "typing…" so we don't leave it beside the fresh reply.
+                await slack_api("chat.delete", token, {"channel": channel, "ts": placeholder_ts})
             except Exception as e:
                 logger.debug(f"Slack chat.update failed, posting new message: {e}")
 

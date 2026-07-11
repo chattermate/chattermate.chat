@@ -173,3 +173,39 @@ class TestSlackProfileAndTyping:
         assert methods == ["chat.postMessage", "chat.update"]  # not a second post
         # placeholder consumed
         assert slk._typing_placeholders.get(("acc1", "D7")) is None
+
+    @pytest.mark.asyncio
+    async def test_placeholder_deleted_when_update_fails(self, adapter, monkeypatch):
+        """When chat.update fails, the stale '_typing…_' is deleted and a fresh
+        message is posted — no dangling placeholder beside the reply."""
+        from unittest.mock import MagicMock
+        import app.channels.slack as slk
+        acc = MagicMock(); acc.id = "acc9"
+        conv = MagicMock(external_conversation_id="D9")
+        monkeypatch.setattr(adapter, "_access_token", lambda a: "tok")
+        calls = []
+        async def fake_api(method, token, payload):
+            calls.append((method, payload))
+            if method == "chat.postMessage":
+                return {"ok": True, "ts": "555.666"}
+            if method == "chat.update":
+                return {"ok": False, "error": "cant_update_message"}
+            return {"ok": True}
+        monkeypatch.setattr(slk, "slack_api", fake_api)
+
+        await adapter.send_typing(acc, conv)
+        result = await adapter.send_text(acc, conv, "The answer")
+        methods = [m for m, _ in calls]
+        assert methods == ["chat.postMessage", "chat.update", "chat.delete", "chat.postMessage"]
+        assert result.ok
+        assert slk._typing_placeholders.get(("acc9", "D9")) is None
+
+    def test_prune_placeholders_drops_stale(self, monkeypatch):
+        import app.channels.slack as slk
+        slk._typing_placeholders.clear()
+        slk._typing_placeholders[("a", "c1")] = ("1.1", 1000.0)
+        slk._typing_placeholders[("a", "c2")] = ("2.2", 1000.0 + slk._PLACEHOLDER_TTL_SECONDS + 1)
+        slk._prune_placeholders(1000.0 + slk._PLACEHOLDER_TTL_SECONDS + 2)
+        assert ("a", "c1") not in slk._typing_placeholders  # stale, pruned
+        assert ("a", "c2") in slk._typing_placeholders       # fresh, kept
+        slk._typing_placeholders.clear()

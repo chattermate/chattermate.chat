@@ -225,3 +225,34 @@ async def test_placeholder_name_upgraded_when_real_name_resolved(db, account, te
     assert cid2 == cid  # same customer
     db.refresh(cust)
     assert cust.full_name == "Ada Lovelace"
+
+
+@pytest.mark.asyncio
+async def test_enrich_customer_name_only_fetches_while_placeholder(db, account, test_organization):
+    """fetch_profile is called to resolve a placeholder name, but skipped once
+    the customer already has a real name (no per-message API call)."""
+    from unittest.mock import AsyncMock
+    from app.services.channel_chat import _get_or_create_customer, _enrich_customer_name
+    from app.channels.base import InboundMessage
+    from app.models.customer import Customer
+    import uuid as _uuid
+
+    account.channel_type = "slack"
+    inbound = InboundMessage(external_account_id="T1", external_conversation_id="D8",
+                             external_user_id="U0ENRICH", external_message_id="e1", text="hi")
+    cid = _get_or_create_customer(db, account, inbound, str(test_organization.id))
+    cust = db.query(Customer).filter(Customer.id == _uuid.UUID(cid)).one()
+    assert cust.full_name == "Slack user U0ENRICH"
+
+    # Placeholder present → adapter is queried and the name is upgraded
+    adapter = AsyncMock()
+    adapter.fetch_profile = AsyncMock(return_value={"name": "Grace Hopper"})
+    await _enrich_customer_name(db, adapter, account, inbound, cid)
+    adapter.fetch_profile.assert_awaited_once()
+    db.refresh(cust)
+    assert cust.full_name == "Grace Hopper"
+
+    # Real name already set → no further API call on subsequent messages
+    adapter.fetch_profile.reset_mock()
+    await _enrich_customer_name(db, adapter, account, inbound, cid)
+    adapter.fetch_profile.assert_not_awaited()

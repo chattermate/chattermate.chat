@@ -73,16 +73,11 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             return
 
         org_id = str(account.organization_id)
-        # Enrich the profile (real name/email) when the webhook lacks it — e.g.
-        # Slack sends only a user id, resolved via users.info.
-        if adapter is not None and not (inbound.profile or {}).get("name"):
-            try:
-                enrichment = await adapter.fetch_profile(account, inbound.external_user_id)
-                if enrichment:
-                    inbound.profile = {**(inbound.profile or {}), **{k: v for k, v in enrichment.items() if v}}
-            except Exception as e:
-                logger.debug(f"Profile enrichment failed (non-critical): {e}")
         customer_id = _get_or_create_customer(db, account, inbound, org_id)
+        # If the customer still has a synthesized placeholder name, resolve the
+        # real one via the platform API — only then, not on every message.
+        if adapter is not None:
+            await _enrich_customer_name(db, adapter, account, inbound, customer_id)
         session_record, conversation = _get_or_create_session(
             db, account, inbound, agent_id, customer_id, org_id
         )
@@ -125,6 +120,12 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             customer_id=customer_id, session_id=session_id,
         )
         if response is None:
+            # The agent hard-failed. Still send a reply so a typing indicator /
+            # placeholder (Slack, LINE) resolves instead of dangling.
+            await deliver_to_customer(db, session_record, {
+                'message': "Sorry, I hit an error handling that — please try again.",
+                'type': 'chat_response',
+            })
             return
 
         record_lead_from_response(
@@ -238,6 +239,34 @@ def _is_placeholder_name(name: str, channel_type: str) -> bool:
     if not name:
         return True
     return name.startswith(f"{channel_type.capitalize()} user ")
+
+
+async def _enrich_customer_name(db: Session, adapter, account: ChannelAccount,
+                                inbound: InboundMessage, customer_id: str) -> None:
+    """Resolve the customer's real name via the platform API, but only while
+    the stored name is still a placeholder.
+
+    Channels like Slack send just a user id in the webhook, so we look the name
+    up via e.g. users.info. Gating on the placeholder means we make that network
+    call once — for a new/unresolved customer — not on every inbound message.
+    """
+    customer = CustomerRepository(db).get_by_id(uuid.UUID(customer_id))
+    if customer is None or not _is_placeholder_name(customer.full_name, account.channel_type):
+        return
+    try:
+        enrichment = await adapter.fetch_profile(account, inbound.external_user_id)
+    except Exception as e:
+        logger.debug(f"Profile enrichment failed (non-critical): {e}")
+        return
+    name = (enrichment or {}).get('name')
+    if not name:
+        return
+    try:
+        customer.full_name = name
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update customer name: {e}")
 
 
 def _get_or_create_session(db: Session, account: ChannelAccount, inbound: InboundMessage,
