@@ -72,6 +72,27 @@ class TestEmailAdapter:
         text = "New content\n> old line\nOn Tue, someone wrote:\nmore old"
         assert strip_quoted_reply(text) == "New content"
 
+    def test_smtp_config_per_inbox_and_fallback(self):
+        import json
+        from app.channels.email import smtp_config
+        from app.models.channels import ChannelAccount
+        from app.core.security import encrypt_api_key
+        from app.core.config import settings
+
+        per = ChannelAccount(external_account_id="support@acme.com",
+            encrypted_credentials=encrypt_api_key(json.dumps({
+                "smtp_host": "smtp.acme.com", "smtp_port": 465,
+                "smtp_username": "u", "smtp_password": "p", "from_email": "help@acme.com"})))
+        cfg = smtp_config(per)
+        assert cfg["host"] == "smtp.acme.com" and cfg["port"] == 465
+        assert cfg["use_ssl"] is True and cfg["from_email"] == "help@acme.com"
+
+        fallback = ChannelAccount(external_account_id="x@y.com",
+            encrypted_credentials=encrypt_api_key(json.dumps({})))
+        cfg2 = smtp_config(fallback)
+        assert cfg2["host"] == settings.SMTP_SERVER
+        assert cfg2["from_email"] == "x@y.com"  # falls back to the inbox address
+
     def test_conversation_state(self):
         adapter = EmailAdapter()
         m = adapter.parse_inbound({"from": "a@b.co", "text": "hi", "subject": "S",

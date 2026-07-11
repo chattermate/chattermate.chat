@@ -85,8 +85,17 @@ const channelsService = {
     await api.delete(`/channels/meta/${accountId}`)
   },
 
-  /** Connect a support inbox; reply-to threading uses platform SMTP */
-  async connectEmail(payload: { inbound_address: string; display_name?: string }): Promise<ChannelAccount> {
+  /** Connect a support inbox. Optional SMTP fields send replies from the
+   *  inbox's own domain; omit them to use the platform mail server. */
+  async connectEmail(payload: {
+    inbound_address: string
+    display_name?: string
+    smtp_host?: string
+    smtp_port?: number
+    smtp_username?: string
+    smtp_password?: string
+    from_email?: string
+  }): Promise<ChannelAccount> {
     const response = await api.post('/channels/email', payload)
     return response.data
   },

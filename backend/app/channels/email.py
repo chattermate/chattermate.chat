@@ -17,6 +17,7 @@ limitations under the License.
 import asyncio
 import hashlib
 import hmac
+import json
 import re
 import smtplib
 from email.message import EmailMessage
@@ -26,10 +27,68 @@ from typing import ClassVar, List, Optional
 from app.channels.base import ChannelAdapter, InboundMessage, SendResult
 from app.channels.registry import register_adapter
 from app.core.config import settings
+from app.core.security import decrypt_api_key
 from app.models.channels import ChannelAccount, ChannelConversation, ChannelType
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def smtp_config(account: ChannelAccount) -> dict:
+    """Resolve the outbound SMTP settings for an inbox.
+
+    Uses the account's own encrypted SMTP credentials when present (so replies
+    go out from the inbox's own domain with correct SPF/DKIM), otherwise falls
+    back to the platform SMTP settings.
+    """
+    creds = {}
+    if account.encrypted_credentials:
+        try:
+            creds = json.loads(decrypt_api_key(account.encrypted_credentials))
+        except Exception as e:
+            logger.error(f"Failed to read email SMTP credentials for {account.id}: {e}")
+
+    if creds.get("smtp_host"):
+        port = int(creds.get("smtp_port") or 587)
+        use_ssl = creds.get("smtp_use_ssl")
+        return {
+            "host": creds["smtp_host"],
+            "port": port,
+            "username": creds.get("smtp_username"),
+            "password": creds.get("smtp_password"),
+            "from_email": creds.get("from_email") or account.external_account_id,
+            "use_ssl": port == 465 if use_ssl is None else bool(use_ssl),
+        }
+    # Platform fallback
+    return {
+        "host": settings.SMTP_SERVER,
+        "port": int(settings.SMTP_PORT),
+        "username": settings.SMTP_USERNAME,
+        "password": settings.SMTP_PASSWORD,
+        "from_email": account.external_account_id,
+        "use_ssl": int(settings.SMTP_PORT) == 465,
+    }
+
+
+def _open_smtp(cfg: dict) -> smtplib.SMTP:
+    if cfg["use_ssl"]:
+        smtp = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=SMTP_TIMEOUT_SECONDS)
+    else:
+        smtp = smtplib.SMTP(cfg["host"], cfg["port"], timeout=SMTP_TIMEOUT_SECONDS)
+        try:
+            smtp.starttls()
+        except smtplib.SMTPNotSupportedError:
+            logger.warning("SMTP server does not support STARTTLS; sending unencrypted")
+    if cfg.get("username"):
+        smtp.login(cfg["username"], cfg["password"])
+    return smtp
+
+
+def validate_smtp(cfg: dict) -> None:
+    """Open + authenticate an SMTP connection to verify per-inbox credentials.
+    Raises on failure. Runs in a worker thread (smtplib is blocking)."""
+    with _open_smtp(cfg) as smtp:
+        smtp.noop()
 
 SMTP_TIMEOUT_SECONDS = 20.0
 # Strip quoted history so the agent sees only the new content
@@ -119,8 +178,9 @@ class EmailAdapter(ChannelAdapter):
         if subject and not subject.lower().startswith("re:"):
             subject = f"Re: {subject}"
 
+        cfg = smtp_config(account)
         message = EmailMessage()
-        message["From"] = account.external_account_id
+        message["From"] = cfg["from_email"]
         message["To"] = conversation.external_conversation_id
         message["Subject"] = subject
         message["Message-ID"] = make_msgid()
@@ -131,25 +191,15 @@ class EmailAdapter(ChannelAdapter):
         message.set_content(text)
 
         try:
-            await asyncio.to_thread(self._smtp_send, message)
+            await asyncio.to_thread(self._smtp_send, cfg, message)
             return SendResult(ok=True, external_message_id=message["Message-ID"])
         except Exception as e:
             logger.error(f"Email send failed: {e}")
             return SendResult(ok=False, error=str(e))
 
     @staticmethod
-    def _smtp_send(message: EmailMessage) -> None:
-        # Port 465 is implicit TLS; other ports use STARTTLS when offered
-        if int(settings.SMTP_PORT) == 465:
-            smtp = smtplib.SMTP_SSL(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
-        else:
-            smtp = smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
-            try:
-                smtp.starttls()
-            except smtplib.SMTPNotSupportedError:
-                logger.warning("SMTP server does not support STARTTLS; sending unencrypted")
-        with smtp:
-            smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+    def _smtp_send(cfg: dict, message: EmailMessage) -> None:
+        with _open_smtp(cfg) as smtp:
             smtp.send_message(message)
 
     @staticmethod

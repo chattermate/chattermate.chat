@@ -78,6 +78,15 @@ class AgentChannelConfigRequest(BaseModel):
 class EmailConnectRequest(BaseModel):
     inbound_address: str      # e.g. support@acme.com (the address customers write to)
     display_name: Optional[str] = None
+    # Optional per-inbox outbound SMTP. When omitted, replies use the platform
+    # SMTP settings. Provide these to send from the inbox's own domain with
+    # correct SPF/DKIM alignment.
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    from_email: Optional[str] = None   # defaults to inbound_address
+    smtp_use_ssl: Optional[bool] = None  # None = auto (port 465 → implicit TLS)
 
 
 class TwilioConnectRequest(BaseModel):

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import asyncio
 from email.utils import parseaddr
 from uuid import UUID
 
@@ -21,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.channels.accounts import get_org_account_or_404, to_account_out
+from app.channels.email import validate_smtp
 from app.core.auth import get_current_organization, require_permissions
 from app.core.config import settings
 from app.database import get_db
@@ -40,6 +42,35 @@ def _webhook_url(account) -> str:
             f"/webhooks/email/{account.id}?token={account.webhook_secret}")
 
 
+async def _build_smtp_credentials(request: EmailConnectRequest, address: str) -> dict:
+    """Assemble (and validate) per-inbox SMTP credentials, or {} to use the
+    platform SMTP settings. Raises HTTPException on invalid/unreachable SMTP."""
+    if not request.smtp_host:
+        return {}
+    if not (request.smtp_username and request.smtp_password):
+        raise HTTPException(status_code=400,
+                            detail="SMTP username and password are required when an SMTP host is set")
+    creds = {
+        "smtp_host": request.smtp_host.strip(),
+        "smtp_port": request.smtp_port or 587,
+        "smtp_username": request.smtp_username,
+        "smtp_password": request.smtp_password,
+        "from_email": (request.from_email or address).lower(),
+        "smtp_use_ssl": request.smtp_use_ssl,
+    }
+    cfg = {
+        "host": creds["smtp_host"], "port": int(creds["smtp_port"]),
+        "username": creds["smtp_username"], "password": creds["smtp_password"],
+        "from_email": creds["from_email"],
+        "use_ssl": int(creds["smtp_port"]) == 465 if request.smtp_use_ssl is None else bool(request.smtp_use_ssl),
+    }
+    try:
+        await asyncio.to_thread(validate_smtp, cfg)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not connect to SMTP server: {e}")
+    return creds
+
+
 @router.post("", response_model=ChannelAccountOut)
 async def connect_email(
     request: EmailConnectRequest,
@@ -48,25 +79,28 @@ async def connect_email(
     db: Session = Depends(get_db),
 ):
     """Connect a support inbox. The response's webhook_url must be configured
-    as the inbound-parse/forwarding target on the email provider; outbound
-    replies are sent through the platform SMTP settings."""
+    as the inbound-parse/forwarding target on the email provider. Outbound
+    replies use the inbox's own SMTP when provided, else the platform SMTP."""
     _, address = parseaddr(request.inbound_address)
     address = (address or "").lower()
     if "@" not in address:
         raise HTTPException(status_code=400, detail="Enter a valid email address")
+
+    credentials = await _build_smtp_credentials(request, address)
 
     repo = ChannelAccountRepository(db)
     existing = repo.get_by_external_id(ChannelType.EMAIL.value, address)
     if existing is not None:
         if existing.organization_id != organization.id:
             raise HTTPException(status_code=409, detail="This address is already connected to another organization")
+        repo.update_credentials(existing, credentials)
         account = repo.set_active(existing, True)
     else:
         account = repo.create_account(
             organization_id=organization.id,
             channel_type=ChannelType.EMAIL.value,
             external_account_id=address,
-            credentials={},  # outbound uses platform SMTP settings
+            credentials=credentials,  # {} => platform SMTP fallback
             display_name=request.display_name or address,
         )
     out = to_account_out(db, account)

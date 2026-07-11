@@ -33,11 +33,26 @@ const emit = defineEmits<{
 const FORMS = {
   email: {
     title: 'Connect Email',
-    intro: 'Enter the support address customers write to. After connecting, point your provider’s inbound-parse / forwarding webhook at the URL shown.',
+    intro: 'Enter the support address customers write to, then point your provider’s inbound-parse / forwarding webhook at the URL shown. Optionally add your own outbound SMTP so replies send from your domain with correct SPF/DKIM (leave blank to use the platform mail server).',
     fields: [
       { key: 'inbound_address', label: 'Support email address', placeholder: 'support@yourcompany.com', secret: false },
+      { key: 'smtp_host', label: 'SMTP host (optional)', placeholder: 'smtp.yourprovider.com', secret: false, optional: true },
+      { key: 'smtp_port', label: 'SMTP port (optional)', placeholder: '587', secret: false, optional: true },
+      { key: 'smtp_username', label: 'SMTP username (optional)', placeholder: 'apikey / user', secret: false, optional: true },
+      { key: 'smtp_password', label: 'SMTP password (optional)', placeholder: '••••••••', secret: true, optional: true },
+      { key: 'from_email', label: 'From address (optional)', placeholder: 'defaults to the support address', secret: false, optional: true },
     ],
-    connect: (v: Record<string, string>) => channelsService.connectEmail({ inbound_address: v.inbound_address }),
+    connect: (v: Record<string, string>) => {
+      const payload: any = { inbound_address: v.inbound_address }
+      if (v.smtp_host?.trim()) {
+        payload.smtp_host = v.smtp_host.trim()
+        if (v.smtp_port?.trim()) payload.smtp_port = Number(v.smtp_port)
+        payload.smtp_username = v.smtp_username
+        payload.smtp_password = v.smtp_password
+        if (v.from_email?.trim()) payload.from_email = v.from_email.trim()
+      }
+      return channelsService.connectEmail(payload)
+    },
   },
   sms: {
     title: 'Connect SMS (Twilio)',
@@ -83,7 +98,7 @@ onMounted(async () => {
 })
 
 const connect = async () => {
-  const missing = form.value.fields.filter(f => !values.value[f.key]?.trim())
+  const missing = form.value.fields.filter(f => !(f as any).optional && !values.value[f.key]?.trim())
   if (missing.length > 0) {
     toast.error(`Please fill in: ${missing.map(f => f.label).join(', ')}`)
     return
