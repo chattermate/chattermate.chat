@@ -35,6 +35,8 @@ LINE_API_BASE = "https://api.line.me/v2/bot"
 REQUEST_TIMEOUT_SECONDS = 15.0
 # https://developers.line.biz/en/reference/messaging-api/#text-message
 MAX_MESSAGE_LENGTH = 5000
+# Loading-animation duration: 5–60, in multiples of 5 (auto-dismissed on reply)
+LOADING_ANIMATION_SECONDS = 20
 
 _http_client: Optional[httpx.AsyncClient] = None
 
@@ -146,6 +148,21 @@ class LineAdapter(ChannelAdapter):
         except Exception as e:
             logger.error(f"LINE send failed: {e}")
             return SendResult(ok=False, error=str(e))
+
+    async def send_typing(self, account: ChannelAccount, conversation: ChannelConversation) -> None:
+        # LINE's loading animation (1:1 chats only); auto-dismisses when the
+        # reply is sent or after loadingSeconds.
+        try:
+            await _get_http_client().post(
+                f"{LINE_API_BASE}/chat/loading/start",
+                headers={"Authorization": f"Bearer {credentials(account)['channel_access_token']}"},
+                json={
+                    "chatId": conversation.external_conversation_id,
+                    "loadingSeconds": LOADING_ANIMATION_SECONDS,
+                },
+            )
+        except Exception as e:
+            logger.debug(f"LINE loading animation failed (non-critical): {e}")
 
     def format_outbound(self, markdown: str) -> str:
         return markdown[:MAX_MESSAGE_LENGTH]

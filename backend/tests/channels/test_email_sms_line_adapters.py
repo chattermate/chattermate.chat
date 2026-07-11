@@ -158,6 +158,20 @@ class TestLineAdapter:
         assert m.timestamp.tzinfo is not None
 
     @pytest.mark.asyncio
+    async def test_send_typing_calls_loading_animation(self, monkeypatch):
+        from unittest.mock import AsyncMock
+        adapter = LineAdapter()
+        account = MagicMock()
+        conv = MagicMock(external_conversation_id="Ucust9")
+        monkeypatch.setattr("app.channels.line.credentials", lambda a: {"channel_access_token": "tok"})
+        post = AsyncMock()
+        monkeypatch.setattr("app.channels.line._get_http_client",
+                            lambda: MagicMock(post=post))
+        await adapter.send_typing(account, conv)
+        assert post.await_args.args[0].endswith("/chat/loading/start")
+        assert post.await_args.kwargs["json"]["chatId"] == "Ucust9"
+
+    @pytest.mark.asyncio
     async def test_verify_signature(self, monkeypatch):
         adapter = LineAdapter()
         body = json.dumps(self.PAYLOAD).encode()
