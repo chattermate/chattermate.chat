@@ -210,18 +210,34 @@ def _get_or_create_customer(db: Session, account: ChannelAccount,
     channels and the widget. Otherwise synthesize a stable per-channel address.
     """
     real_email = (inbound.profile or {}).get('email')
+    real_name = (inbound.profile or {}).get('name')
     if real_email and '@' in real_email:
         channel_email = real_email.lower()
     else:
         channel_email = f"{inbound.external_user_id}@{account.channel_type}.channel"
-    display = (inbound.profile or {}).get('name') or \
-        f"{account.channel_type.capitalize()} user {inbound.external_user_id[:8]}"
+    placeholder = f"{account.channel_type.capitalize()} user {inbound.external_user_id[:8]}"
     customer = CustomerRepository(db).get_or_create_customer(
         email=channel_email,
         organization_id=uuid.UUID(org_id),
-        full_name=display,
+        full_name=real_name or placeholder,
     )
+    # Upgrade an existing placeholder name once we've resolved the real one
+    # (get_or_create doesn't update an existing customer's name).
+    if real_name and _is_placeholder_name(customer.full_name, account.channel_type):
+        try:
+            customer.full_name = real_name
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to update customer name: {e}")
     return str(customer.id)
+
+
+def _is_placeholder_name(name: str, channel_type: str) -> bool:
+    """True when the stored name is the synthesized '<Channel> user xxxx' or empty."""
+    if not name:
+        return True
+    return name.startswith(f"{channel_type.capitalize()} user ")
 
 
 def _get_or_create_session(db: Session, account: ChannelAccount, inbound: InboundMessage,

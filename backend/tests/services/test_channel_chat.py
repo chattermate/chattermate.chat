@@ -198,3 +198,30 @@ async def test_non_email_channel_synthesizes_address(db, test_organization):
     customer_id = _get_or_create_customer(db, account, inbound, str(test_organization.id))
     customer = db.query(Customer).filter(Customer.id == _uuid.UUID(customer_id)).one()
     assert customer.email == "555@telegram.channel"
+
+
+@pytest.mark.asyncio
+async def test_placeholder_name_upgraded_when_real_name_resolved(db, account, test_organization):
+    """An existing customer created with a '<Channel> user xxxx' placeholder is
+    renamed once fetch_profile resolves a real name."""
+    from app.services.channel_chat import _get_or_create_customer
+    from app.channels.base import InboundMessage
+    from app.models.customer import Customer
+    import uuid as _uuid
+
+    account.channel_type = "slack"
+    # First message: no real name yet → placeholder
+    inbound1 = InboundMessage(external_account_id="T1", external_conversation_id="D7",
+                              external_user_id="U09UPKP7", external_message_id="e1", text="hi")
+    cid = _get_or_create_customer(db, account, inbound1, str(test_organization.id))
+    cust = db.query(Customer).filter(Customer.id == _uuid.UUID(cid)).one()
+    assert cust.full_name == "Slack user U09UPKP7"
+
+    # Second message: profile now carries the real name → upgraded in place
+    inbound2 = InboundMessage(external_account_id="T1", external_conversation_id="D7",
+                              external_user_id="U09UPKP7", external_message_id="e2", text="hi again",
+                              profile={"name": "Ada Lovelace"})
+    cid2 = _get_or_create_customer(db, account, inbound2, str(test_organization.id))
+    assert cid2 == cid  # same customer
+    db.refresh(cust)
+    assert cust.full_name == "Ada Lovelace"
