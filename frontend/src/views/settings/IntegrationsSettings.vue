@@ -60,6 +60,33 @@ const showTelegramModal = ref(false)
 const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
 // Which credential connect modal is open (null = none)
 const credentialModalChannel = ref<'email' | 'sms' | 'line' | null>(null)
+// Account being managed (null = fresh connect). Also used for Telegram/Meta manage.
+const credentialModalAccount = ref<ChannelAccount | null>(null)
+const telegramModalAccount = ref<ChannelAccount | null>(null)
+const metaModalAccount = ref<ChannelAccount | null>(null)
+
+const CREDENTIAL_CHANNELS = ['email', 'sms', 'line']
+const META_CHANNELS = ['whatsapp', 'messenger', 'instagram']
+
+// "Manage" on a connected card: open the right modal for the connected account
+const manageIntegration = (integration: IntegrationCard) => {
+  const id = integration.id
+  const acc = accountsFor(id)[0] ?? null
+  if (CREDENTIAL_CHANNELS.includes(id)) {
+    credentialModalAccount.value = acc
+    credentialModalChannel.value = id as 'email' | 'sms' | 'line'
+  } else if (id === 'telegram') {
+    telegramModalAccount.value = acc
+    showTelegramModal.value = true
+  } else if (META_CHANNELS.includes(id)) {
+    metaModalAccount.value = acc
+    metaModalChannel.value = id as 'whatsapp' | 'messenger' | 'instagram'
+  } else {
+    // Jira/Shopify/Slack: re-run their connect/OAuth flow
+    if (id === 'shopify') openShopifyInstallation()
+    else integration.connectAction?.()
+  }
+}
 
 const accountsFor = (channelType: string) =>
   channelAccounts.value.filter(a => a.channel_type === channelType)
@@ -81,6 +108,9 @@ const onChannelConnected = async () => {
   showTelegramModal.value = false
   metaModalChannel.value = null
   credentialModalChannel.value = null
+  credentialModalAccount.value = null
+  telegramModalAccount.value = null
+  metaModalAccount.value = null
   await fetchChannelAccounts()
 }
 
@@ -559,7 +589,7 @@ onMounted(async () => {
 
           <!-- Connected: Manage + Disconnect -->
           <div v-else-if="integration.connected" class="int-actions">
-            <button class="int-btn int-btn-manage">Manage</button>
+            <button class="int-btn int-btn-manage" @click="manageIntegration(integration)">Manage</button>
             <button class="int-btn int-btn-disconnect" @click="showDisconnectConfirmation(integration.id)">
               Disconnect
             </button>
@@ -718,7 +748,8 @@ onMounted(async () => {
   <!-- Telegram Connect Modal -->
   <TelegramConnectModal
     v-if="showTelegramModal"
-    @close="showTelegramModal = false"
+    :existing-account="telegramModalAccount"
+    @close="showTelegramModal = false; telegramModalAccount = null"
     @connected="onChannelConnected"
   />
 
@@ -726,7 +757,8 @@ onMounted(async () => {
   <MetaChannelConnect
     v-if="metaModalChannel"
     :channel="metaModalChannel"
-    @close="metaModalChannel = null"
+    :existing-account="metaModalAccount"
+    @close="metaModalChannel = null; metaModalAccount = null"
     @connected="onChannelConnected"
   />
 
@@ -734,7 +766,8 @@ onMounted(async () => {
   <ChannelConnectModal
     v-if="credentialModalChannel"
     :channel="credentialModalChannel"
-    @close="credentialModalChannel = null"
+    :existing-account="credentialModalAccount"
+    @close="credentialModalChannel = null; credentialModalAccount = null"
     @connected="onChannelConnected"
   />
 

@@ -21,7 +21,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_organization, require_permissions
+from app.core.config import settings
 from app.database import get_db
+from app.models.channels import ChannelType
 from app.models.organization import Organization
 from app.models.schemas.channel import ChannelAccountOut
 from app.models.user import User
@@ -33,6 +35,17 @@ logger = get_logger(__name__)
 
 # Sentinel: distinguishes "config not passed, look it up" from "no config"
 _UNRESOLVED = object()
+
+
+def channel_webhook_url(account) -> str | None:
+    """The webhook URL the customer must configure on their provider, for the
+    channels where that's a manual step. Auto-managed channels return None."""
+    base = f"{settings.BACKEND_URL.rstrip('/')}{settings.API_V1_STR}/webhooks"
+    if account.channel_type == ChannelType.EMAIL.value:
+        return f"{base}/email/{account.id}?token={account.webhook_secret}"
+    if account.channel_type == ChannelType.SMS.value:
+        return f"{base}/twilio/{account.id}"
+    return None
 
 
 def get_org_account_or_404(db: Session, account_id: UUID, organization: Organization):
@@ -48,6 +61,7 @@ def to_account_out(db: Session, account, config=_UNRESOLVED) -> ChannelAccountOu
         config = AgentChannelConfigRepository(db).get_by_account(account.id)
     out = ChannelAccountOut.model_validate(account)
     out.agent_id = config.agent_id if config and config.is_active else None
+    out.webhook_url = channel_webhook_url(account)
     return out
 
 

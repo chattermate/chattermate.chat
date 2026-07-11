@@ -23,6 +23,9 @@ import type { Agent } from '@/types/agent'
 
 const props = defineProps<{
   channel: 'email' | 'sms' | 'line'
+  // When set, the modal opens in "manage" mode for an already-connected
+  // account: it skips credential entry and shows the webhook URL + agent.
+  existingAccount?: ChannelAccount | null
 }>()
 
 const emit = defineEmits<{
@@ -80,7 +83,9 @@ const FORMS = {
 const form = computed(() => FORMS[props.channel])
 const values = ref<Record<string, string>>({})
 const connecting = ref(false)
-const account = ref<ChannelAccount | null>(null)
+// In manage mode we start at the second step with the existing account
+const account = ref<ChannelAccount | null>(props.existingAccount ?? null)
+const isManage = computed(() => !!props.existingAccount)
 
 const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
@@ -89,9 +94,9 @@ const savingAgent = ref(false)
 onMounted(async () => {
   try {
     agents.value = await agentService.getOrganizationAgents()
-    if (agents.value.length > 0) {
-      selectedAgentId.value = String(agents.value[0].id)
-    }
+    // Default the agent selector to the account's current agent, else the first
+    selectedAgentId.value = String(
+      props.existingAccount?.agent_id || agents.value[0]?.id || '')
   } catch (error) {
     console.error('Error loading agents:', error)
   }
@@ -141,7 +146,7 @@ const saveAgent = async () => {
   <div class="cc-modal" @click.self="emit('close')">
     <div class="cc-modal-content">
       <div class="cc-modal-header">
-        <h3>{{ form.title }}</h3>
+        <h3>{{ isManage ? form.title.replace('Connect', 'Manage') : form.title }}</h3>
         <button class="cc-close-btn" @click="emit('close')">×</button>
       </div>
 
@@ -187,7 +192,10 @@ const saveAgent = async () => {
           </option>
         </select>
         <div class="cc-actions">
-          <button class="cc-btn cc-btn-secondary" @click="emit('connected', account)">Skip for now</button>
+          <button v-if="isManage" class="cc-btn cc-btn-secondary" @click="account = null">
+            Reconfigure credentials
+          </button>
+          <button v-else class="cc-btn cc-btn-secondary" @click="emit('connected', account)">Skip for now</button>
           <button class="cc-btn cc-btn-primary" :disabled="savingAgent || !selectedAgentId" @click="saveAgent">
             {{ savingAgent ? 'Saving…' : 'Assign agent' }}
           </button>

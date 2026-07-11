@@ -93,7 +93,10 @@ async def connect_email(
     if existing is not None:
         if existing.organization_id != organization.id:
             raise HTTPException(status_code=409, detail="This address is already connected to another organization")
-        repo.update_credentials(existing, credentials)
+        # Only overwrite SMTP creds when new ones were supplied — reconnecting
+        # to update the agent/webhook must not silently wipe stored SMTP.
+        if credentials:
+            repo.update_credentials(existing, credentials)
         account = repo.set_active(existing, True)
     else:
         account = repo.create_account(

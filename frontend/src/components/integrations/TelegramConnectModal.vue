@@ -21,6 +21,10 @@ import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
 
+const props = defineProps<{
+  existingAccount?: ChannelAccount | null
+}>()
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'connected', account: ChannelAccount): void
@@ -28,7 +32,7 @@ const emit = defineEmits<{
 
 const botToken = ref('')
 const connecting = ref(false)
-const account = ref<ChannelAccount | null>(null)
+const account = ref<ChannelAccount | null>(props.existingAccount ?? null)
 
 const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
@@ -37,9 +41,8 @@ const savingAgent = ref(false)
 onMounted(async () => {
   try {
     agents.value = await agentService.getOrganizationAgents()
-    if (agents.value.length > 0) {
-      selectedAgentId.value = String(agents.value[0].id)
-    }
+    selectedAgentId.value = String(
+      props.existingAccount?.agent_id || agents.value[0]?.id || '')
   } catch (error) {
     console.error('Error loading agents:', error)
   }
