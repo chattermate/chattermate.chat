@@ -212,3 +212,68 @@ class TestEmailConnectSmtp:
         assert r.status_code == 200
         account = ChannelAccountRepository(db).get_by_external_id("email", "help@acme.com")
         assert ChannelAccountRepository(db).get_credentials(account) == {}  # platform fallback
+
+
+class TestSmsChannel:
+    def test_list_providers(self, client):
+        r = client.get("/api/v1/channels/sms/providers")
+        assert r.status_code == 200
+        names = {p["name"] for p in r.json()}
+        assert {"twilio", "vonage", "messagebird", "plivo", "brevo", "sns"} <= names
+
+    def test_connect_twilio(self, client, db):
+        from app.repositories.channels import ChannelAccountRepository
+        with patch("app.channels.sms.twilio.TwilioProvider.validate_credentials", AsyncMock()):
+            r = client.post("/api/v1/channels/sms", json={
+                "provider": "twilio", "phone_number": "+15551230000",
+                "credentials": {"account_sid": "AC1", "auth_token": "tok"}})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["channel_type"] == "sms"
+        assert "/webhooks/sms/twilio/" in data["webhook_url"]
+        acc = ChannelAccountRepository(db).get_by_external_id("sms", "+15551230000")
+        assert (acc.settings or {}).get("provider") == "twilio"
+
+    def test_connect_vonage_stores_provider(self, client, db):
+        from app.repositories.channels import ChannelAccountRepository
+        r = client.post("/api/v1/channels/sms", json={
+            "provider": "vonage", "phone_number": "+15551230001",
+            "credentials": {"api_key": "k", "api_secret": "s"}})
+        assert r.status_code == 200
+        acc = ChannelAccountRepository(db).get_by_external_id("sms", "+15551230001")
+        assert acc.settings["provider"] == "vonage"
+        assert "/webhooks/sms/vonage/" in r.json()["webhook_url"]
+
+    def test_connect_unknown_provider(self, client):
+        r = client.post("/api/v1/channels/sms", json={
+            "provider": "nope", "phone_number": "+1", "credentials": {}})
+        assert r.status_code == 400
+
+    def test_connect_invalid_credentials(self, client):
+        r = client.post("/api/v1/channels/sms", json={
+            "provider": "vonage", "phone_number": "+1", "credentials": {}})
+        assert r.status_code == 400  # missing api_key/secret
+
+    def test_webhook_routes_to_processor(self, client, db, test_organization):
+        from app.repositories.channels import ChannelAccountRepository
+        acc = ChannelAccountRepository(db).create_account(
+            organization_id=test_organization.id, channel_type="sms",
+            external_account_id="+15551239999",
+            credentials={"api_key": "k", "api_secret": "s"},
+            display_name="SMS", settings={"provider": "vonage"})
+        with patch("app.api.webhooks.sms.process_channel_message", AsyncMock()) as proc:
+            r = client.post(f"/api/v1/webhooks/sms/vonage/{acc.id}",
+                            data={"msisdn": "+44700", "to": "+15551239999",
+                                  "text": "hello", "messageId": "v9"})
+        assert r.status_code == 200
+        proc.assert_awaited_once()
+        assert proc.await_args.args[1].text == "hello"
+
+    def test_webhook_provider_mismatch_404(self, client, db, test_organization):
+        from app.repositories.channels import ChannelAccountRepository
+        acc = ChannelAccountRepository(db).create_account(
+            organization_id=test_organization.id, channel_type="sms",
+            external_account_id="+15551238888", credentials={"auth_token": "t"},
+            display_name="SMS", settings={"provider": "twilio"})
+        r = client.post(f"/api/v1/webhooks/sms/vonage/{acc.id}", data={"msisdn": "+44"})
+        assert r.status_code == 404

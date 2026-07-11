@@ -17,7 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
-import channelsService, { type ChannelAccount } from '@/services/channels'
+import channelsService, { type ChannelAccount, type SmsProviderInfo } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
 
@@ -58,15 +58,22 @@ const FORMS = {
     },
   },
   sms: {
-    title: 'Connect SMS (Twilio)',
-    intro: 'From your Twilio console, copy the Account SID, auth token, and the phone number to use. Set the URL shown after connecting as the number’s “A message comes in” webhook.',
-    fields: [
-      { key: 'account_sid', label: 'Account SID', placeholder: 'AC…', secret: false },
-      { key: 'auth_token', label: 'Auth token', placeholder: '••••••••', secret: true },
-      { key: 'phone_number', label: 'Phone number (E.164)', placeholder: '+15551234567', secret: false },
-    ],
-    connect: (v: Record<string, string>) => channelsService.connectSms({
-      account_sid: v.account_sid, auth_token: v.auth_token, phone_number: v.phone_number }),
+    title: 'Connect SMS',
+    intro: 'Choose your SMS provider, enter the number to send from, and its API credentials. After connecting, set the URL shown as the number’s inbound-message webhook (SNS uses an HTTPS topic subscription).',
+    // Fields are provider-specific and resolved dynamically (see activeFields)
+    fields: [],
+    connect: (v: Record<string, string>) => {
+      const info = smsProviders.value.find(p => p.name === selectedProvider.value)
+      const credentials: Record<string, string> = {}
+      for (const f of info?.fields || []) {
+        if (v[f.key]?.trim()) credentials[f.key] = v[f.key].trim()
+      }
+      return channelsService.connectSms({
+        provider: selectedProvider.value,
+        phone_number: v.phone_number,
+        credentials,
+      })
+    },
   },
   line: {
     title: 'Connect LINE',
@@ -87,23 +94,43 @@ const connecting = ref(false)
 const account = ref<ChannelAccount | null>(props.existingAccount ?? null)
 const isManage = computed(() => !!props.existingAccount)
 
+// SMS providers (dynamic credential fields per provider)
+const smsProviders = ref<SmsProviderInfo[]>([])
+const selectedProvider = ref('twilio')
+
+// The credential fields to render: dynamic for SMS, static otherwise
+const activeFields = computed(() => {
+  if (props.channel !== 'sms') return form.value.fields
+  const info = smsProviders.value.find(p => p.name === selectedProvider.value)
+  return [
+    { key: 'phone_number', label: 'Phone number / sender ID', placeholder: '+15551234567', secret: false },
+    ...(info?.fields || []).map(f => ({
+      key: f.key, label: f.label, placeholder: f.secret ? '••••••••' : '',
+      secret: f.secret, optional: f.optional,
+    })),
+  ]
+})
+
 const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
 const savingAgent = ref(false)
 
 onMounted(async () => {
   try {
+    if (props.channel === 'sms') {
+      smsProviders.value = await channelsService.listSmsProviders()
+    }
     agents.value = await agentService.getOrganizationAgents()
     // Default the agent selector to the account's current agent, else the first
     selectedAgentId.value = String(
       props.existingAccount?.agent_id || agents.value[0]?.id || '')
   } catch (error) {
-    console.error('Error loading agents:', error)
+    console.error('Error loading modal data:', error)
   }
 })
 
 const connect = async () => {
-  const missing = form.value.fields.filter(f => !(f as any).optional && !values.value[f.key]?.trim())
+  const missing = activeFields.value.filter(f => !(f as any).optional && !values.value[f.key]?.trim())
   if (missing.length > 0) {
     toast.error(`Please fill in: ${missing.map(f => f.label).join(', ')}`)
     return
@@ -153,14 +180,23 @@ const saveAgent = async () => {
       <!-- Step 1: credentials -->
       <div v-if="!account" class="cc-modal-body">
         <p class="cc-intro">{{ form.intro }}</p>
-        <div v-for="field in form.fields" :key="field.key" class="cc-field">
+
+        <!-- SMS provider picker -->
+        <div v-if="channel === 'sms'" class="cc-field">
+          <label class="cc-label" for="cc-provider">SMS provider</label>
+          <select id="cc-provider" v-model="selectedProvider" class="cc-input">
+            <option v-for="p in smsProviders" :key="p.name" :value="p.name">{{ p.label }}</option>
+          </select>
+        </div>
+
+        <div v-for="field in activeFields" :key="field.key" class="cc-field">
           <label class="cc-label" :for="`cc-${field.key}`">{{ field.label }}</label>
           <input
             :id="`cc-${field.key}`"
             v-model="values[field.key]"
             :type="field.secret ? 'password' : 'text'"
             class="cc-input"
-            :placeholder="field.placeholder"
+            :placeholder="(field as any).placeholder"
             :name="`cc-${channel}-${field.key}`"
             :autocomplete="field.secret ? 'new-password' : 'off'"
           />

@@ -29,6 +29,19 @@ export type ChannelType =
   | 'line'
   | 'api'
 
+export interface SmsProviderField {
+  key: string
+  label: string
+  secret: boolean
+  optional: boolean
+}
+
+export interface SmsProviderInfo {
+  name: string
+  label: string
+  fields: SmsProviderField[]
+}
+
 export interface ChannelAccount {
   id: string
   channel_type: ChannelType
@@ -104,14 +117,24 @@ const channelsService = {
     await api.delete(`/channels/email/${accountId}`)
   },
 
-  /** Connect a Twilio number for SMS */
-  async connectSms(payload: { account_sid: string; auth_token: string; phone_number: string }): Promise<ChannelAccount> {
-    const response = await api.post('/channels/twilio', payload)
+  /** Available SMS providers + the credential fields each needs */
+  async listSmsProviders(): Promise<SmsProviderInfo[]> {
+    const response = await api.get('/channels/sms/providers')
+    return response.data
+  },
+
+  /** Connect an SMS number through a chosen provider */
+  async connectSms(payload: {
+    provider: string
+    phone_number: string
+    credentials: Record<string, string>
+  }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/sms', payload)
     return response.data
   },
 
   async disconnectSms(accountId: string): Promise<void> {
-    await api.delete(`/channels/twilio/${accountId}`)
+    await api.delete(`/channels/sms/${accountId}`)
   },
 
   /** Connect a LINE Official Account */

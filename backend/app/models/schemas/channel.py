@@ -89,10 +89,16 @@ class EmailConnectRequest(BaseModel):
     smtp_use_ssl: Optional[bool] = None  # None = auto (port 465 → implicit TLS)
 
 
-class TwilioConnectRequest(BaseModel):
-    account_sid: str
-    auth_token: str
-    phone_number: str         # E.164, e.g. +15551234567
+class SmsConnectRequest(BaseModel):
+    provider: str                      # 'twilio' | 'vonage' | 'messagebird' | ...
+    phone_number: str                  # sender number / id
+    credentials: dict = {}             # provider-specific secrets
+
+
+class SmsProviderInfo(BaseModel):
+    name: str
+    label: str
+    fields: list                       # [{key,label,secret,optional}] for the UI
 
 
 class LineConnectRequest(BaseModel):

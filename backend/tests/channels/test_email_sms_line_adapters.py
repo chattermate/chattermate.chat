@@ -24,7 +24,6 @@ from unittest.mock import MagicMock
 
 from app.channels import get_adapter
 from app.channels.email import EmailAdapter, strip_quoted_reply, verify_webhook_token
-from app.channels.sms_twilio import TwilioSmsAdapter, verify_twilio_signature
 from app.channels.line import LineAdapter
 
 
@@ -105,33 +104,6 @@ class TestEmailAdapter:
         assert verify_webhook_token(account, "tok") is True
         assert verify_webhook_token(account, "nope") is False
         assert verify_webhook_token(account, "") is False
-
-
-class TestTwilioAdapter:
-    def test_parse_inbound(self):
-        m = get_adapter("sms").parse_inbound({
-            "From": "+447700900123", "To": "+15551234567",
-            "Body": " help please ", "MessageSid": "SM1"})[0]
-        assert m.external_conversation_id == "+447700900123"
-        assert m.external_account_id == "+15551234567"
-        assert m.text == "help please"
-
-    def test_parse_empty_body_ignored(self):
-        assert get_adapter("sms").parse_inbound({"From": "+44", "Body": " "}) == []
-
-    def test_signature_roundtrip(self):
-        url = "https://x.example/api/v1/webhooks/twilio/abc"
-        params = {"From": "+44", "Body": "hi", "MessageSid": "SM1"}
-        payload = url + "".join(f"{k}{params[k]}" for k in sorted(params))
-        signature = base64.b64encode(
-            hmac.new(b"authtok", payload.encode(), hashlib.sha1).digest()).decode()
-        assert verify_twilio_signature("authtok", url, params, signature) is True
-        assert verify_twilio_signature("authtok", url, params, "bad") is False
-        assert verify_twilio_signature("", url, params, signature) is False
-
-    def test_format_outbound_plain_text(self):
-        adapter = TwilioSmsAdapter()
-        assert adapter.format_outbound("**bold** and __underline__") == "bold and underline"
 
 
 class TestLineAdapter:
