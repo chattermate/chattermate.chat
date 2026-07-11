@@ -181,3 +181,34 @@ class TestTelegramWebhook:
             )
         assert response.status_code == 200
         process.assert_not_awaited()
+
+
+class TestEmailConnectSmtp:
+    def test_gmail_auth_error_hints_app_password(self, client):
+        import smtplib
+        err = smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted")
+        with patch("app.api.channels.email.validate_smtp", side_effect=err):
+            r = client.post("/api/v1/channels/email", json={
+                "inbound_address": "support@acme.com",
+                "smtp_host": "smtp.gmail.com", "smtp_port": 587,
+                "smtp_username": "me@gmail.com", "smtp_password": "wrong"})
+        assert r.status_code == 400
+        assert "App Password" in r.json()["detail"]
+
+    def test_non_gmail_auth_error_generic(self, client):
+        import smtplib
+        err = smtplib.SMTPAuthenticationError(535, b"bad creds")
+        with patch("app.api.channels.email.validate_smtp", side_effect=err):
+            r = client.post("/api/v1/channels/email", json={
+                "inbound_address": "support@acme.com",
+                "smtp_host": "smtp.acme.com", "smtp_port": 587,
+                "smtp_username": "u", "smtp_password": "p"})
+        assert r.status_code == 400
+        assert "authentication failed" in r.json()["detail"].lower()
+
+    def test_smtp_omitted_uses_platform(self, client, db):
+        from app.repositories.channels import ChannelAccountRepository
+        r = client.post("/api/v1/channels/email", json={"inbound_address": "help@acme.com"})
+        assert r.status_code == 200
+        account = ChannelAccountRepository(db).get_by_external_id("email", "help@acme.com")
+        assert ChannelAccountRepository(db).get_credentials(account) == {}  # platform fallback

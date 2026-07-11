@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import asyncio
+import smtplib
 from email.utils import parseaddr
 from uuid import UUID
 
@@ -66,9 +67,23 @@ async def _build_smtp_credentials(request: EmailConnectRequest, address: str) ->
     }
     try:
         await asyncio.to_thread(validate_smtp, cfg)
+    except smtplib.SMTPAuthenticationError as e:
+        raise HTTPException(status_code=400, detail=_auth_error_detail(cfg["host"], e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not connect to SMTP server: {e}")
     return creds
+
+
+def _auth_error_detail(host: str, exc: Exception) -> str:
+    """Friendlier message for an SMTP login rejection — Gmail in particular
+    needs an App Password, not the account password."""
+    host = (host or "").lower()
+    if "gmail" in host or "google" in host:
+        return ("Gmail rejected the login. Gmail requires a 16-character App Password "
+                "(not your normal account password), and 2-Step Verification must be "
+                "enabled — create one at myaccount.google.com/apppasswords, then paste "
+                "it here with the spaces removed.")
+    return f"SMTP authentication failed — check the username and password ({exc})"
 
 
 @router.post("", response_model=ChannelAccountOut)
