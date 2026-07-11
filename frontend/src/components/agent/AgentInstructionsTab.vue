@@ -348,6 +348,10 @@ const handleSave = () => {
               Upgrade your plan to enable customer rating collection
             </span>
           </p>
+          <p class="helper-text channel-note">
+            <font-awesome-icon icon="fa-solid fa-circle-info" class="info-icon" />
+            Ratings are collected on the built-in chat widget only — not on connected messaging channels (Telegram, WhatsApp, Messenger, Instagram, Slack, Email, SMS, LINE).
+          </p>
         </div>
       </div>
     </section>
@@ -626,6 +630,20 @@ const handleSave = () => {
   font-size: var(--text-sm);
   margin-bottom: var(--space-md);
   line-height: 1.5;
+}
+
+.channel-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  margin-top: calc(-1 * var(--space-xs));
+  opacity: 0.85;
+}
+
+.channel-note .info-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .switch {

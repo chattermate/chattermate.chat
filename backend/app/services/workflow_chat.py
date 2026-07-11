@@ -272,15 +272,7 @@ class WorkflowChatService:
                 transfer_response._is_transfer_response = True
                 return transfer_response
             finally:
-                # Clean up MCP tools
-                # Use asyncio.create_task to ensure cleanup doesn't block the main flow
-                try:
-                    cleanup_task = asyncio.create_task(chat_agent.cleanup_mcp_tools())
-                    await asyncio.wait_for(cleanup_task, timeout=2.0)
-                except asyncio.TimeoutError:
-                    logger.debug("MCP cleanup timed out in workflow transfer (non-critical)")
-                except Exception as cleanup_error:
-                    logger.debug(f"MCP cleanup warning in workflow transfer (non-critical): {str(cleanup_error)}")
+                await chat_agent.safe_cleanup_mcp_tools()
         else:
             # Fallback: just update session status without specific group
             logger.warning(f"No transfer_group_id provided for workflow transfer in session {session_id}")
@@ -315,15 +307,7 @@ class WorkflowChatService:
             # The response.request_rating value comes from the workflow execution config
             return await chat_agent._handle_end_chat(response, session_id, self.db, response.request_rating)
         finally:
-            # Clean up MCP tools
-            # Use asyncio.create_task to ensure cleanup doesn't block the main flow
-            try:
-                cleanup_task = asyncio.create_task(chat_agent.cleanup_mcp_tools())
-                await asyncio.wait_for(cleanup_task, timeout=2.0)
-            except asyncio.TimeoutError:
-                logger.debug("MCP cleanup timed out in workflow end chat (non-critical)")
-            except Exception as cleanup_error:
-                logger.debug(f"MCP cleanup warning in workflow end chat (non-critical): {str(cleanup_error)}")
+            await chat_agent.safe_cleanup_mcp_tools()
     
     def _store_workflow_response(
         self, 

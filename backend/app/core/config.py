@@ -82,6 +82,17 @@ class Settings(BaseSettings):
     SLACK_SIGNING_SECRET: str = os.getenv("SLACK_SIGNING_SECRET", "")
     SLACK_REDIRECT_URI: str = os.getenv("SLACK_REDIRECT_URI", "")
     SHOPIFY_API_VERSION: str = os.getenv("SHOPIFY_API_VERSION", "2025-10")
+
+    # Meta (WhatsApp Cloud API, Messenger, Instagram) — one app, shared webhook.
+    # Self-hosters supply their own app; the cloud supplies its approved app.
+    META_APP_ID: str = os.getenv("META_APP_ID", "")
+    META_APP_SECRET: str = os.getenv("META_APP_SECRET", "")
+    # Our own random token echoed back during webhook GET verification
+    META_WEBHOOK_VERIFY_TOKEN: str = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "")
+    META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v21.0")
+    # Embedded Signup config id (cloud onboarding convenience; enterprise)
+    META_CONFIG_ID: str = os.getenv("META_CONFIG_ID", "")
+
     VERIFY_SSL_CERTIFICATES: bool = os.getenv("VERIFY_SSL_CERTIFICATES", "true").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     TRIAL_DAYS: int = 7  # 7-day trial period

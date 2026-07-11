@@ -259,8 +259,9 @@ class ChatAgentMCPMixin:
     @classmethod
     async def create_async(cls, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", 
                           org_id: str = None, agent_id: str = None, customer_id: str = None, 
-                          session_id: str = None, custom_system_prompt: str = None, 
-                          transfer_to_human: bool | None = None, source: str = None):
+                          session_id: str = None, custom_system_prompt: str = None,
+                          transfer_to_human: bool | None = None, source: str = None,
+                          channel: str = None):
         """
         Async factory method to create a ChatAgent with MCP tools initialized.
         """
@@ -286,7 +287,8 @@ class ChatAgentMCPMixin:
             custom_system_prompt=custom_system_prompt,
             transfer_to_human=transfer_to_human,
             mcp_tools=mcp_tools,
-            source=source
+            source=source,
+            channel=channel
         )
         
         # Attach the MCP manager to the instance for cleanup
@@ -302,6 +304,18 @@ class ChatAgentMCPMixin:
             await self._mcp_manager.cleanup_mcp_tools()
         elif hasattr(self, 'mcp_tools') and self.mcp_tools:
             await cleanup_mcp_tools(self.mcp_tools)
+
+    async def safe_cleanup_mcp_tools(self, timeout: float = 2.0):
+        """
+        Best-effort MCP cleanup after a chat turn: bounded by a timeout and
+        never raises, so cleanup can't break or block the response flow.
+        """
+        try:
+            await asyncio.wait_for(self.cleanup_mcp_tools(), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.debug("MCP cleanup timed out (non-critical)")
+        except Exception as e:
+            logger.debug(f"MCP cleanup warning (non-critical): {e}")
     
     def __del__(self):
         """

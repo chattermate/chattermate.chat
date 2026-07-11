@@ -42,7 +42,8 @@ from app.core.s3 import get_s3_signed_url
 from app.models.session_to_agent import SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
 from app.repositories.agent import AgentRepository
-from app.services.lead_capture import has_captured_lead, record_lead_capture
+from app.services.lead_capture import record_lead_from_response
+from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
 from app.repositories.jira import JiraRepository
 from app.models.ai_config import AIModelType
@@ -479,15 +480,7 @@ async def handle_widget_chat(sid, data):
                     agent_id=session['agent_id'],
                     customer_id=customer_id)
             finally:
-                # Clean up MCP tools
-                # Use asyncio.create_task to ensure cleanup doesn't block the main flow
-                try:
-                    cleanup_task = asyncio.create_task(chat_agent.cleanup_mcp_tools())
-                    await asyncio.wait_for(cleanup_task, timeout=2.0)
-                except asyncio.TimeoutError:
-                    logger.debug("MCP cleanup timed out in widget chat (non-critical)")
-                except Exception as cleanup_error:
-                    logger.debug(f"MCP cleanup warning in widget chat (non-critical): {str(cleanup_error)}")
+                await chat_agent.safe_cleanup_mcp_tools()
         elif active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
             logger.debug(f"Transferring chat to human for session {session_id}")
             # Get response from agent transfer ai agent
@@ -785,40 +778,27 @@ async def handle_widget_chat(sid, data):
             # and signs off in the same turn, and this runs before the close block below.
             # record_lead_capture enforces valid-email + consent and captures once.
             elif getattr(response, 'request_lead_capture', False):
-                try:
-                    lc_agent = AgentRepository(db).get_agent(session['agent_id'])
-                    lcc = getattr(lc_agent, 'lead_capture_config', None) if lc_agent else None
-                    if (lcc and lcc.enabled
-                            and not has_captured_lead(db, customer_id, session['agent_id'])):
-                        # Assemble lead_data from the explicit scalar fields (reliable under
-                        # strict structured outputs) plus any free-form lead_data dict.
-                        lead_data = dict(getattr(response, 'lead_data', None) or {})
-                        for key, attr in (('email', 'lead_email'), ('name', 'lead_name'),
-                                          ('company', 'lead_company'), ('phone', 'lead_phone')):
-                            val = getattr(response, attr, None)
-                            if val and not lead_data.get(key):
-                                lead_data[key] = val
-                        lc_resp = record_lead_capture(
-                            db, lcc,
-                            organization_id=org_id,
-                            agent_id=session['agent_id'],
-                            customer_id=customer_id,
-                            session_id=session_id,
-                            lead_data=lead_data,
-                            summary=getattr(response, 'lead_summary', None),
-                            consent=getattr(response, 'lead_consent', False),
-                            page_url=session.get('page_url'),
-                        )
-                        # If the capture merged this anonymous visitor into an existing
-                        # customer (email already known), repoint the live socket session
-                        # so the rest of this conversation writes to the merged customer.
-                        if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
-                            session['customer_id'] = str(lc_resp.customer_id)
-                            await sio.save_session(sid, session, namespace='/widget')
-                            logger.info(
-                                f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
-                except Exception as lc_err:
-                    logger.error(f"Lead-capture record error: {lc_err}")
+                lc_resp = record_lead_from_response(
+                    db, response,
+                    organization_id=org_id,
+                    agent_id=session['agent_id'],
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    page_url=session.get('page_url'),
+                )
+                # If the capture merged this anonymous visitor into an existing
+                # customer (email already known), repoint the live socket session
+                # so the rest of this conversation writes to the merged customer.
+                # Isolated so a session-store failure can't skip the end_chat
+                # close block below.
+                if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
+                    try:
+                        session['customer_id'] = str(lc_resp.customer_id)
+                        await sio.save_session(sid, session, namespace='/widget')
+                        logger.info(
+                            f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
+                    except Exception as merge_err:
+                        logger.error(f"Failed to repoint socket session after merge: {merge_err}")
 
             # If end_chat is true, close the session
             if response.end_chat:
@@ -1198,8 +1178,23 @@ async def handle_agent_message(sid, data):
             response_payload['attachments'] = attachments_data
             response_payload['message_id'] = created_message.id
 
-        await sio.emit('chat_response', response_payload, room=session_id, namespace='/widget')
-
+        delivery = await deliver_to_customer(db, session_data, response_payload)
+        if not delivery.ok:
+            if delivery.reason == 'window_expired':
+                error_message = (
+                    "The customer's messaging window has expired — "
+                    "send an approved template message to re-open the conversation."
+                    if delivery.can_template else
+                    "The customer's messaging window has expired; this message could not be delivered."
+                )
+            else:
+                error_message = 'Message saved but could not be delivered to the customer.'
+            chat_repo.update_message_attributes(created_message.id, {'delivery_status': delivery.reason or 'failed'})
+            await sio.emit('error', {
+                'error': error_message,
+                'type': 'delivery_error',
+                'session_id': session_id
+            }, to=sid, namespace='/agent')
 
     except Exception as e:
         logger.error(f"Agent message error for sid {sid}: {str(e)}")

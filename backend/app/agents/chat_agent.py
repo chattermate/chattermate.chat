@@ -293,7 +293,12 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str) -> 
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None):
+    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None):
+        # NOTE: `source` is a knowledge-base document-name filter (see
+        # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
+        # messaging channel tag ('web', 'telegram', ...) and must never be
+        # passed as `source`.
+        self.channel = channel or 'web'
         # Initialize knowledge search tool if org_id and agent_id provided
         logger.debug(f"Initializing chat agent for agent_id: {agent_id} and org_id: {org_id} and source: {source}")
         tools = []

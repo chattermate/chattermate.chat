@@ -23,6 +23,7 @@ import { useJiraTicket } from '@/composables/useJiraTicket'
 import JiraTicketModal from '@/components/jira/JiraTicketModal.vue'
 import FileUpload from '@/components/common/FileUpload.vue'
 import { userService } from '@/services/user'
+import ChannelBadge from '@/components/common/ChannelBadge.vue'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import type { Renderer } from 'marked'
@@ -163,6 +164,7 @@ onMounted(async () => {
     <header class="chat-header">
       <div class="user-info">
         <h2>{{ chat.customer.full_name || chat.customer.email }}</h2>
+        <ChannelBadge :channel="chat.channel" />
         <div v-if="handledByAI" class="chat-closed-status">
           <i class="fas fa-lock"></i>
           Handled by AI

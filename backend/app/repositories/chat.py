@@ -131,6 +131,18 @@ class ChatRepository:
             self.db.rollback()
             raise
 
+    def update_message_attributes(self, message_id: int, attributes: Dict[str, Any]) -> None:
+        """Merge keys into a message's attributes JSON (e.g. delivery_status)."""
+        try:
+            message = self.db.query(ChatHistory).filter(ChatHistory.id == message_id).first()
+            if not message:
+                return
+            message.attributes = {**(message.attributes or {}), **attributes}
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Error updating message attributes: {str(e)}")
+            self.db.rollback()
+
     def _update_session_sentiment(self, session_id) -> None:
         """Recompute and update the overall session sentiment from customer messages."""
         try:
@@ -240,6 +252,7 @@ class ChatRepository:
             Agent.name.label('agent_name'),
             Agent.display_name.label('agent_display_name'),
             SessionToAgent.status.label('status'),
+            SessionToAgent.channel.label('channel'),
             SessionToAgent.group_id.label('group_id'),
             func.max(ChatHistory.message).label('last_message'),
             func.max(ChatHistory.created_at).label('updated_at'),
@@ -314,6 +327,7 @@ class ChatRepository:
             Agent.name,
             Agent.display_name,
             SessionToAgent.status,
+            SessionToAgent.channel,
             SessionToAgent.group_id,
             SessionToAgent.session_id
         ).order_by(
@@ -342,6 +356,7 @@ class ChatRepository:
             'updated_at': r.updated_at,
             'message_count': r.message_count,
             'status': r.status,
+            'channel': r.channel,
             'group_id': str(r.group_id) if r.group_id else None,
             'session_id': r.session_id
         } for r in results]
@@ -393,6 +408,7 @@ class ChatRepository:
                 Agent.name.label('agent_name'),
                 Agent.display_name.label('agent_display_name'),
                 SessionToAgent.status.label('status'),
+                SessionToAgent.channel.label('channel'),
                 SessionToAgent.group_id.label('group_id'),
                 SessionToAgent.session_id.label('session_id'),
                 SessionToAgent.user_id.label('user_id'),
@@ -421,6 +437,7 @@ class ChatRepository:
                 Agent.name,
                 Agent.display_name,
                 SessionToAgent.status,
+                SessionToAgent.channel,
                 SessionToAgent.group_id,
                 SessionToAgent.session_id,
                 SessionToAgent.user_id,
@@ -475,6 +492,7 @@ class ChatRepository:
                 'display_name': result.agent_display_name
             },
             'status': result.status,
+            'channel': result.channel,
             'group_id': str(result.group_id) if result.group_id else None,
             'session_id': result.session_id,
             'user_id': result.user_id,

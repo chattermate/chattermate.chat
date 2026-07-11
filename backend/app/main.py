@@ -21,7 +21,9 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 # Add users import
 from fastapi.staticfiles import StaticFiles
 import socketio
-from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_apps, user_groups, roles, analytics, jira, shopify, slack, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, people
+from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_apps, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, people
+from app.api import channels as channels_api
+from app.api import webhooks as channel_webhooks
 # Import widget_chat to register socket.io event handlers for /widget namespace
 from app.api import widget_chat  # noqa: F401 - imported for side effects (socket.io handlers registration)
 from fastapi import FastAPI, BackgroundTasks
@@ -89,6 +91,18 @@ app.include_router(
     chat.router,
     prefix=f"{settings.API_V1_STR}/chats",
     tags=["chats"]
+)
+
+app.include_router(
+    channels_api.router,
+    prefix=f"{settings.API_V1_STR}/channels",
+    tags=["channels"]
+)
+
+app.include_router(
+    channel_webhooks.router,
+    prefix=f"{settings.API_V1_STR}/webhooks",
+    tags=["webhooks"]
 )
 
 # Try to import enterprise module if available
@@ -207,12 +221,6 @@ app.include_router(
     shopify.router,
     prefix=f"{settings.API_V1_STR}/shopify",
     tags=["shopify"]
-)
-
-app.include_router(
-    slack.router,
-    prefix=f"{settings.API_V1_STR}/slack",
-    tags=["slack"]
 )
 
 app.include_router(

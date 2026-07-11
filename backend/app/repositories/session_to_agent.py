@@ -31,7 +31,7 @@ class SessionToAgentRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_session(self, session_id: UUID | str, agent_id: UUID | str = None, customer_id: UUID | str = None, user_id: UUID | str = None, organization_id: UUID | str = None) -> SessionToAgent:
+    def create_session(self, session_id: UUID | str, agent_id: UUID | str = None, customer_id: UUID | str = None, user_id: UUID | str = None, organization_id: UUID | str = None, channel: str = 'web') -> SessionToAgent:
         """Create a new session assignment"""
         try:
             # Convert string IDs to UUID objects
@@ -66,7 +66,8 @@ class SessionToAgentRepository:
                 user_id=user_id,
                 organization_id=organization_id,
                 status=SessionStatus.OPEN,
-                workflow_id=workflow_id
+                workflow_id=workflow_id,
+                channel=channel
             )
             self.db.add(session)
             self.db.commit()

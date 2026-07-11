@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import type { Conversation, ChatDetail } from '@/types/chat'
 import ConversationChat from '@/components/conversations/ConversationChat.vue'
+import ChannelBadge from '@/components/common/ChannelBadge.vue'
 import { useConversationsList } from '@/composables/useConversationsList'
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 
@@ -250,6 +251,7 @@ onBeforeUnmount(() => {
         >
           <div class="conversation-item-header">
             <h3>{{ conv.customer.full_name || conv.customer.email }}</h3>
+            <ChannelBadge :channel="conv.channel" />
             <span class="timestamp">{{ conv.timeAgo }}</span>
           </div>
           <div class="conversation-preview">

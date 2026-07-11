@@ -21,13 +21,23 @@ import { toast } from 'vue-sonner'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
-import { checkSlackConnection, getSlackAuthUrl, disconnectSlack } from '@/services/slack'
+import channelsService, { type ChannelAccount } from '@/services/channels'
+import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
+import MetaChannelConnect from '@/components/integrations/MetaChannelConnect.vue'
+import ChannelConnectModal from '@/components/integrations/ChannelConnectModal.vue'
 
 // Import logos
 import jiraLogo from '@/assets/jira-logo.svg'
 import slackLogo from '@/assets/slack-logo.svg'
 import zendeskLogo from '@/assets/zendesk-logo.svg'
 import shopifyLogo from '@/assets/shopify-logo.svg'
+import telegramLogo from '@/assets/telegram-logo.svg'
+import whatsappLogo from '@/assets/whatsapp-logo.svg'
+import messengerLogo from '@/assets/messenger-logo.svg'
+import instagramLogo from '@/assets/instagram-logo.svg'
+import emailLogo from '@/assets/email-logo.svg'
+import smsLogo from '@/assets/sms-logo.svg'
+import lineLogo from '@/assets/line-logo.svg'
 
 // Define interface for Shopify shop
 interface ShopifyShop {
@@ -42,10 +52,111 @@ const shopifyConnected = ref(false)
 const shopifyShopDomain = ref('')
 const shopifyLoading = ref(true)
 
-// Slack state variables
-const slackConnected = ref(false)
-const slackTeamName = ref('')
-const slackLoading = ref(true)
+// Messaging channel state (Telegram + Meta channels share one accounts list)
+const channelAccounts = ref<ChannelAccount[]>([])
+const channelsLoading = ref(true)
+const showTelegramModal = ref(false)
+// Which Meta connect modal is open (null = none)
+const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
+// Which credential connect modal is open (null = none)
+const credentialModalChannel = ref<'email' | 'sms' | 'line' | 'slack' | null>(null)
+// Account being managed (null = fresh connect). Also used for Telegram/Meta manage.
+const credentialModalAccount = ref<ChannelAccount | null>(null)
+const telegramModalAccount = ref<ChannelAccount | null>(null)
+const metaModalAccount = ref<ChannelAccount | null>(null)
+
+const CREDENTIAL_CHANNELS = ['email', 'sms', 'line']
+const META_CHANNELS = ['whatsapp', 'messenger', 'instagram']
+
+// "Manage" on a connected card: open the right modal for the connected account
+const manageIntegration = (integration: IntegrationCard) => {
+  const id = integration.id
+  const acc = accountsFor(id)[0] ?? null
+  if (CREDENTIAL_CHANNELS.includes(id)) {
+    credentialModalAccount.value = acc
+    credentialModalChannel.value = id as 'email' | 'sms' | 'line'
+  } else if (id === 'telegram') {
+    telegramModalAccount.value = acc
+    showTelegramModal.value = true
+  } else if (META_CHANNELS.includes(id)) {
+    metaModalAccount.value = acc
+    metaModalChannel.value = id as 'whatsapp' | 'messenger' | 'instagram'
+  } else if (id === 'slack') {
+    // Slack connects via OAuth; Manage just picks the answering agent
+    credentialModalAccount.value = acc
+    credentialModalChannel.value = 'slack'
+  } else {
+    // Jira/Shopify: re-run their connect/OAuth flow
+    if (id === 'shopify') openShopifyInstallation()
+    else integration.connectAction?.()
+  }
+}
+
+const accountsFor = (channelType: string) =>
+  channelAccounts.value.filter(a => a.channel_type === channelType)
+
+const telegramAccounts = computed(() => accountsFor('telegram'))
+
+const fetchChannelAccounts = async () => {
+  try {
+    channelsLoading.value = true
+    channelAccounts.value = await channelsService.listAccounts()
+  } catch (error) {
+    console.error('Error loading channel accounts:', error)
+  } finally {
+    channelsLoading.value = false
+  }
+}
+
+const onChannelConnected = async () => {
+  showTelegramModal.value = false
+  metaModalChannel.value = null
+  credentialModalChannel.value = null
+  credentialModalAccount.value = null
+  telegramModalAccount.value = null
+  metaModalAccount.value = null
+  await fetchChannelAccounts()
+}
+
+// Shared disconnect for messaging channels; Telegram also removes its webhook
+const disconnectChannelAccounts = async (channelType: string, label: string) => {
+  try {
+    channelsLoading.value = true
+    for (const account of accountsFor(channelType)) {
+      if (channelType === 'telegram') {
+        await channelsService.disconnectTelegram(account.id)
+      } else if (channelType === 'slack') {
+        await channelsService.disconnectSlack(account.id)
+      } else if (channelType === 'email') {
+        await channelsService.disconnectEmail(account.id)
+      } else if (channelType === 'sms') {
+        await channelsService.disconnectSms(account.id)
+      } else if (channelType === 'line') {
+        await channelsService.disconnectLine(account.id)
+      } else {
+        await channelsService.disconnectMeta(account.id)
+      }
+    }
+    channelAccounts.value = channelAccounts.value.filter(a => a.channel_type !== channelType)
+    toast.success(`${label} disconnected successfully`)
+  } catch (error: any) {
+    toast.error(error?.response?.data?.detail || `Error disconnecting ${label}`)
+  } finally {
+    channelsLoading.value = false
+    showDisconnectConfirm.value = false
+    disconnectingIntegration.value = null
+  }
+}
+
+const handleDisconnectTelegram = () => disconnectChannelAccounts('telegram', 'Telegram')
+const handleDisconnectSlack = () => disconnectChannelAccounts('slack', 'Slack')
+const connectSlack = () => { window.location.href = channelsService.getSlackInstallUrl() }
+const handleDisconnectWhatsApp = () => disconnectChannelAccounts('whatsapp', 'WhatsApp')
+const handleDisconnectMessenger = () => disconnectChannelAccounts('messenger', 'Messenger')
+const handleDisconnectInstagram = () => disconnectChannelAccounts('instagram', 'Instagram')
+const handleDisconnectEmail = () => disconnectChannelAccounts('email', 'Email')
+const handleDisconnectSms = () => disconnectChannelAccounts('sms', 'SMS')
+const handleDisconnectLine = () => disconnectChannelAccounts('line', 'LINE')
 
 
 const route = useRoute()
@@ -175,56 +286,6 @@ const handleDisconnectShopify = () => {
   }
 }
 
-// Check if Slack is connected
-const fetchSlackStatus = async () => {
-  try {
-    slackLoading.value = true
-    const data = await checkSlackConnection()
-    slackConnected.value = data.connected
-    slackTeamName.value = data.team_name || ''
-  } catch (error) {
-    console.error('Error checking Slack connection:', error)
-    slackConnected.value = false
-  } finally {
-    slackLoading.value = false
-  }
-}
-
-// Connect to Slack directly (agent selection happens in Slack when bot joins channel)
-const connectSlack = () => {
-  try {
-    lastConnectionError.value = null
-    window.location.href = getSlackAuthUrl()
-  } catch (error) {
-    console.error('Error connecting to Slack:', error)
-    toast.error('Error connecting to Slack')
-  }
-}
-
-// Disconnect from Slack
-const handleDisconnectSlack = async () => {
-  try {
-    slackLoading.value = true
-    await disconnectSlack()
-    slackConnected.value = false
-    slackTeamName.value = ''
-    toast.success('Slack disconnected successfully')
-  } catch (error: any) {
-    console.error('Error disconnecting from Slack:', error)
-    let errorMessage = 'Error disconnecting from Slack'
-
-    if (error.response && error.response.data && error.response.data.detail) {
-      errorMessage = error.response.data.detail
-    }
-
-    toast.error(errorMessage)
-  } finally {
-    slackLoading.value = false
-    showDisconnectConfirm.value = false
-    disconnectingIntegration.value = null
-  }
-}
-
 // Define interface for IntegrationCard
 interface IntegrationCard {
   id: string;
@@ -273,16 +334,78 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
   {
     id: 'slack',
     name: 'Slack',
-    description: 'Connect to Slack to allow users to chat with your AI agent directly from Slack channels.',
+    description: 'Connect a Slack workspace so users can chat with your AI agent via @mentions and DMs.',
     logo: slackLogo,
     category: 'MESSAGING',
     color: 'accent',
-    connected: slackConnected.value,
-    teamName: slackTeamName.value,
-    isLoading: slackLoading.value,
+    connected: accountsFor('slack').length > 0,
+    teamName: accountsFor('slack').map(a => a.display_name).filter(Boolean).join(', '),
+    isLoading: channelsLoading.value,
     connectAction: connectSlack,
     disconnectAction: handleDisconnectSlack
   },
+  {
+    id: 'telegram',
+    name: 'Telegram',
+    description: 'Connect a Telegram bot so customers can chat with your AI agent on Telegram.',
+    logo: telegramLogo,
+    category: 'MESSAGING',
+    color: 'accent',
+    connected: telegramAccounts.value.length > 0,
+    teamName: telegramAccounts.value.map(a => a.display_name).filter(Boolean).join(', '),
+    isLoading: channelsLoading.value,
+    connectAction: () => { showTelegramModal.value = true },
+    disconnectAction: handleDisconnectTelegram
+  },
+  // Meta channels are pending Meta app review — shown as "coming soon"
+  ...(['whatsapp', 'messenger', 'instagram'] as const).map(channel => {
+    const meta = {
+      whatsapp: { name: 'WhatsApp', logo: whatsappLogo, color: 'teal',
+        description: 'Let customers message your AI agent on WhatsApp Business.' },
+      messenger: { name: 'Messenger', logo: messengerLogo, color: 'accent',
+        description: 'Let customers chat with your AI agent on Facebook Messenger.' },
+      instagram: { name: 'Instagram', logo: instagramLogo, color: 'purple',
+        description: 'Let customers DM your AI agent on Instagram.' },
+    }[channel]
+    return {
+      id: channel,
+      name: meta.name,
+      description: meta.description,
+      logo: meta.logo,
+      category: 'MESSAGING',
+      color: meta.color,
+      connected: false,
+      isLoading: false,
+      comingSoon: true,
+    }
+  }),
+  ...(['email', 'sms', 'line'] as const).map(channel => {
+    const meta = {
+      email: { name: 'Email', logo: emailLogo, color: 'purple',
+        description: 'Connect a support inbox so email conversations are answered by your AI agent.',
+        disconnect: handleDisconnectEmail },
+      sms: { name: 'SMS', logo: smsLogo, color: 'coral',
+        description: 'Connect a Twilio number so customers can text your AI agent.',
+        disconnect: handleDisconnectSms },
+      line: { name: 'LINE', logo: lineLogo, color: 'teal',
+        description: 'Connect a LINE Official Account so customers can chat with your AI agent on LINE.',
+        disconnect: handleDisconnectLine },
+    }[channel]
+    const accounts = accountsFor(channel)
+    return {
+      id: channel,
+      name: meta.name,
+      description: meta.description,
+      logo: meta.logo,
+      category: 'MESSAGING',
+      color: meta.color,
+      connected: accounts.length > 0,
+      teamName: accounts.map(a => a.display_name).filter(Boolean).join(', '),
+      isLoading: channelsLoading.value,
+      connectAction: () => { credentialModalChannel.value = channel },
+      disconnectAction: meta.disconnect
+    }
+  }),
   // Future integrations
   {
     id: 'zendesk',
@@ -321,7 +444,7 @@ onMounted(async () => {
   await Promise.all([
     fetchJiraStatus(),
     fetchShopifyStatus(),
-    fetchSlackStatus()
+    fetchChannelAccounts()
   ])
   
   // Check if we're returning from an OAuth flow
@@ -331,7 +454,13 @@ onMounted(async () => {
         toast.success('Shopify connected successfully!')
       } 
       else if (route.query.integration === 'slack') {
-        toast.success('Slack connected successfully! Add the bot to a channel to configure an agent.')
+        toast.success('Slack connected — choose which agent should answer.')
+        // Open the agent picker for the just-connected Slack workspace
+        const slackAcc = accountsFor('slack')[0]
+        if (slackAcc) {
+          credentialModalAccount.value = slackAcc
+          credentialModalChannel.value = 'slack'
+        }
       }
       else {
         toast.success('Jira connected successfully!')
@@ -381,7 +510,14 @@ onMounted(async () => {
             <circle cx="11" cy="11" r="7"></circle>
             <path d="M21 21l-4-4"></path>
           </svg>
-          <input v-model="intQuery" type="text" placeholder="Search integrations…" />
+          <input
+            v-model="intQuery"
+            type="search"
+            name="integration-search"
+            autocomplete="off"
+            aria-label="Search integrations"
+            placeholder="Search integrations…"
+          />
         </div>
       </div>
 
@@ -461,7 +597,7 @@ onMounted(async () => {
 
           <!-- Connected: Manage + Disconnect -->
           <div v-else-if="integration.connected" class="int-actions">
-            <button class="int-btn int-btn-manage">Manage</button>
+            <button class="int-btn int-btn-manage" @click="manageIntegration(integration)">Manage</button>
             <button class="int-btn int-btn-disconnect" @click="showDisconnectConfirmation(integration.id)">
               Disconnect
             </button>
@@ -539,6 +675,24 @@ onMounted(async () => {
             <li>Require you to reconnect and reconfigure if you want to use it again</li>
           </ul>
         </div>
+
+        <div v-if="disconnectingIntegration === 'telegram'" class="integration-specific-warning">
+          <p>Disconnecting Telegram will:</p>
+          <ul>
+            <li>Remove the bot's webhook so it stops receiving messages</li>
+            <li>Remove the agent routing for this bot</li>
+            <li>Require you to reconnect the bot token to use it again</li>
+          </ul>
+        </div>
+
+        <div v-if="disconnectingIntegration === 'whatsapp' || disconnectingIntegration === 'messenger' || disconnectingIntegration === 'instagram'" class="integration-specific-warning">
+          <p>Disconnecting this channel will:</p>
+          <ul>
+            <li>Stop the AI agent from receiving and answering its messages</li>
+            <li>Remove the agent routing for the connected account</li>
+            <li>Require re-entering credentials to use it again</li>
+          </ul>
+        </div>
       </div>
       <div class="disconnect-modal-actions">
         <button class="btn-cancel" @click="cancelDisconnect">Cancel</button>
@@ -563,14 +717,67 @@ onMounted(async () => {
           v-if="disconnectingIntegration === 'slack'"
           class="btn-disconnect"
           @click="handleDisconnectSlack"
-          :disabled="slackLoading"
+          :disabled="channelsLoading"
         >
-          <span v-if="slackLoading" class="loading-spinner"></span>
+          <span v-if="channelsLoading" class="loading-spinner"></span>
           <span v-else>Disconnect Slack</span>
+        </button>
+        <button
+          v-if="disconnectingIntegration === 'telegram'"
+          class="btn-disconnect"
+          @click="handleDisconnectTelegram"
+          :disabled="channelsLoading"
+        >
+          <span v-if="channelsLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect Telegram</span>
+        </button>
+        <button
+          v-if="disconnectingIntegration === 'email' || disconnectingIntegration === 'sms' || disconnectingIntegration === 'line'"
+          class="btn-disconnect"
+          @click="disconnectingIntegration === 'email' ? handleDisconnectEmail() : disconnectingIntegration === 'sms' ? handleDisconnectSms() : handleDisconnectLine()"
+          :disabled="channelsLoading"
+        >
+          <span v-if="channelsLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect {{ disconnectingIntegration === 'email' ? 'Email' : disconnectingIntegration === 'sms' ? 'SMS' : 'LINE' }}</span>
+        </button>
+        <button
+          v-if="disconnectingIntegration === 'whatsapp' || disconnectingIntegration === 'messenger' || disconnectingIntegration === 'instagram'"
+          class="btn-disconnect"
+          @click="disconnectingIntegration === 'whatsapp' ? handleDisconnectWhatsApp() : disconnectingIntegration === 'messenger' ? handleDisconnectMessenger() : handleDisconnectInstagram()"
+          :disabled="channelsLoading"
+        >
+          <span v-if="channelsLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect {{ disconnectingIntegration === 'whatsapp' ? 'WhatsApp' : disconnectingIntegration === 'messenger' ? 'Messenger' : 'Instagram' }}</span>
         </button>
       </div>
     </div>
   </div>
+
+  <!-- Telegram Connect Modal -->
+  <TelegramConnectModal
+    v-if="showTelegramModal"
+    :existing-account="telegramModalAccount"
+    @close="showTelegramModal = false; telegramModalAccount = null"
+    @connected="onChannelConnected"
+  />
+
+  <!-- Meta Channel Connect Modal (WhatsApp / Messenger / Instagram) -->
+  <MetaChannelConnect
+    v-if="metaModalChannel"
+    :channel="metaModalChannel"
+    :existing-account="metaModalAccount"
+    @close="metaModalChannel = null; metaModalAccount = null"
+    @connected="onChannelConnected"
+  />
+
+  <!-- Credential Connect Modal (Email / SMS / LINE) -->
+  <ChannelConnectModal
+    v-if="credentialModalChannel"
+    :channel="credentialModalChannel"
+    :existing-account="credentialModalAccount"
+    @close="credentialModalChannel = null; credentialModalAccount = null"
+    @connected="onChannelConnected"
+  />
 
 </template>
 
@@ -946,10 +1153,11 @@ onMounted(async () => {
 
 .disconnect-modal-content {
   background: var(--background-color);
-  border-radius: 8px;
-  width: 500px;
-  max-width: 90%;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 12px);
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -957,14 +1165,16 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .disconnect-modal-header h3 {
   margin: 0;
-  color: var(--text-primary);
-  font-size: 18px;
+  color: var(--text-primary, var(--text));
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-display, inherit);
 }
 
 .close-modal-btn {
@@ -991,63 +1201,74 @@ onMounted(async () => {
 }
 
 .warning-icon {
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 16px;
+  width: 56px;
+  height: 56px;
+  margin: 4px auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  border-radius: 50%;
+  background: var(--coral-bg, rgba(220, 38, 38, 0.12));
 }
 
 .disconnect-modal-body p {
-  margin-bottom: 16px;
+  margin: 0 0 10px;
   text-align: center;
+  color: var(--text-primary, var(--text));
 }
 
 .warning-text {
   color: var(--error-color);
   font-weight: 500;
+  font-size: 13px;
 }
 
 .integration-specific-warning {
-  margin-top: 24px;
-  padding: 16px;
+  margin-top: 20px;
+  padding: 14px 16px;
   background: var(--background-soft);
-  border-radius: 8px;
-  border-left: 4px solid var(--warning);
+  border-radius: var(--radius-md, 8px);
+  border-left: 3px solid var(--warning, #f5a623);
 }
 
 .integration-specific-warning p {
   text-align: left;
-  margin-bottom: 8px;
-  font-weight: 500;
+  margin: 0 0 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary, var(--text));
 }
 
 .integration-specific-warning ul {
   margin: 0;
-  padding-left: 24px;
+  padding-left: 20px;
 }
 
 .integration-specific-warning li {
-  margin-bottom: 8px;
-  color: var(--text-secondary);
+  margin-bottom: 6px;
+  color: var(--text-secondary, var(--muted));
+  font-size: 13px;
 }
 
 .disconnect-modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
+  gap: 10px;
+  padding: 16px 22px;
   border-top: 1px solid var(--border-color);
   background: var(--background-soft);
 }
 
 .btn-cancel {
   background: var(--background-mute);
-  color: var(--text-primary);
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
+  color: var(--text-primary, var(--text));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-btn, 8px);
+  padding: 9px 16px;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .btn-cancel:hover {
@@ -1056,26 +1277,24 @@ onMounted(async () => {
 
 .btn-disconnect {
   background: var(--error-color);
-  color: white;
+  color: #fff;
   border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
+  border-radius: var(--radius-btn, 8px);
+  padding: 9px 16px;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 500;
-  display: flex;
+  font-weight: 600;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
 .btn-disconnect:hover {
-  background: #d63939; /* Slightly darker shade of error color */
-  transform: translateY(-1px);
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .btn-disconnect:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
