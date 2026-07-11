@@ -1155,10 +1155,11 @@ onMounted(async () => {
 
 .disconnect-modal-content {
   background: var(--background-color);
-  border-radius: 8px;
-  width: 500px;
-  max-width: 90%;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 12px);
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -1166,14 +1167,16 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .disconnect-modal-header h3 {
   margin: 0;
-  color: var(--text-primary);
-  font-size: 18px;
+  color: var(--text-primary, var(--text));
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-display, inherit);
 }
 
 .close-modal-btn {
@@ -1200,63 +1203,74 @@ onMounted(async () => {
 }
 
 .warning-icon {
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 16px;
+  width: 56px;
+  height: 56px;
+  margin: 4px auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  border-radius: 50%;
+  background: var(--coral-bg, rgba(220, 38, 38, 0.12));
 }
 
 .disconnect-modal-body p {
-  margin-bottom: 16px;
+  margin: 0 0 10px;
   text-align: center;
+  color: var(--text-primary, var(--text));
 }
 
 .warning-text {
   color: var(--error-color);
   font-weight: 500;
+  font-size: 13px;
 }
 
 .integration-specific-warning {
-  margin-top: 24px;
-  padding: 16px;
+  margin-top: 20px;
+  padding: 14px 16px;
   background: var(--background-soft);
-  border-radius: 8px;
-  border-left: 4px solid var(--warning);
+  border-radius: var(--radius-md, 8px);
+  border-left: 3px solid var(--warning, #f5a623);
 }
 
 .integration-specific-warning p {
   text-align: left;
-  margin-bottom: 8px;
-  font-weight: 500;
+  margin: 0 0 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary, var(--text));
 }
 
 .integration-specific-warning ul {
   margin: 0;
-  padding-left: 24px;
+  padding-left: 20px;
 }
 
 .integration-specific-warning li {
-  margin-bottom: 8px;
-  color: var(--text-secondary);
+  margin-bottom: 6px;
+  color: var(--text-secondary, var(--muted));
+  font-size: 13px;
 }
 
 .disconnect-modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
+  gap: 10px;
+  padding: 16px 22px;
   border-top: 1px solid var(--border-color);
   background: var(--background-soft);
 }
 
 .btn-cancel {
   background: var(--background-mute);
-  color: var(--text-primary);
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
+  color: var(--text-primary, var(--text));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-btn, 8px);
+  padding: 9px 16px;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .btn-cancel:hover {
@@ -1265,26 +1279,24 @@ onMounted(async () => {
 
 .btn-disconnect {
   background: var(--error-color);
-  color: white;
+  color: #fff;
   border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
+  border-radius: var(--radius-btn, 8px);
+  padding: 9px 16px;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 500;
-  display: flex;
+  font-weight: 600;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
 .btn-disconnect:hover {
-  background: #d63939; /* Slightly darker shade of error color */
-  transform: translateY(-1px);
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .btn-disconnect:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 

@@ -466,31 +466,33 @@ onMounted(async () => {
           </router-link>
         </div>
 
-        <div v-if="channelAccounts.length > 0" class="slack-config">
+        <div v-if="channelAccounts.length > 0" class="msg-config">
           <p class="helper-text">
             Each connected account is answered by one agent. Toggle an account to route its conversations to this agent.
           </p>
-          <div class="slack-channels-list">
-            <div v-for="account in channelAccounts" :key="account.id" class="slack-channel-item">
-              <div class="channel-header">
-                <span class="channel-name">
-                  {{ CHANNEL_LABELS[account.channel_type] || account.channel_type }} · {{ account.display_name || account.external_account_id }}
+          <div class="msg-list">
+            <div
+              v-for="account in channelAccounts"
+              :key="account.id"
+              class="msg-row"
+              :class="{ 'msg-row-active': account.agent_id === props.agentId }"
+            >
+              <div class="msg-info">
+                <span class="msg-badge">{{ CHANNEL_LABELS[account.channel_type] || account.channel_type }}</span>
+                <span class="msg-name">{{ account.display_name || account.external_account_id }}</span>
+                <span v-if="account.agent_id && account.agent_id !== props.agentId" class="msg-note">
+                  routed to another agent
                 </span>
               </div>
-              <div class="channel-options">
-                <label class="option-item">
-                  <input
-                    type="checkbox"
-                    :checked="account.agent_id === props.agentId"
-                    @change="toggleChannelAccount(account)"
-                    :disabled="channelSaving"
-                  />
-                  <span>Answered by this agent</span>
-                </label>
-                <span v-if="account.agent_id && account.agent_id !== props.agentId" class="helper-text">
-                  currently routed to another agent
-                </span>
-              </div>
+              <label class="msg-toggle" :title="account.agent_id === props.agentId ? 'Answering' : 'Not answering'">
+                <input
+                  type="checkbox"
+                  :checked="account.agent_id === props.agentId"
+                  @change="toggleChannelAccount(account)"
+                  :disabled="channelSaving"
+                />
+                <span class="msg-track"><span class="msg-thumb"></span></span>
+              </label>
             </div>
           </div>
         </div>
@@ -892,8 +894,117 @@ input:checked + .slider:before {
 }
 
 /* Slack Integration Styles */
-.slack-config {
+.slack-config,
+.msg-config {
   margin-top: var(--space-md);
+}
+
+.msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.msg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  background: var(--bg-deep);
+  border: 1px solid var(--o08);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.msg-row-active {
+  border-color: var(--accent-solid);
+  background: var(--accent-bg-12, var(--o05));
+}
+
+.msg-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.msg-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-bg-12, var(--o10));
+  color: var(--accent-ink, var(--text));
+}
+
+.msg-name {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-note {
+  flex-shrink: 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--muted);
+}
+
+/* Themed on/off toggle */
+.msg-toggle {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.msg-toggle input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.msg-track {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--o14, rgba(128, 128, 128, 0.3));
+  transition: background 0.2s ease;
+  display: inline-block;
+  position: relative;
+}
+
+.msg-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.msg-toggle input:checked + .msg-track {
+  background: var(--accent-solid);
+}
+
+.msg-toggle input:checked + .msg-track .msg-thumb {
+  transform: translateX(18px);
+}
+
+.msg-toggle input:disabled + .msg-track {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .slack-error {
