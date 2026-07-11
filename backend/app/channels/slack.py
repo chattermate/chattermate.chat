@@ -52,11 +52,14 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
-async def slack_api(method: str, access_token: str, payload: dict) -> dict:
+async def slack_api(method: str, access_token: str, payload: dict, form: bool = False) -> dict:
+    # Write methods (chat.postMessage/update) accept JSON; read/query methods
+    # like users.info only read args from form-encoded params.
+    kwargs = {"data": payload} if form else {"json": payload}
     response = await _get_http_client().post(
         f"{SLACK_API_BASE}/{method}",
-        json=payload,
         headers={"Authorization": f"Bearer {access_token}"},
+        **kwargs,
     )
     return response.json()
 
@@ -146,7 +149,7 @@ class SlackAdapter(ChannelAdapter):
         via users.info so customers show as a name, not a raw U0… id."""
         try:
             data = await slack_api("users.info", self._access_token(account),
-                                   {"user": external_user_id})
+                                   {"user": external_user_id}, form=True)
             if not data.get("ok"):
                 return {}
             user = data.get("user") or {}
