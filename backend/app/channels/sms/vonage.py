@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import hashlib
+import hmac
 from typing import ClassVar, List
 
 from app.channels.base import InboundMessage, SendResult
@@ -30,9 +31,13 @@ logger = get_logger(__name__)
 VONAGE_SMS_URL = "https://rest.nexmo.com/sms/json"
 
 
-def _verify_md5_signature(params: dict, signature_secret: str) -> bool:
-    """Vonage default (MD5 hash) signed-webhook check: MD5 of the sorted
-    params (excluding `sig`, `&`/`=` in values replaced by `_`) + secret."""
+def _verify_hmac_signature(params: dict, signature_secret: str) -> bool:
+    """Vonage HMAC-SHA256 signed-webhook check: HMAC-SHA256(secret) over the
+    sorted params (excluding `sig`, with `&`/`=` in values replaced by `_`).
+
+    Configure the Vonage account's signature method as "SHA-256 HMAC". The
+    legacy MD5 method is intentionally not supported (weak hash).
+    """
     provided = params.get("sig", "")
     if not provided:
         return False
@@ -40,8 +45,10 @@ def _verify_md5_signature(params: dict, signature_secret: str) -> bool:
     for key in sorted(k for k in params if k != "sig"):
         value = str(params[key]).replace("&", "_").replace("=", "_")
         parts.append(f"&{key}={value}")
-    digest = hashlib.md5(("".join(parts) + signature_secret).encode()).hexdigest().upper()
-    return digest == provided.upper()
+    digest = hmac.new(
+        signature_secret.encode(), "".join(parts).encode(), hashlib.sha256
+    ).hexdigest().upper()
+    return hmac.compare_digest(digest, provided.upper())
 
 
 class VonageProvider(SmsProvider):
@@ -59,7 +66,7 @@ class VonageProvider(SmsProvider):
             # No signature configured — rely on the unguessable per-account URL
             return True
         source = req.json_body or req.params
-        return _verify_md5_signature(source, secret)
+        return _verify_hmac_signature(source, secret)
 
     def parse_inbound(self, req: SmsWebhookRequest, account: ChannelAccount) -> List[InboundMessage]:
         p = req.json_body or req.params

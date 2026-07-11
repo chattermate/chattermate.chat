@@ -357,16 +357,16 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     connectAction: () => { showTelegramModal.value = true },
     disconnectAction: handleDisconnectTelegram
   },
+  // Meta channels are pending Meta app review — shown as "coming soon"
   ...(['whatsapp', 'messenger', 'instagram'] as const).map(channel => {
     const meta = {
       whatsapp: { name: 'WhatsApp', logo: whatsappLogo, color: 'teal',
-        description: 'Connect a WhatsApp Business number so customers can message your AI agent on WhatsApp.' },
+        description: 'Let customers message your AI agent on WhatsApp Business.' },
       messenger: { name: 'Messenger', logo: messengerLogo, color: 'accent',
-        description: 'Connect a Facebook Page so customers can chat with your AI agent on Messenger.' },
+        description: 'Let customers chat with your AI agent on Facebook Messenger.' },
       instagram: { name: 'Instagram', logo: instagramLogo, color: 'purple',
-        description: 'Connect an Instagram professional account so customers can DM your AI agent.' },
+        description: 'Let customers DM your AI agent on Instagram.' },
     }[channel]
-    const accounts = accountsFor(channel)
     return {
       id: channel,
       name: meta.name,
@@ -374,11 +374,9 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       logo: meta.logo,
       category: 'MESSAGING',
       color: meta.color,
-      connected: accounts.length > 0,
-      teamName: accounts.map(a => a.display_name).filter(Boolean).join(', '),
-      isLoading: channelsLoading.value,
-      connectAction: () => { metaModalChannel.value = channel },
-      disconnectAction: { whatsapp: handleDisconnectWhatsApp, messenger: handleDisconnectMessenger, instagram: handleDisconnectInstagram }[channel]
+      connected: false,
+      isLoading: false,
+      comingSoon: true,
     }
   }),
   ...(['email', 'sms', 'line'] as const).map(channel => {

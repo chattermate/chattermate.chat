@@ -34,12 +34,16 @@ TWILIO_API_BASE = "https://api.twilio.com/2010-04-01"
 
 def _verify_signature(auth_token: str, url: str, param_pairs, signature: str) -> bool:
     """X-Twilio-Signature: base64(HMAC-SHA1(auth_token, url + sorted concatenated
-    key/values)). param_pairs preserves repeated keys."""
+    key/values)). param_pairs preserves repeated keys.
+
+    HMAC-SHA1 is mandated by Twilio's signature spec (not a free choice); HMAC
+    with SHA1 remains secure for message authentication.
+    """
     if not auth_token or not signature:
         return False
     payload = url + "".join(f"{k}{v}" for k, v in sorted(param_pairs, key=lambda kv: kv[0]))
     expected = base64.b64encode(
-        hmac.new(auth_token.encode(), payload.encode(), hashlib.sha1).digest()
+        hmac.new(auth_token.encode(), payload.encode(), hashlib.sha1).digest()  # noqa: S324 - Twilio protocol
     ).decode()
     return hmac.compare_digest(expected, signature)
 

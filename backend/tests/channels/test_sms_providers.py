@@ -78,13 +78,15 @@ class TestVonage:
         assert await get_provider("vonage").verify_webhook(req, account_with({})) is True
 
     @pytest.mark.asyncio
-    async def test_md5_signature(self):
+    async def test_hmac_signature(self):
         secret = "sig-sek"
         params = {"msisdn": "+44", "text": "hi", "to": "+1555"}
         parts = "".join(f"&{k}={params[k]}" for k in sorted(params))
-        sig = hashlib.md5((parts + secret).encode()).hexdigest().upper()
+        sig = hmac.new(secret.encode(), parts.encode(), hashlib.sha256).hexdigest().upper()
         req = make_req(params={**params, "sig": sig})
         assert await get_provider("vonage").verify_webhook(req, account_with({"signature_secret": secret})) is True
+        bad = make_req(params={**params, "sig": "deadbeef"})
+        assert await get_provider("vonage").verify_webhook(bad, account_with({"signature_secret": secret})) is False
 
 
 class TestMessageBird:
