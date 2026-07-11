@@ -22,9 +22,10 @@ import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
 
 const props = defineProps<{
-  channel: 'email' | 'sms' | 'line'
+  channel: 'email' | 'sms' | 'line' | 'slack'
   // When set, the modal opens in "manage" mode for an already-connected
   // account: it skips credential entry and shows the webhook URL + agent.
+  // Slack always uses this (it connects via OAuth, so only the agent step).
   existingAccount?: ChannelAccount | null
 }>()
 
@@ -84,6 +85,14 @@ const FORMS = {
     ],
     connect: (v: Record<string, string>) => channelsService.connectLine({
       channel_secret: v.channel_secret, channel_access_token: v.channel_access_token }),
+  },
+  slack: {
+    // Slack connects via OAuth (no credential form); this modal is only used
+    // in manage mode to pick the answering agent.
+    title: 'Slack',
+    intro: 'Choose which AI agent answers your Slack mentions and DMs.',
+    fields: [],
+    connect: async () => { throw new Error('Slack connects via OAuth') },
   },
 } as const
 
@@ -228,7 +237,7 @@ const saveAgent = async () => {
           </option>
         </select>
         <div class="cc-actions">
-          <button v-if="isManage" class="cc-btn cc-btn-secondary" @click="account = null">
+          <button v-if="isManage && channel !== 'slack'" class="cc-btn cc-btn-secondary" @click="account = null">
             Reconfigure credentials
           </button>
           <button v-else class="cc-btn cc-btn-secondary" @click="emit('connected', account)">Skip for now</button>

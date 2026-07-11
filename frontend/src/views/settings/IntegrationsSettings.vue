@@ -59,7 +59,7 @@ const showTelegramModal = ref(false)
 // Which Meta connect modal is open (null = none)
 const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
 // Which credential connect modal is open (null = none)
-const credentialModalChannel = ref<'email' | 'sms' | 'line' | null>(null)
+const credentialModalChannel = ref<'email' | 'sms' | 'line' | 'slack' | null>(null)
 // Account being managed (null = fresh connect). Also used for Telegram/Meta manage.
 const credentialModalAccount = ref<ChannelAccount | null>(null)
 const telegramModalAccount = ref<ChannelAccount | null>(null)
@@ -81,8 +81,12 @@ const manageIntegration = (integration: IntegrationCard) => {
   } else if (META_CHANNELS.includes(id)) {
     metaModalAccount.value = acc
     metaModalChannel.value = id as 'whatsapp' | 'messenger' | 'instagram'
+  } else if (id === 'slack') {
+    // Slack connects via OAuth; Manage just picks the answering agent
+    credentialModalAccount.value = acc
+    credentialModalChannel.value = 'slack'
   } else {
-    // Jira/Shopify/Slack: re-run their connect/OAuth flow
+    // Jira/Shopify: re-run their connect/OAuth flow
     if (id === 'shopify') openShopifyInstallation()
     else integration.connectAction?.()
   }
@@ -452,7 +456,13 @@ onMounted(async () => {
         toast.success('Shopify connected successfully!')
       } 
       else if (route.query.integration === 'slack') {
-        toast.success('Slack connected successfully! Add the bot to a channel to configure an agent.')
+        toast.success('Slack connected — choose which agent should answer.')
+        // Open the agent picker for the just-connected Slack workspace
+        const slackAcc = accountsFor('slack')[0]
+        if (slackAcc) {
+          credentialModalAccount.value = slackAcc
+          credentialModalChannel.value = 'slack'
+        }
       }
       else {
         toast.success('Jira connected successfully!')
