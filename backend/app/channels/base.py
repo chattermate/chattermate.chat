@@ -48,16 +48,14 @@ class SendResult:
 
 @dataclass
 class ChannelInteraction:
-    """A non-message interaction from a channel (a tapped button, a shared
-    contact) — distinct from a customer text turn, so it bypasses the AI
-    pipeline and is handled directly."""
-    type: str                        # 'rating' | 'contact'
+    """A non-message interaction from a channel (a shared contact) — distinct
+    from a customer text turn, so it bypasses the AI pipeline and is handled
+    directly."""
+    type: str                        # 'contact'
     external_account_id: str
     external_conversation_id: str
     external_user_id: str
-    rating: Optional[int] = None     # for type == 'rating'
     phone: Optional[str] = None      # for type == 'contact'
-    callback_id: Optional[str] = None  # platform id needed to acknowledge a button tap
     profile: dict = field(default_factory=dict)
 
 
@@ -125,17 +123,7 @@ class ChannelAdapter(ABC):
         """Show a 'typing…' indicator while the agent composes a reply."""
         return None
 
-    async def send_rating_prompt(self, account: ChannelAccount, conversation: ChannelConversation,
-                                 text: str) -> SendResult:
-        """Prompt the customer to rate the conversation (e.g. star buttons)."""
-        return SendResult(ok=False, error=f"{self.channel_type} does not support rating prompts")
-
     async def request_phone(self, account: ChannelAccount, conversation: ChannelConversation,
                             text: str) -> SendResult:
         """Ask the customer to share their phone number natively."""
         return SendResult(ok=False, error=f"{self.channel_type} does not support phone requests")
-
-    async def acknowledge_interaction(self, account: ChannelAccount,
-                                      interaction: "ChannelInteraction", text: str = None) -> None:
-        """Acknowledge a button tap so the platform stops its spinner."""
-        return None

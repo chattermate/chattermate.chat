@@ -15,7 +15,6 @@ limitations under the License.
 """
 
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -36,17 +35,9 @@ from app.repositories.channels import (
     ChannelConversationRepository,
     AgentChannelConfigRepository,
 )
-from app.core.dedupe import claim_once
-from app.repositories.rating import RatingRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.lead_capture import record_lead_from_response
 from app.services.message_delivery import deliver_to_customer
-
-# Key under channel_conversations.extra marking that the next text reply should
-# be captured as feedback for the given rating id. Value: {"rating_id", "at"}.
-_AWAITING_FEEDBACK = "awaiting_feedback_for_rating"
-# A reply this long after the rating is a new conversation, not feedback.
-_FEEDBACK_WINDOW_SECONDS = 30 * 60
 
 # Optional enterprise message-limit check (same seam as the widget path)
 try:
@@ -75,11 +66,6 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             return
 
         adapter = get_adapter(account.channel_type)
-
-        # A text reply right after a rating is the customer's written feedback,
-        # not a new conversation — consume it before anything else.
-        if await _consume_pending_feedback(db, account, adapter, inbound):
-            return
 
         agent_id = AgentChannelConfigRepository(db).get_active_agent_id(account.id)
         if agent_id is None:
@@ -156,9 +142,9 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
 
 
 async def _send_channel_prompts(db, adapter, account, conversation, response) -> None:
-    """After the reply, surface channel-native prompts the widget would render:
-    a phone-share request when the agent asks for contact, and a rating prompt
-    when a chat ends with rating enabled."""
+    """After the reply, surface channel-native prompts. Rating is deliberately
+    NOT asked on external channels — it is a web-widget-only feature; here we
+    only request a phone number when the agent asks for contact."""
     if adapter is None:
         return
     try:
@@ -166,73 +152,29 @@ async def _send_channel_prompts(db, adapter, account, conversation, response) ->
             await adapter.request_phone(
                 account, conversation,
                 "To help us follow up, tap below to share your phone number.")
-        elif getattr(response, 'request_rating', False) and getattr(response, 'end_chat', False):
-            await adapter.send_rating_prompt(
-                account, conversation,
-                "How would you rate your experience? Tap a star below.")
     except Exception as e:
         logger.error(f"Failed sending channel prompt: {e}")
 
 
 async def process_channel_interaction(account_id, interaction: ChannelInteraction) -> None:
-    """Handle a non-message interaction (rating tap or shared phone) from a
-    channel. Runs from a BackgroundTask with its own DB session."""
+    """Handle a non-message interaction (a shared phone number) from a channel.
+    Runs from a BackgroundTask with its own DB session."""
     db = SessionLocal()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
             return
-        adapter = get_adapter(account.channel_type)
         conversation = ChannelConversationRepository(db).get_latest(
             account.id, interaction.external_conversation_id)
         if conversation is None:
             return
 
-        if interaction.type == "rating":
-            await _handle_rating(db, adapter, account, conversation, interaction)
-        elif interaction.type == "contact":
+        if interaction.type == "contact":
             _handle_contact(db, conversation, interaction)
     except Exception as e:
         logger.error(f"Error processing channel interaction: {e}", exc_info=True)
     finally:
         db.close()
-
-
-async def _handle_rating(db, adapter, account, conversation, interaction: ChannelInteraction) -> None:
-    """Record a star rating, acknowledge the tap, and ask for optional feedback."""
-    rating_repo = RatingRepository(db)
-    # Capture once per session: atomic Redis claim guards concurrent double-taps,
-    # the DB check guards the no-Redis fallback and long-lived retries.
-    already_rated = (
-        not claim_once("rating_session", str(conversation.session_id))
-        or rating_repo.get_rating_by_session(conversation.session_id) is not None
-    )
-    if already_rated:
-        if adapter is not None:
-            await adapter.acknowledge_interaction(account, interaction, "You've already rated — thank you!")
-        return
-
-    value = max(1, min(5, interaction.rating or 0))
-    rating = rating_repo.create_rating(
-        session_id=conversation.session_id,
-        customer_id=conversation.customer_id,
-        user_id=None,
-        agent_id=conversation.agent_id,
-        organization_id=conversation.organization_id,
-        rating=value,
-    )
-    if adapter is not None:
-        await adapter.acknowledge_interaction(account, interaction, f"Thanks for the {value}-star rating!")
-        # Ask for optional written feedback; the next text reply (within the
-        # feedback window) is captured as it
-        ChannelConversationRepository(db).set_extra(
-            conversation, {**(conversation.extra or {}), _AWAITING_FEEDBACK: {
-                "rating_id": str(rating.id),
-                "at": datetime.now(timezone.utc).isoformat(),
-            }})
-        await adapter.send_text(
-            account, conversation,
-            "Thank you! If you'd like, reply with any feedback — or send /skip.")
 
 
 def _handle_contact(db, conversation, interaction: ChannelInteraction) -> None:
@@ -248,43 +190,6 @@ def _handle_contact(db, conversation, interaction: ChannelInteraction) -> None:
     customer.meta_data = meta
     db.commit()
     logger.info(f"Stored shared phone for customer {conversation.customer_id}")
-
-
-async def _consume_pending_feedback(db, account, adapter, inbound: InboundMessage) -> bool:
-    """If the conversation is awaiting written feedback (rated within the
-    feedback window), capture this text reply as the rating's feedback (or skip
-    it) and return True. An expired flag is cleared and the message flows on to
-    normal processing — a question asked a day later must reach the agent."""
-    conversation = ChannelConversationRepository(db).get_latest(
-        account.id, inbound.external_conversation_id)
-    if conversation is None:
-        return False
-    pending = (conversation.extra or {}).get(_AWAITING_FEEDBACK)
-    if not pending:
-        return False
-
-    # Clear the awaiting state regardless of outcome
-    extra = dict(conversation.extra or {})
-    extra.pop(_AWAITING_FEEDBACK, None)
-    ChannelConversationRepository(db).set_extra(conversation, extra)
-
-    rating_id = pending.get("rating_id") if isinstance(pending, dict) else pending
-    rated_at = pending.get("at") if isinstance(pending, dict) else None
-    if rated_at:
-        try:
-            age = (datetime.now(timezone.utc) - datetime.fromisoformat(rated_at)).total_seconds()
-            if age > _FEEDBACK_WINDOW_SECONDS:
-                return False  # too old — treat as a fresh customer message
-        except ValueError:
-            pass
-
-    text = (inbound.text or "").strip()
-    if text.lower() != "/skip":
-        RatingRepository(db).update_feedback(rating_id, text)
-    if adapter is not None:
-        reply = "Thanks for your feedback!" if text.lower() != "/skip" else "No problem — thanks!"
-        await adapter.send_text(account, conversation, reply)
-    return True
 
 
 def _get_or_create_customer(db: Session, account: ChannelAccount,

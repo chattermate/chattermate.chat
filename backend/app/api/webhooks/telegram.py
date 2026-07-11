@@ -51,14 +51,10 @@ async def telegram_webhook(
 
     payload = await request.json()
 
-    # Button taps (rating) and shared contacts (phone) are interactions, not
-    # customer text turns — dispatch them separately. Callback taps are deduped
-    # by their unique callback id (Telegram redelivers on slow acks).
+    # A shared contact (phone) is an interaction, not a customer text turn —
+    # dispatch it separately.
     interaction = adapter.parse_interaction(payload)
     if interaction is not None:
-        if interaction.callback_id and is_duplicate_message(
-                ChannelType.TELEGRAM.value, f"cb:{account.id}:{interaction.callback_id}"):
-            return {"ok": True}
         background_tasks.add_task(process_channel_interaction, account.id, interaction)
         return {"ok": True}
 

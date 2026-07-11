@@ -71,8 +71,8 @@ async def set_webhook(bot_token: str, url: str, secret_token: str) -> tuple[bool
         data = await _call_api(bot_token, "setWebhook", {
             "url": url,
             "secret_token": secret_token,
-            # message: customer texts + shared contacts; callback_query: rating taps
-            "allowed_updates": ["message", "callback_query"],
+            # message covers customer texts and shared contacts
+            "allowed_updates": ["message"],
         })
         if data.get("ok"):
             return True, ""
@@ -133,28 +133,8 @@ class TelegramAdapter(ChannelAdapter):
         )]
 
     def parse_interaction(self, payload: dict):
-        """Detect a rating-button tap (callback_query) or a shared contact
-        (message.contact) — both bypass the AI pipeline."""
-        callback = payload.get("callback_query")
-        if callback:
-            data = callback.get("data") or ""
-            chat = ((callback.get("message") or {}).get("chat")) or {}
-            sender = callback.get("from") or {}
-            if data.startswith("rate:") and "id" in chat:
-                try:
-                    rating = int(data.split(":", 1)[1])
-                except ValueError:
-                    return None
-                return ChannelInteraction(
-                    type="rating",
-                    external_account_id="",
-                    external_conversation_id=str(chat["id"]),
-                    external_user_id=str(sender.get("id", chat["id"])),
-                    rating=rating,
-                    callback_id=str(callback.get("id", "")),
-                )
-            return None
-
+        """Detect a shared contact (message.contact) — the share-phone flow.
+        Bypasses the AI pipeline."""
         message = payload.get("message") or {}
         contact = message.get("contact")
         chat = message.get("chat") or {}
@@ -186,15 +166,6 @@ class TelegramAdapter(ChannelAdapter):
         except Exception as e:
             logger.debug(f"Telegram sendChatAction failed (non-critical): {e}")
 
-    async def send_rating_prompt(self, account: ChannelAccount, conversation: ChannelConversation,
-                                 text: str) -> SendResult:
-        # Inline keyboard of 1–5 stars; taps arrive as callback_query "rate:N"
-        keyboard = {"inline_keyboard": [[
-            {"text": "⭐" * n, "callback_data": f"rate:{n}"} for n in range(1, 6)
-        ]]}
-        return await self._send_message(account, conversation.external_conversation_id, text,
-                                        reply_markup=keyboard)
-
     async def request_phone(self, account: ChannelAccount, conversation: ChannelConversation,
                             text: str) -> SendResult:
         # One-time reply keyboard with a share-contact button
@@ -205,17 +176,6 @@ class TelegramAdapter(ChannelAdapter):
         }
         return await self._send_message(account, conversation.external_conversation_id, text,
                                         reply_markup=keyboard)
-
-    async def acknowledge_interaction(self, account: ChannelAccount, interaction, text: str = None) -> None:
-        if not getattr(interaction, "callback_id", None):
-            return
-        try:
-            payload = {"callback_query_id": interaction.callback_id}
-            if text:
-                payload["text"] = text
-            await _call_api(self._bot_token(account), "answerCallbackQuery", payload)
-        except Exception as e:
-            logger.debug(f"Telegram answerCallbackQuery failed (non-critical): {e}")
 
     async def _send_message(self, account: ChannelAccount, chat_id: str, text: str,
                             reply_markup: dict = None) -> SendResult:
