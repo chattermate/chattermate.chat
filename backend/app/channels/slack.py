@@ -61,6 +61,13 @@ async def slack_api(method: str, access_token: str, payload: dict) -> dict:
     return response.json()
 
 
+# Placeholder "typing…" message ts per (account, conversation) — set by
+# send_typing, consumed by send_text which edits it into the real reply.
+# In-memory is fine: a message's send_typing + send_text run in the same
+# background task / worker.
+_typing_placeholders: dict = {}
+
+
 def verify_slack_signature(headers: dict, raw_body: bytes) -> bool:
     """Validate X-Slack-Signature (v0 HMAC-SHA256 over 'v0:{ts}:{body}') with
     replay protection. Fails closed when SLACK_SIGNING_SECRET is unset."""
@@ -134,13 +141,57 @@ class SlackAdapter(ChannelAdapter):
             timestamp=timestamp,
         )]
 
-    async def send_text(self, account: ChannelAccount, conversation: ChannelConversation, text: str) -> SendResult:
+    async def fetch_profile(self, account: ChannelAccount, external_user_id: str) -> dict:
+        """Resolve the Slack user's real name (and email, if the scope allows)
+        via users.info so customers show as a name, not a raw U0… id."""
+        try:
+            data = await slack_api("users.info", self._access_token(account),
+                                   {"user": external_user_id})
+            if not data.get("ok"):
+                return {}
+            user = data.get("user") or {}
+            profile = user.get("profile") or {}
+            name = (user.get("real_name") or profile.get("display_name")
+                    or profile.get("real_name"))
+            return {"name": name or None, "email": profile.get("email")}
+        except Exception as e:
+            logger.error(f"Slack users.info failed: {e}")
+            return {}
+
+    async def send_typing(self, account: ChannelAccount, conversation: ChannelConversation) -> None:
+        # Slack has no bot typing indicator; post a placeholder we later edit
+        # into the real reply so the customer sees an immediate "typing…".
         channel, thread_ts = self._split_conversation(conversation.external_conversation_id)
-        payload = {"channel": channel, "text": text}
+        payload = {"channel": channel, "text": "_typing…_", "mrkdwn": True}
         if thread_ts:
             payload["thread_ts"] = thread_ts
         try:
             data = await slack_api("chat.postMessage", self._access_token(account), payload)
+            if data.get("ok"):
+                _typing_placeholders[self._placeholder_key(account, conversation)] = data["ts"]
+        except Exception as e:
+            logger.debug(f"Slack typing placeholder failed (non-critical): {e}")
+
+    async def send_text(self, account: ChannelAccount, conversation: ChannelConversation, text: str) -> SendResult:
+        channel, thread_ts = self._split_conversation(conversation.external_conversation_id)
+        token = self._access_token(account)
+
+        # If we posted a "typing…" placeholder, edit it into the reply
+        placeholder_ts = _typing_placeholders.pop(self._placeholder_key(account, conversation), None)
+        if placeholder_ts:
+            try:
+                data = await slack_api("chat.update", token,
+                                       {"channel": channel, "ts": placeholder_ts, "text": text})
+                if data.get("ok"):
+                    return SendResult(ok=True, external_message_id=str(data.get("ts", "")))
+            except Exception as e:
+                logger.debug(f"Slack chat.update failed, posting new message: {e}")
+
+        payload = {"channel": channel, "text": text}
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
+        try:
+            data = await slack_api("chat.postMessage", token, payload)
             if not data.get("ok"):
                 return SendResult(ok=False, error=str(data.get("error") or "chat.postMessage failed"))
             return SendResult(ok=True, external_message_id=str(data.get("ts", "")))
@@ -151,6 +202,10 @@ class SlackAdapter(ChannelAdapter):
     def format_outbound(self, markdown: str) -> str:
         # Slack mrkdwn uses single markers: **bold** -> *bold*
         return markdown.replace("**", "*")[:MAX_MESSAGE_LENGTH]
+
+    @staticmethod
+    def _placeholder_key(account: ChannelAccount, conversation: ChannelConversation) -> tuple:
+        return (str(account.id), conversation.external_conversation_id)
 
     @staticmethod
     def _split_conversation(conversation_id: str) -> tuple[str, Optional[str]]:

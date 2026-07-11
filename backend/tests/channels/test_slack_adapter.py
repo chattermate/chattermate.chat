@@ -126,3 +126,50 @@ class TestSignature:
         monkeypatch.setattr(settings, "SLACK_SIGNING_SECRET", "")
         assert verify_slack_signature({"x-slack-request-timestamp": "1",
                                        "x-slack-signature": "v0=x"}, b"{}") is False
+
+
+class TestSlackProfileAndTyping:
+    @pytest.mark.asyncio
+    async def test_fetch_profile_resolves_real_name(self, adapter, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+        acc = MagicMock()
+        monkeypatch.setattr(adapter, "_access_token", lambda a: "tok")
+        monkeypatch.setattr("app.channels.slack.slack_api", AsyncMock(return_value={
+            "ok": True, "user": {"real_name": "Ada Lovelace",
+                                 "profile": {"display_name": "ada", "email": "ada@acme.com"}}}))
+        prof = await adapter.fetch_profile(acc, "U09UPKP7")
+        assert prof["name"] == "Ada Lovelace"
+        assert prof["email"] == "ada@acme.com"
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_handles_error(self, adapter, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+        monkeypatch.setattr(adapter, "_access_token", lambda a: "tok")
+        monkeypatch.setattr("app.channels.slack.slack_api",
+                            AsyncMock(return_value={"ok": False, "error": "missing_scope"}))
+        assert await adapter.fetch_profile(MagicMock(), "U0") == {}
+
+    @pytest.mark.asyncio
+    async def test_typing_placeholder_then_edit(self, adapter, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+        import app.channels.slack as slk
+        acc = MagicMock(); acc.id = "acc1"
+        conv = MagicMock(external_conversation_id="D7")
+        monkeypatch.setattr(adapter, "_access_token", lambda a: "tok")
+        calls = []
+        async def fake_api(method, token, payload):
+            calls.append((method, payload))
+            if method == "chat.postMessage":
+                return {"ok": True, "ts": "111.222"}
+            if method == "chat.update":
+                return {"ok": True, "ts": payload["ts"]}
+            return {"ok": False}
+        monkeypatch.setattr(slk, "slack_api", fake_api)
+
+        await adapter.send_typing(acc, conv)         # posts placeholder
+        result = await adapter.send_text(acc, conv, "Here is your answer")  # edits it
+        assert result.ok and result.external_message_id == "111.222"
+        methods = [m for m, _ in calls]
+        assert methods == ["chat.postMessage", "chat.update"]  # not a second post
+        # placeholder consumed
+        assert slk._typing_placeholders.get(("acc1", "D7")) is None

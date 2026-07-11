@@ -37,8 +37,9 @@ from app.core.logger import get_logger
 router = APIRouter()
 logger = get_logger(__name__)
 
-# Bot scopes for the customer-chat use case: receive mentions + DMs, reply
-OAUTH_SCOPES = "app_mentions:read,chat:write,im:history,im:read,im:write"
+# Bot scopes for the customer-chat use case: receive mentions + DMs, reply,
+# and resolve the sender's real name (users:read) so customers aren't raw U0… ids
+OAUTH_SCOPES = "app_mentions:read,chat:write,im:history,im:read,im:write,users:read"
 STATE_TTL_SECONDS = 60 * 10
 
 # In-process fallback when Redis is disabled (single-worker dev setups)

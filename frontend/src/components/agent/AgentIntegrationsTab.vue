@@ -919,8 +919,8 @@ input:checked + .slider:before {
 }
 
 .msg-row-active {
-  border-color: var(--accent-solid);
-  background: var(--accent-bg-12, var(--o05));
+  border-color: var(--o14, var(--o10));
+  background: var(--o05);
 }
 
 .msg-info {
@@ -938,8 +938,8 @@ input:checked + .slider:before {
   text-transform: uppercase;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--accent-bg-12, var(--o10));
-  color: var(--accent-ink, var(--text));
+  background: var(--o08);
+  color: var(--muted);
 }
 
 .msg-name {

@@ -73,6 +73,15 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             return
 
         org_id = str(account.organization_id)
+        # Enrich the profile (real name/email) when the webhook lacks it — e.g.
+        # Slack sends only a user id, resolved via users.info.
+        if adapter is not None and not (inbound.profile or {}).get("name"):
+            try:
+                enrichment = await adapter.fetch_profile(account, inbound.external_user_id)
+                if enrichment:
+                    inbound.profile = {**(inbound.profile or {}), **{k: v for k, v in enrichment.items() if v}}
+            except Exception as e:
+                logger.debug(f"Profile enrichment failed (non-critical): {e}")
         customer_id = _get_or_create_customer(db, account, inbound, org_id)
         session_record, conversation = _get_or_create_session(
             db, account, inbound, agent_id, customer_id, org_id
