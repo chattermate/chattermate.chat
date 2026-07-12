@@ -54,8 +54,6 @@ def chat_agent(mock_agent_data, mock_db):
     mock_ai_config.encrypted_api_key = "test-key"
     
     # Mock AI config repository
-    mock_ai_config_repo = Mock()
-    mock_ai_config_repo.get_active_config.return_value = mock_ai_config
     
     # Mock knowledge search tool
     mock_knowledge_tool = Mock()
@@ -69,9 +67,7 @@ def chat_agent(mock_agent_data, mock_db):
     
     with patch('app.agents.chat_agent.get_db') as mock_get_db, \
          patch('app.agents.chat_agent.JiraRepository') as mock_jira_repo, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository', return_value=mock_ai_config_repo), \
          patch('app.tools.knowledge_search_byagent.KnowledgeSearchByAgent', return_value=mock_knowledge_tool), \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key', return_value="decrypted-test-key"), \
          patch('app.agents.chat_agent.PostgresAgentStorage', return_value=mock_storage), \
          patch('app.agents.chat_agent.settings.DATABASE_URL', "mock://test"), \
          patch.dict('os.environ', mock_env, clear=True):
