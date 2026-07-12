@@ -174,6 +174,9 @@ const isLoading = ref(true)
 const showDisconnectConfirm = ref(false)
 const disconnectingIntegration = ref<string | null>(null)
 const lastConnectionError = ref<string | null>(null)
+// Which integration card the error belongs to, so an OAuth failure shows on the
+// right card (e.g. DocuSign) instead of always falling onto Jira.
+const lastConnectionErrorId = ref<string | null>(null)
 
 // Check if Jira is connected
 const fetchJiraStatus = async () => {
@@ -511,11 +514,12 @@ onMounted(async () => {
   
   // Check if we're returning from an OAuth flow
   if (route.query.status) {
+    const integrationId = route.query.integration as string || ''
     if (route.query.status === 'success') {
-      if (route.query.integration === 'shopify') {
+      if (integrationId === 'shopify') {
         toast.success('Shopify connected successfully!')
-      } 
-      else if (route.query.integration === 'slack') {
+      }
+      else if (integrationId === 'slack') {
         toast.success('Slack connected — choose which agent should answer.')
         // Open the agent picker for the just-connected Slack workspace
         const slackAcc = accountsFor('slack')[0]
@@ -525,19 +529,23 @@ onMounted(async () => {
         }
       }
       else {
-        toast.success('Jira connected successfully!')
+        const label = availableIntegrations.value.find(i => i.id === integrationId)?.name
+          || (integrationId ? integrationId : 'Integration')
+        toast.success(`${label} connected successfully!`)
       }
       lastConnectionError.value = null
+      lastConnectionErrorId.value = null
     } else if (route.query.status === 'failure') {
       // Handle different failure reasons
       const reason = route.query.reason as string || 'unknown'
-      const integration = route.query.integration as string || 'integration'
-      
-      let errorMessage = `Failed to connect to ${integration}`
-      
+      const label = availableIntegrations.value.find(i => i.id === integrationId)?.name
+        || (integrationId ? integrationId : 'integration')
+
+      let errorMessage = `Failed to connect to ${label}`
+
       // Map common error reasons to user-friendly messages
       if (reason === 'cancelled') {
-        errorMessage = `${integration} connection was cancelled`
+        errorMessage = `${label} connection was cancelled`
       } else if (reason === 'invalid_state') {
         errorMessage = 'Authentication session expired or is invalid'
       } else if (reason.includes('unauthorized')) {
@@ -545,11 +553,12 @@ onMounted(async () => {
       } else if (reason) {
         // Format the reason to be more readable
         const formattedReason = reason.replace(/_/g, ' ')
-        errorMessage = `Failed to connect to ${integration}: ${formattedReason}`
+        errorMessage = `Failed to connect to ${label}: ${formattedReason}`
       }
-      
+
       toast.error(errorMessage)
       lastConnectionError.value = errorMessage
+      lastConnectionErrorId.value = integrationId || null
     }
     
     // Remove the query parameters to avoid showing the toast on refresh
@@ -643,7 +652,7 @@ onMounted(async () => {
           <div v-else-if="integration.connected && integration.teamName" class="integration-meta">
             <span class="meta-text">{{ integration.teamName }}</span>
           </div>
-          <div v-else-if="!integration.connected && integration.id === 'jira' && lastConnectionError" class="integration-meta">
+          <div v-else-if="!integration.connected && integration.id === lastConnectionErrorId && lastConnectionError" class="integration-meta">
             <span class="meta-error">⚠️ {{ lastConnectionError }}</span>
           </div>
 

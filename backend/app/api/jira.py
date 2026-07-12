@@ -118,14 +118,14 @@ async def jira_oauth_callback(
 ):
     """Handle the Atlassian OAuth callback: exchange the code, resolve the site,
     and store the encrypted token, then redirect back to the integrations page."""
-    base = f"{settings.FRONTEND_URL}/settings/integrations"
+    base = f"{settings.FRONTEND_URL}/settings/integrations?integration=jira"
     if error or not code or not state:
         oauth_states.pop(state, None)
-        return RedirectResponse(url=f"{base}?status=failure&reason={error or 'cancelled'}")
+        return RedirectResponse(url=f"{base}&status=failure&reason={error or 'cancelled'}")
 
     org_id = oauth_states.pop(state, None)
     if not org_id:
-        return RedirectResponse(url=f"{base}?status=failure&reason=invalid_state")
+        return RedirectResponse(url=f"{base}&status=failure&reason=invalid_state")
 
     try:
         oauth = JiraOAuth()
@@ -133,11 +133,11 @@ async def jira_oauth_callback(
         resources = oauth.get_accessible_resources(token_data["access_token"])
         site = resources[0]
         store_token(db, org_id, token_data, cloud_id=site["id"], site_url=site["url"])
-        return RedirectResponse(url=f"{base}?status=success")
+        return RedirectResponse(url=f"{base}&status=success")
     except Exception as e:
         logger.error(f"Error during Jira OAuth callback: {e}")
         reason = str(e).replace(" ", "_")[:100]
-        return RedirectResponse(url=f"{base}?status=failure&reason={reason}")
+        return RedirectResponse(url=f"{base}&status=failure&reason={reason}")
 
 
 @router.get("/refresh")

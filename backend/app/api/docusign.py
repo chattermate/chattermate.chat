@@ -118,14 +118,14 @@ async def docusign_oauth_callback(
 ):
     """Handle the DocuSign OAuth callback: exchange the code, resolve the account
     base URI, store the encrypted token, then redirect to integrations."""
-    base = f"{settings.FRONTEND_URL}/settings/integrations"
+    base = f"{settings.FRONTEND_URL}/settings/integrations?integration=docusign"
     if error or not code or not state:
         oauth_states.pop(state, None)
-        return RedirectResponse(url=f"{base}?status=failure&reason={error or 'cancelled'}")
+        return RedirectResponse(url=f"{base}&status=failure&reason={error or 'cancelled'}")
 
     org_id = oauth_states.pop(state, None)
     if not org_id:
-        return RedirectResponse(url=f"{base}?status=failure&reason=invalid_state")
+        return RedirectResponse(url=f"{base}&status=failure&reason=invalid_state")
 
     try:
         oauth = DocuSignOAuth()
@@ -133,11 +133,11 @@ async def docusign_oauth_callback(
         account = oauth.get_account(token_data["access_token"])
         store_token(db, org_id, token_data,
                     account_id=account["account_id"], base_uri=account["base_uri"])
-        return RedirectResponse(url=f"{base}?status=success")
+        return RedirectResponse(url=f"{base}&status=success")
     except Exception as e:
         logger.error(f"Error during DocuSign OAuth callback: {e}")
         reason = str(e).replace(" ", "_")[:100]
-        return RedirectResponse(url=f"{base}?status=failure&reason={reason}")
+        return RedirectResponse(url=f"{base}&status=failure&reason={reason}")
 
 
 @router.get("/refresh")
