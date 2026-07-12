@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     # Help center (public FAQ site)
     # Base domain serving {slug}.<base> help centers.
     HELP_CENTER_BASE_DOMAIN: str = os.getenv("HELP_CENTER_BASE_DOMAIN", "chattermate.help")
+    # CNAME target customers point their custom help-center domain at.
+    HELP_CENTER_CNAME_TARGET: str = os.getenv("HELP_CENTER_CNAME_TARGET", "cname.chattermate.chat")
     # FAQ generation cost caps (per source / per LLM call) and import fetch limits.
     FAQ_MAX_PAGES_PER_SOURCE: int = int(os.getenv("FAQ_MAX_PAGES_PER_SOURCE", "300"))
     FAQ_MAX_BATCH_CHARS: int = int(os.getenv("FAQ_MAX_BATCH_CHARS", "15000"))

@@ -22,6 +22,7 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 from fastapi.staticfiles import StaticFiles
 import socketio
 from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_apps, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, people
+from app.api import help_center as help_center_api
 from app.api import channels as channels_api
 from app.api import webhooks as channel_webhooks
 # Import widget_chat to register socket.io event handlers for /widget namespace
@@ -123,6 +124,12 @@ app.include_router(
     users.router,
     prefix=f"{settings.API_V1_STR}/users",
     tags=["users"]
+)
+
+app.include_router(
+    help_center_api.router,
+    prefix=f"{settings.API_V1_STR}/help-center",
+    tags=["help-center"]
 )
 
 app.include_router(

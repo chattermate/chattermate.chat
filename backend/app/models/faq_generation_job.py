@@ -94,4 +94,10 @@ class FAQGenerationJob(Base):
             "status",
             postgresql_where=(status.in_(ACTIVE_FAQ_JOB_STATUSES)),
         ),
+        # NOTE: production also has uq_faq_generation_jobs_one_active — a
+        # UNIQUE partial index on (organization_id, job_type,
+        # COALESCE(knowledge_id, -1)) WHERE status is active, closing the
+        # enqueue check-then-insert race. It lives only in the migration:
+        # declaring it here would create it WITHOUT the partial WHERE on
+        # sqlite (tests), wrongly blocking re-enqueues after completion.
     )

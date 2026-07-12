@@ -80,6 +80,16 @@ def upgrade() -> None:
         ['status'],
         postgresql_where=sa.text("status IN ('pending', 'processing')"),
     )
+    # DB-enforced one-active-job guard per (org, type, source): the API's
+    # check-then-insert would otherwise race on concurrent /generate calls.
+    # COALESCE keeps per-source auto jobs for different sources parallel.
+    op.create_index(
+        'uq_faq_generation_jobs_one_active',
+        'faq_generation_jobs',
+        ['organization_id', 'job_type', sa.text('COALESCE(knowledge_id, -1)')],
+        unique=True,
+        postgresql_where=sa.text("status IN ('pending', 'processing')"),
+    )
 
     op.create_table(
         'help_center_settings',
