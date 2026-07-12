@@ -1,0 +1,162 @@
+{#
+Copyright 2024-2026 ChatterMate
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Public help center page. Every org value is escaped by Jinja2 autoescaping;
+never mark org content safe. The only JS is the optional Ask-AI fetch and the
+chat-widget embed.
+#}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <meta name="description" content="{{ description }}">
+  <link rel="canonical" href="{{ canonical_url }}/">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ canonical_url }}/">
+  <style>
+    :root { --brand: {{ brand_color }}; --brand-ink: {{ brand_ink }}; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; color: #1a1b25; background: #fff; }
+    a { color: inherit; }
+    .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: 1px solid #ececf2; }
+    .header .org { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+    .header .org img { height: 32px; width: auto; display: block; }
+    .header nav { display: flex; align-items: center; gap: 18px; font-size: 14px; }
+    .header nav a { color: #5a6172; text-decoration: none; }
+    .header nav a.cta { background: var(--brand); color: var(--brand-ink); padding: 9px 16px; border-radius: 9px; font-weight: 600; }
+    .hero { padding: 48px 24px 40px; text-align: center; background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 10%, #fff), #fff 90%); }
+    .hero h1 { margin: 0 0 20px; font-size: 30px; letter-spacing: -0.02em; }
+    .search { display: flex; gap: 8px; max-width: 560px; margin: 0 auto; }
+    .search input { flex: 1; padding: 13px 16px; font-size: 15px; border: 1px solid #e4e6ec; border-radius: 11px; outline: none; }
+    .search input:focus { border-color: var(--brand); }
+    .search button { padding: 13px 22px; font-size: 15px; font-weight: 600; border: none; border-radius: 11px; background: var(--brand); color: var(--brand-ink); cursor: pointer; }
+    .ask { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    .ask-card { display: none; margin-top: 18px; padding: 16px 18px; border: 1px solid #e4e6ec; border-radius: 12px; background: #fafafc; text-align: left; font-size: 15px; line-height: 1.55; }
+    .ask-card.loading { color: #7a8190; }
+    .ask-btn { margin-top: 14px; background: none; border: 1px solid var(--brand); color: var(--brand); padding: 9px 18px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .content { max-width: 760px; margin: 0 auto; padding: 24px 24px 80px; }
+    .category { margin-top: 34px; }
+    .category h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #7a8190; border-bottom: 1px solid #ececf2; padding-bottom: 10px; }
+    details { border-bottom: 1px solid #f1f2f6; }
+    summary { cursor: pointer; padding: 16px 4px; font-size: 16px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; color: var(--brand); font-size: 20px; font-weight: 400; }
+    details[open] summary::after { content: "\2212"; }
+    .answer { padding: 0 4px 18px; color: #4a5060; font-size: 15px; line-height: 1.6; white-space: pre-line; }
+    .empty { text-align: center; color: #7a8190; padding: 60px 0; }
+    .footer { text-align: center; padding: 28px; color: #9aa0ad; font-size: 13px; border-top: 1px solid #ececf2; }
+    .footer a { color: #7a8190; text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="org">
+      {% if logo_url %}<img src="{{ logo_url }}" alt="{{ row.organization.name }} logo">{% endif %}
+      <span>{{ row.organization.name }}</span>
+    </div>
+    <nav>
+      {% for link in header_links %}<a href="{{ link.url }}" rel="noopener">{{ link.label }}</a>{% endfor %}
+      {% if row.cta_text and row.cta_url %}<a class="cta" href="{{ row.cta_url }}" rel="noopener">{{ row.cta_text }}</a>{% endif %}
+    </nav>
+  </header>
+
+  <section class="hero">
+    <h1>How can we help?</h1>
+    <form class="search" method="get" action="/">
+      <input type="search" name="q" value="{{ search }}" placeholder="Search for answers…" maxlength="200">
+      <button type="submit">Search</button>
+    </form>
+    {% if ask_enabled %}
+    <div class="ask">
+      <button class="ask-btn" id="ask-btn" type="button">✦ Ask AI</button>
+      <div class="ask-card" id="ask-card"></div>
+    </div>
+    {% endif %}
+  </section>
+
+  <main class="content">
+    {% if search %}<p>Results for “{{ search }}” — <a href="/">clear</a></p>{% endif %}
+    {% for category, faqs in groups %}
+    <section class="category">
+      <h2>{{ category }}</h2>
+      {% for faq in faqs %}
+      <details{% if search %} open{% endif %}>
+        <summary>{{ faq.question }}</summary>
+        <div class="answer">{{ faq.answer }}</div>
+      </details>
+      {% endfor %}
+    </section>
+    {% else %}
+    <p class="empty">{% if search %}No answers matched your search.{% else %}No published FAQs yet — check back soon.{% endif %}</p>
+    {% endfor %}
+  </main>
+
+  <footer class="footer">
+    Powered by <a href="https://chattermate.chat" rel="noopener">ChatterMate</a>
+  </footer>
+
+  {% if groups %}
+  <script type="application/ld+json">{{ faq_json_ld | tojson }}</script>
+  {% endif %}
+
+  {% if ask_enabled %}
+  <script>
+    (function () {
+      var btn = document.getElementById('ask-btn');
+      var card = document.getElementById('ask-card');
+      var input = document.querySelector('.search input');
+      btn.addEventListener('click', function () {
+        var question = (input.value || '').trim();
+        if (question.length < 3) { input.focus(); return; }
+        card.style.display = 'block';
+        card.className = 'ask-card loading';
+        card.textContent = 'Thinking…';
+        fetch('/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: question })
+        }).then(function (r) {
+          if (!r.ok) throw new Error(r.status);
+          return r.json();
+        }).then(function (data) {
+          card.className = 'ask-card';
+          card.textContent = data.answer;
+        }).catch(function (err) {
+          card.className = 'ask-card';
+          card.textContent = String(err.message) === '429'
+            ? 'Too many questions — please try again in a minute.'
+            : 'Sorry, I could not answer that right now.';
+        });
+      });
+    })();
+  </script>
+  {% endif %}
+
+  {% if widget_id %}
+  <script>
+    window.chattermateId = {{ widget_id | tojson }};
+    (function () {
+      var s = document.createElement('script');
+      s.src = {{ widget_script_url | tojson }};
+      s.async = true;
+      document.body.appendChild(s);
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

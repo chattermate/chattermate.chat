@@ -281,4 +281,9 @@ app.mount("/api/v1/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # Create final ASGI app
-app = socketio.ASGIApp(sio, app)
+# Public help center: requests for {slug}.<help domain> / verified custom
+# domains are dispatched to the SSR help-center app before reaching the API.
+from app.api.help_center_public import public_app
+from app.core.help_center_host import HelpCenterHostMiddleware
+
+app = socketio.ASGIApp(sio, HelpCenterHostMiddleware(app, public_app))
