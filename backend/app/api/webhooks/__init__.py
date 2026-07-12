@@ -21,6 +21,7 @@ from app.api.webhooks.slack import router as slack_router
 from app.api.webhooks.email import router as email_router
 from app.api.webhooks.sms import router as sms_router
 from app.api.webhooks.line import router as line_router
+from app.api.webhooks.teams import router as teams_router
 from app.api.webhooks.meta import router as meta_router
 
 # Aggregates every channel's webhook routes under /webhooks
@@ -30,5 +31,6 @@ router.include_router(slack_router, prefix="/slack", tags=["webhooks"])
 router.include_router(email_router, prefix="/email", tags=["webhooks"])
 router.include_router(sms_router, prefix="/sms", tags=["webhooks"])
 router.include_router(line_router, prefix="/line", tags=["webhooks"])
+router.include_router(teams_router, prefix="/teams", tags=["webhooks"])
 # One endpoint for all three Meta products (WhatsApp / Messenger / Instagram)
 router.include_router(meta_router, prefix="/meta", tags=["webhooks"])

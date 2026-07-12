@@ -104,3 +104,9 @@ class SmsProviderInfo(BaseModel):
 class LineConnectRequest(BaseModel):
     channel_secret: str
     channel_access_token: str
+
+
+class TeamsConnectRequest(BaseModel):
+    app_id: str
+    app_password: str
+    display_name: Optional[str] = None

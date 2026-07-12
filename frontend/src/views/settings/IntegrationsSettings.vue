@@ -40,6 +40,7 @@ import instagramLogo from '@/assets/instagram-logo.svg'
 import emailLogo from '@/assets/email-logo.svg'
 import smsLogo from '@/assets/sms-logo.svg'
 import lineLogo from '@/assets/line-logo.svg'
+import teamsLogo from '@/assets/teams-logo.svg'
 
 // Define interface for Shopify shop
 interface ShopifyShop {
@@ -61,13 +62,13 @@ const showTelegramModal = ref(false)
 // Which Meta connect modal is open (null = none)
 const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
 // Which credential connect modal is open (null = none)
-const credentialModalChannel = ref<'email' | 'sms' | 'line' | 'slack' | null>(null)
+const credentialModalChannel = ref<'email' | 'sms' | 'line' | 'slack' | 'teams' | null>(null)
 // Account being managed (null = fresh connect). Also used for Telegram/Meta manage.
 const credentialModalAccount = ref<ChannelAccount | null>(null)
 const telegramModalAccount = ref<ChannelAccount | null>(null)
 const metaModalAccount = ref<ChannelAccount | null>(null)
 
-const CREDENTIAL_CHANNELS = ['email', 'sms', 'line']
+const CREDENTIAL_CHANNELS = ['email', 'sms', 'line', 'teams']
 const META_CHANNELS = ['whatsapp', 'messenger', 'instagram']
 
 // "Manage" on a connected card: open the right modal for the connected account
@@ -76,7 +77,7 @@ const manageIntegration = (integration: IntegrationCard) => {
   const acc = accountsFor(id)[0] ?? null
   if (CREDENTIAL_CHANNELS.includes(id)) {
     credentialModalAccount.value = acc
-    credentialModalChannel.value = id as 'email' | 'sms' | 'line'
+    credentialModalChannel.value = id as 'email' | 'sms' | 'line' | 'teams'
   } else if (id === 'telegram') {
     telegramModalAccount.value = acc
     showTelegramModal.value = true
@@ -135,6 +136,8 @@ const disconnectChannelAccounts = async (channelType: string, label: string) => 
         await channelsService.disconnectSms(account.id)
       } else if (channelType === 'line') {
         await channelsService.disconnectLine(account.id)
+      } else if (channelType === 'teams') {
+        await channelsService.disconnectTeams(account.id)
       } else {
         await channelsService.disconnectMeta(account.id)
       }
@@ -159,6 +162,7 @@ const handleDisconnectInstagram = () => disconnectChannelAccounts('instagram', '
 const handleDisconnectEmail = () => disconnectChannelAccounts('email', 'Email')
 const handleDisconnectSms = () => disconnectChannelAccounts('sms', 'SMS')
 const handleDisconnectLine = () => disconnectChannelAccounts('line', 'LINE')
+const handleDisconnectTeams = () => disconnectChannelAccounts('teams', 'Teams')
 
 
 const route = useRoute()
@@ -433,7 +437,7 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       comingSoon: true,
     }
   }),
-  ...(['email', 'sms', 'line'] as const).map(channel => {
+  ...(['email', 'sms', 'line', 'teams'] as const).map(channel => {
     const meta = {
       email: { name: 'Email', logo: emailLogo, color: 'purple',
         description: 'Connect a support inbox so email conversations are answered by your AI agent.',
@@ -444,6 +448,9 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       line: { name: 'LINE', logo: lineLogo, color: 'teal',
         description: 'Connect a LINE Official Account so customers can chat with your AI agent on LINE.',
         disconnect: handleDisconnectLine },
+      teams: { name: 'Microsoft Teams', logo: teamsLogo, color: 'accent',
+        description: 'Connect a Teams bot so employees can chat with your AI agent in Microsoft Teams.',
+        disconnect: handleDisconnectTeams },
     }[channel]
     const accounts = accountsFor(channel)
     return {
@@ -794,6 +801,15 @@ onMounted(async () => {
         >
           <span v-if="channelsLoading" class="loading-spinner"></span>
           <span v-else>Disconnect Telegram</span>
+        </button>
+        <button
+          v-if="disconnectingIntegration === 'teams'"
+          class="btn-disconnect"
+          @click="handleDisconnectTeams"
+          :disabled="channelsLoading"
+        >
+          <span v-if="channelsLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect Teams</span>
         </button>
         <button
           v-if="disconnectingIntegration === 'email' || disconnectingIntegration === 'sms' || disconnectingIntegration === 'line'"

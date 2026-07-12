@@ -41,6 +41,7 @@ class ChannelType(str, enum.Enum):
     EMAIL = "email"
     SMS = "sms"
     LINE = "line"
+    TEAMS = "teams"
     API = "api"
 
 

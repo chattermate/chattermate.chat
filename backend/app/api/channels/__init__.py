@@ -23,6 +23,7 @@ from app.api.channels.slack import router as slack_router
 from app.api.channels.email import router as email_router
 from app.api.channels.sms import router as sms_router
 from app.api.channels.line import router as line_router
+from app.api.channels.teams import router as teams_router
 from app.api.channels.agent_config import router as agent_config_router
 
 # Aggregates channel onboarding/management routes under /channels
@@ -34,4 +35,5 @@ router.include_router(slack_router, prefix="/slack", tags=["channels"])
 router.include_router(email_router, prefix="/email", tags=["channels"])
 router.include_router(sms_router, prefix="/sms", tags=["channels"])
 router.include_router(line_router, prefix="/line", tags=["channels"])
+router.include_router(teams_router, prefix="/teams", tags=["channels"])
 router.include_router(agent_config_router, prefix="/agent-config", tags=["channels"])

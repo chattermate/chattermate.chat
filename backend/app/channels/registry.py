@@ -51,3 +51,4 @@ def _ensure_loaded() -> None:
     from app.channels import email  # noqa: F401
     from app.channels import sms  # noqa: F401
     from app.channels import line  # noqa: F401
+    from app.channels import teams  # noqa: F401

@@ -46,6 +46,8 @@ def channel_webhook_url(account) -> str | None:
     if account.channel_type == ChannelType.SMS.value:
         provider = (account.settings or {}).get("provider", "twilio")
         return f"{base}/sms/{provider}/{account.id}"
+    if account.channel_type == ChannelType.TEAMS.value:
+        return f"{base}/teams/{account.id}"
     return None
 
 
