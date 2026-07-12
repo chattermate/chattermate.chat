@@ -37,6 +37,8 @@ BOT_TOKEN_URL = "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/
 BOT_TOKEN_SCOPE = "https://api.botframework.com/.default"
 MAX_MESSAGE_LENGTH = 28000  # Teams hard limit is 40k; stay comfortably under
 REQUEST_TIMEOUT_SECONDS = 15.0
+# Bot Framework tokens are short-lived; allow small clock drift vs. Microsoft.
+JWT_LEEWAY_SECONDS = 300
 
 _http_client: Optional[httpx.AsyncClient] = None
 # Reuse one JWKS client so Microsoft's signing keys are fetched+cached once.
@@ -97,17 +99,32 @@ class TeamsAdapter(ChannelAdapter):
         token = auth.split(" ", 1)[1]
         try:
             signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
-            jwt.decode(
+            claims = jwt.decode(
                 token,
                 signing_key.key,
                 algorithms=["RS256"],
                 audience=self._app_id(account),
                 issuer=BOT_TOKEN_ISSUER,
+                leeway=JWT_LEEWAY_SECONDS,
             )
-            return True
         except Exception as e:
             logger.warning(f"Teams JWT validation failed: {e}")
             return False
+
+        # Bot Framework spec: the token's serviceurl claim must match the
+        # activity's serviceUrl. Without this, a replayed valid token carrying a
+        # substituted serviceUrl would redirect our authenticated reply (bearing
+        # the bot's Connector token) to an attacker-controlled host.
+        claim_url = (claims.get("serviceurl") or "").rstrip("/")
+        if claim_url:
+            try:
+                body_url = (json.loads(raw_body).get("serviceUrl") or "").rstrip("/")
+            except (ValueError, AttributeError):
+                return False
+            if body_url != claim_url:
+                logger.warning("Teams serviceUrl does not match the token's serviceurl claim")
+                return False
+        return True
 
     def parse_inbound(self, payload: dict) -> List[InboundMessage]:
         """Normalize a Bot Framework Activity. Only user 'message' activities
@@ -164,7 +181,12 @@ class TeamsAdapter(ChannelAdapter):
             )
             if response.status_code >= 300:
                 return SendResult(ok=False, error=f"HTTP {response.status_code}: {response.text[:200]}")
-            return SendResult(ok=True, external_message_id=str(response.json().get("id", "")))
+            # A 2xx with an empty/non-JSON body is still a successful send.
+            try:
+                message_id = str((response.json() or {}).get("id", ""))
+            except ValueError:
+                message_id = ""
+            return SendResult(ok=True, external_message_id=message_id)
         except Exception as e:
             logger.error(f"Teams send failed: {e}")
             return SendResult(ok=False, error=str(e))

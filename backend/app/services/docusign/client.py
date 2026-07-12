@@ -46,13 +46,22 @@ class DocuSignClient:
         return requests.request(
             method, url, headers=headers, timeout=config.HTTP_TIMEOUT_SECONDS, **kwargs)
 
+    @staticmethod
+    def _json(response: requests.Response, error: str) -> Any:
+        """Parse a JSON body, raising the domain error (not a raw JSONDecodeError)
+        when a 2xx response carries a non-JSON body."""
+        try:
+            return response.json()
+        except ValueError:
+            raise DocuSignAuthError(f"{error}: non-JSON response")
+
     def list_templates(self) -> List[Dict[str, Any]]:
         response = self._request("GET", "templates")
         if response.status_code != 200:
             raise DocuSignAuthError(f"Failed to list DocuSign templates: {response.text[:200]}")
         return [
             {"templateId": t.get("templateId"), "name": t.get("name")}
-            for t in response.json().get("envelopeTemplates", [])
+            for t in self._json(response, "Failed to list DocuSign templates").get("envelopeTemplates", [])
         ]
 
     def send_envelope_from_template(self, template_id: str, recipient_email: str,
@@ -72,11 +81,11 @@ class DocuSignClient:
         response = self._request("POST", "envelopes", json=body)
         if response.status_code not in (200, 201):
             raise DocuSignAuthError(f"Failed to send DocuSign envelope: {response.text[:200]}")
-        return response.json()
+        return self._json(response, "Failed to send DocuSign envelope")
 
     def get_envelope(self, envelope_id: str) -> Dict[str, Any]:
         response = self._request("GET", f"envelopes/{envelope_id}")
         if response.status_code != 200:
             raise DocuSignAuthError(
                 f"Failed to get DocuSign envelope {envelope_id}: {response.text[:200]}")
-        return response.json()
+        return self._json(response, f"Failed to get DocuSign envelope {envelope_id}")

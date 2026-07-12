@@ -46,7 +46,9 @@ def store_token(db: Session, organization_id, token_data: Dict[str, Any],
         token = JiraToken(organization_id=organization_id)
         db.add(token)
     token.access_token = encrypt_api_key(token_data["access_token"])
-    token.refresh_token = encrypt_api_key(token_data["refresh_token"])
+    # Providers may omit a refresh token; store empty rather than crashing the
+    # OAuth callback (refresh will then fail cleanly and prompt a reconnect).
+    token.refresh_token = encrypt_api_key(token_data.get("refresh_token") or "")
     token.token_type = token_data["token_type"]
     token.expires_at = token_data["expires_at"]
     token.cloud_id = cloud_id

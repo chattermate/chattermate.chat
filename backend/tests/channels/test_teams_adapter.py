@@ -83,6 +83,32 @@ async def test_verify_webhook_validates_jwt(adapter):
 
 
 @pytest.mark.asyncio
+async def test_verify_webhook_rejects_serviceurl_mismatch(adapter):
+    """A validly-signed token whose serviceurl claim differs from the activity's
+    serviceUrl is rejected (prevents redirecting the authenticated reply)."""
+    account = MagicMock()
+    raw = b'{"serviceUrl": "https://attacker.example/"}'
+    with patch.object(TeamsAdapter, "_app_id", return_value="app-123"), \
+         patch("app.channels.teams._get_jwks_client"), \
+         patch("app.channels.teams.jwt.decode",
+               return_value={"aud": "app-123", "serviceurl": "https://smba.example/amer/"}):
+        ok = await adapter.verify_webhook({"authorization": "Bearer tok"}, raw, account)
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_verify_webhook_accepts_matching_serviceurl(adapter):
+    account = MagicMock()
+    raw = b'{"serviceUrl": "https://smba.example/amer/"}'
+    with patch.object(TeamsAdapter, "_app_id", return_value="app-123"), \
+         patch("app.channels.teams._get_jwks_client"), \
+         patch("app.channels.teams.jwt.decode",
+               return_value={"aud": "app-123", "serviceurl": "https://smba.example/amer"}):
+        ok = await adapter.verify_webhook({"authorization": "Bearer tok"}, raw, account)
+    assert ok is True  # trailing-slash-insensitive match
+
+
+@pytest.mark.asyncio
 async def test_verify_webhook_fails_closed_on_bad_jwt(adapter):
     account = MagicMock()
     with patch.object(TeamsAdapter, "_app_id", return_value="app-123"), \

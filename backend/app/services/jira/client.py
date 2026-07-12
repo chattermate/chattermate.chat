@@ -55,11 +55,20 @@ class JiraClient:
         return requests.request(
             method, url, headers=headers, timeout=config.HTTP_TIMEOUT_SECONDS, **kwargs)
 
+    @staticmethod
+    def _json(response: requests.Response, error: str) -> Any:
+        """Parse a JSON body, raising the domain error (not a raw JSONDecodeError)
+        when a 2xx response carries a non-JSON body (e.g. a proxy error page)."""
+        try:
+            return response.json()
+        except ValueError:
+            raise JiraAuthError(f"{error}: non-JSON response")
+
     def _get_json(self, path: str, error: str) -> Any:
         response = self._request("GET", path)
         if response.status_code != 200:
             raise JiraAuthError(f"{error}: {response.text[:200]}")
-        return response.json()
+        return self._json(response, error)
 
     def get_projects(self) -> List[Dict[str, Any]]:
         projects = self._get_json("project", "Failed to get Jira projects")
@@ -121,7 +130,7 @@ class JiraClient:
         response = self._request("POST", "issue", json={"fields": fields})
         if response.status_code not in (200, 201):
             raise JiraAuthError(f"Failed to create Jira issue: {response.text[:200]}")
-        return response.json()
+        return self._json(response, "Failed to create Jira issue")
 
     def add_comment(self, issue_key: str, text: str) -> None:
         response = self._request("POST", f"issue/{issue_key}/comment", json={"body": to_adf(text)})
