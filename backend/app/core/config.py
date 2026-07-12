@@ -126,6 +126,11 @@ class Settings(BaseSettings):
     HELP_CENTER_BASE_DOMAIN: str = os.getenv("HELP_CENTER_BASE_DOMAIN", "chattermate.help")
     # CNAME target customers point their custom help-center domain at.
     HELP_CENTER_CNAME_TARGET: str = os.getenv("HELP_CENTER_CNAME_TARGET", "cname.chattermate.chat")
+    # IPs the CNAME target resolves to — accepted when a provider flattens the
+    # CNAME into A/AAAA records (comma-separated).
+    HELP_CENTER_TARGET_IPS: frozenset = frozenset(
+        ip.strip() for ip in os.getenv("HELP_CENTER_TARGET_IPS", "").split(",") if ip.strip()
+    )
     # FAQ generation cost caps (per source / per LLM call) and import fetch limits.
     FAQ_MAX_PAGES_PER_SOURCE: int = int(os.getenv("FAQ_MAX_PAGES_PER_SOURCE", "300"))
     FAQ_MAX_BATCH_CHARS: int = int(os.getenv("FAQ_MAX_BATCH_CHARS", "15000"))

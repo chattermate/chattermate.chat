@@ -21,6 +21,7 @@ joins in the domain-verification unit). Mounted at /api/v1/help-center.
 from fastapi import APIRouter
 
 from app.api.help_center.branding import router as branding_router
+from app.api.help_center.domain import router as domain_router
 from app.api.help_center.faqs import router as faqs_router
 from app.api.help_center.generation import router as generation_router
 
@@ -28,3 +29,4 @@ router = APIRouter()
 router.include_router(branding_router)
 router.include_router(faqs_router)
 router.include_router(generation_router)
+router.include_router(domain_router)
