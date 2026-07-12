@@ -124,6 +124,11 @@ class Settings(BaseSettings):
     # Help center (public FAQ site)
     # Base domain serving {slug}.<base> help centers.
     HELP_CENTER_BASE_DOMAIN: str = os.getenv("HELP_CENTER_BASE_DOMAIN", "chattermate.help")
+    # FAQ generation cost caps (per source / per LLM call) and import fetch limits.
+    FAQ_MAX_PAGES_PER_SOURCE: int = int(os.getenv("FAQ_MAX_PAGES_PER_SOURCE", "300"))
+    FAQ_MAX_BATCH_CHARS: int = int(os.getenv("FAQ_MAX_BATCH_CHARS", "15000"))
+    FAQ_IMPORT_MAX_PAGE_CHARS: int = int(os.getenv("FAQ_IMPORT_MAX_PAGE_CHARS", "100000"))
+    FAQ_IMPORT_FETCH_TIMEOUT: int = int(os.getenv("FAQ_IMPORT_FETCH_TIMEOUT", "30"))
     # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx
     # records that exist on the base domain, hence env-configurable.
     HELP_CENTER_RESERVED_SLUGS: frozenset = frozenset(

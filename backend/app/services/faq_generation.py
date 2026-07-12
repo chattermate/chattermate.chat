@@ -1,0 +1,319 @@
+"""
+Copyright 2024-2026 ChatterMate
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+FAQ generation pipeline: read the org's stored knowledge text (no re-crawl),
+extract grounded FAQs with the org's configured model, dedup against existing
+questions and insert drafts for review. Additive only — regeneration never
+edits or deletes existing FAQs. The drafting loop and dedup/category helpers
+here are shared with the import service (faq_import.py).
+"""
+
+import re
+from collections import deque
+from typing import Awaitable, Callable, List, Optional, Tuple, TypeVar
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.agents.faq_generator import FAQGeneratorAgent, GeneratedFAQ
+from app.core.config import settings
+from app.core.logger import get_logger
+from app.core.security import decrypt_api_key
+from app.knowledge.page_editor import PAGE_ID_EXPR
+from app.models.faq import FAQ, DEFAULT_FAQ_CATEGORY, FAQStatus
+from app.models.faq_generation_job import FAQGenerationJob, FAQJobStage, FAQJobType
+from app.models.knowledge import Knowledge
+from app.repositories.ai_config import AIConfigRepository
+from app.repositories.faq import FAQRepository
+from app.repositories.faq_generation_job import FAQGenerationJobRepository
+
+logger = get_logger(__name__)
+
+# Dedup lists injected into prompts are capped to keep context bounded; the
+# in-Python normalized-set dedup below still covers every existing question.
+MAX_PROMPT_QUESTIONS = 200
+
+# Chunk ids look like 'page', 'page_1', ..., 'page_10' — natural sort (length
+# first) keeps 'page_2' before 'page_10' where plain text ordering would not.
+_NATURAL_ID_ORDER = "length(id), id"
+
+_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+
+BatchT = TypeVar("BatchT")
+
+
+def normalize_question(question: str) -> str:
+    """Casefold + strip punctuation/whitespace, so trivial rephrasings of the
+    same question dedup against each other."""
+    return " ".join(_PUNCT_RE.sub(" ", question.casefold()).split())
+
+
+class NoAIConfigError(Exception):
+    """The org has no active AI configuration to generate with."""
+
+
+def build_generator(db: Session, organization_id) -> FAQGeneratorAgent:
+    config = AIConfigRepository(db).get_active_config(organization_id)
+    if not config:
+        raise NoAIConfigError(
+            "No active AI configuration. Set up an AI model in AI Configuration first."
+        )
+    return FAQGeneratorAgent(
+        api_key=decrypt_api_key(config.encrypted_api_key),
+        model_name=config.model_name,
+        model_type=config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type),
+    )
+
+
+def load_source_pages(db: Session, knowledge: Knowledge) -> List[str]:
+    """One string of aggregated text per crawled page/sub-page of a source,
+    read straight from the org's vector table (content is stored alongside the
+    embeddings — no re-crawl needed). Pages kept in crawl order when the cap
+    truncates; chunk text within a page is naturally ordered."""
+    if not knowledge.schema or not knowledge.table_name:
+        # Source rows without a vector table (failed/partial ingestion).
+        return []
+    query = text(
+        f"SELECT {PAGE_ID_EXPR} AS page_id, "
+        f"string_agg(content, E'\n' ORDER BY {_NATURAL_ID_ORDER}) AS body "
+        f'FROM {knowledge.schema}."{knowledge.table_name}" '
+        "WHERE name = :source GROUP BY 1 ORDER BY min(created_at) LIMIT :max_pages"
+    )
+    rows = db.execute(
+        query, {"source": knowledge.source, "max_pages": settings.FAQ_MAX_PAGES_PER_SOURCE}
+    ).fetchall()
+    max_chars = settings.FAQ_MAX_BATCH_CHARS
+    return [row.body[:max_chars] for row in rows if row.body and row.body.strip()]
+
+
+def pack_batches(items: List[str], max_chars: Optional[int] = None, sep: str = "\n\n---\n\n") -> List[str]:
+    """Greedy-pack whole items (pages, lines) into batches of ~max_chars.
+    Oversized single items are truncated to max_chars, never split across
+    batches. Shared by generation (page items) and import (line items)."""
+    max_chars = max_chars or settings.FAQ_MAX_BATCH_CHARS
+    batches: List[str] = []
+    current: List[str] = []
+    size = 0
+    for item in items:
+        item = item[:max_chars]
+        if current and size + len(item) + len(sep) > max_chars:
+            batches.append(sep.join(current))
+            current, size = [], 0
+        current.append(item)
+        size += len(item) + len(sep)
+    if current:
+        batches.append(sep.join(current))
+    return batches
+
+
+class DedupState:
+    """Tracks every question seen (existing + accepted this run): a normalized
+    set for matching, plus a bounded recent-questions window for prompts."""
+
+    def __init__(self, existing_questions: List[str]):
+        self.seen = {normalize_question(q) for q in existing_questions}
+        self._recent = deque(existing_questions, maxlen=MAX_PROMPT_QUESTIONS)
+
+    def accept_new(self, faqs: List[GeneratedFAQ]) -> List[GeneratedFAQ]:
+        accepted = []
+        for faq in faqs:
+            key = normalize_question(faq.question)
+            if not key or key in self.seen:
+                continue
+            self.seen.add(key)
+            self._recent.append(faq.question)
+            accepted.append(faq)
+        return accepted
+
+    @property
+    def for_prompt(self) -> List[str]:
+        return list(self._recent)
+
+
+class CategoryMerger:
+    """Case-insensitive merge of model-emitted categories into the org's
+    existing spellings."""
+
+    def __init__(self, db: Session, organization_id):
+        self._known = {c.casefold(): c for c in FAQRepository(db).get_categories(organization_id)}
+
+    def merge(self, category: str) -> str:
+        cleaned = (category or "").strip() or DEFAULT_FAQ_CATEGORY
+        return self._known.setdefault(cleaned.casefold(), cleaned)
+
+    @property
+    def names(self) -> List[str]:
+        return list(self._known.values())
+
+
+async def draft_batches(
+    db: Session,
+    job: FAQGenerationJob,
+    batches: List[BatchT],
+    extract: Callable[[BatchT, DedupState], Awaitable[List[GeneratedFAQ]]],
+    retries_per_batch: int = 1,
+) -> List[Tuple[BatchT, GeneratedFAQ]]:
+    """Shared DRAFTING stage: run `extract` per batch with retry, dedup as we
+    go, report progress 30→90%. Raises only when every batch failed."""
+    job_repo = FAQGenerationJobRepository(db)
+    job_repo.update_progress(job.id, stage=FAQJobStage.DRAFTING, progress_percentage=30.0)
+    dedup = DedupState(FAQRepository(db).get_existing_questions(job.organization_id))
+
+    accepted: List[Tuple[BatchT, GeneratedFAQ]] = []
+    failures = 0
+    for index, batch in enumerate(batches):
+        faqs = None
+        for attempt in range(1 + retries_per_batch):
+            try:
+                faqs = await extract(batch, dedup)
+                break
+            except Exception as e:
+                logger.warning(f"FAQ batch {index + 1}/{len(batches)} attempt {attempt + 1} failed: {e}")
+        if faqs is None:
+            failures += 1
+        else:
+            accepted.extend((batch, faq) for faq in dedup.accept_new(faqs))
+        job_repo.update_progress(
+            job.id, progress_percentage=30.0 + 60.0 * (index + 1) / len(batches)
+        )
+    if batches and failures == len(batches):
+        raise RuntimeError("FAQ generation failed for every content batch.")
+    return accepted
+
+
+def insert_draft_rows(db: Session, job: FAQGenerationJob, rows: List[FAQ]) -> int:
+    """Shared GROUPING stage tail: bulk-insert the drafted rows."""
+    FAQGenerationJobRepository(db).update_progress(
+        job.id, stage=FAQJobStage.GROUPING, progress_percentage=92.0
+    )
+    if rows:
+        FAQRepository(db).bulk_create(rows)
+    return len(rows)
+
+
+async def run_generation_job(db: Session, job: FAQGenerationJob) -> int:
+    """Execute a GENERATE_ALL / GENERATE_SOURCE job. Returns FAQs created.
+    Status transitions and notifications are the worker's responsibility."""
+    job_repo = FAQGenerationJobRepository(db)
+
+    # Stage 1: resolve sources + model config.
+    job_repo.update_progress(job.id, stage=FAQJobStage.ANALYZING_SOURCES, progress_percentage=5.0)
+    generator = build_generator(db, job.organization_id)
+
+    knowledge_query = db.query(Knowledge).filter(Knowledge.organization_id == job.organization_id)
+    if job.job_type == FAQJobType.GENERATE_SOURCE.value:
+        knowledge_query = knowledge_query.filter(Knowledge.id == job.knowledge_id)
+    sources = knowledge_query.all()
+    if not sources:
+        raise ValueError("No knowledge sources to generate from. Add knowledge first.")
+
+    # Stage 2: read stored page text per source. A broken source (missing
+    # vector table etc.) is skipped, not fatal — unless nothing is readable.
+    job_repo.update_progress(job.id, stage=FAQJobStage.EXTRACTING, progress_percentage=10.0)
+    source_batches: List[Tuple[Knowledge, str]] = []
+    for source in sources:
+        try:
+            pages = load_source_pages(db, source)
+        except Exception as e:
+            logger.warning(f"Skipping unreadable knowledge source {source.id} ({source.source}): {e}")
+            db.rollback()
+            continue
+        for batch in pack_batches(pages):
+            source_batches.append((source, batch))
+    if not source_batches:
+        raise ValueError("The selected knowledge sources contain no readable content.")
+
+    # Stage 3: draft per batch (shared loop).
+    categories = CategoryMerger(db, job.organization_id)
+
+    async def extract(batch: Tuple[Knowledge, str], dedup: DedupState) -> List[GeneratedFAQ]:
+        return await generator.generate_from_text(
+            batch[1],
+            existing_questions=dedup.for_prompt,
+            existing_categories=categories.names,
+        )
+
+    accepted = await draft_batches(db, job, source_batches, extract)
+
+    # Stage 4: group + insert drafts.
+    rows = [
+        FAQ(
+            organization_id=job.organization_id,
+            question=faq.question,
+            answer=faq.answer,
+            category=categories.merge(faq.category),
+            status=FAQStatus.DRAFT,
+            knowledge_id=source.id,
+            source_label=source.source,
+            generation_job_id=job.id,
+            created_by=job.user_id,
+        )
+        for (source, _batch_text), faq in accepted
+    ]
+    return insert_draft_rows(db, job, rows)
+
+
+def maybe_enqueue_auto_faq_job(db: Session, queue_item) -> Optional[FAQGenerationJob]:
+    """Auto-generate draft FAQs when a new knowledge source finishes processing.
+
+    Only fires for orgs that have adopted the feature (a help-center settings
+    row or any FAQ exists), have auto-generate on, are allowed by their plan
+    (cloud), and don't already have an active job for this source. Never raises
+    and always leaves the shared session usable — a hook failure must not fail
+    knowledge processing.
+    """
+    try:
+        from app.repositories.help_center import HelpCenterRepository
+        from app.services.help_center_access import help_center_allowed
+
+        org_id = queue_item.organization_id
+        settings_row = HelpCenterRepository(db).get_by_org(org_id)
+        faq_repo = FAQRepository(db)
+        if not settings_row and not faq_repo.exists_for_org(org_id):
+            return None  # org has never used the feature
+        if settings_row and not settings_row.auto_generate:
+            return None
+        if not help_center_allowed(db, org_id):
+            return None
+        knowledge = (
+            db.query(Knowledge)
+            .filter(Knowledge.organization_id == org_id, Knowledge.source == queue_item.source)
+            .order_by(Knowledge.id.desc())  # deterministic: newest row wins on duplicate sources
+            .first()
+        )
+        if not knowledge:
+            return None
+        job_repo = FAQGenerationJobRepository(db)
+        if job_repo.get_active_for_org(org_id, FAQJobType.GENERATE_SOURCE, knowledge_id=knowledge.id):
+            return None
+        job = job_repo.create(
+            FAQGenerationJob(
+                organization_id=org_id,
+                user_id=queue_item.user_id,
+                job_type=FAQJobType.GENERATE_SOURCE.value,
+                knowledge_id=knowledge.id,
+            )
+        )
+        logger.info(f"Auto-enqueued FAQ generation job {job.id} for knowledge {knowledge.id}")
+        return job
+    except Exception as e:
+        logger.error(f"Auto FAQ enqueue failed (non-fatal): {e}")
+        # A failed flush would otherwise poison the caller's session and turn
+        # an already-successful knowledge run into a FAILED one.
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None

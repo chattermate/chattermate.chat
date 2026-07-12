@@ -63,6 +63,14 @@ async def run_processor_loop():
                 logger.info(f"Worker {WORKER_ID}: Iteration {iteration} - Processing completed successfully")
             except Exception as e:
                 logger.error(f"Worker {WORKER_ID}: Iteration {iteration} - Error in knowledge processor: {str(e)}")
+
+            # FAQ generation jobs ride the same loop in this entrypoint too, so
+            # both worker entrypoints drain the FAQ queue.
+            try:
+                from app.workers.faq_processor import run_faq_processor
+                await run_faq_processor()
+            except Exception as e:
+                logger.error(f"Worker {WORKER_ID}: Iteration {iteration} - Error in FAQ processor: {str(e)}")
             
             # Calculate how long the processing took
             elapsed = asyncio.get_event_loop().time() - start_time

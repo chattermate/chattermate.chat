@@ -100,13 +100,24 @@ async def process_queue_item(queue_item_id: int):
                     type=NotificationType.KNOWLEDGE_PROCESSED,
                     title="Knowledge Processing Complete",
                     message=f"Successfully processed {user_friendly_name}",
-                    metadata={"queue_id": queue_item.id}
+                    # The column is notification_metadata; the old metadata=
+                    # kwarg silently shadowed Base.metadata and stored nothing.
+                    notification_metadata={"queue_id": queue_item.id}
                 )
                 db.add(notification)
                 db.commit()
 
                 # Send FCM notification
                 await send_fcm_notification(queue_item.user_id, notification, db)
+
+                # Auto-draft FAQs from the new source for orgs using the help
+                # center. Fully non-fatal — even an import failure of the FAQ
+                # stack must not flip an already-successful run to FAILED.
+                try:
+                    from app.services.faq_generation import maybe_enqueue_auto_faq_job
+                    maybe_enqueue_auto_faq_job(db, queue_item)
+                except Exception as faq_hook_err:
+                    logger.error(f"Auto FAQ hook unavailable (non-fatal): {faq_hook_err}")
 
             queue_item.status = QueueStatus.COMPLETED
             db.commit()
@@ -125,7 +136,7 @@ async def process_queue_item(queue_item_id: int):
                     type=NotificationType.KNOWLEDGE_FAILED,
                     title="Knowledge Processing Failed",
                     message=f"Failed to process {user_friendly_name}: {str(e)}",
-                    metadata={"queue_id": queue_item.id}
+                    notification_metadata={"queue_id": queue_item.id}
                 )
                 db.add(notification)
                 db.commit()
@@ -187,9 +198,22 @@ if __name__ == "__main__":
                 logger.info("Knowledge processor completed, sleeping for 60 seconds")
             except Exception as e:
                 logger.error(f"Error in knowledge processor loop: {str(e)}")
-            
+
             # Sleep for 60 seconds before next run
             await asyncio.sleep(60)
+
+    async def main():
+        """Knowledge and FAQ loops run as independent tasks in this container:
+        a long FAQ generation job never delays knowledge ingestion, and an
+        import failure of the FAQ stack only disables the FAQ half."""
+        tasks = [processor_loop()]
+        try:
+            from app.workers.faq_processor import run_faq_processor_loop
+            tasks.append(run_faq_processor_loop())
+        except Exception as e:
+            logger.error(f"FAQ processor unavailable, running knowledge only: {e}")
+        await asyncio.gather(*tasks)
+
+    # Run both loops
+    asyncio.run(main())
     
-    # Run the processor loop
-    asyncio.run(processor_loop())
