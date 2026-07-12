@@ -47,16 +47,28 @@ def _resp(status=200, payload=None, text=""):
 # --- OAuth ---------------------------------------------------------------
 
 def test_authorization_url_includes_params(oauth):
-    url = oauth.authorization_url("state1")
+    verifier, challenge = oauth.generate_pkce()
+    url = oauth.authorization_url("state1", challenge)
     assert "/oauth/auth?" in url
     assert "client_id=cid" in url and "state=state1" in url and "scope=signature" in url
+    assert "code_challenge=" in url and "code_challenge_method=S256" in url
+
+
+def test_generate_pkce_is_s256_of_verifier(oauth):
+    import base64 as _b64, hashlib as _hashlib
+    verifier, challenge = oauth.generate_pkce()
+    expected = _b64.urlsafe_b64encode(_hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    assert challenge == expected
+    assert 43 <= len(verifier) <= 128  # RFC 7636 length bounds
 
 
 def test_exchange_code_success(oauth):
     payload = {"access_token": "a", "refresh_token": "r", "token_type": "Bearer", "expires_in": 3600}
-    with patch("app.services.docusign.oauth.requests.post", return_value=_resp(200, payload)):
-        data = oauth.exchange_code("code")
+    with patch("app.services.docusign.oauth.requests.post", return_value=_resp(200, payload)) as post:
+        data = oauth.exchange_code("code", "verifier-123")
     assert data["access_token"] == "a" and data["expires_at"] > datetime.utcnow()
+    # PKCE verifier must be sent on the token exchange
+    assert post.call_args.kwargs["data"]["code_verifier"] == "verifier-123"
 
 
 def test_refresh_keeps_old_refresh_when_absent(oauth):

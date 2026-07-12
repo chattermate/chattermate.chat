@@ -101,11 +101,13 @@ async def authorize_docusign(
 ):
     """Start the DocuSign OAuth flow by redirecting to the consent page."""
     state = secrets.token_urlsafe(32)
+    verifier, challenge = DocuSignOAuth.generate_pkce()
     try:
-        url = DocuSignOAuth().authorization_url(state)
+        url = DocuSignOAuth().authorization_url(state, challenge)
     except DocuSignAuthError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    oauth_states[state] = str(organization.id)
+    # Keep the PKCE verifier with the state so the callback can complete the exchange.
+    oauth_states[state] = (str(organization.id), verifier)
     return RedirectResponse(url=url)
 
 
@@ -123,13 +125,14 @@ async def docusign_oauth_callback(
         oauth_states.pop(state, None)
         return RedirectResponse(url=f"{base}&status=failure&reason={error or 'cancelled'}")
 
-    org_id = oauth_states.pop(state, None)
-    if not org_id:
+    entry = oauth_states.pop(state, None)
+    if not entry:
         return RedirectResponse(url=f"{base}&status=failure&reason=invalid_state")
+    org_id, code_verifier = entry
 
     try:
         oauth = DocuSignOAuth()
-        token_data = oauth.exchange_code(code)
+        token_data = oauth.exchange_code(code, code_verifier)
         account = oauth.get_account(token_data["access_token"])
         store_token(db, org_id, token_data,
                     account_id=account["account_id"], base_uri=account["base_uri"])

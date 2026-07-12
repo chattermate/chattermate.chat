@@ -15,8 +15,10 @@ limitations under the License.
 """
 
 import base64
+import hashlib
+import secrets
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from urllib.parse import urlencode
 
 import requests
@@ -39,7 +41,16 @@ class DocuSignOAuth:
         self.client_secret = creds["client_secret"]
         self.redirect_uri = creds["redirect_uri"]
 
-    def authorization_url(self, state: str) -> str:
+    @staticmethod
+    def generate_pkce() -> Tuple[str, str]:
+        """Return a (code_verifier, code_challenge) pair for the PKCE flow.
+        DocuSign requires PKCE (S256) on the authorization-code grant."""
+        verifier = secrets.token_urlsafe(64)
+        digest = hashlib.sha256(verifier.encode()).digest()
+        challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+        return verifier, challenge
+
+    def authorization_url(self, state: str, code_challenge: str) -> str:
         if not (self.client_id and self.redirect_uri):
             raise DocuSignAuthError(
                 "DocuSign is not configured on the server. Set DOCUSIGN_CLIENT_ID, "
@@ -50,12 +61,14 @@ class DocuSignOAuth:
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
             "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
         }
         return f"{config.auth_base()}/oauth/auth?{urlencode(params)}"
 
-    def exchange_code(self, code: str) -> Dict[str, Any]:
+    def exchange_code(self, code: str, code_verifier: str) -> Dict[str, Any]:
         return self._token_request(
-            {"grant_type": "authorization_code", "code": code},
+            {"grant_type": "authorization_code", "code": code, "code_verifier": code_verifier},
             error="Failed to exchange code for token")
 
     def refresh(self, refresh_token: str) -> Dict[str, Any]:
