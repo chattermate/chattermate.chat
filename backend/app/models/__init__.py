@@ -28,6 +28,7 @@ from .chat_history import ChatHistory
 from .session_to_agent import SessionToAgent, SessionStatus
 from .rating import Rating
 from app.models.jira import JiraToken
+from app.models.docusign import DocuSignToken, AgentDocuSignConfig
 from app.models.shopify import ShopifyShop
 from app.models.workflow import Workflow
 from app.models.workflow_node import WorkflowNode, ExitCondition
@@ -62,6 +63,8 @@ __all__ = [
     "SessionStatus",
     "Rating",
     "JiraToken",
+    "DocuSignToken",
+    "AgentDocuSignConfig",
     "ShopifyShop",
     "Workflow",
     "WorkflowNode",

@@ -14,11 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-class JiraAuthError(Exception):
-    """Exception raised for Jira authentication errors."""
-    pass
+from typing import Optional
+
+from pydantic import BaseModel
 
 
-class DocuSignAuthError(Exception):
-    """Exception raised for DocuSign authentication / API errors."""
-    pass 
+class DocuSignTemplate(BaseModel):
+    templateId: Optional[str] = None
+    name: Optional[str] = None
+
+
+class AgentDocuSignConfigModel(BaseModel):
+    enabled: bool
+    defaultTemplateId: Optional[str] = None

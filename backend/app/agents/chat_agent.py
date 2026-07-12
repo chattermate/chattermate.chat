@@ -35,6 +35,8 @@ from datetime import datetime
 from app.repositories.jira import JiraRepository
 from app.tools.jira_toolkit import JiraTools
 from app.tools.shopify_toolkit import ShopifyTools
+from app.tools.docusign_toolkit import DocuSignTools
+from app.models.docusign import AgentDocuSignConfig
 from app.utils.response_parser import parse_response_content
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 import re
@@ -346,6 +348,17 @@ class ChatAgent(ChatAgentMCPMixin):
                     logger.error(f"Failed to get Shopify config: {e}")
                     shopify_config = None
 
+            # Check if DocuSign is enabled for this agent while we have the db session
+            docusign_enabled = False
+            if agent_id and org_id and session_id:
+                try:
+                    docusign_config = db.query(AgentDocuSignConfig).filter(
+                        AgentDocuSignConfig.agent_id == str(agent_id)).first()
+                    docusign_enabled = bool(docusign_config and docusign_config.enabled)
+                except Exception as e:
+                    logger.error(f"Failed to get DocuSign config: {e}")
+                    docusign_enabled = False
+
             # Load lead-capture config (prompt-driven, like transfer_to_human: a toggle;
             # the agent collects details conversationally and reports structured output).
             # Extract plain values while the session is open so they survive the block.
@@ -415,6 +428,18 @@ class ChatAgent(ChatAgentMCPMixin):
                 self.tools.append(self.shopify_tools)
             except Exception as e:
                 logger.error(f"Failed to initialize Shopify tools: {e}")
+
+        # Add DocuSign tools if agent has DocuSign enabled
+        if self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and docusign_enabled:
+            try:
+                self.docusign_tools = DocuSignTools(
+                    agent_id=self.agent_id,
+                    org_id=self.org_id,
+                    session_id=self.session_id
+                )
+                self.tools.append(self.docusign_tools)
+            except Exception as e:
+                logger.error(f"Failed to initialize DocuSign tools: {e}")
 
         # Add MCP tools if provided
         if self.mcp_tools:
