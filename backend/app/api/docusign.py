@@ -101,8 +101,12 @@ async def authorize_docusign(
 ):
     """Start the DocuSign OAuth flow by redirecting to the consent page."""
     state = secrets.token_urlsafe(32)
+    try:
+        url = DocuSignOAuth().authorization_url(state)
+    except DocuSignAuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     oauth_states[state] = str(organization.id)
-    return RedirectResponse(url=DocuSignOAuth().authorization_url(state))
+    return RedirectResponse(url=url)
 
 
 @router.get("/callback")

@@ -40,6 +40,10 @@ class DocuSignOAuth:
         self.redirect_uri = creds["redirect_uri"]
 
     def authorization_url(self, state: str) -> str:
+        if not (self.client_id and self.redirect_uri):
+            raise DocuSignAuthError(
+                "DocuSign is not configured on the server. Set DOCUSIGN_CLIENT_ID, "
+                "DOCUSIGN_CLIENT_SECRET and DOCUSIGN_REDIRECT_URI.")
         params = {
             "response_type": "code",
             "scope": config.OAUTH_SCOPE,
