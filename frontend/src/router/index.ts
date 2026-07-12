@@ -79,6 +79,17 @@ const baseRoutes = [
     },
   },
   {
+    path: '/faq',
+    name: 'faq',
+    component: () => import('@/views/FaqView.vue'),
+    meta: {
+      requiresAuth: true,
+      layout: 'dashboard',
+      title: 'FAQ & Help Center',
+      permissions: ['manage_knowledge'],
+    },
+  },
+  {
     path: '/widget/:id',
     name: 'widget',
     component: () => import('@/webclient/WidgetBuilder.vue'),
