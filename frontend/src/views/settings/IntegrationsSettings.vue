@@ -20,6 +20,7 @@ import { useRoute } from 'vue-router'
 import { toast } from 'vue-sonner'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
+import { checkDocuSignConnection, getDocuSignAuthUrl, disconnectDocuSign } from '@/services/docusign'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
@@ -28,6 +29,7 @@ import ChannelConnectModal from '@/components/integrations/ChannelConnectModal.v
 
 // Import logos
 import jiraLogo from '@/assets/jira-logo.svg'
+import docusignLogo from '@/assets/docusign-logo.svg'
 import slackLogo from '@/assets/slack-logo.svg'
 import zendeskLogo from '@/assets/zendesk-logo.svg'
 import shopifyLogo from '@/assets/shopify-logo.svg'
@@ -163,6 +165,7 @@ const route = useRoute()
 
 const jiraConnected = ref(false)
 const jiraSiteUrl = ref('')
+const docusignConnected = ref(false)
 const isLoading = ref(true)
 const showDisconnectConfirm = ref(false)
 const disconnectingIntegration = ref<string | null>(null)
@@ -192,6 +195,45 @@ const connectJira = () => {
   } catch (error) {
     console.error('Error connecting to Jira:', error)
     toast.error('Error connecting to Jira')
+  }
+}
+
+// Check if DocuSign is connected
+const fetchDocuSignStatus = async () => {
+  try {
+    const data = await checkDocuSignConnection()
+    docusignConnected.value = data.connected
+  } catch (error) {
+    console.error('Error checking DocuSign connection:', error)
+    docusignConnected.value = false
+  }
+}
+
+// Connect to DocuSign (OAuth redirect)
+const connectDocuSign = () => {
+  try {
+    lastConnectionError.value = null
+    window.location.href = getDocuSignAuthUrl()
+  } catch (error) {
+    console.error('Error connecting to DocuSign:', error)
+    toast.error('Error connecting to DocuSign')
+  }
+}
+
+// Disconnect from DocuSign
+const handleDisconnectDocuSign = async () => {
+  try {
+    isLoading.value = true
+    await disconnectDocuSign()
+    docusignConnected.value = false
+    toast.success('DocuSign disconnected successfully')
+  } catch (error: any) {
+    const detail = error?.response?.data?.detail
+    toast.error(detail || 'Error disconnecting from DocuSign')
+  } finally {
+    isLoading.value = false
+    showDisconnectConfirm.value = false
+    disconnectingIntegration.value = null
   }
 }
 
@@ -320,6 +362,18 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     disconnectAction: handleDisconnectJira
   },
   {
+    id: 'docusign',
+    name: 'DocuSign',
+    description: 'Let your AI agent send documents for signature and check envelope status.',
+    logo: docusignLogo,
+    category: 'E-SIGNATURE',
+    color: 'coral',
+    connected: docusignConnected.value,
+    isLoading: isLoading.value,
+    connectAction: connectDocuSign,
+    disconnectAction: handleDisconnectDocuSign
+  },
+  {
     id: 'shopify',
     name: 'Shopify',
     description: 'Install from Shopify App Store to integrate your store with ChatterMate.',
@@ -443,6 +497,7 @@ const intSummary = computed(() => {
 onMounted(async () => {
   await Promise.all([
     fetchJiraStatus(),
+    fetchDocuSignStatus(),
     fetchShopifyStatus(),
     fetchChannelAccounts()
   ])
@@ -704,6 +759,15 @@ onMounted(async () => {
         >
           <span v-if="isLoading" class="loading-spinner"></span>
           <span v-else>Disconnect Jira</span>
+        </button>
+        <button
+          v-if="disconnectingIntegration === 'docusign'"
+          class="btn-disconnect"
+          @click="handleDisconnectDocuSign"
+          :disabled="isLoading"
+        >
+          <span v-if="isLoading" class="loading-spinner"></span>
+          <span v-else>Disconnect DocuSign</span>
         </button>
         <button
           v-if="disconnectingIntegration === 'shopify'"
