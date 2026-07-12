@@ -42,6 +42,13 @@ from app.models.lead_capture import (
 from app.models.channels import (
     ChannelAccount, ChannelType, ChannelConversation, AgentChannelConfig,
 )
+from app.models.faq_generation_job import (
+    FAQGenerationJob, FAQJobType, FAQJobStatus, FAQJobStage,
+)
+from app.models.faq import FAQ, FAQStatus
+from app.models.help_center import (
+    HelpCenterSettings, HelpCenterQuery, DomainStatus, SSLStatus,
+)
 
 
 
@@ -80,4 +87,14 @@ __all__ = [
     "ChannelType",
     "ChannelConversation",
     "AgentChannelConfig",
+    "FAQGenerationJob",
+    "FAQJobType",
+    "FAQJobStatus",
+    "FAQJobStage",
+    "FAQ",
+    "FAQStatus",
+    "HelpCenterSettings",
+    "HelpCenterQuery",
+    "DomainStatus",
+    "SSLStatus",
 ]

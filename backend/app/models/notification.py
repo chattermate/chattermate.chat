@@ -24,6 +24,8 @@ from sqlalchemy.dialects.postgresql import UUID
 class NotificationType(str, enum.Enum):
     KNOWLEDGE_PROCESSED = "knowledge_processed"
     KNOWLEDGE_FAILED = "knowledge_failed"
+    FAQ_GENERATED = "faq_generated"
+    FAQ_GENERATION_FAILED = "faq_generation_failed"
     SYSTEM = "system"
     CHAT = "chat"
 

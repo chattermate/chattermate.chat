@@ -121,6 +121,18 @@ class Settings(BaseSettings):
     KNOWLEDGE_SUMMARY_API_KEY: str = os.getenv("KNOWLEDGE_SUMMARY_API_KEY", "")
     KNOWLEDGE_SUMMARY_MAX_TOKENS: int = int(os.getenv("KNOWLEDGE_SUMMARY_MAX_TOKENS", "4000"))
 
+    # Help center (public FAQ site)
+    # Base domain serving {slug}.<base> help centers.
+    HELP_CENTER_BASE_DOMAIN: str = os.getenv("HELP_CENTER_BASE_DOMAIN", "chattermate.help")
+    # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx
+    # records that exist on the base domain, hence env-configurable.
+    HELP_CENTER_RESERVED_SLUGS: frozenset = frozenset(
+        s.strip() for s in os.getenv(
+            "HELP_CENTER_RESERVED_SLUGS",
+            "www,api,app,help,mail,admin,staging,cname,status",
+        ).split(",") if s.strip()
+    )
+
     # Embedding Model Configuration
     EMBEDDING_MODEL_ID: str = os.getenv("EMBEDDING_MODEL_ID", "sentence-transformers/all-MiniLM-L6-v2")
     EMBEDDING_BATCH_SIZE: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
