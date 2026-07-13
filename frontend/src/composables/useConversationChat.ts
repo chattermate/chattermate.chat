@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { ChatDetail, Message } from '@/types/chat'
 import { formatDistanceToNow } from 'date-fns'
 import { chatService } from '@/services/chat'
@@ -255,6 +255,41 @@ export function useConversationChat(
       isLoading.value = false
     }
   }
+
+  // When a human agent replies to an external channel (WhatsApp/Messenger/
+  // Instagram) after the customer's 24h messaging window has closed, the
+  // backend saves the message but can't deliver it and emits a delivery_error
+  // on the /agent socket. Surface that to the agent so the reply doesn't look
+  // silently sent.
+  const handleSocketError = (data: { error?: string; type?: string; session_id?: string }) => {
+    if (data?.type !== 'delivery_error') return
+    // Only for the conversation this pane is showing.
+    if (data.session_id && data.session_id !== chat.value.session_id) return
+    toast.error('Message not delivered', {
+      description:
+        data.error ||
+        "The customer's messaging window has closed — they need to message you again before you can reply.",
+      duration: 6000,
+      closeButton: true
+    })
+  }
+
+  // The socket instance is recreated on reconnect, so (re)attach the listener
+  // both on mount and whenever the socket reconnects.
+  const attachErrorListener = () => {
+    socketService.off('error', handleSocketError)
+    socketService.on('error', handleSocketError)
+  }
+
+  onMounted(() => {
+    attachErrorListener()
+    socketService.onReconnect(attachErrorListener)
+  })
+
+  onUnmounted(() => {
+    socketService.off('error', handleSocketError)
+    socketService.offReconnect(attachErrorListener)
+  })
 
   const formattedMessages = computed(() => {
     const formatted = chat.value.messages.map(msg => ({

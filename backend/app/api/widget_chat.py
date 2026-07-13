@@ -1182,10 +1182,8 @@ async def handle_agent_message(sid, data):
         if not delivery.ok:
             if delivery.reason == 'window_expired':
                 error_message = (
-                    "The customer's messaging window has expired — "
-                    "send an approved template message to re-open the conversation."
-                    if delivery.can_template else
-                    "The customer's messaging window has expired; this message could not be delivered."
+                    "The customer's 24-hour messaging window has closed — "
+                    "they need to message you again before you can reply on this channel."
                 )
             else:
                 error_message = 'Message saved but could not be delivered to the customer.'
