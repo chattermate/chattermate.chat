@@ -75,6 +75,28 @@ _GROQ_FAQ_INSTRUCTION = (
     "the `json` tool call."
 )
 
+_JSON_ONLY_INSTRUCTION = (
+    "\n\nOUTPUT FORMAT: Respond with ONLY a JSON object of the shape "
+    '{"faqs": [{"question": "...", "answer": "...", "category": "..."}]} '
+    "— no prose, no explanations, no code fences."
+)
+
+
+class _UnparseableOutput(Exception):
+    """Native structured output came back in a shape we can't parse — signals
+    the plain-JSON fallback (distinct from a legitimately empty FAQ list)."""
+
+
+def _first_json_object(text: str) -> dict:
+    """The first {...} object in a text blob (tolerates code fences and prose
+    around it). Raises ValueError when there's no parseable object — surfaces
+    as a batch failure upstream (retry/skip)."""
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end <= start:
+        raise ValueError("no JSON object in model output")
+    return json.loads(text[start : end + 1])
+
 _GENERATE_INSTRUCTIONS = """You turn product documentation into a public help-center FAQ.
 
 Read the CONTENT below and draft frequently-asked questions a customer would realistically ask, each with a clear answer.
@@ -154,7 +176,7 @@ class FAQGeneratorAgent:
         parts.append(f"{content_label}:\n{content}")
         return "\n\n".join(parts)
 
-    async def _extract(self, instructions: str, message: str) -> List[GeneratedFAQ]:
+    def _build_agent(self, instructions: str, tools: list, response_model, structured_outputs: bool):
         from agno.agent import Agent
 
         model = create_model(
@@ -163,7 +185,18 @@ class FAQGeneratorAgent:
             model_name=self.model_name,
             max_tokens=self.max_tokens,
         )
+        return Agent(
+            name="FAQ Generator",
+            model=model,
+            tools=tools,
+            instructions=instructions,
+            markdown=False,
+            response_model=response_model,
+            structured_outputs=structured_outputs,
+            debug_mode=settings.ENVIRONMENT == "development",
+        )
 
+    async def _extract(self, instructions: str, message: str) -> List[GeneratedFAQ]:
         capture: dict = {}
         tools = []
         response_model = FAQExtractionResult
@@ -180,29 +213,46 @@ class FAQGeneratorAgent:
             response_model = None
             structured_outputs = False
 
-        agent = Agent(
-            name="FAQ Generator",
-            model=model,
-            tools=tools,
-            instructions=instructions,
-            markdown=False,
-            response_model=response_model,
-            structured_outputs=structured_outputs,
-            debug_mode=settings.ENVIRONMENT == "development",
-        )
+        agent = self._build_agent(instructions, tools, response_model, structured_outputs)
 
         try:
             response = await agent.arun(message=message, stream=False)
         except Exception as arun_exc:
-            salvaged = salvage_groq_json_error(arun_exc) if self._use_groq_json_tool else None
-            if not salvaged:
-                raise
-            logger.warning("Groq FAQ json tool call unparseable (likely truncated); salvaging fields")
-            return self._validate(salvaged)
+            if self._use_groq_json_tool:
+                salvaged = salvage_groq_json_error(arun_exc)
+                if not salvaged:
+                    raise
+                logger.warning("Groq FAQ json tool call unparseable (likely truncated); salvaging fields")
+                return self._validate(salvaged)
+            # Some providers (Ollama/HuggingFace/Mistral via agno) fail on
+            # native structured outputs — retry once with a plain-JSON prompt.
+            logger.warning(
+                f"Native structured output failed for {self.model_type}/{self.model_name} "
+                f"({arun_exc}); retrying with plain-JSON instruction"
+            )
+            return await self._extract_plain_json(instructions, message)
 
         if self._use_groq_json_tool:
             return self._validate(capture)
-        return self._parse_native(response)
+        try:
+            return self._parse_native(response)
+        except _UnparseableOutput:
+            logger.warning(
+                f"Unparseable structured output from {self.model_type}/{self.model_name}; "
+                "retrying with plain-JSON instruction"
+            )
+            return await self._extract_plain_json(instructions, message)
+
+    async def _extract_plain_json(self, instructions: str, message: str) -> List[GeneratedFAQ]:
+        """Provider-agnostic fallback: no response_model, just a strict
+        respond-only-with-JSON instruction, parsed from the raw text."""
+        agent = self._build_agent(
+            instructions + _JSON_ONLY_INSTRUCTION, tools=[],
+            response_model=None, structured_outputs=False,
+        )
+        response = await agent.arun(message=message, stream=False)
+        content = getattr(response, "content", response)
+        return self._validate(_first_json_object(content if isinstance(content, str) else str(content)))
 
     def _parse_native(self, response) -> List[GeneratedFAQ]:
         content = getattr(response, "content", response)
@@ -212,10 +262,8 @@ class FAQGeneratorAgent:
             try:
                 return self._validate(json.loads(content))
             except (json.JSONDecodeError, TypeError):
-                logger.error("FAQ generator: model returned unparseable text instead of structured output")
-                return []
-        logger.error(f"FAQ generator: unexpected response content type {type(content)}")
-        return []
+                raise _UnparseableOutput("model returned unparseable text instead of structured output")
+        raise _UnparseableOutput(f"unexpected response content type {type(content)}")
 
     def _validate(self, data: dict) -> List[GeneratedFAQ]:
         """Validate model output, dropping malformed entries rather than the

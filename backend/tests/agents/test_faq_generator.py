@@ -162,12 +162,65 @@ async def test_groq_salvage_truncated_mid_array():
 
 
 @pytest.mark.asyncio
-async def test_non_groq_errors_reraise():
+async def test_non_groq_hard_errors_still_reraise():
+    """Provider down: the plain-JSON fallback fails the same way → propagate."""
     with patch("app.agents.faq_generator.create_model", return_value=MagicMock()), \
          patch("agno.agent.Agent") as MockAgent:
         MockAgent.return_value.arun = AsyncMock(side_effect=RuntimeError("provider down"))
         with pytest.raises(RuntimeError):
             await _agent("OPENAI").generate_from_text("docs")
+    assert MockAgent.call_count == 2  # native attempt + fallback attempt
+
+
+@pytest.mark.asyncio
+async def test_plain_json_fallback_on_structured_output_failure():
+    """Providers without native structured outputs: first attempt raises, the
+    plain-JSON retry parses the raw text (fences and prose tolerated)."""
+    fallback_response = MagicMock()
+    fallback_response.content = (
+        'Sure! ```json\n{"faqs": [{"question": "How do I export data?", '
+        '"answer": "From Settings.", "category": "Data"}]}\n```'
+    )
+    attempts = []
+
+    def fake_agent(**kwargs):
+        agent = MagicMock()
+        if not attempts:
+            attempts.append("native")
+            agent.arun = AsyncMock(side_effect=ValueError("structured_outputs unsupported"))
+        else:
+            attempts.append("fallback")
+            assert "ONLY a JSON object" in kwargs["instructions"]
+            assert kwargs["response_model"] is None
+            agent.arun = AsyncMock(return_value=fallback_response)
+        return agent
+
+    with patch("app.agents.faq_generator.create_model", return_value=MagicMock()), \
+         patch("agno.agent.Agent", side_effect=fake_agent):
+        faqs = await _agent("OLLAMA").generate_from_text("docs")
+    assert attempts == ["native", "fallback"]
+    assert [f.question for f in faqs] == ["How do I export data?"]
+
+
+@pytest.mark.asyncio
+async def test_plain_json_fallback_on_unparseable_native_text():
+    """Native call 'succeeds' but returns prose instead of the model — fall
+    back rather than silently dropping the batch."""
+    bad_native = MagicMock()
+    bad_native.content = "Here are some FAQs I found: 1) How..."
+    good_fallback = MagicMock()
+    good_fallback.content = '{"faqs": [{"question": "Q?", "answer": "A.", "category": "C"}]}'
+    responses = [bad_native, good_fallback]
+
+    def fake_agent(**kwargs):
+        agent = MagicMock()
+        agent.arun = AsyncMock(return_value=responses.pop(0))
+        return agent
+
+    with patch("app.agents.faq_generator.create_model", return_value=MagicMock()), \
+         patch("agno.agent.Agent", side_effect=fake_agent):
+        faqs = await _agent("MISTRAL").generate_from_text("docs")
+    assert [f.question for f in faqs] == ["Q?"]
 
 
 @pytest.mark.asyncio
