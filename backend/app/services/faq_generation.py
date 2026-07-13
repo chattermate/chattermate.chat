@@ -363,8 +363,12 @@ def maybe_enqueue_auto_faq_job(db: Session, queue_item) -> Optional[FAQGeneratio
         org_id = queue_item.organization_id
         settings_row = HelpCenterRepository(db).get_by_org(org_id)
         faq_repo = FAQRepository(db)
-        if not settings_row and not faq_repo.exists_for_org(org_id):
-            return None  # org has never used the feature
+        job_repo_gate = FAQGenerationJobRepository(db)
+        # Adoption gate: auto-generation only after the org explicitly ran a
+        # generate/import (or added an FAQ). A settings row alone is NOT
+        # opt-in — merely opening the admin page creates one.
+        if not job_repo_gate.has_user_initiated_job(org_id) and not faq_repo.exists_for_org(org_id):
+            return None
         if settings_row and not settings_row.auto_generate:
             return None
         if not help_center_allowed(db, org_id):

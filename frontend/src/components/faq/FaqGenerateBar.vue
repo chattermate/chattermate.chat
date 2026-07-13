@@ -24,6 +24,8 @@ const props = defineProps<{
   pageCount: number
   faqCount: number
   publishedCount: number
+  /** Sources without FAQs yet (from the estimate); null = unknown. */
+  newSourceCount?: number | null
   disabled?: boolean
 }>()
 
@@ -47,11 +49,23 @@ const subtitle = computed(() =>
 
 const generateLabel = computed(() => {
   if (props.phase === 'generating') return 'Generating…'
-  if (props.phase === 'ready') return 'Regenerate'
+  if (props.phase === 'ready') {
+    // Regenerate only reads new (ungenerated) sources — say so.
+    if (typeof props.newSourceCount === 'number' && props.newSourceCount > 0) {
+      return `Generate ${props.newSourceCount} new source${props.newSourceCount === 1 ? '' : 's'}`
+    }
+    return 'Regenerate'
+  }
   return 'Generate'
 })
 
-const generateDisabled = computed(() => props.phase === 'generating' || props.disabled)
+const noNewSources = computed(() => props.phase === 'ready' && props.newSourceCount === 0)
+
+const generateDisabled = computed(() => props.phase === 'generating' || props.disabled || noNewSources.value)
+
+const generateTitle = computed(() =>
+  noNewSources.value ? 'All knowledge sources already have FAQs' : undefined,
+)
 </script>
 
 <template>
@@ -75,7 +89,7 @@ const generateDisabled = computed(() => props.phase === 'generating' || props.di
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
         Add FAQ
       </button>
-      <button class="btn btn--generate" type="button" :disabled="generateDisabled" @click="$emit('generate')">
+      <button class="btn btn--generate" type="button" :disabled="generateDisabled" :title="generateTitle" @click="$emit('generate')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z" /></svg>
         {{ generateLabel }}
       </button>

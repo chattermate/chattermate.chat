@@ -16,6 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import type { FaqItem } from '@/types/faq'
 import { useFaqWorkspace } from '@/composables/useFaqWorkspace'
 import { useHelpCenterSettings } from '@/composables/useHelpCenterSettings'
@@ -38,6 +39,8 @@ const {
   faqs,
   job,
   settings,
+  estimate,
+  fetchEstimate,
   sourceCount,
   pageCount,
   phase,
@@ -102,12 +105,14 @@ async function onImportSubmit(url: string) {
   }
 }
 
-// A single reusable confirm dialog for deletes.
+// A single reusable confirm dialog for deletes and generation.
 interface ConfirmState {
   title: string
   message: string
   actionLabel: string
   busyLabel: string
+  intent?: 'danger' | 'primary'
+  disabledReason?: string
   action: () => Promise<void>
 }
 const confirmState = ref<ConfirmState | null>(null)
@@ -119,7 +124,45 @@ function askDelete(faq: FaqItem) {
     message: `Delete “${faq.question}”? This cannot be undone.`,
     actionLabel: 'Delete',
     busyLabel: 'Deleting…',
+    intent: 'danger',
     action: () => deleteFaq(faq),
+  }
+}
+
+async function askGenerate() {
+  await fetchEstimate()
+  const e = estimate.value
+  if (!e) {
+    // Estimate unavailable (e.g. plan check failed) — let the backend decide.
+    await startGeneration()
+    return
+  }
+  if (e.total_sources === 0) {
+    toast.error('No knowledge sources to generate from. Add knowledge first.')
+    return
+  }
+  if (e.new_sources === 0) {
+    toast.info('All knowledge sources already have FAQs — nothing new to generate.')
+    return
+  }
+  const sources = `${e.new_sources} new source${e.new_sources === 1 ? '' : 's'}`
+  const pages = e.pages ? ` (~${e.pages} page${e.pages === 1 ? '' : 's'})` : ''
+  let message = `Generate FAQs from ${sources}${pages}?`
+  let disabledReason: string | undefined
+  if (e.metered) {
+    message += ` This will use about ${e.estimated_calls} message credit${e.estimated_calls === 1 ? '' : 's'}.`
+    if (e.remaining_credits !== null && e.estimated_calls > e.remaining_credits) {
+      disabledReason = `Only ${e.remaining_credits} credits left this period — upgrade your plan or switch to your own AI model.`
+    }
+  }
+  confirmState.value = {
+    title: 'Generate FAQs',
+    message,
+    actionLabel: 'Generate',
+    busyLabel: 'Starting…',
+    intent: 'primary',
+    disabledReason,
+    action: () => startGeneration(),
   }
 }
 
@@ -177,7 +220,8 @@ onUnmounted(stopPolling)
           :page-count="pageCount"
           :faq-count="faqs.length"
           :published-count="publishedCount"
-          @generate="startGeneration"
+          :new-source-count="estimate?.new_sources ?? null"
+          @generate="askGenerate"
           @import="importOpen = true"
           @add="startAdd"
         />
@@ -186,7 +230,7 @@ onUnmounted(stopPolling)
           v-if="phase === 'empty' && !isNewFaq"
           :source-count="sourceCount"
           :page-count="pageCount"
-          @generate="startGeneration"
+          @generate="askGenerate"
           @import="importOpen = true"
           @add="startAdd"
         />
@@ -263,9 +307,16 @@ onUnmounted(stopPolling)
       <div class="confirm__card">
         <h3 class="confirm__title">{{ confirmState.title }}</h3>
         <p class="confirm__msg">{{ confirmState.message }}</p>
+        <p v-if="confirmState.disabledReason" class="confirm__blocked">{{ confirmState.disabledReason }}</p>
         <div class="confirm__actions">
           <button class="confirm__cancel" type="button" :disabled="confirmBusy" @click="confirmState = null">Cancel</button>
-          <button class="confirm__delete" type="button" :disabled="confirmBusy" @click="runConfirm">
+          <button
+            class="confirm__go"
+            :class="confirmState.intent === 'primary' ? 'confirm__go--primary' : 'confirm__go--danger'"
+            type="button"
+            :disabled="confirmBusy || !!confirmState.disabledReason"
+            @click="runConfirm"
+          >
             {{ confirmBusy ? confirmState.busyLabel : confirmState.actionLabel }}
           </button>
         </div>
@@ -402,15 +453,39 @@ onUnmounted(stopPolling)
   cursor: pointer;
 }
 
-.confirm__delete {
+.confirm__go {
   padding: 10px 18px;
-  background: var(--coral-bg);
-  border: 1px solid var(--coral-border);
   border-radius: 10px;
-  color: var(--c-coral);
   font-family: var(--font-sans);
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.confirm__go:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.confirm__go--danger {
+  background: var(--coral-bg);
+  border: 1px solid var(--coral-border);
+  color: var(--c-coral);
+}
+
+.confirm__go--primary {
+  background: var(--purple-bg);
+  border: 1px solid var(--purple-border);
+  color: var(--c-purple);
+}
+
+.confirm__blocked {
+  font-size: 13px;
+  color: var(--c-coral);
+  background: var(--coral-bg);
+  border: 1px solid var(--coral-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: -8px 0 20px;
 }
 </style>
