@@ -174,29 +174,13 @@ class EnhancedWebsiteReader(WebsiteReader):
         :param url: The URL to extract the primary domain from.
         :return: The primary domain.
         """
-        # Normalize URL first to ensure it has a protocol
-        url = self._normalize_url(url)
+        # Delegate to the shared registrable-domain helper (ccTLD-aware,
+        # port/userinfo stripped via hostname) so every same-domain check in
+        # the codebase agrees.
+        from app.knowledge.domains import registrable_domain
 
-        # Parse the URL to get the host (hostname drops any :port and userinfo,
-        # so 'example.com:8443' can't slip past a domain-equality check).
-        parsed_url = urlparse(url)
-        netloc = (parsed_url.hostname or parsed_url.netloc or "").lower()
-
-        # Strip 'www.' prefix if present
-        if netloc.startswith('www.'):
-            netloc = netloc[4:]
-        
-        # Get the relevant domain part (last two components for common domains)
-        parts = netloc.split('.')
-        
-        # Special case for country code TLDs with subdomains (e.g., co.uk, com.au)
-        if len(parts) > 2 and parts[-2] in ['co', 'com', 'org', 'net', 'edu', 'gov', 'ac'] and len(parts[-1]) == 2:
-            domain = '.'.join(parts[-3:])  # Include subdomains like example.co.uk
-        else:
-            domain = '.'.join(parts[-2:] if len(parts) > 1 else parts)  # domain.com or just domain
-        
-
-        return domain
+        parsed_url = urlparse(self._normalize_url(url))
+        return registrable_domain(parsed_url.hostname or parsed_url.netloc or "")
     
     def _extract_main_content(self, soup: BeautifulSoup) -> str:
         """

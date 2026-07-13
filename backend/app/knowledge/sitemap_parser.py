@@ -53,12 +53,11 @@ def _local_name(tag: str) -> str:
 
 
 def _registrable_domain(host: str) -> str:
-    """Best-effort registrable domain (last two labels) for same-site checks."""
-    host = (host or "").lower().rstrip(".")
-    if host.startswith("www."):
-        host = host[4:]
-    parts = host.split(".")
-    return ".".join(parts[-2:]) if len(parts) >= 2 else host
+    """Registrable domain for same-site checks — the shared ccTLD-aware helper
+    so 'a.example.co.uk' → 'example.co.uk' (not 'co.uk')."""
+    from app.knowledge.domains import registrable_domain
+
+    return registrable_domain(host)
 
 
 def _bounded_gunzip(data: bytes) -> Optional[bytes]:

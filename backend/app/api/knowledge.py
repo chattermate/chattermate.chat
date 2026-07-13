@@ -1635,15 +1635,16 @@ async def add_subpage(
 
             # A subpage of a URL-based source must be on the SAME registrable
             # domain as that source — otherwise a single plan-limited source
-            # could accumulate content from arbitrary other domains.
+            # could accumulate content from arbitrary other domains. domain_of_url
+            # normalizes a scheme-less value (so 'evil.com/x' can't parse as a
+            # path with no host and slip past) and is ccTLD-aware (so a *.co.uk
+            # source can't accept another *.co.uk domain).
             clean_url = (url or "").strip() or None
             if clean_url:
-                from urllib.parse import urlparse
-                from app.knowledge.sitemap_parser import _registrable_domain
+                from app.knowledge.domains import domain_of_url
 
-                parent_domain = _registrable_domain(urlparse(knowledge.source).hostname or "")
-                subpage_domain = _registrable_domain(urlparse(clean_url).hostname or "")
-                if parent_domain and subpage_domain and subpage_domain != parent_domain:
+                parent_domain = domain_of_url(knowledge.source)
+                if parent_domain and domain_of_url(clean_url) != parent_domain:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Subpage URL must be on the same domain as the source ({parent_domain}).",

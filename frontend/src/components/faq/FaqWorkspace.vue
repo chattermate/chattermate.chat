@@ -120,8 +120,9 @@ const generating = ref(false)
 async function onPickSources(knowledgeIds: number[]) {
   generating.value = true
   try {
-    await startGeneration(knowledgeIds)
-    sourcePickerOpen.value = false
+    // Keep the picker open if the job didn't start (409/budget) — the error
+    // toast explains why and the user can adjust their selection.
+    if (await startGeneration(knowledgeIds)) sourcePickerOpen.value = false
   } finally {
     generating.value = false
   }
@@ -209,7 +210,9 @@ async function askGenerate() {
     busyLabel: 'Starting…',
     intent: 'primary',
     disabledReason,
-    action: () => startGeneration(),
+    action: async () => {
+      await startGeneration()
+    },
   }
 }
 

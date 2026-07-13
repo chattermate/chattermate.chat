@@ -33,18 +33,18 @@ const emit = defineEmits<{
 const sources = computed<GenerationSource[]>(() => props.estimate?.sources ?? [])
 const selected = ref<Set<number>>(new Set())
 
-// Default selection = sources without FAQs (the "new" ones). Re-seed whenever
-// the picker opens with a fresh estimate.
+// Default selection = sources without FAQs (the "new" ones). Seed only when the
+// picker OPENS (not on later estimate changes) so a background refetch can't
+// wipe the user's manual selection mid-interaction.
 watch(
-  () => [props.open, props.estimate] as const,
-  ([open]) => {
-    if (open) {
-      const next = new Set<number>()
-      for (const s of sources.value) if (!s.has_faqs) next.add(s.id)
-      // If everything already has FAQs, start from all so the user can regenerate.
-      if (next.size === 0) for (const s of sources.value) next.add(s.id)
-      selected.value = next
-    }
+  () => props.open,
+  (open) => {
+    if (!open) return
+    const next = new Set<number>()
+    for (const s of sources.value) if (!s.has_faqs) next.add(s.id)
+    // If everything already has FAQs, start from all so the user can regenerate.
+    if (next.size === 0) for (const s of sources.value) next.add(s.id)
+    selected.value = next
   },
   { immediate: true },
 )

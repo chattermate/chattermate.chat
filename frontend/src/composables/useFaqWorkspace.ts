@@ -297,11 +297,13 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     }
   }
 
-  async function startGeneration(knowledgeIds?: number[]): Promise<void> {
+  async function startGeneration(knowledgeIds?: number[]): Promise<boolean> {
     try {
       job.value = await faqService.startGeneration(knowledgeIds)
+      return true
     } catch (error: any) {
       toast.error(error.message)
+      return false
     }
   }
 

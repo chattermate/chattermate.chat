@@ -139,7 +139,13 @@ def estimate_generation_calls(
     for source in all_sources:
         source_pages = count_source_pages(db, source) if count_pages else None
         pages = source_pages or 0
-        calls = max(1, math.ceil(pages / PAGES_PER_CALL)) if pages else 1
+        if source_pages is None:
+            # Unreadable now, or page-count skipped (count_pages=False) — assume
+            # one call so the estimate isn't zero.
+            calls = 1
+        else:
+            # A readable but empty source produces nothing → costs no call.
+            calls = max(1, math.ceil(pages / PAGES_PER_CALL)) if pages else 0
         source_list.append(
             SourceEstimate(
                 id=source.id,
