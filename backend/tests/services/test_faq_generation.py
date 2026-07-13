@@ -276,16 +276,39 @@ def _queue_item(org_id, source="docs.example.com", user_id=None):
     return SimpleNamespace(organization_id=org_id, source=source, user_id=user_id)
 
 
+def _adopt(db, org_id):
+    """Mark the org as having explicitly used generation (the opt-in signal)."""
+    _make_job(db, org_id, job_type=FAQJobType.GENERATE_ALL.value, status=FAQJobStatus.COMPLETED.value)
+
+
+def _allow_plan():
+    """Env-independent plan gate (local enterprise builds fail closed)."""
+    return patch("app.services.help_center_access.help_center_allowed", return_value=True)
+
+
 def test_auto_hook_skips_when_feature_never_used(db, test_organization):
     _make_knowledge(db, test_organization.id)
-    assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None
+    with _allow_plan():
+        assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None
+
+
+def test_auto_hook_settings_row_alone_is_not_opt_in(db, test_organization):
+    """Opening the admin page (which creates the settings row) must not turn
+    on auto-generation — only an explicit generate/import (or FAQ) does."""
+    _make_knowledge(db, test_organization.id)
+    db.add(HelpCenterSettings(organization_id=test_organization.id, slug="test-org"))
+    db.commit()
+    with _allow_plan():
+        assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None
 
 
 def test_auto_hook_enqueues_for_adopted_org(db, test_organization):
     knowledge = _make_knowledge(db, test_organization.id)
     db.add(HelpCenterSettings(organization_id=test_organization.id, slug="test-org"))
     db.commit()
-    job = maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id))
+    _adopt(db, test_organization.id)
+    with _allow_plan():
+        job = maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id))
     assert job is not None
     assert job.job_type == FAQJobType.GENERATE_SOURCE.value
     assert job.knowledge_id == knowledge.id
@@ -298,19 +321,23 @@ def test_auto_hook_respects_auto_generate_toggle(db, test_organization):
         organization_id=test_organization.id, slug="test-org", auto_generate=False,
     ))
     db.commit()
-    assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None
+    _adopt(db, test_organization.id)
+    with _allow_plan():
+        assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None
 
 
 def test_auto_hook_dedups_active_job(db, test_organization):
     knowledge = _make_knowledge(db, test_organization.id)
     db.add(HelpCenterSettings(organization_id=test_organization.id, slug="test-org"))
     db.commit()
-    first = maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id))
-    assert first is not None
-    assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None
-    # Once the first completes, a new one may be enqueued.
-    FAQGenerationJobRepository(db).mark_completed(first.id, faqs_created=0)
-    assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is not None
+    _adopt(db, test_organization.id)
+    with _allow_plan():
+        first = maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id))
+        assert first is not None
+        assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None
+        # Once the first completes, a new one may be enqueued.
+        FAQGenerationJobRepository(db).mark_completed(first.id, faqs_created=0)
+        assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is not None
     assert knowledge.id is not None
 
 
@@ -318,6 +345,7 @@ def test_auto_hook_skips_when_plan_disallows(db, test_organization):
     _make_knowledge(db, test_organization.id)
     db.add(HelpCenterSettings(organization_id=test_organization.id, slug="test-org"))
     db.commit()
+    _adopt(db, test_organization.id)
     # Effective because the hook imports help_center_allowed at call time.
     with patch("app.services.help_center_access.help_center_allowed", return_value=False):
         assert maybe_enqueue_auto_faq_job(db, _queue_item(test_organization.id)) is None

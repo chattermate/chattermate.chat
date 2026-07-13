@@ -20,6 +20,7 @@ import type {
   FaqItem,
   FaqListResponse,
   FaqStatus,
+  GenerateEstimate,
   HelpCenterDomain,
   HelpCenterSettings,
   HelpCenterSettingsUpdate,
@@ -87,9 +88,21 @@ export const faqService = {
     }
   },
 
-  async startGeneration(): Promise<FaqGenerationJob> {
+  async getGenerateEstimate(): Promise<GenerateEstimate> {
     try {
-      const response = await api.post('/help-center/generate')
+      const response = await api.get('/help-center/generate/estimate')
+      return response.data
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to load generation estimate')
+    }
+  },
+
+  async startGeneration(knowledgeIds?: number[]): Promise<FaqGenerationJob> {
+    try {
+      const response = await api.post(
+        '/help-center/generate',
+        knowledgeIds?.length ? { knowledge_ids: knowledgeIds } : {},
+      )
       return response.data
     } catch (error: any) {
       throw errorMessage(error, 'Failed to start generation')

@@ -19,7 +19,7 @@ import { toast } from 'vue-sonner'
 
 import { faqService } from '@/services/faq'
 import { knowledgeService } from '@/services/knowledge'
-import type { FaqGenerationJob, FaqItem, HelpCenterSettings } from '@/types/faq'
+import type { FaqGenerationJob, FaqItem, GenerateEstimate, HelpCenterSettings } from '@/types/faq'
 
 export type WorkspacePhase = 'loading' | 'empty' | 'generating' | 'populated'
 
@@ -32,6 +32,7 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
   const faqs = ref<FaqItem[]>([])
   const job = ref<FaqGenerationJob | null>(null)
   const settings = ref<HelpCenterSettings | null>(null)
+  const estimate = ref<GenerateEstimate | null>(null)
   const sourceCount = ref(0)
   const pageCount = ref(0)
   const isLoading = ref(false)
@@ -105,6 +106,16 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     settings.value = await faqService.getSettings()
   }
 
+  async function fetchEstimate(): Promise<void> {
+    // Non-fatal: locked plans 403 here; the generate button then just says
+    // "Generate" without the new-source count.
+    try {
+      estimate.value = await faqService.getGenerateEstimate()
+    } catch {
+      estimate.value = null
+    }
+  }
+
   async function fetchCounts(): Promise<void> {
     const orgId = organizationId()
     if (!orgId) return
@@ -120,7 +131,7 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
   async function refresh(): Promise<void> {
     isLoading.value = true
     try {
-      await Promise.all([fetchFaqs(), fetchJob(), fetchSettings(), fetchCounts()])
+      await Promise.all([fetchFaqs(), fetchJob(), fetchSettings(), fetchCounts(), fetchEstimate()])
       loadedOnce.value = true
     } catch (error: any) {
       toast.error(error.message)
@@ -141,7 +152,7 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
         await fetchJob()
         const stillActive = job.value?.status === 'pending' || job.value?.status === 'processing'
         if (wasActive && !stillActive) {
-          await Promise.all([fetchFaqs(), fetchSettings()])
+          await Promise.all([fetchFaqs(), fetchSettings(), fetchEstimate()])
           const finished = await faqService.getJob(false)
           if (finished?.status === 'failed') {
             toast.error(finished.error || 'FAQ generation failed')
@@ -173,9 +184,9 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     }
   }
 
-  async function startGeneration(): Promise<void> {
+  async function startGeneration(knowledgeIds?: number[]): Promise<void> {
     try {
-      job.value = await faqService.startGeneration()
+      job.value = await faqService.startGeneration(knowledgeIds)
     } catch (error: any) {
       toast.error(error.message)
     }
@@ -263,6 +274,8 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     faqs,
     job,
     settings,
+    estimate,
+    fetchEstimate,
     sourceCount,
     pageCount,
     isLoading,

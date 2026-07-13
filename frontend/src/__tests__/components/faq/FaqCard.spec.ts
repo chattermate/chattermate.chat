@@ -14,9 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+
+// FaqCard → MarkdownEditor → faqService → api → router → views → firebase,
+// which cannot initialize in the test environment.
+vi.mock('@/services/firebase', () => ({
+  messaging: {},
+  requestNotificationPermission: vi.fn(),
+}))
+vi.mock('@/services/faq', () => ({
+  faqService: { uploadImage: vi.fn() },
+}))
+
 import FaqCard from '../../../components/faq/FaqCard.vue'
+import MarkdownEditor from '../../../components/faq/MarkdownEditor.vue'
 import type { FaqItem } from '../../../types/faq'
 
 const faq: FaqItem = {
@@ -93,7 +105,8 @@ describe('FaqCard edit mode', () => {
       draftAnswer: 'Draft answer.',
     })
     expect((wrapper.find('.edit-question').element as HTMLInputElement).value).toBe('Draft question?')
-    expect((wrapper.find('.edit-answer').element as HTMLTextAreaElement).value).toBe('Draft answer.')
+    // The answer is edited through the MarkdownEditor component.
+    expect(wrapper.findComponent(MarkdownEditor).props('modelValue')).toBe('Draft answer.')
     expect(wrapper.find('.edit-label').text()).toBe('EDITING')
   })
 
@@ -105,7 +118,7 @@ describe('FaqCard edit mode', () => {
   it('emits draft updates on input', async () => {
     const wrapper = createWrapper({ editing: true })
     await wrapper.find('.edit-question').setValue('New question')
-    await wrapper.find('.edit-answer').setValue('New answer')
+    wrapper.findComponent(MarkdownEditor).vm.$emit('update:modelValue', 'New answer')
     expect(wrapper.emitted('update:draftQuestion')?.[0]).toEqual(['New question'])
     expect(wrapper.emitted('update:draftAnswer')?.[0]).toEqual(['New answer'])
   })
