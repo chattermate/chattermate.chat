@@ -64,6 +64,7 @@ const {
   stopPolling,
   startGeneration,
   submitImport,
+  submitPdfImport,
   togglePublish,
   startEdit,
   startAdd,
@@ -106,6 +107,16 @@ async function onImportSubmit(url: string, mode: FaqImportMode) {
   importSubmitting.value = true
   try {
     const ok = await submitImport(url, mode)
+    if (ok) importOpen.value = false
+  } finally {
+    importSubmitting.value = false
+  }
+}
+
+async function onPdfImportSubmit(file: File) {
+  importSubmitting.value = true
+  try {
+    const ok = await submitPdfImport(file)
     if (ok) importOpen.value = false
   } finally {
     importSubmitting.value = false
@@ -335,7 +346,7 @@ onUnmounted(stopPolling)
       </div>
     </template>
 
-    <FaqImportModal :open="importOpen" :submitting="importSubmitting" @close="importOpen = false" @submit="onImportSubmit" />
+    <FaqImportModal :open="importOpen" :submitting="importSubmitting" @close="importOpen = false" @submit="onImportSubmit" @submit-pdf="onPdfImportSubmit" />
 
     <div v-if="selectionActive" class="bulkbar" role="toolbar" aria-label="Bulk actions">
       <span class="bulkbar__count">{{ selectedIds.size }} selected</span>

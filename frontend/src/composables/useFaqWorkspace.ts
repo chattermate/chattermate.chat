@@ -250,6 +250,17 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     }
   }
 
+  async function submitPdfImport(file: File): Promise<boolean> {
+    try {
+      job.value = await faqService.importPdf(file)
+      toast.success('Import started — drafts will appear when it finishes')
+      return true
+    } catch (error: any) {
+      toast.error(error.message)
+      return false
+    }
+  }
+
   async function togglePublish(faq: FaqItem): Promise<void> {
     const nextStatus = faq.status === 'published' ? 'draft' : 'published'
     const previous = faq.status
@@ -350,6 +361,7 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     pollTick,
     startGeneration,
     submitImport,
+    submitPdfImport,
     togglePublish,
     startEdit,
     startAdd,

@@ -41,7 +41,7 @@ export interface FaqListResponse {
   pagination: FaqPagination
 }
 
-export type FaqImportMode = 'qa' | 'articles'
+export type FaqImportMode = 'qa' | 'articles' | 'pdf'
 
 export type FaqJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 export type FaqJobStage =
