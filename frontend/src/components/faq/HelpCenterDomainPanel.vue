@@ -16,6 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import type { HelpCenterDomain } from '@/types/faq'
 
 const props = defineProps<{
@@ -40,12 +41,17 @@ watch(
 
 const currentDomain = computed(() => props.domain?.custom_domain || '')
 const normalizedInput = computed(() => domainInput.value.trim().replace(/^https?:\/\//i, ''))
-const isVerified = computed(() => !!currentDomain.value && props.domain?.domain_status === 'verified')
-const isConnected = computed(() => isVerified.value && normalizedInput.value === currentDomain.value)
+const isVerified = computed(() => currentDomain.value !== '' && props.domain?.domain_status === 'verified')
+
+// empty → enter a domain · pending → add DNS records + verify · connected → live
+const phase = computed<'empty' | 'pending' | 'connected'>(() => {
+  if (!currentDomain.value) return 'empty'
+  return isVerified.value ? 'connected' : 'pending'
+})
 
 const statusPill = computed(() => {
-  if (isVerified.value) return { label: 'Connected', cls: 'status-pill--teal' }
-  if (currentDomain.value) return { label: 'Pending verification', cls: 'status-pill--warn' }
+  if (phase.value === 'connected') return { label: 'Connected', cls: 'status-pill--teal' }
+  if (phase.value === 'pending') return { label: 'Pending verification', cls: 'status-pill--warn' }
   return { label: 'Not configured', cls: 'status-pill--idle' }
 })
 
@@ -56,10 +62,20 @@ const sslPill = computed(() => {
   return { label: 'Provisioning', cls: 'record-pill--idle' }
 })
 
-function onDomainAction() {
-  if (!normalizedInput.value || props.busy || isConnected.value) return
-  if (normalizedInput.value !== currentDomain.value) emit('set-domain', normalizedInput.value)
-  else emit('verify-domain')
+const liveUrl = computed(() => `https://${currentDomain.value}`)
+
+function addDomain() {
+  if (!normalizedInput.value || props.busy) return
+  emit('set-domain', normalizedInput.value)
+}
+
+async function copy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success('Copied')
+  } catch {
+    toast.error('Could not copy — select and copy manually')
+  }
 }
 </script>
 
@@ -72,46 +88,93 @@ function onDomainAction() {
         {{ statusPill.label }}
       </span>
     </div>
-    <p class="domain-copy">
-      Serve your help center from your own subdomain instead of the ChatterMate URL. Add the
-      records below at your DNS provider, then verify.
-    </p>
 
-    <div class="domain-form">
-      <div class="domain-input">
-        <span class="domain-input__prefix">https://</span>
-        <input v-model="domainInput" type="text" placeholder="help.yourcompany.com" />
+    <!-- Step 1: enter a domain -->
+    <template v-if="phase === 'empty'">
+      <p class="domain-copy">
+        Serve your help center from your own subdomain instead of the ChatterMate URL.
+        Enter it below and we'll show you the two DNS records to add.
+      </p>
+      <div class="domain-form">
+        <div class="domain-input">
+          <span class="domain-input__prefix">https://</span>
+          <input
+            v-model="domainInput"
+            type="text"
+            placeholder="help.yourcompany.com"
+            @keydown.enter="addDomain"
+          />
+        </div>
+        <button class="btn-primary" type="button" :disabled="busy || !normalizedInput" @click="addDomain">
+          {{ busy ? 'Working…' : 'Add domain' }}
+        </button>
       </div>
-      <button class="btn-verify" type="button" :disabled="busy || isConnected || !normalizedInput" @click="onDomainAction">
-        {{ isConnected ? 'Connected ✓' : busy ? 'Working…' : 'Verify domain' }}
-      </button>
-      <button v-if="currentDomain" class="icon-btn" type="button" title="Remove domain" :disabled="busy" @click="$emit('remove-domain')">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16" /><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></svg>
-      </button>
-    </div>
+    </template>
 
-    <div v-if="domain?.records?.length" class="dns-table">
-      <div class="dns-table__head">
-        <div>TYPE</div><div>NAME / HOST</div><div>VALUE</div><div class="dns-table__right">STATUS</div>
+    <!-- Step 2: add the DNS records, then verify -->
+    <template v-else>
+      <div class="domain-current">
+        <div class="domain-current__lead">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
+          <a v-if="phase === 'connected'" :href="liveUrl" target="_blank" rel="noopener" class="domain-current__name domain-current__name--link">{{ currentDomain }}</a>
+          <span v-else class="domain-current__name">{{ currentDomain }}</span>
+        </div>
+        <button class="link-btn" type="button" :disabled="busy" @click="$emit('remove-domain')">Remove</button>
       </div>
-      <div v-for="record in domain.records" :key="`${record.type}-${record.host}`" class="dns-table__row">
-        <div class="dns-table__type">{{ record.type }}</div>
-        <div class="dns-table__cell">{{ record.host }}</div>
-        <div class="dns-table__cell">{{ record.value }}</div>
-        <div class="dns-table__right">
-          <span class="record-pill" :class="record.verified ? 'record-pill--teal' : 'record-pill--warn'">
-            {{ record.verified ? 'Active' : 'Pending' }}
+
+      <template v-if="phase === 'pending'">
+        <ol class="steps">
+          <li>Add these two records at your DNS provider.</li>
+          <li>Come back and click <strong>Verify domain</strong> — DNS changes can take a few minutes.</li>
+        </ol>
+
+        <div class="records">
+          <div v-for="record in domain?.records || []" :key="`${record.type}-${record.host}`" class="record" :class="{ 'record--ok': record.verified }">
+            <div class="record__top">
+              <span class="record__type">{{ record.type }}</span>
+              <span class="record-pill" :class="record.verified ? 'record-pill--teal' : 'record-pill--warn'">
+                {{ record.verified ? 'Detected' : 'Waiting' }}
+              </span>
+            </div>
+            <div class="record__field">
+              <span class="record__label">Name / Host</span>
+              <div class="record__value">
+                <code>{{ record.host }}</code>
+                <button class="copy-btn" type="button" title="Copy" @click="copy(record.host)">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="record__field">
+              <span class="record__label">Value</span>
+              <div class="record__value">
+                <code>{{ record.value }}</code>
+                <button class="copy-btn" type="button" title="Copy" @click="copy(record.value)">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="verify-row">
+          <button class="btn-primary" type="button" :disabled="busy" @click="$emit('verify-domain')">
+            {{ busy ? 'Checking…' : 'Verify domain' }}
+          </button>
+          <span class="ssl-note">
+            <span class="record-pill" :class="sslPill.cls">SSL {{ sslPill.label }}</span>
+            issued automatically once verified
           </span>
         </div>
-      </div>
-      <div class="ssl-row">
-        <div class="ssl-row__lead">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
-          <span>SSL certificate</span>
-        </div>
-        <span class="record-pill" :class="sslPill.cls">{{ sslPill.label }}</span>
-      </div>
-    </div>
+      </template>
+
+      <template v-else>
+        <p class="domain-copy domain-copy--ok">
+          Your help center is live at <a :href="liveUrl" target="_blank" rel="noopener">{{ currentDomain }}</a>.
+          <span class="record-pill" :class="sslPill.cls">SSL {{ sslPill.label }}</span>
+        </p>
+      </template>
+    </template>
   </div>
 </template>
 
@@ -133,9 +196,21 @@ function onDomainAction() {
 .domain-copy {
   font-size: 13.5px;
   color: var(--muted);
-  max-width: 520px;
+  max-width: 560px;
   line-height: 1.55;
   margin: 6px 0 16px;
+}
+
+.domain-copy--ok {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.domain-copy a {
+  color: var(--c-teal);
+  font-weight: 600;
 }
 
 .status-pill {
@@ -176,7 +251,6 @@ function onDomainAction() {
 .domain-form {
   display: flex;
   gap: 10px;
-  margin-bottom: 18px;
   flex-wrap: wrap;
 }
 
@@ -209,8 +283,9 @@ function onDomainAction() {
   font-family: var(--font-mono);
 }
 
-.btn-verify {
+.btn-primary {
   padding: 0 20px;
+  min-height: 44px;
   background: var(--accent-solid);
   border: none;
   border-radius: 11px;
@@ -221,72 +296,178 @@ function onDomainAction() {
   cursor: pointer;
 }
 
-.btn-verify:disabled {
+.btn-primary:disabled {
   opacity: 0.65;
   cursor: default;
 }
 
-.icon-btn {
-  width: 46px;
-  border-radius: 11px;
-  background: var(--o05);
-  border: 1px solid var(--o12);
-  color: var(--muted);
-  cursor: pointer;
+/* current domain header */
+.domain-current {
   display: flex;
   align-items: center;
-  justify-content: center;
-}
-
-.icon-btn:hover {
-  background: var(--coral-bg);
-  color: var(--c-coral);
-  border-color: var(--coral-border);
-}
-
-.dns-table {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin: 6px 0 16px;
   background: var(--bg);
   border: 1px solid var(--o08);
-  border-radius: 13px;
-  overflow: hidden;
+  border-radius: 11px;
 }
 
-.dns-table__head,
-.dns-table__row {
-  display: grid;
-  grid-template-columns: 0.7fr 1.3fr 1.6fr 0.7fr;
+.domain-current__lead {
+  display: flex;
   align-items: center;
-  padding: 11px 16px;
-  border-bottom: 1px solid var(--o06);
+  gap: 10px;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.domain-current__name {
   font-family: var(--font-mono);
-}
-
-.dns-table__head {
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  color: var(--muted2);
-  border-bottom-color: var(--o07);
-}
-
-.dns-table__row {
-  padding: 13px 16px;
-  font-size: 12.5px;
-}
-
-.dns-table__type {
-  color: var(--c-purple);
+  font-size: 14px;
   font-weight: 600;
-}
-
-.dns-table__cell {
-  color: var(--text3);
+  color: var(--text2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dns-table__right {
-  text-align: right;
+.domain-current__name--link {
+  color: var(--c-teal);
+  text-decoration: none;
+}
+
+.link-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  color: var(--c-coral);
+}
+
+.link-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* steps + records */
+.steps {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.steps strong {
+  color: var(--text2);
+}
+
+.records {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.record {
+  background: var(--bg);
+  border: 1px solid var(--o08);
+  border-radius: 12px;
+  padding: 13px 14px;
+}
+
+.record--ok {
+  border-color: var(--teal-border);
+}
+
+.record__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.record__type {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--c-purple);
+}
+
+.record__field {
+  margin-top: 8px;
+}
+
+.record__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted2);
+  margin-bottom: 4px;
+}
+
+.record__value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.record__value code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text3);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.copy-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  background: var(--o08);
+  color: var(--text2);
+}
+
+.verify-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.ssl-note {
+  font-size: 12.5px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .record-pill {
@@ -303,6 +484,12 @@ function onDomainAction() {
   color: var(--c-teal);
 }
 
+.record-pill--warn {
+  background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--c-warn) 30%, transparent);
+  color: var(--c-warn);
+}
+
 .record-pill--coral {
   background: var(--coral-bg);
   border: 1px solid var(--coral-border);
@@ -312,21 +499,6 @@ function onDomainAction() {
 .record-pill--idle {
   background: var(--o05);
   border: 1px solid var(--o12);
-  color: var(--muted);
-}
-
-.ssl-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-}
-
-.ssl-row__lead {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
   color: var(--muted);
 }
 </style>
