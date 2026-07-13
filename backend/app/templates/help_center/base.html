@@ -53,6 +53,9 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
       --mono: 'JetBrains Mono', ui-monospace, monospace;
     }
     * { box-sizing: border-box; }
+    /* Author display rules (e.g. .hc-card { display:flex }) otherwise beat the UA
+       [hidden] rule, so the hidden attribute must win explicitly for JS toggling. */
+    [hidden] { display: none !important; }
     html, body { margin: 0; padding: 0; background: #f5f6f9; }
     body { color: #1a1b25; font-family: var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
     a { color: var(--brand); }
