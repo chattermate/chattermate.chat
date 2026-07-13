@@ -1633,8 +1633,24 @@ async def add_subpage(
                     detail="Subpage name already exists. Please use a unique name."
                 )
 
+            # A subpage of a URL-based source must be on the SAME registrable
+            # domain as that source — otherwise a single plan-limited source
+            # could accumulate content from arbitrary other domains.
+            clean_url = (url or "").strip() or None
+            if clean_url:
+                from urllib.parse import urlparse
+                from app.knowledge.sitemap_parser import _registrable_domain
+
+                parent_domain = _registrable_domain(urlparse(knowledge.source).hostname or "")
+                subpage_domain = _registrable_domain(urlparse(clean_url).hostname or "")
+                if parent_domain and subpage_domain and subpage_domain != parent_domain:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Subpage URL must be on the same domain as the source ({parent_domain}).",
+                    )
+
             # Embed and insert the new subpage into the vector database
-            page_editor.insert_subpage(knowledge, subpage_name, content, (url or "").strip() or None)
+            page_editor.insert_subpage(knowledge, subpage_name, content, clean_url)
 
             logger.info(f"Added new subpage '{subpage_name}' to knowledge {knowledge_id}")
             

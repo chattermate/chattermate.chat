@@ -107,6 +107,20 @@ def test_cross_domain_child_sitemap_is_skipped():
     assert urls == ["https://site.com/1"]  # evil.com child skipped
 
 
+def test_cross_domain_page_loc_is_skipped():
+    """A page <loc> on another registrable domain is dropped, so one source
+    can't pull in other domains' URLs. Subdomains of the root are kept."""
+    mixed = f"""<urlset {NS}>
+      <url><loc>https://site.com/a</loc></url>
+      <url><loc>https://blog.site.com/b</loc></url>
+      <url><loc>https://evilsite.com/c</loc></url>
+      <url><loc>https://other.com/d</loc></url>
+    </urlset>""".encode()
+    with patch.object(sitemap_parser, "_fetch", _fake_fetch({"https://site.com/sitemap.xml": mixed})):
+        urls = sitemap_parser.fetch_sitemap_urls("https://site.com/sitemap.xml", max_urls=50)
+    assert urls == ["https://site.com/a", "https://blog.site.com/b"]
+
+
 def test_bounded_gunzip_rejects_oversize(monkeypatch):
     monkeypatch.setattr(sitemap_parser, "MAX_DECOMPRESSED_BYTES", 100)
     bomb = gzip.compress(b"A" * 5000)  # decompresses to 5000 > 100

@@ -196,11 +196,18 @@ def fetch_sitemap_urls(
 
             found_pages, child_sitemaps = _parse(content)
             for page in found_pages:
-                if page not in seen_pages:
-                    seen_pages.add(page)
-                    pages.append(page)
-                    if len(pages) >= max_urls:
-                        break
+                if page in seen_pages:
+                    continue
+                # Page <loc>s must be on the root's registrable domain too — a
+                # sitemap that lists other domains' URLs would otherwise pull
+                # them all in under one plan-limited knowledge source.
+                if _registrable_domain(urlparse(page).hostname or "") != root_domain:
+                    logger.warning(f"Skipping cross-domain sitemap page: {page}")
+                    continue
+                seen_pages.add(page)
+                pages.append(page)
+                if len(pages) >= max_urls:
+                    break
             for child in child_sitemaps:
                 if child in visited_sitemaps or child in to_visit:
                     continue

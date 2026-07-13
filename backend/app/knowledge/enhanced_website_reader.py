@@ -176,11 +176,12 @@ class EnhancedWebsiteReader(WebsiteReader):
         """
         # Normalize URL first to ensure it has a protocol
         url = self._normalize_url(url)
-        
-        # Parse the URL to get the netloc
+
+        # Parse the URL to get the host (hostname drops any :port and userinfo,
+        # so 'example.com:8443' can't slip past a domain-equality check).
         parsed_url = urlparse(url)
-        netloc = parsed_url.netloc
-        
+        netloc = (parsed_url.hostname or parsed_url.netloc or "").lower()
+
         # Strip 'www.' prefix if present
         if netloc.startswith('www.'):
             netloc = netloc[4:]
@@ -542,9 +543,12 @@ class EnhancedWebsiteReader(WebsiteReader):
         if current_url in self._visited:
             return None
 
-        if not urlparse(current_url).netloc.endswith(primary_domain):
+        # Same registrable domain only (equality, not a loose suffix match) —
+        # the per-URL guard that also protects sitemap-seeded crawls.
+        if self._get_primary_domain(current_url) != primary_domain:
+            logger.debug(f"Skipping cross-domain URL {current_url} (root domain {primary_domain})")
             return None
-            
+
         if current_depth > self.max_depth:
             return None
         
@@ -1021,9 +1025,11 @@ class EnhancedWebsiteReader(WebsiteReader):
             if full_url == base_canonical or full_url in seen:
                 continue
 
-            # Check if it's in the same domain
-            link_domain = parsed_url.netloc
-            is_same_domain = link_domain.endswith(primary_domain)
+            # Same REGISTRABLE domain only (equality, not suffix): a substring
+            # match like 'evilexample.com'.endswith('example.com') would let a
+            # crawl fan out across unrelated domains — a way to pull many
+            # domains' content under one plan-limited knowledge source.
+            is_same_domain = self._get_primary_domain(full_url) == primary_domain
 
             if (
                 is_same_domain
