@@ -19,6 +19,7 @@ end-to-end job with mocked fetches.
 """
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -103,8 +104,12 @@ def test_discover_links_sections_categories_and_filters():
         links = discover_article_links(client, "https://help.example.com/hc/atoa/en", limit=20)
 
     by_url = dict(links)
-    # Only /articles/ pages; off-site, pdf and /pricing excluded.
-    assert not any("other-site.com" in u or u.endswith(".pdf") or "/pricing" in u for u, _ in links)
+    # Only /articles/ pages; off-site, pdf and /pricing excluded. Check the
+    # parsed host/path (not a URL substring) so an off-site article can't slip
+    # through and the check isn't a substring-sanitization smell.
+    hosts = {urlparse(u).hostname for u, _ in links}
+    assert hosts == {"help.example.com"}
+    assert not any(urlparse(u).path.endswith(".pdf") or urlparse(u).path == "/pricing" for u, _ in links)
     # Featured cross-cut isn't a category; the section heading tags the article.
     assert by_url["https://help.example.com/hc/atoa/articles/1-how-to-install"] == "Help and support"
     assert by_url["https://help.example.com/hc/atoa/articles/2-refunds"] == "Help and support"

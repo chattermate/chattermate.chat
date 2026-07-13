@@ -273,8 +273,7 @@ class TestChatAgentURLInstructions:
              patch('app.repositories.lead_capture.LeadCaptureConfigRepository') as mock_lead_repo, \
              patch('app.agents.chat_agent.PostgresAgentStorage') as mock_storage, \
              patch('app.agents.chat_agent.create_model') as mock_create_model, \
-             patch('app.agents.chat_agent.Agent') as mock_agent_class, \
-             patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo:
+             patch('app.agents.chat_agent.Agent') as mock_agent_class:
 
             # No lead-capture config for this agent (returns None → capture off).
             mock_lead_repo.return_value.get_by_agent.return_value = None
@@ -287,9 +286,6 @@ class TestChatAgentURLInstructions:
             # Mock knowledge search database session
             mock_knowledge_session_local.return_value.__enter__.return_value = mock_db
             mock_knowledge_session_local.return_value.__exit__.return_value = None
-
-            # Mock AI config repository
-            mock_ai_config_repo.return_value.get_active_config.return_value = None
 
             # Mock Jira repository
             from app.models.schemas.jira import AgentWithJiraConfig

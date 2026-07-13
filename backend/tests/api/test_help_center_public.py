@@ -34,6 +34,15 @@ from app.services.help_center_public import contrast_ink, resolve_help_center, s
 HOST = "test-org.chattermate.help"
 
 
+@pytest.fixture(autouse=True)
+def _open_plan_gate():
+    """Env-independent plan gating: local dev has the enterprise module (test
+    org has no subscription → the public site 404s), CI/OSS doesn't. These
+    tests target the public renderer, not the gate."""
+    with patch("app.services.help_center_public.help_center_allowed", return_value=True):
+        yield
+
+
 @pytest.fixture
 def client(db):
     def override_db():
@@ -92,13 +101,30 @@ def test_page_renders_published_only_and_escapes(client, db, test_organization, 
     assert r.status_code == 200
     assert "How do I sign up?" in r.text
     assert "Secret draft?" not in r.text
-    # Org content is escaped, never raw HTML.
+    # The index shows a plain-text preview (Markdown stripped) that links to the
+    # article page — the answer's raw HTML never reaches the page.
     assert "<b>email</b>" not in r.text
-    assert "&lt;b&gt;email&lt;/b&gt;" in r.text
+    assert "Use your email" in r.text
     # SEO artifacts.
     assert 'application/ld+json' in r.text and "FAQPage" in r.text
     assert f'<link rel="canonical" href="https://{HOST}/">' in r.text
     assert r.headers["cache-control"] == "public, max-age=60"
+
+
+def test_article_page_renders_sanitized_markdown(client, db, test_organization, help_center):
+    faq = _publish_faq(
+        db, test_organization.id,
+        answer="Click **Settings**.\n\n<script>alert(1)</script>",
+    )
+    faq.slug = "how-do-i-sign-up"
+    db.commit()
+    r = client.get(f"/a/{faq.slug}", headers={"host": HOST})
+    assert r.status_code == 200
+    # Markdown rendered, but the injected <script> is sanitized away (the body
+    # is rendered | safe). The page has its own widget/enhancement scripts, so
+    # the guard is on the injected payload, not the <script> tag in general.
+    assert "<strong>Settings</strong>" in r.text
+    assert "alert(1)" not in r.text
 
 
 def test_search_filters_results(client, db, test_organization, help_center):
