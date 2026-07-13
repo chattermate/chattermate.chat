@@ -91,6 +91,38 @@ def test_dedup_state_blocks_existing_and_repeats():
     assert [f.question for f in accepted] == ["What does it cost?"]
 
 
+def test_dedup_state_catches_fuzzy_rephrasings():
+    dedup = DedupState(["How do I reset my account password?"])
+    accepted = dedup.accept_new([
+        # Same content words, different filler/order → fuzzy dupe.
+        GeneratedFAQ(question="How can I reset the password on my account?", answer="a", category="c"),
+        # Genuinely different question sharing some words → kept.
+        GeneratedFAQ(question="How do I change my account email address?", answer="a", category="c"),
+    ])
+    assert [f.question for f in accepted] == ["How do I change my account email address?"]
+
+
+def test_dedup_state_short_questions_skip_fuzzy():
+    # < FUZZY_MIN_CONTENT_TOKENS content words: only exact matches dedup, so
+    # near-misses like these both survive.
+    dedup = DedupState(["How do I pay?"])
+    accepted = dedup.accept_new([
+        GeneratedFAQ(question="How do I pay invoices?", answer="a", category="c"),
+    ])
+    assert len(accepted) == 1
+
+
+def test_dedup_prompt_window_is_bounded():
+    questions = [f"How does feature number {i} work in the product today?" for i in range(100)]
+    dedup = DedupState(questions)
+    assert len(dedup.for_prompt) == faq_generation.MAX_PROMPT_QUESTIONS
+    # The full set still dedups beyond the window.
+    accepted = dedup.accept_new([
+        GeneratedFAQ(question=questions[0], answer="a", category="c"),
+    ])
+    assert accepted == []
+
+
 def test_category_merger_case_insensitive(db, test_organization):
     FAQRepository(db).create(FAQ(
         organization_id=test_organization.id, question="q", answer="a", category="Billing",
