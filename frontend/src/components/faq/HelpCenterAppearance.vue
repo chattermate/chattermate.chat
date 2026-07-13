@@ -15,7 +15,8 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import type { HelpCenterSettings, HelpCenterSettingsUpdate } from '@/types/faq'
 import type { SaveState } from '@/composables/useHelpCenterSettings'
 import HelpCenterLogoField from './HelpCenterLogoField.vue'
@@ -34,6 +35,38 @@ const emit = defineEmits<{
 }>()
 
 const BRAND_SWATCHES = ['#4338CA', '#0E8C8C', '#CF5B38', '#6D5BD0', '#1F8A5B', '#2A6FDB']
+
+// Custom brand color: native picker + hex field, both saving immediately.
+const isPreset = computed(() =>
+  BRAND_SWATCHES.some((c) => c.toLowerCase() === (props.settings.brand_color || '').toLowerCase()),
+)
+
+const hexDraft = ref(props.settings.brand_color)
+watch(() => props.settings.brand_color, (v) => { hexDraft.value = v })
+
+function saveColor(value: string) {
+  if (value.toLowerCase() !== (props.settings.brand_color || '').toLowerCase()) {
+    emit('save-now', { brand_color: value })
+  }
+}
+
+function onPicker(event: Event) {
+  saveColor((event.target as HTMLInputElement).value.toUpperCase())
+}
+
+function commitHex() {
+  const raw = hexDraft.value.trim()
+  const body = raw.replace(/^#/, '')
+  // Accept 3, 6 or 8 hex digits (matches the backend validator).
+  if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$|^[0-9a-fA-F]{8}$/.test(body)) {
+    toast.error('Enter a hex color like #4338CA')
+    hexDraft.value = props.settings.brand_color
+    return
+  }
+  const hex = `#${body.toUpperCase()}`
+  hexDraft.value = hex
+  saveColor(hex)
+}
 
 const saveStateLabel = computed(() => {
   if (props.saveState === 'saving') return 'Saving…'
@@ -87,13 +120,39 @@ function removeLink(index: number) {
               v-for="color in BRAND_SWATCHES"
               :key="color"
               class="swatch"
-              :class="{ 'swatch--selected': settings.brand_color === color }"
-              :style="{ background: color, boxShadow: settings.brand_color === color ? `0 0 0 2px ${color}` : 'none' }"
+              :class="{ 'swatch--selected': settings.brand_color.toLowerCase() === color.toLowerCase() }"
+              :style="{ background: color, boxShadow: settings.brand_color.toLowerCase() === color.toLowerCase() ? `0 0 0 2px ${color}` : 'none' }"
               type="button"
               :title="color"
               @click="$emit('save-now', { brand_color: color })"
             ></button>
+
+            <!-- Custom color: swatch opens the OS picker; shows current color when off-preset. -->
+            <label
+              class="swatch swatch--custom"
+              :class="{ 'swatch--selected': !isPreset }"
+              :style="!isPreset ? { background: settings.brand_color, boxShadow: `0 0 0 2px ${settings.brand_color}` } : {}"
+              title="Custom color"
+            >
+              <input type="color" class="swatch__picker" :value="settings.brand_color" @change="onPicker" />
+              <svg v-if="isPreset" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+            </label>
           </div>
+
+          <div class="hex-field">
+            <span class="hex-field__hash">#</span>
+            <input
+              :value="hexDraft.replace(/^#/, '')"
+              maxlength="8"
+              spellcheck="false"
+              placeholder="4338CA"
+              aria-label="Brand color hex code"
+              @input="hexDraft = ($event.target as HTMLInputElement).value"
+              @keydown.enter="commitHex"
+              @blur="commitHex"
+            />
+          </div>
+
           <p class="hint">Recolors buttons, links, search and highlights across your help center.</p>
         </div>
 
@@ -236,6 +295,63 @@ function removeLink(index: number) {
 
 .swatch--selected {
   border-color: var(--text);
+}
+
+.swatch--custom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  background: var(--o05);
+  border: 2px dashed var(--o25);
+  color: var(--muted);
+}
+
+.swatch--custom.swatch--selected {
+  border-style: solid;
+  color: #fff;
+}
+
+/* The native color input fills the swatch but stays invisible — the label is
+   the visible control and clicking anywhere opens the OS picker. */
+.swatch__picker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.hex-field {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  background: var(--bg);
+  border: 1px solid var(--o10);
+  border-radius: 9px;
+  padding: 0 11px;
+  font-family: var(--font-mono);
+}
+
+.hex-field__hash {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.hex-field input {
+  width: 84px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-transform: uppercase;
+  padding: 9px 2px 9px 4px;
 }
 
 .hint {
