@@ -145,7 +145,9 @@ class Settings(BaseSettings):
     FAQ_IMPORT_MAX_PAGE_CHARS: int = int(os.getenv("FAQ_IMPORT_MAX_PAGE_CHARS", "100000"))
     FAQ_IMPORT_FETCH_TIMEOUT: int = int(os.getenv("FAQ_IMPORT_FETCH_TIMEOUT", "30"))
     # Article-mode import (crawl linked pages, no LLM): crawl and re-host caps.
-    FAQ_ARTICLE_IMPORT_MAX_PAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_PAGES", "50"))
+    # High enough to pull a whole mid-size help center in one pass; a deliberate
+    # one-time migration in a background worker, so slowness is acceptable.
+    FAQ_ARTICLE_IMPORT_MAX_PAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_PAGES", "200"))
     FAQ_ARTICLE_IMPORT_MAX_IMAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_IMAGES", "10"))
     # Category/section listing pages to follow for the full per-category article
     # list (help-center homepages truncate each section to a few articles).

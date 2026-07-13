@@ -238,10 +238,12 @@ def discover_article_links(
 
     Standard help centers (Chatwoot/Zendesk/Intercom) nest articles under
     /articles/ and group them into /categories/ (or /sections//collections/).
-    We tag each article with its homepage section heading, then follow the
-    category listing pages for the full per-category list (homepages truncate
-    each section to a few articles). A non-standard/flat page with no /articles/
-    links falls back to importing every same-site content link.
+    We follow the category listing pages FIRST for the complete per-category
+    list (homepages truncate each section to a few articles), so hitting the
+    page cap yields whole categories rather than a thin slice of every one.
+    Homepage section links then fill any remainder (e.g. featured-only
+    articles). A non-standard/flat page with no /articles/ links falls back to
+    importing every same-site content link.
     """
     soup, final_url = _fetch_index_soup(client, index_url)
     if soup is None:
@@ -260,15 +262,12 @@ def discover_article_links(
             category_of[url] = category
             ordered.append(url)
         elif category and not category_of[url]:
-            # Upgrade a still-uncategorised article (e.g. seen first under a
-            # generic homepage section) with the category page's real name.
+            # Upgrade a still-uncategorised article (seen first under a generic
+            # homepage section) with the category page's real name.
             category_of[url] = category
 
-    # 1. Homepage article links, tagged by their section heading.
-    for url, category in _sectioned_article_links(main, final_url, root_domain):
-        record(url, category)
-
-    # 2. Follow category/section pages for the complete per-category list.
+    # 1. Follow category/section listing pages first — the complete per-category
+    #    lists (a homepage shows only ~5 of a category's articles).
     category_links: List[str] = []
     seen_cat = set()
     for anchor in main.find_all("a", href=True):
@@ -289,6 +288,11 @@ def discover_article_links(
             url = _same_site_href(anchor, cat_final, root_domain)
             if url and _is_article_url(url):
                 record(url, cat_name)
+
+    # 2. Homepage section links — fills any remainder (featured-only articles,
+    #    or the index itself being a single category/flat listing page).
+    for url, category in _sectioned_article_links(main, final_url, root_domain):
+        record(url, category)
 
     # 3. Fallback: no standard article URLs — import every same-site link,
     #    resolving each article's category from its own breadcrumb/URL.
