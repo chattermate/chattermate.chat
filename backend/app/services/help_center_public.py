@@ -74,6 +74,14 @@ def resolve_help_center(db: Session, host: str) -> Optional[HelpCenterSettings]:
     return row
 
 
+# Topic accent colors, applied by category display order (matches the index and
+# article templates). Kept here so list cards, sidebar topics, the article tag
+# and related cards all resolve the SAME color for a given category.
+CATEGORY_PALETTE = [
+    "#6d5bd0", "#0e8c8c", "#cf5b38", "#2a6fdb", "#1f8a5b", "#b0468a", "#c98a1e", "#3a6f8f",
+]
+
+
 def published_faq_groups(
     db: Session, row: HelpCenterSettings, search: Optional[str] = None
 ) -> List[Tuple[str, List[FAQ]]]:
@@ -83,6 +91,23 @@ def published_faq_groups(
     for faq in faqs:
         groups.setdefault(faq.category, []).append(faq)
     return list(groups.items())
+
+
+def category_colors(categories) -> dict:
+    """category name -> accent hex, by display order."""
+    return {c: CATEGORY_PALETTE[i % len(CATEGORY_PALETTE)] for i, c in enumerate(categories)}
+
+
+def get_published_article(db: Session, row: HelpCenterSettings, slug: str) -> Optional[FAQ]:
+    """A single published FAQ by slug for the /a/{slug} article page."""
+    return FAQRepository(db).get_published_by_slug(row.organization_id, slug)
+
+
+def related_articles(db: Session, row: HelpCenterSettings, faq: FAQ, limit: int = 4) -> List[FAQ]:
+    """Other published FAQs in the same category — the article's related list."""
+    return FAQRepository(db).get_published_related(
+        row.organization_id, faq.category, faq.id, limit=limit
+    )
 
 
 def contrast_ink(hex_color: str) -> str:

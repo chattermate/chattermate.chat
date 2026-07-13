@@ -69,6 +69,11 @@ firebase_admin
 beautifulsoup4
 aiofiles
 
+# help-center article rendering: FAQ answers are authored/stored as Markdown and
+# rendered to sanitized HTML on the public page (markdown -> nh3 allowlist clean).
+markdown
+nh3
+
 gunicorn
 
 redis

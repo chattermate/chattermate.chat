@@ -1,0 +1,124 @@
+{#
+Copyright 2024-2026 ChatterMate
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+A single help-center article: breadcrumb, rich Markdown body, "Was this helpful?"
+feedback, and related articles. `article.body_html` is the ONLY value rendered
+`| safe` — it is pre-sanitized to an HTML allowlist by help_center_content;
+every other value stays autoescaped.
+#}{% extends "help_center/base.html" %}
+
+{% block body %}
+  <div class="hc-body">
+
+    <!-- ---- SIDEBAR ---- -->
+    <aside class="hc-aside">
+      {% if topics %}
+      <div class="hc-aside-label">BROWSE TOPICS</div>
+      <div class="hc-topics">
+        {% for topic in topics %}
+        <a class="hc-topic{% if topic.active %} active{% endif %}" href="/?topic={{ topic.category | urlencode }}" style="--ic: {{ topic.color }};">
+          <span class="hc-topic-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>
+          </span>
+          <span class="hc-topic-name">{{ topic.category }}</span>
+          <span class="hc-topic-count">{{ topic.count }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if widget_id %}
+      <div class="hc-help-card">
+        <h3>Can't find it?</h3>
+        <p>Ask our assistant — it answers instantly and can bring in a human.</p>
+        <button class="hc-cta-btn" type="button" data-chat style="padding: 9px 14px; font-size: 13px; border-radius: 10px; background: var(--brand); color: var(--brand-ink);">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"></path></svg>
+          Start a chat
+        </button>
+      </div>
+      {% endif %}
+    </aside>
+
+    <!-- ---- ARTICLE ---- -->
+    <main class="hc-main">
+      <article class="hc-article" style="--ic: {{ article.color }};">
+        <a class="hc-back" href="/?topic={{ article.category | urlencode }}">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          All {{ article.category }} articles
+        </a>
+        <div class="hc-article-meta">
+          <span class="hc-article-tag">{{ article.category }}</span>
+          <span class="hc-article-time">{{ article.read_time }}</span>
+        </div>
+        <h1>{{ article.question }}</h1>
+        <div class="hc-article-card">
+          <div class="hc-article-body">{{ article.body_html | safe }}</div>
+          <div class="hc-feedback" data-feedback>
+            <span class="hc-feedback-q">Was this helpful?</span>
+            <button class="hc-vote" type="button" data-vote="yes">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"></path><path d="M7 11l4-8a2 2 0 0 1 3 1.8V9h4.5a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 17 20H7"></path></svg>
+              Yes
+            </button>
+            <button class="hc-vote" type="button" data-vote="no">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1z"></path><path d="M17 13l-4 8a2 2 0 0 1-3-1.8V15H5.5a2 2 0 0 1-2-2.4l1.4-7A2 2 0 0 1 7 4h10"></path></svg>
+              No
+            </button>
+            <span class="hc-thanks" hidden>Thanks for the feedback!</span>
+          </div>
+        </div>
+
+        {% if article.related %}
+        <div class="hc-related">
+          <div class="hc-related-label">RELATED ARTICLES</div>
+          <div class="hc-related-grid">
+            {% for r in article.related %}
+            <a class="hc-related-card" href="/a/{{ r.slug }}" style="--ic: {{ r.color }};">
+              <span class="hc-related-top">
+                <span class="hc-related-icon">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>
+                </span>
+                <span style="color:#c4c8d2; display:flex;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M17 7H8M17 7v9"></path></svg></span>
+              </span>
+              <span class="hc-related-q">{{ r.question }}</span>
+              <span class="hc-related-time">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"></path><path d="M6 3h9l5 5v13H6z"></path></svg>
+                {{ r.read_time }}
+              </span>
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </article>
+    </main>
+  </div>
+{% endblock %}
+
+{% block page_scripts %}
+  <script>
+  (function () {
+    // per-article feedback (client-only acknowledgement)
+    var fb = document.querySelector('[data-feedback]');
+    if (!fb) return;
+    fb.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-vote]');
+      if (!btn) return;
+      fb.querySelectorAll('.hc-vote').forEach(function (v) { v.classList.remove('on-yes', 'on-no'); });
+      btn.classList.add(btn.getAttribute('data-vote') === 'yes' ? 'on-yes' : 'on-no');
+      var thanks = fb.querySelector('.hc-thanks');
+      if (thanks) thanks.hidden = false;
+    });
+  })();
+  </script>
+{% endblock %}
