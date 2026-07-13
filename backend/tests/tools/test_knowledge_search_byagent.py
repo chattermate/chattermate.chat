@@ -84,9 +84,7 @@ def knowledge_search_tool(mock_db, mock_knowledge, mock_vector_db, mock_agent_kn
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
          patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
          patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class, \
-         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt_api_key:
+         patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class:
         
         # Configure mocks
         mock_session_local.return_value.__enter__.return_value = mock_db
@@ -98,20 +96,13 @@ def knowledge_search_tool(mock_db, mock_knowledge, mock_vector_db, mock_agent_kn
         mock_knowledge_repo_class.return_value = mock_knowledge_repo
         mock_knowledge_repo.get_by_agent.return_value = [mock_knowledge]
         
-        # Create a mock for AIConfigRepository
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
         
-        # Mock decrypt_api_key
-        mock_decrypt_api_key.return_value = "test-key"
         
         # Create the tool instance
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
         
         # Store the mock objects for later access in tests
         tool._mock_knowledge_repo = mock_knowledge_repo
-        tool._mock_ai_config_repo = mock_ai_config_repo
         
         # Set the agent_knowledge directly
         tool.agent_knowledge = mock_agent_knowledge
@@ -403,8 +394,6 @@ def test_real_search_knowledge_base_with_results():
     org_id = uuid4()
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
          patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
          patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
@@ -416,11 +405,7 @@ def test_real_search_knowledge_base_with_results():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = "encrypted_key"
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
-        mock_decrypt.return_value = "decrypted_key"
 
         # Create the tool
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
@@ -462,17 +447,13 @@ def test_real_search_knowledge_base_no_ai_config():
     agent_id = str(uuid4())
     org_id = uuid4()
 
-    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class:
+    with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local:
 
         mock_db = MagicMock()
         mock_session_local.return_value.__enter__.return_value = mock_db
         mock_session_local.return_value.__exit__.return_value = None
 
         # No AI config available
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = None
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
         # Should not raise an error
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
@@ -488,8 +469,6 @@ def test_real_search_knowledge_base_with_source_filter():
     source_filter = "specific_doc.pdf"
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
          patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
          patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
@@ -501,11 +480,7 @@ def test_real_search_knowledge_base_with_source_filter():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = "encrypted_key"
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
-        mock_decrypt.return_value = "decrypted_key"
 
         # Create tool with source filter
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id, source=source_filter)
@@ -553,8 +528,6 @@ def test_real_search_knowledge_base_no_content_docs():
     org_id = uuid4()
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
          patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
          patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
@@ -566,9 +539,6 @@ def test_real_search_knowledge_base_no_content_docs():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = None
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
 
@@ -614,8 +584,6 @@ def test_real_search_knowledge_base_unknown_source_type():
     org_id = uuid4()
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
          patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
          patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
@@ -627,11 +595,7 @@ def test_real_search_knowledge_base_unknown_source_type():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = "key"
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
-        mock_decrypt.return_value = "key"
 
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
 
@@ -672,8 +636,6 @@ def test_real_search_knowledge_base_document_without_score():
     org_id = uuid4()
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
          patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
          patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class:
@@ -685,11 +647,7 @@ def test_real_search_knowledge_base_document_without_score():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = "key"
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
-        mock_decrypt.return_value = "key"
 
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
 
@@ -731,7 +689,6 @@ def test_real_search_knowledge_base_exception_handling():
     org_id = uuid4()
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class:
 
         # Setup mocks for initialization
@@ -741,9 +698,6 @@ def test_real_search_knowledge_base_exception_handling():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = None
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
 
@@ -765,8 +719,6 @@ def test_real_search_knowledge_base_lazy_init():
     org_id = uuid4()
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
-         patch('app.tools.knowledge_search_byagent.decrypt_api_key') as mock_decrypt, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class, \
          patch('app.tools.knowledge_search_byagent.PgVector') as mock_pg_vector, \
          patch('app.tools.knowledge_search_byagent.AgentKnowledge') as mock_agent_knowledge_class, \
@@ -779,11 +731,7 @@ def test_real_search_knowledge_base_lazy_init():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = "key"
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
-        mock_decrypt.return_value = "key"
 
         # Create tool - agent_knowledge should be None initially
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
@@ -839,7 +787,6 @@ def test_real_search_knowledge_base_no_sources_real():
     org_id = uuid4()
 
     with patch('app.tools.knowledge_search_byagent.SessionLocal') as mock_session_local, \
-         patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo_class, \
          patch('app.tools.knowledge_search_byagent.KnowledgeRepository') as mock_knowledge_repo_class:
 
         # Setup mocks for initialization
@@ -849,9 +796,6 @@ def test_real_search_knowledge_base_no_sources_real():
 
         mock_ai_config = MagicMock()
         mock_ai_config.encrypted_api_key = None
-        mock_ai_config_repo = MagicMock()
-        mock_ai_config_repo.get_active_config.return_value = mock_ai_config
-        mock_ai_config_repo_class.return_value = mock_ai_config_repo
 
         tool = KnowledgeSearchByAgent(agent_id=agent_id, org_id=org_id)
 

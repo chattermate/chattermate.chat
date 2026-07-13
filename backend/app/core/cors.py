@@ -59,6 +59,27 @@ def get_cors_origins() -> Set[str]:
             # Add www subdomain variants
             all_origins.add(f"https://www.{org.domain}")
             all_origins.add(f"http://www.{org.domain}")
+
+        # Help-center hosts embed the org's chat widget, which fetches
+        # /widgets/{id}/data and opens a socket from the public help-center
+        # origin — so those origins must be allowed too. The base-domain
+        # wildcard is also covered by get_cors_origin_regex() for FastAPI, but
+        # python-socketio can't match a regex, so enumerate the live slugs here.
+        from app.repositories.help_center import HelpCenterRepository
+        hc_repo = HelpCenterRepository(db)
+        base = settings.HELP_CENTER_BASE_DOMAIN
+        # In local dev the help center is reached on a non-standard port (e.g.
+        # :8000), which the browser puts in the Origin header. socket.io matches
+        # origins exactly (no regex), so add that port variant when configured.
+        dev_port = urlparse(settings.APP_BASE_URL).port
+        for slug in hc_repo.list_enabled_slugs():
+            for scheme in ("https", "http"):
+                all_origins.add(f"{scheme}://{slug}.{base}")
+                if dev_port:
+                    all_origins.add(f"{scheme}://{slug}.{base}:{dev_port}")
+        for domain in hc_repo.list_verified_domains():
+            all_origins.add(f"https://{domain}")
+            all_origins.add(f"http://{domain}")
     except Exception as e:
         logger.error(f"Error fetching organization domains: {e}")
     finally:
@@ -66,6 +87,16 @@ def get_cors_origins() -> Set[str]:
             db.close()
 
     return all_origins
+
+
+@lru_cache(maxsize=1)
+def get_cors_origin_regex() -> str:
+    """Regex allowing every help-center subdomain (`*.{base_domain}`) for the
+    FastAPI CORS middleware, so a new slug works without a cache refresh.
+    Socket.IO can't use this (no regex support) — it relies on the enumerated
+    origins in get_cors_origins()."""
+    base = re.escape(settings.HELP_CENTER_BASE_DOMAIN)
+    return rf"^https?://([a-z0-9-]+\.)?{base}(:\d+)?$"
 
 def refresh_cors_origins() -> None:
     """
@@ -103,10 +134,13 @@ def update_local_cors(app: FastAPI, new_origins: List[str]) -> bool:
         try:
             # Force FastAPI to rebuild the middleware stack
             app.middleware_stack = None
-            # Re-add the middleware with updated origins
+            # Re-add the middleware with updated origins. Keep the help-center
+            # subdomain regex here too, or a rebuild would silently drop the
+            # *.{base_domain} wildcard that the embedded widget relies on.
             app.add_middleware(
                 CORSMiddleware,
                 allow_origins=new_origins,
+                allow_origin_regex=get_cors_origin_regex(),
                 allow_credentials=True,
                 allow_methods=["*"],
                 allow_headers=["*"],

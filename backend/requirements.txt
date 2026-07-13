@@ -69,6 +69,14 @@ firebase_admin
 beautifulsoup4
 aiofiles
 
+# help-center article rendering: FAQ answers are authored/stored as Markdown and
+# rendered to sanitized HTML on the public page (markdown -> nh3 allowlist clean).
+markdown
+nh3
+# help-center article import: crawled help pages are converted HTML -> Markdown
+# (subclassed converter re-hosts images and absolutizes links inline).
+markdownify
+
 gunicorn
 
 redis
@@ -105,3 +113,7 @@ httpx
 pyOpenSSL==26.0.0
 cryptography==46.0.3
 crawl4ai>=0.7.0
+
+# Help center (public SSR templates + custom-domain DNS verification)
+jinja2
+dnspython

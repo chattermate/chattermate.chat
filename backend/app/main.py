@@ -22,6 +22,7 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 from fastapi.staticfiles import StaticFiles
 import socketio
 from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_apps, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, people
+from app.api import help_center as help_center_api
 from app.api import channels as channels_api
 from app.api import webhooks as channel_webhooks
 # Import widget_chat to register socket.io event handlers for /widget namespace
@@ -36,7 +37,7 @@ from app.core.logger import get_logger
 from contextlib import asynccontextmanager
 import os
 from app.core.socketio import socket_app, configure_socketio, sio
-from app.core.cors import get_cors_origins
+from app.core.cors import get_cors_origins, get_cors_origin_regex
 from app.core.application import app, initialize_cors_listener
 
 # Import models to ensure they're registered with SQLAlchemy
@@ -65,10 +66,13 @@ logger.debug(f"CORS origins: {cors_origins}")
 # Update the FastAPI app to use the lifespan function
 app.router.lifespan_context = lifespan
 
-# Add CORS middleware to FastAPI app
+# Add CORS middleware to FastAPI app. The regex covers every help-center
+# subdomain (*.chattermate.help) so a newly-created slug is allowed without a
+# cache refresh; explicit origins still cover org domains + custom domains.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(cors_origins),
+    allow_origin_regex=get_cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -123,6 +127,12 @@ app.include_router(
     users.router,
     prefix=f"{settings.API_V1_STR}/users",
     tags=["users"]
+)
+
+app.include_router(
+    help_center_api.router,
+    prefix=f"{settings.API_V1_STR}/help-center",
+    tags=["help-center"]
 )
 
 app.include_router(
@@ -274,4 +284,9 @@ app.mount("/api/v1/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # Create final ASGI app
-app = socketio.ASGIApp(sio, app)
+# Public help center: requests for {slug}.<help domain> / verified custom
+# domains are dispatched to the SSR help-center app before reaching the API.
+from app.api.help_center_public import public_app
+from app.core.help_center_host import HelpCenterHostMiddleware
+
+app = socketio.ASGIApp(sio, HelpCenterHostMiddleware(app, public_app))

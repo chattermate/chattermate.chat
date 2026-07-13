@@ -27,6 +27,11 @@ from app.repositories.session_to_agent import SessionToAgentRepository
 from app.models.session_to_agent import SessionStatus
 from app.models.schemas.chat import ChatResponse,TransferReasonType, EndChatReasonType
 from app.core.config import settings
+from app.agents.structured_output import (
+    build_groq_json_tool,
+    lenient_json_load,
+    salvage_groq_json_error,
+)
 from app.agents.transfer_agent import get_agent_availability_response
 from app.models.notification import Notification
 from app.services.user import send_fcm_notification
@@ -101,80 +106,18 @@ def build_groq_response_tool(capture: dict):
     `capture` is mutated in place with the model's tool-call arguments; the caller reads
     it after `agent.arun()` and builds the ChatResponse from it.
     """
-    from agno.tools.function import Function
-
-    def _record(**kwargs):
-        capture.clear()
-        capture.update(kwargs)
-        return "recorded"
-
-    return Function(
-        name="json",
+    return build_groq_json_tool(
+        capture,
+        _GROQ_JSON_TOOL_SCHEMA,
         description="Return your final structured reply to the visitor. Call this exactly once to end the turn, after any searching.",
-        parameters=_GROQ_JSON_TOOL_SCHEMA,
-        entrypoint=_record,
-        stop_after_tool_call=True,
-        skip_entrypoint_processing=True,
     )
 
-def _lenient_json_load(s: str):
-    """Best-effort parse of a possibly-truncated JSON object. Returns dict or None.
 
-    When Groq truncates a `json` tool call, the trailing field (usually `message`) is
-    cut mid-value. We progressively try closers, then fall back to dropping the last
-    (incomplete) key so the earlier complete fields survive.
-    """
-    s = (s or "").strip()
-    if not s:
-        return None
-    try:
-        return json.loads(s)
-    except json.JSONDecodeError:
-        pass
-    for suffix in ('"}', '}', '"}}', '}}', 'null}'):
-        try:
-            return json.loads(s + suffix)
-        except json.JSONDecodeError:
-            continue
-    last_comma = s.rfind(',')
-    if last_comma != -1:
-        try:
-            return json.loads(s[:last_comma] + '}')
-        except json.JSONDecodeError:
-            pass
-    return None
-
-
-def _salvage_groq_json_error(exc: Exception):
-    """Recover a ChatResponse dict from a Groq `tool_use_failed` error.
-
-    Groq returns the (truncated) tool-call text in `failed_generation`; every field
-    before the truncation point is intact, so the lead/end_chat flags are recoverable
-    even when the message got cut. Returns a dict of arguments or None.
-    """
-    text = getattr(exc, "message", None) or str(exc)
-    if "failed_generation" not in text:
-        return None
-    fg = None
-    try:
-        fg = json.loads(text).get("error", {}).get("failed_generation")
-    except Exception:
-        m = re.search(r'"failed_generation"\s*:\s*"(.*)"\s*\}\s*\}\s*$', text, re.DOTALL)
-        if m:
-            try:
-                # Decode JSON string escapes (\n, \", \uXXXX, non-ASCII) correctly —
-                # unicode_escape would corrupt emoji/accented characters.
-                fg = json.loads('"' + m.group(1) + '"')
-            except Exception:
-                fg = m.group(1)
-    if not fg:
-        return None
-    # fg looks like: {"name": "json", "arguments": {<fields, possibly truncated>}}
-    idx = fg.find('"arguments"')
-    brace = fg.find('{', idx) if idx != -1 else -1
-    if brace == -1:
-        return None
-    return _lenient_json_load(fg[brace:])
+# Shared implementations live in app.agents.structured_output (also used by the
+# FAQ generator); keep the private aliases so existing call sites and tests
+# don't churn.
+_lenient_json_load = lenient_json_load
+_salvage_groq_json_error = salvage_groq_json_error
 
 
 def _build_chat_response_from_capture(capture: dict) -> ChatResponse:

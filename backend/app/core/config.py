@@ -121,6 +121,55 @@ class Settings(BaseSettings):
     KNOWLEDGE_SUMMARY_API_KEY: str = os.getenv("KNOWLEDGE_SUMMARY_API_KEY", "")
     KNOWLEDGE_SUMMARY_MAX_TOKENS: int = int(os.getenv("KNOWLEDGE_SUMMARY_MAX_TOKENS", "4000"))
 
+    # Help center (public FAQ site)
+    # Base domain serving {slug}.<base> help centers.
+    HELP_CENTER_BASE_DOMAIN: str = os.getenv("HELP_CENTER_BASE_DOMAIN", "chattermate.help")
+    # CNAME target customers point their custom help-center domain at.
+    HELP_CENTER_CNAME_TARGET: str = os.getenv("HELP_CENTER_CNAME_TARGET", "cname.chattermate.chat")
+    # IPs the CNAME target resolves to — accepted when a provider flattens the
+    # CNAME into A/AAAA records (comma-separated).
+    HELP_CENTER_TARGET_IPS: frozenset = frozenset(
+        ip.strip() for ip in os.getenv("HELP_CENTER_TARGET_IPS", "").split(",") if ip.strip()
+    )
+    # FAQ generation cost caps (per source / per LLM call) and import fetch limits.
+    FAQ_MAX_PAGES_PER_SOURCE: int = int(os.getenv("FAQ_MAX_PAGES_PER_SOURCE", "300"))
+    FAQ_MAX_BATCH_CHARS: int = int(os.getenv("FAQ_MAX_BATCH_CHARS", "15000"))
+    # Ceiling for context-window-derived batch sizing (see utils/model_context.py)
+    # — a quality guard for very-large-context models, not a token limit.
+    FAQ_MAX_BATCH_CHARS_CEILING: int = int(os.getenv("FAQ_MAX_BATCH_CHARS_CEILING", "60000"))
+    # Force a context-window size (tokens) for exotic/self-hosted models; 0 = auto.
+    FAQ_CONTEXT_TOKENS_OVERRIDE: int = int(os.getenv("FAQ_CONTEXT_TOKENS_OVERRIDE", "0"))
+    # Meter FAQ generation credits even for orgs on their own API key
+    # (default: hosted CHATTERMATE model only).
+    FAQ_METER_OWN_KEY: bool = os.getenv("FAQ_METER_OWN_KEY", "false").lower() == "true"
+    FAQ_IMPORT_MAX_PAGE_CHARS: int = int(os.getenv("FAQ_IMPORT_MAX_PAGE_CHARS", "100000"))
+    FAQ_IMPORT_FETCH_TIMEOUT: int = int(os.getenv("FAQ_IMPORT_FETCH_TIMEOUT", "30"))
+    # Article-mode import (crawl linked pages, no LLM): crawl and re-host caps.
+    # High enough to pull a whole mid-size help center in one pass; a deliberate
+    # one-time migration in a background worker, so slowness is acceptable.
+    FAQ_ARTICLE_IMPORT_MAX_PAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_PAGES", "200"))
+    FAQ_ARTICLE_IMPORT_MAX_IMAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_IMAGES", "10"))
+    # Category/section listing pages to follow for the full per-category article
+    # list (help-center homepages truncate each section to a few articles).
+    FAQ_ARTICLE_IMPORT_MAX_CATEGORIES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_CATEGORIES", "20"))
+    # A 'processing' FAQ job whose progress hasn't advanced in this long is
+    # treated as dead (worker crashed/killed): excluded from active-job polling
+    # and reaped on the next enqueue. Generous — must exceed the slowest single
+    # LLM batch / page fetch so a live-but-slow job is never killed.
+    FAQ_JOB_STALE_SECONDS: int = int(os.getenv("FAQ_JOB_STALE_SECONDS", "600"))
+    # FAQ generation/import jobs processed concurrently across ALL orgs. Default
+    # 1 = strictly one business at a time (each job does LLM calls + vector-DB
+    # reads); raise for more throughput on a bigger host.
+    MAX_CONCURRENT_FAQ_JOBS: int = int(os.getenv("MAX_CONCURRENT_FAQ_JOBS", "1"))
+    # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx
+    # records that exist on the base domain, hence env-configurable.
+    HELP_CENTER_RESERVED_SLUGS: frozenset = frozenset(
+        s.strip() for s in os.getenv(
+            "HELP_CENTER_RESERVED_SLUGS",
+            "www,api,app,help,mail,admin,staging,cname,status",
+        ).split(",") if s.strip()
+    )
+
     # Embedding Model Configuration
     EMBEDDING_MODEL_ID: str = os.getenv("EMBEDDING_MODEL_ID", "sentence-transformers/all-MiniLM-L6-v2")
     EMBEDDING_BATCH_SIZE: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))

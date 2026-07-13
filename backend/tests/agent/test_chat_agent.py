@@ -198,11 +198,9 @@ def mock_db_session(db):
 async def test_chat_agent_initialization(test_organization_id, test_agent, mock_db_session):
     """Test ChatAgent initialization"""
     # Mock the AI config repository and use MockAgentStorage
-    with patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo, \
-         patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_config_repo, \
+    with patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_config_repo, \
          patch('app.agents.chat_agent.JiraRepository') as mock_jira_repo, \
          patch('app.agents.chat_agent.PostgresAgentStorage', return_value=MockAgentStorage()):
-        mock_ai_config_repo.return_value.get_active_config.return_value = None
         mock_shopify_config_repo.return_value.get_agent_shopify_config.return_value = None
         
         # Create a proper AgentWithJiraConfig mock
@@ -251,11 +249,9 @@ async def test_chat_agent_initialization(test_organization_id, test_agent, mock_
 async def test_chat_agent_get_response(test_organization_id, test_agent, test_user, mock_db_session):
     """Test ChatAgent get_response method"""
     # Mock the AI config repository and use MockAgentStorage
-    with patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo, \
-         patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_config_repo, \
+    with patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_config_repo, \
          patch('app.agents.chat_agent.JiraRepository') as mock_jira_repo, \
          patch('app.agents.chat_agent.PostgresAgentStorage', return_value=MockAgentStorage()):
-        mock_ai_config_repo.return_value.get_active_config.return_value = None
         mock_shopify_config_repo.return_value.get_agent_shopify_config.return_value = None
         
         # Create a proper AgentWithJiraConfig mock
@@ -336,11 +332,9 @@ async def test_chat_agent_api_key_validation():
 async def test_chat_agent_error_handling(test_organization_id, test_agent, test_user, mock_db_session):
     """Test ChatAgent error handling"""
     # Mock the AI config repository and use MockAgentStorage
-    with patch('app.tools.knowledge_search_byagent.AIConfigRepository') as mock_ai_config_repo, \
-         patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_config_repo, \
+    with patch('app.agents.chat_agent.AgentShopifyConfigRepository') as mock_shopify_config_repo, \
          patch('app.agents.chat_agent.JiraRepository') as mock_jira_repo, \
          patch('app.agents.chat_agent.PostgresAgentStorage', return_value=MockAgentStorage()):
-        mock_ai_config_repo.return_value.get_active_config.return_value = None
         mock_shopify_config_repo.return_value.get_agent_shopify_config.return_value = None
         
         # Create a proper AgentWithJiraConfig mock

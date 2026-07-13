@@ -36,7 +36,6 @@ from app.core.s3 import upload_file_to_s3, get_s3_signed_url
 from app.core.config import settings
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
-from agno.models.openai import OpenAIChat
 from app.utils.agno_utils import create_model
 from app.utils.rate_limit import limit_instruction_generation
 

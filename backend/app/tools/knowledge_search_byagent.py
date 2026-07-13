@@ -21,13 +21,10 @@ from app.database import SessionLocal
 from app.core.config import settings
 from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
 from app.repositories.knowledge import KnowledgeRepository
-from app.repositories.ai_config import AIConfigRepository
-from app.core.security import decrypt_api_key
 from agno.knowledge.agent import AgentKnowledge
 from agno.vectordb.pgvector import PgVector, SearchType
 from agno.embedder.fastembed import FastEmbedEmbedder
 from uuid import UUID
-import os
 
 class KnowledgeSearchByAgent(Toolkit):
     def __init__(self, agent_id: str, org_id: UUID, source: str = None):
@@ -41,14 +38,12 @@ class KnowledgeSearchByAgent(Toolkit):
         # Structured citations for the most recent turn: list of {"name", "type"}.
         # Read (and reset) by the chat agent after each run to attach to the response.
         self.collected_sources: List[Dict[str, str]] = []
-        
-        # Get API key from AI config - use context manager for database session
-        with SessionLocal() as db:
-            ai_config_repo = AIConfigRepository(db)
-            ai_config = ai_config_repo.get_active_config(org_id)
-            if ai_config and ai_config.encrypted_api_key:
-                os.environ['OPENAI_API_KEY'] = decrypt_api_key(ai_config.encrypted_api_key)
-        
+
+        # NOTE: this used to export the org's key as OPENAI_API_KEY for agno's
+        # old default OpenAI embedder. Search now uses the local FastEmbed
+        # embedder and every model gets its key explicitly, so the env write
+        # was dead — and a cross-tenant race (concurrent orgs overwrote each
+        # other's key in process-global state).
         self.agent_knowledge = None
         self.register(self.search_knowledge_base)
 

@@ -198,6 +198,30 @@ async def _save_file_locally(
         logger.error(f"Failed to save file locally: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to save file")
 
+def _key_from_url(s3_url: str) -> str:
+    """Extract the object key from either S3 URL format."""
+    parsed_url = urlparse(s3_url)
+    path_parts = parsed_url.path.strip('/').split('/')
+    if parsed_url.netloc == 's3.amazonaws.com':
+        # Format: https://s3.amazonaws.com/bucket/key
+        return '/'.join(path_parts[1:])
+    # Format: https://bucket.s3.region.amazonaws.com/key
+    return '/'.join(path_parts)
+
+
+async def download_file_from_s3(s3_url: str) -> bytes:
+    """Download an object's bytes (worker-side readback of stored uploads).
+    boto3 is synchronous — offload so the transfer never blocks the event loop."""
+    import asyncio
+
+    def _download() -> bytes:
+        s3_client = get_s3_client()
+        response = s3_client.get_object(Bucket=settings.S3_BUCKET, Key=_key_from_url(s3_url))
+        return response['Body'].read()
+
+    return await asyncio.to_thread(_download)
+
+
 async def delete_file_from_s3(s3_url: str) -> bool:
     """Delete file from S3 bucket"""
     try:
