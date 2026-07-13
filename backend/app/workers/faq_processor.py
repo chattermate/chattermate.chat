@@ -112,9 +112,26 @@ async def run_faq_processor():
     await asyncio.gather(*[process_with_semaphore(job_id) for job_id in pending_ids])
 
 
+def reap_orphaned_jobs() -> None:
+    """Fail jobs left in `processing` by a previous crash/kill. Runs once at
+    startup: this worker is the only writer of `processing`, so on a fresh boot
+    any such row is orphaned — otherwise it hangs the enqueue guard (one active
+    job per type) and the UI's active-job polling forever."""
+    try:
+        with SessionLocal() as db:
+            reaped = FAQGenerationJobRepository(db).fail_orphaned_processing(
+                "Worker restarted before the job finished — please try again."
+            )
+        if reaped:
+            logger.warning(f"Reaped {reaped} orphaned FAQ job(s) left in 'processing' on startup")
+    except Exception as e:
+        logger.error(f"FAQ orphan reap failed (non-fatal): {e}")
+
+
 async def run_faq_processor_loop(poll_interval: int = POLL_INTERVAL_SECONDS):
     """Forever-loop wrapper — run as an independent task next to the knowledge
     loop so a long FAQ job never delays knowledge ingestion."""
+    reap_orphaned_jobs()
     while True:
         try:
             await run_faq_processor()
