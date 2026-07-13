@@ -77,11 +77,12 @@ def build_generator(db: Session, organization_id) -> FAQGeneratorAgent:
     )
 
 
-def load_source_pages(db: Session, knowledge: Knowledge) -> List[str]:
+def load_source_pages(db: Session, knowledge: Knowledge, max_chars: Optional[int] = None) -> List[str]:
     """One string of aggregated text per crawled page/sub-page of a source,
     read straight from the org's vector table (content is stored alongside the
     embeddings — no re-crawl needed). Pages kept in crawl order when the cap
-    truncates; chunk text within a page is naturally ordered."""
+    truncates; chunk text within a page is naturally ordered. max_chars caps
+    each page and defaults to the model-agnostic floor."""
     if not knowledge.schema or not knowledge.table_name:
         # Source rows without a vector table (failed/partial ingestion).
         return []
@@ -94,7 +95,7 @@ def load_source_pages(db: Session, knowledge: Knowledge) -> List[str]:
     rows = db.execute(
         query, {"source": knowledge.source, "max_pages": settings.FAQ_MAX_PAGES_PER_SOURCE}
     ).fetchall()
-    max_chars = settings.FAQ_MAX_BATCH_CHARS
+    max_chars = max_chars or settings.FAQ_MAX_BATCH_CHARS
     return [row.body[:max_chars] for row in rows if row.body and row.body.strip()]
 
 
@@ -225,12 +226,14 @@ async def run_generation_job(db: Session, job: FAQGenerationJob) -> int:
     source_batches: List[Tuple[Knowledge, str]] = []
     for source in sources:
         try:
-            pages = load_source_pages(db, source)
+            # Batch size follows the org's model context window — big-context
+            # models get fewer, larger LLM calls.
+            pages = load_source_pages(db, source, max_chars=generator.batch_chars)
         except Exception as e:
             logger.warning(f"Skipping unreadable knowledge source {source.id} ({source.source}): {e}")
             db.rollback()
             continue
-        for batch in pack_batches(pages):
+        for batch in pack_batches(pages, max_chars=generator.batch_chars):
             source_batches.append((source, batch))
     if not source_batches:
         raise ValueError("The selected knowledge sources contain no readable content.")

@@ -68,7 +68,7 @@ async def test_import_job_inserts_drafts_with_source_label(db, test_organization
     db.refresh(job)
 
     extracted = [GeneratedFAQ(question="Do you offer refunds?", answer="Within 14 days.", category="Billing")]
-    mock_generator = SimpleNamespace(extract_from_faq_page=AsyncMock(return_value=extracted))
+    mock_generator = SimpleNamespace(extract_from_faq_page=AsyncMock(return_value=extracted), batch_chars=15000)
     with patch.object(faq_import, "build_generator", return_value=mock_generator), \
          patch.object(faq_import, "fetch_page_text", return_value="Do you offer refunds?\nWithin 14 days."):
         created = await run_import_job(db, job)
