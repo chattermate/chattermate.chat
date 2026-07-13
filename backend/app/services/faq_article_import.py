@@ -64,7 +64,14 @@ _SKIP_EXTENSIONS = (
 _TOC_RE = re.compile(r"\b(toc|table-of-contents|on-this-page|breadcrumbs?)\b", re.IGNORECASE)
 
 # Help-center chrome text (platform branding / article metadata) to drop.
-_CHROME_TEXT_RE = re.compile(r"^(made with|powered by)\b|^last updated\b", re.IGNORECASE)
+# Platform-specific so it never strips legitimate prose like "Powered by our
+# AI engine" — only footer branding for known help-center platforms and the
+# "Last updated on …" article-metadata line.
+_CHROME_TEXT_RE = re.compile(
+    r"^last updated on\b"
+    r"|^(made with|powered by)\b.*\b(chatwoot|intercom|zendesk|help ?scout|gitbook|freshdesk|document360)\b",
+    re.IGNORECASE,
+)
 _CHROME_HREFS = ("chatwoot.com", "chatwoot.help")
 
 # Path markers separating leaf article pages from category/section listings
@@ -355,22 +362,27 @@ def _strip_chrome(node: Tag) -> None:
             chrome.decompose()
         except Exception:
             pass
-    # Leading breadcrumb ("Home › …") — a short container whose first link is a
-    # back-to-index link. Chatwoot renders it as a bare div (no nav/class hook).
-    for anchor in node.find_all("a"):
-        if anchor.get_text(strip=True).lower() in _BREADCRUMB_ROOTS:
-            container = anchor.find_parent(["nav", "ol", "ul", "div"])
-            if container and len(container.get_text(" ", strip=True)) <= 80:
-                try:
-                    container.decompose()
-                except Exception:
-                    pass
-            break
+    # Leading breadcrumb ("Home › …"): strip only when the article's FIRST link
+    # is a back-to-index link in a short container. A "Home" link buried in body
+    # prose is never the first anchor, so real content is never removed.
+    first_anchor = node.find("a")
+    if first_anchor and first_anchor.get_text(strip=True).lower() in _BREADCRUMB_ROOTS:
+        container = first_anchor.find_parent(["nav", "ol", "ul", "div"])
+        if container and len(container.get_text(" ", strip=True)) <= 80:
+            try:
+                container.decompose()
+            except Exception:
+                pass
+    # Platform-branding link ("Made with Chatwoot" logo): remove only a SMALL
+    # enclosing block (the footer badge), never a large content div that merely
+    # links out to the platform.
     for anchor in list(node.find_all("a", href=True)):
         try:
             href = (anchor.get("href") or "").lower()
             if any(brand in href for brand in _CHROME_HREFS):
-                (anchor.find_parent(["div", "footer", "section"]) or anchor).decompose()
+                container = anchor.find_parent(["div", "footer", "section"])
+                target = container if container and len(container.get_text(" ", strip=True)) <= 40 else anchor
+                target.decompose()
         except Exception:
             pass
     for el in list(node.find_all(["p", "div", "span", "small", "time"])):
