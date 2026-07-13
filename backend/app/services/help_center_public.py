@@ -37,17 +37,25 @@ logger = get_logger(__name__)
 
 MAX_QUESTION_CHARS = 500
 ANSWER_MAX_TOKENS = 600
-_ASK_FAQ_CONTEXT_LIMIT = 5
 # Unauthenticated LLM calls are expensive: bound how many run at once per
 # worker so /ask can't drain the DB pool or the provider budget.
 _ask_concurrency = asyncio.Semaphore(4)
 
-_ASK_INSTRUCTIONS = """You answer a customer's question on a public help center.
+_ASK_INSTRUCTIONS = """You are the support assistant on a company's public help center. A visitor has asked a question.
 
-Use ONLY the CONTEXT below (knowledge excerpts and published FAQs). If the
-context doesn't contain the answer, say you don't know and suggest contacting
-support — never invent facts, prices or URLs. Answer in 1-4 short sentences of
-plain text (no markdown), in a friendly second-person voice."""
+You have tools to look up the answer:
+- search_faqs: search the published help-center FAQs.
+- search_knowledge_base: search the company's wider knowledge base (only available when the help center is mapped to an agent).
+
+ALWAYS use the tools before answering — start with search_faqs, and also try
+search_knowledge_base for anything the FAQs don't cover. You may call a tool more
+than once with different wording if the first result isn't relevant.
+
+Answer ONLY from what the tools return. When they surface a relevant answer, reply
+in 1-4 short sentences of plain text (no markdown), in a friendly second-person
+voice. If, after genuinely searching, you find nothing relevant, briefly say you
+couldn't find that in the help center and suggest starting a chat or contacting
+support. Never invent facts, prices, policies, or URLs."""
 
 
 def resolve_help_center(db: Session, host: str) -> Optional[HelpCenterSettings]:
@@ -105,33 +113,19 @@ def ask_available(row: HelpCenterSettings) -> bool:
     return bool(row.ai_search_enabled and row.agent_id)
 
 
-def _rank_faqs_by_overlap(faqs: List[FAQ], question: str, limit: int) -> List[FAQ]:
-    """Word-overlap ranking: a natural-language question almost never matches
-    an FAQ as a whole-string ILIKE, so score by shared words instead."""
-    words = {w for w in question.casefold().split() if len(w) > 3}
-    if not words:
-        return faqs[:limit]
-    scored = sorted(
-        faqs,
-        key=lambda f: -len(words & set(f"{f.question} {f.answer}".casefold().split())),
-    )
-    return scored[:limit]
-
-
 async def answer_question(organization_id, agent_id, question: str) -> Optional[str]:
-    """One-shot grounded answer from the mapped agent's knowledge + published
-    FAQs. Returns None when no confident answer could be produced. Writes the
-    ask-log row (metering/analytics); never touches chat history or the KB.
+    """Grounded answer for a public help-center question. The agent is given
+    FAQ + knowledge search tools and decides what to look up, so it can find and
+    combine answers instead of relying on a single pre-stuffed context. Returns
+    None when no confident answer could be produced. Writes the ask-log row
+    (metering/analytics); never touches chat history or the KB.
 
-    Uses its own short-lived DB sessions on either side of the slow LLM await —
-    holding a pooled connection through a 5-30s model call would let this
-    unauthenticated endpoint drain the pool for the whole backend.
+    The whole tool-using run happens in a worker thread: the tools do synchronous
+    DB work, and holding a pooled connection through a multi-second model call
+    would let this unauthenticated endpoint drain the pool for the backend.
     """
-    from agno.agent import Agent
-
     from app.core.security import decrypt_api_key
     from app.repositories.ai_config import AIConfigRepository
-    from app.utils.agno_utils import create_model
 
     question = question.strip()[:MAX_QUESTION_CHARS]
 
@@ -143,42 +137,40 @@ async def answer_question(organization_id, agent_id, question: str) -> Optional[
             model_type = config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type)
             model_name = config.model_name
             api_key = decrypt_api_key(config.encrypted_api_key)
-            published = FAQRepository(db).get_published_for_org(organization_id)
-        faq_context = "\n\n".join(
-            f"Q: {faq.question}\nA: {faq.answer}"
-            for faq in _rank_faqs_by_overlap(published, question, _ASK_FAQ_CONTEXT_LIMIT)
-        )
 
-        # Vector retrieval scoped to the mapped agent's sources. Constructed
-        # inside the thread: the tool's __init__ does sync DB work.
-        def _search() -> str:
+        def _run() -> Optional[str]:
+            from agno.agent import Agent
+
+            from app.tools.faq_search import FAQSearchTool
             from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
-            tool = KnowledgeSearchByAgent(agent_id=str(agent_id), org_id=organization_id)
-            return tool.search_knowledge_base(question)
+            from app.utils.agno_utils import create_model
 
-        knowledge_context = await asyncio.to_thread(_search)
+            tools = [FAQSearchTool(organization_id=organization_id)]
+            if agent_id:
+                tools.append(KnowledgeSearchByAgent(agent_id=str(agent_id), org_id=organization_id))
+            model = create_model(
+                model_type=model_type, api_key=api_key, model_name=model_name, max_tokens=ANSWER_MAX_TOKENS
+            )
+            agent = Agent(
+                name="Help Center Answers",
+                model=model,
+                tools=tools,
+                instructions=_ASK_INSTRUCTIONS,
+                markdown=False,
+            )
+            response = agent.run(message=f"Visitor's question: {question}", stream=False)
+            content = getattr(response, "content", None)
+            return content.strip() if isinstance(content, str) and content.strip() else None
 
-        model = create_model(
-            model_type=model_type, api_key=api_key, model_name=model_name, max_tokens=ANSWER_MAX_TOKENS
-        )
-        agent = Agent(name="Help Center Answers", model=model, instructions=_ASK_INSTRUCTIONS, markdown=False)
-        answered = False
         answer = None
         try:
-            response = await agent.arun(
-                message=f"CONTEXT:\n{knowledge_context}\n\nPUBLISHED FAQS:\n{faq_context}\n\nQUESTION: {question}",
-                stream=False,
-            )
-            content = getattr(response, "content", None)
-            if isinstance(content, str) and content.strip():
-                answer = content.strip()
-                answered = True
+            answer = await asyncio.to_thread(_run)
         except Exception as e:
             logger.error(f"Help center ask failed for org {organization_id}: {e}")
         finally:
             try:
                 with SessionLocal() as log_db:
-                    HelpCenterQueryRepository(log_db).log(organization_id, question, answered=answered)
+                    HelpCenterQueryRepository(log_db).log(organization_id, question, answered=bool(answer))
             except Exception as log_err:
                 logger.error(f"Help center ask log failed: {log_err}")
     return answer

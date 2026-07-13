@@ -37,7 +37,7 @@ from app.core.logger import get_logger
 from contextlib import asynccontextmanager
 import os
 from app.core.socketio import socket_app, configure_socketio, sio
-from app.core.cors import get_cors_origins
+from app.core.cors import get_cors_origins, get_cors_origin_regex
 from app.core.application import app, initialize_cors_listener
 
 # Import models to ensure they're registered with SQLAlchemy
@@ -66,10 +66,13 @@ logger.debug(f"CORS origins: {cors_origins}")
 # Update the FastAPI app to use the lifespan function
 app.router.lifespan_context = lifespan
 
-# Add CORS middleware to FastAPI app
+# Add CORS middleware to FastAPI app. The regex covers every help-center
+# subdomain (*.chattermate.help) so a newly-created slug is allowed without a
+# cache refresh; explicit origins still cover org domains + custom domains.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(cors_origins),
+    allow_origin_regex=get_cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -19,11 +19,12 @@ Help-center settings + branding endpoints (settings get/put, logo upload).
 import io
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import require_permissions
 from app.core.config import settings as app_settings
+from app.core.cors import update_cors_middleware
 from app.database import get_db
 from app.models.agent import Agent
 from app.models.help_center import HelpCenterSettings
@@ -121,6 +122,7 @@ async def get_settings(
 @router.put("/settings", response_model=HelpCenterSettingsResponse)
 async def update_settings(
     payload: HelpCenterSettingsUpdate,
+    request: Request,
     current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db),
 ):
@@ -134,9 +136,14 @@ async def update_settings(
         ).first()
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
+    was_enabled = row.enabled
     for field, value in updates.items():
         setattr(row, field, value)
     row = HelpCenterRepository(db).update(row)
+    # Toggling `enabled` changes which {slug}.{base} origins the widget may call,
+    # so refresh the CORS allowlist (and propagate to other workers via Redis).
+    if "enabled" in updates and updates["enabled"] != was_enabled:
+        update_cors_middleware(request.app)
     return await settings_response(db, row, current_user.organization_id)
 
 

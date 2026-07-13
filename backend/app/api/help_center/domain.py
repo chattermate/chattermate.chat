@@ -19,11 +19,12 @@ inspect status, remove.
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_permissions
+from app.core.cors import update_cors_middleware
 from app.database import get_db
 from app.models.schemas.help_center import DomainRequest, DomainStatusResponse
 from app.models.user import User
@@ -73,6 +74,7 @@ async def remove_domain(
 
 @router.post("/domain/verify", response_model=DomainStatusResponse)
 async def verify_domain(
+    request: Request,
     current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db),
 ):
@@ -82,6 +84,9 @@ async def verify_domain(
         raise HTTPException(status_code=400, detail="Set a custom domain first.")
     # DNS + HTTPS probes block; keep them off the event loop.
     row = await asyncio.to_thread(verify_custom_domain, db, row)
+    # Once verified, the custom domain becomes a widget origin — allow it in CORS.
+    if row.domain_verified:
+        update_cors_middleware(request.app)
     return _domain_response(row)
 
 

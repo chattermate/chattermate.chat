@@ -72,6 +72,19 @@ class HelpCenterRepository:
         )
         return [row[0] for row in rows]
 
+    def list_enabled_slugs(self) -> List[str]:
+        """Slugs of enabled help centers — their `{slug}.{base_domain}` origins
+        are added to the CORS allowlist for the embedded widget."""
+        rows = (
+            self.db.query(HelpCenterSettings.slug)
+            .filter(
+                HelpCenterSettings.enabled.is_(True),
+                HelpCenterSettings.slug.isnot(None),
+            )
+            .all()
+        )
+        return [row[0] for row in rows]
+
     def slug_exists(self, slug: str) -> bool:
         return self.db.query(
             self.db.query(HelpCenterSettings)
