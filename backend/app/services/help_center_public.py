@@ -103,8 +103,9 @@ def contrast_ink(hex_color: str) -> str:
 
 
 def widget_id_for(row: HelpCenterSettings) -> Optional[str]:
-    """The chat widget embedded on the page: the mapped agent's widget."""
-    if not (row.ai_search_enabled and row.agent and row.agent.widgets):
+    """The chat widget embedded on the page: the mapped agent's widget. Gated by
+    its own toggle, independent of the AI quick-summary in search."""
+    if not (row.chat_widget_enabled and row.agent and row.agent.widgets):
         return None
     return row.agent.widgets[0].id
 

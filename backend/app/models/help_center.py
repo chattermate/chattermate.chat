@@ -72,10 +72,13 @@ class HelpCenterSettings(Base):
     # Draft FAQs are auto-generated when a new knowledge source finishes.
     auto_generate = Column(Boolean, nullable=False, default=True)
 
-    # AI search: which agent grounds "Ask AI" answers and whose chat widget is
-    # embedded on the public page.
+    # Which agent grounds "Ask AI" answers and whose chat widget is embedded on
+    # the public page. The two surfaces toggle independently:
+    #   - ai_search_enabled: the inline AI quick-summary answer in search.
+    #   - chat_widget_enabled: the embedded chat widget ("Start a chat").
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     ai_search_enabled = Column(Boolean, nullable=False, default=True)
+    chat_widget_enabled = Column(Boolean, nullable=False, default=True)
 
     # Custom domain. Verification state is the two per-record booleans; the
     # aggregate status is derived (see domain_status) so the pieces can never

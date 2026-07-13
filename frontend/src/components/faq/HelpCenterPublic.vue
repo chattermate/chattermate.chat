@@ -25,7 +25,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'toggle-enabled': [enabled: boolean]
-  'update-ai': [payload: { agent_id?: string | null; ai_search_enabled?: boolean }]
+  'update-ai': [payload: { agent_id?: string | null; ai_search_enabled?: boolean; chat_widget_enabled?: boolean }]
   'set-domain': [domain: string]
   'verify-domain': []
   'remove-domain': []
@@ -59,24 +59,34 @@ function onAgentChange(event: Event) {
         <a v-if="settings.live_url" class="btn-ghost" :href="settings.live_url" target="_blank" rel="noopener">Open help center →</a>
       </div>
 
-      <!-- AI search -->
+      <!-- AI agent + surfaces -->
       <div class="block">
-        <label class="mono-label">AI SEARCH</label>
+        <label class="mono-label">AI AGENT</label>
         <div class="ai-row">
           <select class="agent-select" :value="settings.agent_id || ''" @change="onAgentChange">
             <option value="">Choose an agent…</option>
             <option v-for="agent in settings.agents" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
           </select>
+        </div>
+        <div class="toggle-list">
           <label class="switch switch--labelled">
             <input type="checkbox" :checked="settings.ai_search_enabled" @change="emit('update-ai', { ai_search_enabled: ($event.target as HTMLInputElement).checked })" />
             <span class="switch__track"><span class="switch__knob"></span></span>
-            <span class="switch__label">AI answers in search</span>
+            <span class="switch__label">
+              AI quick summary in search
+              <span class="switch__sub">Instant AI answer above search results, grounded in this agent's knowledge.</span>
+            </span>
+          </label>
+          <label class="switch switch--labelled">
+            <input type="checkbox" :checked="settings.chat_widget_enabled" @change="emit('update-ai', { chat_widget_enabled: ($event.target as HTMLInputElement).checked })" />
+            <span class="switch__track"><span class="switch__knob"></span></span>
+            <span class="switch__label">
+              Chat widget
+              <span class="switch__sub">Embed this agent's chat widget so visitors can start a conversation.</span>
+            </span>
           </label>
         </div>
-        <p class="hint">
-          Visitors get instant AI answers grounded in this agent's knowledge — and can chat with it
-          via the embedded widget.
-        </p>
+        <p class="hint">Both surfaces use the agent above — pick one, both, or neither.</p>
       </div>
 
       <!-- custom domain -->
@@ -199,9 +209,30 @@ function onAgentChange(event: Event) {
 }
 
 .switch__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 13.5px;
   font-weight: 500;
   color: var(--text2);
+}
+
+.switch__sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text3, var(--text2));
+  opacity: 0.85;
+}
+
+.toggle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.switch--labelled {
+  align-items: flex-start;
 }
 
 .status-pill {

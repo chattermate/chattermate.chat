@@ -103,6 +103,7 @@ export interface HelpCenterSettings {
   auto_generate: boolean
   agent_id: string | null
   ai_search_enabled: boolean
+  chat_widget_enabled: boolean
   live_url: string | null
   published_count: number
   plan_allowed: boolean
@@ -123,5 +124,6 @@ export type HelpCenterSettingsUpdate = Partial<
     | 'auto_generate'
     | 'agent_id'
     | 'ai_search_enabled'
+    | 'chat_widget_enabled'
   >
 >

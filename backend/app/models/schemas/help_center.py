@@ -57,6 +57,7 @@ class HelpCenterSettingsUpdate(BaseModel):
     auto_generate: Optional[bool] = None
     agent_id: Optional[UUID] = None
     ai_search_enabled: Optional[bool] = None
+    chat_widget_enabled: Optional[bool] = None
 
     @field_validator("brand_color")
     @classmethod
@@ -115,6 +116,7 @@ class HelpCenterSettingsResponse(BaseModel):
     auto_generate: bool
     agent_id: Optional[UUID] = None
     ai_search_enabled: bool
+    chat_widget_enabled: bool
 
     # Enriched by the API layer (not ORM columns):
     live_url: Optional[str] = None
