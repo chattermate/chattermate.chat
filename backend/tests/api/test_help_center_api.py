@@ -34,6 +34,22 @@ from app.repositories.faq import FAQRepository
 BASE = "/api/v1/help-center"
 
 
+@pytest.fixture(autouse=True)
+def _open_plan_gate(request):
+    """Env-independent plan gating: local dev has the enterprise module (test
+    org has no subscription → everything 403s), CI/OSS doesn't. These tests
+    target the help-center endpoints, not the gate — the plan-gating tests
+    below opt out via the `real_plan_gate` marker to exercise it for real."""
+    if request.node.get_closest_marker("real_plan_gate"):
+        yield
+        return
+    # Patch the names bound inside help_center_access (import-time binding —
+    # patching feature_gate itself would not reach them).
+    with patch("app.services.help_center_access.feature_allowed", return_value=True), \
+         patch("app.services.help_center_access.check_feature_access", return_value=None):
+        yield
+
+
 @pytest.fixture
 def client(db, test_user):
     # The shared test_role lacks manage_knowledge, which every help-center
@@ -147,13 +163,45 @@ def test_bulk_status_publish(client, db, test_organization):
     assert r.json()["updated"] == 3
 
 
+def test_bulk_delete_is_org_scoped(client, db, test_organization):
+    from app.models.organization import Organization
+    mine = [str(_create_faq(db, test_organization.id, question=f"D{i}?").id) for i in range(2)]
+    other_org = Organization(name="Other2", domain="other2.com", timezone="UTC")
+    db.add(other_org)
+    db.commit()
+    foreign = _create_faq(db, other_org.id)
+
+    r = client.post(f"{BASE}/faqs/bulk-delete", json={"faq_ids": mine + [str(foreign.id)]})
+    assert r.status_code == 200
+    assert r.json()["deleted"] == 2  # foreign id silently ignored
+    assert client.get(f"{BASE}/faqs").json()["pagination"]["total"] == 0
+    db.expire_all()
+    assert db.get(FAQ, foreign.id) is not None  # other org untouched
+
+
 # ---------- generation / import ----------
 
 def test_generate_requires_ai_config(client):
     assert client.post(f"{BASE}/generate").status_code == 400
 
 
-def test_generate_enqueues_and_409s_on_duplicate(client, test_ai_config):
+def _create_knowledge(db, org_id, source="docs.example.com"):
+    from app.models.knowledge import Knowledge, SourceType
+    knowledge = Knowledge(
+        source=source, source_type=SourceType.WEBSITE,
+        schema="ai", table_name="d_test", organization_id=org_id,
+    )
+    db.add(knowledge)
+    db.commit()
+    return knowledge
+
+
+def test_generate_requires_knowledge_sources(client, test_ai_config):
+    assert client.post(f"{BASE}/generate").status_code == 400
+
+
+def test_generate_enqueues_and_409s_on_duplicate(client, db, test_organization, test_ai_config):
+    _create_knowledge(db, test_organization.id)
     first = client.post(f"{BASE}/generate")
     assert first.status_code == 202
     assert first.json()["status"] == "pending"
@@ -161,6 +209,26 @@ def test_generate_enqueues_and_409s_on_duplicate(client, test_ai_config):
     # Polling returns the active job.
     active = client.get(f"{BASE}/jobs")
     assert active.json()["id"] == first.json()["id"]
+
+
+def test_generate_409s_when_all_sources_generated(client, db, test_organization, test_ai_config):
+    knowledge = _create_knowledge(db, test_organization.id)
+    _create_faq(db, test_organization.id, knowledge_id=knowledge.id)
+    r = client.post(f"{BASE}/generate")
+    assert r.status_code == 409
+    assert "already have FAQs" in r.json()["detail"]
+
+
+def test_generate_estimate_reports_new_sources(client, db, test_organization, test_ai_config):
+    generated = _create_knowledge(db, test_organization.id, "done.example.com")
+    _create_faq(db, test_organization.id, knowledge_id=generated.id)
+    _create_knowledge(db, test_organization.id, "new.example.com")
+    r = client.get(f"{BASE}/generate/estimate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_sources"] == 2
+    assert body["new_sources"] == 1
+    assert body["estimated_calls"] >= 1
 
 
 def test_import_rejects_internal_hosts(client, test_ai_config):
@@ -197,6 +265,7 @@ def _cloud_gate(feature_available: bool):
     )
 
 
+@pytest.mark.real_plan_gate
 def test_cloud_free_plan_gets_403_on_writes(client, test_ai_config):
     p1, p2, p3 = _cloud_gate(feature_available=False)
     with p1, p2, p3:
@@ -208,6 +277,7 @@ def test_cloud_free_plan_gets_403_on_writes(client, test_ai_config):
         assert settings_response.json()["plan_allowed"] is False
 
 
+@pytest.mark.real_plan_gate
 def test_cloud_pro_plan_allowed(client, test_ai_config):
     p1, p2, p3 = _cloud_gate(feature_available=True)
     with p1, p2, p3:

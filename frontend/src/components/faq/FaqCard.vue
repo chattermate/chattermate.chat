@@ -26,6 +26,9 @@ const props = defineProps<{
   draftQuestion: string
   draftAnswer: string
   locked?: boolean
+  /** Selection mode is on somewhere in the list (keeps checkboxes visible). */
+  selectable?: boolean
+  selected?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -34,6 +37,7 @@ const emit = defineEmits<{
   delete: []
   save: []
   cancel: []
+  'toggle-select': []
   'update:draftQuestion': [value: string]
   'update:draftAnswer': [value: string]
 }>()
@@ -57,7 +61,7 @@ function answerPreview(md: string): string {
 </script>
 
 <template>
-  <div class="faq-card" :class="{ 'faq-card--editing': editing }">
+  <div class="faq-card" :class="{ 'faq-card--editing': editing, 'faq-card--selecting': selectable, 'faq-card--selected': selected }">
     <!-- Edit mode -->
     <div v-if="editing">
       <div class="edit-label">{{ isNew ? 'NEW FAQ' : 'EDITING' }}</div>
@@ -84,6 +88,14 @@ function answerPreview(md: string): string {
 
     <!-- Display mode -->
     <div v-else class="faq-card__row">
+      <input
+        v-if="!locked"
+        class="faq-card__check"
+        type="checkbox"
+        :checked="selected"
+        :aria-label="`Select ${faq.question}`"
+        @change="$emit('toggle-select')"
+      />
       <div class="faq-card__body">
         <div class="faq-card__question">{{ faq.question }}</div>
         <div class="faq-card__answer">{{ answerPreview(faq.answer) }}</div>
@@ -124,6 +136,29 @@ function answerPreview(md: string): string {
 
 .faq-card--editing {
   border-color: var(--purple-border);
+}
+
+.faq-card--selected {
+  border-color: var(--teal-border);
+  background: var(--teal-bg);
+}
+
+.faq-card__check {
+  width: 16px;
+  height: 16px;
+  margin: 3px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--c-teal);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.faq-card:hover .faq-card__check,
+.faq-card--selecting .faq-card__check,
+.faq-card__check:checked,
+.faq-card__check:focus-visible {
+  opacity: 1;
 }
 
 .faq-card__row {

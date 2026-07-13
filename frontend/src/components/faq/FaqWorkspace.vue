@@ -52,6 +52,13 @@ const {
   draftQuestion,
   draftAnswer,
   isSaving,
+  selectedIds,
+  selectionActive,
+  toggleSelect,
+  setSelected,
+  clearSelection,
+  bulkSetStatus,
+  bulkDelete,
   refresh,
   startPolling,
   stopPolling,
@@ -166,6 +173,28 @@ async function askGenerate() {
   }
 }
 
+function askBulkDelete() {
+  const n = selectedIds.value.size
+  confirmState.value = {
+    title: `Delete ${n} FAQ${n === 1 ? '' : 's'}`,
+    message: 'Published articles will disappear from your help center. This cannot be undone.',
+    actionLabel: 'Delete',
+    busyLabel: 'Deleting…',
+    intent: 'danger',
+    action: async () => {
+      try {
+        await bulkDelete()
+      } catch (error: any) {
+        toast.error(error.message)
+      }
+    },
+  }
+}
+
+function selectedInCategory(items: FaqItem[]): number {
+  return items.reduce((n, item) => n + (selectedIds.value.has(item.id) ? 1 : 0), 0)
+}
+
 async function runConfirm() {
   const state = confirmState.value
   if (!state) return
@@ -254,6 +283,8 @@ onUnmounted(stopPolling)
             :key="category"
             :category="category"
             :count="items.length"
+            :selected-count="selectedInCategory(items)"
+            @toggle-all="setSelected(items, $event)"
           >
             <FaqCard
               v-for="faq in items"
@@ -261,10 +292,13 @@ onUnmounted(stopPolling)
               :faq="faq"
               :editing="editingId === faq.id"
               :saving="isSaving"
+              :selectable="selectionActive"
+              :selected="selectedIds.has(faq.id)"
               :draft-question="draftQuestion"
               :draft-answer="draftAnswer"
               @update:draft-question="draftQuestion = $event"
               @update:draft-answer="draftAnswer = $event"
+              @toggle-select="toggleSelect(faq.id)"
               @toggle-status="togglePublish(faq)"
               @edit="startEdit(faq)"
               @delete="askDelete(faq)"
@@ -302,6 +336,14 @@ onUnmounted(stopPolling)
     </template>
 
     <FaqImportModal :open="importOpen" :submitting="importSubmitting" @close="importOpen = false" @submit="onImportSubmit" />
+
+    <div v-if="selectionActive" class="bulkbar" role="toolbar" aria-label="Bulk actions">
+      <span class="bulkbar__count">{{ selectedIds.size }} selected</span>
+      <button class="bulkbar__btn" type="button" @click="bulkSetStatus('published')">Publish</button>
+      <button class="bulkbar__btn" type="button" @click="bulkSetStatus('draft')">Unpublish</button>
+      <button class="bulkbar__btn bulkbar__btn--danger" type="button" @click="askBulkDelete">Delete</button>
+      <button class="bulkbar__clear" type="button" aria-label="Clear selection" @click="clearSelection">✕</button>
+    </div>
 
     <div v-if="confirmState" class="confirm" role="dialog" aria-modal="true">
       <div class="confirm__card">
@@ -398,6 +440,67 @@ onUnmounted(stopPolling)
 
 .settings-section:not(:first-child) {
   margin-top: 36px;
+}
+
+.bulkbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--o14);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8px 30px var(--scrim);
+}
+
+.bulkbar__count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+.bulkbar__btn {
+  padding: 8px 14px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  border-radius: var(--radius-pill);
+  color: var(--text2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bulkbar__btn:hover {
+  background: var(--o08);
+}
+
+.bulkbar__btn--danger {
+  background: var(--coral-bg);
+  border-color: var(--coral-border);
+  color: var(--c-coral);
+}
+
+.bulkbar__clear {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.bulkbar__clear:hover {
+  background: var(--o08);
+  color: var(--text);
 }
 
 .confirm {

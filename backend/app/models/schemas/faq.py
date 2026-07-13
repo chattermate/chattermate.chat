@@ -93,6 +93,10 @@ class FAQBulkStatusRequest(BaseModel):
     status: FAQStatus
 
 
+class FAQBulkDeleteRequest(BaseModel):
+    faq_ids: List[UUID] = Field(min_length=1, max_length=MAX_BULK_IDS)
+
+
 class GenerateRequest(BaseModel):
     """Optional narrowing to specific knowledge sources; empty = new sources
     only (those without FAQs yet)."""

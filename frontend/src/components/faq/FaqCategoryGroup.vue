@@ -15,15 +15,32 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   category: string
   count: number
+  /** Cards in this group currently selected; undefined hides the select-all. */
+  selectedCount?: number
 }>()
+
+defineEmits<{
+  'toggle-all': [on: boolean]
+}>()
+
+const allSelected = () => props.selectedCount === props.count && props.count > 0
 </script>
 
 <template>
   <div class="category-group">
     <div class="category-group__header">
+      <input
+        v-if="selectedCount !== undefined"
+        class="category-group__check"
+        type="checkbox"
+        :checked="allSelected()"
+        :indeterminate.prop="!!selectedCount && !allSelected()"
+        :aria-label="`Select all in ${category}`"
+        @change="$emit('toggle-all', !allSelected())"
+      />
       <span class="category-group__name">{{ category.toUpperCase() }}</span>
       <span class="category-group__count">{{ count }} {{ count === 1 ? 'answer' : 'answers' }}</span>
       <div class="category-group__rule"></div>
@@ -45,6 +62,22 @@ defineProps<{
   gap: 10px;
   margin-bottom: 10px;
   padding: 0 2px;
+}
+
+.category-group__check {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--c-teal);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--transition-fast);
+}
+
+.category-group__header:hover .category-group__check,
+.category-group__check:checked,
+.category-group__check:indeterminate {
+  opacity: 1;
 }
 
 .category-group__name {

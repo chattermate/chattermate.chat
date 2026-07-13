@@ -171,6 +171,17 @@ class FAQRepository:
         self.db.commit()
         return updated
 
+    def bulk_delete(self, organization_id: UUID, faq_ids: List[UUID]) -> int:
+        """Delete the org's FAQs among faq_ids; returns rows deleted.
+        Org-scoped, so cross-org ids are silently ignored."""
+        deleted = (
+            self._org_query(organization_id)
+            .filter(FAQ.id.in_(faq_ids))
+            .delete(synchronize_session=False)
+        )
+        self.db.commit()
+        return deleted
+
     def count_published(self, organization_id: UUID) -> int:
         return (
             self._org_query(organization_id)

@@ -135,6 +135,10 @@ async def start_generation(
     existing questions). By default only sources without FAQs are read;
     knowledge_ids explicitly targets sources instead."""
     org_id = current_user.organization_id
+    # Plan gate and AI-config checks first: a locked plan must see 403 and a
+    # missing model its setup hint, not source-count errors.
+    check_help_center_access(db, org_id)
+    _require_ai_config(db, org_id)
     knowledge_ids = payload.knowledge_ids if payload else None
     _validate_org_knowledge_ids(db, org_id, knowledge_ids)
     estimate = estimate_generation_calls(db, org_id, knowledge_ids)
