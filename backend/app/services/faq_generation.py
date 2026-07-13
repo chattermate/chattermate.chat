@@ -22,6 +22,7 @@ here are shared with the import service (faq_import.py).
 
 import re
 from collections import deque
+from difflib import SequenceMatcher
 from typing import Awaitable, Callable, List, Optional, Tuple, TypeVar
 
 from sqlalchemy import text
@@ -41,9 +42,25 @@ from app.repositories.faq_generation_job import FAQGenerationJobRepository
 
 logger = get_logger(__name__)
 
-# Dedup lists injected into prompts are capped to keep context bounded; the
-# in-Python normalized-set dedup below still covers every existing question.
-MAX_PROMPT_QUESTIONS = 200
+# Dedup lists injected into prompts are a small recent window for intra-run
+# steering only — the in-Python DedupState below (exact + fuzzy) is the real
+# guard covering every existing question, so the prompt stays cheap.
+MAX_PROMPT_QUESTIONS = 30
+
+# Fuzzy-dedup tuning: token-set Jaccard on content words; borderline scores are
+# confirmed with difflib on the normalized strings. Very short questions skip
+# fuzzy matching entirely (too collision-prone).
+FUZZY_JACCARD_DUP = 0.8
+FUZZY_JACCARD_MAYBE = 0.65
+FUZZY_SEQUENCE_DUP = 0.87
+FUZZY_MIN_CONTENT_TOKENS = 3
+
+# Tiny inline stopword set — enough to keep filler words from inflating
+# question similarity, without an NLP dependency.
+_STOPWORDS = frozenset(
+    "a an and are can could do does for from how i in is it my of on or the "
+    "there to we what when where which who why will with you your".split()
+)
 
 # Chunk ids look like 'page', 'page_1', ..., 'page_10' — natural sort (length
 # first) keeps 'page_2' before 'page_10' where plain text ordering would not.
@@ -119,21 +136,65 @@ def pack_batches(items: List[str], max_chars: Optional[int] = None, sep: str = "
     return batches
 
 
+def _content_tokens(normalized: str) -> frozenset:
+    return frozenset(t for t in normalized.split() if t not in _STOPWORDS)
+
+
 class DedupState:
-    """Tracks every question seen (existing + accepted this run): a normalized
-    set for matching, plus a bounded recent-questions window for prompts."""
+    """Tracks every question seen (existing + accepted this run).
+
+    Two layers: an exact normalized-set match, plus fuzzy similarity (token-set
+    Jaccard via an inverted index, difflib confirmation on borderline scores)
+    so rephrasings are caught without shipping the whole question list to the
+    LLM. A bounded recent-questions window is still exposed for prompts."""
 
     def __init__(self, existing_questions: List[str]):
-        self.seen = {normalize_question(q) for q in existing_questions}
+        self.seen: set = set()
+        self._token_index: dict = {}  # content token -> set of seen keys
+        self._key_tokens: dict = {}  # seen key -> its content-token frozenset
         self._recent = deque(existing_questions, maxlen=MAX_PROMPT_QUESTIONS)
+        for q in existing_questions:
+            self._remember(normalize_question(q))
+
+    def _remember(self, key: str) -> None:
+        if not key or key in self.seen:
+            return
+        self.seen.add(key)
+        tokens = _content_tokens(key)
+        self._key_tokens[key] = tokens
+        for token in tokens:
+            self._token_index.setdefault(token, set()).add(key)
+
+    def is_similar(self, key: str) -> bool:
+        """True when key fuzzily matches a seen question. Exact hits are the
+        caller's job (cheap set test); this covers rephrasings."""
+        tokens = _content_tokens(key)
+        if len(tokens) < FUZZY_MIN_CONTENT_TOKENS:
+            return False
+        candidates: set = set()
+        for token in tokens:
+            candidates |= self._token_index.get(token, set())
+        for candidate in candidates:
+            other = self._key_tokens[candidate]
+            union = len(tokens | other)
+            if not union:
+                continue
+            jaccard = len(tokens & other) / union
+            if jaccard >= FUZZY_JACCARD_DUP:
+                return True
+            if jaccard >= FUZZY_JACCARD_MAYBE and (
+                SequenceMatcher(None, key, candidate).ratio() >= FUZZY_SEQUENCE_DUP
+            ):
+                return True
+        return False
 
     def accept_new(self, faqs: List[GeneratedFAQ]) -> List[GeneratedFAQ]:
         accepted = []
         for faq in faqs:
             key = normalize_question(faq.question)
-            if not key or key in self.seen:
+            if not key or key in self.seen or self.is_similar(key):
                 continue
-            self.seen.add(key)
+            self._remember(key)
             self._recent.append(faq.question)
             accepted.append(faq)
         return accepted
