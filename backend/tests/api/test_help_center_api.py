@@ -229,6 +229,11 @@ def test_generate_estimate_reports_new_sources(client, db, test_organization, te
     assert body["total_sources"] == 2
     assert body["new_sources"] == 1
     assert body["estimated_calls"] >= 1
+    # Per-source list for the picker: both sources, with has_faqs per source.
+    by_name = {s["name"]: s for s in body["sources"]}
+    assert set(by_name) == {"done.example.com", "new.example.com"}
+    assert by_name["done.example.com"]["has_faqs"] is True
+    assert by_name["new.example.com"]["has_faqs"] is False
 
 
 def test_import_rejects_internal_hosts(client, test_ai_config):

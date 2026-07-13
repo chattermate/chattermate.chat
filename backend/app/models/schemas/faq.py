@@ -106,15 +106,26 @@ class GenerateRequest(BaseModel):
     knowledge_ids: Optional[List[int]] = Field(default=None, max_length=MAX_BULK_IDS)
 
 
+class GenerationSourceResponse(BaseModel):
+    """One knowledge source in the generation picker."""
+    id: int
+    name: str
+    source_type: str
+    has_faqs: bool
+    pages: int
+    estimated_calls: int
+
+
 class GenerationEstimateResponse(BaseModel):
-    """Confirm-dialog numbers for a generation run. remaining_credits is None
-    when unlimited (OSS, no cap, or org on its own model key)."""
+    """Confirm-dialog / source-picker numbers for a generation run.
+    remaining_credits is None when unlimited (OSS, no cap, or own model key)."""
     total_sources: int
     new_sources: int
     pages: int
     estimated_calls: int
     metered: bool
     remaining_credits: Optional[int] = None
+    sources: List[GenerationSourceResponse] = []
 
 
 class ImportRequest(BaseModel):

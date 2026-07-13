@@ -52,6 +52,15 @@ export type FaqJobStage =
   | 'grouping'
   | 'completed'
 
+export interface GenerationSource {
+  id: number
+  name: string
+  source_type: string
+  has_faqs: boolean
+  pages: number
+  estimated_calls: number
+}
+
 export interface GenerateEstimate {
   total_sources: number
   new_sources: number
@@ -59,6 +68,7 @@ export interface GenerateEstimate {
   estimated_calls: number
   metered: boolean
   remaining_credits: number | null
+  sources: GenerationSource[]
 }
 
 export interface FaqGenerationJob {

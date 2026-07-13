@@ -217,6 +217,31 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         # /docs and /docs/ collapse to a single canonical link.
         self.assertEqual(links, ['https://site.com/docs'])
 
+    def test_extract_links_rejects_other_registrable_domains(self):
+        """Only same-registrable-domain links are kept — a substring match like
+        'evilsite.com'.endswith('site.com') must NOT slip through (that would let
+        one plan-limited source fan out across unrelated domains)."""
+        html = """
+        <html><body>
+          <a href="https://site.com/a">same</a>
+          <a href="https://blog.site.com/b">subdomain (same registrable)</a>
+          <a href="https://evilsite.com/c">lookalike suffix</a>
+          <a href="https://notsite.com/d">another lookalike</a>
+          <a href="https://other.com/e">unrelated</a>
+        </body></html>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        links = self.reader._extract_links(soup, 'https://site.com')
+        self.assertIn('https://site.com/a', links)
+        self.assertIn('https://blog.site.com/b', links)
+        self.assertNotIn('https://evilsite.com/c', links)
+        self.assertNotIn('https://notsite.com/d', links)
+        self.assertNotIn('https://other.com/e', links)
+
+    def test_get_primary_domain_strips_port_and_www(self):
+        self.assertEqual(self.reader._get_primary_domain('https://www.site.com:8443/x'), 'site.com')
+        self.assertEqual(self.reader._get_primary_domain('https://a.b.example.co.uk/x'), 'example.co.uk')
+
     @patch('httpx.Client')
     def test_crawl_with_successful_request(self, mock_client):
         """Test crawling with successful HTTP requests"""

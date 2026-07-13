@@ -52,11 +52,22 @@ OVER_BUDGET_MESSAGE = (
 
 
 @dataclass
+class SourceEstimate:
+    id: int
+    name: str
+    source_type: str
+    has_faqs: bool
+    pages: int
+    estimated_calls: int
+
+
+@dataclass
 class GenerationEstimate:
     total_sources: int
     new_sources: int
     pages: int
     estimated_calls: int
+    sources: List[SourceEstimate]
 
 
 def generation_is_metered(db: Session, organization_id: UUID) -> bool:
@@ -102,40 +113,59 @@ def estimate_generation_calls(
     read (new-only unless explicitly targeted) and roughly how many LLM calls
     that costs. Unreadable sources count as one call each.
 
+    Always returns the FULL per-source list (for the generation source picker),
+    each with its own page/call estimate and whether it already has FAQs. The
+    aggregate counts (new_sources/pages/estimated_calls) cover the run's TARGET
+    sources: the explicit `knowledge_ids` selection, or — when none is given —
+    every source that doesn't yet have FAQs.
+
     count_pages=False skips the per-source page COUNT over the vector tables
-    (two cheap queries instead of N aggregate scans) — for surfaces that only
-    need the source counts, like the Generate button label. estimated_calls
-    is then a 1-per-source lower bound."""
-    query = db.query(Knowledge).filter(Knowledge.organization_id == organization_id)
-    if knowledge_ids:
-        query = query.filter(Knowledge.id.in_(knowledge_ids))
-    sources = query.all()
-
+    (cheap — for surfaces that only need counts, like the Generate button
+    label); per-source estimated_calls is then a 1-per-source lower bound."""
+    all_sources = (
+        db.query(Knowledge).filter(Knowledge.organization_id == organization_id).all()
+    )
     generated = FAQRepository(db).knowledge_ids_with_faqs(organization_id)
-    targets = sources if knowledge_ids else [s for s in sources if s.id not in generated]
+    existing_ids = {s.id for s in all_sources}
+    target_ids = (
+        (set(knowledge_ids) & existing_ids)
+        if knowledge_ids
+        else {s.id for s in all_sources if s.id not in generated}
+    )
 
-    if not count_pages:
-        return GenerationEstimate(
-            total_sources=len(sources),
-            new_sources=len(targets),
-            pages=0,
-            estimated_calls=len(targets),
-        )
-
-    pages = 0
-    estimated_calls = 0
-    for source in targets:
-        source_pages = count_source_pages(db, source)
+    source_list: List[SourceEstimate] = []
+    agg_pages = 0
+    agg_calls = 0
+    for source in all_sources:
+        source_pages = count_source_pages(db, source) if count_pages else None
+        pages = source_pages or 0
         if source_pages is None:
-            estimated_calls += 1
-            continue
-        pages += source_pages
-        estimated_calls += max(1, math.ceil(source_pages / PAGES_PER_CALL)) if source_pages else 0
+            # Unreadable now, or page-count skipped (count_pages=False) — assume
+            # one call so the estimate isn't zero.
+            calls = 1
+        else:
+            # A readable but empty source produces nothing → costs no call.
+            calls = max(1, math.ceil(pages / PAGES_PER_CALL)) if pages else 0
+        source_list.append(
+            SourceEstimate(
+                id=source.id,
+                name=source.source,
+                source_type=source.source_type.value if hasattr(source.source_type, "value") else str(source.source_type),
+                has_faqs=source.id in generated,
+                pages=pages,
+                estimated_calls=calls,
+            )
+        )
+        if source.id in target_ids:
+            agg_pages += pages
+            agg_calls += calls
+
     return GenerationEstimate(
-        total_sources=len(sources),
-        new_sources=len(targets),
-        pages=pages,
-        estimated_calls=estimated_calls,
+        total_sources=len(all_sources),
+        new_sources=len(target_ids),
+        pages=agg_pages,
+        estimated_calls=agg_calls,
+        sources=source_list,
     )
 
 
