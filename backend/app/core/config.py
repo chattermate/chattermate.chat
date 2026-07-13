@@ -157,6 +157,10 @@ class Settings(BaseSettings):
     # and reaped on the next enqueue. Generous — must exceed the slowest single
     # LLM batch / page fetch so a live-but-slow job is never killed.
     FAQ_JOB_STALE_SECONDS: int = int(os.getenv("FAQ_JOB_STALE_SECONDS", "600"))
+    # FAQ generation/import jobs processed concurrently across ALL orgs. Default
+    # 1 = strictly one business at a time (each job does LLM calls + vector-DB
+    # reads); raise for more throughput on a bigger host.
+    MAX_CONCURRENT_FAQ_JOBS: int = int(os.getenv("MAX_CONCURRENT_FAQ_JOBS", "1"))
     # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx
     # records that exist on the base domain, hence env-configurable.
     HELP_CENTER_RESERVED_SLUGS: frozenset = frozenset(
