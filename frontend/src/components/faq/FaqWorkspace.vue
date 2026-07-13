@@ -84,6 +84,10 @@ watch(
 
 defineExpose({ settings })
 
+// Tabs keep the (potentially long) FAQ list and the settings on separate
+// panes so neither forces the other into a long scroll.
+const tab = ref<'faqs' | 'settings'>('faqs')
+
 // Import modal state.
 const importOpen = ref(false)
 const importSubmitting = ref(false)
@@ -155,64 +159,101 @@ onUnmounted(stopPolling)
     <div v-if="phase === 'loading'" class="loading">Loading your FAQs…</div>
 
     <template v-else>
-      <FaqGenerateBar
-        class="workspace-bar"
-        :phase="barPhase"
-        :source-count="sourceCount"
-        :page-count="pageCount"
-        :faq-count="faqs.length"
-        :published-count="publishedCount"
-        @generate="startGeneration"
-        @import="importOpen = true"
-        @add="startAdd"
-      />
+      <nav class="tabs" role="tablist">
+        <button class="tab" :class="{ 'tab--active': tab === 'faqs' }" type="button" role="tab" :aria-selected="tab === 'faqs'" @click="tab = 'faqs'">
+          FAQs
+          <span v-if="faqs.length" class="tab__count">{{ faqs.length }}</span>
+        </button>
+        <button class="tab" :class="{ 'tab--active': tab === 'settings' }" type="button" role="tab" :aria-selected="tab === 'settings'" @click="tab = 'settings'">
+          Help center
+        </button>
+      </nav>
 
-      <FaqEmptyState
-        v-if="phase === 'empty' && !isNewFaq"
-        :source-count="sourceCount"
-        :page-count="pageCount"
-        @generate="startGeneration"
-        @import="importOpen = true"
-        @add="startAdd"
-      />
-
-      <FaqGenerationProgress v-else-if="phase === 'generating' && job" :job="job" />
-
-      <div v-else class="faq-list">
-        <FaqCard
-          v-if="isNewFaq"
-          :faq="newFaqStub"
-          :editing="true"
-          :is-new="true"
-          :saving="isSaving"
-          v-model:draft-question="draftQuestion"
-          v-model:draft-answer="draftAnswer"
-          @save="saveEdit"
-          @cancel="cancelEdit"
+      <div v-show="tab === 'faqs'" class="tab-panel">
+        <FaqGenerateBar
+          class="workspace-bar"
+          :phase="barPhase"
+          :source-count="sourceCount"
+          :page-count="pageCount"
+          :faq-count="faqs.length"
+          :published-count="publishedCount"
+          @generate="startGeneration"
+          @import="importOpen = true"
+          @add="startAdd"
         />
-        <FaqCategoryGroup
-          v-for="[category, items] in groupedFaqs"
-          :key="category"
-          :category="category"
-          :count="items.length"
-        >
+
+        <FaqEmptyState
+          v-if="phase === 'empty' && !isNewFaq"
+          :source-count="sourceCount"
+          :page-count="pageCount"
+          @generate="startGeneration"
+          @import="importOpen = true"
+          @add="startAdd"
+        />
+
+        <FaqGenerationProgress v-else-if="phase === 'generating' && job" :job="job" />
+
+        <div v-else class="faq-list">
           <FaqCard
-            v-for="faq in items"
-            :key="faq.id"
-            :faq="faq"
-            :editing="editingId === faq.id"
+            v-if="isNewFaq"
+            :faq="newFaqStub"
+            :editing="true"
+            :is-new="true"
             :saving="isSaving"
-            :draft-question="draftQuestion"
-            :draft-answer="draftAnswer"
-            @update:draft-question="draftQuestion = $event"
-            @update:draft-answer="draftAnswer = $event"
-            @toggle-status="togglePublish(faq)"
-            @edit="startEdit(faq)"
-            @delete="askDelete(faq)"
+            v-model:draft-question="draftQuestion"
+            v-model:draft-answer="draftAnswer"
             @save="saveEdit"
             @cancel="cancelEdit"
           />
-        </FaqCategoryGroup>
+          <FaqCategoryGroup
+            v-for="[category, items] in groupedFaqs"
+            :key="category"
+            :category="category"
+            :count="items.length"
+          >
+            <FaqCard
+              v-for="faq in items"
+              :key="faq.id"
+              :faq="faq"
+              :editing="editingId === faq.id"
+              :saving="isSaving"
+              :draft-question="draftQuestion"
+              :draft-answer="draftAnswer"
+              @update:draft-question="draftQuestion = $event"
+              @update:draft-answer="draftAnswer = $event"
+              @toggle-status="togglePublish(faq)"
+              @edit="startEdit(faq)"
+              @delete="askDelete(faq)"
+              @save="saveEdit"
+              @cancel="cancelEdit"
+            />
+          </FaqCategoryGroup>
+        </div>
+      </div>
+
+      <div v-show="tab === 'settings'" class="tab-panel">
+        <template v-if="settings">
+          <HelpCenterAppearance
+            class="settings-section"
+            :settings="settings"
+            :save-state="saveState"
+            @update="queueSave"
+            @save-now="saveNow"
+            @upload-logo="uploadLogo"
+            @remove-logo="removeLogo"
+          />
+          <HelpCenterPublic
+            class="settings-section"
+            :settings="settings"
+            :domain-busy="domainBusy"
+            @toggle-enabled="saveNow({ enabled: $event })"
+            @update-ai="saveNow($event)"
+            @set-domain="setDomain"
+            @verify-domain="verifyDomain"
+            @remove-domain="removeDomain"
+          />
+        </template>
+        <div v-else class="loading">Loading settings…</div>
       </div>
     </template>
 
@@ -231,27 +272,6 @@ onUnmounted(stopPolling)
       </div>
     </div>
 
-    <template v-if="settings">
-      <HelpCenterAppearance
-        class="settings-section"
-        :settings="settings"
-        :save-state="saveState"
-        @update="queueSave"
-        @save-now="saveNow"
-        @upload-logo="uploadLogo"
-        @remove-logo="removeLogo"
-      />
-      <HelpCenterPublic
-        class="settings-section"
-        :settings="settings"
-        :domain-busy="domainBusy"
-        @toggle-enabled="saveNow({ enabled: $event })"
-        @update-ai="saveNow($event)"
-        @set-domain="setDomain"
-        @verify-domain="verifyDomain"
-        @remove-domain="removeDomain"
-      />
-    </template>
   </div>
 </template>
 
@@ -268,6 +288,53 @@ onUnmounted(stopPolling)
   color: var(--muted);
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--o08);
+  margin-bottom: 20px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab--active {
+  color: var(--text);
+  border-bottom-color: var(--c-teal);
+}
+
+.tab__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--o08);
+  color: var(--muted2);
+}
+
+.tab--active .tab__count {
+  background: var(--teal-bg);
+  color: var(--c-teal);
+}
+
 .workspace-bar {
   margin-bottom: 16px;
 }
@@ -278,7 +345,7 @@ onUnmounted(stopPolling)
   gap: 10px;
 }
 
-.settings-section {
+.settings-section:not(:first-child) {
   margin-top: 36px;
 }
 
