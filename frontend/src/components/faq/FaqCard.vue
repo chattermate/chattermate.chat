@@ -16,6 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import type { FaqItem } from '@/types/faq'
+import MarkdownEditor from './MarkdownEditor.vue'
 
 const props = defineProps<{
   faq: FaqItem
@@ -41,11 +42,18 @@ function onQuestionInput(event: Event) {
   emit('update:draftQuestion', (event.target as HTMLInputElement).value)
 }
 
-function onAnswerInput(event: Event) {
-  emit('update:draftAnswer', (event.target as HTMLTextAreaElement).value)
-}
-
 const sourceLabel = () => props.faq.source_label || 'Generated'
+
+// Answers are stored as Markdown; strip the syntax for the compact card preview
+// (the public article page renders the full formatting).
+function answerPreview(md: string): string {
+  return (md || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 </script>
 
 <template>
@@ -60,13 +68,12 @@ const sourceLabel = () => props.faq.source_label || 'Generated'
         :value="draftQuestion"
         @input="onQuestionInput"
       />
-      <textarea
+      <MarkdownEditor
         class="edit-answer"
-        rows="3"
-        placeholder="Answer"
-        :value="draftAnswer"
-        @input="onAnswerInput"
-      ></textarea>
+        :model-value="draftAnswer"
+        @update:model-value="$emit('update:draftAnswer', $event)"
+      />
+      <p class="edit-hint">Markdown supported — headings, <strong>bold</strong>, lists, links and images.</p>
       <div class="edit-actions">
         <button class="btn-save" type="button" :disabled="saving" @click="$emit('save')">
           {{ saving ? 'Saving…' : 'Save' }}
@@ -79,7 +86,7 @@ const sourceLabel = () => props.faq.source_label || 'Generated'
     <div v-else class="faq-card__row">
       <div class="faq-card__body">
         <div class="faq-card__question">{{ faq.question }}</div>
-        <div class="faq-card__answer">{{ faq.answer }}</div>
+        <div class="faq-card__answer">{{ answerPreview(faq.answer) }}</div>
         <div class="faq-card__source">
           <span class="faq-card__source-dot"></span>
           {{ sourceLabel() }}
@@ -244,8 +251,7 @@ const sourceLabel = () => props.faq.source_label || 'Generated'
   margin-bottom: 10px;
 }
 
-.edit-question,
-.edit-answer {
+.edit-question {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--o12);
@@ -254,20 +260,20 @@ const sourceLabel = () => props.faq.source_label || 'Generated'
   color: var(--text);
   outline: none;
   box-sizing: border-box;
-}
-
-.edit-question {
   font-size: 14.5px;
   font-weight: 600;
   margin-bottom: 9px;
 }
 
-.edit-answer {
-  font-family: var(--font-sans);
-  font-size: 13.5px;
-  color: var(--text3);
-  resize: vertical;
-  line-height: 1.55;
+/* .edit-answer wraps the MarkdownEditor, which supplies its own chrome. */
+.edit-hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--muted2);
+}
+
+.edit-hint strong {
+  font-weight: 600;
 }
 
 .edit-actions {

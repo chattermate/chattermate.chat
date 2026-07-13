@@ -37,9 +37,57 @@ SLUG_MAX_LENGTH = 63
 _SLUG_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 
 
+FAQ_SLUG_MAX_LENGTH = 80
+
+
 def slugify_org_name(name: str) -> str:
     slug = _SLUG_CLEAN_RE.sub("-", (name or "").casefold()).strip("-")
     return slug[:SLUG_MAX_LENGTH].strip("-") or "help"
+
+
+def _faq_base_slug(question: str) -> str:
+    base = _SLUG_CLEAN_RE.sub("-", (question or "").casefold()).strip("-")
+    return base[:FAQ_SLUG_MAX_LENGTH].strip("-") or "article"
+
+
+def _dedupe_slug(base: str, is_taken) -> str:
+    """First free slug from `base`, appending -2, -3, … while is_taken(candidate)."""
+    candidate = base
+    suffix = 2
+    while is_taken(candidate):
+        tail = f"-{suffix}"
+        candidate = f"{base[:FAQ_SLUG_MAX_LENGTH - len(tail)]}{tail}"
+        suffix += 1
+    return candidate
+
+
+def generate_faq_slug(db: Session, organization_id: UUID, question: str) -> str:
+    """A per-org-unique URL slug from an FAQ question. Collisions get -2, -3, …
+    Assigned once at creation and kept stable afterwards so article URLs persist."""
+    from app.repositories.faq import FAQRepository
+
+    repo = FAQRepository(db)
+    return _dedupe_slug(_faq_base_slug(question), lambda c: repo.slug_exists(organization_id, c))
+
+
+def assign_faq_slugs(db: Session, faqs) -> None:
+    """Give every FAQ in a batch a unique slug in place, deduping against both the
+    DB and the other rows in the same batch. Rows that already have a slug are
+    left untouched (and reserved so batch-mates don't collide with them)."""
+    from app.repositories.faq import FAQRepository
+
+    repo = FAQRepository(db)
+    taken: set = set()
+    for faq in faqs:
+        if faq.slug:
+            taken.add(faq.slug)
+            continue
+        slug = _dedupe_slug(
+            _faq_base_slug(faq.question),
+            lambda c: c in taken or repo.slug_exists(faq.organization_id, c),
+        )
+        faq.slug = slug
+        taken.add(slug)
 
 
 def generate_unique_slug(db: Session, name: str) -> str:

@@ -75,6 +75,7 @@ class FAQResponse(BaseModel):
     question: str
     answer: str
     category: str
+    slug: Optional[str] = None
     status: FAQStatus
     knowledge_id: Optional[int] = None
     source_label: Optional[str] = None

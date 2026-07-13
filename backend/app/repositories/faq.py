@@ -71,6 +71,35 @@ class FAQRepository:
             query = query.filter(or_(FAQ.question.ilike(pattern), FAQ.answer.ilike(pattern)))
         return query.order_by(FAQ.category.asc(), FAQ.sort_order.asc(), FAQ.created_at.asc()).all()
 
+    def slug_exists(self, organization_id: UUID, slug: str) -> bool:
+        return self.db.query(
+            self._org_query(organization_id).filter(FAQ.slug == slug).exists()
+        ).scalar()
+
+    def get_published_by_slug(self, organization_id: UUID, slug: str) -> Optional[FAQ]:
+        """A single published article by its slug (the public /a/{slug} lookup)."""
+        return (
+            self._org_query(organization_id)
+            .filter(FAQ.slug == slug, FAQ.status == FAQStatus.PUBLISHED)
+            .first()
+        )
+
+    def get_published_related(
+        self, organization_id: UUID, category: str, exclude_id: UUID, limit: int = 4
+    ) -> List[FAQ]:
+        """Other published FAQs in the same category — the article's related list."""
+        return (
+            self._org_query(organization_id)
+            .filter(
+                FAQ.status == FAQStatus.PUBLISHED,
+                FAQ.category == category,
+                FAQ.id != exclude_id,
+            )
+            .order_by(FAQ.sort_order.asc(), FAQ.created_at.asc())
+            .limit(limit)
+            .all()
+        )
+
     def get_categories(self, organization_id: UUID) -> List[str]:
         rows = (
             self._org_query(organization_id)
@@ -98,6 +127,12 @@ class FAQRepository:
         return faq
 
     def bulk_create(self, faqs: List[FAQ]) -> List[FAQ]:
+        # Guarantee every generated/imported FAQ gets a unique article slug (the
+        # single choke point for batch inserts), so publishing one never yields a
+        # broken /a/ link.
+        from app.services.help_center_settings import assign_faq_slugs
+
+        assign_faq_slugs(self.db, faqs)
         self.db.add_all(faqs)
         self.db.commit()
         return faqs

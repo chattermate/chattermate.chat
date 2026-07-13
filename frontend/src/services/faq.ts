@@ -39,6 +39,19 @@ export const faqService = {
     }
   },
 
+  async uploadImage(file: File): Promise<string> {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await api.post('/help-center/faqs/image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return response.data.url as string
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to upload image')
+    }
+  },
+
   async createFaq(payload: { question: string; answer: string; category?: string; status?: FaqStatus }): Promise<FaqItem> {
     try {
       const response = await api.post('/help-center/faqs', payload)

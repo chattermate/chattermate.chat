@@ -21,6 +21,7 @@ export interface FaqItem {
   question: string
   answer: string
   category: string
+  slug?: string | null
   status: FaqStatus
   knowledge_id: number | null
   source_label: string | null

@@ -49,7 +49,13 @@ class FAQ(Base):
         nullable=False,
     )
     question = Column(Text, nullable=False)
+    # Answer is authored/stored as Markdown; rendered to sanitized HTML on the
+    # public article page (app.services.help_center_content).
     answer = Column(Text, nullable=False)
+    # URL slug for the public article page (/a/{slug}). Assigned once from the
+    # question and kept stable so published article URLs don't churn on edits.
+    # Unique per org (see ix_faqs_org_slug); NULL until assigned.
+    slug = Column(String(80), nullable=True)
     # Free-form category assigned by the LLM grouping step (or the user).
     category = Column(String(100), nullable=False, default=DEFAULT_FAQ_CATEGORY)
     # Plain string (values from FAQStatus), like knowledge_queue.status — new
@@ -74,4 +80,7 @@ class FAQ(Base):
     __table_args__ = (
         Index("ix_faqs_org_status", "organization_id", "status"),
         Index("ix_faqs_org_category", "organization_id", "category"),
+        # Serves the public /a/{slug} lookup and enforces per-org uniqueness.
+        # Multiple NULL slugs coexist (Postgres treats NULLs as distinct).
+        Index("ix_faqs_org_slug", "organization_id", "slug", unique=True),
     )
