@@ -48,15 +48,18 @@ function onQuestionInput(event: Event) {
 
 const sourceLabel = () => props.faq.source_label || 'Generated'
 
-// Answers are stored as Markdown; strip the syntax for the compact card preview
-// (the public article page renders the full formatting).
+// Answers are stored as Markdown; strip the syntax and cap the length for the
+// compact, line-clamped card preview (the public article page and the editor
+// show the full formatted content).
+const PREVIEW_MAX_CHARS = 240
 function answerPreview(md: string): string {
-  return (md || '')
+  const text = (md || '')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[#>*_`~]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+  return text.length > PREVIEW_MAX_CHARS ? `${text.slice(0, PREVIEW_MAX_CHARS).trimEnd()}…` : text
 }
 </script>
 
@@ -185,6 +188,13 @@ function answerPreview(md: string): string {
   font-size: 13.5px;
   color: var(--muted);
   line-height: 1.55;
+  /* Keep every card compact and uniform — imported articles can be very long;
+     full content is on the public page and in the editor. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .faq-card__source {

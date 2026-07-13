@@ -18,12 +18,17 @@ limitations under the License.
 const props = defineProps<{
   category: string
   count: number
+  /** Published FAQs in this group (for the header stat). */
+  publishedCount?: number
   /** Cards in this group currently selected; undefined hides the select-all. */
   selectedCount?: number
+  /** Whether the group body is expanded. */
+  open?: boolean
 }>()
 
 defineEmits<{
   'toggle-all': [on: boolean]
+  toggle: []
 }>()
 
 const allSelected = () => props.selectedCount === props.count && props.count > 0
@@ -39,13 +44,29 @@ const allSelected = () => props.selectedCount === props.count && props.count > 0
         :checked="allSelected()"
         :indeterminate.prop="!!selectedCount && !allSelected()"
         :aria-label="`Select all in ${category}`"
+        @click.stop
         @change="$emit('toggle-all', !allSelected())"
       />
-      <span class="category-group__name">{{ category.toUpperCase() }}</span>
-      <span class="category-group__count">{{ count }} {{ count === 1 ? 'answer' : 'answers' }}</span>
+      <button
+        class="category-group__toggle"
+        type="button"
+        :aria-expanded="open"
+        @click="$emit('toggle')"
+      >
+        <svg
+          class="category-group__chevron"
+          :class="{ 'category-group__chevron--open': open }"
+          viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+          stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+        ><path d="M9 6l6 6-6 6" /></svg>
+        <span class="category-group__name">{{ category.toUpperCase() }}</span>
+        <span class="category-group__count">
+          {{ count }} {{ count === 1 ? 'answer' : 'answers' }}<template v-if="publishedCount !== undefined"> · {{ publishedCount }} published</template>
+        </span>
+      </button>
       <div class="category-group__rule"></div>
     </div>
-    <div class="category-group__cards">
+    <div v-show="open" class="category-group__cards">
       <slot />
     </div>
   </div>
@@ -78,6 +99,27 @@ const allSelected = () => props.selectedCount === props.count && props.count > 0
 .category-group__check:checked,
 .category-group__check:indeterminate {
   opacity: 1;
+}
+
+.category-group__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+.category-group__chevron {
+  color: var(--muted2);
+  flex-shrink: 0;
+  transition: transform var(--transition-fast);
+}
+
+.category-group__chevron--open {
+  transform: rotate(90deg);
 }
 
 .category-group__name {

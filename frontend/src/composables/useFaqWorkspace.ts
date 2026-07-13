@@ -116,15 +116,62 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
 
   const publishedCount = computed(() => faqs.value.filter((f) => f.status === 'published').length)
 
+  // ---- search + filter + collapse (all client-side over the loaded set) ----
+  const searchQuery = ref('')
+  const categoryFilter = ref<string | null>(null)
+  const statusFilter = ref<'all' | FaqStatus>('all')
+  const collapsedCategories = ref<Set<string>>(new Set())
+
+  const categories = computed(() =>
+    [...new Set(faqs.value.map((f) => f.category))].sort((a, b) => a.localeCompare(b)),
+  )
+
+  const hasActiveFilters = computed(
+    () =>
+      searchQuery.value.trim() !== '' ||
+      categoryFilter.value !== null ||
+      statusFilter.value !== 'all',
+  )
+
+  const filteredFaqs = computed(() => {
+    const q = searchQuery.value.trim().toLowerCase()
+    return faqs.value.filter((f) => {
+      if (categoryFilter.value && f.category !== categoryFilter.value) return false
+      if (statusFilter.value !== 'all' && f.status !== statusFilter.value) return false
+      if (q && !`${f.question} ${f.answer}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  })
+
+  const filteredCount = computed(() => filteredFaqs.value.length)
+
   const groupedFaqs = computed(() => {
     const groups = new Map<string, FaqItem[]>()
-    for (const faq of faqs.value) {
+    for (const faq of filteredFaqs.value) {
       const list = groups.get(faq.category) || []
       list.push(faq)
       groups.set(faq.category, list)
     }
     return groups
   })
+
+  function resetFilters(): void {
+    searchQuery.value = ''
+    categoryFilter.value = null
+    statusFilter.value = 'all'
+  }
+
+  function toggleCategory(category: string): void {
+    const next = new Set(collapsedCategories.value)
+    if (next.has(category)) next.delete(category)
+    else next.add(category)
+    collapsedCategories.value = next
+  }
+
+  // While filtering/searching, always show matches regardless of collapse state.
+  function isCategoryOpen(category: string): boolean {
+    return hasActiveFilters.value || !collapsedCategories.value.has(category)
+  }
 
   const domainPending = computed(() => {
     const domain = settings.value?.domain
@@ -349,6 +396,15 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     barPhase,
     publishedCount,
     groupedFaqs,
+    searchQuery,
+    categoryFilter,
+    statusFilter,
+    categories,
+    hasActiveFilters,
+    filteredCount,
+    resetFilters,
+    toggleCategory,
+    isCategoryOpen,
     isJobActive,
     selectedIds,
     selectionActive,
