@@ -97,8 +97,23 @@ async def process_faq_job(job_id: int):
             )
 
 
+_reaped_orphans = False
+
+
+def _reap_orphans_once() -> None:
+    """Reap orphaned `processing` jobs the first time the processor runs in
+    this process — covers both worker entrypoints (the loop wrapper here and
+    run_knowledge_processor's per-iteration call) without reaping every tick."""
+    global _reaped_orphans
+    if _reaped_orphans:
+        return
+    _reaped_orphans = True
+    reap_orphaned_jobs()
+
+
 async def run_faq_processor():
     """Single pass: process every pending FAQ job (bounded concurrency)."""
+    _reap_orphans_once()
     with SessionLocal() as db:
         pending_ids = [job.id for job in FAQGenerationJobRepository(db).get_pending()]
     if not pending_ids:
@@ -130,8 +145,8 @@ def reap_orphaned_jobs() -> None:
 
 async def run_faq_processor_loop(poll_interval: int = POLL_INTERVAL_SECONDS):
     """Forever-loop wrapper — run as an independent task next to the knowledge
-    loop so a long FAQ job never delays knowledge ingestion."""
-    reap_orphaned_jobs()
+    loop so a long FAQ job never delays knowledge ingestion. run_faq_processor
+    reaps orphans on its first call, so no explicit reap is needed here."""
     while True:
         try:
             await run_faq_processor()

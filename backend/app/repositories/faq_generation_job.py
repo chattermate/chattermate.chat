@@ -14,13 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.faq_generation_job import (
     ACTIVE_FAQ_JOB_STATUSES,
@@ -64,21 +65,32 @@ class FAQGenerationJobRepository:
             .all()
         )
 
-    def fail_orphaned_processing(self, reason: str) -> int:
-        """Mark every job stuck in `processing` as failed — called once at
-        worker startup. The worker is the only writer of `processing`, so on a
-        fresh boot any such row is an orphan left by a previous crash/kill;
-        otherwise it (and the enqueue guard + UI polling) would hang forever."""
-        updated = (
-            self.db.query(FAQGenerationJob)
-            .filter(FAQGenerationJob.status == FAQJobStatus.PROCESSING.value)
-            .update(
-                {
-                    FAQGenerationJob.status: FAQJobStatus.FAILED.value,
-                    FAQGenerationJob.error: reason,
-                },
-                synchronize_session=False,
-            )
+    def fail_orphaned_processing(
+        self,
+        reason: str,
+        older_than_seconds: Optional[int] = None,
+        organization_id: Optional[UUID] = None,
+    ) -> int:
+        """Mark `processing` jobs failed. With no bounds (worker startup): the
+        worker is the only writer of `processing`, so on a fresh boot every such
+        row is an orphan from a previous crash/kill. With `older_than_seconds`
+        (lazy reap on enqueue): only jobs whose progress stopped advancing past
+        the threshold — a worker that died and hasn't restarted. Either way the
+        job (and the enqueue guard + UI polling) would otherwise hang forever."""
+        query = self.db.query(FAQGenerationJob).filter(
+            FAQGenerationJob.status == FAQJobStatus.PROCESSING.value
+        )
+        if organization_id is not None:
+            query = query.filter(FAQGenerationJob.organization_id == organization_id)
+        if older_than_seconds is not None:
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)
+            query = query.filter(FAQGenerationJob.updated_at < cutoff)
+        updated = query.update(
+            {
+                FAQGenerationJob.status: FAQJobStatus.FAILED.value,
+                FAQGenerationJob.error: reason,
+            },
+            synchronize_session=False,
         )
         self.db.commit()
         return updated
@@ -90,10 +102,19 @@ class FAQGenerationJobRepository:
         knowledge_id: Optional[int] = None,
     ) -> Optional[FAQGenerationJob]:
         """Most recent pending/processing job, optionally narrowed by type and
-        source — the enqueue-dedup guard and the UI's polling target."""
+        source — the enqueue-dedup guard and the UI's polling target. A
+        `processing` job whose progress stopped advancing past
+        FAQ_JOB_STALE_SECONDS is treated as dead (excluded), so the UI stops
+        polling even if the worker never restarts to reap it."""
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.FAQ_JOB_STALE_SECONDS)
         query = self.db.query(FAQGenerationJob).filter(
             FAQGenerationJob.organization_id == organization_id,
             FAQGenerationJob.status.in_(ACTIVE_FAQ_JOB_STATUSES),
+            or_(
+                FAQGenerationJob.status != FAQJobStatus.PROCESSING.value,
+                FAQGenerationJob.updated_at.is_(None),
+                FAQGenerationJob.updated_at >= cutoff,
+            ),
         )
         if job_type is not None:
             query = query.filter(FAQGenerationJob.job_type == job_type.value)
