@@ -16,9 +16,9 @@ limitations under the License.
 
 import enum
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
+from sqlalchemy.sql import expression, func
 
 from app.database import Base
 
@@ -30,6 +30,11 @@ class FAQJobType(str, enum.Enum):
     GENERATE_SOURCE = "generate_source"
     # Extract Q&A pairs from an external FAQ page URL (migration).
     IMPORT_URL = "import_url"
+    # Crawl an external help-center index and import linked articles as-is
+    # (HTML→Markdown, no LLM).
+    IMPORT_ARTICLES = "import_articles"
+    # Extract Q&A pairs from an uploaded PDF.
+    IMPORT_PDF = "import_pdf"
 
 
 class FAQJobStatus(str, enum.Enum):
@@ -77,8 +82,19 @@ class FAQGenerationJob(Base):
     # IMPORT_URL. SET NULL (not CASCADE) so deleting a source mid-run doesn't
     # yank the job row out from under the worker and the UI's polling.
     knowledge_id = Column(Integer, ForeignKey("knowledge.id", ondelete="SET NULL"), nullable=True, index=True)
-    # IMPORT_URL: the external page to extract from.
+    # GENERATE_ALL: optional explicit narrowing to specific knowledge sources
+    # (overrides the default skip-already-generated behaviour).
+    knowledge_ids = Column(JSON, nullable=True)
+    # IMPORT_URL: the external page to extract from. IMPORT_PDF: the stored
+    # upload path/URL the worker reads the file from.
     source_url = Column(String, nullable=True)
+    # IMPORT_PDF: the original client filename, used for source_label.
+    source_file_name = Column(String(255), nullable=True)
+    # LLM calls attempted by this job (retries included) — the usage unit for
+    # hosted-model metering. `metered` is stamped at enqueue time from the
+    # org's AI config so the period sum never depends on later config changes.
+    llm_calls = Column(Integer, nullable=False, default=0, server_default="0")
+    metered = Column(Boolean, nullable=False, default=True, server_default=expression.true())
     status = Column(String, nullable=False, default=FAQJobStatus.PENDING)
     stage = Column(String, nullable=False, default=FAQJobStage.NOT_STARTED)
     progress_percentage = Column(Float, nullable=False, default=0.0)

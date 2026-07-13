@@ -110,6 +110,19 @@ class FAQRepository:
         )
         return [row[0] for row in rows]
 
+    def knowledge_ids_with_faqs(self, organization_id: UUID) -> set:
+        """Knowledge sources that already produced FAQs — regenerate skips
+        these unless the caller explicitly targets them. Self-healing: deleting
+        a source's FAQs makes it eligible for generation again."""
+        rows = (
+            self._org_query(organization_id)
+            .with_entities(FAQ.knowledge_id)
+            .filter(FAQ.knowledge_id.isnot(None))
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in rows}
+
     def get_existing_questions(self, organization_id: UUID) -> List[str]:
         """All question strings for the org — the generation dedup baseline."""
         rows = self._org_query(organization_id).with_entities(FAQ.question).all()
