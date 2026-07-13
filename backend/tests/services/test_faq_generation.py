@@ -62,6 +62,22 @@ def _make_job(db, org_id, **kwargs):
 
 # ---------- unit helpers ----------
 
+def test_fail_orphaned_processing_reaps_only_processing(db, test_organization):
+    """Worker-startup reap: processing jobs (orphaned by a kill) fail; pending
+    and terminal jobs are untouched."""
+    org = test_organization.id
+    stuck = _make_job(db, org, job_type=FAQJobType.IMPORT_ARTICLES.value, status=FAQJobStatus.PROCESSING.value)
+    pending = _make_job(db, org, job_type=FAQJobType.GENERATE_ALL.value, status=FAQJobStatus.PENDING.value)
+    done = _make_job(db, org, job_type=FAQJobType.IMPORT_URL.value, status=FAQJobStatus.COMPLETED.value)
+
+    reaped = FAQGenerationJobRepository(db).fail_orphaned_processing("killed")
+    assert reaped == 1
+    db.refresh(stuck); db.refresh(pending); db.refresh(done)
+    assert stuck.status == FAQJobStatus.FAILED.value and stuck.error == "killed"
+    assert pending.status == FAQJobStatus.PENDING.value
+    assert done.status == FAQJobStatus.COMPLETED.value
+
+
 def test_normalize_question():
     assert normalize_question("How do I sign up?") == normalize_question("how do i SIGN UP")
     assert normalize_question("  A,  b!! ") == "a b"

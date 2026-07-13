@@ -64,6 +64,25 @@ class FAQGenerationJobRepository:
             .all()
         )
 
+    def fail_orphaned_processing(self, reason: str) -> int:
+        """Mark every job stuck in `processing` as failed — called once at
+        worker startup. The worker is the only writer of `processing`, so on a
+        fresh boot any such row is an orphan left by a previous crash/kill;
+        otherwise it (and the enqueue guard + UI polling) would hang forever."""
+        updated = (
+            self.db.query(FAQGenerationJob)
+            .filter(FAQGenerationJob.status == FAQJobStatus.PROCESSING.value)
+            .update(
+                {
+                    FAQGenerationJob.status: FAQJobStatus.FAILED.value,
+                    FAQGenerationJob.error: reason,
+                },
+                synchronize_session=False,
+            )
+        )
+        self.db.commit()
+        return updated
+
     def get_active_for_org(
         self,
         organization_id: UUID,
