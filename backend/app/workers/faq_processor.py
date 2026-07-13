@@ -21,6 +21,7 @@ works as a standalone service if it ever needs its own container.
 import asyncio
 
 from app.database import SessionLocal
+from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.faq_generation_job import FAQJobType
 from app.models.notification import NotificationType
@@ -32,7 +33,6 @@ from app.services.notifications import notify_user
 
 logger = get_logger(__name__)
 
-MAX_CONCURRENT_FAQ_JOBS = 2
 POLL_INTERVAL_SECONDS = 60
 
 
@@ -118,7 +118,7 @@ async def run_faq_processor():
         pending_ids = [job.id for job in FAQGenerationJobRepository(db).get_pending()]
     if not pending_ids:
         return
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_FAQ_JOBS)
+    semaphore = asyncio.Semaphore(max(1, settings.MAX_CONCURRENT_FAQ_JOBS))
 
     async def process_with_semaphore(job_id: int):
         async with semaphore:
