@@ -26,6 +26,7 @@ import FaqGenerationProgress from './FaqGenerationProgress.vue'
 import FaqCategoryGroup from './FaqCategoryGroup.vue'
 import FaqCard from './FaqCard.vue'
 import FaqImportModal from './FaqImportModal.vue'
+import FaqSourcePicker from './FaqSourcePicker.vue'
 import HelpCenterAppearance from './HelpCenterAppearance.vue'
 import HelpCenterPublic from './HelpCenterPublic.vue'
 
@@ -112,6 +113,20 @@ const tab = ref<'faqs' | 'settings'>('faqs')
 const importOpen = ref(false)
 const importSubmitting = ref(false)
 
+// Knowledge-source picker (shown when there are multiple sources).
+const sourcePickerOpen = ref(false)
+const generating = ref(false)
+
+async function onPickSources(knowledgeIds: number[]) {
+  generating.value = true
+  try {
+    await startGeneration(knowledgeIds)
+    sourcePickerOpen.value = false
+  } finally {
+    generating.value = false
+  }
+}
+
 async function onImportSubmit(url: string, mode: FaqImportMode) {
   importSubmitting.value = true
   try {
@@ -166,6 +181,11 @@ async function askGenerate() {
   }
   if (e.total_sources === 0) {
     toast.error('No knowledge sources to generate from. Add knowledge first.')
+    return
+  }
+  // Multiple sources → let the user pick which to generate from.
+  if (e.sources.length > 1) {
+    sourcePickerOpen.value = true
     return
   }
   if (e.new_sources === 0) {
@@ -404,6 +424,14 @@ onUnmounted(stopPolling)
     </template>
 
     <FaqImportModal :open="importOpen" :submitting="importSubmitting" @close="importOpen = false" @submit="onImportSubmit" @submit-pdf="onPdfImportSubmit" />
+
+    <FaqSourcePicker
+      :open="sourcePickerOpen"
+      :estimate="estimate"
+      :submitting="generating"
+      @close="sourcePickerOpen = false"
+      @generate="onPickSources"
+    />
 
     <div v-if="selectionActive" class="bulkbar" role="toolbar" aria-label="Bulk actions">
       <span class="bulkbar__count">{{ selectedIds.size }} selected</span>

@@ -32,6 +32,7 @@ from app.models.schemas.faq import (
     GenerateRequest,
     GenerationEstimateResponse,
     GenerationJobResponse,
+    GenerationSourceResponse,
     ImportRequest,
 )
 from app.models.user import User
@@ -143,6 +144,13 @@ async def generation_estimate(
         estimated_calls=estimate.estimated_calls,
         metered=metered,
         remaining_credits=remaining_message_credits(db, org_id) if metered else None,
+        sources=[
+            GenerationSourceResponse(
+                id=s.id, name=s.name, source_type=s.source_type,
+                has_faqs=s.has_faqs, pages=s.pages, estimated_calls=s.estimated_calls,
+            )
+            for s in estimate.sources
+        ],
     )
 
 
