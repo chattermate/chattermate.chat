@@ -41,6 +41,8 @@ export interface FaqListResponse {
   pagination: FaqPagination
 }
 
+export type FaqImportMode = 'qa' | 'articles'
+
 export type FaqJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 export type FaqJobStage =
   | 'not_started'
@@ -61,7 +63,7 @@ export interface GenerateEstimate {
 
 export interface FaqGenerationJob {
   id: number
-  job_type: 'generate_all' | 'generate_source' | 'import_url'
+  job_type: 'generate_all' | 'generate_source' | 'import_url' | 'import_articles' | 'import_pdf'
   status: FaqJobStatus
   stage: FaqJobStage
   progress_percentage: number

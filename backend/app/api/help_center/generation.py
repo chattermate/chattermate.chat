@@ -62,16 +62,19 @@ def _enqueue(
     current_user: User,
     job_type: FAQJobType,
     estimated_calls: int = MIN_IMPORT_CALL_ESTIMATE,
+    requires_llm: bool = True,
     **fields,
 ) -> FAQGenerationJob:
     """Shared enqueue guard: one active job per type per org (409 on dupes),
     fail fast when no AI model is configured, 402 when a metered run exceeds
     the remaining message credits. Stamps the job's `metered` flag from the
-    org's current AI config."""
+    org's current AI config. requires_llm=False (article import) skips the
+    AI-config and credit checks entirely."""
     org_id = current_user.organization_id
     check_help_center_access(db, org_id)
-    _require_ai_config(db, org_id)
-    ensure_generation_budget(db, org_id, estimated_calls)
+    if requires_llm:
+        _require_ai_config(db, org_id)
+        ensure_generation_budget(db, org_id, estimated_calls)
     job_repo = FAQGenerationJobRepository(db)
     if job_repo.get_active_for_org(org_id, job_type):
         raise HTTPException(status_code=409, detail="A job of this type is already running.")
@@ -81,7 +84,7 @@ def _enqueue(
                 organization_id=org_id,
                 user_id=current_user.id,
                 job_type=job_type.value,
-                metered=generation_is_metered(db, org_id),
+                metered=requires_llm and generation_is_metered(db, org_id),
                 **fields,
             )
         )
@@ -165,12 +168,21 @@ async def start_import(
     current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db),
 ):
-    """Migrate an existing FAQ page: crawl it and draft its Q&A pairs."""
+    """Migrate an existing help center. mode=qa extracts Q&A pairs from the
+    page with the org's model (uses credits); mode=articles crawls the page's
+    linked article pages and imports each one as-is (Markdown, no LLM)."""
     # Early SSRF rejection for immediate feedback; the worker re-validates at
     # fetch time (including every redirect hop).
     if resolves_to_blocked_host(payload.url):
         raise HTTPException(status_code=400, detail="That URL points to a blocked or internal host.")
-    job = _enqueue(db, current_user, FAQJobType.IMPORT_URL, source_url=payload.url)
+    if payload.mode == "articles":
+        # No LLM → no AI-config requirement, no credit checks.
+        job = _enqueue(
+            db, current_user, FAQJobType.IMPORT_ARTICLES,
+            requires_llm=False, source_url=payload.url,
+        )
+    else:
+        job = _enqueue(db, current_user, FAQJobType.IMPORT_URL, source_url=payload.url)
     return GenerationJobResponse.model_validate(job)
 
 

@@ -18,6 +18,7 @@ import api from './api'
 import type {
   FaqGenerationJob,
   FaqItem,
+  FaqImportMode,
   FaqListResponse,
   FaqStatus,
   GenerateEstimate,
@@ -118,9 +119,9 @@ export const faqService = {
     }
   },
 
-  async importFaq(url: string): Promise<FaqGenerationJob> {
+  async importFaq(url: string, mode: FaqImportMode = 'qa'): Promise<FaqGenerationJob> {
     try {
-      const response = await api.post('/help-center/import', { url })
+      const response = await api.post('/help-center/import', { url, mode })
       return response.data
     } catch (error: any) {
       throw errorMessage(error, 'Failed to start import')

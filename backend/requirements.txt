@@ -73,6 +73,9 @@ aiofiles
 # rendered to sanitized HTML on the public page (markdown -> nh3 allowlist clean).
 markdown
 nh3
+# help-center article import: crawled help pages are converted HTML -> Markdown
+# (subclassed converter re-hosts images and absolutizes links inline).
+markdownify
 
 gunicorn
 
