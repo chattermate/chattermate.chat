@@ -17,7 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import type { FaqItem } from '@/types/faq'
+import type { FaqImportMode, FaqItem } from '@/types/faq'
 import { useFaqWorkspace } from '@/composables/useFaqWorkspace'
 import { useHelpCenterSettings } from '@/composables/useHelpCenterSettings'
 import FaqGenerateBar from './FaqGenerateBar.vue'
@@ -102,10 +102,10 @@ const tab = ref<'faqs' | 'settings'>('faqs')
 const importOpen = ref(false)
 const importSubmitting = ref(false)
 
-async function onImportSubmit(url: string) {
+async function onImportSubmit(url: string, mode: FaqImportMode) {
   importSubmitting.value = true
   try {
-    const ok = await submitImport(url)
+    const ok = await submitImport(url, mode)
     if (ok) importOpen.value = false
   } finally {
     importSubmitting.value = false

@@ -15,13 +15,12 @@ limitations under the License.
 """
 
 from typing import List, Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_permissions
-from app.core.config import settings
 from app.database import get_db
 from app.models.faq import FAQ, FAQStatus
 from app.models.schemas.faq import (
@@ -35,31 +34,15 @@ from app.models.schemas.faq import (
 from app.models.schemas.pagination import Pagination
 from app.models.user import User
 from app.repositories.faq import FAQRepository
-from app.services.file_storage import store_upload
 from app.services.help_center_access import check_help_center_access
+from app.services.help_center_images import (
+    FAQ_IMAGE_TYPES,
+    MAX_FAQ_IMAGE_BYTES,
+    store_article_image,
+)
 from app.services.help_center_settings import generate_faq_slug
 
 router = APIRouter()
-
-# Images embedded in an article's Markdown must resolve to a STABLE, ABSOLUTE URL
-# (they render on the help-center domain, and the reference is stored inline in the
-# answer forever — so no signed/expiring URLs and no host-relative paths).
-MAX_FAQ_IMAGE_BYTES = 5 * 1024 * 1024
-_FAQ_IMAGE_TYPES = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-}
-
-
-def _absolute_upload_url(stored: str) -> str:
-    """Make a stored upload path absolute. S3 returns an absolute http(s) URL
-    already; local mode returns a path under the /api/v1/uploads mount, which we
-    anchor to the backend's public origin so it loads cross-domain."""
-    if stored.startswith("http"):
-        return stored
-    return f"{settings.BACKEND_URL.rstrip('/')}{stored}"
 
 
 def _get_owned_faq(faq_id: UUID, current_user: User, db: Session) -> FAQ:
@@ -135,16 +118,9 @@ async def upload_faq_image(
     if len(content) > MAX_FAQ_IMAGE_BYTES:
         raise HTTPException(status_code=400, detail="Image must be 5MB or smaller.")
     # Extension comes from the VALIDATED content type, never the client filename.
-    if file.content_type not in _FAQ_IMAGE_TYPES:
+    if file.content_type not in FAQ_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Use a PNG, JPEG, GIF or WebP image.")
-    file_name = f"{uuid4()}{_FAQ_IMAGE_TYPES[file.content_type]}"
-    stored = await store_upload(
-        content=content,
-        folder="help_center",
-        file_name=file_name,
-        content_type=file.content_type,
-    )
-    return {"url": _absolute_upload_url(stored)}
+    return {"url": await store_article_image(content, file.content_type)}
 
 
 @router.put("/faqs/{faq_id}", response_model=FAQResponse)

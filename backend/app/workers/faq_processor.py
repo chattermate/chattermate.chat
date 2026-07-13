@@ -25,6 +25,7 @@ from app.core.logger import get_logger
 from app.models.faq_generation_job import FAQJobType
 from app.models.notification import NotificationType
 from app.repositories.faq_generation_job import FAQGenerationJobRepository
+from app.services.faq_article_import import run_article_import_job
 from app.services.faq_generation import run_generation_job
 from app.services.faq_import import run_import_job
 from app.services.notifications import notify_user
@@ -47,6 +48,8 @@ async def process_faq_job(job_id: int):
             job_repo.mark_processing(job.id)
             if job.job_type == FAQJobType.IMPORT_URL.value:
                 created = await run_import_job(db, job)
+            elif job.job_type == FAQJobType.IMPORT_ARTICLES.value:
+                created = await run_article_import_job(db, job)
             else:
                 created = await run_generation_job(db, job)
             job_repo.mark_completed(job.id, faqs_created=created)

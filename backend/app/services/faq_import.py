@@ -107,7 +107,7 @@ def _fetch_rendered_text(url: str) -> Optional[str]:
         from app.knowledge.crawl4ai_fallback import get_crawl4ai_fallback
 
         fallback = get_crawl4ai_fallback(timeout=settings.FAQ_IMPORT_FETCH_TIMEOUT)
-        if not fallback.is_available():
+        if not fallback.is_available:
             return None
         _, soup, _ = fallback.fetch_with_browser(url)
         return _soup_to_text(soup) if soup else None

@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -26,7 +26,10 @@ from app.models.schemas.pagination import Pagination
 from app.utils.urls import normalize_url
 
 MAX_QUESTION_LENGTH = 300
-MAX_ANSWER_LENGTH = 4000
+# Articles imported as-is (help-center pages with steps/images) routinely run
+# long; the column is TEXT and the public renderer paginates nothing, so the
+# cap only guards against runaway payloads.
+MAX_ANSWER_LENGTH = 20000
 MAX_BULK_IDS = 200
 
 
@@ -116,6 +119,10 @@ class GenerationEstimateResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
+    # qa = single page, LLM extracts Q&A pairs (uses credits).
+    # articles = crawl the page's linked articles and import each as-is
+    #            (HTML -> Markdown, images re-hosted, no LLM).
+    mode: Literal["qa", "articles"] = "qa"
 
     @field_validator("url")
     @classmethod

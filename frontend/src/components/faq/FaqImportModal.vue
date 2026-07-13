@@ -18,6 +18,7 @@ limitations under the License.
 import { computed, ref, watch } from 'vue'
 import Modal from '@/components/common/Modal.vue'
 import FaqOrb from './FaqOrb.vue'
+import type { FaqImportMode } from '@/types/faq'
 
 const props = defineProps<{
   open: boolean
@@ -26,33 +27,70 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  submit: [url: string]
+  submit: [url: string, mode: FaqImportMode]
 }>()
 
 const url = ref('')
+const mode = ref<FaqImportMode>('qa')
+
+const MODES: { value: FaqImportMode; title: string; description: string }[] = [
+  {
+    value: 'qa',
+    title: 'Q&A page',
+    description: 'AI reads one page and extracts each question & answer. Uses AI credits.',
+  },
+  {
+    value: 'articles',
+    title: 'Article pages',
+    description: 'Imports every article linked from the page as-is — text, images and links. No AI.',
+  },
+]
 
 watch(
   () => props.open,
   (open) => {
-    if (!open) url.value = ''
+    if (!open) {
+      url.value = ''
+      mode.value = 'qa'
+    }
   },
 )
 
 const canSubmit = computed(() => url.value.trim().length > 0 && !props.submitting)
 
+const hint = computed(() =>
+  mode.value === 'articles'
+    ? 'ChatterMate follows the article links on that page and imports each article verbatim as a draft — formatting and images included.'
+    : 'ChatterMate crawls the page, extracts each question and answer, and adds them here as drafts for you to review before publishing.',
+)
+
 function submit() {
   if (!canSubmit.value) return
   const cleaned = url.value.trim().replace(/^https?:\/\//i, '')
-  emit('submit', `https://${cleaned}`)
+  emit('submit', `https://${cleaned}`, mode.value)
 }
 </script>
 
 <template>
   <Modal v-if="open" @close="$emit('close')">
-    <template #title>Migrate an existing FAQ page</template>
+    <template #title>Migrate an existing help center</template>
     <template #content>
-      <p class="import-sub">Paste a help-center or FAQ URL — we detect every question &amp; answer pair.</p>
-      <label class="import-label" for="faq-import-url">FAQ PAGE URL</label>
+      <p class="import-sub">Paste a help-center or FAQ URL and choose how to bring the content in.</p>
+
+      <div class="mode-cards" role="radiogroup" aria-label="Import mode">
+        <label
+          v-for="option in MODES"
+          :key="option.value"
+          class="mode-card"
+          :class="{ 'mode-card--active': mode === option.value }"
+        >
+          <input v-model="mode" class="mode-card__radio" type="radio" name="faq-import-mode" :value="option.value" />
+          <span class="mode-card__title">{{ option.title }}</span>
+          <span class="mode-card__desc">{{ option.description }}</span>
+        </label>
+      </div>
+
+      <label class="import-label" for="faq-import-url">{{ mode === 'articles' ? 'HELP CENTER INDEX URL' : 'FAQ PAGE URL' }}</label>
       <div class="import-input">
         <span class="import-input__prefix">https://</span>
         <input
@@ -65,16 +103,13 @@ function submit() {
       </div>
       <div class="import-hint">
         <FaqOrb :size="34" />
-        <div>
-          ChatterMate crawls the page, extracts each question and answer, and adds them here as
-          drafts for you to review before publishing.
-        </div>
+        <div>{{ hint }}</div>
       </div>
       <div class="import-actions">
         <button class="btn-cancel" type="button" @click="$emit('close')">Cancel</button>
         <button class="btn-import" type="button" :disabled="!canSubmit" @click="submit">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12" /><path d="M8 11l4 4 4-4" /><path d="M5 21h14" /></svg>
-          {{ submitting ? 'Importing…' : 'Import FAQs' }}
+          {{ submitting ? 'Importing…' : mode === 'articles' ? 'Import articles' : 'Import FAQs' }}
         </button>
       </div>
     </template>
@@ -87,6 +122,52 @@ function submit() {
   color: var(--muted);
   margin: -12px 0 18px;
   line-height: 1.5;
+}
+
+.mode-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 14px;
+  background: var(--o03);
+  border: 1px solid var(--o12);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.mode-card--active {
+  background: var(--purple-bg);
+  border-color: var(--purple-border);
+}
+
+.mode-card__radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode-card__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.mode-card--active .mode-card__title {
+  color: var(--c-purple);
+}
+
+.mode-card__desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .import-label {

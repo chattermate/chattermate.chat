@@ -19,7 +19,7 @@ import { toast } from 'vue-sonner'
 
 import { faqService } from '@/services/faq'
 import { knowledgeService } from '@/services/knowledge'
-import type { FaqGenerationJob, FaqItem, FaqStatus, GenerateEstimate, HelpCenterSettings } from '@/types/faq'
+import type { FaqGenerationJob, FaqImportMode, FaqItem, FaqStatus, GenerateEstimate, HelpCenterSettings } from '@/types/faq'
 
 export type WorkspacePhase = 'loading' | 'empty' | 'generating' | 'populated'
 
@@ -239,9 +239,9 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     }
   }
 
-  async function submitImport(url: string): Promise<boolean> {
+  async function submitImport(url: string, mode: FaqImportMode = 'qa'): Promise<boolean> {
     try {
-      job.value = await faqService.importFaq(url)
+      job.value = await faqService.importFaq(url, mode)
       toast.success('Import started — drafts will appear when it finishes')
       return true
     } catch (error: any) {
