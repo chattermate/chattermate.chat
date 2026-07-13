@@ -88,6 +88,15 @@ export const faqService = {
     }
   },
 
+  async bulkDelete(ids: string[]): Promise<number> {
+    try {
+      const response = await api.post('/help-center/faqs/bulk-delete', { faq_ids: ids })
+      return response.data.deleted
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to delete FAQs')
+    }
+  },
+
   async getGenerateEstimate(): Promise<GenerateEstimate> {
     try {
       const response = await api.get('/help-center/generate/estimate')

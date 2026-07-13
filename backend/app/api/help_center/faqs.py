@@ -25,6 +25,7 @@ from app.core.config import settings
 from app.database import get_db
 from app.models.faq import FAQ, FAQStatus
 from app.models.schemas.faq import (
+    FAQBulkDeleteRequest,
     FAQBulkStatusRequest,
     FAQCreate,
     FAQListResponse,
@@ -187,3 +188,15 @@ async def bulk_set_status(
         current_user.organization_id, payload.faq_ids, payload.status
     )
     return {"updated": updated}
+
+
+@router.post("/faqs/bulk-delete")
+async def bulk_delete(
+    payload: FAQBulkDeleteRequest,
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db),
+):
+    """Delete many FAQs in one call (org-scoped; foreign ids are ignored)."""
+    check_help_center_access(db, current_user.organization_id)
+    deleted = FAQRepository(db).bulk_delete(current_user.organization_id, payload.faq_ids)
+    return {"deleted": deleted}

@@ -19,7 +19,7 @@ import { toast } from 'vue-sonner'
 
 import { faqService } from '@/services/faq'
 import { knowledgeService } from '@/services/knowledge'
-import type { FaqGenerationJob, FaqItem, GenerateEstimate, HelpCenterSettings } from '@/types/faq'
+import type { FaqGenerationJob, FaqItem, FaqStatus, GenerateEstimate, HelpCenterSettings } from '@/types/faq'
 
 export type WorkspacePhase = 'loading' | 'empty' | 'generating' | 'populated'
 
@@ -37,6 +37,52 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
   const pageCount = ref(0)
   const isLoading = ref(false)
   const loadedOnce = ref(false)
+
+  // Multi-select state for bulk publish/unpublish/delete.
+  const selectedIds = ref<Set<string>>(new Set())
+  const selectionActive = computed(() => selectedIds.value.size > 0)
+
+  function toggleSelect(id: string): void {
+    const next = new Set(selectedIds.value)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    selectedIds.value = next
+  }
+
+  function setSelected(items: FaqItem[], on: boolean): void {
+    const next = new Set(selectedIds.value)
+    for (const item of items) {
+      if (on) next.add(item.id)
+      else next.delete(item.id)
+    }
+    selectedIds.value = next
+  }
+
+  function clearSelection(): void {
+    selectedIds.value = new Set()
+  }
+
+  async function bulkSetStatus(status: FaqStatus): Promise<void> {
+    const ids = [...selectedIds.value]
+    if (!ids.length) return
+    try {
+      const updated = await faqService.setStatus(ids, status)
+      faqs.value = faqs.value.map((f) => (selectedIds.value.has(f.id) ? { ...f, status } : f))
+      clearSelection()
+      toast.success(`${updated} FAQ${updated === 1 ? '' : 's'} ${status === 'published' ? 'published' : 'moved to draft'}`)
+    } catch (error: any) {
+      toast.error(error.message)
+    }
+  }
+
+  async function bulkDelete(): Promise<void> {
+    const ids = [...selectedIds.value]
+    if (!ids.length) return
+    const deleted = await faqService.bulkDelete(ids)
+    faqs.value = faqs.value.filter((f) => !selectedIds.value.has(f.id))
+    clearSelection()
+    toast.success(`${deleted} FAQ${deleted === 1 ? '' : 's'} deleted`)
+  }
 
   // Inline edit state (one card at a time).
   const editingId = ref<string | null>(null)
@@ -130,6 +176,7 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
 
   async function refresh(): Promise<void> {
     isLoading.value = true
+    clearSelection()
     try {
       await Promise.all([fetchFaqs(), fetchJob(), fetchSettings(), fetchCounts(), fetchEstimate()])
       loadedOnce.value = true
@@ -284,6 +331,13 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     publishedCount,
     groupedFaqs,
     isJobActive,
+    selectedIds,
+    selectionActive,
+    toggleSelect,
+    setSelected,
+    clearSelection,
+    bulkSetStatus,
+    bulkDelete,
     editingId,
     isNewFaq,
     draftQuestion,
