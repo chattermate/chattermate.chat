@@ -128,7 +128,8 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
         {% for category, faqs in groups %}
           {% for faq in faqs %}
           <a class="hc-card" href="/a/{{ faq.slug }}" data-category="{{ category }}"
-             data-search="{{ faq.search_text }}" style="--ic: {{ colors[category] }};">
+             data-title="{{ faq.search_title }}" data-search="{{ faq.search_text }}"
+             style="--ic: {{ colors[category] }};">
             <span class="hc-card-main">
               <span class="hc-tag">{{ category }}</span>
               <span class="hc-qtext">{{ faq.question }}</span>
@@ -171,6 +172,9 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
     var clearBtn = document.getElementById('hc-clear');
     var topics = [].slice.call(document.querySelectorAll('.hc-topic'));
     var cards = [].slice.call(document.querySelectorAll('.hc-card'));
+    var list = document.getElementById('hc-list');
+    // Search reorders cards by relevance; browsing restores document order.
+    var originalOrder = cards.slice();
     var head = document.getElementById('hc-head');
     var headIcon = document.getElementById('hc-head-icon');
     var headTitle = document.getElementById('hc-head-title');
@@ -189,9 +193,14 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
       var b = document.getElementById('hc-ask-btn'); if (b) b.hidden = false;
     }
 
+    function restoreOrder() {
+      originalOrder.forEach(function (card) { list.appendChild(card); });
+    }
+
     // ----- browse a single category -----
     function browse(cat) {
       activeCat = cat;
+      restoreOrder();
       var count = 0;
       cards.forEach(function (card) {
         var show = card.getAttribute('data-category') === cat;
@@ -211,19 +220,58 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
     }
 
     // ----- search across all categories -----
+    // Token-based relevance search: every query term must match somewhere
+    // (word-prefix or substring), title hits outrank body hits, and results
+    // are re-ordered by score — so "close my" finds "How to close my account".
+    function termScore(term, title, titleWords, body) {
+      var best = 0;
+      for (var i = 0; i < titleWords.length; i++) {
+        if (titleWords[i] === term) return 8;                 // exact title word
+        if (titleWords[i].indexOf(term) === 0) best = 5;      // title word prefix
+      }
+      if (!best && title.indexOf(term) !== -1) best = 3;      // inside a title word
+      if (!best) {
+        if (body.indexOf(' ' + term) !== -1 || body.indexOf(term) === 0) best = 2; // body word start
+        else if (body.indexOf(term) !== -1) best = 1;         // anywhere in body
+      }
+      return best;
+    }
+
+    // Partial-match semantics: a card qualifies when ANY term matches, but
+    // cards matching MORE terms always rank above cards matching fewer —
+    // so "close my" still surfaces "How to close your Atoa account" (no
+    // literal "my") below any article containing both words.
+    function cardScore(card, terms) {
+      var title = card.getAttribute('data-title') || '';
+      var body = card.getAttribute('data-search') || '';
+      var titleWords = title.split(/\s+/);
+      var matched = 0;
+      var total = 0;
+      for (var i = 0; i < terms.length; i++) {
+        var s = termScore(terms[i], title, titleWords, body);
+        if (s) { matched++; total += s; }
+      }
+      // Matched-term count dominates; per-term quality breaks ties.
+      return matched ? matched * 100 + total : 0;
+    }
+
     function search(raw) {
       var q = (raw || '').trim().toLowerCase();
       clearBtn.style.display = q ? 'block' : 'none';
       if (!q) { if (activeCat) browse(activeCat); return; }
       topics.forEach(function (x) { x.classList.remove('active'); });
-      var count = 0;
+      var terms = q.split(/\s+/);
+      var matches = [];
       cards.forEach(function (card) {
-        var hit = card.getAttribute('data-search').indexOf(q) !== -1;
-        card.hidden = !hit;
+        var score = cardScore(card, terms);
+        card.hidden = !score;
         var tag = card.querySelector('.hc-tag');
-        if (tag) tag.style.display = hit ? 'inline-block' : '';
-        if (hit) count++;
+        if (tag) tag.style.display = score ? 'inline-block' : '';
+        if (score) matches.push({ card: card, score: score });
       });
+      matches.sort(function (a, b) { return b.score - a.score; });
+      matches.forEach(function (m) { list.appendChild(m.card); });
+      var count = matches.length;
       if (head) {
         head.hidden = false;
         headIcon.style.setProperty('--ic', topics.length ? topics[0].getAttribute('data-color') : 'var(--brand)');
