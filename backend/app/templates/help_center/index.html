@@ -13,9 +13,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Public help center page. Every org value is escaped by Jinja2 autoescaping;
-never mark org content safe. The only JS is the optional Ask-AI fetch and the
-chat-widget embed.
+Public help center page. Every org/FAQ value is escaped by Jinja2 autoescaping;
+never mark org content safe. The page is fully server-rendered for SEO — the JS
+below is progressive enhancement only (topic filtering, client-side search, the
+optional Ask-AI fetch). The chat is the real embedded ChatterMate widget, whose
+own launcher (#chattermate-button) the "Start a chat" buttons click.
+
+Colors: only `--brand`/`--brand-ink` come from the server (validated hex); every
+other brand tone is derived in CSS via color-mix, so no computed colors leak in.
 #}<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,122 +33,533 @@ chat-widget embed.
   <meta property="og:description" content="{{ description }}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="{{ canonical_url }}/">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    :root { --brand: {{ brand_color }}; --brand-ink: {{ brand_ink }}; }
+    :root {
+      --brand: {{ brand_color }};
+      --brand-ink: {{ brand_ink }};
+      --brand-tint: color-mix(in srgb, var(--brand) 9%, #fff);
+      --brand-soft: color-mix(in srgb, var(--brand) 30%, #fff);
+      --brand-line: color-mix(in srgb, var(--brand) 40%, #fff);
+      --hero-bg: linear-gradient(180deg, color-mix(in srgb, var(--brand) 10%, #fff), #f5f6f9 80%);
+      --hero-glow: radial-gradient(ellipse, color-mix(in srgb, var(--brand) 12%, transparent), transparent 68%);
+      --cta-bg: linear-gradient(120deg, var(--brand), color-mix(in srgb, var(--brand) 78%, #fff));
+      --cta-sub: color-mix(in srgb, var(--brand-ink) 72%, transparent);
+      --sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+      --display: 'Sora', var(--sans);
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; color: #1a1b25; background: #fff; }
-    a { color: inherit; }
-    .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: 1px solid #ececf2; }
-    .header .org { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
-    .header .org img { height: 32px; width: auto; display: block; }
-    .header nav { display: flex; align-items: center; gap: 18px; font-size: 14px; }
-    .header nav a { color: #5a6172; text-decoration: none; }
-    .header nav a.cta { background: var(--brand); color: var(--brand-ink); padding: 9px 16px; border-radius: 9px; font-weight: 600; }
-    .hero { padding: 48px 24px 40px; text-align: center; background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 10%, #fff), #fff 90%); }
-    .hero h1 { margin: 0 0 20px; font-size: 30px; letter-spacing: -0.02em; }
-    .search { display: flex; gap: 8px; max-width: 560px; margin: 0 auto; }
-    .search input { flex: 1; padding: 13px 16px; font-size: 15px; border: 1px solid #e4e6ec; border-radius: 11px; outline: none; }
-    .search input:focus { border-color: var(--brand); }
-    .search button { padding: 13px 22px; font-size: 15px; font-weight: 600; border: none; border-radius: 11px; background: var(--brand); color: var(--brand-ink); cursor: pointer; }
-    .ask { max-width: 720px; margin: 0 auto; padding: 0 24px; }
-    .ask-card { display: none; margin-top: 18px; padding: 16px 18px; border: 1px solid #e4e6ec; border-radius: 12px; background: #fafafc; text-align: left; font-size: 15px; line-height: 1.55; }
-    .ask-card.loading { color: #7a8190; }
-    .ask-btn { margin-top: 14px; background: none; border: 1px solid var(--brand); color: var(--brand); padding: 9px 18px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; }
-    .content { max-width: 760px; margin: 0 auto; padding: 24px 24px 80px; }
-    .category { margin-top: 34px; }
-    .category h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #7a8190; border-bottom: 1px solid #ececf2; padding-bottom: 10px; }
-    details { border-bottom: 1px solid #f1f2f6; }
-    summary { cursor: pointer; padding: 16px 4px; font-size: 16px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
-    summary::-webkit-details-marker { display: none; }
-    summary::after { content: "+"; color: var(--brand); font-size: 20px; font-weight: 400; }
-    details[open] summary::after { content: "\2212"; }
-    .answer { padding: 0 4px 18px; color: #4a5060; font-size: 15px; line-height: 1.6; white-space: pre-line; }
-    .empty { text-align: center; color: #7a8190; padding: 60px 0; }
-    .footer { text-align: center; padding: 28px; color: #9aa0ad; font-size: 13px; border-top: 1px solid #ececf2; }
-    .footer a { color: #7a8190; text-decoration: none; font-weight: 600; }
+    html, body { margin: 0; padding: 0; background: #f5f6f9; }
+    body { color: #1a1b25; font-family: var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+    a { color: var(--brand); }
+    ::selection { background: var(--brand-soft); color: #1a1b25; }
+    @keyframes hc-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes hc-blink { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+    @keyframes hc-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ---------- header ---------- */
+    .hc-header { background: #fff; border-bottom: 1px solid #ececf2; position: sticky; top: 0; z-index: 40; }
+    .hc-header-in { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 28px; }
+    .hc-brand { display: flex; align-items: center; gap: 11px; text-decoration: none; color: inherit; min-width: 0; }
+    .hc-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .hc-mark span { width: 12px; height: 12px; border-radius: 3px; background: var(--brand-ink); transform: rotate(45deg); }
+    .hc-logo { height: 30px; width: auto; display: block; flex-shrink: 0; }
+    .hc-name { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hc-kicker { font-size: 14px; color: #8a90a0; font-weight: 500; padding-left: 12px; border-left: 1px solid #e4e6ec; white-space: nowrap; }
+    .hc-nav { display: flex; align-items: center; gap: 20px; font-size: 14.5px; flex-shrink: 0; }
+    .hc-nav a { color: #5a6172; text-decoration: none; }
+    .hc-nav a:hover { color: #1a1b25; }
+    .hc-nav a.cta { padding: 9px 17px; background: var(--brand); color: var(--brand-ink); border-radius: 10px; font-weight: 600; }
+
+    /* ---------- hero ---------- */
+    .hc-hero { position: relative; overflow: hidden; background: var(--hero-bg); padding: 58px 28px 46px; }
+    .hc-hero-glow { position: absolute; top: -90px; left: 50%; transform: translateX(-50%); width: 640px; height: 340px; max-width: 100%; background: var(--hero-glow); pointer-events: none; }
+    .hc-hero-in { position: relative; max-width: 720px; margin: 0 auto; text-align: center; }
+    .hc-hero h1 { font-family: var(--display); font-weight: 700; font-size: 38px; line-height: 1.1; letter-spacing: -.03em; margin: 0 0 12px; }
+    .hc-hero p.lead { font-size: 16.5px; color: #5a6172; margin: 0 0 26px; }
+    .hc-searchbar { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #e4e6ec; border-radius: 15px; padding: 6px 6px 6px 18px; box-shadow: 0 12px 34px rgba(40, 36, 90, .08); max-width: 600px; margin: 0 auto; }
+    .hc-searchbar svg { flex-shrink: 0; }
+    .hc-searchbar input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; font-size: 16px; color: #1a1b25; font-family: var(--sans); padding: 12px 0; }
+    .hc-searchbar input::placeholder { color: #9aa0ad; }
+    .hc-clear { flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; background: #f1f2f6; border: none; color: #8a90a0; cursor: pointer; font-size: 14px; display: none; }
+    .hc-popular { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; font-size: 13.5px; color: #8a90a0; flex-wrap: wrap; }
+    .hc-chip { padding: 5px 12px; background: #fff; border: 1px solid #e4e6ec; border-radius: 999px; font-size: 13px; color: #4a5163; cursor: pointer; font-family: var(--sans); }
+    .hc-chip:hover { border-color: var(--brand-soft); }
+
+    /* ---------- body layout ---------- */
+    .hc-body { max-width: 1120px; margin: 0 auto; padding: 40px 28px 20px; display: grid; grid-template-columns: 250px 1fr; gap: 36px; align-items: start; }
+    .hc-aside { position: sticky; top: 82px; }
+    .hc-aside-label { font-family: var(--mono); font-size: 11px; letter-spacing: .09em; color: #9aa0ad; padding: 0 6px; margin-bottom: 12px; }
+    .hc-topics { display: flex; flex-direction: column; gap: 4px; }
+    .hc-topic { display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 10px; border-radius: 12px; cursor: pointer; font-family: var(--sans); border: 1px solid transparent; background: transparent; color: #4a5163; transition: background .15s; }
+    .hc-topic:hover { background: #fff; }
+    .hc-topic.active { border-color: var(--brand-soft); background: var(--brand-tint); color: #1a1b25; }
+    .hc-topic-icon { width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--ic) 12%, #fff); color: var(--ic); }
+    .hc-topic-name { flex: 1; min-width: 0; text-align: left; font-size: 14.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hc-topic.active .hc-topic-name { font-weight: 600; }
+    .hc-topic-count { flex-shrink: 0; font-family: var(--mono); font-size: 12px; color: #b4b9c4; }
+    .hc-topic.active .hc-topic-count { color: var(--brand); }
+    .hc-help-card { margin-top: 22px; padding: 18px; background: #fff; border: 1px solid #ececf2; border-radius: 16px; box-shadow: 0 2px 10px rgba(40, 36, 90, .04); }
+    .hc-help-card h3 { font-family: var(--display); font-weight: 600; font-size: 14.5px; margin: 0 0 5px; }
+    .hc-help-card p { font-size: 13px; color: #8a90a0; line-height: 1.5; margin: 0 0 13px; }
+
+    .hc-main { min-width: 0; }
+
+    /* ---------- AI answer ---------- */
+    .hc-ai-wrap { margin-bottom: 24px; }
+    .hc-ask-btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; background: #fff; border: 1px solid var(--brand-soft); color: var(--brand); border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans); }
+    .hc-ask-btn:hover { background: var(--brand-tint); }
+    .hc-ai { background: #fff; border: 1px solid var(--brand-soft); border-radius: 18px; padding: 22px 24px; box-shadow: 0 12px 34px rgba(40, 36, 90, .06); animation: hc-rise .3s ease; }
+    .hc-ai-head { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; flex-wrap: wrap; }
+    .hc-badge { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; background: var(--brand-tint); border: 1px solid var(--brand-soft); border-radius: 999px; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--brand); letter-spacing: .04em; }
+    .hc-dots { display: inline-flex; gap: 3px; }
+    .hc-dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--brand); animation: hc-blink 1s ease-in-out infinite; }
+    .hc-dots span:nth-child(2) { animation-delay: .18s; }
+    .hc-dots span:nth-child(3) { animation-delay: .36s; }
+    .hc-ai-note { font-size: 12px; color: #9aa0ad; }
+    .hc-ai-answer { font-size: 16px; line-height: 1.65; color: #2a303e; margin: 0; white-space: pre-line; }
+    .hc-ai-foot { display: flex; align-items: center; justify-content: flex-end; gap: 16px; flex-wrap: wrap; padding-top: 14px; margin-top: 14px; border-top: 1px solid #f1f2f6; }
+    .hc-skeleton { display: flex; flex-direction: column; gap: 9px; }
+    .hc-skeleton span { height: 12px; border-radius: 6px; background: linear-gradient(90deg, #eef0f4, #f6f7f9, #eef0f4); background-size: 200% 100%; animation: hc-shimmer 1.3s linear infinite; }
+
+    /* ---------- content header ---------- */
+    .hc-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .hc-head-icon { width: 38px; height: 38px; flex-shrink: 0; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--ic) 12%, #fff); color: var(--ic); }
+    .hc-head h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.02em; margin: 0; }
+    .hc-head-sub { font-size: 13.5px; color: #8a90a0; margin-top: 2px; }
+
+    /* ---------- FAQ list ---------- */
+    .hc-list { display: flex; flex-direction: column; gap: 10px; }
+    .hc-card { background: #fff; border: 1px solid #ececf2; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 5px rgba(40, 36, 90, .03); }
+    .hc-card[open] { border-color: var(--brand-line); }
+    .hc-q { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 17px 20px; background: none; border: none; cursor: pointer; text-align: left; font-family: var(--sans); list-style: none; }
+    .hc-q::-webkit-details-marker { display: none; }
+    .hc-q-label { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .hc-tag { flex-shrink: 0; font-family: var(--mono); font-size: 10.5px; padding: 3px 8px; border-radius: 6px; background: color-mix(in srgb, var(--ic) 12%, #fff); color: var(--ic); display: none; }
+    .hc-qtext { font-size: 15.5px; font-weight: 600; color: #1a1b25; line-height: 1.4; }
+    .hc-chev { flex-shrink: 0; display: flex; transition: transform .2s ease; color: #8a90a0; }
+    .hc-card[open] .hc-chev { transform: rotate(180deg); }
+    .hc-a { padding: 0 20px 20px; font-size: 14.5px; color: #5a6172; line-height: 1.65; border-top: 1px solid #f1f2f6; }
+    .hc-a-text { padding-top: 15px; white-space: pre-line; }
+    .hc-feedback { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #f5f6f9; }
+    .hc-feedback-q { font-size: 13px; color: #9aa0ad; }
+    .hc-vote { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 9px; font-size: 13px; cursor: pointer; font-family: var(--sans); background: #f5f6f9; border: 1px solid #e4e6ec; color: #4a5163; }
+    .hc-vote.on-yes { background: var(--brand-tint); border-color: var(--brand-soft); color: var(--brand); }
+    .hc-vote.on-no { background: #fdecea; border-color: #f3c6be; color: #cf5b38; }
+    .hc-thanks { font-size: 12.5px; color: var(--brand); font-weight: 600; }
+
+    .hc-empty { text-align: center; padding: 56px 20px; background: #fff; border: 1px solid #ececf2; border-radius: 18px; }
+    .hc-empty-icon { width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 14px; background: #f5f6f9; border: 1px solid #ececf2; display: flex; align-items: center; justify-content: center; color: #9aa0ad; }
+    .hc-empty h3 { font-family: var(--display); font-weight: 600; font-size: 19px; margin: 0 0 8px; }
+    .hc-empty p { font-size: 15px; color: #8a90a0; margin: 0 0 20px; }
+
+    /* ---------- contact CTA ---------- */
+    .hc-cta-shell { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+    .hc-cta { margin: 24px 0 56px; background: var(--cta-bg); border-radius: 24px; padding: 44px; display: flex; align-items: center; justify-content: space-between; gap: 30px; flex-wrap: wrap; color: var(--brand-ink); }
+    .hc-cta h2 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: -.02em; margin: 0 0 8px; }
+    .hc-cta p { font-size: 16px; color: var(--cta-sub); margin: 0; max-width: 440px; line-height: 1.55; }
+    .hc-cta-btn { display: inline-flex; align-items: center; gap: 10px; padding: 15px 26px; background: var(--brand-ink); color: var(--brand); border: none; border-radius: 13px; font-size: 15.5px; font-weight: 600; cursor: pointer; font-family: var(--sans); white-space: nowrap; text-decoration: none; }
+
+    /* ---------- footer ---------- */
+    .hc-footer { border-top: 1px solid #ececf2; background: #fff; }
+    .hc-footer-in { max-width: 1120px; margin: 0 auto; padding: 30px 28px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+    .hc-footer-org { display: flex; align-items: center; gap: 11px; }
+    .hc-footer-org .hc-mark { width: 26px; height: 26px; border-radius: 8px; }
+    .hc-footer-org .hc-mark span { width: 10px; height: 10px; }
+    .hc-footer-org .hc-name { font-size: 15px; }
+    .hc-footer-year { font-size: 13.5px; color: #9aa0ad; }
+    .hc-powered { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 7px 13px; border: 1px solid #ececf2; border-radius: 999px; font-size: 12.5px; color: #8a90a0; }
+    .hc-powered strong { display: inline-flex; align-items: center; gap: 6px; color: #1a1b25; font-weight: 600; }
+    .hc-cm-mark { width: 15px; height: 15px; border-radius: 5px 5px 5px 1px; background: #c9f24e; display: inline-flex; align-items: center; justify-content: center; gap: 1.5px; }
+    .hc-cm-mark i { width: 2px; height: 2px; border-radius: 50%; background: #0b0c10; }
+
+    /* progressive enhancement: only hide things once JS takes over */
+    .js .hc-tag { display: none; }
+
+    @media (max-width: 860px) {
+      .hc-body { grid-template-columns: 1fr; gap: 24px; }
+      .hc-aside { position: static; }
+      .hc-topics { flex-direction: row; flex-wrap: wrap; }
+      .hc-topic { width: auto; }
+      .hc-hero h1 { font-size: 30px; }
+      .hc-cta { padding: 30px; }
+    }
   </style>
 </head>
 <body>
-  <header class="header">
-    <div class="org">
-      {% if logo_url %}<img src="{{ logo_url }}" alt="{{ row.organization.name }} logo">{% endif %}
-      <span>{{ row.organization.name }}</span>
+  {% set palette = ['#6d5bd0', '#0e8c8c', '#cf5b38', '#2a6fdb', '#1f8a5b', '#b0468a', '#c98a1e', '#3a6f8f'] %}
+  {% set first_cat = groups[0][0] if groups else '' %}
+
+  <!-- ============ HEADER ============ -->
+  <header class="hc-header">
+    <div class="hc-header-in">
+      <a class="hc-brand" href="#top">
+        {% if logo_url %}
+          <img class="hc-logo" src="{{ logo_url }}" alt="{{ row.organization.name }} logo">
+        {% else %}
+          <span class="hc-mark"><span></span></span>
+        {% endif %}
+        <span class="hc-name">{{ row.organization.name }}</span>
+        <span class="hc-kicker">Help Center</span>
+      </a>
+      <nav class="hc-nav">
+        {% for link in header_links %}<a href="{{ link.url }}" rel="noopener">{{ link.label }}</a>{% endfor %}
+        {% if row.cta_text and row.cta_url %}<a class="cta" href="{{ row.cta_url }}" rel="noopener">{{ row.cta_text }}</a>{% endif %}
+      </nav>
     </div>
-    <nav>
-      {% for link in header_links %}<a href="{{ link.url }}" rel="noopener">{{ link.label }}</a>{% endfor %}
-      {% if row.cta_text and row.cta_url %}<a class="cta" href="{{ row.cta_url }}" rel="noopener">{{ row.cta_text }}</a>{% endif %}
-    </nav>
   </header>
 
-  <section class="hero">
-    <h1>How can we help?</h1>
-    <form class="search" method="get" action="/">
-      <input type="search" name="q" value="{{ search }}" placeholder="Search for answers…" maxlength="200">
-      <button type="submit">Search</button>
-    </form>
-    {% if ask_enabled %}
-    <div class="ask">
-      <button class="ask-btn" id="ask-btn" type="button">✦ Ask AI</button>
-      <div class="ask-card" id="ask-card"></div>
+  <!-- ============ HERO / SEARCH ============ -->
+  <section class="hc-hero" id="top">
+    <div class="hc-hero-glow"></div>
+    <div class="hc-hero-in">
+      <h1>How can we help?</h1>
+      <p class="lead">Search our knowledge base, or pick a topic to browse.</p>
+      <form class="hc-searchbar" method="get" action="/" role="search" onsubmit="return false;">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#9aa0ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input id="hc-search" type="search" name="q" value="{{ search }}" placeholder="Search for answers…" maxlength="200" autocomplete="off">
+        <button class="hc-clear" id="hc-clear" type="button" aria-label="Clear search">✕</button>
+      </form>
+      {% if groups %}
+      <div class="hc-popular">
+        <span>Popular:</span>
+        {% for category, faqs in groups[:4] %}
+        <button class="hc-chip" type="button" data-jump="{{ category }}">{{ category }}</button>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
-    {% endif %}
   </section>
 
-  <main class="content">
-    {% if search %}<p>Results for “{{ search }}” — <a href="/">clear</a></p>{% endif %}
-    {% for category, faqs in groups %}
-    <section class="category">
-      <h2>{{ category }}</h2>
-      {% for faq in faqs %}
-      <details{% if search %} open{% endif %}>
-        <summary>{{ faq.question }}</summary>
-        <div class="answer">{{ faq.answer }}</div>
-      </details>
-      {% endfor %}
-    </section>
-    {% else %}
-    <p class="empty">{% if search %}No answers matched your search.{% else %}No published FAQs yet — check back soon.{% endif %}</p>
-    {% endfor %}
-  </main>
+  <!-- ============ BODY : SIDEBAR + CONTENT ============ -->
+  <div class="hc-body">
 
-  <footer class="footer">
-    Powered by <a href="https://chattermate.chat" rel="noopener">ChatterMate</a>
+    <!-- ---- SIDEBAR ---- -->
+    <aside class="hc-aside">
+      {% if groups %}
+      <div class="hc-aside-label">BROWSE TOPICS</div>
+      <div class="hc-topics">
+        {% for category, faqs in groups %}
+        <button class="hc-topic{% if loop.first %} active{% endif %}" type="button"
+                data-category="{{ category }}" data-count="{{ faqs | length }}"
+                data-color="{{ palette[loop.index0 % (palette | length)] }}"
+                style="--ic: {{ palette[loop.index0 % (palette | length)] }};">
+          <span class="hc-topic-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>
+          </span>
+          <span class="hc-topic-name">{{ category }}</span>
+          <span class="hc-topic-count">{{ faqs | length }}</span>
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if widget_id %}
+      <div class="hc-help-card">
+        <h3>Can't find it?</h3>
+        <p>Ask our assistant — it answers instantly and can bring in a human.</p>
+        <button class="hc-cta-btn" type="button" data-chat style="padding: 9px 14px; font-size: 13px; border-radius: 10px; background: var(--brand); color: var(--brand-ink);">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"></path></svg>
+          Start a chat
+        </button>
+      </div>
+      {% endif %}
+    </aside>
+
+    <!-- ---- CONTENT ---- -->
+    <main class="hc-main">
+
+      {% if ask_enabled %}
+      <div class="hc-ai-wrap" id="hc-ai-wrap" hidden>
+        <button class="hc-ask-btn" id="hc-ask-btn" type="button">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.7L18.5 9l-4.6 1.3L12 15l-1.9-4.7L5.5 9l4.6-1.3z"></path></svg>
+          <span id="hc-ask-label">Ask AI for an answer</span>
+        </button>
+        <div class="hc-ai" id="hc-ai-loading" hidden>
+          <div class="hc-ai-head">
+            <span class="hc-badge"><span class="hc-dots"><span></span><span></span><span></span></span> GENERATING ANSWER</span>
+            <span class="hc-ai-note">Reading the knowledge base…</span>
+          </div>
+          <div class="hc-skeleton"><span style="width:96%"></span><span style="width:88%"></span><span style="width:64%"></span></div>
+        </div>
+        <div class="hc-ai" id="hc-ai-card" hidden>
+          <div class="hc-ai-head">
+            <span class="hc-badge">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.7L18.5 9l-4.6 1.3L12 15l-1.9-4.7L5.5 9l4.6-1.3z"></path></svg>
+              AI ANSWER
+            </span>
+            <span class="hc-ai-note">Grounded in this help center · answers may not be perfect</span>
+          </div>
+          <p class="hc-ai-answer" id="hc-ai-answer"></p>
+          {% if widget_id %}
+          <div class="hc-ai-foot">
+            <button class="hc-cta-btn" type="button" data-chat style="padding: 9px 15px; font-size: 13.5px; border-radius: 10px; background: var(--brand); color: var(--brand-ink);">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"></path></svg>
+              Ask a follow-up in chat
+            </button>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="hc-head" id="hc-head"{% if not groups %} hidden{% endif %}>
+        <div class="hc-head-icon" id="hc-head-icon" style="--ic: {{ palette[0] }};">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>
+        </div>
+        <div style="min-width:0;">
+          <h2 id="hc-head-title">{{ first_cat }}</h2>
+          <div class="hc-head-sub" id="hc-head-sub">{% if groups %}{{ groups[0][1] | length }} {{ 'article' if groups[0][1] | length == 1 else 'articles' }}{% endif %}</div>
+        </div>
+      </div>
+
+      <div class="hc-list" id="hc-list">
+        {% for category, faqs in groups %}
+          {% set cat_color = palette[loop.index0 % (palette | length)] %}
+          {% for faq in faqs %}
+          <details class="hc-card" data-category="{{ category }}"
+                   data-search="{{ (faq.question ~ ' ' ~ faq.answer ~ ' ' ~ category) | lower }}"
+                   style="--ic: {{ cat_color }};"{% if search %} open{% endif %}>
+            <summary class="hc-q">
+              <span class="hc-q-label">
+                <span class="hc-tag">{{ category }}</span>
+                <span class="hc-qtext">{{ faq.question }}</span>
+              </span>
+              <span class="hc-chev">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+              </span>
+            </summary>
+            <div class="hc-a">
+              <div class="hc-a-text">{{ faq.answer }}</div>
+              <div class="hc-feedback" data-feedback>
+                <span class="hc-feedback-q">Was this helpful?</span>
+                <button class="hc-vote" type="button" data-vote="yes">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"></path><path d="M7 11l4-8a2 2 0 0 1 3 1.8V9h4.5a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 17 20H7"></path></svg>
+                  Yes
+                </button>
+                <button class="hc-vote" type="button" data-vote="no">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1z"></path><path d="M17 13l-4 8a2 2 0 0 1-3-1.8V15H5.5a2 2 0 0 1-2-2.4l1.4-7A2 2 0 0 1 7 4h10"></path></svg>
+                  No
+                </button>
+                <span class="hc-thanks" hidden>Thanks for the feedback!</span>
+              </div>
+            </div>
+          </details>
+          {% endfor %}
+        {% endfor %}
+      </div>
+
+      <div class="hc-empty" id="hc-empty"{% if groups %} hidden{% endif %}>
+        <div class="hc-empty-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </div>
+        <h3 id="hc-empty-title">{% if groups %}No results{% else %}No published FAQs yet{% endif %}</h3>
+        <p id="hc-empty-sub">{% if groups %}Try a different search{% if widget_id %}, or chat with us — our assistant can help right away{% endif %}.{% else %}Check back soon.{% endif %}</p>
+        {% if widget_id %}
+        <button class="hc-cta-btn" type="button" data-chat style="background: var(--brand); color: var(--brand-ink);">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"></path></svg>
+          Ask a question
+        </button>
+        {% endif %}
+      </div>
+    </main>
+  </div>
+
+  <!-- ============ CONTACT CTA ============ -->
+  {% if widget_id or (row.cta_text and row.cta_url) %}
+  <div class="hc-cta-shell">
+    <section class="hc-cta" id="contact">
+      <div>
+        <h2>Still need a hand?</h2>
+        <p>{% if widget_id %}Our support assistant answers instantly, any time of day — and connects you to a human whenever you need one.{% else %}Reach out and our team will get back to you.{% endif %}</p>
+      </div>
+      {% if widget_id %}
+      <button class="hc-cta-btn" type="button" data-chat>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"></path></svg>
+        Start a chat
+      </button>
+      {% else %}
+      <a class="hc-cta-btn" href="{{ row.cta_url }}" rel="noopener">{{ row.cta_text }}</a>
+      {% endif %}
+    </section>
+  </div>
+  {% endif %}
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="hc-footer">
+    <div class="hc-footer-in">
+      <div class="hc-footer-org">
+        <span class="hc-mark"><span></span></span>
+        <span class="hc-name">{{ row.organization.name }}</span>
+      </div>
+      <a class="hc-powered" href="https://chattermate.chat" target="_blank" rel="noopener">
+        <span>Powered by</span>
+        <strong><span class="hc-cm-mark"><i></i><i></i><i></i></span> ChatterMate</strong>
+      </a>
+    </div>
   </footer>
 
   {% if groups %}
   <script type="application/ld+json">{{ faq_json_ld | tojson }}</script>
   {% endif %}
 
+  <script>
+  (function () {
+    var main = document.querySelector('.hc-main');
+    document.body.classList.add('js');
+
+    var input = document.getElementById('hc-search');
+    var clearBtn = document.getElementById('hc-clear');
+    var topics = [].slice.call(document.querySelectorAll('.hc-topic'));
+    var cards = [].slice.call(document.querySelectorAll('.hc-card'));
+    var head = document.getElementById('hc-head');
+    var headIcon = document.getElementById('hc-head-icon');
+    var headTitle = document.getElementById('hc-head-title');
+    var headSub = document.getElementById('hc-head-sub');
+    var empty = document.getElementById('hc-empty');
+    var emptyTitle = document.getElementById('hc-empty-title');
+    var emptySub = document.getElementById('hc-empty-sub');
+    var aiWrap = document.getElementById('hc-ai-wrap');
+    var activeCat = topics.length ? topics[0].getAttribute('data-category') : null;
+
+    function articles(n) { return n + ' ' + (n === 1 ? 'article' : 'articles'); }
+    function resetAi() {
+      if (!aiWrap) return;
+      aiWrap.hidden = true;
+      var c = document.getElementById('hc-ai-card'); if (c) c.hidden = true;
+      var l = document.getElementById('hc-ai-loading'); if (l) l.hidden = true;
+      var b = document.getElementById('hc-ask-btn'); if (b) b.hidden = false;
+    }
+
+    // ----- browse a single category -----
+    function browse(cat) {
+      activeCat = cat;
+      var count = 0;
+      cards.forEach(function (card) {
+        var show = card.getAttribute('data-category') === cat;
+        card.hidden = !show;
+        card.open = false;
+        if (show) count++;
+      });
+      var t = topics.filter(function (x) { return x.getAttribute('data-category') === cat; })[0];
+      topics.forEach(function (x) { x.classList.toggle('active', x === t); });
+      if (t && head) {
+        head.hidden = false;
+        headIcon.style.setProperty('--ic', t.getAttribute('data-color'));
+        headTitle.textContent = cat;
+        headSub.textContent = articles(count);
+      }
+      if (empty) empty.hidden = true;
+      resetAi();
+    }
+
+    // ----- search across all categories -----
+    function search(raw) {
+      var q = (raw || '').trim().toLowerCase();
+      clearBtn.style.display = q ? 'block' : 'none';
+      if (!q) { if (activeCat) browse(activeCat); return; }
+      topics.forEach(function (x) { x.classList.remove('active'); });
+      var count = 0;
+      cards.forEach(function (card) {
+        var hit = card.getAttribute('data-search').indexOf(q) !== -1;
+        card.hidden = !hit;
+        card.open = false;
+        var tag = card.querySelector('.hc-tag');
+        if (tag) tag.style.display = hit ? 'inline' : '';
+        if (hit) count++;
+      });
+      if (head) {
+        head.hidden = false;
+        headIcon.style.setProperty('--ic', topics.length ? topics[0].getAttribute('data-color') : 'var(--brand)');
+        headTitle.textContent = 'Search results';
+        headSub.textContent = count + (count === 1 ? ' answer' : ' answers') + ' for “' + raw.trim() + '”';
+      }
+      if (empty) {
+        empty.hidden = count > 0;
+        emptyTitle.textContent = 'No results for “' + raw.trim() + '”';
+      }
+      if (aiWrap) {
+        resetAi();
+        aiWrap.hidden = false;
+        var label = document.getElementById('hc-ask-label');
+        if (label) label.textContent = 'Ask AI: “' + raw.trim() + '”';
+      }
+    }
+
+    if (input) {
+      input.addEventListener('input', function () { search(input.value); });
+      // A crawler-friendly GET form is the no-JS fallback; with JS we filter live.
+      if (input.value) search(input.value); else if (activeCat) browse(activeCat);
+    }
+    if (clearBtn) clearBtn.addEventListener('click', function () { input.value = ''; input.focus(); search(''); });
+
+    topics.forEach(function (t) {
+      t.addEventListener('click', function () { input.value = ''; search(''); browse(t.getAttribute('data-category')); });
+    });
+    [].slice.call(document.querySelectorAll('[data-jump]')).forEach(function (chip) {
+      chip.addEventListener('click', function () { input.value = ''; search(''); browse(chip.getAttribute('data-jump')); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    });
+
+    // ----- per-FAQ feedback (client-only acknowledgement) -----
+    [].slice.call(document.querySelectorAll('[data-feedback]')).forEach(function (fb) {
+      fb.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-vote]');
+        if (!btn) return;
+        fb.querySelectorAll('.hc-vote').forEach(function (v) { v.classList.remove('on-yes', 'on-no'); });
+        btn.classList.add(btn.getAttribute('data-vote') === 'yes' ? 'on-yes' : 'on-no');
+        var thanks = fb.querySelector('.hc-thanks');
+        if (thanks) thanks.hidden = false;
+      });
+    });
+
+    // ----- open the real embedded ChatterMate widget -----
+    function openChat() {
+      var btn = document.getElementById('chattermate-button');
+      if (btn) btn.click();
+    }
+    [].slice.call(document.querySelectorAll('[data-chat]')).forEach(function (b) {
+      b.addEventListener('click', openChat);
+    });
+  })();
+  </script>
+
   {% if ask_enabled %}
   <script>
-    (function () {
-      var btn = document.getElementById('ask-btn');
-      var card = document.getElementById('ask-card');
-      var input = document.querySelector('.search input');
-      btn.addEventListener('click', function () {
-        var question = (input.value || '').trim();
-        if (question.length < 3) { input.focus(); return; }
-        card.style.display = 'block';
-        card.className = 'ask-card loading';
-        card.textContent = 'Thinking…';
-        fetch('/ask', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: question })
-        }).then(function (r) {
-          if (!r.ok) throw new Error(r.status);
-          return r.json();
-        }).then(function (data) {
-          card.className = 'ask-card';
-          card.textContent = data.answer;
-        }).catch(function (err) {
-          card.className = 'ask-card';
-          card.textContent = String(err.message) === '429'
-            ? 'Too many questions — please try again in a minute.'
-            : 'Sorry, I could not answer that right now.';
-        });
+  (function () {
+    var askBtn = document.getElementById('hc-ask-btn');
+    var input = document.getElementById('hc-search');
+    var loading = document.getElementById('hc-ai-loading');
+    var card = document.getElementById('hc-ai-card');
+    var answerEl = document.getElementById('hc-ai-answer');
+    if (!askBtn) return;
+    askBtn.addEventListener('click', function () {
+      var question = (input.value || '').trim();
+      if (question.length < 3) { input.focus(); return; }
+      askBtn.hidden = true;
+      card.hidden = true;
+      loading.hidden = false;
+      fetch('/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: question })
+      }).then(function (r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      }).then(function (data) {
+        loading.hidden = true;
+        answerEl.textContent = data.answer;   // text only — never innerHTML
+        card.hidden = false;
+      }).catch(function (err) {
+        loading.hidden = true;
+        answerEl.textContent = String(err.message) === '429'
+          ? 'Too many questions — please try again in a minute.'
+          : 'Sorry, I could not answer that right now.';
+        card.hidden = false;
       });
-    })();
+    });
+  })();
   </script>
   {% endif %}
 
