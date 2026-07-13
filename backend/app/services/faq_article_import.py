@@ -63,6 +63,28 @@ _SKIP_EXTENSIONS = (
 # substrings like "stock-levels" or "autocomplete".
 _TOC_RE = re.compile(r"\b(toc|table-of-contents|on-this-page|breadcrumbs?)\b", re.IGNORECASE)
 
+# Help-center chrome text (platform branding / article metadata) to drop.
+_CHROME_TEXT_RE = re.compile(r"^(made with|powered by)\b|^last updated\b", re.IGNORECASE)
+_CHROME_HREFS = ("chatwoot.com", "chatwoot.help")
+
+# Path markers separating leaf article pages from category/section listings
+# across Chatwoot / Zendesk / Intercom-style help centers. Only /articles/
+# pages hold real content; the listings are followed for their article links.
+_ARTICLE_MARKER = "/articles/"
+_CATEGORY_MARKERS = ("/categories/", "/sections/", "/collections/")
+_HEADING_TAGS = ("h1", "h2", "h3", "h4")
+_LEADING_SYMBOLS_RE = re.compile(r"^[^\w]+", re.UNICODE)
+
+# Homepage section headings that are curated cross-cuts, not real categories —
+# their articles' true category comes from the category listing pages instead.
+_GENERIC_SECTIONS = frozenset({
+    "featured articles", "featured", "popular", "popular articles", "all articles",
+    "browse", "recent articles", "recently updated", "top articles",
+})
+
+# Breadcrumb "back" links whose leading container should be dropped from bodies.
+_BREADCRUMB_ROOTS = frozenset({"home", "all collections", "all categories", "help center", "help centre"})
+
 # Internal scheme marking images collected during conversion, replaced with the
 # re-hosted URL afterwards (conversion is sync; storage is async). The trailing
 # ".img" delimits the index so "…//1.img" is never a prefix of "…//10.img".
@@ -154,40 +176,132 @@ def _fetch_index_soup(client: httpx.Client, url: str) -> Tuple[Optional[Beautifu
     return soup, final_url
 
 
-def discover_article_links(client: httpx.Client, index_url: str, limit: int) -> List[str]:
-    """Same-site article links from the index page, in page order: fragments/
-    queries stripped, binaries and the index itself excluded, links sharing the
-    index's path prefix preferred (most help centers nest articles under it)."""
+def _clean_category(text: str) -> str:
+    """Strip a leading emoji/symbol (Chatwoot section headings are '📞 Help
+    and support') and cap length."""
+    cleaned = _LEADING_SYMBOLS_RE.sub("", (text or "").strip()).strip()
+    return cleaned[:100] or DEFAULT_ARTICLE_CATEGORY
+
+
+def _same_site_href(anchor: Tag, base_url: str, root_domain: str) -> Optional[str]:
+    """Absolute same-site content URL for an anchor, or None if it's off-site,
+    a fragment/query, a bare root, or a binary asset."""
+    href = anchor.get("href")
+    if not href:
+        return None
+    url = urldefrag(urljoin(base_url, href))[0].rstrip("/")
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or parsed.query:
+        return None
+    if parsed.path in ("", "/"):
+        return None
+    if _registrable_domain(parsed.hostname or "") != root_domain:
+        return None
+    if parsed.path.lower().endswith(_SKIP_EXTENSIONS):
+        return None
+    return url
+
+
+def _is_article_url(url: str) -> bool:
+    return _ARTICLE_MARKER in urlparse(url).path.lower()
+
+
+def _is_category_url(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    return any(marker in path for marker in _CATEGORY_MARKERS)
+
+
+def _sectioned_article_links(node: Tag, base_url: str, root_domain: str) -> List[Tuple[str, Optional[str]]]:
+    """Article links in document order, each tagged with the nearest preceding
+    section heading (a help-center homepage's category cards). Headings nested
+    inside a link are article titles, not sections, so they don't reset it."""
+    results: List[Tuple[str, Optional[str]]] = []
+    current: Optional[str] = None
+    for el in node.find_all([*_HEADING_TAGS, "a"]):
+        if el.name in _HEADING_TAGS:
+            if not el.find_parent("a"):
+                cat = _clean_category(el.get_text(" ", strip=True))
+                # Curated cross-cut sections ("Featured Articles") aren't real
+                # categories — leave those articles for the category pages.
+                current = None if cat.lower() in _GENERIC_SECTIONS else cat
+            continue
+        url = _same_site_href(el, base_url, root_domain)
+        if url and _is_article_url(url):
+            results.append((url, current))
+    return results
+
+
+def discover_article_links(
+    client: httpx.Client, index_url: str, limit: int
+) -> List[Tuple[str, Optional[str]]]:
+    """Discover (article_url, category) pairs from a help-center index.
+
+    Standard help centers (Chatwoot/Zendesk/Intercom) nest articles under
+    /articles/ and group them into /categories/ (or /sections//collections/).
+    We tag each article with its homepage section heading, then follow the
+    category listing pages for the full per-category list (homepages truncate
+    each section to a few articles). A non-standard/flat page with no /articles/
+    links falls back to importing every same-site content link.
+    """
     soup, final_url = _fetch_index_soup(client, index_url)
     if soup is None:
         raise ValueError("Could not read that page.")
     root_domain = _registrable_domain(urlparse(final_url).hostname or "")
     index_clean = urldefrag(final_url)[0].rstrip("/")
-    index_path = urlparse(final_url).path.rstrip("/")
+    main = select_main_node(soup) or soup
 
-    preferred: List[str] = []
-    others: List[str] = []
-    seen = set()
-    for anchor in soup.find_all("a", href=True):
-        url = urldefrag(urljoin(final_url, anchor["href"]))[0].rstrip("/")
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https") or parsed.query:
+    ordered: List[str] = []
+    category_of: Dict[str, Optional[str]] = {}
+
+    def record(url: str, category: Optional[str]) -> None:
+        if url == index_clean:
+            return
+        if url not in category_of:
+            category_of[url] = category
+            ordered.append(url)
+        elif category and not category_of[url]:
+            # Upgrade a still-uncategorised article (e.g. seen first under a
+            # generic homepage section) with the category page's real name.
+            category_of[url] = category
+
+    # 1. Homepage article links, tagged by their section heading.
+    for url, category in _sectioned_article_links(main, final_url, root_domain):
+        record(url, category)
+
+    # 2. Follow category/section pages for the complete per-category list.
+    category_links: List[str] = []
+    seen_cat = set()
+    for anchor in main.find_all("a", href=True):
+        url = _same_site_href(anchor, final_url, root_domain)
+        if url and _is_category_url(url) and url not in seen_cat:
+            seen_cat.add(url)
+            category_links.append(url)
+    for cat_url in category_links[: settings.FAQ_ARTICLE_IMPORT_MAX_CATEGORIES]:
+        if len(ordered) >= limit:
+            break
+        cat_soup, cat_final = _fetch_soup(client, cat_url)
+        if cat_soup is None:
             continue
-        # Bare-root links are nav (home/app links), never articles.
-        if parsed.path in ("", "/"):
-            continue
-        if url == index_clean or url in seen:
-            continue
-        if _registrable_domain(parsed.hostname or "") != root_domain:
-            continue
-        if parsed.path.lower().endswith(_SKIP_EXTENSIONS):
-            continue
-        seen.add(url)
-        (preferred if index_path and parsed.path.startswith(index_path + "/") else others).append(url)
-    links = (preferred + others)[:limit]
-    if not links:
+        og_title, doc_title = _head_titles(cat_soup)
+        cat_node = select_main_node(cat_soup) or cat_soup
+        cat_name = _clean_category(_page_title(og_title, doc_title, cat_node, cat_soup))
+        for anchor in cat_node.find_all("a", href=True):
+            url = _same_site_href(anchor, cat_final, root_domain)
+            if url and _is_article_url(url):
+                record(url, cat_name)
+
+    # 3. Fallback: no standard article URLs — import every same-site link,
+    #    resolving each article's category from its own breadcrumb/URL.
+    if not ordered:
+        for anchor in main.find_all("a", href=True):
+            url = _same_site_href(anchor, final_url, root_domain)
+            if url:
+                record(url, None)
+
+    ordered = ordered[:limit]
+    if not ordered:
         raise ValueError("No linked article pages found on that page.")
-    return links
+    return [(url, category_of[url]) for url in ordered]
 
 
 def _head_titles(soup: BeautifulSoup) -> Tuple[str, str]:
@@ -225,13 +339,54 @@ def _category_hint(soup: BeautifulSoup, url: str) -> str:
     return DEFAULT_ARTICLE_CATEGORY
 
 
-def fetch_article(client: httpx.Client, url: str) -> Optional[Article]:
+def _strip_chrome(node: Tag) -> None:
+    """Remove in-article chrome that shouldn't become FAQ content: nav bars,
+    TOCs, footers, help-center platform branding ('Made with Chatwoot') and
+    'Last updated' metadata lines. Best-effort — a detached element mid-loop
+    just skips."""
+    for chrome in node.find_all("nav") + node.find_all("footer"):
+        chrome.decompose()
+    for chrome in node.find_all(class_=_TOC_RE) + node.find_all(id=_TOC_RE):
+        try:
+            chrome.decompose()
+        except Exception:
+            pass
+    # Leading breadcrumb ("Home › …") — a short container whose first link is a
+    # back-to-index link. Chatwoot renders it as a bare div (no nav/class hook).
+    for anchor in node.find_all("a"):
+        if anchor.get_text(strip=True).lower() in _BREADCRUMB_ROOTS:
+            container = anchor.find_parent(["nav", "ol", "ul", "div"])
+            if container and len(container.get_text(" ", strip=True)) <= 80:
+                try:
+                    container.decompose()
+                except Exception:
+                    pass
+            break
+    for anchor in list(node.find_all("a", href=True)):
+        try:
+            href = (anchor.get("href") or "").lower()
+            if any(brand in href for brand in _CHROME_HREFS):
+                (anchor.find_parent(["div", "footer", "section"]) or anchor).decompose()
+        except Exception:
+            pass
+    for el in list(node.find_all(["p", "div", "span", "small", "time"])):
+        try:
+            text = el.get_text(" ", strip=True)
+            if text and len(text) <= 60 and _CHROME_TEXT_RE.search(text):
+                el.decompose()
+        except Exception:
+            pass
+
+
+def fetch_article(
+    client: httpx.Client, url: str, category_override: Optional[str] = None
+) -> Optional[Article]:
     """One article page → title + Markdown body (+ images pending re-host).
-    None when the page can't be read or has no substantial content."""
+    category_override (from the category listing that linked here) wins over the
+    per-page breadcrumb/URL guess. None when the page can't be read or is empty."""
     soup, final_url = _fetch_soup(client, url)
     if soup is None:
         return None
-    category = _category_hint(soup, final_url)
     og_title, doc_title = _head_titles(soup)  # before <head> is stripped below
     node = select_main_node(soup)
     if node is None:
@@ -239,15 +394,12 @@ def fetch_article(client: httpx.Client, url: str) -> Optional[Article]:
     title = _page_title(og_title, doc_title, node, soup)
     if not title:
         return None
+    category = category_override or _category_hint(soup, final_url)
     # The page's own h1 would duplicate the FAQ question.
     first_h1 = node.find("h1")
     if first_h1:
         first_h1.extract()
-    # Strip in-article chrome: nav bars and "On this page" TOCs.
-    for chrome in node.find_all("nav"):
-        chrome.extract()
-    for chrome in node.find_all(class_=_TOC_RE) + node.find_all(id=_TOC_RE):
-        chrome.extract()
+    _strip_chrome(node)
     converter = _ArticleConverter(base_url=final_url, client=client, heading_style="ATX", bullets="-")
     markdown = converter.convert_soup(node).strip()
     if not markdown:
@@ -291,8 +443,8 @@ async def run_article_import_job(db, job: FAQGenerationJob) -> int:
         source_label = f"Imported from {urlparse(job.source_url).netloc}"
 
         rows: List[FAQ] = []
-        for index, link in enumerate(links):
-            article = await asyncio.to_thread(fetch_article, client, link)
+        for index, (link, category) in enumerate(links):
+            article = await asyncio.to_thread(fetch_article, client, link, category)
             job_repo.update_progress(
                 job.id, progress_percentage=10.0 + 78.0 * (index + 1) / len(links)
             )

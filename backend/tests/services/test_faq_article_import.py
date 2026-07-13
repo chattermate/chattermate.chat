@@ -44,21 +44,32 @@ def _response(text="", url="https://help.example.com/", content=b"", content_typ
     return response
 
 
+# Chatwoot-style homepage: category cards, each a section heading + article
+# links, plus a curated "Featured Articles" cross-cut and a category page link.
 INDEX_HTML = """
 <html><body><main>
   <p>{filler}</p>
-  <a href="/articles/how-to-install">Install</a>
-  <a href="/articles/how-to-install#steps">Install anchor dupe</a>
-  <a href="https://help.example.com/articles/billing/">Billing</a>
-  <a href="https://other-site.com/articles/foreign">Foreign</a>
+  <section>
+    <h2>Featured Articles</h2>
+    <a href="/hc/atoa/articles/1-how-to-install">Install (featured)</a>
+  </section>
+  <section>
+    <h2>📞 Help and support</h2>
+    <a href="/hc/atoa/articles/1-how-to-install">Install</a>
+    <a href="/hc/atoa/articles/2-refunds">Refunds</a>
+    <a href="/hc/atoa/categories/9-help-and-support">View all</a>
+  </section>
+  <a href="https://other-site.com/hc/x/articles/9-foreign">Foreign</a>
   <a href="/downloads/guide.pdf">PDF</a>
-  <a href="/pricing">Pricing (outside /articles)</a>
+  <a href="/pricing">Pricing (not an article)</a>
 </main></body></html>
 """.format(filler="x" * 600)
 
 ARTICLE_HTML = """
 <html><head><title>How to install | Example Help</title></head><body>
-<nav class="breadcrumb"><a href="/">Home</a><a href="/articles">Guides</a><a href="#">Install</a></nav>
+<main>
+<nav><a href="/">Atoa Help Centre</a></nav>
+<div class="crumbs"><a href="/hc/atoa/en">Home</a></div>
 <article>
   <h1>How to install</h1>
   <p>{filler}</p>
@@ -67,21 +78,38 @@ ARTICLE_HTML = """
   <img src="/img/shot.png" alt="screenshot">
   <img src="data:image/png;base64,AAAA" alt="inline">
 </article>
+<span>Last updated on Sep 20, 2024</span>
+<footer><p>Made with <a href="https://www.chatwoot.com">Chatwoot</a></p></footer>
+</main>
 </body></html>
 """.format(filler="Installation takes about two minutes. " * 10)
 
 
-def test_discover_links_bounds_and_filters():
+def test_discover_links_sections_categories_and_filters():
     client = MagicMock()
-    with patch.object(faq_article_import, "_fetch_index_soup") as fetch:
-        from bs4 import BeautifulSoup
-        fetch.return_value = (BeautifulSoup(INDEX_HTML, "html.parser"), "https://help.example.com/articles")
-        links = discover_article_links(client, "https://help.example.com/articles", limit=10)
-    # Same-site only, fragment deduped, pdf skipped; /articles children first.
-    assert links[0] == "https://help.example.com/articles/how-to-install"
-    assert links[1] == "https://help.example.com/articles/billing"
-    assert links[-1] == "https://help.example.com/pricing"
-    assert not any("other-site.com" in link or link.endswith(".pdf") for link in links)
+    from bs4 import BeautifulSoup
+    # A category page reachable via the "View all" link returns the full list.
+    category_page = BeautifulSoup(
+        "<body><main><h1>Help and support</h1>"
+        '<a href="/hc/atoa/articles/2-refunds">Refunds</a>'
+        '<a href="/hc/atoa/articles/3-disputes">Disputes</a>'
+        "</main></body>",
+        "html.parser",
+    )
+    with patch.object(faq_article_import, "_fetch_index_soup") as index_fetch, \
+         patch.object(faq_article_import, "_fetch_soup") as page_fetch:
+        index_fetch.return_value = (BeautifulSoup(INDEX_HTML, "html.parser"), "https://help.example.com/hc/atoa/en")
+        page_fetch.return_value = (category_page, "https://help.example.com/hc/atoa/categories/9-help-and-support")
+        links = discover_article_links(client, "https://help.example.com/hc/atoa/en", limit=20)
+
+    by_url = dict(links)
+    # Only /articles/ pages; off-site, pdf and /pricing excluded.
+    assert not any("other-site.com" in u or u.endswith(".pdf") or "/pricing" in u for u, _ in links)
+    # Featured cross-cut isn't a category; the section heading tags the article.
+    assert by_url["https://help.example.com/hc/atoa/articles/1-how-to-install"] == "Help and support"
+    assert by_url["https://help.example.com/hc/atoa/articles/2-refunds"] == "Help and support"
+    # Article only on the followed category page still imported + categorised.
+    assert by_url["https://help.example.com/hc/atoa/articles/3-disputes"] == "Help and support"
 
 
 def test_discover_links_respects_limit():
@@ -97,7 +125,19 @@ def test_discover_links_respects_limit():
     assert len(links) == 5
 
 
-def test_fetch_article_converts_markdown_and_collects_images():
+def test_discover_links_flat_fallback_without_article_marker():
+    """A non-standard help page with no /articles/ links imports every link."""
+    client = MagicMock()
+    html = f"<body><main><p>{'x' * 600}</p><a href='/faq/pay'>Pay</a><a href='/faq/refund'>Refund</a></main></body>"
+    with patch.object(faq_article_import, "_fetch_index_soup") as fetch:
+        from bs4 import BeautifulSoup
+        fetch.return_value = (BeautifulSoup(html, "html.parser"), "https://help.example.com/faq")
+        links = discover_article_links(client, "https://help.example.com/faq", limit=10)
+    assert {u for u, _ in links} == {"https://help.example.com/faq/pay", "https://help.example.com/faq/refund"}
+    assert all(c is None for _, c in links)  # category resolved per-article later
+
+
+def test_fetch_article_converts_markdown_strips_chrome_and_collects_images():
     client = MagicMock()
     image = _response(content=b"\x89PNG", content_type="image/png")
     with patch.object(faq_article_import, "_fetch_soup") as fetch, \
@@ -105,22 +145,29 @@ def test_fetch_article_converts_markdown_and_collects_images():
         from bs4 import BeautifulSoup
         fetch.return_value = (
             BeautifulSoup(ARTICLE_HTML, "html.parser"),
-            "https://help.example.com/articles/how-to-install",
+            "https://help.example.com/hc/atoa/articles/1-how-to-install",
         )
-        article = fetch_article(client, "https://help.example.com/articles/how-to-install")
+        article = fetch_article(client, "https://help.example.com/hc/atoa/articles/1", "Help and support")
 
     assert article is not None
     assert article.title == "How to install"
-    assert article.category_hint == "Guides"  # breadcrumb second-to-last
+    assert article.category_hint == "Help and support"  # from the category override
     # h1 removed (would duplicate the question), list preserved as Markdown.
     assert "# How to install" not in article.markdown
     assert "1. Download the app." in article.markdown
     # Link absolutized.
     assert "[pricing](https://help.example.com/pricing)" in article.markdown
     # Real image collected as placeholder; data: image reduced to alt text.
-    assert "cm-pending-image://0" in article.markdown
+    assert "cm-pending-image://0.img" in article.markdown
     assert len(article.pending_images) == 1
     assert "base64" not in article.markdown
+    # Help-center chrome stripped: no Chatwoot footer, breadcrumb or metadata.
+    lowered = article.markdown.lower()
+    assert "chatwoot" not in lowered
+    assert "made with" not in lowered
+    assert "last updated" not in lowered
+    assert "[home]" not in lowered
+    assert "atoa help centre" not in lowered
 
 
 def test_converter_skips_oversized_and_wrong_type_images():
@@ -162,8 +209,10 @@ async def test_article_import_job_inserts_drafts(db, test_organization):
             title="How billing works", markdown="**Billing** steps.", category_hint="Billing",
         ),
     }
-    with patch.object(faq_article_import, "discover_article_links", return_value=list(articles)), \
-         patch.object(faq_article_import, "fetch_article", side_effect=lambda c, url: articles[url]):
+    # discover now yields (url, category) pairs; the category flows to fetch_article.
+    discovered = [(url, "Billing") for url in articles]
+    with patch.object(faq_article_import, "discover_article_links", return_value=discovered), \
+         patch.object(faq_article_import, "fetch_article", side_effect=lambda c, url, category: articles[url]):
         created = await run_article_import_job(db, job)
 
     assert created == 1
