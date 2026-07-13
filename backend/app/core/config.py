@@ -145,8 +145,11 @@ class Settings(BaseSettings):
     FAQ_IMPORT_MAX_PAGE_CHARS: int = int(os.getenv("FAQ_IMPORT_MAX_PAGE_CHARS", "100000"))
     FAQ_IMPORT_FETCH_TIMEOUT: int = int(os.getenv("FAQ_IMPORT_FETCH_TIMEOUT", "30"))
     # Article-mode import (crawl linked pages, no LLM): crawl and re-host caps.
-    FAQ_ARTICLE_IMPORT_MAX_PAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_PAGES", "30"))
+    FAQ_ARTICLE_IMPORT_MAX_PAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_PAGES", "50"))
     FAQ_ARTICLE_IMPORT_MAX_IMAGES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_IMAGES", "10"))
+    # Category/section listing pages to follow for the full per-category article
+    # list (help-center homepages truncate each section to a few articles).
+    FAQ_ARTICLE_IMPORT_MAX_CATEGORIES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_CATEGORIES", "20"))
     # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx
     # records that exist on the base domain, hence env-configurable.
     HELP_CENTER_RESERVED_SLUGS: frozenset = frozenset(
