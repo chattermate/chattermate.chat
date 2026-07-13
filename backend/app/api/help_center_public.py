@@ -108,7 +108,10 @@ async def index(request: Request, q: str = "", db: Session = Depends(get_db)):
         "header_links": row.header_links or [],
         "ask_enabled": ask_available(row),
         "widget_id": widget_id_for(row),
-        "widget_script_url": f"{settings.VITE_WIDGET_URL}/webclient/chattermate.min.js",
+        # The widget LOADER (chattermate.min.js) is served by the frontend, while
+        # the widget APP it pulls in (/assets/widget.js) is served from
+        # VITE_WIDGET_URL by the backend. In prod both resolve to the app domain.
+        "widget_script_url": f"{settings.FRONTEND_URL}/webclient/chattermate.min.js",
     }
     response = templates.TemplateResponse(request, "help_center/index.html", context)
     response.headers["Cache-Control"] = PAGE_CACHE_CONTROL

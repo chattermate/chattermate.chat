@@ -68,9 +68,15 @@ def get_cors_origins() -> Set[str]:
         from app.repositories.help_center import HelpCenterRepository
         hc_repo = HelpCenterRepository(db)
         base = settings.HELP_CENTER_BASE_DOMAIN
+        # In local dev the help center is reached on a non-standard port (e.g.
+        # :8000), which the browser puts in the Origin header. socket.io matches
+        # origins exactly (no regex), so add that port variant when configured.
+        dev_port = urlparse(settings.APP_BASE_URL).port
         for slug in hc_repo.list_enabled_slugs():
-            all_origins.add(f"https://{slug}.{base}")
-            all_origins.add(f"http://{slug}.{base}")
+            for scheme in ("https", "http"):
+                all_origins.add(f"{scheme}://{slug}.{base}")
+                if dev_port:
+                    all_origins.add(f"{scheme}://{slug}.{base}:{dev_port}")
         for domain in hc_repo.list_verified_domains():
             all_origins.add(f"https://{domain}")
             all_origins.add(f"http://{domain}")
