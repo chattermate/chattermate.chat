@@ -208,6 +208,68 @@ async def test_generate_source_job_scopes_to_one_source(db, test_organization, t
     assert seen_sources == ["a.example.com"]
 
 
+@pytest.mark.asyncio
+async def test_generate_all_skips_sources_with_faqs(db, test_organization, test_ai_config):
+    """Regenerate only reads sources that haven't produced FAQs yet."""
+    done = _make_knowledge(db, test_organization.id, "done.example.com")
+    _make_knowledge(db, test_organization.id, "new.example.com")
+    FAQRepository(db).create(FAQ(
+        organization_id=test_organization.id, question="q", answer="a",
+        category="General", knowledge_id=done.id,
+    ))
+    job = _make_job(db, test_organization.id, job_type=FAQJobType.GENERATE_ALL.value)
+    seen = []
+
+    def fake_load(db_, knowledge, max_chars=None):
+        seen.append(knowledge.source)
+        return ["content"]
+
+    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(return_value=[]), batch_chars=15000)
+    with patch.object(faq_generation, "build_generator", return_value=mock_generator), \
+         patch.object(faq_generation, "load_source_pages", side_effect=fake_load):
+        await run_generation_job(db, job)
+    assert seen == ["new.example.com"]
+
+
+@pytest.mark.asyncio
+async def test_generate_all_errors_when_everything_generated(db, test_organization, test_ai_config):
+    k = _make_knowledge(db, test_organization.id)
+    FAQRepository(db).create(FAQ(
+        organization_id=test_organization.id, question="q", answer="a",
+        category="General", knowledge_id=k.id,
+    ))
+    job = _make_job(db, test_organization.id, job_type=FAQJobType.GENERATE_ALL.value)
+    with patch.object(faq_generation, "build_generator", return_value=SimpleNamespace(batch_chars=15000)):
+        with pytest.raises(ValueError, match="already have FAQs"):
+            await run_generation_job(db, job)
+
+
+@pytest.mark.asyncio
+async def test_generate_all_explicit_ids_override_skip(db, test_organization, test_ai_config):
+    """knowledge_ids explicitly re-targets an already-generated source."""
+    done = _make_knowledge(db, test_organization.id, "done.example.com")
+    _make_knowledge(db, test_organization.id, "other.example.com")
+    FAQRepository(db).create(FAQ(
+        organization_id=test_organization.id, question="q", answer="a",
+        category="General", knowledge_id=done.id,
+    ))
+    job = _make_job(
+        db, test_organization.id,
+        job_type=FAQJobType.GENERATE_ALL.value, knowledge_ids=[done.id],
+    )
+    seen = []
+
+    def fake_load(db_, knowledge, max_chars=None):
+        seen.append(knowledge.source)
+        return ["content"]
+
+    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(return_value=[]), batch_chars=15000)
+    with patch.object(faq_generation, "build_generator", return_value=mock_generator), \
+         patch.object(faq_generation, "load_source_pages", side_effect=fake_load):
+        await run_generation_job(db, job)
+    assert seen == ["done.example.com"]
+
+
 # ---------- auto-generation hook ----------
 
 def _queue_item(org_id, source="docs.example.com", user_id=None):

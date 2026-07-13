@@ -24,11 +24,22 @@ from app.core.auth import require_permissions
 from app.database import get_db
 from app.knowledge.url_safety import resolves_to_blocked_host
 from app.models.faq_generation_job import FAQGenerationJob, FAQJobType
-from app.models.schemas.faq import GenerationJobResponse, ImportRequest
+from app.models.knowledge import Knowledge
+from app.models.schemas.faq import (
+    GenerateRequest,
+    GenerationEstimateResponse,
+    GenerationJobResponse,
+    ImportRequest,
+)
 from app.models.user import User
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.faq_generation_job import FAQGenerationJobRepository
-from app.services.faq_usage import ensure_generation_budget, generation_is_metered
+from app.services.faq_usage import (
+    ensure_generation_budget,
+    estimate_generation_calls,
+    generation_is_metered,
+    remaining_message_credits,
+)
 from app.services.help_center_access import check_help_center_access
 
 router = APIRouter()
@@ -80,14 +91,67 @@ def _enqueue(
         raise HTTPException(status_code=409, detail="A job of this type is already running.")
 
 
-@router.post("/generate", response_model=GenerationJobResponse, status_code=202)
-async def start_generation(
+def _validate_org_knowledge_ids(db: Session, organization_id, knowledge_ids) -> None:
+    if not knowledge_ids:
+        return
+    owned = {
+        row[0]
+        for row in db.query(Knowledge.id)
+        .filter(Knowledge.organization_id == organization_id, Knowledge.id.in_(knowledge_ids))
+        .all()
+    }
+    if set(knowledge_ids) - owned:
+        raise HTTPException(status_code=400, detail="Unknown knowledge source in selection.")
+
+
+@router.get("/generate/estimate", response_model=GenerationEstimateResponse)
+async def generation_estimate(
     current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db),
 ):
-    """Draft FAQs from the whole knowledge base (additive; the worker dedups
-    against existing questions)."""
-    job = _enqueue(db, current_user, FAQJobType.GENERATE_ALL)
+    """Pre-generation numbers for the confirm dialog: new (ungenerated)
+    sources, page count, estimated LLM calls and remaining credits."""
+    org_id = current_user.organization_id
+    check_help_center_access(db, org_id)
+    estimate = estimate_generation_calls(db, org_id)
+    metered = generation_is_metered(db, org_id)
+    return GenerationEstimateResponse(
+        total_sources=estimate.total_sources,
+        new_sources=estimate.new_sources,
+        pages=estimate.pages,
+        estimated_calls=estimate.estimated_calls,
+        metered=metered,
+        remaining_credits=remaining_message_credits(db, org_id) if metered else None,
+    )
+
+
+@router.post("/generate", response_model=GenerationJobResponse, status_code=202)
+async def start_generation(
+    payload: Optional[GenerateRequest] = None,
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db),
+):
+    """Draft FAQs from the knowledge base (additive; the worker dedups against
+    existing questions). By default only sources without FAQs are read;
+    knowledge_ids explicitly targets sources instead."""
+    org_id = current_user.organization_id
+    knowledge_ids = payload.knowledge_ids if payload else None
+    _validate_org_knowledge_ids(db, org_id, knowledge_ids)
+    estimate = estimate_generation_calls(db, org_id, knowledge_ids)
+    if estimate.total_sources == 0:
+        raise HTTPException(status_code=400, detail="No knowledge sources to generate from. Add knowledge first.")
+    if estimate.new_sources == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="All knowledge sources already have FAQs. Delete a source's FAQs to regenerate it.",
+        )
+    job = _enqueue(
+        db,
+        current_user,
+        FAQJobType.GENERATE_ALL,
+        estimated_calls=estimate.estimated_calls,
+        knowledge_ids=knowledge_ids,
+    )
     return GenerationJobResponse.model_validate(job)
 
 
