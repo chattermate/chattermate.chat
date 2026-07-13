@@ -78,6 +78,29 @@ def test_fail_orphaned_processing_reaps_only_processing(db, test_organization):
     assert done.status == FAQJobStatus.COMPLETED.value
 
 
+def test_stale_processing_job_excluded_from_active_and_reaped(db, test_organization):
+    """A processing job whose progress stopped advancing past the threshold is
+    treated as dead: hidden from active-job polling and reaped on enqueue."""
+    from datetime import datetime, timedelta, timezone
+
+    org = test_organization.id
+    repo = FAQGenerationJobRepository(db)
+    fresh = _make_job(db, org, job_type=FAQJobType.GENERATE_ALL.value, status=FAQJobStatus.PROCESSING.value)
+    stale = _make_job(db, org, job_type=FAQJobType.IMPORT_URL.value, status=FAQJobStatus.PROCESSING.value)
+    # Backdate the stale job's last progress well past FAQ_JOB_STALE_SECONDS.
+    stale.updated_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    db.commit()
+
+    active = repo.get_active_for_org(org)
+    assert active is not None and active.id == fresh.id  # stale one excluded
+
+    reaped = repo.fail_orphaned_processing("dead", older_than_seconds=600, organization_id=org)
+    assert reaped == 1
+    db.refresh(fresh); db.refresh(stale)
+    assert stale.status == FAQJobStatus.FAILED.value  # only the stale one
+    assert fresh.status == FAQJobStatus.PROCESSING.value
+
+
 def test_normalize_question():
     assert normalize_question("How do I sign up?") == normalize_question("how do i SIGN UP")
     assert normalize_question("  A,  b!! ") == "a b"

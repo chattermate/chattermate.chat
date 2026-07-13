@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_permissions
+from app.core.config import settings
 from app.core.file_validation import PDF_MAGIC, read_validated, safe_filename
 from app.database import get_db
 from app.knowledge.url_safety import resolves_to_blocked_host
@@ -82,6 +83,13 @@ def _enqueue(
         _require_ai_config(db, org_id)
         ensure_generation_budget(db, org_id, estimated_calls)
     job_repo = FAQGenerationJobRepository(db)
+    # Clear jobs a dead worker left in 'processing' so they don't block this
+    # enqueue (the one-active-per-type guard + partial unique index).
+    job_repo.fail_orphaned_processing(
+        "Worker stopped before the job finished — please try again.",
+        older_than_seconds=settings.FAQ_JOB_STALE_SECONDS,
+        organization_id=org_id,
+    )
     if job_repo.get_active_for_org(org_id, job_type):
         raise HTTPException(status_code=409, detail="A job of this type is already running.")
     try:

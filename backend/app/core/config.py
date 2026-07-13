@@ -150,6 +150,11 @@ class Settings(BaseSettings):
     # Category/section listing pages to follow for the full per-category article
     # list (help-center homepages truncate each section to a few articles).
     FAQ_ARTICLE_IMPORT_MAX_CATEGORIES: int = int(os.getenv("FAQ_ARTICLE_IMPORT_MAX_CATEGORIES", "20"))
+    # A 'processing' FAQ job whose progress hasn't advanced in this long is
+    # treated as dead (worker crashed/killed): excluded from active-job polling
+    # and reaped on the next enqueue. Generous — must exceed the slowest single
+    # LLM batch / page fetch so a live-but-slow job is never killed.
+    FAQ_JOB_STALE_SECONDS: int = int(os.getenv("FAQ_JOB_STALE_SECONDS", "600"))
     # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx
     # records that exist on the base domain, hence env-configurable.
     HELP_CENTER_RESERVED_SLUGS: frozenset = frozenset(
