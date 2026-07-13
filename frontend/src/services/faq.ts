@@ -31,6 +31,16 @@ function errorMessage(error: any, fallback: string): Error {
   return new Error(error.response?.data?.detail || fallback)
 }
 
+// Backend bulk endpoints cap faq_ids at 200 (MAX_BULK_IDS in schemas/faq.py);
+// split larger selections so a select-all over a big FAQ set still works.
+const MAX_BULK_IDS = 200
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = []
+  for (let i = 0; i < items.length; i += size) batches.push(items.slice(i, i + size))
+  return batches
+}
+
 export const faqService = {
   async getFaqs(params: { status?: FaqStatus; category?: string; q?: string; page?: number; page_size?: number } = {}): Promise<FaqListResponse> {
     try {
@@ -82,8 +92,12 @@ export const faqService = {
 
   async setStatus(ids: string[], status: FaqStatus): Promise<number> {
     try {
-      const response = await api.post('/help-center/faqs/bulk-status', { faq_ids: ids, status })
-      return response.data.updated
+      let updated = 0
+      for (const batch of chunk(ids, MAX_BULK_IDS)) {
+        const response = await api.post('/help-center/faqs/bulk-status', { faq_ids: batch, status })
+        updated += response.data.updated
+      }
+      return updated
     } catch (error: any) {
       throw errorMessage(error, 'Failed to update FAQ status')
     }
@@ -91,8 +105,12 @@ export const faqService = {
 
   async bulkDelete(ids: string[]): Promise<number> {
     try {
-      const response = await api.post('/help-center/faqs/bulk-delete', { faq_ids: ids })
-      return response.data.deleted
+      let deleted = 0
+      for (const batch of chunk(ids, MAX_BULK_IDS)) {
+        const response = await api.post('/help-center/faqs/bulk-delete', { faq_ids: batch })
+        deleted += response.data.deleted
+      }
+      return deleted
     } catch (error: any) {
       throw errorMessage(error, 'Failed to delete FAQs')
     }
