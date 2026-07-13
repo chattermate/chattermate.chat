@@ -515,9 +515,17 @@ other brand tone is derived in CSS via color-mix, so no computed colors leak in.
     });
 
     // ----- open the real embedded ChatterMate widget -----
+    // The widget script is async and builds its launcher (#chattermate-button)
+    // a moment after load, so a click can land before it exists — poll briefly
+    // and click as soon as it appears instead of silently doing nothing.
     function openChat() {
-      var btn = document.getElementById('chattermate-button');
-      if (btn) btn.click();
+      var tries = 0;
+      (function attempt() {
+        var btn = document.getElementById('chattermate-button');
+        if (btn) { btn.click(); return; }
+        if (tries++ < 40) { setTimeout(attempt, 150); return; }  // ~6s
+        if (window.console) console.warn('[ChatterMate] chat widget is not available on this page.');
+      })();
     }
     [].slice.call(document.querySelectorAll('[data-chat]')).forEach(function (b) {
       b.addEventListener('click', openChat);
