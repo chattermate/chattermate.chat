@@ -147,6 +147,16 @@ const channelsService = {
     await api.delete(`/channels/line/${accountId}`)
   },
 
+  /** Connect a Microsoft Teams bot (Azure AD app id + client secret) */
+  async connectTeams(payload: { app_id: string; app_password: string; display_name?: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/teams', payload)
+    return response.data
+  },
+
+  async disconnectTeams(accountId: string): Promise<void> {
+    await api.delete(`/channels/teams/${accountId}`)
+  },
+
   /** Browser URL that starts the Slack OAuth install (redirects to Slack) */
   getSlackInstallUrl(): string {
     return `${import.meta.env.VITE_API_URL}/channels/slack/install`

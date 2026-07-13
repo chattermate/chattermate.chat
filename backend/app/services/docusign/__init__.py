@@ -14,11 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-class JiraAuthError(Exception):
-    """Exception raised for Jira authentication errors."""
-    pass
+from app.services.docusign.client import DocuSignClient
+from app.services.docusign.oauth import DocuSignOAuth
+from app.services.docusign.tokens import (
+    DocuSignCredentials, get_credentials, get_token_row, store_token,
+)
 
-
-class DocuSignAuthError(Exception):
-    """Exception raised for DocuSign authentication / API errors."""
-    pass 
+__all__ = [
+    "DocuSignOAuth",
+    "DocuSignClient",
+    "DocuSignCredentials",
+    "get_credentials",
+    "get_token_row",
+    "store_token",
+]

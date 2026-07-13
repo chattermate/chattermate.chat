@@ -27,6 +27,40 @@ class AgentWithJiraConfig(AgentResponse):
     jira_issue_type_id: Optional[str] = None
     groups: List[Any] = []
     organization: Optional[Any] = None
-    
+
     class Config:
-        arbitrary_types_allowed = True 
+        arbitrary_types_allowed = True
+
+
+class JiraProject(BaseModel):
+    id: str
+    key: str
+    name: str
+
+
+class JiraIssueType(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+
+
+class JiraPriority(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    iconUrl: Optional[str] = None
+
+
+class AgentJiraConfigModel(BaseModel):
+    enabled: bool
+    projectKey: Optional[str] = None
+    issueTypeId: Optional[str] = None
+
+
+class CreateJiraIssueModel(BaseModel):
+    projectKey: str
+    issueTypeId: str
+    summary: str
+    description: str
+    priority: Optional[str] = None
+    chatId: Optional[str] = None 

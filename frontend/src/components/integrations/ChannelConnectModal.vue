@@ -22,7 +22,7 @@ import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
 
 const props = defineProps<{
-  channel: 'email' | 'sms' | 'line' | 'slack'
+  channel: 'email' | 'sms' | 'line' | 'slack' | 'teams'
   // When set, the modal opens in "manage" mode for an already-connected
   // account: it skips credential entry and shows the webhook URL + agent.
   // Slack always uses this (it connects via OAuth, so only the agent step).
@@ -93,6 +93,17 @@ const FORMS = {
     intro: 'Choose which AI agent answers your Slack mentions and DMs.',
     fields: [],
     connect: async () => { throw new Error('Slack connects via OAuth') },
+  },
+  teams: {
+    title: 'Connect Microsoft Teams',
+    intro: 'From your Azure Bot registration, enter the Microsoft App ID and a client secret. After connecting, set the bot’s messaging endpoint in Azure to the URL shown here.',
+    fields: [
+      { key: 'app_id', label: 'Microsoft App ID', placeholder: '00000000-0000-0000-0000-000000000000', secret: false },
+      { key: 'app_password', label: 'Client secret', placeholder: '••••••••', secret: true },
+      { key: 'display_name', label: 'Display name (optional)', placeholder: 'Microsoft Teams', secret: false, optional: true },
+    ],
+    connect: (v: Record<string, string>) => channelsService.connectTeams({
+      app_id: v.app_id, app_password: v.app_password, display_name: v.display_name || undefined }),
   },
 } as const
 
