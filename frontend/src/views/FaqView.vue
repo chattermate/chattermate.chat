@@ -33,7 +33,7 @@ const liveUrl = computed(() => workspaceRef.value?.settings?.live_url || null)
     <div class="faq-view">
       <div class="page-header">
         <div>
-          <h1 class="page-header__title">FAQ &amp; Help Center</h1>
+          <h1 class="page-header__title">Help center</h1>
           <p class="page-header__subtitle">
             Turn your knowledge base into a public help center. Generate FAQs automatically, review
             them, then publish.
@@ -41,7 +41,7 @@ const liveUrl = computed(() => workspaceRef.value?.settings?.live_url || null)
         </div>
         <a v-if="liveUrl" class="page-header__link" :href="liveUrl" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6" /><path d="M10 14 21 3" /></svg>
-          View public FAQ
+          View public help center
         </a>
       </div>
 

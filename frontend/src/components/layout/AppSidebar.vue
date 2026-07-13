@@ -102,7 +102,7 @@ const navItems = computed(() => [
     {
         to: '/faq',
         icon: 'faq',
-        label: 'FAQ',
+        label: 'Help center',
         show: permissionChecks.canManageKnowledge()
     },
     {
