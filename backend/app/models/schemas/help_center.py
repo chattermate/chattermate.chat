@@ -54,6 +54,7 @@ class HelpCenterSettingsUpdate(BaseModel):
     header_links: Optional[List[HeaderLink]] = Field(default=None, max_length=MAX_HEADER_LINKS)
     cta_text: Optional[str] = Field(default=None, max_length=40)
     cta_url: Optional[str] = Field(default=None, max_length=2048)
+    cta_enabled: Optional[bool] = None
     auto_generate: Optional[bool] = None
     agent_id: Optional[UUID] = None
     ai_search_enabled: Optional[bool] = None
@@ -113,6 +114,7 @@ class HelpCenterSettingsResponse(BaseModel):
     header_links: List[HeaderLink] = []
     cta_text: Optional[str] = None
     cta_url: Optional[str] = None
+    cta_enabled: bool
     auto_generate: bool
     agent_id: Optional[UUID] = None
     ai_search_enabled: bool

@@ -207,7 +207,7 @@ other brand tone is derived in CSS via color-mix, so no computed colors leak in.
       </a>
       <nav class="hc-nav">
         {% for link in header_links %}<a href="{{ link.url }}" rel="noopener">{{ link.label }}</a>{% endfor %}
-        {% if row.cta_text and row.cta_url %}<a class="cta" href="{{ row.cta_url }}" rel="noopener">{{ row.cta_text }}</a>{% endif %}
+        {% if row.cta_enabled and row.cta_text and row.cta_url %}<a class="cta" href="{{ row.cta_url }}" rel="noopener">{{ row.cta_text }}</a>{% endif %}
       </nav>
     </div>
   </header>
@@ -368,7 +368,8 @@ other brand tone is derived in CSS via color-mix, so no computed colors leak in.
   </div>
 
   <!-- ============ CONTACT CTA ============ -->
-  {% if widget_id or (row.cta_text and row.cta_url) %}
+  {% set cta_shown = row.cta_enabled and row.cta_text and row.cta_url %}
+  {% if widget_id or cta_shown %}
   <div class="hc-cta-shell">
     <section class="hc-cta" id="contact">
       <div>
@@ -380,7 +381,7 @@ other brand tone is derived in CSS via color-mix, so no computed colors leak in.
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"></path></svg>
         Start a chat
       </button>
-      {% else %}
+      {% elif cta_shown %}
       <a class="hc-cta-btn" href="{{ row.cta_url }}" rel="noopener">{{ row.cta_text }}</a>
       {% endif %}
     </section>

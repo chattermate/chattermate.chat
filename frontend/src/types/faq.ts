@@ -100,6 +100,7 @@ export interface HelpCenterSettings {
   header_links: HelpCenterHeaderLink[]
   cta_text: string | null
   cta_url: string | null
+  cta_enabled: boolean
   auto_generate: boolean
   agent_id: string | null
   ai_search_enabled: boolean
@@ -121,6 +122,7 @@ export type HelpCenterSettingsUpdate = Partial<
     | 'header_links'
     | 'cta_text'
     | 'cta_url'
+    | 'cta_enabled'
     | 'auto_generate'
     | 'agent_id'
     | 'ai_search_enabled'

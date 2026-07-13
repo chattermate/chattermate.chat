@@ -68,6 +68,8 @@ class HelpCenterSettings(Base):
     header_links = Column(JSON, nullable=False, default=lambda: [])
     cta_text = Column(String(40), nullable=True, default=DEFAULT_CTA_TEXT)
     cta_url = Column(String, nullable=True)
+    # Whether the primary button (CTA) is shown in the public header.
+    cta_enabled = Column(Boolean, nullable=False, default=True)
 
     # Draft FAQs are auto-generated when a new knowledge source finishes.
     auto_generate = Column(Boolean, nullable=False, default=True)

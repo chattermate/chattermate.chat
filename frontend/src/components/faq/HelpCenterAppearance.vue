@@ -119,12 +119,18 @@ function removeLink(index: number) {
 
           <div class="divider"></div>
 
-          <label class="mono-label">PRIMARY BUTTON</label>
-          <div class="link-row">
-            <input class="text-input text-input--label" type="text" placeholder="Label" :value="settings.cta_text || ''" @input="onText('cta_text', $event)" />
+          <div class="row-head">
+            <label class="mono-label mono-label--inline">PRIMARY BUTTON</label>
+            <label class="switch switch--sm">
+              <input type="checkbox" :checked="settings.cta_enabled" @change="$emit('save-now', { cta_enabled: ($event.target as HTMLInputElement).checked })" />
+              <span class="switch__track"><span class="switch__knob"></span></span>
+            </label>
+          </div>
+          <div class="link-row" :class="{ 'link-row--off': !settings.cta_enabled }">
+            <input class="text-input text-input--label" type="text" placeholder="Label" :disabled="!settings.cta_enabled" :value="settings.cta_text || ''" @input="onText('cta_text', $event)" />
             <div class="url-input">
               <span class="url-input__prefix">https://</span>
-              <input type="text" placeholder="app.yoursite.com" :value="settings.cta_url || ''" @input="onText('cta_url', $event)" />
+              <input type="text" placeholder="app.yoursite.com" :disabled="!settings.cta_enabled" :value="settings.cta_url || ''" @input="onText('cta_url', $event)" />
             </div>
           </div>
         </div>
@@ -345,6 +351,84 @@ function removeLink(index: number) {
   height: 1px;
   background: var(--o07);
   margin: 18px 0;
+}
+
+.row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.mono-label--inline {
+  margin-bottom: 0;
+}
+
+.link-row--off {
+  opacity: 0.5;
+}
+
+.link-row--off .text-input,
+.link-row--off .url-input {
+  cursor: not-allowed;
+}
+
+/* Toggle switch (scoped copy of the shared switch styling). */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch__track {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--o12);
+  transition: background 0.18s ease;
+}
+
+.switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.18s ease;
+}
+
+.switch input:checked + .switch__track {
+  background: var(--c-teal);
+}
+
+.switch input:checked + .switch__track .switch__knob {
+  transform: translateX(16px);
+}
+
+.switch--sm .switch__track {
+  width: 34px;
+  height: 20px;
+}
+
+.switch--sm .switch__knob {
+  width: 14px;
+  height: 14px;
+}
+
+.switch--sm input:checked + .switch__track .switch__knob {
+  transform: translateX(14px);
 }
 
 .preview-col {

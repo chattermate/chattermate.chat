@@ -54,7 +54,7 @@ const heroStyle = computed(() => ({
       </div>
       <div class="preview__nav">
         <span v-for="link in settings.header_links" :key="link.label" class="preview__nav-link">{{ link.label }}</span>
-        <span class="preview__cta">{{ settings.cta_text || 'Sign in' }}</span>
+        <span v-if="settings.cta_enabled && settings.cta_text" class="preview__cta">{{ settings.cta_text }}</span>
       </div>
     </div>
     <!-- hero -->
