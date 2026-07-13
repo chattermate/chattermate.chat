@@ -124,17 +124,29 @@ def _split_blocks(text: str) -> List[str]:
 
 
 async def _extract_and_insert(
-    db: Session, job: FAQGenerationJob, generator, text: str, source_label: str
+    db: Session, job: FAQGenerationJob, generator, text: str, source_label: str,
+    mode: str = "extract",
 ) -> int:
-    """Shared LLM tail for URL/PDF imports: batch → extract → dedup → insert."""
-    batches = pack_batches(_split_blocks(text), max_chars=generator.batch_chars, sep="\n\n")
+    """Shared LLM tail for URL/PDF imports: batch → extract → dedup → insert.
 
-    async def extract(batch: str, dedup: DedupState):
-        return await generator.extract_from_faq_page(batch, existing_questions=dedup.for_prompt)
+    mode="extract" migrates a page that already contains Q&A pairs (verbatim).
+    mode="generate" turns free-form documentation (a product guide, manual…)
+    into FAQs — an existing-FAQ extraction prompt would find almost nothing in
+    prose that isn't already a Q&A list."""
+    batches = pack_batches(_split_blocks(text), max_chars=generator.batch_chars, sep="\n\n")
+    categories = CategoryMerger(db, job.organization_id)
+
+    if mode == "generate":
+        async def extract(batch: str, dedup: DedupState):
+            return await generator.generate_from_text(
+                batch, existing_questions=dedup.for_prompt, existing_categories=categories.names
+            )
+    else:
+        async def extract(batch: str, dedup: DedupState):
+            return await generator.extract_from_faq_page(batch, existing_questions=dedup.for_prompt)
 
     accepted = await draft_batches(db, job, batches, extract, retries_per_batch=0)
 
-    categories = CategoryMerger(db, job.organization_id)
     rows = [
         FAQ(
             organization_id=job.organization_id,
@@ -215,6 +227,10 @@ async def run_pdf_import_job(db: Session, job: FAQGenerationJob) -> int:
             raise ValueError(
                 "Could not read any text from that PDF (it may be scanned images)."
             )
-        return await _extract_and_insert(db, job, generator, text, source_label=source_label)
+        # A PDF is usually documentation/marketing prose, not an existing Q&A
+        # list — generate FAQs from it rather than extracting verbatim pairs.
+        return await _extract_and_insert(
+            db, job, generator, text, source_label=source_label, mode="generate"
+        )
     finally:
         await delete_upload(stored)

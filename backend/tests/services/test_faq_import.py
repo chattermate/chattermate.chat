@@ -135,8 +135,9 @@ async def test_pdf_import_job_extracts_and_cleans_up(db, test_organization, test
     db.commit()
     db.refresh(job)
 
-    extracted = [GeneratedFAQ(question="Do you offer refunds?", answer="Within 14 days.", category="Billing")]
-    mock_generator = SimpleNamespace(extract_from_faq_page=AsyncMock(return_value=extracted), batch_chars=15000)
+    # PDF import GENERATES FAQs from the document (not verbatim extraction).
+    generated = [GeneratedFAQ(question="Do you offer refunds?", answer="Within 14 days.", category="Billing")]
+    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(return_value=generated), batch_chars=15000)
     deleted = []
 
     async def fake_load(stored):
