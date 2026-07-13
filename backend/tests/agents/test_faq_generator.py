@@ -203,6 +203,30 @@ async def test_plain_json_fallback_on_structured_output_failure():
 
 
 @pytest.mark.asyncio
+async def test_metering_hook_counts_fallback_call_too():
+    """on_llm_call fires once per ACTUAL provider call — the fallback's second
+    call must be billed, not hidden inside one 'attempt'."""
+    calls = []
+    fallback_response = MagicMock()
+    fallback_response.content = '{"faqs": []}'
+
+    def fake_agent(**kwargs):
+        agent = MagicMock()
+        if len(calls) == 0:
+            agent.arun = AsyncMock(side_effect=ValueError("no structured outputs"))
+        else:
+            agent.arun = AsyncMock(return_value=fallback_response)
+        return agent
+
+    with patch("app.agents.faq_generator.create_model", return_value=MagicMock()), \
+         patch("agno.agent.Agent", side_effect=fake_agent):
+        agent = _agent("OLLAMA")
+        agent.on_llm_call = lambda: calls.append(1)
+        await agent.generate_from_text("docs")
+    assert len(calls) == 2  # native attempt + plain-JSON fallback
+
+
+@pytest.mark.asyncio
 async def test_plain_json_fallback_on_unparseable_native_text():
     """Native call 'succeeds' but returns prose instead of the model — fall
     back rather than silently dropping the batch."""

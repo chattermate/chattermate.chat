@@ -115,6 +115,10 @@ def _validate_org_knowledge_ids(db: Session, organization_id, knowledge_ids) -> 
 
 @router.get("/generate/estimate", response_model=GenerationEstimateResponse)
 async def generation_estimate(
+    include_pages: bool = Query(
+        default=True,
+        description="False skips the per-source page scan — cheap counts for button labels",
+    ),
     current_user: User = Depends(require_permissions("manage_knowledge")),
     db: Session = Depends(get_db),
 ):
@@ -122,7 +126,7 @@ async def generation_estimate(
     sources, page count, estimated LLM calls and remaining credits."""
     org_id = current_user.organization_id
     check_help_center_access(db, org_id)
-    estimate = estimate_generation_calls(db, org_id)
+    estimate = estimate_generation_calls(db, org_id, count_pages=include_pages)
     metered = generation_is_metered(db, org_id)
     return GenerationEstimateResponse(
         total_sources=estimate.total_sources,

@@ -15,12 +15,13 @@ limitations under the License.
 """
 
 import json
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.structured_output import (
     build_groq_json_tool,
+    lenient_json_load,
     salvage_groq_json_error,
 )
 from app.core.config import settings
@@ -88,14 +89,17 @@ class _UnparseableOutput(Exception):
 
 
 def _first_json_object(text: str) -> dict:
-    """The first {...} object in a text blob (tolerates code fences and prose
-    around it). Raises ValueError when there's no parseable object — surfaces
-    as a batch failure upstream (retry/skip)."""
+    """The first {...} object in a text blob (tolerates code fences, prose and
+    truncation via the shared lenient parser — the providers that need this
+    fallback are exactly the ones likely to emit imperfect JSON). Raises
+    ValueError when nothing parseable exists — a batch failure upstream."""
     start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end <= start:
+    if start == -1:
         raise ValueError("no JSON object in model output")
-    return json.loads(text[start : end + 1])
+    data = lenient_json_load(text[start:])
+    if not isinstance(data, dict):
+        raise ValueError("no JSON object in model output")
+    return data
 
 _GENERATE_INSTRUCTIONS = """You turn product documentation into a public help-center FAQ.
 
@@ -136,6 +140,13 @@ class FAQGeneratorAgent:
         # window (fewer, larger LLM calls on big-context models).
         self.batch_chars, self.max_faqs = faq_batch_chars_for(model_type, model_name)
         self.max_tokens = max(FAQ_MAX_TOKENS, output_tokens_for(self.max_faqs))
+        # Metering hook, fired once per ACTUAL provider call (including the
+        # plain-JSON fallback's second call) — set by the job runner.
+        self.on_llm_call: Optional[Callable[[], None]] = None
+
+    def _count_call(self) -> None:
+        if self.on_llm_call:
+            self.on_llm_call()
 
     async def generate_from_text(
         self,
@@ -216,6 +227,7 @@ class FAQGeneratorAgent:
         agent = self._build_agent(instructions, tools, response_model, structured_outputs)
 
         try:
+            self._count_call()
             response = await agent.arun(message=message, stream=False)
         except Exception as arun_exc:
             if self._use_groq_json_tool:
@@ -250,6 +262,7 @@ class FAQGeneratorAgent:
             instructions + _JSON_ONLY_INSTRUCTION, tools=[],
             response_model=None, structured_outputs=False,
         )
+        self._count_call()
         response = await agent.arun(message=message, stream=False)
         content = getattr(response, "content", response)
         return self._validate(_first_json_object(content if isinstance(content, str) else str(content)))

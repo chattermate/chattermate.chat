@@ -98,9 +98,11 @@ export const faqService = {
     }
   },
 
-  async getGenerateEstimate(): Promise<GenerateEstimate> {
+  async getGenerateEstimate(includePages = true): Promise<GenerateEstimate> {
     try {
-      const response = await api.get('/help-center/generate/estimate')
+      const response = await api.get('/help-center/generate/estimate', {
+        params: { include_pages: includePages },
+      })
       return response.data
     } catch (error: any) {
       throw errorMessage(error, 'Failed to load generation estimate')
