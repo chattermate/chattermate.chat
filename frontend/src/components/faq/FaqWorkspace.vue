@@ -17,7 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import type { FaqImportMode, FaqItem } from '@/types/faq'
+import type { FaqImportMode, FaqItem, FaqStatus } from '@/types/faq'
 import { useFaqWorkspace } from '@/composables/useFaqWorkspace'
 import { useHelpCenterSettings } from '@/composables/useHelpCenterSettings'
 import FaqGenerateBar from './FaqGenerateBar.vue'
@@ -47,6 +47,15 @@ const {
   barPhase,
   publishedCount,
   groupedFaqs,
+  searchQuery,
+  categoryFilter,
+  statusFilter,
+  categories,
+  hasActiveFilters,
+  filteredCount,
+  resetFilters,
+  toggleCategory,
+  isCategoryOpen,
   editingId,
   isNewFaq,
   draftQuestion,
@@ -206,6 +215,16 @@ function selectedInCategory(items: FaqItem[]): number {
   return items.reduce((n, item) => n + (selectedIds.value.has(item.id) ? 1 : 0), 0)
 }
 
+function publishedInCategory(items: FaqItem[]): number {
+  return items.reduce((n, item) => n + (item.status === 'published' ? 1 : 0), 0)
+}
+
+const STATUS_FILTERS: { v: 'all' | FaqStatus; l: string }[] = [
+  { v: 'all', l: 'All' },
+  { v: 'published', l: 'Published' },
+  { v: 'draft', l: 'Draft' },
+]
+
 async function runConfirm() {
   const state = confirmState.value
   if (!state) return
@@ -277,47 +296,85 @@ onUnmounted(stopPolling)
 
         <FaqGenerationProgress v-else-if="phase === 'generating' && job" :job="job" />
 
-        <div v-else class="faq-list">
-          <FaqCard
-            v-if="isNewFaq"
-            :faq="newFaqStub"
-            :editing="true"
-            :is-new="true"
-            :saving="isSaving"
-            v-model:draft-question="draftQuestion"
-            v-model:draft-answer="draftAnswer"
-            @save="saveEdit"
-            @cancel="cancelEdit"
-          />
-          <FaqCategoryGroup
-            v-for="[category, items] in groupedFaqs"
-            :key="category"
-            :category="category"
-            :count="items.length"
-            :selected-count="selectedInCategory(items)"
-            @toggle-all="setSelected(items, $event)"
-          >
+        <template v-else>
+          <div v-if="isNewFaq" class="faq-list faq-list--new">
             <FaqCard
-              v-for="faq in items"
-              :key="faq.id"
-              :faq="faq"
-              :editing="editingId === faq.id"
+              :faq="newFaqStub"
+              :editing="true"
+              :is-new="true"
               :saving="isSaving"
-              :selectable="selectionActive"
-              :selected="selectedIds.has(faq.id)"
-              :draft-question="draftQuestion"
-              :draft-answer="draftAnswer"
-              @update:draft-question="draftQuestion = $event"
-              @update:draft-answer="draftAnswer = $event"
-              @toggle-select="toggleSelect(faq.id)"
-              @toggle-status="togglePublish(faq)"
-              @edit="startEdit(faq)"
-              @delete="askDelete(faq)"
+              v-model:draft-question="draftQuestion"
+              v-model:draft-answer="draftAnswer"
               @save="saveEdit"
               @cancel="cancelEdit"
             />
-          </FaqCategoryGroup>
-        </div>
+          </div>
+
+          <!-- Search + filter toolbar (only once there are FAQs to filter) -->
+          <template v-if="faqs.length">
+            <div class="faq-toolbar">
+              <div class="faq-search">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+                <input v-model="searchQuery" type="search" placeholder="Search questions & answers…" aria-label="Search FAQs" />
+              </div>
+              <select v-model="categoryFilter" class="faq-select" aria-label="Filter by category">
+                <option :value="null">All topics</option>
+                <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+              </select>
+              <div class="faq-status-filter" role="group" aria-label="Filter by status">
+                <button
+                  v-for="opt in STATUS_FILTERS"
+                  :key="opt.v"
+                  class="faq-status-filter__btn"
+                  :class="{ 'faq-status-filter__btn--active': statusFilter === opt.v }"
+                  type="button"
+                  @click="statusFilter = opt.v"
+                >{{ opt.l }}</button>
+              </div>
+            </div>
+
+            <div v-if="hasActiveFilters" class="faq-resultcount">{{ filteredCount }} of {{ faqs.length }} shown</div>
+          </template>
+
+          <div v-if="faqs.length && groupedFaqs.size === 0" class="faq-noresults">
+            <p>No FAQs match your filters.</p>
+            <button v-if="hasActiveFilters" class="faq-noresults__clear" type="button" @click="resetFilters">Clear filters</button>
+          </div>
+
+          <div v-else-if="groupedFaqs.size" class="faq-list">
+            <FaqCategoryGroup
+              v-for="[category, items] in groupedFaqs"
+              :key="category"
+              :category="category"
+              :count="items.length"
+              :published-count="publishedInCategory(items)"
+              :selected-count="selectedInCategory(items)"
+              :open="isCategoryOpen(category)"
+              @toggle="toggleCategory(category)"
+              @toggle-all="setSelected(items, $event)"
+            >
+              <FaqCard
+                v-for="faq in items"
+                :key="faq.id"
+                :faq="faq"
+                :editing="editingId === faq.id"
+                :saving="isSaving"
+                :selectable="selectionActive"
+                :selected="selectedIds.has(faq.id)"
+                :draft-question="draftQuestion"
+                :draft-answer="draftAnswer"
+                @update:draft-question="draftQuestion = $event"
+                @update:draft-answer="draftAnswer = $event"
+                @toggle-select="toggleSelect(faq.id)"
+                @toggle-status="togglePublish(faq)"
+                @edit="startEdit(faq)"
+                @delete="askDelete(faq)"
+                @save="saveEdit"
+                @cancel="cancelEdit"
+              />
+            </FaqCategoryGroup>
+          </div>
+        </template>
       </div>
 
       <div v-show="tab === 'settings'" class="tab-panel">
@@ -447,6 +504,107 @@ onUnmounted(stopPolling)
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.faq-list--new {
+  margin-bottom: 16px;
+}
+
+.faq-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.faq-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 200px;
+  padding: 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--o12);
+  border-radius: 11px;
+  color: var(--muted);
+}
+
+.faq-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  padding: 10px 0;
+}
+
+.faq-select {
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--o12);
+  border-radius: 11px;
+  color: var(--text2);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.faq-status-filter {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  border-radius: 11px;
+}
+
+.faq-status-filter__btn {
+  padding: 7px 13px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.faq-status-filter__btn--active {
+  background: var(--surface);
+  color: var(--text2);
+  box-shadow: 0 1px 3px var(--scrim);
+}
+
+.faq-resultcount {
+  margin: -8px 0 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.faq-noresults {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.faq-noresults__clear {
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: var(--o05);
+  border: 1px solid var(--o12);
+  border-radius: 10px;
+  color: var(--text2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .settings-section:not(:first-child) {
