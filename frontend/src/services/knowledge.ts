@@ -165,12 +165,20 @@ export const knowledgeService = {
   },
 
   async addSubpage(knowledgeId: number, subpageName: string, content: string, url?: string) {
-    const response = await api.post(`/knowledge/${knowledgeId}/subpage`, {
-      subpage_name: subpageName,
-      content,
-      ...(url ? { url } : {}),
-    })
-    return response.data
+    try {
+      const response = await api.post(`/knowledge/${knowledgeId}/subpage`, {
+        subpage_name: subpageName,
+        content,
+        ...(url ? { url } : {}),
+      })
+      return response.data
+    } catch (error: any) {
+      // Surface the backend's specific reason (wrong domain, subpage limit
+      // reached, duplicate name…) instead of a generic axios message.
+      throw new Error(
+        error.response?.data?.detail || error.response?.data?.message || 'Failed to add sub-page',
+      )
+    }
   },
 
   // Replace a whole sub-page's content and re-embed it. `pageId` is the page's
