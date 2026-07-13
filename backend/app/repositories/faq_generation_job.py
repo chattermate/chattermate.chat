@@ -14,9 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
@@ -87,6 +89,44 @@ class FAQGenerationJobRepository:
             .order_by(FAQGenerationJob.created_at.desc())
             .first()
         )
+
+    def increment_llm_calls(self, job_id: int, n: int = 1) -> None:
+        """Atomic counter bump — one per attempted LLM call (retries cost too)."""
+        self.db.query(FAQGenerationJob).filter(FAQGenerationJob.id == job_id).update(
+            {FAQGenerationJob.llm_calls: FAQGenerationJob.llm_calls + n},
+            synchronize_session=False,
+        )
+        self.db.commit()
+
+    def count_llm_calls_for_period(
+        self, organization_id: UUID, start_date: datetime, end_date: datetime
+    ) -> int:
+        """Metered LLM calls in a billing period — the hosted-model usage that
+        the enterprise message-limit check adds to the bot-message count."""
+        total = (
+            self.db.query(func.coalesce(func.sum(FAQGenerationJob.llm_calls), 0))
+            .filter(
+                FAQGenerationJob.organization_id == organization_id,
+                FAQGenerationJob.metered.is_(True),
+                FAQGenerationJob.created_at >= start_date,
+                FAQGenerationJob.created_at <= end_date,
+            )
+            .scalar()
+        )
+        return int(total or 0)
+
+    def has_user_initiated_job(self, organization_id: UUID) -> bool:
+        """Whether the org ever explicitly ran generate/import (any status —
+        the attempt is the feature opt-in). GENERATE_SOURCE jobs don't count:
+        only the auto-hook creates those."""
+        return self.db.query(
+            self.db.query(FAQGenerationJob)
+            .filter(
+                FAQGenerationJob.organization_id == organization_id,
+                FAQGenerationJob.job_type != FAQJobType.GENERATE_SOURCE.value,
+            )
+            .exists()
+        ).scalar()
 
     def update_progress(
         self,

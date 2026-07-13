@@ -25,6 +25,7 @@ from collections import deque
 from difflib import SequenceMatcher
 from typing import Awaitable, Callable, List, Optional, Tuple, TypeVar
 
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -238,6 +239,9 @@ async def draft_batches(
     for index, batch in enumerate(batches):
         faqs = None
         for attempt in range(1 + retries_per_batch):
+            # Counted per attempt (retries cost provider tokens too) — this is
+            # the single metering choke point for generation and LLM imports.
+            job_repo.increment_llm_calls(job.id)
             try:
                 faqs = await extract(batch, dedup)
                 break
@@ -362,12 +366,27 @@ def maybe_enqueue_auto_faq_job(db: Session, queue_item) -> Optional[FAQGeneratio
         job_repo = FAQGenerationJobRepository(db)
         if job_repo.get_active_for_org(org_id, FAQJobType.GENERATE_SOURCE, knowledge_id=knowledge.id):
             return None
+        from app.services.faq_usage import (
+            count_source_pages,
+            ensure_generation_budget,
+            generation_is_metered,
+            PAGES_PER_CALL,
+        )
+        from math import ceil
+
+        try:
+            pages = count_source_pages(db, knowledge)
+            ensure_generation_budget(db, org_id, max(1, ceil((pages or 1) / PAGES_PER_CALL)))
+        except HTTPException:
+            logger.info(f"Auto FAQ generation skipped for org {org_id}: message budget exhausted")
+            return None
         job = job_repo.create(
             FAQGenerationJob(
                 organization_id=org_id,
                 user_id=queue_item.user_id,
                 job_type=FAQJobType.GENERATE_SOURCE.value,
                 knowledge_id=knowledge.id,
+                metered=generation_is_metered(db, org_id),
             )
         )
         logger.info(f"Auto-enqueued FAQ generation job {job.id} for knowledge {knowledge.id}")

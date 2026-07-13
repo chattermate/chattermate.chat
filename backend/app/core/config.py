@@ -139,6 +139,9 @@ class Settings(BaseSettings):
     FAQ_MAX_BATCH_CHARS_CEILING: int = int(os.getenv("FAQ_MAX_BATCH_CHARS_CEILING", "60000"))
     # Force a context-window size (tokens) for exotic/self-hosted models; 0 = auto.
     FAQ_CONTEXT_TOKENS_OVERRIDE: int = int(os.getenv("FAQ_CONTEXT_TOKENS_OVERRIDE", "0"))
+    # Meter FAQ generation credits even for orgs on their own API key
+    # (default: hosted CHATTERMATE model only).
+    FAQ_METER_OWN_KEY: bool = os.getenv("FAQ_METER_OWN_KEY", "false").lower() == "true"
     FAQ_IMPORT_MAX_PAGE_CHARS: int = int(os.getenv("FAQ_IMPORT_MAX_PAGE_CHARS", "100000"))
     FAQ_IMPORT_FETCH_TIMEOUT: int = int(os.getenv("FAQ_IMPORT_FETCH_TIMEOUT", "30"))
     # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx

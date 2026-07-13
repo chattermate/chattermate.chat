@@ -28,9 +28,14 @@ from app.models.schemas.faq import GenerationJobResponse, ImportRequest
 from app.models.user import User
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.faq_generation_job import FAQGenerationJobRepository
+from app.services.faq_usage import ensure_generation_budget, generation_is_metered
 from app.services.help_center_access import check_help_center_access
 
 router = APIRouter()
+
+# Budget floor for imports whose call count isn't known up front — blocks only
+# a fully exhausted plan; the per-call metering happens in the worker.
+MIN_IMPORT_CALL_ESTIMATE = 1
 
 
 def _require_ai_config(db: Session, organization_id) -> None:
@@ -41,20 +46,31 @@ def _require_ai_config(db: Session, organization_id) -> None:
         )
 
 
-def _enqueue(db: Session, current_user: User, job_type: FAQJobType, **fields) -> FAQGenerationJob:
+def _enqueue(
+    db: Session,
+    current_user: User,
+    job_type: FAQJobType,
+    estimated_calls: int = MIN_IMPORT_CALL_ESTIMATE,
+    **fields,
+) -> FAQGenerationJob:
     """Shared enqueue guard: one active job per type per org (409 on dupes),
-    fail fast when no AI model is configured."""
-    check_help_center_access(db, current_user.organization_id)
-    _require_ai_config(db, current_user.organization_id)
+    fail fast when no AI model is configured, 402 when a metered run exceeds
+    the remaining message credits. Stamps the job's `metered` flag from the
+    org's current AI config."""
+    org_id = current_user.organization_id
+    check_help_center_access(db, org_id)
+    _require_ai_config(db, org_id)
+    ensure_generation_budget(db, org_id, estimated_calls)
     job_repo = FAQGenerationJobRepository(db)
-    if job_repo.get_active_for_org(current_user.organization_id, job_type):
+    if job_repo.get_active_for_org(org_id, job_type):
         raise HTTPException(status_code=409, detail="A job of this type is already running.")
     try:
         return job_repo.create(
             FAQGenerationJob(
-                organization_id=current_user.organization_id,
+                organization_id=org_id,
                 user_id=current_user.id,
                 job_type=job_type.value,
+                metered=generation_is_metered(db, org_id),
                 **fields,
             )
         )
