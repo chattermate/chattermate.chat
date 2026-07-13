@@ -281,9 +281,23 @@ async def run_generation_job(db: Session, job: FAQGenerationJob) -> int:
     knowledge_query = db.query(Knowledge).filter(Knowledge.organization_id == job.organization_id)
     if job.job_type == FAQJobType.GENERATE_SOURCE.value:
         knowledge_query = knowledge_query.filter(Knowledge.id == job.knowledge_id)
+    elif job.knowledge_ids:
+        # Explicit selection overrides the skip-already-generated default.
+        knowledge_query = knowledge_query.filter(Knowledge.id.in_(job.knowledge_ids))
     sources = knowledge_query.all()
     if not sources:
         raise ValueError("No knowledge sources to generate from. Add knowledge first.")
+
+    if job.job_type == FAQJobType.GENERATE_ALL.value and not job.knowledge_ids:
+        # Regenerate touches only sources that haven't produced FAQs yet —
+        # deleting a source's FAQs makes it eligible again.
+        generated = FAQRepository(db).knowledge_ids_with_faqs(job.organization_id)
+        sources = [s for s in sources if s.id not in generated]
+        if not sources:
+            raise ValueError(
+                "All knowledge sources already have FAQs. "
+                "Delete a source's FAQs to regenerate it."
+            )
 
     # Stage 2: read stored page text per source. A broken source (missing
     # vector table etc.) is skipped, not fatal — unless nothing is readable.

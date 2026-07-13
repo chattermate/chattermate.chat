@@ -94,8 +94,20 @@ class FAQBulkStatusRequest(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    """Optional narrowing to specific knowledge sources; empty = all."""
-    knowledge_ids: Optional[List[int]] = None
+    """Optional narrowing to specific knowledge sources; empty = new sources
+    only (those without FAQs yet)."""
+    knowledge_ids: Optional[List[int]] = Field(default=None, max_length=MAX_BULK_IDS)
+
+
+class GenerationEstimateResponse(BaseModel):
+    """Confirm-dialog numbers for a generation run. remaining_credits is None
+    when unlimited (OSS, no cap, or org on its own model key)."""
+    total_sources: int
+    new_sources: int
+    pages: int
+    estimated_calls: int
+    metered: bool
+    remaining_credits: Optional[int] = None
 
 
 class ImportRequest(BaseModel):
