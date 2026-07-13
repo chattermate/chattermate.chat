@@ -134,11 +134,16 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
   )
 
   const filteredFaqs = computed(() => {
-    const q = searchQuery.value.trim().toLowerCase()
+    // Tokenized: every term must appear somewhere (question/answer/category),
+    // so "close my" matches "How to close my account".
+    const terms = searchQuery.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
     return faqs.value.filter((f) => {
       if (categoryFilter.value && f.category !== categoryFilter.value) return false
       if (statusFilter.value !== 'all' && f.status !== statusFilter.value) return false
-      if (q && !`${f.question} ${f.answer}`.toLowerCase().includes(q)) return false
+      if (terms.length) {
+        const haystack = `${f.question} ${f.answer} ${f.category}`.toLowerCase()
+        if (!terms.every((t) => haystack.includes(t))) return false
+      }
       return true
     })
   })

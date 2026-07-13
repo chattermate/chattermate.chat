@@ -119,13 +119,16 @@ def _faq_json_ld(groups) -> dict:
 
 def _card_view(faq: FAQ) -> dict:
     """List-card view model: question links to the article, with a plain-text
-    preview and read time computed from the Markdown answer."""
+    preview and read time computed from the Markdown answer. Search fields are
+    split so the client can rank title hits above body hits, and the body is
+    plain text (raw Markdown would make URLs/syntax searchable noise)."""
     return {
         "question": faq.question,
         "slug": faq.slug,
         "preview": excerpt(faq.answer),
         "read_time": read_time_label(faq.answer),
-        "search_text": f"{faq.question} {faq.answer} {faq.category}".lower(),
+        "search_title": faq.question.lower(),
+        "search_text": f"{to_plain_text(faq.answer)} {faq.category}".lower(),
     }
 
 

@@ -30,6 +30,22 @@ class FAQRepository:
     def _org_query(self, organization_id: UUID):
         return self.db.query(FAQ).filter(FAQ.organization_id == organization_id)
 
+    @staticmethod
+    def _apply_search(query, search: str):
+        """Tokenized search: every whitespace-separated term must appear in the
+        question, answer or category (any of them). Matching the whole query as
+        one substring made 'close my' miss 'How to close my account'."""
+        for term in search.split():
+            pattern = f"%{term}%"
+            query = query.filter(
+                or_(
+                    FAQ.question.ilike(pattern),
+                    FAQ.answer.ilike(pattern),
+                    FAQ.category.ilike(pattern),
+                )
+            )
+        return query
+
     def get_by_id(self, faq_id: UUID, organization_id: UUID) -> Optional[FAQ]:
         """Org-scoped fetch: cross-org ids resolve to None (callers 404)."""
         return self._org_query(organization_id).filter(FAQ.id == faq_id).first()
@@ -52,8 +68,7 @@ class FAQRepository:
             # (organization_id, category) index only serves equality.
             query = query.filter(FAQ.category == category)
         if search:
-            pattern = f"%{search}%"
-            query = query.filter(or_(FAQ.question.ilike(pattern), FAQ.answer.ilike(pattern)))
+            query = self._apply_search(query, search)
         total = query.count()
         items = (
             query.order_by(FAQ.category.asc(), FAQ.sort_order.asc(), FAQ.created_at.asc())
@@ -67,8 +82,7 @@ class FAQRepository:
         """Published FAQs for the public help center, in display order."""
         query = self._org_query(organization_id).filter(FAQ.status == FAQStatus.PUBLISHED)
         if search:
-            pattern = f"%{search}%"
-            query = query.filter(or_(FAQ.question.ilike(pattern), FAQ.answer.ilike(pattern)))
+            query = self._apply_search(query, search)
         return query.order_by(FAQ.category.asc(), FAQ.sort_order.asc(), FAQ.created_at.asc()).all()
 
     def slug_exists(self, organization_id: UUID, slug: str) -> bool:
