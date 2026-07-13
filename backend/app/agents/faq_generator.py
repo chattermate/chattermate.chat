@@ -57,7 +57,7 @@ _FAQ_JSON_TOOL_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "question": {"type": "string", "description": "The question, as a customer would ask it."},
-                    "answer": {"type": "string", "description": "A clear, self-contained answer (1-4 sentences)."},
+                    "answer": {"type": "string", "description": "A clear, self-contained answer. Simple Markdown allowed (numbered steps, bullet lists, **bold**, links from the content); no headings or images."},
                     "category": {"type": "string", "description": "Short topic grouping, e.g. 'Getting started', 'Billing'."},
                 },
                 "required": ["question", "answer", "category"],
@@ -81,7 +81,8 @@ Read the CONTENT below and draft frequently-asked questions a customer would rea
 
 Rules:
 - Ground every answer strictly in the CONTENT. Never invent facts, prices, limits or URLs that are not present.
-- Write questions the way a customer would phrase them, and answers in second person ("you"), 1-4 sentences, plain language, no markdown headings.
+- Write questions the way a customer would phrase them, and answers in second person ("you"), plain language.
+- Answers may use simple Markdown when it helps: numbered steps, bullet lists, **bold**, and links that appear in the CONTENT. No headings, no images, no invented URLs. Keep short answers to 1-4 sentences.
 - Extract between 1 and {max_faqs} FAQs; prefer the most useful ones. If the content contains nothing FAQ-worthy, return an empty list.
 - Assign each FAQ a short category. {category_rule}
 - Do NOT produce any question that duplicates or trivially rephrases one of the EXISTING QUESTIONS listed below."""
@@ -92,6 +93,7 @@ Read the PAGE TEXT below and extract every question-and-answer pair that is actu
 
 Rules:
 - Preserve the original wording as closely as possible; only trim navigation debris, repeated headings and boilerplate.
+- Preserve the page's list/step structure in answers as Markdown (numbered steps, bullet lists, **bold**, links present in the PAGE TEXT).
 - Only extract real Q&A pairs — skip marketing copy, navigation links and unrelated text.
 - Use the page's own section headings as categories where they exist; otherwise use "General".
 - Extract at most {max_faqs} pairs per call.
