@@ -78,6 +78,13 @@ const hint = computed(() => {
   return 'ChatterMate crawls the page, extracts each question and answer, and adds them here as drafts for you to review before publishing.'
 })
 
+const fileSize = computed(() => {
+  const bytes = pdfFile.value?.size ?? 0
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+})
+
 function onPdfChange(event: Event) {
   pdfFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
 }
@@ -127,9 +134,22 @@ function submit() {
       </template>
       <template v-else>
         <label class="import-label" for="faq-import-pdf">PDF FILE (MAX 25MB)</label>
-        <div class="import-input import-input--file">
-          <input id="faq-import-pdf" type="file" accept="application/pdf" @change="onPdfChange" />
-        </div>
+        <label class="pdf-drop" :class="{ 'pdf-drop--filled': pdfFile }">
+          <input id="faq-import-pdf" class="pdf-drop__input" type="file" accept="application/pdf" @change="onPdfChange" />
+          <span class="pdf-drop__icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /><path d="M9 13h6M9 17h4" /></svg>
+          </span>
+          <span class="pdf-drop__text">
+            <template v-if="pdfFile">
+              <span class="pdf-drop__name">{{ pdfFile.name }}</span>
+              <span class="pdf-drop__meta">{{ fileSize }} · Choose a different file</span>
+            </template>
+            <template v-else>
+              <span class="pdf-drop__name">Choose a PDF or drop it here</span>
+              <span class="pdf-drop__meta">PDF only, up to 25 MB</span>
+            </template>
+          </span>
+        </label>
       </template>
       <div class="import-hint">
         <FaqOrb :size="34" />
@@ -243,9 +263,74 @@ function submit() {
   font-family: var(--font-mono);
 }
 
-.import-input--file input {
-  font-family: var(--font-sans);
+.pdf-drop {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--bg);
+  border: 1.5px dashed var(--o14);
+  border-radius: 12px;
   cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.pdf-drop:hover {
+  border-color: var(--c-purple);
+  background: var(--purple-bg);
+}
+
+.pdf-drop--filled {
+  border-style: solid;
+  border-color: var(--purple-border);
+  background: var(--purple-bg);
+}
+
+.pdf-drop__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pdf-drop__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--o05);
+  color: var(--muted);
+}
+
+.pdf-drop--filled .pdf-drop__icon {
+  background: var(--surface);
+  color: var(--c-purple);
+}
+
+.pdf-drop__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pdf-drop__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-drop__meta {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .import-hint {
