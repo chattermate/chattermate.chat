@@ -15,12 +15,14 @@ limitations under the License.
 """
 
 from typing import Optional
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_permissions
+from app.core.file_validation import PDF_MAGIC, read_validated, safe_filename
 from app.database import get_db
 from app.knowledge.url_safety import resolves_to_blocked_host
 from app.models.faq_generation_job import FAQGenerationJob, FAQJobType
@@ -47,6 +49,10 @@ router = APIRouter()
 # Budget floor for imports whose call count isn't known up front — blocks only
 # a fully exhausted plan; the per-call metering happens in the worker.
 MIN_IMPORT_CALL_ESTIMATE = 1
+
+MAX_IMPORT_PDF_BYTES = 25 * 1024 * 1024
+# Stored under its own folder so import buffers never mix with article images.
+_PDF_IMPORT_FOLDER = "help_center_imports"
 
 
 def _require_ai_config(db: Session, organization_id) -> None:
@@ -183,6 +189,45 @@ async def start_import(
         )
     else:
         job = _enqueue(db, current_user, FAQJobType.IMPORT_URL, source_url=payload.url)
+    return GenerationJobResponse.model_validate(job)
+
+
+@router.post("/import/pdf", response_model=GenerationJobResponse, status_code=202)
+async def start_pdf_import(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_permissions("manage_knowledge")),
+    db: Session = Depends(get_db),
+):
+    """Extract Q&A pairs from an uploaded PDF with the org's model. The file
+    is persisted via shared storage (the worker runs in another container)
+    and deleted after processing."""
+    from app.services.file_storage import store_upload
+
+    content = await read_validated(
+        file,
+        max_size=MAX_IMPORT_PDF_BYTES,
+        allowed_content_types=("application/pdf",),
+        magic_prefix=PDF_MAGIC,
+        label="PDF",
+    )
+    stored = await store_upload(
+        content=content,
+        folder=_PDF_IMPORT_FOLDER,
+        file_name=f"{uuid4().hex}.pdf",
+        content_type="application/pdf",
+    )
+    # safe_filename strips traversal; keep only the readable tail for the label.
+    original = safe_filename(file.filename or "document.pdf").split("_", 1)[-1][:255]
+    try:
+        job = _enqueue(
+            db, current_user, FAQJobType.IMPORT_PDF,
+            source_url=stored, source_file_name=original,
+        )
+    except HTTPException:
+        # Enqueue refused (plan/config/duplicate/budget) — don't leak the buffer.
+        from app.services.file_storage import delete_upload
+        await delete_upload(stored)
+        raise
     return GenerationJobResponse.model_validate(job)
 
 

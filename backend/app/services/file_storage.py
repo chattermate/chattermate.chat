@@ -39,6 +39,34 @@ async def store_upload(content: bytes, folder: str, file_name: str, content_type
     return f"{settings.API_V1_STR}/uploads/{folder}/{file_name}"
 
 
+async def load_upload(stored: str) -> bytes:
+    """Read back a previously stored upload by the URL/path store_upload
+    returned. Used by workers running in a different container than the API
+    (shared local uploads mount or S3)."""
+    if stored.startswith("http"):
+        from app.core.s3 import download_file_from_s3
+        return await download_file_from_s3(stored)
+    # `{API_V1_STR}/uploads/...` → local `uploads/...`
+    marker = f"{settings.API_V1_STR}/uploads/"
+    relative = stored.split(marker, 1)[1] if marker in stored else stored.lstrip("/")
+    async with aiofiles.open(os.path.join("uploads", relative), "rb") as f:
+        return await f.read()
+
+
+async def delete_upload(stored: str) -> None:
+    """Best-effort removal of a stored upload (temp import files)."""
+    try:
+        if stored.startswith("http"):
+            from app.core.s3 import delete_file_from_s3
+            await delete_file_from_s3(stored)
+            return
+        marker = f"{settings.API_V1_STR}/uploads/"
+        relative = stored.split(marker, 1)[1] if marker in stored else stored.lstrip("/")
+        os.remove(os.path.join("uploads", relative))
+    except Exception:
+        pass
+
+
 async def resolve_public_url(stored_url: str) -> str:
     """Client-facing URL for a stored upload: signed for private S3 objects,
     verbatim otherwise."""

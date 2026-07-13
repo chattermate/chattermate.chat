@@ -33,6 +33,16 @@ from app.services import domain_verification as dv
 BASE = "/api/v1/help-center"
 
 
+@pytest.fixture(autouse=True)
+def _open_plan_gate():
+    """Env-independent plan gating: local dev has the enterprise module (test
+    org has no subscription → 403s), CI/OSS doesn't. These tests target the
+    domain endpoints, not the gate."""
+    with patch("app.services.help_center_access.feature_allowed", return_value=True), \
+         patch("app.services.help_center_access.check_feature_access", return_value=None):
+        yield
+
+
 @pytest.fixture
 def row(db, test_organization):
     settings_row = HelpCenterSettings(organization_id=test_organization.id, slug="test-org")

@@ -128,6 +128,19 @@ export const faqService = {
     }
   },
 
+  async importPdf(file: File): Promise<FaqGenerationJob> {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await api.post('/help-center/import/pdf', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return response.data
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to start PDF import')
+    }
+  },
+
   async getJob(active = true): Promise<FaqGenerationJob | null> {
     try {
       const response = await api.get('/help-center/jobs', { params: { active } })

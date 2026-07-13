@@ -28,10 +28,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   submit: [url: string, mode: FaqImportMode]
+  'submit-pdf': [file: File]
 }>()
 
 const url = ref('')
 const mode = ref<FaqImportMode>('qa')
+const pdfFile = ref<File | null>(null)
 
 const MODES: { value: FaqImportMode; title: string; description: string }[] = [
   {
@@ -44,6 +46,11 @@ const MODES: { value: FaqImportMode; title: string; description: string }[] = [
     title: 'Article pages',
     description: 'Imports every article linked from the page as-is — text, images and links. No AI.',
   },
+  {
+    value: 'pdf',
+    title: 'PDF document',
+    description: 'AI extracts questions & answers from an uploaded PDF. Uses AI credits.',
+  },
 ]
 
 watch(
@@ -52,20 +59,35 @@ watch(
     if (!open) {
       url.value = ''
       mode.value = 'qa'
+      pdfFile.value = null
     }
   },
 )
 
-const canSubmit = computed(() => url.value.trim().length > 0 && !props.submitting)
+const canSubmit = computed(() => {
+  if (props.submitting) return false
+  if (mode.value === 'pdf') return pdfFile.value !== null
+  return url.value.trim().length > 0
+})
 
-const hint = computed(() =>
-  mode.value === 'articles'
-    ? 'ChatterMate follows the article links on that page and imports each article verbatim as a draft — formatting and images included.'
-    : 'ChatterMate crawls the page, extracts each question and answer, and adds them here as drafts for you to review before publishing.',
-)
+const hint = computed(() => {
+  if (mode.value === 'articles')
+    return 'ChatterMate follows the article links on that page and imports each article verbatim as a draft — formatting and images included.'
+  if (mode.value === 'pdf')
+    return 'ChatterMate reads the PDF, extracts each question and answer, and adds them here as drafts for you to review before publishing.'
+  return 'ChatterMate crawls the page, extracts each question and answer, and adds them here as drafts for you to review before publishing.'
+})
+
+function onPdfChange(event: Event) {
+  pdfFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+}
 
 function submit() {
   if (!canSubmit.value) return
+  if (mode.value === 'pdf') {
+    if (pdfFile.value) emit('submit-pdf', pdfFile.value)
+    return
+  }
   const cleaned = url.value.trim().replace(/^https?:\/\//i, '')
   emit('submit', `https://${cleaned}`, mode.value)
 }
@@ -90,17 +112,25 @@ function submit() {
         </label>
       </div>
 
-      <label class="import-label" for="faq-import-url">{{ mode === 'articles' ? 'HELP CENTER INDEX URL' : 'FAQ PAGE URL' }}</label>
-      <div class="import-input">
-        <span class="import-input__prefix">https://</span>
-        <input
-          id="faq-import-url"
-          v-model="url"
-          type="text"
-          placeholder="support.yourcompany.com/faq"
-          @keydown.enter="submit"
-        />
-      </div>
+      <template v-if="mode !== 'pdf'">
+        <label class="import-label" for="faq-import-url">{{ mode === 'articles' ? 'HELP CENTER INDEX URL' : 'FAQ PAGE URL' }}</label>
+        <div class="import-input">
+          <span class="import-input__prefix">https://</span>
+          <input
+            id="faq-import-url"
+            v-model="url"
+            type="text"
+            placeholder="support.yourcompany.com/faq"
+            @keydown.enter="submit"
+          />
+        </div>
+      </template>
+      <template v-else>
+        <label class="import-label" for="faq-import-pdf">PDF FILE (MAX 25MB)</label>
+        <div class="import-input import-input--file">
+          <input id="faq-import-pdf" type="file" accept="application/pdf" @change="onPdfChange" />
+        </div>
+      </template>
       <div class="import-hint">
         <FaqOrb :size="34" />
         <div>{{ hint }}</div>
@@ -109,7 +139,7 @@ function submit() {
         <button class="btn-cancel" type="button" @click="$emit('close')">Cancel</button>
         <button class="btn-import" type="button" :disabled="!canSubmit" @click="submit">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12" /><path d="M8 11l4 4 4-4" /><path d="M5 21h14" /></svg>
-          {{ submitting ? 'Importing…' : mode === 'articles' ? 'Import articles' : 'Import FAQs' }}
+          {{ submitting ? 'Importing…' : mode === 'articles' ? 'Import articles' : mode === 'pdf' ? 'Import PDF' : 'Import FAQs' }}
         </button>
       </div>
     </template>
@@ -126,9 +156,15 @@ function submit() {
 
 .mode-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   margin-bottom: 18px;
+}
+
+@media (max-width: 560px) {
+  .mode-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mode-card {
@@ -205,6 +241,11 @@ function submit() {
   font-size: 13.5px;
   padding: 13px 4px;
   font-family: var(--font-mono);
+}
+
+.import-input--file input {
+  font-family: var(--font-sans);
+  cursor: pointer;
 }
 
 .import-hint {

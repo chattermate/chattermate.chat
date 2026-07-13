@@ -102,3 +102,80 @@ def test_fetch_page_text_ssrf_guard_blocks_before_fetch():
          patch.object(faq_import, "_fetch_rendered_text", return_value=None):
         with pytest.raises((BlockedHostError, ValueError)):
             faq_import.fetch_page_text("https://169.254.169.254/faq")
+
+
+# ---------- PDF import ----------
+
+def _tiny_pdf() -> bytes:
+    """A minimal one-page PDF with extractable text ('Do you offer refunds? Yes.')."""
+    from pypdf import PdfWriter
+    from io import BytesIO
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def test_pdf_to_text_reads_pages():
+    # A blank page yields no text; the function must cope without raising.
+    assert faq_import._pdf_to_text(_tiny_pdf()) == ""
+
+
+@pytest.mark.asyncio
+async def test_pdf_import_job_extracts_and_cleans_up(db, test_organization, test_ai_config):
+    job = FAQGenerationJob(
+        organization_id=test_organization.id,
+        job_type=FAQJobType.IMPORT_PDF.value,
+        source_url="/api/v1/uploads/help_center_imports/x.pdf",
+        source_file_name="refund-policy.pdf",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    extracted = [GeneratedFAQ(question="Do you offer refunds?", answer="Within 14 days.", category="Billing")]
+    mock_generator = SimpleNamespace(extract_from_faq_page=AsyncMock(return_value=extracted), batch_chars=15000)
+    deleted = []
+
+    async def fake_load(stored):
+        return b"%PDF-fake"
+
+    async def fake_delete(stored):
+        deleted.append(stored)
+
+    with patch.object(faq_import, "build_generator", return_value=mock_generator), \
+         patch.object(faq_import, "_pdf_to_text", return_value="Do you offer refunds?\n\nWithin 14 days."), \
+         patch("app.services.file_storage.load_upload", side_effect=fake_load), \
+         patch("app.services.file_storage.delete_upload", side_effect=fake_delete):
+        created = await faq_import.run_pdf_import_job(db, job)
+
+    assert created == 1
+    row = db.query(FAQ).filter(FAQ.question == "Do you offer refunds?").one()
+    assert row.source_label == "Imported from refund-policy.pdf"
+    assert deleted == [job.source_url]  # import buffer removed
+
+
+@pytest.mark.asyncio
+async def test_pdf_import_job_fails_clearly_on_empty_text(db, test_organization, test_ai_config):
+    job = FAQGenerationJob(
+        organization_id=test_organization.id,
+        job_type=FAQJobType.IMPORT_PDF.value,
+        source_url="/api/v1/uploads/help_center_imports/y.pdf",
+        source_file_name="scan.pdf",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    async def fake_load(stored):
+        return _tiny_pdf()
+
+    async def fake_delete(stored):
+        pass
+
+    with patch("app.services.file_storage.load_upload", side_effect=fake_load), \
+         patch("app.services.file_storage.delete_upload", side_effect=fake_delete):
+        with pytest.raises(ValueError, match="scanned images"):
+            await faq_import.run_pdf_import_job(db, job)

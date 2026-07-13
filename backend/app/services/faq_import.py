@@ -14,11 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 FAQ page migration: fetch the customer's existing FAQ/help-center page
-(SSRF-guarded), extract its Q&A pairs with the org's model and insert them as
-drafts. Single page only in v1 — linked sub-pages are not followed.
+(SSRF-guarded) or read an uploaded PDF, extract Q&A pairs with the org's model
+and insert them as drafts. URL mode is single page only — for linked article
+pages use the article importer (faq_article_import.py).
 """
 
 import asyncio
+from io import BytesIO
 from typing import List, Optional
 from urllib.parse import urlparse
 
@@ -121,20 +123,10 @@ def _split_blocks(text: str) -> List[str]:
     return [block for block in text.split("\n\n") if block.strip()]
 
 
-async def run_import_job(db: Session, job: FAQGenerationJob) -> int:
-    """Execute an IMPORT_URL job. Returns FAQs created. Status transitions and
-    notifications are the worker's responsibility."""
-    job_repo = FAQGenerationJobRepository(db)
-
-    job_repo.update_progress(job.id, stage=FAQJobStage.ANALYZING_SOURCES, progress_percentage=5.0)
+async def _extract_and_insert(db: Session, job: FAQGenerationJob, text: str, source_label: str) -> int:
+    """Shared LLM tail for URL/PDF imports: batch → extract → dedup → insert."""
     generator = build_generator(db, job.organization_id)
-
-    job_repo.update_progress(job.id, stage=FAQJobStage.EXTRACTING, progress_percentage=15.0)
-    # Re-validated at fetch time (not only at the API layer) so a job forged or
-    # replayed against the queue can't reach internal hosts; run in a thread so
-    # the slow fetch doesn't block the worker's event loop.
-    page_text = await asyncio.to_thread(fetch_page_text, job.source_url)
-    batches = pack_batches(_split_blocks(page_text), max_chars=generator.batch_chars, sep="\n\n")
+    batches = pack_batches(_split_blocks(text), max_chars=generator.batch_chars, sep="\n\n")
 
     async def extract(batch: str, dedup: DedupState):
         return await generator.extract_from_faq_page(batch, existing_questions=dedup.for_prompt)
@@ -142,7 +134,6 @@ async def run_import_job(db: Session, job: FAQGenerationJob) -> int:
     accepted = await draft_batches(db, job, batches, extract, retries_per_batch=0)
 
     categories = CategoryMerger(db, job.organization_id)
-    source_label = f"Imported from {urlparse(job.source_url).netloc}"
     rows = [
         FAQ(
             organization_id=job.organization_id,
@@ -158,3 +149,62 @@ async def run_import_job(db: Session, job: FAQGenerationJob) -> int:
         for _batch, faq in accepted
     ]
     return insert_draft_rows(db, job, rows)
+
+
+async def run_import_job(db: Session, job: FAQGenerationJob) -> int:
+    """Execute an IMPORT_URL job. Returns FAQs created. Status transitions and
+    notifications are the worker's responsibility."""
+    job_repo = FAQGenerationJobRepository(db)
+    job_repo.update_progress(job.id, stage=FAQJobStage.ANALYZING_SOURCES, progress_percentage=5.0)
+
+    job_repo.update_progress(job.id, stage=FAQJobStage.EXTRACTING, progress_percentage=15.0)
+    # Re-validated at fetch time (not only at the API layer) so a job forged or
+    # replayed against the queue can't reach internal hosts; run in a thread so
+    # the slow fetch doesn't block the worker's event loop.
+    page_text = await asyncio.to_thread(fetch_page_text, job.source_url)
+    return await _extract_and_insert(
+        db, job, page_text, source_label=f"Imported from {urlparse(job.source_url).netloc}"
+    )
+
+
+def _pdf_to_text(content: bytes) -> str:
+    """Page-by-page text extraction with pypdf directly — agno's PDFReader
+    chunks/summarizes for the vector KB, which we don't want here. Blank-line
+    separators between pages keep block batching intact."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(BytesIO(content))
+    pages = []
+    for page in reader.pages:
+        try:
+            text = page.extract_text() or ""
+        except Exception as e:  # a single corrupt page shouldn't sink the file
+            logger.warning(f"PDF page extraction failed: {e}")
+            continue
+        if text.strip():
+            pages.append(text.strip())
+    return "\n\n".join(pages)[: settings.FAQ_IMPORT_MAX_PAGE_CHARS]
+
+
+async def run_pdf_import_job(db: Session, job: FAQGenerationJob) -> int:
+    """Execute an IMPORT_PDF job: read the stored upload (job.source_url),
+    extract text and run the shared Q&A extraction. The stored file is
+    best-effort deleted afterwards — it's an import buffer, not a document
+    library."""
+    from app.services.file_storage import delete_upload, load_upload
+
+    job_repo = FAQGenerationJobRepository(db)
+    job_repo.update_progress(job.id, stage=FAQJobStage.ANALYZING_SOURCES, progress_percentage=5.0)
+
+    try:
+        content = await load_upload(job.source_url)
+        job_repo.update_progress(job.id, stage=FAQJobStage.EXTRACTING, progress_percentage=15.0)
+        text = await asyncio.to_thread(_pdf_to_text, content)
+        if not text.strip():
+            raise ValueError(
+                "Could not read any text from that PDF (it may be scanned images)."
+            )
+        source_label = f"Imported from {job.source_file_name or 'PDF'}"
+        return await _extract_and_insert(db, job, text, source_label=source_label)
+    finally:
+        await delete_upload(job.source_url)
