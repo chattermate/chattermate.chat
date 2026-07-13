@@ -72,19 +72,27 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
       toast.success(`${updated} FAQ${updated === 1 ? '' : 's'} ${status === 'published' ? 'published' : 'moved to draft'}`)
     } catch (error: any) {
       toast.error(error.message)
+      // A batch may have partially applied server-side (>200 selection splits
+      // into requests) — refetch so the list matches the backend.
+      await refresh()
     }
   }
 
   async function bulkDelete(): Promise<void> {
     const ids = [...selectedIds.value]
     if (!ids.length) return
-    const deleted = await faqService.bulkDelete(ids)
-    faqs.value = faqs.value.filter((f) => !selectedIds.value.has(f.id))
-    clearSelection()
-    toast.success(`${deleted} FAQ${deleted === 1 ? '' : 's'} deleted`)
-    // Deleting a source's FAQs makes it eligible for generation again — the
-    // Generate button's new-source count must not stay stale/disabled.
-    void fetchEstimate()
+    try {
+      const deleted = await faqService.bulkDelete(ids)
+      faqs.value = faqs.value.filter((f) => !selectedIds.value.has(f.id))
+      clearSelection()
+      toast.success(`${deleted} FAQ${deleted === 1 ? '' : 's'} deleted`)
+      // Deleting a source's FAQs makes it eligible for generation again — the
+      // Generate button's new-source count must not stay stale/disabled.
+      void fetchEstimate()
+    } catch (error: any) {
+      toast.error(error.message)
+      await refresh() // partial batch may have deleted server-side; resync
+    }
   }
 
   // Inline edit state (one card at a time).

@@ -44,6 +44,16 @@ const isPreset = computed(() =>
 const hexDraft = ref(props.settings.brand_color)
 watch(() => props.settings.brand_color, (v) => { hexDraft.value = v })
 
+// The native <input type=color> only accepts #rrggbb — expand 3-digit and drop
+// alpha from 8-digit so opening the picker starts on the real color, never
+// silently resetting to black.
+const pickerValue = computed(() => {
+  const body = (props.settings.brand_color || '').replace(/^#/, '')
+  if (body.length === 3) return `#${[...body].map((c) => c + c).join('')}`
+  if (body.length >= 6) return `#${body.slice(0, 6)}`
+  return '#000000'
+})
+
 function saveColor(value: string) {
   if (value.toLowerCase() !== (props.settings.brand_color || '').toLowerCase()) {
     emit('save-now', { brand_color: value })
@@ -134,7 +144,7 @@ function removeLink(index: number) {
               :style="!isPreset ? { background: settings.brand_color, boxShadow: `0 0 0 2px ${settings.brand_color}` } : {}"
               title="Custom color"
             >
-              <input type="color" class="swatch__picker" :value="settings.brand_color" @change="onPicker" />
+              <input type="color" class="swatch__picker" :value="pickerValue" @change="onPicker" />
               <svg v-if="isPreset" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
             </label>
           </div>

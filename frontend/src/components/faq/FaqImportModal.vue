@@ -16,6 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import Modal from '@/components/common/Modal.vue'
 import FaqOrb from './FaqOrb.vue'
 import type { FaqImportMode } from '@/types/faq'
@@ -85,8 +86,20 @@ const fileSize = computed(() => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 })
 
+const dragOver = ref(false)
+
+function setPdf(file: File | null | undefined) {
+  if (file && file.type === 'application/pdf') pdfFile.value = file
+  else if (file) toast.error('Please choose a PDF file')
+}
+
 function onPdfChange(event: Event) {
-  pdfFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  setPdf((event.target as HTMLInputElement).files?.[0] ?? null)
+}
+
+function onDrop(event: DragEvent) {
+  dragOver.value = false
+  setPdf(event.dataTransfer?.files?.[0])
 }
 
 function submit() {
@@ -134,7 +147,13 @@ function submit() {
       </template>
       <template v-else>
         <label class="import-label" for="faq-import-pdf">PDF FILE (MAX 25MB)</label>
-        <label class="pdf-drop" :class="{ 'pdf-drop--filled': pdfFile }">
+        <label
+          class="pdf-drop"
+          :class="{ 'pdf-drop--filled': pdfFile, 'pdf-drop--drag': dragOver }"
+          @dragover.prevent="dragOver = true"
+          @dragleave.prevent="dragOver = false"
+          @drop.prevent="onDrop"
+        >
           <input id="faq-import-pdf" class="pdf-drop__input" type="file" accept="application/pdf" @change="onPdfChange" />
           <span class="pdf-drop__icon">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /><path d="M9 13h6M9 17h4" /></svg>
@@ -284,6 +303,12 @@ function submit() {
 .pdf-drop--filled {
   border-style: solid;
   border-color: var(--purple-border);
+  background: var(--purple-bg);
+}
+
+.pdf-drop--drag {
+  border-style: solid;
+  border-color: var(--c-purple);
   background: var(--purple-bg);
 }
 
