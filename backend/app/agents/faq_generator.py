@@ -27,13 +27,13 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.schemas.faq import MAX_ANSWER_LENGTH, MAX_QUESTION_LENGTH
 from app.utils.agno_utils import create_model
+from app.utils.model_context import faq_batch_chars_for, output_tokens_for
 
 logger = get_logger(__name__)
 
 # Groq reasoning models spend output tokens before emitting the tool call;
-# match the chat agent's headroom.
+# match the chat agent's headroom. Floor — large batches reserve more.
 FAQ_MAX_TOKENS = 4000
-MAX_FAQS_PER_BATCH = 15
 
 
 class GeneratedFAQ(BaseModel):
@@ -44,7 +44,7 @@ class GeneratedFAQ(BaseModel):
 
 class FAQExtractionResult(BaseModel):
     # No max_length here: an over-eager model must not fail response-model
-    # validation for the whole batch — _validate() trims to MAX_FAQS_PER_BATCH.
+    # validation for the whole batch — _validate() trims to the batch cap.
     faqs: List[GeneratedFAQ] = Field(default_factory=list)
 
 
@@ -110,6 +110,10 @@ class FAQGeneratorAgent:
         self.model_name = model_name
         self.api_key = api_key
         self._use_groq_json_tool = model_type.upper() == "GROQ"
+        # Batch size + FAQ yield scale with the selected model's context
+        # window (fewer, larger LLM calls on big-context models).
+        self.batch_chars, self.max_faqs = faq_batch_chars_for(model_type, model_name)
+        self.max_tokens = max(FAQ_MAX_TOKENS, output_tokens_for(self.max_faqs))
 
     async def generate_from_text(
         self,
@@ -127,7 +131,7 @@ class FAQGeneratorAgent:
         else:
             category_rule = 'Good examples: "Getting started", "Billing", "Account & security", "Integrations".'
         instructions = _GENERATE_INSTRUCTIONS.format(
-            max_faqs=MAX_FAQS_PER_BATCH, category_rule=category_rule
+            max_faqs=self.max_faqs, category_rule=category_rule
         )
         message = self._build_message(instructions, "CONTENT", content, existing_questions)
         return await self._extract(instructions, message)
@@ -138,7 +142,7 @@ class FAQGeneratorAgent:
         existing_questions: Optional[List[str]] = None,
     ) -> List[GeneratedFAQ]:
         """Extract verbatim-ish Q&A pairs from an external FAQ page."""
-        instructions = _IMPORT_INSTRUCTIONS.format(max_faqs=MAX_FAQS_PER_BATCH)
+        instructions = _IMPORT_INSTRUCTIONS.format(max_faqs=self.max_faqs)
         message = self._build_message(instructions, "PAGE TEXT", content, existing_questions)
         return await self._extract(instructions, message)
 
@@ -157,7 +161,7 @@ class FAQGeneratorAgent:
             model_type=self.model_type,
             api_key=self.api_key,
             model_name=self.model_name,
-            max_tokens=FAQ_MAX_TOKENS,
+            max_tokens=self.max_tokens,
         )
 
         capture: dict = {}
@@ -213,13 +217,12 @@ class FAQGeneratorAgent:
         logger.error(f"FAQ generator: unexpected response content type {type(content)}")
         return []
 
-    @staticmethod
-    def _validate(data: dict) -> List[GeneratedFAQ]:
+    def _validate(self, data: dict) -> List[GeneratedFAQ]:
         """Validate model output, dropping malformed entries rather than the
         whole batch. Truncates over-long fields instead of rejecting them."""
         raw_items = (data or {}).get("faqs") or []
         faqs: List[GeneratedFAQ] = []
-        for item in raw_items[:MAX_FAQS_PER_BATCH]:
+        for item in raw_items[: self.max_faqs]:
             if not isinstance(item, dict):
                 continue
             question = str(item.get("question") or "").strip()[:MAX_QUESTION_LENGTH]

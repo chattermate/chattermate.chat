@@ -134,7 +134,7 @@ async def run_import_job(db: Session, job: FAQGenerationJob) -> int:
     # replayed against the queue can't reach internal hosts; run in a thread so
     # the slow fetch doesn't block the worker's event loop.
     page_text = await asyncio.to_thread(fetch_page_text, job.source_url)
-    batches = pack_batches(_split_blocks(page_text), sep="\n\n")
+    batches = pack_batches(_split_blocks(page_text), max_chars=generator.batch_chars, sep="\n\n")
 
     async def extract(batch: str, dedup: DedupState):
         return await generator.extract_from_faq_page(batch, existing_questions=dedup.for_prompt)

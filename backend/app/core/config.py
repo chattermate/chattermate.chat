@@ -134,6 +134,11 @@ class Settings(BaseSettings):
     # FAQ generation cost caps (per source / per LLM call) and import fetch limits.
     FAQ_MAX_PAGES_PER_SOURCE: int = int(os.getenv("FAQ_MAX_PAGES_PER_SOURCE", "300"))
     FAQ_MAX_BATCH_CHARS: int = int(os.getenv("FAQ_MAX_BATCH_CHARS", "15000"))
+    # Ceiling for context-window-derived batch sizing (see utils/model_context.py)
+    # — a quality guard for very-large-context models, not a token limit.
+    FAQ_MAX_BATCH_CHARS_CEILING: int = int(os.getenv("FAQ_MAX_BATCH_CHARS_CEILING", "60000"))
+    # Force a context-window size (tokens) for exotic/self-hosted models; 0 = auto.
+    FAQ_CONTEXT_TOKENS_OVERRIDE: int = int(os.getenv("FAQ_CONTEXT_TOKENS_OVERRIDE", "0"))
     FAQ_IMPORT_MAX_PAGE_CHARS: int = int(os.getenv("FAQ_IMPORT_MAX_PAGE_CHARS", "100000"))
     FAQ_IMPORT_FETCH_TIMEOUT: int = int(os.getenv("FAQ_IMPORT_FETCH_TIMEOUT", "30"))
     # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx

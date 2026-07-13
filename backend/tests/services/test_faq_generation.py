@@ -118,7 +118,7 @@ async def test_run_generation_job_inserts_deduped_drafts(db, test_organization, 
         GeneratedFAQ(question="How do I sign up?", answer="dupe", category="Getting started"),
         GeneratedFAQ(question="Is my data safe?", answer="Yes.", category="SECURITY"),
     ]
-    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(return_value=generated))
+    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(return_value=generated), batch_chars=15000)
     with patch.object(faq_generation, "build_generator", return_value=mock_generator), \
          patch.object(faq_generation, "load_source_pages", return_value=["page one text"]):
         created = await run_generation_job(db, job)
@@ -146,7 +146,7 @@ async def test_run_generation_job_fails_without_sources(db, test_organization, t
 async def test_run_generation_job_fails_when_all_batches_fail(db, test_organization, test_ai_config):
     _make_knowledge(db, test_organization.id)
     job = _make_job(db, test_organization.id, job_type=FAQJobType.GENERATE_ALL.value)
-    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(side_effect=RuntimeError("boom")))
+    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(side_effect=RuntimeError("boom")), batch_chars=15000)
     with patch.object(faq_generation, "build_generator", return_value=mock_generator), \
          patch.object(faq_generation, "load_source_pages", return_value=["text"]):
         with pytest.raises(RuntimeError, match="every content batch"):
@@ -165,11 +165,11 @@ async def test_generate_source_job_scopes_to_one_source(db, test_organization, t
     )
     seen_sources = []
 
-    def fake_load(db_, knowledge):
+    def fake_load(db_, knowledge, max_chars=None):
         seen_sources.append(knowledge.source)
         return ["content"]
 
-    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(return_value=[]))
+    mock_generator = SimpleNamespace(generate_from_text=AsyncMock(return_value=[]), batch_chars=15000)
     with patch.object(faq_generation, "build_generator", return_value=mock_generator), \
          patch.object(faq_generation, "load_source_pages", side_effect=fake_load):
         await run_generation_job(db, job)

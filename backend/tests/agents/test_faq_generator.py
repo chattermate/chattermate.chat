@@ -25,7 +25,6 @@ from app.agents.faq_generator import (
     FAQExtractionResult,
     FAQGeneratorAgent,
     GeneratedFAQ,
-    MAX_FAQS_PER_BATCH,
 )
 from app.models.schemas.faq import MAX_QUESTION_LENGTH
 
@@ -44,7 +43,7 @@ def test_validate_drops_malformed_and_truncates():
             {"question": "Q" * (MAX_QUESTION_LENGTH + 50), "answer": "A", "category": ""},  # over-long + no category
         ]
     }
-    faqs = FAQGeneratorAgent._validate(data)
+    faqs = _agent()._validate(data)
     assert len(faqs) == 2
     assert faqs[0].category == "Getting started"
     assert len(faqs[1].question) == MAX_QUESTION_LENGTH
@@ -52,15 +51,26 @@ def test_validate_drops_malformed_and_truncates():
 
 
 def test_validate_caps_batch_size():
+    agent = _agent()
     items = [
-        {"question": f"Q{i}", "answer": "A", "category": "C"} for i in range(MAX_FAQS_PER_BATCH + 10)
+        {"question": f"Q{i}", "answer": "A", "category": "C"} for i in range(agent.max_faqs + 10)
     ]
-    assert len(FAQGeneratorAgent._validate({"faqs": items})) == MAX_FAQS_PER_BATCH
+    assert len(agent._validate({"faqs": items})) == agent.max_faqs
 
 
 def test_validate_handles_empty_and_none():
-    assert FAQGeneratorAgent._validate({}) == []
-    assert FAQGeneratorAgent._validate({"faqs": None}) == []
+    assert _agent()._validate({}) == []
+    assert _agent()._validate({"faqs": None}) == []
+
+
+def test_batch_sizing_follows_model_context():
+    """A big-context model gets larger batches (and a bigger FAQ cap) than a
+    small-context one — the whole point of context-aware batching."""
+    small = FAQGeneratorAgent(api_key="k", model_name="llama3-8b-8192", model_type="GROQ")
+    big = FAQGeneratorAgent(api_key="k", model_name="claude-sonnet-5", model_type="ANTHROPIC")
+    assert big.batch_chars > small.batch_chars
+    assert big.max_faqs >= small.max_faqs
+    assert big.max_tokens >= small.max_tokens >= 4000
 
 
 @pytest.mark.asyncio
