@@ -165,7 +165,7 @@ onUnmounted(stopPolling)
           <span v-if="faqs.length" class="tab__count">{{ faqs.length }}</span>
         </button>
         <button class="tab" :class="{ 'tab--active': tab === 'settings' }" type="button" role="tab" :aria-selected="tab === 'settings'" @click="tab = 'settings'">
-          Help center
+          Customization
         </button>
       </nav>
 
