@@ -44,25 +44,38 @@ async def process_faq_job(job_id: int):
         if not job:
             logger.error(f"FAQ job {job_id} not found")
             return
+        # Captured before the try: after a DB failure + rollback the ORM
+        # instance is expired and attribute access could raise or re-query.
+        job_type = job.job_type
+        is_import = job_type in (
+            FAQJobType.IMPORT_URL.value,
+            FAQJobType.IMPORT_ARTICLES.value,
+            FAQJobType.IMPORT_PDF.value,
+        )
         try:
             job_repo.mark_processing(job.id)
-            if job.job_type == FAQJobType.IMPORT_URL.value:
+            if job_type == FAQJobType.IMPORT_URL.value:
                 created = await run_import_job(db, job)
-            elif job.job_type == FAQJobType.IMPORT_ARTICLES.value:
+            elif job_type == FAQJobType.IMPORT_ARTICLES.value:
                 created = await run_article_import_job(db, job)
-            elif job.job_type == FAQJobType.IMPORT_PDF.value:
+            elif job_type == FAQJobType.IMPORT_PDF.value:
                 created = await run_pdf_import_job(db, job)
             else:
                 created = await run_generation_job(db, job)
             job_repo.mark_completed(job.id, faqs_created=created)
+            if created:
+                body = f"{created} draft FAQ{'s' if created != 1 else ''} added — review and publish them in Help center."
+            elif is_import:
+                body = "Nothing new was imported — the pages were unreadable or duplicated existing FAQs."
+            else:
+                body = "No new FAQs were found — your existing FAQs already cover this content."
             await notify_user(
                 db,
                 job.user_id,
                 NotificationType.FAQ_GENERATED,
-                "Draft FAQs ready for review",
-                f"{created} draft FAQ{'s' if created != 1 else ''} added — review and publish them in FAQ & Help Center."
-                if created
-                else "No new FAQs were found — your existing FAQs already cover this content.",
+                "Imported drafts ready for review" if is_import and created else
+                ("Import finished" if is_import else "Draft FAQs ready for review"),
+                body,
                 metadata={"faq_job_id": job.id},
             )
         except Exception as e:
@@ -78,7 +91,7 @@ async def process_faq_job(job_id: int):
                 db,
                 job.user_id,
                 NotificationType.FAQ_GENERATION_FAILED,
-                "FAQ generation failed",
+                "FAQ import failed" if is_import else "FAQ generation failed",
                 str(e),
                 metadata={"faq_job_id": job.id},
             )

@@ -82,17 +82,24 @@ class NoAIConfigError(Exception):
     """The org has no active AI configuration to generate with."""
 
 
-def build_generator(db: Session, organization_id) -> FAQGeneratorAgent:
+def build_generator(db: Session, organization_id, job: Optional[FAQGenerationJob] = None) -> FAQGeneratorAgent:
+    """The org's configured extraction agent. When a job is given, every actual
+    provider call (retries and the plain-JSON fallback's second call included)
+    increments the job's llm_calls — the metering source of truth."""
     config = AIConfigRepository(db).get_active_config(organization_id)
     if not config:
         raise NoAIConfigError(
             "No active AI configuration. Set up an AI model in AI Configuration first."
         )
-    return FAQGeneratorAgent(
+    generator = FAQGeneratorAgent(
         api_key=decrypt_api_key(config.encrypted_api_key),
         model_name=config.model_name,
         model_type=config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type),
     )
+    if job is not None:
+        job_repo = FAQGenerationJobRepository(db)
+        generator.on_llm_call = lambda: job_repo.increment_llm_calls(job.id)
+    return generator
 
 
 def load_source_pages(db: Session, knowledge: Knowledge, max_chars: Optional[int] = None) -> List[str]:
@@ -239,9 +246,6 @@ async def draft_batches(
     for index, batch in enumerate(batches):
         faqs = None
         for attempt in range(1 + retries_per_batch):
-            # Counted per attempt (retries cost provider tokens too) — this is
-            # the single metering choke point for generation and LLM imports.
-            job_repo.increment_llm_calls(job.id)
             try:
                 faqs = await extract(batch, dedup)
                 break
@@ -276,7 +280,7 @@ async def run_generation_job(db: Session, job: FAQGenerationJob) -> int:
 
     # Stage 1: resolve sources + model config.
     job_repo.update_progress(job.id, stage=FAQJobStage.ANALYZING_SOURCES, progress_percentage=5.0)
-    generator = build_generator(db, job.organization_id)
+    generator = build_generator(db, job.organization_id, job=job)
 
     knowledge_query = db.query(Knowledge).filter(Knowledge.organization_id == job.organization_id)
     if job.job_type == FAQJobType.GENERATE_SOURCE.value:

@@ -59,11 +59,14 @@ _SKIP_EXTENSIONS = (
 )
 
 # In-article chrome that shouldn't survive into the imported Markdown.
-_TOC_RE = re.compile("toc|table-of-contents|on-this-page|breadcrumb", re.IGNORECASE)
+# Word-boundary anchored: matches "docs-toc"/"breadcrumbs" but never innocent
+# substrings like "stock-levels" or "autocomplete".
+_TOC_RE = re.compile(r"\b(toc|table-of-contents|on-this-page|breadcrumbs?)\b", re.IGNORECASE)
 
 # Internal scheme marking images collected during conversion, replaced with the
-# re-hosted URL afterwards (conversion is sync; storage is async).
-_IMG_PLACEHOLDER = "cm-pending-image://{index}"
+# re-hosted URL afterwards (conversion is sync; storage is async). The trailing
+# ".img" delimits the index so "…//1.img" is never a prefix of "…//10.img".
+_IMG_PLACEHOLDER = "cm-pending-image://{index}.img"
 
 
 @dataclass
@@ -187,17 +190,25 @@ def discover_article_links(client: httpx.Client, index_url: str, limit: int) -> 
     return links
 
 
-def _page_title(soup: BeautifulSoup, node: Tag) -> str:
+def _head_titles(soup: BeautifulSoup) -> Tuple[str, str]:
+    """(og:title, <title>) — must run BEFORE select_main_node, which strips
+    <head> from the soup."""
     og = soup.find("meta", property="og:title")
-    if og and og.get("content", "").strip():
-        return og["content"].strip()
+    og_title = og["content"].strip() if og and og.get("content", "").strip() else ""
+    doc_title = ""
+    if soup.title and soup.title.get_text(strip=True):
+        # Drop the " | Site Name" tail commonly appended to <title>.
+        doc_title = soup.title.get_text(strip=True).split("|")[0].strip()
+    return og_title, doc_title
+
+
+def _page_title(og_title: str, doc_title: str, node: Tag, soup: BeautifulSoup) -> str:
+    if og_title:
+        return og_title
     h1 = node.find("h1") or soup.find("h1")
     if h1 and h1.get_text(strip=True):
         return h1.get_text(" ", strip=True)
-    if soup.title and soup.title.get_text(strip=True):
-        # Drop the " | Site Name" tail commonly appended to <title>.
-        return soup.title.get_text(strip=True).split("|")[0].strip()
-    return ""
+    return doc_title
 
 
 def _category_hint(soup: BeautifulSoup, url: str) -> str:
@@ -221,10 +232,11 @@ def fetch_article(client: httpx.Client, url: str) -> Optional[Article]:
     if soup is None:
         return None
     category = _category_hint(soup, final_url)
+    og_title, doc_title = _head_titles(soup)  # before <head> is stripped below
     node = select_main_node(soup)
     if node is None:
         return None
-    title = _page_title(soup, node)
+    title = _page_title(og_title, doc_title, node, soup)
     if not title:
         return None
     # The page's own h1 would duplicate the FAQ question.

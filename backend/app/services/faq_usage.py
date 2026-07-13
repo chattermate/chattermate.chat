@@ -93,11 +93,19 @@ def count_source_pages(db: Session, knowledge: Knowledge) -> Optional[int]:
 
 
 def estimate_generation_calls(
-    db: Session, organization_id: UUID, knowledge_ids: Optional[List[int]] = None
+    db: Session,
+    organization_id: UUID,
+    knowledge_ids: Optional[List[int]] = None,
+    count_pages: bool = True,
 ) -> GenerationEstimate:
     """Confirm-dialog numbers for a GENERATE_ALL run: which sources it would
     read (new-only unless explicitly targeted) and roughly how many LLM calls
-    that costs. Unreadable sources count as one call each."""
+    that costs. Unreadable sources count as one call each.
+
+    count_pages=False skips the per-source page COUNT over the vector tables
+    (two cheap queries instead of N aggregate scans) — for surfaces that only
+    need the source counts, like the Generate button label. estimated_calls
+    is then a 1-per-source lower bound."""
     query = db.query(Knowledge).filter(Knowledge.organization_id == organization_id)
     if knowledge_ids:
         query = query.filter(Knowledge.id.in_(knowledge_ids))
@@ -105,6 +113,14 @@ def estimate_generation_calls(
 
     generated = FAQRepository(db).knowledge_ids_with_faqs(organization_id)
     targets = sources if knowledge_ids else [s for s in sources if s.id not in generated]
+
+    if not count_pages:
+        return GenerationEstimate(
+            total_sources=len(sources),
+            new_sources=len(targets),
+            pages=0,
+            estimated_calls=len(targets),
+        )
 
     pages = 0
     estimated_calls = 0

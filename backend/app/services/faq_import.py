@@ -123,9 +123,10 @@ def _split_blocks(text: str) -> List[str]:
     return [block for block in text.split("\n\n") if block.strip()]
 
 
-async def _extract_and_insert(db: Session, job: FAQGenerationJob, text: str, source_label: str) -> int:
+async def _extract_and_insert(
+    db: Session, job: FAQGenerationJob, generator, text: str, source_label: str
+) -> int:
     """Shared LLM tail for URL/PDF imports: batch → extract → dedup → insert."""
-    generator = build_generator(db, job.organization_id)
     batches = pack_batches(_split_blocks(text), max_chars=generator.batch_chars, sep="\n\n")
 
     async def extract(batch: str, dedup: DedupState):
@@ -155,7 +156,9 @@ async def run_import_job(db: Session, job: FAQGenerationJob) -> int:
     """Execute an IMPORT_URL job. Returns FAQs created. Status transitions and
     notifications are the worker's responsibility."""
     job_repo = FAQGenerationJobRepository(db)
+    # ANALYZING = fail fast on a missing model config, before any external I/O.
     job_repo.update_progress(job.id, stage=FAQJobStage.ANALYZING_SOURCES, progress_percentage=5.0)
+    generator = build_generator(db, job.organization_id, job=job)
 
     job_repo.update_progress(job.id, stage=FAQJobStage.EXTRACTING, progress_percentage=15.0)
     # Re-validated at fetch time (not only at the API layer) so a job forged or
@@ -163,7 +166,8 @@ async def run_import_job(db: Session, job: FAQGenerationJob) -> int:
     # the slow fetch doesn't block the worker's event loop.
     page_text = await asyncio.to_thread(fetch_page_text, job.source_url)
     return await _extract_and_insert(
-        db, job, page_text, source_label=f"Imported from {urlparse(job.source_url).netloc}"
+        db, job, generator, page_text,
+        source_label=f"Imported from {urlparse(job.source_url).netloc}",
     )
 
 
@@ -194,17 +198,23 @@ async def run_pdf_import_job(db: Session, job: FAQGenerationJob) -> int:
     from app.services.file_storage import delete_upload, load_upload
 
     job_repo = FAQGenerationJobRepository(db)
+    # Captured before the try: after a DB-originated failure the ORM instance
+    # is expired and reading job attributes from the finally would raise,
+    # masking the real error and leaking the buffer.
+    stored = job.source_url
+    source_label = f"Imported from {job.source_file_name or 'PDF'}"
+    # ANALYZING = fail fast on a missing model config, before file I/O.
     job_repo.update_progress(job.id, stage=FAQJobStage.ANALYZING_SOURCES, progress_percentage=5.0)
 
     try:
-        content = await load_upload(job.source_url)
+        generator = build_generator(db, job.organization_id, job=job)
+        content = await load_upload(stored)
         job_repo.update_progress(job.id, stage=FAQJobStage.EXTRACTING, progress_percentage=15.0)
         text = await asyncio.to_thread(_pdf_to_text, content)
         if not text.strip():
             raise ValueError(
                 "Could not read any text from that PDF (it may be scanned images)."
             )
-        source_label = f"Imported from {job.source_file_name or 'PDF'}"
-        return await _extract_and_insert(db, job, text, source_label=source_label)
+        return await _extract_and_insert(db, job, generator, text, source_label=source_label)
     finally:
-        await delete_upload(job.source_url)
+        await delete_upload(stored)

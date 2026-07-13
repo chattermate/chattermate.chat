@@ -82,6 +82,9 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     faqs.value = faqs.value.filter((f) => !selectedIds.value.has(f.id))
     clearSelection()
     toast.success(`${deleted} FAQ${deleted === 1 ? '' : 's'} deleted`)
+    // Deleting a source's FAQs makes it eligible for generation again — the
+    // Generate button's new-source count must not stay stale/disabled.
+    void fetchEstimate()
   }
 
   // Inline edit state (one card at a time).
@@ -152,11 +155,14 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
     settings.value = await faqService.getSettings()
   }
 
-  async function fetchEstimate(): Promise<void> {
+  async function fetchEstimate(includePages = false): Promise<void> {
+    // Background fetches (page load, deletes, job completion) skip the
+    // per-source page scan — the button label only needs new_sources. The
+    // confirm dialog passes includePages=true for the full call estimate.
     // Non-fatal: locked plans 403 here; the generate button then just says
     // "Generate" without the new-source count.
     try {
-      estimate.value = await faqService.getGenerateEstimate()
+      estimate.value = await faqService.getGenerateEstimate(includePages)
     } catch {
       estimate.value = null
     }
@@ -323,6 +329,8 @@ export function useFaqWorkspace(organizationId: () => string | undefined) {
       await faqService.deleteFaq(faq.id)
       faqs.value = faqs.value.filter((f) => f.id !== faq.id)
       if (editingId.value === faq.id) cancelEdit()
+      // Keep the Generate button's new-source count fresh (see bulkDelete).
+      void fetchEstimate()
     } catch (error: any) {
       toast.error(error.message)
     }

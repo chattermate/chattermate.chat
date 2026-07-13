@@ -148,7 +148,7 @@ function askDelete(faq: FaqItem) {
 }
 
 async function askGenerate() {
-  await fetchEstimate()
+  await fetchEstimate(true) // full estimate incl. page counts for the dialog
   const e = estimate.value
   if (!e) {
     // Estimate unavailable (e.g. plan check failed) — let the backend decide.

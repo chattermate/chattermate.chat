@@ -210,10 +210,16 @@ def _key_from_url(s3_url: str) -> str:
 
 
 async def download_file_from_s3(s3_url: str) -> bytes:
-    """Download an object's bytes (worker-side readback of stored uploads)."""
-    s3_client = get_s3_client()
-    response = s3_client.get_object(Bucket=settings.S3_BUCKET, Key=_key_from_url(s3_url))
-    return response['Body'].read()
+    """Download an object's bytes (worker-side readback of stored uploads).
+    boto3 is synchronous — offload so the transfer never blocks the event loop."""
+    import asyncio
+
+    def _download() -> bytes:
+        s3_client = get_s3_client()
+        response = s3_client.get_object(Bucket=settings.S3_BUCKET, Key=_key_from_url(s3_url))
+        return response['Body'].read()
+
+    return await asyncio.to_thread(_download)
 
 
 async def delete_file_from_s3(s3_url: str) -> bool:
