@@ -6,67 +6,101 @@ deploy-time pieces that live **outside** the repo: DNS, TLS and the host
 nginx on the production VPS. `frontend/nginx.conf` and the docker-compose
 files need **no changes**.
 
+> **As deployed on the ChatterMate cloud VPS (2026-07-14):** the base domain is
+> **`help.chattermate.chat`** (orgs serve at `{slug}.help.chattermate.chat`), not
+> the `chattermate.help` this doc originally planned — that domain was never
+> registered, and the org only owns `chattermate.chat`. DNS is **Route53**, so the
+> wildcard cert is issued and auto-renewed with the `dns-route53` plugin.
+> Placeholders (`<VPS_IPV4>`, `<ZONE_ID>`, …) stand in for the live values; the
+> real ones live on the VPS and in ops notes, not in this public repo.
+
 ## 1. One-time platform setup
 
-### DNS
-1. Register `chattermate.help` (or set `HELP_CENTER_BASE_DOMAIN` to another
-   zone) and point it at the VPS:
-   - `*.chattermate.help.  A  <VPS_IP>`
-2. Create the CNAME target customers point their own domains at:
-   - `cname.chattermate.chat.  A  <VPS_IP>`
-   (or set `HELP_CENTER_CNAME_TARGET` accordingly)
-3. Backend env (`.env` on the VPS):
-   ```
-   HELP_CENTER_BASE_DOMAIN=chattermate.help
-   HELP_CENTER_CNAME_TARGET=cname.chattermate.chat
-   HELP_CENTER_TARGET_IPS=<VPS_IP>        # accepted for CNAME-flattened records
-   ```
+### DNS (Route53)
+Point a wildcard under the domain you own at the VPS. On the cloud box this is
+the `chattermate.chat` hosted zone (`<ZONE_ID>`):
+- `*.help.chattermate.chat.  A     <VPS_IPV4>`
+- `*.help.chattermate.chat.  AAAA  <VPS_IPV6>`
 
-### Wildcard certificate (DNS-01)
-HTTP-01 cannot issue wildcards; use the DNS provider's certbot plugin
-(example for Cloudflare — pick the matching `certbot-dns-*` package):
+One wildcard record covers every org — no per-org DNS. Create them via the API:
 ```bash
-sudo apt install certbot python3-certbot-dns-cloudflare
-sudo certbot certonly --dns-cloudflare \
-  --dns-cloudflare-credentials /root/.secrets/cf.ini \
-  -d '*.chattermate.help' -d 'chattermate.help'
+aws route53 change-resource-record-sets --hosted-zone-id <ZONE_ID> \
+  --change-batch file://wildcard.json   # UPSERT A + AAAA for *.help.<domain>
 ```
-Renewal is automatic via the standard certbot timer.
 
-### Host nginx server blocks
-Add to the host nginx (alongside the existing chattermate.chat block).
-`proxy_set_header Host $host` is what makes backend host-dispatch work.
-`<BACKEND_PORT>` is the published port of the backend container (the same
-one the existing API proxy uses).
+Backend env (`backend.env` on the VPS):
+```
+HELP_CENTER_BASE_DOMAIN=help.chattermate.chat
+HELP_CENTER_TARGET_IPS=["<VPS_IPV4>"]   # JSON array — see gotcha below
+```
+> **Gotcha:** `HELP_CENTER_TARGET_IPS` is a `frozenset` setting, so
+> pydantic-settings JSON-parses the env value. A bare IP or comma list
+> (`<VPS_IPV4>`) fails validation and crash-loops the backend at startup —
+> it **must** be a JSON array: `["<VPS_IPV4>"]`. (Powers the per-org
+> custom-domain A-record verification in §2; unused by the wildcard site.)
+
+### Wildcard certificate (DNS-01 via Route53)
+HTTP-01 cannot issue wildcards. A dedicated IAM user with the standard certbot
+Route53 policy (`route53:ListHostedZones` + `GetChange` on `*`,
+`ChangeResourceRecordSets` on the zone) has its creds at `~/.aws/credentials`
+(mode 600) on the box. Issue once:
+```bash
+docker run --rm \
+  -v ~/chattermate/certbot/conf:/etc/letsencrypt \
+  -v ~/.aws:/root/.aws:ro \
+  certbot/dns-route53 certonly --dns-route53 \
+  -d '*.help.chattermate.chat' -d 'help.chattermate.chat' \
+  --cert-name help.chattermate.chat \
+  --non-interactive --agree-tos -m <ops-email>
+```
+
+**Auto-renewal:** the compose `certbot` service (in
+`docker-compose.hostinger.yml`) runs `certbot renew` on a loop. It uses the
+`certbot/dns-route53` image and mounts `/home/chattermate/.aws:/root/.aws:ro`,
+so the wildcard renews unattended (the renewal conf remembers
+`authenticator = dns-route53`). Existing HTTP-01 webroot certs still renew —
+the dns-route53 image is a superset of `certbot/certbot`.
+
+### Host nginx server block
+Lives at `~/chattermate/nginx/conf.d/help-center.conf` (mounted read-only into
+the `chattermate-nginx-1` container). `proxy_set_header Host $host` is what
+makes backend host-dispatch resolve the org. Upstream is the compose service
+name `backend:8000` (nginx shares the `chattermate-network`), not a published
+host port.
 
 ```nginx
-# {slug}.chattermate.help
+# {slug}.help.chattermate.chat
 server {
-    listen 443 ssl;
-    server_name *.chattermate.help;
-    ssl_certificate     /etc/letsencrypt/live/chattermate.help/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/chattermate.help/privkey.pem;
+    listen 443 ssl http2;
+    server_name *.help.chattermate.chat help.chattermate.chat;
+    ssl_certificate     /etc/letsencrypt/live/help.chattermate.chat/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/help.chattermate.chat/privkey.pem;
+    include /etc/nginx/conf.d/ssl-params.conf;
 
     location / {
-        proxy_pass http://127.0.0.1:<BACKEND_PORT>;
+        proxy_pass http://backend:8000/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 
 server {
     listen 80;
-    server_name *.chattermate.help;
-    return 301 https://$host$request_uri;
+    server_name *.help.chattermate.chat help.chattermate.chat;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://$host$request_uri; }
 }
 ```
 
 ## 2. Per-customer custom domain (runbook step per domain)
 
-Customers add two records (shown in their FAQ admin UI):
-- `CNAME  help.customer.com  →  cname.chattermate.chat`
+Customers add two records (shown in their FAQ admin UI). On the cloud box the
+CNAME target `cname.chattermate.chat` is **not** provisioned, so verification
+falls back to an A record pointing at `HELP_CENTER_TARGET_IPS` — either form
+works:
+- `CNAME  help.customer.com  →  cname.chattermate.chat`  *(or)*  `A  help.customer.com  →  <VPS_IPV4>`
 - `TXT    _chattermate.help.customer.com  →  cm-verify=<token>`
 
 After they click **Verify domain** (DNS checks pass, `ssl_status` becomes
@@ -94,10 +128,11 @@ admin endpoint for verified-but-unprovisioned domains and runs
 whole VPS.
 
 ## 3. Verification checklist after deploy
-1. `curl -H "Host: <slug>.chattermate.help" http://127.0.0.1:<BACKEND_PORT>/healthz` → `{"status":"ok"}`
-2. `https://<slug>.chattermate.help` in a browser → published FAQs render, widget loads.
-3. API unaffected: `https://chattermate.chat/api/v1/...` still routes to the SPA/API.
-4. `POST /ask` from the page returns an answer and appears in `help_center_queries`.
+1. `curl -sS -o /dev/null -w '%{http_code}\n' https://<slug>.help.chattermate.chat/` → `200` (and `http://` → `301`).
+2. `https://<slug>.help.chattermate.chat` in a browser → published FAQs render, widget loads; an article at `/a/<faq-slug>` returns `200`.
+3. `docker exec chattermate-backend-1 printenv HELP_CENTER_BASE_DOMAIN` → `help.chattermate.chat` (and the backend is `healthy`, not crash-looping on `HELP_CENTER_TARGET_IPS`).
+4. API unaffected: `https://app.chattermate.chat` / `https://api.chattermate.chat/api/v1/...` still route normally.
+5. `POST /ask` from the page returns an answer and appears in `help_center_queries`.
 
 ## 4. Enterprise (cloud) rollout prerequisite
 
