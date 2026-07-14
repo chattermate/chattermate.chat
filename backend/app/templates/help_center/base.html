@@ -253,8 +253,11 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
       .hc-help-card { display: none; }
       /* While searching, get the whole browse-topics column out of the way so
          the results (and the Ask-AI card) sit right under the search box,
-         instead of on a "second page" below every category. */
+         instead of on a "second page" below every category. Also tighten the
+         hero/body padding so results sit close to the search box. */
       body.hc-searching .hc-aside { display: none; }
+      body.hc-searching .hc-hero { padding-bottom: 8px; }
+      body.hc-searching .hc-body { padding-top: 8px; }
       .hc-cta { padding: 30px; }
       .hc-article-card { padding: 24px 20px; }
       .hc-related-grid { grid-template-columns: 1fr; }
