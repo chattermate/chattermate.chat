@@ -30,6 +30,7 @@ from app.database import get_db
 from app.models.faq import FAQ
 from app.models.help_center import HelpCenterSettings
 from app.services.file_storage import resolve_public_url
+from app.services.help_center_images import absolute_upload_url
 from app.services.help_center_content import (
     excerpt,
     read_time_label,
@@ -89,7 +90,10 @@ async def _chrome_context(row: HelpCenterSettings) -> dict:
         "row": row,
         "brand_color": row.brand_color,
         "brand_ink": contrast_ink(row.brand_color),
-        "logo_url": await resolve_public_url(row.logo_url) if row.logo_url else None,
+        # Absolute (api-origin) URL: the public site is host-dispatched to a
+        # limited app that does NOT serve /api/v1/uploads, so a host-relative
+        # path would 404 on the help-center domain. Mirror article images.
+        "logo_url": absolute_upload_url(await resolve_public_url(row.logo_url)) if row.logo_url else None,
         "header_links": row.header_links or [],
         "widget_id": widget_id_for(row),
         # The widget LOADER (chattermate.min.js) is served by the frontend, while

@@ -35,7 +35,10 @@ from app.models.schemas.pagination import Pagination
 from app.models.user import User
 from app.repositories.faq import FAQRepository
 from app.services.help_center_access import check_help_center_access
+from app.services.image_security import sanitize_image
 from app.services.help_center_images import (
+    FAQ_IMAGE_FIT_DIM,
+    FAQ_IMAGE_MAX_DIM,
     FAQ_IMAGE_TYPES,
     MAX_FAQ_IMAGE_BYTES,
     store_article_image,
@@ -115,12 +118,17 @@ async def upload_faq_image(
     absolute URL the editor inserts as ![](url)."""
     check_help_center_access(db, current_user.organization_id)
     content = await file.read()
-    if len(content) > MAX_FAQ_IMAGE_BYTES:
-        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller.")
-    # Extension comes from the VALIDATED content type, never the client filename.
-    if file.content_type not in FAQ_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Use a PNG, JPEG, GIF or WebP image.")
-    return {"url": await store_article_image(content, file.content_type)}
+    # Validate, bomb-guard, downscale and re-encode from decoded pixels — strips
+    # metadata/payloads and normalises to PNG/JPEG (content type is derived here,
+    # never from the client filename).
+    safe_bytes, content_type, _ext = sanitize_image(
+        content,
+        allowed_content_types=set(FAQ_IMAGE_TYPES),
+        max_bytes=MAX_FAQ_IMAGE_BYTES,
+        max_dim=FAQ_IMAGE_MAX_DIM,
+        fit=FAQ_IMAGE_FIT_DIM,
+    )
+    return {"url": await store_article_image(safe_bytes, content_type)}
 
 
 @router.put("/faqs/{faq_id}", response_model=FAQResponse)

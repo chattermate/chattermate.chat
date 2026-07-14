@@ -26,6 +26,10 @@ from app.core.config import settings
 from app.services.file_storage import store_upload
 
 MAX_FAQ_IMAGE_BYTES = 5 * 1024 * 1024
+# Reject larger-than-this on a side up front (bomb guard); downscale the stored
+# image to fit FAQ_IMAGE_FIT_DIM so article pages stay light.
+FAQ_IMAGE_MAX_DIM = 6000
+FAQ_IMAGE_FIT_DIM = 1600
 FAQ_IMAGE_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
