@@ -131,6 +131,7 @@ def probe_ssl(domain: str) -> bool:
         return False
     try:
         ctx = ssl.create_default_context()
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         with socket.create_connection((ip, 443), timeout=SSL_PROBE_TIMEOUT_SECONDS) as sock:
             with ctx.wrap_socket(sock, server_hostname=domain) as tls:
                 tls.sendall(
