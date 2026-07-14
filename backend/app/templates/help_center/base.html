@@ -251,6 +251,10 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
 
       /* Redundant on mobile — the "Still need a hand?" CTA below covers it. */
       .hc-help-card { display: none; }
+      /* While searching, get the whole browse-topics column out of the way so
+         the results (and the Ask-AI card) sit right under the search box,
+         instead of on a "second page" below every category. */
+      body.hc-searching .hc-aside { display: none; }
       .hc-cta { padding: 30px; }
       .hc-article-card { padding: 24px 20px; }
       .hc-related-grid { grid-template-columns: 1fr; }
