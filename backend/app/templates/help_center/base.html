@@ -251,10 +251,25 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
       .hc-main { min-width: 0; }
       .hc-aside-label { margin-bottom: 10px; }
 
-      /* Topics as a compact 2-column grid: scannable, and — unlike a nowrap row —
-         it can't blow out the page width and force horizontal scrolling. */
-      .hc-topics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-      .hc-topic { width: auto; min-width: 0; padding: 10px 11px; gap: 9px; }
+      /* Topics: a compact 3-row band that scrolls left/right. Fixed-width
+         auto-columns + overflow-x keep the scroll contained to this strip (the
+         page never scrolls sideways), so it stays short instead of a tall grid. */
+      .hc-topics {
+        display: grid;
+        grid-auto-flow: column;
+        grid-template-rows: repeat(3, auto);
+        grid-auto-columns: 46%;
+        gap: 8px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 0 2px 4px;
+        margin: 0 -2px;
+      }
+      .hc-topics::-webkit-scrollbar { display: none; }
+      .hc-topic { width: auto; min-width: 0; padding: 10px 11px; gap: 9px; scroll-snap-align: start; }
       .hc-topic-icon { width: 26px; height: 26px; }
       .hc-topic-name { font-size: 13.5px; }
 
