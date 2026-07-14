@@ -40,6 +40,7 @@ from app.repositories.help_center import HelpCenterRepository
 from app.services.file_storage import resolve_public_url, store_upload
 from app.services.help_center_access import check_help_center_access, help_center_allowed
 from app.services.help_center_settings import get_or_create_settings, live_url
+from app.services.help_center_images import absolute_upload_url
 from app.services.image_security import sanitize_image
 
 router = APIRouter()
@@ -92,7 +93,12 @@ async def settings_response(
         .all()
     )
     response = HelpCenterSettingsResponse.model_validate(row)
-    response.logo_url = await resolve_public_url(row.logo_url) if row.logo_url else None
+    # Absolute (api-origin) URL: the admin runs on app.chattermate.chat, whose
+    # nginx serves any *.png path as a static asset — a host-relative
+    # /api/v1/uploads/*.png would 404 there. Anchor to the backend origin.
+    response.logo_url = (
+        absolute_upload_url(await resolve_public_url(row.logo_url)) if row.logo_url else None
+    )
     response.live_url = live_url(row)
     response.published_count = FAQRepository(db).count_published(organization_id)
     response.plan_allowed = help_center_allowed(db, organization_id)
