@@ -338,7 +338,11 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
   <footer class="hc-footer">
     <div class="hc-footer-in">
       <div class="hc-footer-org">
-        <span class="hc-mark"><span></span></span>
+        {% if logo_url %}
+          <img class="hc-logo" src="{{ logo_url }}" alt="{{ row.organization.name }} logo">
+        {% else %}
+          <span class="hc-mark"><span></span></span>
+        {% endif %}
         <span class="hc-name">{{ row.organization.name }}</span>
       </div>
       <a class="hc-powered" href="https://chattermate.chat" target="_blank" rel="noopener">

@@ -27,7 +27,6 @@ import os
 import secrets
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -116,14 +115,31 @@ def check_cname_record(domain: str) -> bool:
 
 
 def probe_ssl(domain: str) -> bool:
-    """HTTPS reachability with certificate validation — flips ssl_status to
-    ACTIVE once the cert is actually being served for this domain."""
+    """HTTPS reachability + certificate validation, resolving via PUBLIC DNS.
+    The container's own resolver (Docker embedded DNS) negatively caches a
+    custom domain that didn't exist before its cert was provisioned — so httpx
+    (which uses the system resolver) would keep failing. Resolve the A record
+    ourselves and connect to that IP with SNI = the domain, which also verifies
+    the served cert is actually issued for this domain."""
+    import socket
+    import ssl
+
     try:
-        response = httpx.get(
-            f"https://{domain}/healthz", timeout=SSL_PROBE_TIMEOUT_SECONDS, follow_redirects=False
-        )
-        return response.status_code == 200
-    except httpx.HTTPError as e:
+        ip = str(_resolver().resolve(domain, "A")[0])
+    except Exception as e:
+        logger.info(f"SSL probe DNS for {domain} not ready: {e}")
+        return False
+    try:
+        ctx = ssl.create_default_context()
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        with socket.create_connection((ip, 443), timeout=SSL_PROBE_TIMEOUT_SECONDS) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as tls:
+                tls.sendall(
+                    f"GET /healthz HTTP/1.1\r\nHost: {domain}\r\nConnection: close\r\n\r\n".encode()
+                )
+                status_line = tls.recv(128).split(b"\r\n", 1)[0]
+        return b" 200 " in status_line
+    except (OSError, ssl.SSLError) as e:
         logger.info(f"SSL probe for {domain} not ready: {e}")
         return False
 
