@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.database import get_db
 from app.models.faq import FAQ
 from app.models.help_center import HelpCenterSettings
+from app.repositories.faq import FAQRepository
 from app.services.file_storage import resolve_public_url
 from app.services.help_center_images import absolute_upload_url
 from app.services.help_center_content import (
@@ -63,6 +64,10 @@ ASK_LIMIT_PER_DAY = 100
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=MAX_QUESTION_CHARS)
+
+
+class FeedbackRequest(BaseModel):
+    helpful: bool
 
 
 def _client_ip(request: Request) -> str:
@@ -239,6 +244,23 @@ async def ask(payload: AskRequest, request: Request, db: Session = Depends(get_d
     if not answer:
         raise HTTPException(status_code=503, detail="Could not answer right now — please try again.")
     return {"answer": answer}
+
+
+@public_app.post("/a/{slug}/feedback")
+async def article_feedback(
+    slug: str, payload: FeedbackRequest, request: Request, db: Session = Depends(get_db)
+):
+    """Record a 'Was this helpful?' vote. One vote per article per IP per day
+    (deduped via the rate limiter; fail-open, idempotent — a repeat vote is a
+    silent no-op rather than an error)."""
+    row = _resolve_or_404(request, db)
+    faq = get_published_article(db, row, slug)
+    if not faq:
+        raise HTTPException(status_code=404, detail="Article not found")
+    ip = _client_ip(request)
+    if allow_request(f"faqfb:{faq.id}:{ip}", 1, 86400):
+        FAQRepository(db).record_feedback(faq.id, payload.helpful)
+    return {"ok": True}
 
 
 @public_app.get("/sitemap.xml")

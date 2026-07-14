@@ -105,6 +105,20 @@ function answerPreview(md: string): string {
         <div class="faq-card__source">
           <span class="faq-card__source-dot"></span>
           {{ sourceLabel() }}
+          <span
+            v-if="(faq.helpful_yes || 0) + (faq.helpful_no || 0) > 0"
+            class="faq-card__fb"
+            :title="`${faq.helpful_yes || 0} found this helpful, ${faq.helpful_no || 0} did not`"
+          >
+            <span class="faq-card__fb-item faq-card__fb-item--up">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z" /><path d="M7 11l4-8a2 2 0 0 1 3 1.8V9h4.5a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 17 20H7" /></svg>
+              {{ faq.helpful_yes || 0 }}
+            </span>
+            <span class="faq-card__fb-item faq-card__fb-item--down">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1z" /><path d="M17 13l-4 8a2 2 0 0 1-3-1.8V15H5.5a2 2 0 0 1-2-2.4l1.4-7A2 2 0 0 1 7 4h10" /></svg>
+              {{ faq.helpful_no || 0 }}
+            </span>
+          </span>
         </div>
       </div>
       <div class="faq-card__controls">
@@ -212,6 +226,29 @@ function answerPreview(md: string): string {
   height: 5px;
   border-radius: 50%;
   background: var(--faint);
+}
+
+.faq-card__fb {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 9px;
+  margin-left: 2px;
+  border-left: 1px solid var(--o10);
+}
+
+.faq-card__fb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.faq-card__fb-item--up {
+  color: var(--c-teal, #1d9e75);
+}
+
+.faq-card__fb-item--down {
+  color: var(--c-coral, #d85a30);
 }
 
 .faq-card__controls {

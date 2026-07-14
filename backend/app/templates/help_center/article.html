@@ -108,16 +108,24 @@ every other value stays autoescaped.
 {% block page_scripts %}
   <script>
   (function () {
-    // per-article feedback (client-only acknowledgement)
+    // per-article "Was this helpful?" — records the vote, then acknowledges.
     var fb = document.querySelector('[data-feedback]');
     if (!fb) return;
+    var voted = false;
     fb.addEventListener('click', function (e) {
       var btn = e.target.closest('[data-vote]');
-      if (!btn) return;
+      if (!btn || voted) return;
+      voted = true;
+      var helpful = btn.getAttribute('data-vote') === 'yes';
       fb.querySelectorAll('.hc-vote').forEach(function (v) { v.classList.remove('on-yes', 'on-no'); });
-      btn.classList.add(btn.getAttribute('data-vote') === 'yes' ? 'on-yes' : 'on-no');
+      btn.classList.add(helpful ? 'on-yes' : 'on-no');
       var thanks = fb.querySelector('.hc-thanks');
       if (thanks) thanks.hidden = false;
+      fetch(location.pathname + '/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ helpful: helpful })
+      }).catch(function () {});   // best-effort; the UI already acknowledged
     });
   })();
   </script>

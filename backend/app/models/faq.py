@@ -71,6 +71,9 @@ class FAQ(Base):
     )
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     sort_order = Column(Integer, nullable=False, default=0)
+    # "Was this helpful?" tallies (de-duplicated per IP/day at the API).
+    helpful_yes = Column(Integer, nullable=False, default=0, server_default="0")
+    helpful_no = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

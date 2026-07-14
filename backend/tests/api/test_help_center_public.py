@@ -209,3 +209,22 @@ def test_resolve_help_center_via_verified_domain(db, test_organization, help_cen
     help_center.txt_record_verified = False
     db.commit()
     assert resolve_help_center(db, "help.customer.com") is None
+
+
+def test_article_feedback_records_and_dedupes(client, db, test_organization, help_center):
+    faq = _publish_faq(db, test_organization.id)
+    faq.slug = "how-do-i-sign-up"
+    db.commit()
+    r = client.post(f"/a/{faq.slug}/feedback", json={"helpful": True}, headers={"host": HOST})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    db.refresh(faq)
+    assert (faq.helpful_yes, faq.helpful_no) == (1, 0)
+    # Same client (IP) can't vote again — deduped, tallies unchanged.
+    client.post(f"/a/{faq.slug}/feedback", json={"helpful": False}, headers={"host": HOST})
+    db.refresh(faq)
+    assert (faq.helpful_yes, faq.helpful_no) == (1, 0)
+
+
+def test_article_feedback_unknown_slug_404(client, db, test_organization, help_center):
+    r = client.post("/a/does-not-exist/feedback", json={"helpful": True}, headers={"host": HOST})
+    assert r.status_code == 404
