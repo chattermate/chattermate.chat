@@ -361,6 +361,27 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
     mq.addEventListener('change', function () {
       if (!document.body.classList.contains('hc-searching')) applyGroupVisibility();
     });
+
+    // Desktop scroll-spy: highlight the category whose section is at the top of
+    // the viewport as you scroll through the grouped list.
+    var spyScheduled = false;
+    function syncActiveToScroll() {
+      spyScheduled = false;
+      if (mq.matches || document.body.classList.contains('hc-searching')) return;
+      var current = null;
+      for (var i = 0; i < groups.length; i++) {
+        if (groups[i].getBoundingClientRect().top - 100 <= 0) current = groups[i];
+        else break;
+      }
+      if (!current) current = groups[0];
+      if (current) {
+        var cat = current.getAttribute('data-category');
+        if (cat !== activeCat) { activeCat = cat; markActive(); }
+      }
+    }
+    window.addEventListener('scroll', function () {
+      if (!spyScheduled) { spyScheduled = true; window.requestAnimationFrame(syncActiveToScroll); }
+    }, { passive: true });
   })();
   </script>
 
