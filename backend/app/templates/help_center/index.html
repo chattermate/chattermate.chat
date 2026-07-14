@@ -257,6 +257,9 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
     function search(raw) {
       var q = (raw || '').trim().toLowerCase();
       clearBtn.style.display = q ? 'block' : 'none';
+      // Drives the mobile rule that hides the browse-topics column while a
+      // search is active, so results surface directly under the search box.
+      document.body.classList.toggle('hc-searching', !!q);
       if (!q) { if (activeCat) browse(activeCat); return; }
       topics.forEach(function (x) { x.classList.remove('active'); });
       var terms = q.split(/\s+/);
