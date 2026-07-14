@@ -16,7 +16,6 @@ limitations under the License.
 Help-center settings + branding endpoints (settings get/put, logo upload).
 """
 
-import io
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
@@ -41,17 +40,18 @@ from app.repositories.help_center import HelpCenterRepository
 from app.services.file_storage import resolve_public_url, store_upload
 from app.services.help_center_access import check_help_center_access, help_center_allowed
 from app.services.help_center_settings import get_or_create_settings, live_url
+from app.services.image_security import sanitize_image
 
 router = APIRouter()
 
 MAX_LOGO_BYTES = 2 * 1024 * 1024
-# Extensions are derived from the VALIDATED content type, never the client
-# filename — a filename-derived extension could store scriptable content
-# (.svg/.html) under the static uploads mount.
-_LOGO_TYPES = {"image/png": ".png", "image/svg+xml": ".svg"}
-# Conservative SVG screen: the logo renders on the public help center, so
-# active content in an uploaded SVG would be stored XSS there.
-_SVG_FORBIDDEN = (b"<script", b"javascript:", b"onload=", b"onerror=", b"onclick=", b"<foreignobject")
+# Raster only — SVG is active markup and would be stored XSS on the public help
+# center, so it is not accepted; the admin cropper rasterises to PNG client-side.
+_LOGO_TYPES = {"image/png", "image/jpeg", "image/webp"}
+# Reject anything larger than this on a side up front (decompression-bomb guard);
+# the stored logo is then downscaled to LOGO_FIT_DIM (header renders it ~30px).
+MAX_LOGO_DIM = 4000
+LOGO_FIT_DIM = 512
 
 
 def domain_status_response(row: HelpCenterSettings) -> DomainStatusResponse:
@@ -157,27 +157,21 @@ async def upload_logo(
     row = get_or_create_settings(db, current_user.organization)
 
     content = await file.read()
-    if len(content) > MAX_LOGO_BYTES:
-        raise HTTPException(status_code=400, detail="Logo must be 2 MB or smaller.")
-    if file.content_type not in _LOGO_TYPES:
-        raise HTTPException(status_code=400, detail="Logo must be a PNG or SVG file.")
-    if file.content_type == "image/svg+xml":
-        lowered = content.lower()
-        if any(marker in lowered for marker in _SVG_FORBIDDEN):
-            raise HTTPException(status_code=400, detail="SVG logos must not contain scripts or event handlers.")
-    else:
-        try:
-            from PIL import Image
-            Image.open(io.BytesIO(content)).verify()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid image file.")
-
-    file_name = f"{uuid4()}{_LOGO_TYPES[file.content_type]}"
-    row.logo_url = await store_upload(
+    # Validate, bomb-guard, downscale and re-encode to a clean PNG/JPEG — the
+    # stored bytes carry no metadata or non-image payload.
+    safe_bytes, content_type, ext = sanitize_image(
         content,
+        allowed_content_types=_LOGO_TYPES,
+        max_bytes=MAX_LOGO_BYTES,
+        max_dim=MAX_LOGO_DIM,
+        fit=LOGO_FIT_DIM,
+    )
+    file_name = f"{uuid4()}{ext}"
+    row.logo_url = await store_upload(
+        safe_bytes,
         f"help_center/{current_user.organization_id}",
         file_name,
-        content_type=file.content_type,
+        content_type=content_type,
     )
     row = HelpCenterRepository(db).update(row)
     return await settings_response(db, row, current_user.organization_id)

@@ -227,18 +227,28 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
     .js .hc-tag { display: none; }
 
     @media (max-width: 860px) {
-      /* Tighter hero so content starts higher up. */
-      .hc-hero { padding: 34px 20px 26px; }
-      .hc-hero h1 { font-size: 27px; margin-bottom: 8px; }
-      .hc-hero p.lead { font-size: 15px; margin-bottom: 20px; }
-      .hc-body { grid-template-columns: 1fr; gap: 18px; padding: 20px 18px 16px; }
-      .hc-aside { position: static; }
-      /* Topics become one swipeable row directly under the hero, instead of a
-         tall stacked list that pushes the articles far down the page. */
-      .hc-topics { flex-direction: row; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
-        scrollbar-width: none; -webkit-overflow-scrolling: touch; padding: 2px 2px 6px; margin: 0 -2px; }
-      .hc-topics::-webkit-scrollbar { display: none; }
-      .hc-topic { width: auto; flex-shrink: 0; }
+      /* Compact hero so the topics and articles start higher up. */
+      .hc-hero { padding: 30px 20px 22px; }
+      .hc-hero h1 { font-size: 25px; margin-bottom: 6px; }
+      .hc-hero p.lead { font-size: 14.5px; margin-bottom: 16px; }
+      .hc-searchbar { padding: 5px 5px 5px 14px; }
+      .hc-searchbar input { padding: 11px 0; font-size: 15.5px; }
+      /* The 2-column topic grid below is the category picker on mobile, so the
+         duplicate "Popular" chips just add height. */
+      .hc-popular { display: none; }
+
+      .hc-body { grid-template-columns: 1fr; gap: 16px; padding: 18px 16px 16px; }
+      .hc-aside { position: static; min-width: 0; }
+      .hc-main { min-width: 0; }
+      .hc-aside-label { margin-bottom: 10px; }
+
+      /* Topics as a compact 2-column grid: scannable, and — unlike a nowrap row —
+         it can't blow out the page width and force horizontal scrolling. */
+      .hc-topics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .hc-topic { width: auto; min-width: 0; padding: 10px 11px; gap: 9px; }
+      .hc-topic-icon { width: 26px; height: 26px; }
+      .hc-topic-name { font-size: 13.5px; }
+
       /* Redundant on mobile — the "Still need a hand?" CTA below covers it. */
       .hc-help-card { display: none; }
       .hc-cta { padding: 30px; }
