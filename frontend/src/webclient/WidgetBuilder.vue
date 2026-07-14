@@ -3289,6 +3289,92 @@ const shouldShowWelcomeMessage = computed(() => {
     background-color: rgba(255, 255, 255, 0.2);
 }
 
+/* Generic auth-error overlay (token expired / connection failed). The markup
+   mirrors .widget-unavailable-* but had no styles, so it rendered transparent
+   over the page. Mirror that design and re-scope the legacy red .auth-error-*
+   rules above (white-on-red) for this light card. */
+.auth-error-overlay {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    position: relative;
+    font-family: var(--cm-body-font, 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif);
+}
+
+.auth-error-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+    max-width: 90%;
+}
+
+.auth-error-card .auth-error-header {
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 0;
+}
+
+.auth-error-card .auth-error-icon {
+    width: 40px;
+    height: 40px;
+    padding: 16px;
+    box-sizing: content-box;
+    color: #dc2626;
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(220, 38, 38, 0.15);
+}
+
+.auth-error-card h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.auth-error-card .auth-error-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #64748b;
+    margin: 12px 0 24px 0;
+    max-width: 280px;
+    opacity: 1;
+}
+
+.auth-error-card .auth-error-refresh-btn {
+    margin-top: 0;
+    padding: 11px 24px;
+    background: #1e293b;
+    border: none;
+    border-radius: 10px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.auth-error-card .auth-error-refresh-btn:hover {
+    background: #0f172a;
+    transform: translateY(-1px);
+}
+
+.auth-error-card .auth-error-refresh-btn:active {
+    transform: translateY(0);
+    background: #1e293b;
+}
+
 /* SECURITY: Full-page blocking auth error container */
 .auth-error-only-container {
     width: 100%;
