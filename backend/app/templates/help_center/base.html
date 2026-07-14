@@ -147,6 +147,12 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
     .hc-read { font-size: 12px; color: #b4b9c4; white-space: nowrap; }
     .hc-chev { color: #8a90a0; display: flex; }
 
+    /* ---------- grouped browse: every category with its own articles ---------- */
+    .hc-groups { display: flex; flex-direction: column; gap: 30px; }
+    .hc-group { scroll-margin-top: 90px; }
+    .hc-group-head { margin-bottom: 14px; }
+    .hc-group-head h2 { font-size: 19px; }
+
     .hc-empty { text-align: center; padding: 56px 20px; background: #fff; border: 1px solid #ececf2; border-radius: 18px; }
     .hc-empty-icon { width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 14px; background: #f5f6f9; border: 1px solid #ececf2; display: flex; align-items: center; justify-content: center; color: #9aa0ad; }
     .hc-empty h3 { font-family: var(--display); font-weight: 600; font-size: 19px; margin: 0 0 8px; }
@@ -163,6 +169,9 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
 
     /* rendered Markdown body */
     .hc-article-body { font-size: 15.5px; color: #3a4152; line-height: 1.72; }
+    /* A short, single-paragraph answer reads larger so it doesn't look lost in
+       the card's whitespace. */
+    .hc-article-body > p:only-child { font-size: 18px; line-height: 1.6; color: #2a3040; }
     .hc-article-body > :first-child { margin-top: 0; }
     .hc-article-body > :last-child { margin-bottom: 0; }
     .hc-article-body p { margin: 0 0 16px; }
