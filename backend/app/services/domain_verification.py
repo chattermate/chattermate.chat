@@ -23,6 +23,7 @@ host dispatcher will ever serve the domain. SSL turns active once an HTTPS
 probe against /healthz succeeds with a valid certificate.
 """
 
+import os
 import secrets
 from datetime import datetime, timezone
 
@@ -39,6 +40,16 @@ logger = get_logger(__name__)
 DNS_LIFETIME_SECONDS = 5.0
 SSL_PROBE_TIMEOUT_SECONDS = 10.0
 TXT_RECORD_PREFIX = "_chattermate"
+# Public resolvers for verification lookups. The container's own resolver is
+# Docker's embedded DNS (127.0.0.11) for service discovery — it negatively
+# caches names that didn't exist when first queried (so a TXT added *after* the
+# customer set up the domain keeps returning NXDOMAIN). Query public DNS
+# directly, and let self-hosters override if their network blocks these.
+_PUBLIC_DNS_RESOLVERS = [
+    ip.strip()
+    for ip in os.getenv("DOMAIN_VERIFY_DNS_RESOLVERS", "1.1.1.1,8.8.8.8,9.9.9.9").split(",")
+    if ip.strip()
+]
 
 
 def generate_verification_token() -> str:
@@ -57,6 +68,8 @@ def _resolver():
     import dns.resolver
 
     resolver = dns.resolver.Resolver()
+    if _PUBLIC_DNS_RESOLVERS:
+        resolver.nameservers = _PUBLIC_DNS_RESOLVERS
     resolver.lifetime = DNS_LIFETIME_SECONDS
     return resolver
 

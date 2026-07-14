@@ -113,35 +113,55 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
       </div>
       {% endif %}
 
-      <div class="hc-head" id="hc-head"{% if not groups %} hidden{% endif %}>
-        <div class="hc-head-icon" id="hc-head-icon" style="--ic: {{ colors[first_cat] if first_cat else '#6d5bd0' }};">
-          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>
+      <!-- Search-results header (shown only while a query is active). -->
+      <div class="hc-head" id="hc-head" hidden>
+        <div class="hc-head-icon" id="hc-head-icon" style="--ic: #6d5bd0;">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </div>
         <div style="min-width:0;">
-          <h2 id="hc-head-title">{{ first_cat }}</h2>
-          <div class="hc-head-sub" id="hc-head-sub">{% if groups %}{{ groups[0][1] | length }} {{ 'article' if groups[0][1] | length == 1 else 'articles' }}{% endif %}</div>
+          <h2 id="hc-head-title">Search results</h2>
+          <div class="hc-head-sub" id="hc-head-sub"></div>
         </div>
       </div>
 
-      <div class="hc-list" id="hc-list">
+      <!-- Flat, relevance-ranked results — cards move here while searching. -->
+      <div class="hc-list" id="hc-search-results" hidden></div>
+
+      <!-- Browse view: every category with its own articles (Option B). On
+           desktop all sections show and the sidebar jump-scrolls to them; on
+           mobile the topic grid filters to one section at a time. -->
+      <div class="hc-groups" id="hc-groups">
         {% for category, faqs in groups %}
-          {% for faq in faqs %}
-          <a class="hc-card" href="/a/{{ faq.slug }}" data-category="{{ category }}"
-             data-title="{{ faq.search_title }}" data-search="{{ faq.search_text }}"
-             style="--ic: {{ colors[category] }};">
-            <span class="hc-card-main">
-              <span class="hc-tag">{{ category }}</span>
-              <span class="hc-qtext">{{ faq.question }}</span>
-              <span class="hc-preview">{{ faq.preview }}</span>
-            </span>
-            <span class="hc-card-meta">
-              <span class="hc-read">{{ faq.read_time }}</span>
-              <span class="hc-chev">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+        <section class="hc-group" id="cat-{{ loop.index0 }}" data-category="{{ category }}" style="--ic: {{ colors[category] }};">
+          <div class="hc-head hc-group-head">
+            <div class="hc-head-icon">
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>
+            </div>
+            <div style="min-width:0;">
+              <h2>{{ category }}</h2>
+              <div class="hc-head-sub">{{ faqs | length }} {{ 'article' if faqs | length == 1 else 'articles' }}</div>
+            </div>
+          </div>
+          <div class="hc-list">
+            {% for faq in faqs %}
+            <a class="hc-card" href="/a/{{ faq.slug }}" data-category="{{ category }}"
+               data-title="{{ faq.search_title }}" data-search="{{ faq.search_text }}"
+               style="--ic: {{ colors[category] }};">
+              <span class="hc-card-main">
+                <span class="hc-tag">{{ category }}</span>
+                <span class="hc-qtext">{{ faq.question }}</span>
+                <span class="hc-preview">{{ faq.preview }}</span>
               </span>
-            </span>
-          </a>
-          {% endfor %}
+              <span class="hc-card-meta">
+                <span class="hc-read">{{ faq.read_time }}</span>
+                <span class="hc-chev">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+                </span>
+              </span>
+            </a>
+            {% endfor %}
+          </div>
+        </section>
         {% endfor %}
       </div>
 
@@ -170,20 +190,22 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
     var input = document.getElementById('hc-search');
     var clearBtn = document.getElementById('hc-clear');
     var topics = [].slice.call(document.querySelectorAll('.hc-topic'));
+    var groupsWrap = document.getElementById('hc-groups');
+    var groups = [].slice.call(document.querySelectorAll('.hc-group'));
     var cards = [].slice.call(document.querySelectorAll('.hc-card'));
-    var list = document.getElementById('hc-list');
-    // Search reorders cards by relevance; browsing restores document order.
-    var originalOrder = cards.slice();
+    // Remember each card's home group + document order so search (which moves
+    // matched cards into a flat ranked list) can put them back on clear.
+    cards.forEach(function (c, i) { c._home = c.parentNode; c._idx = i; });
+    var results = document.getElementById('hc-search-results');
     var head = document.getElementById('hc-head');
-    var headIcon = document.getElementById('hc-head-icon');
     var headTitle = document.getElementById('hc-head-title');
     var headSub = document.getElementById('hc-head-sub');
     var empty = document.getElementById('hc-empty');
     var emptyTitle = document.getElementById('hc-empty-title');
     var aiWrap = document.getElementById('hc-ai-wrap');
+    var mq = window.matchMedia('(max-width: 860px)');
     var activeCat = topics.length ? topics[0].getAttribute('data-category') : null;
 
-    function articles(n) { return n + ' ' + (n === 1 ? 'article' : 'articles'); }
     function resetAi() {
       if (!aiWrap) return;
       aiWrap.hidden = true;
@@ -192,30 +214,53 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
       var b = document.getElementById('hc-ask-btn'); if (b) b.hidden = false;
     }
 
-    function restoreOrder() {
-      originalOrder.forEach(function (card) { list.appendChild(card); });
+    function sectionFor(cat) {
+      return groups.filter(function (g) { return g.getAttribute('data-category') === cat; })[0];
     }
 
-    // ----- browse a single category -----
-    function browse(cat) {
-      activeCat = cat;
-      restoreOrder();
-      var count = 0;
-      cards.forEach(function (card) {
-        var show = card.getAttribute('data-category') === cat;
-        card.hidden = !show;
-        if (show) count++;
+    // Return every card to its home group in original document order.
+    function restoreCards() {
+      cards.slice().sort(function (a, b) { return a._idx - b._idx; }).forEach(function (c) {
+        c.hidden = false;
+        if (c.parentNode !== c._home) c._home.appendChild(c);
       });
-      var t = topics.filter(function (x) { return x.getAttribute('data-category') === cat; })[0];
-      topics.forEach(function (x) { x.classList.toggle('active', x === t); });
-      if (t && head) {
-        head.hidden = false;
-        headIcon.style.setProperty('--ic', t.getAttribute('data-color'));
-        headTitle.textContent = cat;
-        headSub.textContent = articles(count);
-      }
-      if (empty) empty.hidden = true;
+    }
+
+    // Desktop shows every category section; mobile shows one at a time.
+    function applyGroupVisibility() {
+      groups.forEach(function (g) {
+        g.hidden = mq.matches && g.getAttribute('data-category') !== activeCat;
+      });
+    }
+
+    function markActive() {
+      topics.forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-category') === activeCat); });
+    }
+
+    // ----- browse: grouped category sections -----
+    function showBrowse() {
+      document.body.classList.remove('hc-searching');
+      restoreCards();
+      if (results) results.hidden = true;
+      if (head) head.hidden = true;
+      if (empty) empty.hidden = !!groups.length;
+      if (groupsWrap) groupsWrap.hidden = false;
+      markActive();
+      applyGroupVisibility();
       resetAi();
+    }
+
+    // Pick a category: mobile filters to its section, desktop scrolls to it.
+    function selectCategory(cat) {
+      if (input) input.value = '';
+      activeCat = cat;
+      showBrowse();
+      if (mq.matches) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        var sec = sectionFor(cat);
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
 
     // ----- search across all categories -----
@@ -256,11 +301,10 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
 
     function search(raw) {
       var q = (raw || '').trim().toLowerCase();
-      clearBtn.style.display = q ? 'block' : 'none';
-      // Drives the mobile rule that hides the browse-topics column while a
-      // search is active, so results surface directly under the search box.
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
       document.body.classList.toggle('hc-searching', !!q);
-      if (!q) { if (activeCat) browse(activeCat); return; }
+      if (!q) { showBrowse(); return; }
+      if (groupsWrap) groupsWrap.hidden = true;
       topics.forEach(function (x) { x.classList.remove('active'); });
       var terms = q.split(/\s+/);
       var matches = [];
@@ -272,17 +316,17 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
         if (score) matches.push({ card: card, score: score });
       });
       matches.sort(function (a, b) { return b.score - a.score; });
-      matches.forEach(function (m) { list.appendChild(m.card); });
+      matches.forEach(function (m) { results.appendChild(m.card); });
+      if (results) results.hidden = false;
       var count = matches.length;
       if (head) {
         head.hidden = false;
-        headIcon.style.setProperty('--ic', topics.length ? topics[0].getAttribute('data-color') : 'var(--brand)');
         headTitle.textContent = 'Search results';
         headSub.textContent = count + (count === 1 ? ' answer' : ' answers') + ' for “' + raw.trim() + '”';
       }
       if (empty) {
         empty.hidden = count > 0;
-        emptyTitle.textContent = 'No results for “' + raw.trim() + '”';
+        if (emptyTitle) emptyTitle.textContent = 'No results for “' + raw.trim() + '”';
       }
       if (aiWrap) {
         resetAi();
@@ -299,17 +343,45 @@ Ask-AI fetch). Card previews/read-times are computed server-side.
     if (input) {
       input.addEventListener('input', function () { search(input.value); });
       if (input.value) search(input.value);
-      else if (wantTopic && topics.some(function (t) { return t.getAttribute('data-category') === wantTopic; })) browse(wantTopic);
-      else if (activeCat) browse(activeCat);
+      else if (wantTopic && topics.some(function (t) { return t.getAttribute('data-category') === wantTopic; })) selectCategory(wantTopic);
+      else showBrowse();
+    } else {
+      showBrowse();
     }
     if (clearBtn) clearBtn.addEventListener('click', function () { input.value = ''; input.focus(); search(''); });
 
     topics.forEach(function (t) {
-      t.addEventListener('click', function () { input.value = ''; search(''); browse(t.getAttribute('data-category')); });
+      t.addEventListener('click', function () { selectCategory(t.getAttribute('data-category')); });
     });
     [].slice.call(document.querySelectorAll('[data-jump]')).forEach(function (chip) {
-      chip.addEventListener('click', function () { input.value = ''; search(''); browse(chip.getAttribute('data-jump')); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      chip.addEventListener('click', function () { selectCategory(chip.getAttribute('data-jump')); });
     });
+
+    // Re-apply per-breakpoint group visibility when crossing 860px (not searching).
+    mq.addEventListener('change', function () {
+      if (!document.body.classList.contains('hc-searching')) applyGroupVisibility();
+    });
+
+    // Desktop scroll-spy: highlight the category whose section is at the top of
+    // the viewport as you scroll through the grouped list.
+    var spyScheduled = false;
+    function syncActiveToScroll() {
+      spyScheduled = false;
+      if (mq.matches || document.body.classList.contains('hc-searching')) return;
+      var current = null;
+      for (var i = 0; i < groups.length; i++) {
+        if (groups[i].getBoundingClientRect().top - 100 <= 0) current = groups[i];
+        else break;
+      }
+      if (!current) current = groups[0];
+      if (current) {
+        var cat = current.getAttribute('data-category');
+        if (cat !== activeCat) { activeCat = cat; markActive(); }
+      }
+    }
+    window.addEventListener('scroll', function () {
+      if (!spyScheduled) { spyScheduled = true; window.requestAnimationFrame(syncActiveToScroll); }
+    }, { passive: true });
   })();
   </script>
 

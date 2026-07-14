@@ -147,6 +147,12 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
     .hc-read { font-size: 12px; color: #b4b9c4; white-space: nowrap; }
     .hc-chev { color: #8a90a0; display: flex; }
 
+    /* ---------- grouped browse: every category with its own articles ---------- */
+    .hc-groups { display: flex; flex-direction: column; gap: 30px; }
+    .hc-group { scroll-margin-top: 90px; }
+    .hc-group-head { margin-bottom: 14px; }
+    .hc-group-head h2 { font-size: 19px; }
+
     .hc-empty { text-align: center; padding: 56px 20px; background: #fff; border: 1px solid #ececf2; border-radius: 18px; }
     .hc-empty-icon { width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 14px; background: #f5f6f9; border: 1px solid #ececf2; display: flex; align-items: center; justify-content: center; color: #9aa0ad; }
     .hc-empty h3 { font-family: var(--display); font-weight: 600; font-size: 19px; margin: 0 0 8px; }
@@ -163,6 +169,9 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
 
     /* rendered Markdown body */
     .hc-article-body { font-size: 15.5px; color: #3a4152; line-height: 1.72; }
+    /* A short, single-paragraph answer reads larger so it doesn't look lost in
+       the card's whitespace. */
+    .hc-article-body > p:only-child { font-size: 18px; line-height: 1.6; color: #2a3040; }
     .hc-article-body > :first-child { margin-top: 0; }
     .hc-article-body > :last-child { margin-bottom: 0; }
     .hc-article-body p { margin: 0 0 16px; }
@@ -242,10 +251,25 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
       .hc-main { min-width: 0; }
       .hc-aside-label { margin-bottom: 10px; }
 
-      /* Topics as a compact 2-column grid: scannable, and — unlike a nowrap row —
-         it can't blow out the page width and force horizontal scrolling. */
-      .hc-topics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-      .hc-topic { width: auto; min-width: 0; padding: 10px 11px; gap: 9px; }
+      /* Topics: a compact 3-row band that scrolls left/right. Fixed-width
+         auto-columns + overflow-x keep the scroll contained to this strip (the
+         page never scrolls sideways), so it stays short instead of a tall grid. */
+      .hc-topics {
+        display: grid;
+        grid-auto-flow: column;
+        grid-template-rows: repeat(3, auto);
+        grid-auto-columns: 46%;
+        gap: 8px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 0 2px 4px;
+        margin: 0 -2px;
+      }
+      .hc-topics::-webkit-scrollbar { display: none; }
+      .hc-topic { width: auto; min-width: 0; padding: 10px 11px; gap: 9px; scroll-snap-align: start; }
       .hc-topic-icon { width: 26px; height: 26px; }
       .hc-topic-name { font-size: 13.5px; }
 
