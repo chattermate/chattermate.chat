@@ -25,6 +25,8 @@ export interface FaqItem {
   status: FaqStatus
   knowledge_id: number | null
   source_label: string | null
+  helpful_yes?: number
+  helpful_no?: number
   created_at?: string | null
   updated_at?: string | null
 }

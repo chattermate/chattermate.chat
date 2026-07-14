@@ -173,6 +173,14 @@ class FAQRepository:
         self.db.delete(faq)
         self.db.commit()
 
+    def record_feedback(self, faq_id: UUID, helpful: bool) -> None:
+        """Atomically bump the 'Was this helpful?' tally for an article."""
+        column = FAQ.helpful_yes if helpful else FAQ.helpful_no
+        self.db.query(FAQ).filter(FAQ.id == faq_id).update(
+            {column: column + 1}, synchronize_session=False
+        )
+        self.db.commit()
+
     def bulk_set_status(
         self, organization_id: UUID, faq_ids: List[UUID], status: FAQStatus
     ) -> int:
