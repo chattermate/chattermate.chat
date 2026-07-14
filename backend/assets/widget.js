@@ -10620,7 +10620,7 @@ const Kp = {
         title: "Close",
         onClick: Vn
       }, "×"),
-      g[19] || (g[19] = $n('<div class="widget-unavailable-card" data-v-8aec1a8d><div class="widget-unavailable-icon-wrapper" data-v-8aec1a8d><svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" data-v-8aec1a8d><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" data-v-8aec1a8d></path><path d="M9 12l2 2 4-4" data-v-8aec1a8d></path></svg></div><h2 class="widget-unavailable-title" data-v-8aec1a8d>Chat Unavailable</h2><p class="widget-unavailable-message" data-v-8aec1a8d> This chat widget is not currently configured. Please contact the website administrator to enable chat support. </p><div class="widget-unavailable-footer" data-v-8aec1a8d><svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-8aec1a8d><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-8aec1a8d></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-8aec1a8d><span class="cm-powered-prefix" data-v-8aec1a8d>Powered by </span><strong class="cm-brand" data-v-8aec1a8d>ChatterMate</strong></a></div></div>', 1))
+      g[19] || (g[19] = $n('<div class="widget-unavailable-card" data-v-146fc438><div class="widget-unavailable-icon-wrapper" data-v-146fc438><svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" data-v-146fc438><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" data-v-146fc438></path><path d="M9 12l2 2 4-4" data-v-146fc438></path></svg></div><h2 class="widget-unavailable-title" data-v-146fc438>Chat Unavailable</h2><p class="widget-unavailable-message" data-v-146fc438> This chat widget is not currently configured. Please contact the website administrator to enable chat support. </p><div class="widget-unavailable-footer" data-v-146fc438><svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-146fc438><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-146fc438></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-146fc438><span class="cm-powered-prefix" data-v-146fc438>Powered by </span><strong class="cm-brand" data-v-146fc438>ChatterMate</strong></a></div></div>', 1))
     ])) : M.value ? (T(), S("div", Gp, [
       w("button", {
         type: "button",
@@ -10630,7 +10630,7 @@ const Kp = {
         onClick: Vn
       }, "×"),
       w("div", Yp, [
-        g[20] || (g[20] = $n('<div class="auth-error-header" data-v-8aec1a8d><svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-v-8aec1a8d><circle cx="12" cy="12" r="10" data-v-8aec1a8d></circle><line x1="12" y1="8" x2="12" y2="12" data-v-8aec1a8d></line><line x1="12" y1="16" x2="12.01" y2="16" data-v-8aec1a8d></line></svg><h2 data-v-8aec1a8d>Authentication Error</h2></div>', 1)),
+        g[20] || (g[20] = $n('<div class="auth-error-header" data-v-146fc438><svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-v-146fc438><circle cx="12" cy="12" r="10" data-v-146fc438></circle><line x1="12" y1="8" x2="12" y2="12" data-v-146fc438></line><line x1="12" y1="16" x2="12.01" y2="16" data-v-146fc438></line></svg><h2 data-v-146fc438>Authentication Error</h2></div>', 1)),
         w("p", Xp, re(D.value), 1),
         w("button", {
           class: "auth-error-refresh-btn",
@@ -10643,7 +10643,7 @@ const Kp = {
       style: Se({ ...E(f), ...Wc.value, ...$c.value })
     }, [
       R.value ? (T(), S("div", Zp, g[21] || (g[21] = [
-        $n('<div class="loading-spinner" data-v-8aec1a8d><div class="dot" data-v-8aec1a8d></div><div class="dot" data-v-8aec1a8d></div><div class="dot" data-v-8aec1a8d></div></div><div class="loading-text" data-v-8aec1a8d>Initializing chat...</div>', 2)
+        $n('<div class="loading-spinner" data-v-146fc438><div class="dot" data-v-146fc438></div><div class="dot" data-v-146fc438></div><div class="dot" data-v-146fc438></div></div><div class="loading-text" data-v-146fc438>Initializing chat...</div>', 2)
       ]))) : oe("", !0),
       !R.value && E(ne) !== "connected" ? (T(), S("div", {
         key: 1,
@@ -10748,7 +10748,7 @@ const Kp = {
           class: "powered-by-welcome",
           style: Se(E(He))
         }, g[26] || (g[26] = [
-          $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-8aec1a8d><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-8aec1a8d></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-8aec1a8d><span class="cm-powered-prefix" data-v-8aec1a8d>Powered by </span><strong class="cm-brand" data-v-8aec1a8d>ChatterMate</strong></a>', 2)
+          $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-146fc438><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-146fc438></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-146fc438><span class="cm-powered-prefix" data-v-146fc438>Powered by </span><strong class="cm-brand" data-v-146fc438>ChatterMate</strong></a>', 2)
         ]), 4)
       ], 6)) : oe("", !0),
       Me.value && ct.value ? (T(), S("div", {
@@ -10772,7 +10772,7 @@ const Kp = {
           class: "powered-by-landing",
           style: Se(E(He))
         }, g[27] || (g[27] = [
-          $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-8aec1a8d><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-8aec1a8d></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-8aec1a8d><span class="cm-powered-prefix" data-v-8aec1a8d>Powered by </span><strong class="cm-brand" data-v-8aec1a8d>ChatterMate</strong></a>', 2)
+          $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-146fc438><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-146fc438></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-146fc438><span class="cm-powered-prefix" data-v-146fc438>Powered by </span><strong class="cm-brand" data-v-146fc438>ChatterMate</strong></a>', 2)
         ]), 4)
       ], 4)) : ht.value && st.value ? (T(), S("div", {
         key: 5,
@@ -10901,7 +10901,7 @@ const Kp = {
           class: "powered-by-landing",
           style: Se(E(He))
         }, g[29] || (g[29] = [
-          $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-8aec1a8d><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-8aec1a8d></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-8aec1a8d><span class="cm-powered-prefix" data-v-8aec1a8d>Powered by </span><strong class="cm-brand" data-v-8aec1a8d>ChatterMate</strong></a>', 2)
+          $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-146fc438><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-146fc438></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-146fc438><span class="cm-powered-prefix" data-v-146fc438>Powered by </span><strong class="cm-brand" data-v-146fc438>ChatterMate</strong></a>', 2)
         ]), 4)
       ], 4)) : Oo.value ? oe("", !0) : (T(), S(et, { key: 6 }, [
         nt.value ? (T(), S("div", {
@@ -11589,7 +11589,7 @@ const Kp = {
             class: "powered-by",
             style: Se(E(He))
           }, g[51] || (g[51] = [
-            $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-8aec1a8d><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-8aec1a8d></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-8aec1a8d></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-8aec1a8d><span class="cm-powered-prefix" data-v-8aec1a8d>Powered by </span><strong class="cm-brand" data-v-8aec1a8d>ChatterMate</strong></a>', 2)
+            $n('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-146fc438><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-146fc438></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-146fc438></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-146fc438><span class="cm-powered-prefix" data-v-146fc438>Powered by </span><strong class="cm-brand" data-v-146fc438>ChatterMate</strong></a>', 2)
           ]), 4)
         ], 6)) : oe("", !0)
       ], 64)),
@@ -11657,7 +11657,7 @@ const Kp = {
   for (const [s, r] of e)
     n[s] = r;
   return n;
-}, J_ = /* @__PURE__ */ Z_(X_, [["__scopeId", "data-v-8aec1a8d"]]);
+}, J_ = /* @__PURE__ */ Z_(X_, [["__scopeId", "data-v-146fc438"]]);
 window.process || (window.process = { env: { NODE_ENV: "production" } });
 const $t = window.__INITIAL_DATA__, wc = new URL(window.location.href), kc = wc.searchParams.get("preview") === "true", xc = (t) => {
   const e = wc.searchParams.get(t);

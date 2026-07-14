@@ -190,9 +190,12 @@ async def _save_file_locally(
         file_path = os.path.join(upload_dir, filename)
         with open(file_path, "wb") as f:
             f.write(file_content)
-        
-        file_url = f"/uploads/{folder}/{filename}"
-        
+
+        # Must match the static mount ({API_V1_STR}/uploads) and store_upload's
+        # own local branch — a bare "/uploads/..." 404s and never gets recognised
+        # as a signable S3 URL either, so logos/images render broken.
+        file_url = f"{settings.API_V1_STR}/uploads/{folder}/{filename}"
+
         return file_url
     except Exception as e:
         logger.error(f"Failed to save file locally: {str(e)}")

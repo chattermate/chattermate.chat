@@ -227,11 +227,20 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
     .js .hc-tag { display: none; }
 
     @media (max-width: 860px) {
-      .hc-body { grid-template-columns: 1fr; gap: 24px; }
+      /* Tighter hero so content starts higher up. */
+      .hc-hero { padding: 34px 20px 26px; }
+      .hc-hero h1 { font-size: 27px; margin-bottom: 8px; }
+      .hc-hero p.lead { font-size: 15px; margin-bottom: 20px; }
+      .hc-body { grid-template-columns: 1fr; gap: 18px; padding: 20px 18px 16px; }
       .hc-aside { position: static; }
-      .hc-topics { flex-direction: row; flex-wrap: wrap; }
-      .hc-topic { width: auto; }
-      .hc-hero h1 { font-size: 30px; }
+      /* Topics become one swipeable row directly under the hero, instead of a
+         tall stacked list that pushes the articles far down the page. */
+      .hc-topics { flex-direction: row; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
+        scrollbar-width: none; -webkit-overflow-scrolling: touch; padding: 2px 2px 6px; margin: 0 -2px; }
+      .hc-topics::-webkit-scrollbar { display: none; }
+      .hc-topic { width: auto; flex-shrink: 0; }
+      /* Redundant on mobile — the "Still need a hand?" CTA below covers it. */
+      .hc-help-card { display: none; }
       .hc-cta { padding: 30px; }
       .hc-article-card { padding: 24px 20px; }
       .hc-related-grid { grid-template-columns: 1fr; }
