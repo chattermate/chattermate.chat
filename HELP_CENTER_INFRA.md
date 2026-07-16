@@ -54,12 +54,45 @@ docker run --rm \
   --non-interactive --agree-tos -m <ops-email>
 ```
 
-**Auto-renewal:** the compose `certbot` service (in
-`docker-compose.hostinger.yml`) runs `certbot renew` on a loop. It uses the
-`certbot/dns-route53` image and mounts `/home/chattermate/.aws:/root/.aws:ro`,
-so the wildcard renews unattended (the renewal conf remembers
-`authenticator = dns-route53`). Existing HTTP-01 webroot certs still renew —
-the dns-route53 image is a superset of `certbot/certbot`.
+**Auto-renewal:** a daily cron runs the compose `certbot` service as a
+**one-shot**, then reloads nginx only if a cert actually changed:
+```bash
+docker compose -f docker-compose.hostinger.yml \
+  run --rm --entrypoint certbot certbot \
+  renew --quiet --deploy-hook "echo reload-needed > /var/www/certbot/.reload"
+# ...then, if the flag file appeared: rm it && docker compose exec -T nginx nginx -s reload
+```
+It uses the `certbot/dns-route53` image and mounts
+`/home/chattermate/.aws:/root/.aws:ro`, so the wildcard renews unattended (the
+renewal conf remembers `authenticator = dns-route53`). Existing HTTP-01 webroot
+certs still renew — the dns-route53 image is a superset of `certbot/certbot`.
+`renew` covers every cert in the shared `certbot/conf`, not just the wildcard.
+
+> **The `certbot` service must stay one-shot — never give it a long-running
+> loop entrypoint.** It previously used
+> `sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait ${!}; done;'`,
+> which broke renewal in two non-obvious ways:
+>
+> 1. **`compose run` inherits the entrypoint.** The "one-off" cron run never
+>    exited, so `--rm` never fired (a container leaked *every night*) and the
+>    cron's chained `&& nginx -s reload` never ran at all.
+> 2. **`sh -c '<script>' <args>` silently discards the args** (they land in
+>    `$0`/`$1`…, which the script ignores). So it renewed *without* the
+>    `--deploy-hook`, every 12h — beating the daily cron to the renewal. The
+>    cron's own `renew` then found nothing due, so the hook never fired.
+>
+> Net effect: certs renewed on disk while **nginx kept serving the old ones**,
+> masked only by deploys happening to restart nginx. Left alone that expires a
+> live cert. The service is therefore declared with no `entrypoint:` (the
+> image's default is `certbot`) and `profiles: ["tools"]`, so `compose up -d`
+> never starts it while `compose run` still works (it auto-enables the profile).
+>
+> Regression check — the command must **exit** and leave nothing behind:
+> ```bash
+> timeout 60 docker compose -f docker-compose.hostinger.yml \
+>   run --rm --entrypoint certbot certbot renew --quiet   # ~3s, rc=0
+> docker ps -a --filter name=certbot   # must be empty
+> ```
 
 ### Host nginx server block
 Lives at `~/chattermate/nginx/conf.d/help-center.conf` (mounted read-only into
@@ -133,6 +166,9 @@ whole VPS.
 3. `docker exec chattermate-backend-1 printenv HELP_CENTER_BASE_DOMAIN` → `help.chattermate.chat` (and the backend is `healthy`, not crash-looping on `HELP_CENTER_TARGET_IPS`).
 4. API unaffected: `https://app.chattermate.chat` / `https://api.chattermate.chat/api/v1/...` still route normally.
 5. `POST /ask` from the page returns an answer and appears in `help_center_queries`.
+6. `docker ps -a --filter name=certbot` → **empty**. `compose up -d` must not start a
+   certbot container; one that sticks around means the long-running loop entrypoint is
+   back (see the renewal note in §1) and nginx will stop reloading onto renewed certs.
 
 ## 4. Enterprise (cloud) rollout prerequisite
 
