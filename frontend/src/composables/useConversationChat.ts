@@ -89,7 +89,9 @@ export function useConversationChat(
   })
 
   const scrollToBottom = async () => {
-    //await nextTick()
+    // Wait for the new message to render, otherwise scrollHeight is still the
+    // pre-append height and the list stops short of the bottom.
+    await nextTick()
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
