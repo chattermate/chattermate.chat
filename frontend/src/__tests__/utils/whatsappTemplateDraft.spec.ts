@@ -22,6 +22,7 @@ import {
   draftErrors,
   buildAuthoredComponents,
   groupButtons,
+  bodyVariables,
   type DraftButton,
   type TemplateDraft,
 } from '../../utils/whatsappTemplateDraft'
@@ -29,6 +30,7 @@ import {
 const draft = (extra: Partial<TemplateDraft> = {}): TemplateDraft => ({
   ...emptyDraft(),
   body: 'Hi {{1}}, your order shipped.',
+  examples: { 1: 'Priya' },
   ...extra,
 })
 
@@ -131,7 +133,11 @@ describe('buttonNeedsValue', () => {
 describe('buildAuthoredComponents', () => {
   it('sends the body alone when nothing else is filled', () => {
     expect(buildAuthoredComponents(draft())).toEqual([
-      { type: 'BODY', text: 'Hi {{1}}, your order shipped.' },
+      {
+        type: 'BODY',
+        text: 'Hi {{1}}, your order shipped.',
+        example: { body_text: [['Priya']] },
+      },
     ])
   })
 
@@ -237,5 +243,81 @@ describe('groupButtons', () => {
       button({ type: 'QUICK_REPLY', text: 'second' }),
     ])
     expect(grouped.map((b) => b.text)).toEqual(['first', 'second'])
+  })
+})
+
+describe('bodyVariables', () => {
+  it('is distinct and ascending, whatever order they appear in', () => {
+    expect(bodyVariables('{{2}} then {{1}} then {{2}} again')).toEqual([1, 2])
+  })
+
+  it('reads a padded placeholder, because that is what people type', () => {
+    expect(bodyVariables('Hi {{ 1 }}')).toEqual([1])
+  })
+
+  it('finds none in plain text', () => {
+    expect(bodyVariables('Your order shipped.')).toEqual([])
+  })
+})
+
+describe('draftErrors — sample values', () => {
+  it('requires a sample for each variable', () => {
+    const errors = draftErrors(draft({ body: 'Hi {{1}}, order {{2}}.', examples: { 1: 'Priya' } }))
+    expect(errors).toEqual(['Add a sample value for variable 2.'])
+  })
+
+  it('treats whitespace as no sample at all', () => {
+    expect(draftErrors(draft({ examples: { 1: '   ' } }))).toEqual([
+      'Add a sample value for variable 1.',
+    ])
+  })
+
+  it('needs no samples when the body has no variables', () => {
+    expect(draftErrors(draft({ body: 'Your order shipped.', examples: {} }))).toEqual([])
+  })
+
+  it('rejects variables that do not start at 1', () => {
+    const errors = draftErrors(draft({ body: 'Hi {{2}}', examples: { 2: 'x' } }))
+    expect(errors).toEqual(['The message variable must be numbered 1.'])
+  })
+
+  it('rejects a gap in the numbering', () => {
+    const errors = draftErrors(draft({ body: '{{1}} and {{3}}', examples: { 1: 'a', 3: 'b' } }))
+    expect(errors).toEqual([
+      'Message variables must be numbered 1, 2 — in order, with none skipped.',
+    ])
+  })
+
+  it('does not also demand samples for a numbering it rejected', () => {
+    const errors = draftErrors(draft({ body: 'Hi {{2}}', examples: {} }))
+    expect(errors).toHaveLength(1)
+  })
+})
+
+describe('buildAuthoredComponents — examples', () => {
+  const bodyOf = (d: TemplateDraft) =>
+    buildAuthoredComponents(d).find((c) => c.type === 'BODY') as Record<string, any>
+
+  it('sends one set of samples, in variable order', () => {
+    const body = bodyOf(
+      draft({ body: 'Hi {{1}}, order {{2}}.', examples: { 2: 'A-12', 1: 'Priya' } }),
+    )
+    expect(body.example).toEqual({ body_text: [['Priya', 'A-12']] })
+  })
+
+  it('omits example entirely when there is nothing to fill in', () => {
+    expect(bodyOf(draft({ body: 'Your order shipped.', examples: {} }))).not.toHaveProperty(
+      'example',
+    )
+  })
+
+  it('trims samples so a stray space is not reviewed as the value', () => {
+    expect(bodyOf(draft({ examples: { 1: '  Priya  ' } })).example).toEqual({
+      body_text: [['Priya']],
+    })
+  })
+
+  it('normalises a padded placeholder, which the send path would not match', () => {
+    expect(bodyOf(draft({ body: 'Hi {{ 1 }}!', examples: { 1: 'Priya' } })).text).toBe('Hi {{1}}!')
   })
 })

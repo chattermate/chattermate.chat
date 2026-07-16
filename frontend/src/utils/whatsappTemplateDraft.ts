@@ -38,6 +38,9 @@ export interface TemplateDraft {
   body: string
   footer: string
   buttons: DraftButton[]
+  /** A sample value per body variable, keyed by its number. Meta requires one
+   *  for each and reviews the template against them. */
+  examples: Record<number, string>
 }
 
 export const LIMITS = {
@@ -59,12 +62,36 @@ export const BUTTON_TYPES: { value: DraftButtonType; label: string; valueLabel: 
 ]
 
 const PLACEHOLDER = /\{\{\s*\d+\s*\}\}/
+const PLACEHOLDER_NUMBERED = /\{\{\s*(\d+)\s*\}\}/g
 /** Meta needs an absolute URL; a bare host is rejected at review. */
 const URL_SCHEME = /^https?:\/\/\S+$/i
 /** Digits with an optional country code — Meta wants it dialable, not pretty. */
 const PHONE_SHAPE = /^\+?[\d\s-]{5,}$/
 
-export const emptyDraft = (): TemplateDraft => ({ header: '', body: '', footer: '', buttons: [] })
+export const emptyDraft = (): TemplateDraft => ({
+  header: '',
+  body: '',
+  footer: '',
+  buttons: [],
+  examples: {},
+})
+
+/**
+ * The distinct variable numbers in the body, ascending.
+ *
+ * Padding is tolerated when reading ({{ 1 }} is what someone types), but
+ * normaliseBody strips it before submission — the send path matches the stored
+ * text with a stricter pattern, so a padded placeholder would be approved by
+ * Meta and then never filled in.
+ */
+export const bodyVariables = (body: string): number[] => {
+  const found = new Set<number>()
+  for (const match of body.matchAll(PLACEHOLDER_NUMBERED)) found.add(Number(match[1]))
+  return [...found].sort((a, b) => a - b)
+}
+
+const normaliseBody = (body: string): string =>
+  body.trim().replace(PLACEHOLDER_NUMBERED, (_, index) => `{{${index}}}`)
 
 export const newButton = (): DraftButton => ({ type: 'QUICK_REPLY', text: '', value: '' })
 
@@ -98,6 +125,26 @@ export const draftErrors = (draft: TemplateDraft): string[] => {
   if (draft.body.length > LIMITS.body) {
     errors.push(`Message must be ${LIMITS.body} characters or fewer.`)
   }
+
+  // Meta requires variables to run 1, 2, 3… with no gaps, and a sample for
+  // every one — it reviews the template as the customer would read it. Both are
+  // checked here because Graph reports them as a bare 400 long after submitting.
+  const variables = bodyVariables(draft.body)
+  const expected = variables.map((_, index) => index + 1)
+  if (String(variables) !== String(expected)) {
+    errors.push(
+      variables.length === 1
+        ? 'The message variable must be numbered 1.'
+        : `Message variables must be numbered ${expected.join(', ')} — in order, with none skipped.`,
+    )
+  } else {
+    for (const index of variables) {
+      if (!draft.examples[index]?.trim()) {
+        errors.push(`Add a sample value for variable ${index}.`)
+      }
+    }
+  }
+
   if (draft.footer.length > LIMITS.footer) {
     errors.push(`Footer must be ${LIMITS.footer} characters or fewer.`)
   }
@@ -176,7 +223,16 @@ export const buildAuthoredComponents = (draft: TemplateDraft): TemplateComponent
   if (draft.header.trim()) {
     components.push({ type: 'HEADER', format: 'TEXT', text: draft.header.trim() })
   }
-  components.push({ type: 'BODY', text: draft.body.trim() })
+
+  // body_text is an array of *sets* of samples — one set per hypothetical
+  // message — and we send a single set. Its values go in variable order,
+  // because Meta pairs them positionally rather than by number.
+  const body: TemplateComponent = { type: 'BODY', text: normaliseBody(draft.body) }
+  const variables = bodyVariables(draft.body)
+  if (variables.length) {
+    body.example = { body_text: [variables.map((index) => draft.examples[index]?.trim() ?? '')] }
+  }
+  components.push(body)
   if (draft.footer.trim()) {
     components.push({ type: 'FOOTER', text: draft.footer.trim() })
   }

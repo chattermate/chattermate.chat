@@ -28,6 +28,7 @@ import {
   emptyDraft,
   draftErrors,
   buildAuthoredComponents,
+  bodyVariables,
 } from '@/utils/whatsappTemplateDraft'
 import WhatsAppTemplateButtons from '@/components/integrations/WhatsAppTemplateButtons.vue'
 
@@ -44,6 +45,7 @@ const emit = defineEmits<{
 // contains {{n}}, which is exactly the syntax being described here.
 const BODY_PLACEHOLDER = 'Hi {{1}}, your order {{2}} has shipped.'
 const VARIABLE_HINT = 'Use {{1}}, {{2}} for values you fill in when sending.'
+const variableLabel = (index: number) => `Sample for {{${index}}}`
 
 const CATEGORIES: { value: TemplateCategory; label: string; hint: string }[] = [
   { value: 'UTILITY', label: 'Utility', hint: 'Order updates, reminders, account alerts.' },
@@ -76,6 +78,9 @@ watch(draft, () => { touched.value = true }, { deep: true })
 const authoringErrors = computed(() => (touched.value ? allErrors.value : []))
 
 const isAuth = computed(() => form.value.category === 'AUTHENTICATION')
+
+/** The variables in the body, so a sample can be collected for each. */
+const draftVariables = computed(() => bodyVariables(draft.value.body))
 
 /**
  * Authentication templates can be created in several languages at once, because
@@ -374,6 +379,24 @@ const create = async () => {
         <span class="wtm-hint">{{ VARIABLE_HINT }}</span>
       </label>
 
+      <!-- Meta rejects a variable template with no samples, and reviews the
+           template as these read — so they are collected, not invented. -->
+      <div v-if="draftVariables.length" class="wtm-field">
+        <span class="wtm-label">Sample values</span>
+        <label v-for="index in draftVariables" :key="index" class="wtm-sample">
+          <span class="wtm-sample-label">{{ variableLabel(index) }}</span>
+          <input
+            v-model="draft.examples[index]"
+            class="wtm-input"
+            placeholder="e.g. Priya"
+            autocomplete="off"
+          />
+        </label>
+        <span class="wtm-hint">
+          Shown to Meta’s reviewers as an example of a real message. Not sent to customers.
+        </span>
+      </div>
+
       <label class="wtm-field">
         <span class="wtm-label">Footer (optional)</span>
         <input
@@ -529,6 +552,22 @@ const create = async () => {
 
 .wtm-preview-loading {
   font-style: italic;
+}
+
+/* Indented under one shared label: these read as one group of samples, not as
+   four unrelated fields. */
+.wtm-sample {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wtm-sample-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .wtm-check {
