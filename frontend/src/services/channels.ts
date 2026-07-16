@@ -42,6 +42,28 @@ export interface SmsProviderInfo {
   fields: SmsProviderField[]
 }
 
+/** Meta reviews every template; only APPROVED ones can be sent. */
+export type TemplateStatus = 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED'
+
+export type TemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION'
+
+/** One piece of a template — the BODY carries the text and its {{n}} variables. */
+export interface TemplateComponent {
+  type: string
+  text?: string
+  format?: string
+  [key: string]: unknown
+}
+
+export interface WhatsAppTemplate {
+  id?: string
+  name: string
+  status?: TemplateStatus
+  category?: TemplateCategory
+  language?: string
+  components?: TemplateComponent[]
+}
+
 export interface ChannelAccount {
   id: string
   channel_type: ChannelType
@@ -96,6 +118,44 @@ const channelsService = {
   /** Disconnect any Meta channel account (WhatsApp/Messenger/Instagram) */
   async disconnectMeta(accountId: string): Promise<void> {
     await api.delete(`/channels/meta/${accountId}`)
+  },
+
+  /** Templates on a WhatsApp number's Business Account, in every status */
+  async listWhatsAppTemplates(accountId: string): Promise<WhatsAppTemplate[]> {
+    const response = await api.get(`/channels/meta/whatsapp/${accountId}/templates`)
+    return response.data
+  },
+
+  /** Submit a template to Meta for review; it cannot be sent until approved */
+  async createWhatsAppTemplate(
+    accountId: string,
+    payload: {
+      name: string
+      category: TemplateCategory
+      language: string
+      components: TemplateComponent[]
+    },
+  ): Promise<WhatsAppTemplate> {
+    const response = await api.post(`/channels/meta/whatsapp/${accountId}/templates`, payload)
+    return response.data
+  },
+
+  async deleteWhatsAppTemplate(accountId: string, name: string): Promise<void> {
+    await api.delete(`/channels/meta/whatsapp/${accountId}/templates`, { params: { name } })
+  },
+
+  /** Send an approved template to reopen a conversation whose 24h window closed */
+  async sendWhatsAppTemplate(
+    accountId: string,
+    payload: {
+      session_id: string
+      template_name: string
+      language?: string
+      components?: TemplateComponent[]
+    },
+  ): Promise<{ status: string; external_message_id?: string }> {
+    const response = await api.post(`/channels/meta/whatsapp/${accountId}/send-template`, payload)
+    return response.data
   },
 
   /** Connect a support inbox. Optional SMTP fields send replies from the

@@ -110,4 +110,6 @@ export interface ChatDetail {
   group_id: string | null
   status: 'open' | 'transferred' | 'closed'
   channel?: string
+  /** The connected account this conversation arrived on; absent for web chats. */
+  channel_account_id?: string | null
 }
