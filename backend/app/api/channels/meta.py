@@ -50,18 +50,8 @@ from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository, ChannelConversationRepository
 from app.core.logger import get_logger
 
-# Enterprise plan gating (same optional-import seam as widget_apps)
-try:
-    from app.enterprise.repositories.plan import PlanRepository
-    from app.enterprise.services.feature_access import require_accessible_subscription
-    HAS_ENTERPRISE = True
-except ImportError:
-    HAS_ENTERPRISE = False
-
 router = APIRouter()
 logger = get_logger(__name__)
-
-EMBEDDED_SIGNUP_FEATURE = 'whatsapp_embedded_signup'
 
 # Template fields worth reading back from Graph; components carries the body
 # text and any {{n}} variables the UI has to prompt for.
@@ -117,39 +107,22 @@ def _generate_verification_pin() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
-def _embedded_signup_plan_allows(current_user: User, db: Session) -> bool:
-    """Whether the org's plan includes Embedded Signup.
+def _embedded_signup_available() -> bool:
+    """Whether this deployment can offer Embedded Signup at all.
 
-    Community edition has no plans, so this is not what gates self-hosters —
-    the missing config id is (see _embedded_signup_available).
+    It onboards a customer's number under *our* approved Meta app, so without a
+    config id it structurally cannot work — a self-hoster has no such app and
+    gets the manual credentials form instead. That is the whole gate: like every
+    other integration, Embedded Signup is not restricted by plan.
     """
-    if not HAS_ENTERPRISE:
-        return True
-    try:
-        subscription = require_accessible_subscription(db, current_user.organization_id)
-        return PlanRepository(db).check_feature_availability(
-            str(subscription.plan_id), EMBEDDED_SIGNUP_FEATURE)
-    except HTTPException:
-        # No accessible subscription — the feature simply isn't offered.
-        return False
+    return bool(settings.META_CONFIG_ID)
 
 
-def _embedded_signup_available(current_user: User, db: Session) -> bool:
-    """Two-part gate.
-
-    Embedded Signup onboards a customer's number under *our* approved Meta app,
-    so it structurally cannot work without META_CONFIG_ID — a self-hoster has
-    no such app and gets the manual credentials form instead. On the cloud, it
-    is additionally a paid feature.
-    """
-    return bool(settings.META_CONFIG_ID) and _embedded_signup_plan_allows(current_user, db)
-
-
-def check_embedded_signup_access(current_user: User, db: Session) -> None:
-    if not _embedded_signup_available(current_user, db):
+def check_embedded_signup_access() -> None:
+    if not _embedded_signup_available():
         raise HTTPException(
             status_code=403,
-            detail="WhatsApp Embedded Signup is not available on your plan. "
+            detail="WhatsApp Embedded Signup is not configured on this deployment. "
                    "Connect your number with its credentials instead.",
         )
 
@@ -242,13 +215,11 @@ def _upsert_account(db: Session, organization: Organization, channel_type: str,
 @router.get("/embedded-signup-config", response_model=EmbeddedSignupConfigOut)
 async def get_embedded_signup_config(
     current_user: User = Depends(require_permissions("manage_organization")),
-    db: Session = Depends(get_db),
 ):
     """What the connect UI needs to decide between Embedded Signup and the
-    manual credentials form. The plan check stays server-side, and the app id
-    is returned here rather than baked into the frontend build so a self-hoster
-    can point at their own app."""
-    enabled = _embedded_signup_available(current_user, db)
+    manual credentials form. The app id is returned here rather than baked into
+    the frontend build, so a self-hoster can point at their own app."""
+    enabled = _embedded_signup_available()
     return EmbeddedSignupConfigOut(
         enabled=enabled,
         config_id=settings.META_CONFIG_ID if enabled else None,
@@ -299,7 +270,7 @@ async def connect_whatsapp_embedded_signup(
     Only the way the credentials are obtained differs from connect_whatsapp —
     everything after that is the same upsert and webhook subscribe.
     """
-    check_embedded_signup_access(current_user, db)
+    check_embedded_signup_access()
 
     ok, data = await exchange_signup_code(request.code)
     access_token = data.get("access_token") if ok else None

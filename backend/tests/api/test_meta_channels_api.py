@@ -330,8 +330,8 @@ class TestTemplateManagement:
 
 class TestEmbeddedSignupConfig:
     """Embedded Signup onboards a number under ChatterMate's own approved Meta
-    app, so without a config id it structurally cannot work — that is what
-    gates self-hosters, independently of any plan."""
+    app, so without a config id it structurally cannot work — that is the whole
+    gate. Like every other integration, it is not restricted by plan."""
 
     def test_disabled_without_config_id(self, client, monkeypatch):
         monkeypatch.setattr(settings, "META_CONFIG_ID", "")
@@ -357,12 +357,11 @@ class TestEmbeddedSignupConfig:
         assert body["config_id"] is None
         assert body["app_id"] is None
 
-    def test_disabled_when_plan_disallows(self, client, monkeypatch):
+    def test_not_restricted_by_plan(self, client, monkeypatch):
+        """Integrations are not plan-gated, so a config id is sufficient — the
+        org in these tests has no subscription at all."""
         monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
-        monkeypatch.setattr("app.api.channels.meta.HAS_ENTERPRISE", True)
-        monkeypatch.setattr("app.api.channels.meta._embedded_signup_plan_allows",
-                            lambda *_: False)
-        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is False
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
 
 
 class TestEmbeddedSignupConnect:
