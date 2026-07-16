@@ -90,6 +90,39 @@ const baseRoutes = [
     },
   },
   {
+    path: '/tickets',
+    name: 'tickets',
+    component: () => import('@/views/TicketsView.vue'),
+    meta: {
+      requiresAuth: true,
+      layout: 'dashboard',
+      title: 'Tickets',
+      permissions: ['view_tickets', 'manage_tickets'],
+    },
+  },
+  {
+    path: '/tickets/:id',
+    name: 'ticket-detail',
+    component: () => import('@/views/TicketDetailView.vue'),
+    meta: {
+      requiresAuth: true,
+      layout: 'dashboard',
+      title: 'Ticket',
+      permissions: ['view_tickets', 'manage_tickets'],
+    },
+  },
+  {
+    path: '/settings/ticketing',
+    name: 'ticketing-settings',
+    component: () => import('@/views/settings/TicketingSettings.vue'),
+    meta: {
+      requiresAuth: true,
+      layout: 'dashboard',
+      title: 'Ticketing Settings',
+      permissions: ['manage_organization'],
+    },
+  },
+  {
     path: '/widget/:id',
     name: 'widget',
     component: () => import('@/webclient/WidgetBuilder.vue'),

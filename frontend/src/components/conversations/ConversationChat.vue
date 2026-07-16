@@ -21,6 +21,9 @@ import { useConversationChat } from '@/composables/useConversationChat'
 import { useConversationFiles } from '@/composables/useConversationFiles'
 import { useJiraTicket } from '@/composables/useJiraTicket'
 import JiraTicketModal from '@/components/jira/JiraTicketModal.vue'
+import TicketCreateModal from '@/components/tickets/TicketCreateModal.vue'
+import { ticketService } from '@/services/tickets'
+import { permissionChecks } from '@/utils/permissions'
 import FileUpload from '@/components/common/FileUpload.vue'
 import { userService } from '@/services/user'
 import ChannelBadge from '@/components/common/ChannelBadge.vue'
@@ -83,6 +86,19 @@ const {
 // State for Jira ticket modal
 const showJiraTicketModal = ref(false)
 const ticketSummary = ref('')
+
+// Native ticketing: preferred over Jira when the user can manage tickets.
+// One native ticket per session — the button flips to "View ticket".
+const showTicketModal = ref(false)
+const canUseNativeTickets = permissionChecks.canManageTickets()
+const linkedTicketId = ref<string | null>(null)
+const showTicketMenu = ref(false)
+
+async function refreshLinkedTicket() {
+  if (!canUseNativeTickets || !currentChat.value?.session_id) return
+  const ticket = await ticketService.getTicketBySession(currentChat.value.session_id)
+  linkedTicketId.value = ticket?.id || null
+}
 
 
 // Add marked configuration
@@ -156,7 +172,10 @@ watch(() => props.chat, (newChat) => {
 onMounted(async () => {
   scrollToBottom()
   await checkJiraStatus()
+  await refreshLinkedTicket()
 })
+
+watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
 </script>
 
 <template>
@@ -179,15 +198,50 @@ onMounted(async () => {
         </div>
       </div>
       <div class="header-actions">
-        <!-- Add Create Ticket button -->
-        <button 
-          v-if="canCreateTicket && jiraConnected" 
-          class="create-ticket-btn"
-          @click="handleCreateTicket"
-        >
-          <i class="fas fa-ticket-alt"></i>
-          Create Ticket
-        </button>
+        <template v-if="canCreateTicket">
+          <!-- A native ticket already exists for this conversation -->
+          <button
+            v-if="linkedTicketId"
+            class="create-ticket-btn"
+            @click="$router.push(`/tickets/${linkedTicketId}`)"
+          >
+            <i class="fas fa-ticket-alt"></i>
+            View ticket
+          </button>
+          <!-- Jira connected: keep the familiar Jira flow primary, native in
+               the dropdown (orgs that configured Jira keep their board). -->
+          <div v-else-if="jiraConnected" class="ticket-btn-group">
+            <button class="create-ticket-btn" @click="handleCreateTicket">
+              <i class="fas fa-ticket-alt"></i>
+              Create Ticket
+            </button>
+            <button
+              v-if="canUseNativeTickets"
+              class="ticket-menu-toggle"
+              title="More ticket options"
+              @click="showTicketMenu = !showTicketMenu"
+            >
+              ▾
+            </button>
+            <div v-if="showTicketMenu" class="ticket-menu">
+              <button
+                class="ticket-menu-item"
+                @click="showTicketMenu = false; showTicketModal = true"
+              >
+                Create ChatterMate ticket
+              </button>
+            </div>
+          </div>
+          <!-- No Jira: native ticketing is the flow -->
+          <button
+            v-else-if="canUseNativeTickets"
+            class="create-ticket-btn"
+            @click="showTicketModal = true"
+          >
+            <i class="fas fa-ticket-alt"></i>
+            Create Ticket
+          </button>
+        </template>
       </div>
     </header>
 
@@ -299,6 +353,15 @@ onMounted(async () => {
       :initial-summary="ticketSummary"
       @close="showJiraTicketModal = false"
       @ticket-created="handleTicketCreated"
+    />
+
+    <!-- Native ticket modal (AI-drafted from this conversation) -->
+    <TicketCreateModal
+      :open="showTicketModal"
+      :session-id="currentChat.session_id"
+      :session-label="chat.customer.full_name || chat.customer.email || 'this conversation'"
+      @close="showTicketModal = false"
+      @created="refreshLinkedTicket"
     />
 
     <footer class="chat-input" v-if="!isChatClosed && !handledByAI">
@@ -674,6 +737,58 @@ onMounted(async () => {
 .create-ticket-btn:hover {
   transform: translateY(-1px);
   filter: brightness(1.1);
+}
+
+.ticket-btn-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ticket-btn-group .create-ticket-btn {
+  margin-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.ticket-menu-toggle {
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-right: 16px;
+}
+
+.ticket-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 16px;
+  z-index: 30;
+  background: var(--bg2);
+  border: 1px solid var(--o12);
+  border-radius: 10px;
+  overflow: hidden;
+  min-width: 170px;
+}
+
+.ticket-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 13px;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.ticket-menu-item:hover {
+  background: var(--o05);
+  color: var(--text);
 }
 
 /* Add product carousel styles */

@@ -16,7 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
@@ -28,6 +28,7 @@ import ChannelConnectModal from '@/components/integrations/ChannelConnectModal.v
 
 // Import logos
 import jiraLogo from '@/assets/jira-logo.svg'
+import chattermateLogo from '@/assets/logo.svg'
 import slackLogo from '@/assets/slack-logo.svg'
 import zendeskLogo from '@/assets/zendesk-logo.svg'
 import shopifyLogo from '@/assets/shopify-logo.svg'
@@ -160,6 +161,7 @@ const handleDisconnectLine = () => disconnectChannelAccounts('line', 'LINE')
 
 
 const route = useRoute()
+const router = useRouter()
 
 const jiraConnected = ref(false)
 const jiraSiteUrl = ref('')
@@ -406,6 +408,18 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       disconnectAction: meta.disconnect
     }
   }),
+  // Native AI ticketing (built-in) — the card links to its settings page.
+  {
+    id: 'ai-ticketing',
+    name: 'AI Ticketing',
+    description: 'Native tickets triaged and investigated by AI — no external tracker needed.',
+    logo: chattermateLogo,
+    category: 'SUPPORT',
+    color: 'lime',
+    connected: true,
+    connectAction: () => router.push('/settings/ticketing'),
+    disconnectAction: () => router.push('/settings/ticketing')
+  },
   // Future integrations
   {
     id: 'zendesk',

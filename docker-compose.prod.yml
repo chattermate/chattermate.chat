@@ -108,6 +108,36 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  ticket_investigator:
+    image: chattermate/backend:latest
+    command: python -m app.workers.ticket_investigator
+    environment:
+      - REDIS_ENABLED=true
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=info
+      - PYTHONUNBUFFERED=1
+      # FastEmbed (dedup embeddings) shares the HuggingFace cache
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_CACHE=/app/.cache/huggingface/hub
+      - HF_HUB_DISABLE_TELEMETRY=1
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chattermate-network
+    restart: always
+    volumes:
+      - huggingface_cache:/app/.cache/huggingface
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   db:
     build:
       context: .

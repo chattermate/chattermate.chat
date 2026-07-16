@@ -55,5 +55,7 @@ class Permission(Base):
             ("view_organization", "Can view organization details"),
             ("manage_subscription", "Can manage subscription plans and billing"),
             ("view_subscription", "Can view subscription details"),
+            ("view_tickets", "Can view tickets"),
+            ("manage_tickets", "Can manage tickets"),
             ("super_admin", "Has all permissions")
         ]

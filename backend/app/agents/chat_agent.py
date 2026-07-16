@@ -289,6 +289,17 @@ class ChatAgent(ChatAgentMCPMixin):
                     logger.error(f"Failed to get Shopify config: {e}")
                     shopify_config = None
 
+            # Native AI ticketing takes precedence over the Jira toolkit when
+            # the org's plan allows it (Jira stays available for manual
+            # escalation from the dashboard).
+            self.ticketing_enabled = False
+            if agent_id and org_id and session_id:
+                try:
+                    from app.services.ticket_access import ticketing_allowed
+                    self.ticketing_enabled = ticketing_allowed(db, org_id)
+                except Exception as e:
+                    logger.error(f"Failed to check ticketing access: {e}")
+
             # Load lead-capture config (prompt-driven, like transfer_to_human: a toggle;
             # the agent collects details conversationally and reports structured output).
             # Extract plain values while the session is open so they survive the block.
@@ -335,7 +346,10 @@ class ChatAgent(ChatAgentMCPMixin):
         # Initialize tools
         self.tools = []
         
-        # Add Jira tools if agent_id, org_id, and session_id are provided
+        # Ticket tools: an agent's explicit Jira config wins (existing orgs
+        # keep their Jira flow unchanged); native AI ticketing is the default
+        # for everyone else. Never both — two create-ticket functions would
+        # confuse the model.
         if self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and self.agent_data and self.agent_data.jira_enabled:
             try:
                 self.jira_tools = JiraTools(
@@ -346,6 +360,17 @@ class ChatAgent(ChatAgentMCPMixin):
                 self.tools.append(self.jira_tools)
             except Exception as e:
                 logger.error(f"Failed to initialize Jira tools: {e}")
+        elif self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and self.ticketing_enabled:
+            try:
+                from app.tools.ticket_toolkit import TicketTools
+                self.ticket_tools = TicketTools(
+                    agent_id=self.agent_id,
+                    org_id=self.org_id,
+                    session_id=self.session_id
+                )
+                self.tools.append(self.ticket_tools)
+            except Exception as e:
+                logger.error(f"Failed to initialize ticket tools: {e}")
         
         # Add Shopify tools if agent has Shopify enabled
         if self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and shopify_config and shopify_config.enabled:
@@ -540,8 +565,28 @@ Keep your responses concise and focused. Provide clear, actionable information i
             else:
                 system_message += f"\n{end_chat_without_rating}"
             
-            # Add Jira instructions if Jira is enabled
-            if self.agent_data and self.agent_data.jira_enabled and not self.transfer_to_human:
+            # Add native ticketing instructions when AI ticketing drives the
+            # ticket tools (explicit agent Jira config takes precedence below)
+            if self.ticketing_enabled and not self.transfer_to_human and not (self.agent_data and self.agent_data.jira_enabled):
+                ticket_instructions = """
+                You have access to native support-ticket tools:
+                1. check_existing_ticket — check if this conversation already has a ticket (always call this first)
+                2. create_ticket — open a support ticket that the team's AI investigator and humans will work on
+                3. get_ticket_status — look up a ticket's current status
+
+                Only create a ticket if:
+                - The issue is a technical problem you cannot resolve from the knowledge base
+                - The user explicitly asks for a ticket or escalation
+                - You've tried to resolve the issue but were unable to do so
+                - No ticket already exists for this conversation
+
+                After creating a ticket, tell the customer their ticket number and that the team is investigating.
+                Priorities are: urgent, high, medium, low.
+                """
+                system_message += "\n\n" + ticket_instructions
+                self.jira_instructions_added = True
+            # Add Jira instructions if Jira is enabled (and native ticketing is not)
+            elif self.agent_data and self.agent_data.jira_enabled and not self.transfer_to_human:
                 jira_instructions = """
                 You have access to Jira integration tools. You can use these tools to:
                 1. Create a Jira ticket for issues that need further attention

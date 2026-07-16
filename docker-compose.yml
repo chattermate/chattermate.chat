@@ -123,6 +123,38 @@ services:
     networks:
       - app-network
 
+  ticket_investigator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m app.workers.ticket_investigator
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEBUG=True
+      - ENVIRONMENT=development
+      # FastEmbed (dedup embeddings) shares the HuggingFace cache
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_CACHE=/app/.cache/huggingface/hub
+      - HF_HUB_DISABLE_TELEMETRY=1
+    volumes:
+      - ./backend:/app
+      - huggingface_cache:/app/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
   db:
     build:
       context: .

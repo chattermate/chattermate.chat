@@ -35,6 +35,15 @@ from uuid import UUID, uuid4
 def compile_uuid_sqlite(type_, compiler, **kw):
     """Compile PostgreSQL UUID type as CHAR(36) for SQLite"""
     return "CHAR(36)"
+
+# Teach SQLite how to compile the pgvector column (tickets.embedding).
+# Similarity queries are Postgres-only and guarded in the repository; tests
+# only need the table to create.
+from pgvector.sqlalchemy import Vector
+
+@compiles(Vector, 'sqlite')
+def compile_vector_sqlite(type_, compiler, **kw):
+    return "TEXT"
 from app.models.widget import Widget
 from app.models.agent import Agent, AgentType
 from app.models.ai_config import AIConfig, AIModelType
