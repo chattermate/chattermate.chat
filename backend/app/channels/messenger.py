@@ -73,6 +73,22 @@ class MessengerAdapter(MetaBaseAdapter):
             },
         )
 
+    async def send_typing(self, account: ChannelAccount, conversation: ChannelConversation) -> None:
+        """Dismissed automatically when the reply is delivered, or after ~20s."""
+        try:
+            result = await graph_post(
+                "me/messages",
+                self.access_token(account),
+                {
+                    "recipient": {"id": conversation.external_conversation_id},
+                    "sender_action": "typing_on",
+                },
+            )
+            if not result.ok:
+                logger.debug(f"{self.channel_type} typing_on failed (non-critical): {result.error}")
+        except Exception as e:
+            logger.debug(f"{self.channel_type} typing_on failed (non-critical): {e}")
+
     def format_outbound(self, markdown: str) -> str:
         return markdown[:MAX_MESSAGE_LENGTH]
 
