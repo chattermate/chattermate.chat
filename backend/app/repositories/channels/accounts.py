@@ -21,7 +21,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models.channels import ChannelAccount
+from app.models.channels import ChannelAccount, ChannelConversation
+from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.core.security import encrypt_api_key, decrypt_api_key
 from app.core.logger import get_logger
 
@@ -125,8 +126,39 @@ class ChannelAccountRepository:
             self.db.rollback()
             raise
 
+    def _close_open_sessions(self, account: ChannelAccount) -> None:
+        """Close the sessions belonging to this account's conversations.
+
+        Deleting the account cascade-deletes its channel_conversations, but the
+        sessions they point at are not owned by the account and would survive as
+        open-but-unreachable: an agent could take one over while the customer's
+        next message — finding no conversation — starts a fresh thread that the
+        AI answers. Closing them first keeps the two from diverging.
+        """
+        session_ids = [
+            row.session_id
+            for row in self.db.query(ChannelConversation.session_id)
+            .filter(ChannelConversation.channel_account_id == account.id)
+            .all()
+        ]
+        if not session_ids:
+            return
+        closed = (
+            self.db.query(SessionToAgent)
+            .filter(
+                SessionToAgent.session_id.in_(session_ids),
+                SessionToAgent.status != SessionStatus.CLOSED,
+            )
+            .update({SessionToAgent.status: SessionStatus.CLOSED},
+                    synchronize_session=False)
+        )
+        if closed:
+            logger.info(f"Closed {closed} open session(s) for disconnected "
+                        f"{account.channel_type} account {account.id}")
+
     def delete(self, account: ChannelAccount) -> bool:
         try:
+            self._close_open_sessions(account)
             self.db.delete(account)
             self.db.commit()
             return True
