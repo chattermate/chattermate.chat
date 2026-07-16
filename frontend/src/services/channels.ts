@@ -87,14 +87,6 @@ export interface EmbeddedSignupConfig {
   graph_version: string
 }
 
-/** Meta's own rendering of an authentication template in one language. */
-export interface WhatsAppTemplatePreview {
-  language: string
-  body?: string
-  footer?: string
-  buttons?: { text?: string; autofill_text?: string }[]
-}
-
 export interface ChannelAccount {
   id: string
   channel_type: ChannelType
@@ -173,66 +165,15 @@ const channelsService = {
     return response.data
   },
 
-  /** Submit a template to Meta for review; it cannot be sent until approved */
-  async createWhatsAppTemplate(
-    accountId: string,
-    payload: {
-      name: string
-      category: TemplateCategory
-      language: string
-      components: TemplateComponent[]
-    },
-  ): Promise<WhatsAppTemplate> {
-    const response = await api.post(`/channels/meta/whatsapp/${accountId}/templates`, payload)
-    return response.data
-  },
-
   /**
-   * How Meta will render an authentication template in each language.
-   * Read-only — it creates nothing. Meta writes and localises this copy (the
-   * sentence order and the button label both change per language), so it is
-   * asked for rather than reproduced.
+   * Where to write a template: Meta's Template Library, deep-linked to this
+   * number's Business Account. Templates are authored there, not here — Meta's
+   * library holds ~150 pre-written, pre-localised templates shaped to pass its
+   * own review, which a form of ours could only ever approximate badly.
    */
-  async previewWhatsAppTemplate(
-    accountId: string,
-    options: {
-      languages: string[]
-      add_security_recommendation: boolean
-      code_expiration_minutes?: number
-    },
-  ): Promise<WhatsAppTemplatePreview[]> {
-    const response = await api.get(`/channels/meta/whatsapp/${accountId}/templates/preview`, {
-      params: {
-        languages: options.languages.join(','),
-        add_security_recommendation: options.add_security_recommendation,
-        ...(options.code_expiration_minutes !== undefined
-          ? { code_expiration_minutes: options.code_expiration_minutes }
-          : {}),
-      },
-    })
-    return response.data
-  },
-
-  /**
-   * Submit the same template in several languages in one call. Meta documents
-   * this for authentication templates, where it writes the copy per language;
-   * other categories need their own translated body and go one at a time.
-   * Still one template per language — this only saves the round trips.
-   */
-  async upsertWhatsAppTemplates(
-    accountId: string,
-    payload: {
-      name: string
-      category: TemplateCategory
-      languages: string[]
-      components: TemplateComponent[]
-    },
-  ): Promise<WhatsAppTemplate[]> {
-    const response = await api.post(
-      `/channels/meta/whatsapp/${accountId}/templates/upsert`,
-      payload,
-    )
-    return response.data
+  async getWhatsAppTemplateLibraryUrl(accountId: string): Promise<string> {
+    const response = await api.get(`/channels/meta/whatsapp/${accountId}/template-library`)
+    return response.data.url
   },
 
   async deleteWhatsAppTemplate(accountId: string, name: string): Promise<void> {

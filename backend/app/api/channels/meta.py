@@ -16,6 +16,7 @@ limitations under the License.
 
 import secrets
 from typing import Optional
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -27,7 +28,6 @@ from app.channels.meta_base import (
     exchange_signup_code,
     graph_delete,
     graph_get,
-    graph_post_json,
     register_phone_number,
     subscribe_app,
 )
@@ -43,11 +43,9 @@ from app.models.schemas.channel import (
     WhatsAppConnectRequest,
     MessengerConnectRequest,
     InstagramConnectRequest,
-    TemplateCreateRequest,
+    TemplateLibraryOut,
     TemplateOut,
-    TemplatePreviewOut,
     TemplateSendRequest,
-    TemplateUpsertRequest,
 )
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository, ChannelConversationRepository
@@ -63,6 +61,8 @@ TEMPLATE_PAGE_LIMIT = 100
 # Backstop against paging forever on a malformed cursor. Well above Meta's own
 # per-WABA template ceiling, so a real account never reaches it.
 TEMPLATE_MAX_PAGES = 10
+# Meta's own template authoring UI, which is where we send people to write one.
+TEMPLATE_LIBRARY_URL = "https://business.facebook.com/latest/whatsapp_manager/template_library"
 
 
 def _whatsapp_display_name(profile: dict, phone_number_id: str) -> str:
@@ -130,40 +130,20 @@ def check_embedded_signup_access() -> None:
         )
 
 
-# Meta names a cause but never a remedy, so where its subcode pins the cause
-# down we say what to do about it. Only add a subcode here once its meaning has
-# been confirmed against a real Graph response — a wrong remedy sends someone
-# off fixing something that was never broken.
-GRAPH_GUIDANCE = {
-    # 2388185: seen creating an AUTHENTICATION template while the WABA's
-    # business_verification_status is not_verified. Meta allows the other
-    # categories in that state, so its "does not have permission" reads as a
-    # permanent account problem when it is really one unmet prerequisite.
-    2388185: "Verification-code templates need a verified business. "
-             "Complete business verification in Meta Business Settings, "
-             "or use the Utility category instead.",
-}
-
-
 def _graph_detail(data: dict, fallback: str) -> str:
     """Meta's own error text where it has one, so the UI can show the real
-    reason (e.g. a duplicate template name) rather than a generic failure.
+    reason (e.g. a template that cannot be deleted) rather than a generic
+    failure.
 
     error_user_msg first: `message` is often a generic OAuth string that says
-    nothing actionable. An unverified business creating an authentication
-    template gets `message` "Application does not have permission for this
-    action" but error_user_msg "This WhatsApp Business account does not have
-    permission to create message template" — only one of those is a clue, and
-    even that one only names the symptom, so GRAPH_GUIDANCE adds the fix.
+    nothing actionable — Graph will pair a `message` of "Application does not
+    have permission for this action" with an error_user_msg that names the
+    actual asset and rule. Only one of those is a clue.
     """
     error = data.get("error", {})
     if not isinstance(error, dict):
         return fallback
-    reason = error.get("error_user_msg") or error.get("message") or fallback
-    guidance = GRAPH_GUIDANCE.get(error.get("error_subcode"))
-    if not guidance:
-        return reason
-    return f"{reason.rstrip('. ')}. {guidance}"
+    return error.get("error_user_msg") or error.get("message") or fallback
 
 
 def _whatsapp_account_or_404(db: Session, account_id: UUID, organization: Organization):
@@ -458,125 +438,37 @@ async def list_whatsapp_templates(
     return await _fetch_all_templates(waba_id, access_token)
 
 
-@router.post("/whatsapp/{account_id}/templates", response_model=TemplateOut)
-async def create_whatsapp_template(
+@router.get("/whatsapp/{account_id}/template-library", response_model=TemplateLibraryOut)
+async def get_whatsapp_template_library(
     account_id: UUID,
-    request: TemplateCreateRequest,
     current_user: User = Depends(require_permissions("manage_organization")),
     organization: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db),
 ):
-    """Submit a new template to Meta. It cannot be sent until Meta approves it."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    waba_id, access_token = _waba_credentials(db, account)
+    """Where to go to write a template: Meta's own Template Library, opened on
+    this number's WhatsApp Business Account.
 
-    ok, data = await graph_post_json(f"{waba_id}/message_templates", access_token, {
-        "name": request.name,
-        "category": request.category,
-        "language": request.language,
-        "components": request.components,
-    })
-    if not ok:
-        raise HTTPException(status_code=502,
-                            detail=_graph_detail(data, "Could not create template"))
-    # Graph echoes back id/status/category only; the rest is what we submitted.
-    return TemplateOut(
-        id=data.get("id"),
-        name=request.name,
-        status=data.get("status"),
-        category=data.get("category") or request.category,
-        language=request.language,
-        components=request.components,
-    )
+    Templates are not authored here. Meta's library holds ~150 pre-written,
+    pre-localised utility templates plus its authentication ones, all shaped to
+    pass its own review — a form of ours could only ever be a worse version of
+    that, and every rule it encodes (categories, variable numbering, which
+    buttons may be mixed) is Meta's to change without telling us.
 
-
-@router.get("/whatsapp/{account_id}/templates/preview", response_model=list[TemplatePreviewOut])
-async def preview_whatsapp_template(
-    account_id: UUID,
-    languages: str,
-    add_security_recommendation: bool = False,
-    code_expiration_minutes: Optional[int] = None,
-    current_user: User = Depends(require_permissions("manage_organization")),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """How Meta will render an authentication template, per language.
-
-    Meta writes this copy itself and localises it — the sentence order differs
-    by language and the button label with it — so it is asked for rather than
-    reproduced. Read-only: nothing is created.
-
-    `languages` is comma-separated, matching the Graph parameter.
+    The link is built per account rather than hardcoded: business_id scopes the
+    page to the right portfolio. It is best-effort — a business we cannot read
+    gives a link that lands less precisely, not a dead button.
     """
     account = _whatsapp_account_or_404(db, account_id, organization)
     waba_id, access_token = _waba_credentials(db, account)
 
-    params = {
-        "category": "AUTHENTICATION",
-        "languages": languages,
-        "add_security_recommendation": str(add_security_recommendation).lower(),
-        "button_types": "OTP",
-    }
-    if code_expiration_minutes is not None:
-        params["code_expiration_minutes"] = code_expiration_minutes
+    params = {"asset_id": waba_id}
+    ok, data = await graph_get(waba_id, access_token, params={"fields": "owner_business_info"})
+    if ok:
+        business_id = (data.get("owner_business_info") or {}).get("id")
+        if business_id:
+            params["business_id"] = business_id
 
-    ok, data = await graph_get(f"{waba_id}/message_template_previews", access_token, params=params)
-    if not ok:
-        raise HTTPException(status_code=502,
-                            detail=_graph_detail(data, "Could not preview the template"))
-
-    previews = data.get("data")
-    if not isinstance(previews, list):
-        raise HTTPException(status_code=502, detail="Unexpected preview response from Meta")
-    return [TemplatePreviewOut(**preview) for preview in previews]
-
-
-@router.post("/whatsapp/{account_id}/templates/upsert", response_model=list[TemplateOut])
-async def upsert_whatsapp_templates(
-    account_id: UUID,
-    request: TemplateUpsertRequest,
-    current_user: User = Depends(require_permissions("manage_organization")),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Submit the same template in several languages in one call.
-
-    Meta documents this for authentication templates, where it writes the copy
-    itself in each language — so one call yields a reviewable template per
-    language with nothing more to type. Every other category needs its own
-    translated body, so it goes one at a time through create_whatsapp_template.
-
-    This still creates one template per language: name and language together
-    identify a template, and each counts against the WABA's template limit.
-    """
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    waba_id, access_token = _waba_credentials(db, account)
-
-    ok, data = await graph_post_json(f"{waba_id}/upsert_message_templates", access_token, {
-        "name": request.name,
-        "languages": request.languages,
-        "category": request.category,
-        "components": request.components,
-    })
-    if not ok:
-        raise HTTPException(status_code=502,
-                            detail=_graph_detail(data, "Could not create templates"))
-
-    created = data.get("data")
-    if not isinstance(created, list):
-        raise HTTPException(status_code=502, detail="Unexpected template response from Meta")
-    # Graph echoes id/status/language per template; the rest is what we submitted.
-    return [
-        TemplateOut(
-            id=template.get("id"),
-            name=request.name,
-            status=template.get("status"),
-            category=template.get("category") or request.category,
-            language=template.get("language"),
-            components=request.components,
-        )
-        for template in created
-    ]
+    return TemplateLibraryOut(url=f"{TEMPLATE_LIBRARY_URL}?{urlencode(params)}")
 
 
 @router.delete("/whatsapp/{account_id}/templates")

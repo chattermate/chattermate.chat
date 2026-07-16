@@ -23,7 +23,6 @@ import channelsService, {
 } from '@/services/channels'
 import { templatePreviewText } from '@/utils/whatsappTemplates'
 import { languageLabel } from '@/utils/whatsappLanguages'
-import WhatsAppTemplateCreateForm from '@/components/integrations/WhatsAppTemplateCreateForm.vue'
 
 const props = defineProps<{
   accounts: ChannelAccount[]
@@ -36,9 +35,19 @@ const accountId = ref(props.accounts[0]?.id ?? '')
 const templates = ref<WhatsAppTemplate[]>([])
 const loading = ref(true)
 const loadError = ref('')
-const showCreate = ref(false)
 const deletingName = ref('')
 const confirmingName = ref('')
+
+/**
+ * Templates are written in Meta's Template Library, not here — it has ~150
+ * pre-written, pre-localised ones built to pass its own review.
+ *
+ * The link is fetched rather than built: it is scoped to this number's Business
+ * Account, and only the server can resolve which that is. It loads with the
+ * list so the anchor is a real href by the time it is clicked — opening it
+ * after an await instead would hand the browser a popup to block.
+ */
+const libraryUrl = ref('')
 
 // Guards against a slow response for a previously selected number landing after
 // a newer one and rendering its templates under the wrong account.
@@ -48,6 +57,7 @@ const load = async () => {
   const token = ++loadToken
   confirmingName.value = ''
   loadError.value = ''
+  libraryUrl.value = ''
   if (!accountId.value) {
     templates.value = []
     loading.value = false
@@ -67,17 +77,33 @@ const load = async () => {
   }
 }
 
+/**
+ * Fetched alongside the list but deliberately not awaited with it: this costs a
+ * Graph call, and failing it must not take the list down with it. Without a URL
+ * the link simply doesn't render.
+ */
+const loadLibraryUrl = async () => {
+  const token = loadToken
+  if (!accountId.value) return
+  try {
+    const url = await channelsService.getWhatsAppTemplateLibraryUrl(accountId.value)
+    if (token === loadToken) libraryUrl.value = url
+  } catch {
+    // Left empty: the list is still useful, and there is nothing to act on.
+  }
+}
+
+const refresh = () => {
+  load()
+  loadLibraryUrl()
+}
+
 onMounted(() => {
   dialog.value?.focus()
-  load()
+  refresh()
 })
 
-watch(accountId, load)
-
-const onCreated = async () => {
-  showCreate.value = false
-  await load()
-}
+watch(accountId, refresh)
 
 const remove = async (name: string) => {
   try {
@@ -115,8 +141,8 @@ const remove = async (name: string) => {
       </div>
 
       <p class="wtm-intro">
-        Templates reopen a conversation after the customer's 24-hour window closes. Meta reviews
-        each one before it can be sent.
+        Templates reopen a conversation after the customer's 24-hour window closes. You write them
+        in WhatsApp Manager; once Meta approves one, it appears here and your agents can send it.
       </p>
 
       <label v-if="accounts.length > 1" class="wtm-field">
@@ -140,9 +166,6 @@ const remove = async (name: string) => {
 
         <div v-else-if="templates.length === 0" class="wtm-empty">
           <p>No templates yet.</p>
-          <button class="wtm-btn wtm-btn-primary" @click="showCreate = true">
-            Create your first template
-          </button>
         </div>
 
         <ul v-else class="wtm-list">
@@ -186,15 +209,28 @@ const remove = async (name: string) => {
         </ul>
       </div>
 
-      <WhatsAppTemplateCreateForm
-        v-if="showCreate"
-        :account-id="accountId"
-        @created="onCreated"
-        @cancel="showCreate = false"
-      />
-
-      <div v-else-if="templates.length > 0" class="wtm-actions">
-        <button class="wtm-btn wtm-btn-primary" @click="showCreate = true">New template</button>
+      <!-- Meta's Template Library is where these get written: ~150 pre-written,
+           pre-localised templates, already shaped to pass its review. -->
+      <div v-if="accountId" class="wtm-create-guide">
+        <h4 class="wtm-guide-title">Add a template</h4>
+        <ol class="wtm-steps">
+          <li>Open WhatsApp Manager and go to <strong>Template library</strong>.</li>
+          <li>Pick a ready-made template, or choose <strong>Create template</strong> to write one.</li>
+          <li>
+            Come back and <button type="button" class="wtm-link" @click="refresh">refresh</button>
+            once Meta approves it.
+          </li>
+        </ol>
+        <a
+          v-if="libraryUrl"
+          class="wtm-btn wtm-btn-primary wtm-guide-link"
+          :href="libraryUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open WhatsApp Manager
+          <i class="fas fa-arrow-up-right-from-square"></i>
+        </a>
       </div>
     </div>
   </div>
@@ -423,11 +459,42 @@ const remove = async (name: string) => {
   margin: 0 0 12px;
 }
 
-.wtm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.wtm-create-guide {
   margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.wtm-guide-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wtm-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* A button, because it acts on this page — styled as the inline link it reads as */
+.wtm-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--c-info);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.wtm-guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
 }
 
 .wtm-btn {

@@ -15,13 +15,10 @@ limitations under the License.
 """
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
-
-# The categories Meta accepts when a template is submitted for review.
-TemplateCategory = Literal["MARKETING", "UTILITY", "AUTHENTICATION"]
+from pydantic import BaseModel
 
 
 class ChannelAccountOut(BaseModel):
@@ -102,37 +99,11 @@ class TemplateOut(BaseModel):
     components: Optional[list] = None
 
 
-class TemplateCreateRequest(BaseModel):
-    """Submit a new template to Meta for review."""
-    name: str
-    category: TemplateCategory
-    language: str = "en_US"
-    components: list
-
-
-class TemplatePreviewOut(BaseModel):
-    """How Meta will actually render an authentication template in one language.
-
-    Meta writes and localises this copy — including the button label — so it is
-    fetched rather than reproduced. Guessing it in English was wrong the moment
-    a second language was picked.
-    """
-    language: str
-    body: Optional[str] = None
-    footer: Optional[str] = None
-    buttons: Optional[list] = None
-
-
-class TemplateUpsertRequest(BaseModel):
-    """Submit the same template in several languages at once.
-
-    A template is identified by name *and* language, so this still creates one
-    template per language — it just does it in a single call.
-    """
-    name: str
-    category: TemplateCategory
-    languages: List[str] = Field(min_length=1)
-    components: list
+class TemplateLibraryOut(BaseModel):
+    """A deep link into Meta's Template Library for one WhatsApp Business
+    Account — which is where templates get written. We list and send them; Meta
+    authors them."""
+    url: str
 
 
 class AgentChannelConfigRequest(BaseModel):

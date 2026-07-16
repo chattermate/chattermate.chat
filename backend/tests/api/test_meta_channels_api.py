@@ -241,32 +241,6 @@ class TestTemplateManagement:
         assert r.status_code == 502
         assert r.json()["detail"] == "Bad token"
 
-    def test_create_template(self, client, waba_account):
-        graph = AsyncMock(return_value=(True, {"id": "T1", "status": "PENDING",
-                                               "category": "UTILITY"}))
-        with patch("app.api.channels.meta.graph_post_json", graph):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-                "name": "order_update", "category": "UTILITY", "language": "en_US",
-                "components": [{"type": "BODY", "text": "Your order {{1}} shipped"}]})
-
-        assert r.status_code == 200
-        body = r.json()
-        assert (body["id"], body["name"], body["status"]) == ("T1", "order_update", "PENDING")
-
-    def test_create_template_rejects_unknown_category(self, client, waba_account):
-        r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-            "name": "x", "category": "NONSENSE", "components": []})
-        assert r.status_code == 422
-
-    def test_create_template_graph_failure_surfaces_reason(self, client, waba_account):
-        graph = AsyncMock(return_value=(False, {"error": {"message": "name already exists"}}))
-        with patch("app.api.channels.meta.graph_post_json", graph):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-                "name": "dupe", "category": "UTILITY", "components": []})
-
-        assert r.status_code == 502
-        assert r.json()["detail"] == "name already exists"
-
     def test_delete_template(self, client, waba_account):
         graph = AsyncMock(return_value=(True, {"success": True}))
         with patch("app.api.channels.meta.graph_delete", graph):
@@ -499,150 +473,12 @@ class TestEmbeddedSignupConnect:
         assert credentials["waba_id"] == "WABA9"
 
 
-class TestTemplateUpsert:
-    """Meta writes authentication copy itself per language, so one upsert call
-    yields a reviewable template per language."""
-
-    def test_upsert_creates_one_template_per_language(self, client, waba_account):
-        graph = AsyncMock(return_value=(True, {"data": [
-            {"id": "T1", "status": "PENDING", "language": "en_US"},
-            {"id": "T2", "status": "PENDING", "language": "es_ES"},
-        ]}))
-        with patch("app.api.channels.meta.graph_post_json", graph):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
-                "name": "verification_code",
-                "category": "AUTHENTICATION",
-                "languages": ["en_US", "es_ES"],
-                "components": [{"type": "BODY", "add_security_recommendation": True}]})
-
-        assert r.status_code == 200
-        body = r.json()
-        assert [t["language"] for t in body] == ["en_US", "es_ES"]
-        # Graph echoes id/status/language only; name comes from the request
-        assert {t["name"] for t in body} == {"verification_code"}
-        assert graph.await_args.args[0] == "WABA9/upsert_message_templates"
-        assert graph.await_args.args[2]["languages"] == ["en_US", "es_ES"]
-
-    def test_upsert_requires_at_least_one_language(self, client, waba_account):
-        r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
-            "name": "x", "category": "AUTHENTICATION", "languages": [], "components": []})
-        assert r.status_code == 422
-
-    def test_upsert_surfaces_the_graph_reason(self, client, waba_account):
-        graph = AsyncMock(return_value=(False, {"error": {"message": "Invalid language"}}))
-        with patch("app.api.channels.meta.graph_post_json", graph):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
-                "name": "x", "category": "AUTHENTICATION",
-                "languages": ["zz_ZZ"], "components": []})
-
-        assert r.status_code == 502
-        assert r.json()["detail"] == "Invalid language"
-
-    def test_upsert_rejects_a_malformed_response(self, client, waba_account):
-        graph = AsyncMock(return_value=(True, {"data": {"not": "a list"}}))
-        with patch("app.api.channels.meta.graph_post_json", graph):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
-                "name": "x", "category": "AUTHENTICATION",
-                "languages": ["en_US"], "components": []})
-        assert r.status_code == 502
-
-    def test_upsert_requires_waba_id(self, client, whatsapp_account):
-        r = client.post(f"{BASE}/whatsapp/{whatsapp_account.id}/templates/upsert", json={
-            "name": "x", "category": "AUTHENTICATION",
-            "languages": ["en_US"], "components": []})
-        assert r.status_code == 400
-
-    def test_upsert_rejects_other_orgs_account(self, client, db, waba_account):
-        waba_account.organization_id = uuid4()
-        db.commit()
-        r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
-            "name": "x", "category": "AUTHENTICATION",
-            "languages": ["en_US"], "components": []})
-        assert r.status_code == 404
-
-
-class TestTemplatePreview:
-    """Meta writes and localises authentication copy — sentence order and the
-    button label both change per language — so the form asks rather than guesses."""
-
-    # Exactly what Graph returned for a real WABA
-    REAL = (True, {"data": [
-        {"language": "en_US",
-         "body": "*{{1}}* is your verification code. For your security, do not share this code.",
-         "footer": "Expires in 5 minutes.",
-         "buttons": [{"text": "Copy code", "autofill_text": "Autofill"}]},
-        {"language": "es_ES",
-         "body": "Tu código de verificación es *{{1}}*. Por tu seguridad, no lo compartas.",
-         "footer": "Vence en 5 minutos.",
-         "buttons": [{"text": "Copiar código", "autofill_text": "Autocompletar"}]},
-    ]})
-
-    def _url(self, account):
-        return f"{BASE}/whatsapp/{account.id}/templates/preview"
-
-    def test_returns_metas_copy_per_language(self, client, waba_account):
-        graph = AsyncMock(return_value=self.REAL)
-        with patch("app.api.channels.meta.graph_get", graph):
-            r = client.get(self._url(waba_account), params={
-                "languages": "en_US,es_ES",
-                "add_security_recommendation": "true",
-                "code_expiration_minutes": 5})
-
-        assert r.status_code == 200
-        body = r.json()
-        assert [p["language"] for p in body] == ["en_US", "es_ES"]
-        # The Spanish body puts the code mid-sentence — the reason this is fetched
-        assert body[1]["body"].startswith("Tu código")
-        assert body[1]["buttons"][0]["text"] == "Copiar código"
-        assert graph.await_args.args[0] == "WABA9/message_template_previews"
-
-    def test_passes_the_options_through_to_graph(self, client, waba_account):
-        graph = AsyncMock(return_value=self.REAL)
-        with patch("app.api.channels.meta.graph_get", graph):
-            client.get(self._url(waba_account), params={
-                "languages": "en_US",
-                "add_security_recommendation": "false",
-                "code_expiration_minutes": 10})
-
-        params = graph.await_args.kwargs["params"]
-        assert params["category"] == "AUTHENTICATION"
-        assert params["button_types"] == "OTP"
-        assert params["add_security_recommendation"] == "false"
-        assert params["code_expiration_minutes"] == 10
-
-    def test_omits_expiry_when_not_given(self, client, waba_account):
-        graph = AsyncMock(return_value=self.REAL)
-        with patch("app.api.channels.meta.graph_get", graph):
-            client.get(self._url(waba_account), params={"languages": "en_US"})
-
-        # No footer is wanted, so Meta must not be told to add one
-        assert "code_expiration_minutes" not in graph.await_args.kwargs["params"]
-
-    def test_surfaces_the_graph_reason(self, client, waba_account):
-        graph = AsyncMock(return_value=(False, {"error": {"message": "Invalid language"}}))
-        with patch("app.api.channels.meta.graph_get", graph):
-            r = client.get(self._url(waba_account), params={"languages": "zz_ZZ"})
-
-        assert r.status_code == 502
-        assert r.json()["detail"] == "Invalid language"
-
-    def test_requires_waba_id(self, client, whatsapp_account):
-        r = client.get(f"{BASE}/whatsapp/{whatsapp_account.id}/templates/preview",
-                       params={"languages": "en_US"})
-        assert r.status_code == 400
-
-    def test_rejects_other_orgs_account(self, client, db, waba_account):
-        waba_account.organization_id = uuid4()
-        db.commit()
-        r = client.get(self._url(waba_account), params={"languages": "en_US"})
-        assert r.status_code == 404
-
-
 class TestGraphErrorDetail:
     """Meta's `message` is often a generic OAuth string; error_user_msg is the
-    one that tells the user what to do about it."""
+    one that names the actual asset and rule. Exercised through delete, the
+    remaining write path."""
 
-    # Verbatim from Graph when an unverified business creates an auth template
+    # Verbatim from Graph, pairing a generic `message` with a specific user msg
     UNVERIFIED = (False, {"error": {
         "message": "Application does not have permission for this action",
         "code": 10,
@@ -653,49 +489,80 @@ class TestGraphErrorDetail:
                           "to create message template",
     }})
 
+    def _delete(self, client, account):
+        return client.delete(f"{BASE}/whatsapp/{account.id}/templates", params={"name": "x"})
+
     def test_prefers_metas_human_readable_reason(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_post_json", AsyncMock(return_value=self.UNVERIFIED)):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-                "name": "x", "category": "AUTHENTICATION", "components": []})
+        with patch("app.api.channels.meta.graph_delete", AsyncMock(return_value=self.UNVERIFIED)):
+            r = self._delete(client, waba_account)
 
         assert r.status_code == 502
         # Not the useless "Application does not have permission for this action"
-        assert r.json()["detail"].startswith(
+        assert r.json()["detail"] == (
             "This WhatsApp Business account does not have permission to create message template"
         )
 
-    def test_says_how_to_fix_a_cause_we_recognise(self, client, waba_account):
-        """Meta names the symptom; 2388185 means business verification."""
-        with patch("app.api.channels.meta.graph_post_json", AsyncMock(return_value=self.UNVERIFIED)):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-                "name": "x", "category": "AUTHENTICATION", "components": []})
-
-        detail = r.json()["detail"]
-        assert "Complete business verification in Meta Business Settings" in detail
-        # One sentence break, not "...message template. Verification-code..."
-        # doubled onto Meta's own trailing full stop.
-        assert "template.. " not in detail
-
-    def test_adds_nothing_to_a_cause_we_do_not_recognise(self, client, waba_account):
-        graph = AsyncMock(return_value=(False, {"error": {
-            "message": "Template name already exists", "error_subcode": 2388024}}))
-        with patch("app.api.channels.meta.graph_post_json", graph):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-                "name": "x", "category": "UTILITY", "components": []})
-
-        assert r.json()["detail"] == "Template name already exists"
-
     def test_falls_back_to_message_when_there_is_no_user_msg(self, client, waba_account):
         graph = AsyncMock(return_value=(False, {"error": {"message": "Invalid parameter"}}))
-        with patch("app.api.channels.meta.graph_post_json", graph):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-                "name": "x", "category": "UTILITY", "components": []})
+        with patch("app.api.channels.meta.graph_delete", graph):
+            r = self._delete(client, waba_account)
 
         assert r.json()["detail"] == "Invalid parameter"
 
     def test_falls_back_to_our_own_text_when_graph_says_nothing(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_post_json", AsyncMock(return_value=(False, {}))):
-            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
-                "name": "x", "category": "UTILITY", "components": []})
+        with patch("app.api.channels.meta.graph_delete", AsyncMock(return_value=(False, {}))):
+            r = self._delete(client, waba_account)
 
-        assert r.json()["detail"] == "Could not create template"
+        assert r.json()["detail"] == "Could not delete template"
+
+    def test_survives_an_error_that_is_not_an_object(self, client, waba_account):
+        with patch("app.api.channels.meta.graph_delete",
+                   AsyncMock(return_value=(False, {"error": "boom"}))):
+            r = self._delete(client, waba_account)
+
+        assert r.json()["detail"] == "Could not delete template"
+
+
+class TestTemplateLibraryLink:
+    """Templates are written in Meta's Template Library, so the UI needs a link
+    into it scoped to this number's Business Account."""
+
+    def _url(self, client, account):
+        return client.get(f"{BASE}/whatsapp/{account.id}/template-library")
+
+    OWNER = (True, {"owner_business_info": {"id": "BIZ1", "name": "Acme"}})
+
+    def test_links_to_the_library_for_this_waba_and_business(self, client, waba_account):
+        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=self.OWNER)):
+            r = self._url(client, waba_account)
+
+        assert r.status_code == 200
+        url = r.json()["url"]
+        assert url.startswith("https://business.facebook.com/latest/whatsapp_manager/template_library")
+        assert "asset_id=WABA9" in url
+        assert "business_id=BIZ1" in url
+
+    def test_still_links_when_the_business_cannot_be_read(self, client, waba_account):
+        # A worse link, not a dead button: Meta resolves the page from asset_id.
+        with patch("app.api.channels.meta.graph_get",
+                   AsyncMock(return_value=(False, {"error": {"message": "nope"}}))):
+            r = self._url(client, waba_account)
+
+        assert r.status_code == 200
+        assert "asset_id=WABA9" in r.json()["url"]
+        assert "business_id" not in r.json()["url"]
+
+    def test_omits_business_id_when_graph_returns_none(self, client, waba_account):
+        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {}))):
+            r = self._url(client, waba_account)
+
+        assert "business_id" not in r.json()["url"]
+
+    def test_requires_waba_id(self, client, whatsapp_account):
+        r = self._url(client, whatsapp_account)
+        assert r.status_code == 400
+
+    def test_rejects_other_orgs_account(self, client, db, waba_account):
+        waba_account.organization_id = uuid4()
+        db.commit()
+        assert self._url(client, waba_account).status_code == 404
