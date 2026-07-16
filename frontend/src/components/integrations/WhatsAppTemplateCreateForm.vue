@@ -296,6 +296,13 @@ const create = async () => {
     <!-- Meta writes the body of an authentication template itself; all we
          choose is what it assembles it from. -->
     <template v-if="isAuth">
+      <!-- Meta blocks the OTP category for unverified businesses, and only says
+           so on submit. Worth knowing before filling the form in. -->
+      <p class="wtm-hint wtm-standalone-hint">
+        WhatsApp only allows one-time passcode templates for verified
+        businesses. If yours isn’t verified yet, this will be rejected.
+      </p>
+
       <div class="wtm-field">
         <span class="wtm-label">Message</span>
         <div v-if="previewLoading && !previews.length" class="wtm-fixed-body wtm-preview-loading">
@@ -478,6 +485,10 @@ const create = async () => {
 
 .wtm-chip-remove:hover {
   color: var(--c-danger);
+}
+
+.wtm-standalone-hint {
+  margin: 0 0 12px;
 }
 
 .wtm-previews {

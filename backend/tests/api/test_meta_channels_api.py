@@ -636,3 +636,45 @@ class TestTemplatePreview:
         db.commit()
         r = client.get(self._url(waba_account), params={"languages": "en_US"})
         assert r.status_code == 404
+
+
+class TestGraphErrorDetail:
+    """Meta's `message` is often a generic OAuth string; error_user_msg is the
+    one that tells the user what to do about it."""
+
+    # Verbatim from Graph when an unverified business creates an auth template
+    UNVERIFIED = (False, {"error": {
+        "message": "Application does not have permission for this action",
+        "code": 10,
+        "type": "OAuthException",
+        "error_subcode": 2388185,
+        "error_user_title": "Cannot create message template",
+        "error_user_msg": "This WhatsApp Business account does not have permission "
+                          "to create message template",
+    }})
+
+    def test_prefers_metas_human_readable_reason(self, client, waba_account):
+        with patch("app.api.channels.meta.graph_post_json", AsyncMock(return_value=self.UNVERIFIED)):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
+                "name": "x", "category": "AUTHENTICATION", "components": []})
+
+        assert r.status_code == 502
+        # Not the useless "Application does not have permission for this action"
+        assert r.json()["detail"] == (
+            "This WhatsApp Business account does not have permission to create message template"
+        )
+
+    def test_falls_back_to_message_when_there_is_no_user_msg(self, client, waba_account):
+        graph = AsyncMock(return_value=(False, {"error": {"message": "Invalid parameter"}}))
+        with patch("app.api.channels.meta.graph_post_json", graph):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
+                "name": "x", "category": "UTILITY", "components": []})
+
+        assert r.json()["detail"] == "Invalid parameter"
+
+    def test_falls_back_to_our_own_text_when_graph_says_nothing(self, client, waba_account):
+        with patch("app.api.channels.meta.graph_post_json", AsyncMock(return_value=(False, {}))):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
+                "name": "x", "category": "UTILITY", "components": []})
+
+        assert r.json()["detail"] == "Could not create template"

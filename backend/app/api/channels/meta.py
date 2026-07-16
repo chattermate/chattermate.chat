@@ -132,8 +132,18 @@ def check_embedded_signup_access() -> None:
 
 def _graph_detail(data: dict, fallback: str) -> str:
     """Meta's own error text where it has one, so the UI can show the real
-    reason (e.g. a duplicate template name) rather than a generic failure."""
-    return data.get("error", {}).get("message") or fallback
+    reason (e.g. a duplicate template name) rather than a generic failure.
+
+    error_user_msg first: `message` is often a generic OAuth string that says
+    nothing actionable. An unverified business creating an authentication
+    template gets `message` "Application does not have permission for this
+    action" but error_user_msg "This WhatsApp Business account does not have
+    permission to create message template" — only one of those is a clue.
+    """
+    error = data.get("error", {})
+    if not isinstance(error, dict):
+        return fallback
+    return error.get("error_user_msg") or error.get("message") or fallback
 
 
 def _whatsapp_account_or_404(db: Session, account_id: UUID, organization: Organization):
