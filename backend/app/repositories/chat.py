@@ -143,6 +143,37 @@ class ChatRepository:
             logger.error(f"Error updating message attributes: {str(e)}")
             self.db.rollback()
 
+    def mark_delivery_failed(self, message_id: int, reason: Optional[str]) -> None:
+        """Flag a stored message as never delivered to the customer."""
+        self.update_message_attributes(message_id, {'delivery_status': reason or 'failed'})
+
+    def get_latest_bot_message(self, session_id: str | UUID) -> Optional[ChatHistory]:
+        """Most recent bot reply in a session.
+
+        The bot path persists its reply inside ChatAgent.get_response and never
+        returns the row, so callers that need to annotate it (e.g. recording a
+        delivery failure) read it back with this. Only 'bot' qualifies —
+        'agent' is a human's message, never the AI's.
+
+        Ordered by id, not created_at: created_at is a server default with
+        coarse resolution, so two replies in the same second would tie and
+        resolve arbitrarily.
+
+        Caveat: this identifies the latest reply, not a specific one. Two turns
+        processed concurrently on one session can read back each other's row.
+        """
+        if isinstance(session_id, str):
+            session_id = UUID(session_id)
+        return (
+            self.db.query(ChatHistory)
+            .filter(
+                ChatHistory.session_id == session_id,
+                ChatHistory.message_type == 'bot',
+            )
+            .order_by(ChatHistory.id.desc())
+            .first()
+        )
+
     def _update_session_sentiment(self, session_id) -> None:
         """Recompute and update the overall session sentiment from customer messages."""
         try:

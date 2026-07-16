@@ -1214,7 +1214,7 @@ async def handle_agent_message(sid, data):
                 )
             else:
                 error_message = 'Message saved but could not be delivered to the customer.'
-            chat_repo.update_message_attributes(created_message.id, {'delivery_status': delivery.reason or 'failed'})
+            chat_repo.mark_delivery_failed(created_message.id, delivery.reason)
             await sio.emit('error', {
                 'error': error_message,
                 'type': 'delivery_error',

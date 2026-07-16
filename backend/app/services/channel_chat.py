@@ -39,7 +39,7 @@ from app.repositories.channels import (
 )
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.lead_capture import record_lead_from_response
-from app.services.message_delivery import deliver_to_customer
+from app.services.message_delivery import DeliveryResult, deliver_to_customer
 
 # Optional enterprise message-limit check (same seam as the widget path)
 try:
@@ -126,7 +126,7 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         if response is None:
             # The agent hard-failed. Still send a reply so a typing indicator /
             # placeholder (Slack, LINE) resolves instead of dangling.
-            await deliver_to_customer(db, session_record, {
+            await _deliver(db, session_record, {
                 'message': "Sorry, I hit an error handling that — please try again.",
                 'type': 'chat_response',
             })
@@ -141,12 +141,14 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             channel=account.channel_type,
         )
 
-        await deliver_to_customer(db, session_record, {
+        delivery = await _deliver(db, session_record, {
             'message': response.message,
             'type': 'chat_response',
             'transfer_to_human': getattr(response, 'transfer_to_human', False),
             'end_chat': getattr(response, 'end_chat', False),
         })
+        if not delivery.ok:
+            _record_delivery_failure(db, session_id, delivery)
 
         await _send_channel_prompts(db, adapter, account, conversation, response)
     except Exception as e:
@@ -386,6 +388,32 @@ async def _run_chat_agent(db: Session, account: ChannelAccount, ai_config,
         await chat_agent.safe_cleanup_mcp_tools()
 
 
+async def _deliver(db: Session, session_record, payload: dict) -> DeliveryResult:
+    """Deliver a reply and log any failure.
+
+    Unlike the widget path there is no agent socket to notify here, so a failed
+    send would otherwise be silent: the customer gets nothing and nothing says
+    so. Callers that have a stored message act further on the result.
+    """
+    result = await deliver_to_customer(db, session_record, payload)
+    if not result.ok:
+        logger.warning(
+            f"Undelivered reply on {getattr(session_record, 'channel', 'unknown')} "
+            f"session {session_record.session_id}: {result.reason}")
+    return result
+
+
+def _record_delivery_failure(db: Session, session_id: str, delivery: DeliveryResult) -> None:
+    """Mark the stored bot reply as undelivered so the inbox shows it never
+    reached the customer. The reply is persisted inside ChatAgent.get_response,
+    so it has to be read back rather than passed down."""
+    chat_repo = ChatRepository(db)
+    message = chat_repo.get_latest_bot_message(session_id)
+    if message is None:
+        return
+    chat_repo.mark_delivery_failed(message.id, delivery.reason)
+
+
 async def _send_via_adapter(db: Session, session_record, text: str) -> None:
     """Send a plain service message to the customer's channel."""
-    await deliver_to_customer(db, session_record, {'message': text, 'type': 'chat_response'})
+    await _deliver(db, session_record, {'message': text, 'type': 'chat_response'})

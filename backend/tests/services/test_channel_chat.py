@@ -16,6 +16,7 @@ limitations under the License.
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -27,8 +28,10 @@ from app.repositories.channels import (
     ChannelConversationRepository,
     AgentChannelConfigRepository,
 )
+from app.repositories.chat import ChatRepository
 from app.services import channel_chat
 from app.services.channel_chat import process_channel_message
+from app.services.message_delivery import DeliveryResult
 
 
 def make_inbound(text="hello"):
@@ -114,6 +117,74 @@ async def test_ai_path_creates_session_and_delivers(db, routed_account, use_test
     session = db.query(SessionToAgent).filter_by(session_id=conversation.session_id).one()
     assert session.channel == "telegram"
     assert str(session.agent_id) == str(test_agent.id)
+
+
+def _agent_persisting_reply(db, text="hi there"):
+    """A ChatAgent stub that persists its reply the way the real one does, so
+    the delivery-status read-back has a row to find."""
+    response = SimpleNamespace(message=text, transfer_to_human=False,
+                               end_chat=False, request_lead_capture=False)
+
+    async def _respond(**kwargs):
+        ChatRepository(db).create_message({
+            "message": text,
+            "message_type": "bot",
+            "session_id": kwargs["session_id"],
+            "organization_id": kwargs["org_id"],
+            "agent_id": kwargs["agent_id"],
+            "customer_id": kwargs["customer_id"],
+        })
+        return response
+
+    fake_agent = MagicMock()
+    fake_agent.get_response = AsyncMock(side_effect=_respond)
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+    return fake_agent
+
+
+@pytest.mark.asyncio
+async def test_bot_reply_records_delivery_failure(db, routed_account, use_test_db, test_ai_config, mock_sio):
+    """Outside the messaging window the customer receives nothing, so the stored
+    reply must record that instead of looking delivered."""
+    fake_agent = _agent_persisting_reply(db)
+    failed = DeliveryResult(ok=False, reason="window_expired", can_template=True)
+
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock(return_value=failed)):
+        await process_channel_message(routed_account.id, make_inbound())
+
+    conversation = db.query(ChannelConversation).one()
+    message = ChatRepository(db).get_latest_bot_message(conversation.session_id)
+    assert message.attributes["delivery_status"] == "window_expired"
+
+
+@pytest.mark.asyncio
+async def test_bot_reply_marks_nothing_when_delivered(db, routed_account, use_test_db, test_ai_config, mock_sio):
+    fake_agent = _agent_persisting_reply(db)
+
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock(return_value=DeliveryResult(ok=True))):
+        await process_channel_message(routed_account.id, make_inbound())
+
+    conversation = db.query(ChannelConversation).one()
+    message = ChatRepository(db).get_latest_bot_message(conversation.session_id)
+    assert "delivery_status" not in (message.attributes or {})
+
+
+def test_latest_bot_message_ignores_human_agent_replies(db, test_organization, test_agent):
+    """'agent' is a human's message, never the AI's. A human replying after the
+    bot must not become the row a delivery failure gets stamped on."""
+    chat_repo = ChatRepository(db)
+    session_id = str(uuid4())
+    common = {
+        "session_id": session_id,
+        "organization_id": str(test_organization.id),
+        "agent_id": str(test_agent.id),
+    }
+    bot = chat_repo.create_message({**common, "message": "bot reply", "message_type": "bot"})
+    chat_repo.create_message({**common, "message": "human reply", "message_type": "agent"})
+
+    assert chat_repo.get_latest_bot_message(session_id).id == bot.id
 
 
 @pytest.mark.asyncio
