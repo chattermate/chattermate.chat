@@ -326,3 +326,40 @@ class TestTemplateManagement:
             r = client.delete(f"{BASE}/whatsapp/{waba_account.id}/templates?name=promo")
 
         assert r.status_code == 502
+
+
+class TestEmbeddedSignupConfig:
+    """Embedded Signup onboards a number under ChatterMate's own approved Meta
+    app, so without a config id it structurally cannot work — that is what
+    gates self-hosters, independently of any plan."""
+
+    def test_disabled_without_config_id(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "")
+        r = client.get(f"{BASE}/embedded-signup-config")
+
+        assert r.status_code == 200
+        assert r.json()["enabled"] is False
+
+    def test_enabled_with_config_id(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        r = client.get(f"{BASE}/embedded-signup-config")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert (body["enabled"], body["config_id"], body["app_id"]) == (True, "CFG1", "APP1")
+
+    def test_config_not_leaked_when_disabled(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        body = client.get(f"{BASE}/embedded-signup-config").json()
+
+        assert body["config_id"] is None
+        assert body["app_id"] is None
+
+    def test_disabled_when_plan_disallows(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr("app.api.channels.meta.HAS_ENTERPRISE", True)
+        monkeypatch.setattr("app.api.channels.meta._embedded_signup_plan_allows",
+                            lambda *_: False)
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is False

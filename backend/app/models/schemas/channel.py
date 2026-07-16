@@ -73,6 +73,15 @@ class TemplateSendRequest(BaseModel):
     components: Optional[list] = None
 
 
+class EmbeddedSignupConfigOut(BaseModel):
+    """Tells the connect UI whether to offer Embedded Signup. Everything but
+    `enabled` is None when it isn't, so nothing leaks to orgs without it."""
+    enabled: bool
+    config_id: Optional[str] = None
+    app_id: Optional[str] = None
+    graph_version: str
+
+
 class TemplateOut(BaseModel):
     """A message template as it exists on the customer's WhatsApp Business
     Account. Only APPROVED templates can actually be sent."""
