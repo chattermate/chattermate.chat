@@ -24,11 +24,43 @@ from app.core.logger import get_logger
 from app.models.user import User
 from app.core.auth import get_current_user
 from app.database import get_db
+from app.services.message_delivery import deliver_to_customer
 
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# Shown to the customer when a human takes over an external-channel chat. The
+# widget surfaces the handover in its own UI, so only channels need a message.
+HANDOVER_NOTICE = "You're now connected with a member of our team."
+
+
+async def _notify_customer_of_handover(db: Session, session, user: User) -> None:
+    """Tell a channel customer a human joined, and record it in the thread.
+    Best-effort: a failed notice must never fail the takeover itself."""
+    if getattr(session, 'channel', None) in (None, 'web'):
+        return
+    try:
+        ChatRepository(db).create_message({
+            'message': HANDOVER_NOTICE,
+            'message_type': 'agent',
+            'session_id': str(session.session_id),
+            'organization_id': str(session.organization_id),
+            'agent_id': str(session.agent_id) if session.agent_id else None,
+            'customer_id': str(session.customer_id) if session.customer_id else None,
+            'user_id': str(user.id),
+            'attributes': {'channel': session.channel, 'handover_notice': True},
+        })
+        result = await deliver_to_customer(db, session, {
+            'message': HANDOVER_NOTICE,
+            'type': 'chat_response',
+        })
+        if not result.ok:
+            logger.warning(
+                f"Handover notice not delivered on {session.channel}: {result.reason}")
+    except Exception as e:
+        logger.error(f"Failed sending handover notice: {str(e)}")
 
 
 @router.post("/{session_id}/takeover", response_model=ChatDetailResponse)
@@ -68,6 +100,10 @@ async def takeover_chat(
                 status_code=400,
                 detail="Failed to take over chat"
             )
+
+        # Let the customer know a human joined (external channels only), before
+        # the detail is read back so the notice is part of the returned thread.
+        await _notify_customer_of_handover(db, session, current_user)
 
         # Get updated chat details
         chat_repo = ChatRepository(db)
