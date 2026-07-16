@@ -73,6 +73,15 @@ class TemplateSendRequest(BaseModel):
     components: Optional[list] = None
 
 
+class EmbeddedSignupRequest(BaseModel):
+    """What the Embedded Signup JS SDK hands back: a short-lived code to trade
+    for the customer's business token, plus the assets it created."""
+    code: str
+    waba_id: str
+    phone_number_id: str
+    display_name: Optional[str] = None
+
+
 class EmbeddedSignupConfigOut(BaseModel):
     """Tells the connect UI whether to offer Embedded Signup. Everything but
     `enabled` is None when it isn't, so nothing leaks to orgs without it."""

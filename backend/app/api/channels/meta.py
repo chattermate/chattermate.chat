@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import secrets
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,7 +22,14 @@ from sqlalchemy.orm import Session
 
 from app.api.channels.accounts import get_org_account_or_404, to_account_out
 from app.channels import get_adapter
-from app.channels.meta_base import graph_delete, graph_get, graph_post_json, subscribe_app
+from app.channels.meta_base import (
+    exchange_signup_code,
+    graph_delete,
+    graph_get,
+    graph_post_json,
+    register_phone_number,
+    subscribe_app,
+)
 from app.core.auth import get_current_organization, require_permissions
 from app.core.config import settings
 from app.database import get_db
@@ -30,6 +38,7 @@ from app.models.organization import Organization
 from app.models.schemas.channel import (
     ChannelAccountOut,
     EmbeddedSignupConfigOut,
+    EmbeddedSignupRequest,
     WhatsAppConnectRequest,
     MessengerConnectRequest,
     InstagramConnectRequest,
@@ -61,6 +70,51 @@ TEMPLATE_PAGE_LIMIT = 100
 # Backstop against paging forever on a malformed cursor. Well above Meta's own
 # per-WABA template ceiling, so a real account never reaches it.
 TEMPLATE_MAX_PAGES = 10
+
+
+def _whatsapp_display_name(profile: dict, phone_number_id: str) -> str:
+    """How a connected number is labelled in the UI, from its Graph profile."""
+    return (f"{profile.get('verified_name', 'WhatsApp')} "
+            f"({profile.get('display_phone_number', phone_number_id)})")
+
+
+async def _verify_signup_assets(waba_id: str, phone_number_id: str, access_token: str) -> dict:
+    """Prove the exchanged token really owns the number being claimed, and
+    return that number's profile.
+
+    The code only proves the caller completed *a* signup — waba_id and
+    phone_number_id arrive in the request body and are entirely caller
+    controlled. Without this, an org could pair a genuine code from a throwaway
+    WABA with someone else's phone number id: webhook routing resolves accounts
+    by phone number id alone, with no org scoping, so their inbound messages
+    would land in the attacker's inbox. Listing the WABA's numbers with the
+    token checks both ids at once.
+    """
+    ok, data = await graph_get(f"{waba_id}/phone_numbers", access_token,
+                               params={"fields": "id,display_phone_number,verified_name"})
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail=_graph_detail(data, "Could not read that WhatsApp Business Account"))
+
+    numbers = data.get("data")
+    if not isinstance(numbers, list):
+        raise HTTPException(status_code=400, detail="Unexpected response from Meta")
+
+    for number in numbers:
+        if str(number.get("id")) == phone_number_id:
+            return number
+    raise HTTPException(status_code=400,
+                        detail="That number is not on this WhatsApp Business Account")
+
+
+def _generate_verification_pin() -> str:
+    """A fresh two-step-verification PIN for a number we register.
+
+    The customer never types it — it exists only so the number can be
+    registered — so it is random rather than chosen, and kept for re-registers.
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"
 
 
 def _embedded_signup_plan_allows(current_user: User, db: Session) -> bool:
@@ -168,7 +222,13 @@ def _upsert_account(db: Session, organization: Organization, channel_type: str,
         if existing.organization_id != organization.id:
             raise HTTPException(status_code=409,
                                 detail="This account is already connected to another organization")
-        repo.update_credentials(existing, credentials)
+        # Merge rather than replace: a reconnect that omits an optional field
+        # must not silently drop it. Someone reconnecting without re-entering
+        # their WABA id would otherwise lose template management, and the
+        # signup PIN cannot be read back from Meta at all.
+        merged = {**repo.get_credentials(existing),
+                  **{k: v for k, v in credentials.items() if v is not None}}
+        repo.update_credentials(existing, merged)
         return repo.set_active(existing, True)
     return repo.create_account(
         organization_id=organization.id,
@@ -212,8 +272,7 @@ async def connect_whatsapp(
         raise HTTPException(status_code=400,
                             detail=f"Could not verify WhatsApp credentials: {data.get('error', {}).get('message', 'invalid token or phone_number_id')}")
 
-    display = request.display_name or \
-        f"{data.get('verified_name', 'WhatsApp')} ({data.get('display_phone_number', request.phone_number_id)})"
+    display = request.display_name or _whatsapp_display_name(data, request.phone_number_id)
     account = _upsert_account(
         db, organization, ChannelType.WHATSAPP.value,
         external_account_id=request.phone_number_id,
@@ -224,6 +283,63 @@ async def connect_whatsapp(
     if request.waba_id:
         if not await subscribe_app(request.waba_id, request.access_token):
             logger.warning(f"WABA subscribe failed for {request.waba_id}; webhook may need manual subscription")
+    return to_account_out(db, account)
+
+
+@router.post("/whatsapp/embedded-signup", response_model=ChannelAccountOut)
+async def connect_whatsapp_embedded_signup(
+    request: EmbeddedSignupRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Finish an Embedded Signup flow: trade the code for the customer's
+    business token and connect the number it created.
+
+    Only the way the credentials are obtained differs from connect_whatsapp —
+    everything after that is the same upsert and webhook subscribe.
+    """
+    check_embedded_signup_access(current_user, db)
+
+    ok, data = await exchange_signup_code(request.code)
+    access_token = data.get("access_token") if ok else None
+    if not access_token:
+        # The code is short-lived (~10 minutes) and single-use, so a stale or
+        # replayed one lands here rather than on a Graph error later.
+        raise HTTPException(
+            status_code=400,
+            detail=_graph_detail(data, "Could not complete signup — please try connecting again"),
+        )
+
+    profile = await _verify_signup_assets(
+        request.waba_id, request.phone_number_id, access_token)
+
+    # A number from Embedded Signup is attached to the WABA but cannot send
+    # until it is registered for Cloud API use.
+    pin = _generate_verification_pin()
+    registered, register_data = await register_phone_number(
+        request.phone_number_id, access_token, pin)
+    if not registered:
+        logger.warning(
+            f"Phone {request.phone_number_id} not registered after signup: "
+            f"{_graph_detail(register_data, 'unknown error')}")
+
+    credentials = {"access_token": access_token, "waba_id": request.waba_id}
+    # Only keep the PIN we actually set on the number. Storing one from a failed
+    # register would overwrite a working PIN with a value Meta never accepted —
+    # and Meta cannot read it back, so the real one would be unrecoverable.
+    if registered:
+        credentials["verification_pin"] = pin
+
+    account = _upsert_account(
+        db, organization, ChannelType.WHATSAPP.value,
+        external_account_id=request.phone_number_id,
+        credentials=credentials,
+        display_name=request.display_name or _whatsapp_display_name(
+            profile, request.phone_number_id),
+    )
+    if not await subscribe_app(request.waba_id, access_token):
+        logger.warning(f"WABA subscribe failed for {request.waba_id} after Embedded Signup")
     return to_account_out(db, account)
 
 

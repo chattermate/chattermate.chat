@@ -110,16 +110,17 @@ async def graph_post(path: str, access_token: str, payload: dict) -> SendResult:
     return SendResult(ok=False, error=last_error)
 
 
-async def _graph_request(method: str, path: str, access_token: str,
+async def _graph_request(method: str, path: str, access_token: Optional[str],
                          params: Optional[dict] = None,
                          json_body: Optional[dict] = None) -> tuple[bool, dict]:
     """Issue a Graph call and return (ok, decoded-json).
 
     Unlike graph_post this keeps the whole response body, for calls where the
     body is the result rather than just a message id. The token goes in the
-    Authorization header so it never appears in URLs or proxy logs. These are
-    management calls, not sends, so a failure surfaces to the caller instead of
-    being retried.
+    Authorization header so it never appears in URLs or proxy logs; pass None
+    for the one endpoint that authenticates with app credentials instead. These
+    are management calls, not sends, so a failure surfaces to the caller
+    instead of being retried.
     """
     try:
         response = await _get_http_client().request(
@@ -127,7 +128,7 @@ async def _graph_request(method: str, path: str, access_token: str,
             graph_url(path),
             params=params or None,
             json=json_body,
-            headers={"Authorization": f"Bearer {access_token}"},
+            headers={"Authorization": f"Bearer {access_token}"} if access_token else {},
         )
         return (response.status_code < 300, response.json())
     except Exception as e:
@@ -149,6 +150,32 @@ async def graph_post_json(path: str, access_token: str, payload: dict) -> tuple[
 async def graph_delete(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
     """DELETE a Graph node (e.g. removing a message template by name)."""
     return await _graph_request("DELETE", path, access_token, params=params)
+
+
+async def exchange_signup_code(code: str) -> tuple[bool, dict]:
+    """Trade an Embedded Signup code for the customer's business access token.
+
+    The app credentials authenticate this call, so it is the one Graph request
+    that carries no bearer token. There is no redirect_uri: Embedded Signup
+    hands the code back through the JS SDK rather than a redirect, so none was
+    ever issued and sending one is rejected as a mismatch.
+    """
+    return await _graph_request("GET", "oauth/access_token", None, params={
+        "client_id": settings.META_APP_ID,
+        "client_secret": settings.META_APP_SECRET,
+        "code": code,
+    })
+
+
+async def register_phone_number(phone_number_id: str, access_token: str, pin: str) -> tuple[bool, dict]:
+    """Enable a number for Cloud API sending.
+
+    A number onboarded through Embedded Signup is attached to the WABA but not
+    yet usable; registering it with a two-step-verification PIN is what makes it
+    able to send.
+    """
+    return await _graph_request("POST", f"{phone_number_id}/register", access_token,
+                                json_body={"messaging_product": "whatsapp", "pin": pin})
 
 
 async def subscribe_app(node_id: str, access_token: str, subscribed_fields: Optional[str] = None) -> bool:

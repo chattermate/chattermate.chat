@@ -363,3 +363,138 @@ class TestEmbeddedSignupConfig:
         monkeypatch.setattr("app.api.channels.meta._embedded_signup_plan_allows",
                             lambda *_: False)
         assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is False
+
+
+class TestEmbeddedSignupConnect:
+    ES = f"{BASE}/whatsapp/embedded-signup"
+    PAYLOAD = {"code": "AQD-code", "waba_id": "WABA9", "phone_number_id": "PN555"}
+
+    @pytest.fixture(autouse=True)
+    def enabled(self, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+
+    # The WABA's numbers, as Graph lists them for the exchanged token
+    WABA_NUMBERS = (True, {"data": [
+        {"id": "PN555", "display_phone_number": "1555", "verified_name": "Acme"},
+    ]})
+
+    def test_exchanges_code_and_connects_number(self, client, db, monkeypatch):
+        exchange = AsyncMock(return_value=(True, {"access_token": "EAAG-business"}))
+        register = AsyncMock(return_value=(True, {"success": True}))
+        numbers = AsyncMock(return_value=self.WABA_NUMBERS)
+        subscribe = AsyncMock(return_value=True)
+        with patch("app.api.channels.meta.exchange_signup_code", exchange), \
+             patch("app.api.channels.meta.register_phone_number", register), \
+             patch("app.api.channels.meta.graph_get", numbers), \
+             patch("app.api.channels.meta.subscribe_app", subscribe):
+            r = client.post(self.ES, json=self.PAYLOAD)
+
+        assert r.status_code == 200
+        assert "Acme" in r.json()["display_name"]
+        exchange.assert_awaited_once_with("AQD-code")
+        # Same persistence as a manual connect — only the credentials differ
+        account = ChannelAccountRepository(db).get_by_external_id("whatsapp", "PN555")
+        credentials = ChannelAccountRepository(db).get_credentials(account)
+        assert credentials["access_token"] == "EAAG-business"
+        assert credentials["waba_id"] == "WABA9"
+        # The PIN is kept: re-registering the number later needs the same one
+        assert credentials["verification_pin"].isdigit()
+        subscribe.assert_awaited_once()
+        assert subscribe.await_args.args[0] == "WABA9"
+
+    def test_stale_code_is_400(self, client):
+        exchange = AsyncMock(return_value=(False, {"error": {"message": "Code expired"}}))
+        with patch("app.api.channels.meta.exchange_signup_code", exchange):
+            r = client.post(self.ES, json=self.PAYLOAD)
+
+        assert r.status_code == 400
+        assert r.json()["detail"] == "Code expired"
+
+    def test_exchange_without_token_is_400(self, client):
+        """A 200 that carries no token must not connect a tokenless account."""
+        exchange = AsyncMock(return_value=(True, {}))
+        with patch("app.api.channels.meta.exchange_signup_code", exchange):
+            r = client.post(self.ES, json=self.PAYLOAD)
+
+        assert r.status_code == 400
+
+    def test_failed_registration_still_connects_without_storing_pin(self, client, db):
+        """Registration can be retried; losing the token would mean redoing the
+        whole signup, so a failure here must not abort the connect. But a PIN we
+        never set must not be stored — Meta cannot read the real one back."""
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "EAAG-business"}))), \
+             patch("app.api.channels.meta.register_phone_number",
+                   AsyncMock(return_value=(False, {"error": {"message": "already registered"}}))), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=self.WABA_NUMBERS)), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(self.ES, json=self.PAYLOAD)
+
+        assert r.status_code == 200
+        repo = ChannelAccountRepository(db)
+        account = repo.get_by_external_id("whatsapp", "PN555")
+        assert account is not None
+        assert "verification_pin" not in repo.get_credentials(account)
+
+    def test_rejects_a_number_not_on_the_claimed_waba(self, client, db):
+        """The code proves a signup happened, not who owns the number in the
+        body. Webhooks route by phone number id with no org scoping, so pairing
+        a real code with someone else's number would steal their messages."""
+        other_waba = (True, {"data": [{"id": "PN_ATTACKER_OWNS"}]})
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "EAAG-attacker"}))), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=other_waba)), \
+             patch("app.api.channels.meta.register_phone_number", AsyncMock()) as register, \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock()):
+            r = client.post(self.ES, json={**self.PAYLOAD, "phone_number_id": "PN_VICTIM"})
+
+        assert r.status_code == 400
+        register.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("whatsapp", "PN_VICTIM") is None
+
+    def test_rejects_a_waba_the_token_cannot_read(self, client, db):
+        unreadable = (False, {"error": {"message": "Unsupported get request"}})
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "EAAG-attacker"}))), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=unreadable)), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock()):
+            r = client.post(self.ES, json=self.PAYLOAD)
+
+        assert r.status_code == 400
+        assert ChannelAccountRepository(db).get_by_external_id("whatsapp", "PN555") is None
+
+    def test_rejected_without_config_id(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "")
+        exchange = AsyncMock()
+        with patch("app.api.channels.meta.exchange_signup_code", exchange):
+            r = client.post(self.ES, json=self.PAYLOAD)
+
+        assert r.status_code == 403
+        exchange.assert_not_awaited()
+
+    def test_manual_reconnect_keeps_the_signup_pin_and_waba(self, client, db):
+        """A reconnect that omits optional credentials must not drop them: the
+        PIN cannot be re-read from Meta, and losing waba_id breaks templates."""
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "EAAG-business"}))), \
+             patch("app.api.channels.meta.register_phone_number",
+                   AsyncMock(return_value=(True, {"success": True}))), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=self.WABA_NUMBERS)), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            client.post(self.ES, json=self.PAYLOAD)
+
+        repo = ChannelAccountRepository(db)
+        pin = repo.get_credentials(repo.get_by_external_id("whatsapp", "PN555"))["verification_pin"]
+
+        # Now reconnect manually, entering only a fresh token
+        with patch("app.api.channels.meta.graph_get",
+                   AsyncMock(return_value=(True, {"verified_name": "Acme"}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(f"{BASE}/whatsapp", json={
+                "phone_number_id": "PN555", "access_token": "EAAG-rotated"})
+
+        assert r.status_code == 200
+        credentials = repo.get_credentials(repo.get_by_external_id("whatsapp", "PN555"))
+        assert credentials["access_token"] == "EAAG-rotated"
+        assert credentials["verification_pin"] == pin
+        assert credentials["waba_id"] == "WABA9"
