@@ -23,6 +23,11 @@ import channelsService, {
   type WhatsAppTemplate,
 } from '@/services/channels'
 import { templateBody } from '@/utils/whatsappTemplates'
+import {
+  WHATSAPP_LANGUAGES,
+  DEFAULT_LANGUAGE,
+  languageLabel,
+} from '@/utils/whatsappLanguages'
 
 const props = defineProps<{
   accounts: ChannelAccount[]
@@ -51,16 +56,17 @@ const showCreate = ref(false)
 const deletingName = ref('')
 const confirmingName = ref('')
 
-const form = ref({ name: '', category: 'UTILITY' as TemplateCategory, language: 'en_US', body: '' })
+const form = ref({
+  name: '',
+  category: 'UTILITY' as TemplateCategory,
+  language: DEFAULT_LANGUAGE,
+  body: '',
+})
 
 // Meta only accepts lowercase letters, digits and underscores in a name.
 const nameIsValid = computed(() => /^[a-z0-9_]+$/.test(form.value.name))
 const canCreate = computed(
-  () =>
-    nameIsValid.value &&
-    !!form.value.body.trim() &&
-    !!form.value.language.trim() &&
-    !creating.value,
+  () => nameIsValid.value && !!form.value.body.trim() && !creating.value,
 )
 
 // Guards against a slow response for a previously selected number landing after
@@ -98,7 +104,7 @@ onMounted(() => {
 watch(accountId, load)
 
 const resetForm = () => {
-  form.value = { name: '', category: 'UTILITY', language: 'en_US', body: '' }
+  form.value = { name: '', category: 'UTILITY', language: DEFAULT_LANGUAGE, body: '' }
 }
 
 const create = async () => {
@@ -202,7 +208,7 @@ const remove = async (name: string) => {
               </div>
               <div class="wtm-row-meta">
                 <span v-if="template.category">{{ template.category }}</span>
-                <span v-if="template.language">· {{ template.language }}</span>
+                <span v-if="template.language">· {{ languageLabel(template.language) }}</span>
               </div>
               <p class="wtm-row-body">{{ templateBody(template) }}</p>
             </div>
@@ -257,7 +263,14 @@ const remove = async (name: string) => {
 
         <label class="wtm-field">
           <span class="wtm-label">Language</span>
-          <input v-model="form.language" class="wtm-input" placeholder="en_US" autocomplete="off" />
+          <!-- Native select: .wtm-content scrolls, so a custom popover would be
+               clipped — and native gives type-ahead over 111 options for free.
+               The code is shown too: admins cross-reference it in Meta. -->
+          <select v-model="form.language" class="wtm-input">
+            <option v-for="language in WHATSAPP_LANGUAGES" :key="language.code" :value="language.code">
+              {{ language.label }} ({{ language.code }})
+            </option>
+          </select>
         </label>
 
         <label class="wtm-field">
