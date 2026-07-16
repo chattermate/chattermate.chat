@@ -42,8 +42,19 @@ export interface SmsProviderInfo {
   fields: SmsProviderField[]
 }
 
-/** Meta reviews every template; only APPROVED ones can be sent. */
-export type TemplateStatus = 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED'
+/**
+ * Meta reviews every template; only APPROVED ones can be sent. The backend
+ * passes Graph's value through verbatim and Meta adds statuses over time
+ * (PENDING_DELETION, IN_APPEAL, FLAGGED, ...), so this list is the common set,
+ * not an exhaustive one — treat any unlisted status as "cannot send".
+ */
+export type TemplateStatus =
+  | 'APPROVED'
+  | 'PENDING'
+  | 'REJECTED'
+  | 'PAUSED'
+  | 'DISABLED'
+  | (string & {})
 
 export type TemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION'
 
