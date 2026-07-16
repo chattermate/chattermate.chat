@@ -18,6 +18,8 @@ escaping and JSON-LD, plan/enabled gating (404s), Ask AI guards, host
 dispatch routing.
 """
 
+import json
+import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -125,6 +127,32 @@ def test_article_page_renders_sanitized_markdown(client, db, test_organization, 
     # the guard is on the injected payload, not the <script> tag in general.
     assert "<strong>Settings</strong>" in r.text
     assert "alert(1)" not in r.text
+
+
+def test_article_page_emits_faqpage_json_ld(client, db, test_organization, help_center):
+    """Owner-authored articles must be FAQPage, not QAPage. QAPage is for
+    community Q&A and requires answerCount, which Search Console flags as an
+    error on these pages."""
+    faq = _publish_faq(db, test_organization.id, answer="Click **Settings**.")
+    faq.slug = "how-do-i-sign-up"
+    db.commit()
+    r = client.get(f"/a/{faq.slug}", headers={"host": HOST})
+    assert r.status_code == 200
+
+    blocks = re.findall(
+        r'<script type="application/ld\+json">(.*?)</script>', r.text, re.DOTALL
+    )
+    assert blocks, "article page emitted no JSON-LD"
+    data = json.loads(blocks[0])
+    assert data["@type"] == "FAQPage"
+    # mainEntity must be a list — FAQPage models one-or-more Questions.
+    assert isinstance(data["mainEntity"], list)
+    question = data["mainEntity"][0]
+    assert question["@type"] == "Question"
+    assert question["name"] == "How do I sign up?"
+    # Answer text is plain text, with the Markdown stripped.
+    assert question["acceptedAnswer"]["text"] == "Click Settings ."
+    assert "QAPage" not in r.text
 
 
 def test_search_filters_results(client, db, test_organization, help_center):
