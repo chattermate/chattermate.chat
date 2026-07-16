@@ -385,16 +385,24 @@ const remove = async (name: string) => {
   gap: 8px;
 }
 
+/* Mirrors .wtm-row, the row it stands in for: a real row is legible because of
+   its border, not its fill (--background-soft is #0E0F14 against a #0B0C10
+   modal — a contrast ratio of 1.02). Without the border this was rendering
+   perfectly and showing nothing, so the modal just looked blank until the
+   fetch returned. */
 .wtm-skeleton-row {
   height: 64px;
   border-radius: var(--radius-btn, 8px);
-  background: var(--background-soft);
+  border: 1px solid var(--border-color);
+  background: var(--o08);
   animation: wtm-pulse 1.4s ease-in-out infinite;
 }
 
+/* Only down to 0.6: at 0.5 the trough fell back below the threshold where the
+   row reads as being there at all. */
 @keyframes wtm-pulse {
   50% {
-    opacity: 0.5;
+    opacity: 0.6;
   }
 }
 

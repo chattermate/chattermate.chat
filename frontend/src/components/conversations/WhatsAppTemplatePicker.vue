@@ -375,16 +375,20 @@ const send = async () => {
   gap: 8px;
 }
 
+/* Mirrors .tpl-option — like the real row, it is the border that makes it
+   legible; --background-soft alone is invisible against the modal in dark
+   theme. See WhatsAppTemplateManager for the numbers. */
 .tpl-skeleton-row {
   height: 56px;
   border-radius: var(--radius-btn, 8px);
-  background: var(--background-soft);
+  border: 1px solid var(--border-color);
+  background: var(--o08);
   animation: tpl-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes tpl-pulse {
   50% {
-    opacity: 0.5;
+    opacity: 0.6;
   }
 }
 
