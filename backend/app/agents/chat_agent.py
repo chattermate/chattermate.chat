@@ -782,7 +782,11 @@ Keep your responses concise and focused. Provide clear, actionable information i
         session_repo = SessionToAgentRepository(db)
         
         # Determine if rating should be requested
-        if force_rating is not None:
+        if self.channel != 'web':
+            # Rating is a web-widget-only feature: external channels have no
+            # rating UI, so asking there leaves the customer a dead-end prompt.
+            should_request_rating = False
+        elif force_rating is not None:
             # Use the forced setting from workflow configuration
             should_request_rating = force_rating
         else:

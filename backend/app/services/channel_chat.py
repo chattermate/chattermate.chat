@@ -15,6 +15,8 @@ limitations under the License.
 """
 
 import uuid
+from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -94,8 +96,10 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         # Human is handling (or transfer is pending): store + relay to the
         # agent dashboard, never run the bot.
         if session_record.user_id is not None or session_record.status == SessionStatus.TRANSFERRED:
-            _store_customer_message(db, inbound, session_record, agent_id, customer_id, org_id, account)
-            await _relay_to_human(session_record, inbound)
+            stored = _store_customer_message(db, inbound, session_record, agent_id,
+                                             customer_id, org_id, account)
+            await _relay_to_human(session_record, inbound,
+                                  created_at=getattr(stored, 'created_at', None))
             return
 
         ai_config = AIConfigRepository(db).get_active_config(account.organization_id)
@@ -303,10 +307,11 @@ def _get_or_create_session(db: Session, account: ChannelAccount, inbound: Inboun
 
 def _store_customer_message(db: Session, inbound: InboundMessage, session_record,
                             agent_id, customer_id: str, org_id: str,
-                            account: ChannelAccount) -> None:
+                            account: ChannelAccount):
     """Persist a customer message on the human-handled path (the AI path
-    persists inside ChatAgent.get_response)."""
-    ChatRepository(db).create_message({
+    persists inside ChatAgent.get_response). Returns the stored row so the
+    relay can carry its timestamp."""
+    return ChatRepository(db).create_message({
         "message": inbound.text or "",
         "message_type": "user",
         "session_id": str(session_record.session_id),
@@ -320,7 +325,8 @@ def _store_customer_message(db: Session, inbound: InboundMessage, session_record
     })
 
 
-async def _relay_to_human(session_record, inbound: InboundMessage) -> None:
+async def _relay_to_human(session_record, inbound: InboundMessage,
+                          created_at: Optional[datetime] = None) -> None:
     """Forward a customer message to the handling agent's dashboard rooms,
     mirroring the widget's chat_reply events."""
     session_id = str(session_record.session_id)
@@ -329,6 +335,9 @@ async def _relay_to_human(session_record, inbound: InboundMessage) -> None:
         'type': 'user_message',
         'transfer_to_human': False,
         'session_id': session_id,
+        # The inbox appends the message live off this field; without it the
+        # handler builds an invalid Date and the message only shows on refetch.
+        'created_at': (created_at or datetime.now(timezone.utc)).isoformat(),
     }
     if session_record.user_id is not None:
         await sio.emit('chat_reply', payload, room=f"user_{session_record.user_id}", namespace='/agent')

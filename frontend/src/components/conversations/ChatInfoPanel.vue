@@ -22,6 +22,7 @@ import { userService } from '@/services/user'
 import { socketService } from '@/services/socket'
 import { toast } from 'vue-sonner'
 import api from '@/services/api'
+import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/endChat'
 
 interface Props {
   chatInfo: ChatDetail | null
@@ -124,18 +125,21 @@ const confirmEndChat = async () => {
   try {
     actionLoading.value = true
     
+    // Only the web widget can render a rating; on external channels the ask is
+    // dropped and the closing message says nothing about rating.
+    const askRating = canRequestRating(props.chatInfo.channel)
     const timestamp = new Date().toISOString()
     const endChatMessage = {
-      message: "Thank you for contacting us. Do you mind rating our service?",
+      message: endChatMessageFor(props.chatInfo.channel),
       message_type: "system",
       created_at: timestamp,
       session_id: props.chatInfo.session_id,
       end_chat: true,
-      request_rating: true,
+      request_rating: askRating,
       end_chat_reason: "AGENT_REQUEST",
       end_chat_description: "Agent manually ended the chat"
     }
-    
+
     // Emit message through socket to end chat
     socketService.emit('agent_message', {
       message: endChatMessage.message,
@@ -143,13 +147,13 @@ const confirmEndChat = async () => {
       message_type: endChatMessage.message_type,
       created_at: timestamp,
       end_chat: true,
-      request_rating: true,
+      request_rating: askRating,
       end_chat_reason: "AGENT_REQUEST",
       end_chat_description: "Agent manually ended the chat"
     })
-    
+
     toast.success('Chat ended successfully', {
-      description: 'Customer will be asked for feedback',
+      description: askRating ? 'Customer will be asked for feedback' : 'Chat has been closed',
       duration: 4000,
       closeButton: true
     })

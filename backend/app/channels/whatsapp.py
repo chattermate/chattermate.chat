@@ -81,6 +81,36 @@ class WhatsAppAdapter(MetaBaseAdapter):
                     return interactive[key].get("title")
         return None
 
+    def conversation_state(self, inbound: InboundMessage) -> dict:
+        # send_typing marks a specific message as read, so it needs the wamid of
+        # the message it is replying to.
+        if not inbound.external_message_id:
+            return {}
+        return {"last_inbound_message_id": inbound.external_message_id}
+
+    async def send_typing(self, account: ChannelAccount, conversation: ChannelConversation) -> None:
+        """Show a typing indicator. WhatsApp only offers this as part of marking
+        an inbound message read, so this also blue-ticks that message. Expires
+        after 25s or when the reply is delivered."""
+        message_id = (conversation.extra or {}).get("last_inbound_message_id")
+        if not message_id:
+            return
+        try:
+            result = await graph_post(
+                f"{account.external_account_id}/messages",
+                self.access_token(account),
+                {
+                    "messaging_product": "whatsapp",
+                    "status": "read",
+                    "message_id": message_id,
+                    "typing_indicator": {"type": "text"},
+                },
+            )
+            if not result.ok:
+                logger.debug(f"WhatsApp typing indicator failed (non-critical): {result.error}")
+        except Exception as e:
+            logger.debug(f"WhatsApp typing indicator failed (non-critical): {e}")
+
     async def send_text(self, account: ChannelAccount, conversation: ChannelConversation, text: str) -> SendResult:
         return await graph_post(
             f"{account.external_account_id}/messages",
