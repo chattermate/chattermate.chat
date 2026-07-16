@@ -21,7 +21,7 @@ import channelsService, {
   type ChannelAccount,
   type WhatsAppTemplate,
 } from '@/services/channels'
-import { templateBody } from '@/utils/whatsappTemplates'
+import { templatePreviewText } from '@/utils/whatsappTemplates'
 import { languageLabel } from '@/utils/whatsappLanguages'
 import WhatsAppTemplateCreateForm from '@/components/integrations/WhatsAppTemplateCreateForm.vue'
 
@@ -158,7 +158,7 @@ const remove = async (name: string) => {
                 <span v-if="template.category">{{ template.category }}</span>
                 <span v-if="template.language">· {{ languageLabel(template.language) }}</span>
               </div>
-              <p class="wtm-row-body">{{ templateBody(template) }}</p>
+              <p class="wtm-row-body">{{ templatePreviewText(template) }}</p>
             </div>
 
             <div class="wtm-row-actions">

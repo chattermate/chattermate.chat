@@ -18,6 +18,22 @@ import type { TemplateComponent, WhatsAppTemplate } from '@/services/channels'
 
 const PLACEHOLDER = /\{\{(\d+)\}\}/g
 
+/**
+ * Meta supplies an authentication template's verification code as the single
+ * body parameter. There is always exactly one, and it never appears as {{n}} in
+ * stored text — so it is modelled as variable 1 to reuse the same fill/validate
+ * path as an authored template.
+ */
+const AUTH_CODE_INDEX = 1
+
+/** Meta's fixed authentication copy. We cannot change any of it, so it is
+ *  mirrored here purely to show what the customer will receive. */
+export const AUTH_SECURITY_NOTE = 'For your security, do not share this code.'
+export const authExpiryNote = (minutes: number): string =>
+  `This code expires in ${minutes} minutes.`
+export const authBodyPreview = (code: string): string =>
+  `${code.trim() || '<code>'} is your verification code.`
+
 const placeholdersIn = (text: string): number[] => {
   const found = new Set<number>()
   for (const match of text.matchAll(PLACEHOLDER)) found.add(Number(match[1]))
@@ -32,23 +48,58 @@ export const templateBody = (template: WhatsAppTemplate): string =>
   componentOfType(template, 'BODY')?.text ?? ''
 
 /**
- * True when a placeholder sits outside the body — in a header, or a button URL.
+ * True for an authentication template — a one-time passcode.
  *
- * Only body variables are supported here, and Meta rejects a send whose
- * parameters don't cover every placeholder. Offering such a template would
- * guarantee a failed send, so it is filtered out rather than shown.
+ * Meta owns these entirely: the body is its own fixed copy, assembled from
+ * add_security_recommendation / code_expiration_minutes, and the verification
+ * code is supplied at send time rather than written into the template. So they
+ * are read and sent differently from a template we author.
  */
-export const hasUnsupportedVariables = (template: WhatsAppTemplate): boolean =>
+export const isAuthentication = (template: WhatsAppTemplate): boolean =>
+  template.category === 'AUTHENTICATION'
+
+/** A placeholder in a non-body text component — a header or footer. */
+const hasTextPlaceholderOutsideBody = (component: TemplateComponent): boolean =>
+  component.type?.toUpperCase() !== 'BODY' &&
+  typeof component.text === 'string' &&
+  placeholdersIn(component.text).length > 0
+
+/** A dynamic URL button, e.g. https://example.com/orders/{{1}}. The placeholder
+ *  lives in the button's `url`, not in any component `text`. */
+const hasUrlPlaceholder = (component: TemplateComponent): boolean =>
+  ((component.buttons as { url?: string }[] | undefined) ?? []).some(
+    (button) => typeof button.url === 'string' && placeholdersIn(button.url).length > 0,
+  )
+
+/** A media header takes an image/video/document parameter at send time. It has
+ *  no `text` to scan, so it would otherwise look parameterless. */
+const needsMediaParameter = (component: TemplateComponent): boolean =>
+  component.type?.toUpperCase() === 'HEADER' &&
+  typeof component.format === 'string' &&
+  component.format.toUpperCase() !== 'TEXT'
+
+/**
+ * True when sending the template would need a parameter we cannot supply.
+ *
+ * Only body parameters are built here, and Meta rejects a send that doesn't
+ * cover every one the template declares — so offering such a template would
+ * guarantee a failed send, and it is filtered out rather than shown.
+ *
+ * Authentication templates are exempt: their one parameter is Meta's own, and
+ * buildAuthComponents supplies it, so the rule would wrongly hide every one.
+ */
+export const hasUnsupportedParameters = (template: WhatsAppTemplate): boolean =>
+  !isAuthentication(template) &&
   (template.components ?? []).some(
     (component) =>
-      component.type?.toUpperCase() !== 'BODY' &&
-      typeof component.text === 'string' &&
-      placeholdersIn(component.text).length > 0,
+      hasTextPlaceholderOutsideBody(component) ||
+      hasUrlPlaceholder(component) ||
+      needsMediaParameter(component),
   )
 
 /** Meta only lets an APPROVED template be sent; the rest are informational. */
 export const isSendable = (template: WhatsAppTemplate): boolean =>
-  template.status === 'APPROVED' && !hasUnsupportedVariables(template)
+  template.status === 'APPROVED' && !hasUnsupportedParameters(template)
 
 /**
  * The {{n}} placeholders in the body, ascending and de-duplicated.
@@ -57,16 +108,24 @@ export const isSendable = (template: WhatsAppTemplate): boolean =>
  * one ({{1}} twice), so the positions are read from the body itself.
  */
 export const templateVariables = (template: WhatsAppTemplate): number[] =>
-  placeholdersIn(templateBody(template))
+  isAuthentication(template) ? [AUTH_CODE_INDEX] : placeholdersIn(templateBody(template))
+
+/** What the customer sees when the template has nothing filled in yet.
+ *  An authentication body is Meta's copy, not stored text, so it has to be
+ *  reconstructed rather than read. */
+export const templatePreviewText = (template: WhatsAppTemplate): string =>
+  isAuthentication(template) ? authBodyPreview('') : templateBody(template)
 
 /** Body text with the agent's values substituted, for previewing before sending. */
 export const previewTemplate = (
   template: WhatsAppTemplate,
   values: Record<number, string>,
 ): string =>
-  templateBody(template).replace(/\{\{(\d+)\}\}/g, (placeholder, index) =>
-    values[Number(index)]?.trim() || placeholder,
-  )
+  isAuthentication(template)
+    ? authBodyPreview(values[AUTH_CODE_INDEX] ?? '')
+    : templateBody(template).replace(/\{\{(\d+)\}\}/g, (placeholder, index) =>
+        values[Number(index)]?.trim() || placeholder,
+      )
 
 /** True once every placeholder has a value — Meta rejects a partial fill. */
 export const isTemplateComplete = (
@@ -75,14 +134,35 @@ export const isTemplateComplete = (
 ): boolean => templateVariables(template).every((index) => !!values[index]?.trim())
 
 /**
+ * Components for sending an authentication template.
+ *
+ * The code goes in the body *and* in the copy-code button, and Meta requires
+ * both: body-only produces a button that copies nothing. The button is
+ * addressed as sub_type 'url' at index '0' — that naming is historical, not a
+ * mistake; there is no 'otp' sub_type on the send side.
+ */
+export const buildAuthComponents = (code: string): TemplateComponent[] => {
+  // Built twice rather than sharing one array: two components holding the same
+  // mutable reference is a trap for whoever edits this next.
+  const parameter = () => [{ type: 'text', text: code.trim() }]
+  return [
+    { type: 'body', parameters: parameter() },
+    { type: 'button', sub_type: 'url', index: '0', parameters: parameter() },
+  ]
+}
+
+/**
  * The `components` payload for a send. Graph matches body parameters strictly by
- * position, so they go in ascending placeholder order; a template with no
- * placeholders sends none.
+ * position, so they go in ascending placeholder order; an authored template with
+ * no placeholders sends none.
  */
 export const buildTemplateComponents = (
   template: WhatsAppTemplate,
   values: Record<number, string>,
 ): TemplateComponent[] | undefined => {
+  if (isAuthentication(template)) {
+    return buildAuthComponents(values[AUTH_CODE_INDEX] ?? '')
+  }
   const variables = templateVariables(template)
   if (variables.length === 0) return undefined
   return [

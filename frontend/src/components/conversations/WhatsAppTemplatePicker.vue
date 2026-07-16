@@ -20,12 +20,14 @@ import { toast } from 'vue-sonner'
 import channelsService, { type WhatsAppTemplate } from '@/services/channels'
 import {
   isSendable,
-  templateBody,
+  isAuthentication,
+  templatePreviewText,
   templateVariables,
   previewTemplate,
   isTemplateComplete,
   buildTemplateComponents,
 } from '@/utils/whatsappTemplates'
+import { DEFAULT_LANGUAGE, languageLabel } from '@/utils/whatsappLanguages'
 
 const props = defineProps<{
   accountId: string
@@ -56,6 +58,11 @@ const canSend = computed(
 const preview = computed(() =>
   selected.value ? previewTemplate(selected.value, values.value) : '',
 )
+// An authentication template's single value is the passcode, not an authored
+// {{n}} — naming it "Variable 1" would tell the agent nothing.
+const isAuthSelected = computed(() => !!selected.value && isAuthentication(selected.value))
+const fieldLabel = (index: number) =>
+  isAuthSelected.value ? 'Verification code' : `Variable ${index}`
 
 const select = (template: WhatsAppTemplate) => {
   // Re-clicking the current choice must not wipe what has been typed into it.
@@ -87,7 +94,7 @@ const send = async () => {
     await channelsService.sendWhatsAppTemplate(props.accountId, {
       session_id: props.sessionId,
       template_name: template.name,
-      language: template.language || 'en_US',
+      language: template.language || DEFAULT_LANGUAGE,
       components: buildTemplateComponents(template, values.value),
     })
     toast.success('Template sent', { description: 'The customer can reply for the next 24 hours.' })
@@ -153,21 +160,23 @@ const send = async () => {
             >
               <span class="tpl-option-head">
                 <span class="tpl-name">{{ template.name }}</span>
-                <span v-if="template.language" class="tpl-lang">{{ template.language }}</span>
+                <span v-if="template.language" class="tpl-lang">
+                  {{ languageLabel(template.language) }}
+                </span>
               </span>
-              <span class="tpl-preview">{{ templateBody(template) }}</span>
+              <span class="tpl-preview">{{ templatePreviewText(template) }}</span>
             </button>
           </li>
         </ul>
 
         <div v-if="selected && variables.length" class="tpl-fields">
           <label v-for="index in variables" :key="index" class="tpl-field">
-            <span class="tpl-field-label">Variable {{ index }}</span>
+            <span class="tpl-field-label">{{ fieldLabel(index) }}</span>
             <input
               v-model="values[index]"
               type="text"
               class="tpl-input"
-              :placeholder="`Value for {{${index}}}`"
+              :placeholder="isAuthSelected ? 'The passcode to send' : `Value for {{${index}}}`"
             />
           </label>
         </div>

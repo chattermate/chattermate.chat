@@ -18,11 +18,14 @@ import { describe, it, expect } from 'vitest'
 import type { WhatsAppTemplate } from '../../services/channels'
 import {
   isSendable,
-  hasUnsupportedVariables,
+  isAuthentication,
+  hasUnsupportedParameters,
   templateBody,
+  templatePreviewText,
   templateVariables,
   previewTemplate,
   isTemplateComplete,
+  buildAuthComponents,
   buildTemplateComponents,
 } from '../../utils/whatsappTemplates'
 
@@ -55,19 +58,51 @@ describe('isSendable', () => {
   })
 })
 
-describe('hasUnsupportedVariables', () => {
+describe('hasUnsupportedParameters', () => {
+  it('is true for a placeholder in a URL button, which lives in url not text', () => {
+    // The BUTTONS component has no `text` at all, so a text-only scan misses it
+    // and the send would omit the button parameter.
+    expect(hasUnsupportedParameters(template('Hi', {
+      components: [
+        { type: 'BODY', text: 'Hi' },
+        { type: 'BUTTONS', buttons: [{ type: 'URL', text: 'Track', url: 'https://x.com/{{1}}' }] },
+      ],
+    }))).toBe(true)
+  })
+
+  it('is false for a static URL button', () => {
+    expect(hasUnsupportedParameters(template('Hi', {
+      components: [
+        { type: 'BODY', text: 'Hi' },
+        { type: 'BUTTONS', buttons: [{ type: 'URL', text: 'Shop', url: 'https://x.com/shop' }] },
+      ],
+    }))).toBe(false)
+  })
+
+  it('is true for a media header, which needs a parameter but has no text', () => {
+    expect(hasUnsupportedParameters(template('Hi', {
+      components: [{ type: 'HEADER', format: 'IMAGE' }, { type: 'BODY', text: 'Hi' }],
+    }))).toBe(true)
+  })
+
+  it('is false for a plain text header', () => {
+    expect(hasUnsupportedParameters(template('Hi', {
+      components: [{ type: 'HEADER', format: 'TEXT', text: 'Welcome' }, { type: 'BODY', text: 'Hi' }],
+    }))).toBe(false)
+  })
+
   it('is false when only the body has placeholders', () => {
-    expect(hasUnsupportedVariables(template('Hi {{1}}'))).toBe(false)
+    expect(hasUnsupportedParameters(template('Hi {{1}}'))).toBe(false)
   })
 
   it('is true for a placeholder in a header', () => {
-    expect(hasUnsupportedVariables(template('Hi', {
+    expect(hasUnsupportedParameters(template('Hi', {
       components: [{ type: 'HEADER', text: '{{1}}' }, { type: 'BODY', text: 'Hi' }],
     }))).toBe(true)
   })
 
   it('ignores non-body components without placeholders', () => {
-    expect(hasUnsupportedVariables(template('Hi {{1}}', {
+    expect(hasUnsupportedParameters(template('Hi {{1}}', {
       components: [{ type: 'FOOTER', text: 'Reply STOP' }, { type: 'BODY', text: 'Hi {{1}}' }],
     }))).toBe(false)
   })
@@ -141,5 +176,86 @@ describe('buildTemplateComponents', () => {
   it('trims values', () => {
     const result = buildTemplateComponents(template('Hi {{1}}'), { 1: '  Ada  ' })
     expect(result?.[0].parameters).toEqual([{ type: 'text', text: 'Ada' }])
+  })
+})
+
+/**
+ * Authentication templates carry no body text — Meta owns the copy and the code
+ * is supplied at send time. Everything below guards the consequences of that.
+ */
+const authTemplate = (extra: Partial<WhatsAppTemplate> = {}): WhatsAppTemplate => ({
+  name: 'verification_code',
+  status: 'APPROVED',
+  category: 'AUTHENTICATION',
+  components: [
+    { type: 'BODY', add_security_recommendation: true },
+    { type: 'FOOTER', code_expiration_minutes: 5 },
+    { type: 'BUTTONS', buttons: [{ type: 'OTP', otp_type: 'COPY_CODE', text: 'Copy Code' }] },
+  ],
+  ...extra,
+})
+
+describe('isAuthentication', () => {
+  it('is decided by category, not by shape', () => {
+    expect(isAuthentication(authTemplate())).toBe(true)
+    expect(isAuthentication(template('hi', { category: 'UTILITY' }))).toBe(false)
+    expect(isAuthentication(template('hi'))).toBe(false)
+  })
+})
+
+describe('authentication templates', () => {
+  it('stays sendable despite having no body text', () => {
+    // Its placeholders are Meta's own, so the "variable outside the body"
+    // rule must not filter it out of the picker.
+    expect(hasUnsupportedParameters(authTemplate())).toBe(false)
+    expect(isSendable(authTemplate())).toBe(true)
+  })
+
+  it('asks for exactly one value — the verification code', () => {
+    expect(templateVariables(authTemplate())).toEqual([1])
+  })
+
+  it('is incomplete until the code is given', () => {
+    expect(isTemplateComplete(authTemplate(), {})).toBe(false)
+    expect(isTemplateComplete(authTemplate(), { 1: '  ' })).toBe(false)
+    expect(isTemplateComplete(authTemplate(), { 1: '123456' })).toBe(true)
+  })
+
+  it("previews Meta's fixed copy rather than empty stored text", () => {
+    expect(templatePreviewText(authTemplate())).toBe('<code> is your verification code.')
+    expect(previewTemplate(authTemplate(), { 1: '123456' })).toBe(
+      '123456 is your verification code.',
+    )
+  })
+
+  it('sends the code in both the body and the copy-code button', () => {
+    // Body-only leaves the button copying nothing; Meta requires both.
+    expect(buildTemplateComponents(authTemplate(), { 1: '123456' })).toEqual([
+      { type: 'body', parameters: [{ type: 'text', text: '123456' }] },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: '123456' }],
+      },
+    ])
+  })
+
+  it('never sends undefined components, which would omit the code entirely', () => {
+    expect(buildTemplateComponents(authTemplate(), { 1: '123456' })).toBeDefined()
+  })
+})
+
+describe('buildAuthComponents', () => {
+  it('trims the code', () => {
+    const [body, button] = buildAuthComponents('  123456  ')
+    expect(body.parameters).toEqual([{ type: 'text', text: '123456' }])
+    expect(button.parameters).toEqual([{ type: 'text', text: '123456' }])
+  })
+
+  it('addresses the OTP button as sub_type url at index 0', () => {
+    const [, button] = buildAuthComponents('1')
+    expect(button.sub_type).toBe('url')
+    expect(button.index).toBe('0')
   })
 })

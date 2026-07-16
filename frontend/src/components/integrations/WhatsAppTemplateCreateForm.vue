@@ -17,8 +17,9 @@ limitations under the License.
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { toast } from 'vue-sonner'
-import channelsService, { type TemplateCategory } from '@/services/channels'
+import channelsService, { type TemplateCategory, type TemplateComponent } from '@/services/channels'
 import { WHATSAPP_LANGUAGES, DEFAULT_LANGUAGE } from '@/utils/whatsappLanguages'
+import { AUTH_SECURITY_NOTE, authBodyPreview, authExpiryNote } from '@/utils/whatsappTemplates'
 
 const props = defineProps<{
   accountId: string
@@ -40,19 +41,71 @@ const CATEGORIES: { value: TemplateCategory; label: string; hint: string }[] = [
   { value: 'AUTHENTICATION', label: 'Authentication', hint: 'One-time passcodes.' },
 ]
 
+/** Meta's own bounds for code_expiration_minutes. */
+const MIN_EXPIRY = 1
+const MAX_EXPIRY = 90
+/** Meta caps OTP button text; a longer one round-trips to a rejection. */
+const MAX_BUTTON_TEXT = 25
+
 const creating = ref(false)
 const form = ref({
   name: '',
   category: 'UTILITY' as TemplateCategory,
   language: DEFAULT_LANGUAGE,
   body: '',
+  // Authentication only — Meta writes the body, we only choose these.
+  securityNote: true,
+  expiryMinutes: '' as number | '',
+  buttonText: 'Copy Code',
 })
+
+const isAuth = computed(() => form.value.category === 'AUTHENTICATION')
 
 // Meta only accepts lowercase letters, digits and underscores in a name.
 const nameIsValid = computed(() => /^[a-z0-9_]+$/.test(form.value.name))
-const canCreate = computed(
-  () => nameIsValid.value && !!form.value.body.trim() && !creating.value,
-)
+
+const expiryIsValid = computed(() => {
+  if (form.value.expiryMinutes === '') return true // optional
+  const minutes = Number(form.value.expiryMinutes)
+  return Number.isInteger(minutes) && minutes >= MIN_EXPIRY && minutes <= MAX_EXPIRY
+})
+
+const canCreate = computed(() => {
+  if (!nameIsValid.value || creating.value) return false
+  // An authentication template has no body to write — Meta supplies it.
+  if (isAuth.value) return expiryIsValid.value && !!form.value.buttonText.trim()
+  return !!form.value.body.trim()
+})
+
+/** The preview of what Meta will actually send, assembled from its fixed parts. */
+const authPreview = computed(() => {
+  const lines = [authBodyPreview('')]
+  if (form.value.securityNote) lines.push(AUTH_SECURITY_NOTE)
+  if (expiryIsValid.value && form.value.expiryMinutes !== '') {
+    lines.push(authExpiryNote(Number(form.value.expiryMinutes)))
+  }
+  return lines.join('\n')
+})
+
+/**
+ * Authentication templates carry no body text: Meta builds the copy from these
+ * flags and requires an OTP button. Sending free text here is why every
+ * authentication template made in this form used to be rejected.
+ */
+const authComponents = (): TemplateComponent[] => {
+  const components: TemplateComponent[] = [
+    { type: 'BODY', add_security_recommendation: form.value.securityNote },
+  ]
+  // Omit FOOTER entirely rather than sending a null expiry.
+  if (form.value.expiryMinutes !== '') {
+    components.push({ type: 'FOOTER', code_expiration_minutes: Number(form.value.expiryMinutes) })
+  }
+  components.push({
+    type: 'BUTTONS',
+    buttons: [{ type: 'OTP', otp_type: 'COPY_CODE', text: form.value.buttonText.trim() }],
+  })
+  return components
+}
 
 const create = async () => {
   if (!canCreate.value) return
@@ -62,7 +115,9 @@ const create = async () => {
       name: form.value.name,
       category: form.value.category,
       language: form.value.language,
-      components: [{ type: 'BODY', text: form.value.body.trim() }],
+      components: isAuth.value
+        ? authComponents()
+        : [{ type: 'BODY', text: form.value.body.trim() }],
     })
     toast.success('Template submitted', { description: 'Meta reviews it before it can be sent.' })
     emit('created')
@@ -108,7 +163,51 @@ const create = async () => {
       </select>
     </label>
 
-    <label class="wtm-field">
+    <!-- Meta writes the body of an authentication template itself; all we
+         choose is what it assembles it from. -->
+    <template v-if="isAuth">
+      <div class="wtm-field">
+        <span class="wtm-label">Message</span>
+        <p class="wtm-fixed-body">{{ authPreview }}</p>
+        <span class="wtm-hint">
+          WhatsApp writes this message and fills in the code when you send it.
+        </span>
+      </div>
+
+      <label class="wtm-field wtm-check">
+        <input v-model="form.securityNote" type="checkbox" />
+        <span class="wtm-check-label">Add “{{ AUTH_SECURITY_NOTE }}”</span>
+      </label>
+
+      <label class="wtm-field">
+        <span class="wtm-label">Code expires after (optional)</span>
+        <input
+          v-model="form.expiryMinutes"
+          class="wtm-input"
+          type="number"
+          :min="MIN_EXPIRY"
+          :max="MAX_EXPIRY"
+          placeholder="e.g. 5"
+        />
+        <span v-if="!expiryIsValid" class="wtm-error">
+          Enter a whole number of minutes between {{ MIN_EXPIRY }} and {{ MAX_EXPIRY }}.
+        </span>
+        <span v-else class="wtm-hint">Minutes. Leave blank for no expiry notice.</span>
+      </label>
+
+      <label class="wtm-field">
+        <span class="wtm-label">Button text</span>
+        <input
+          v-model="form.buttonText"
+          class="wtm-input"
+          :maxlength="MAX_BUTTON_TEXT"
+          autocomplete="off"
+        />
+        <span class="wtm-hint">The copy-code button WhatsApp requires on these.</span>
+      </label>
+    </template>
+
+    <label v-else class="wtm-field">
       <span class="wtm-label">Message</span>
       <textarea
         v-model="form.body"
@@ -161,6 +260,30 @@ const create = async () => {
 
 .wtm-textarea {
   resize: vertical;
+}
+
+/* Meta's fixed copy — shown, not editable, so it reads as a preview */
+.wtm-fixed-body {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-btn, 8px);
+  background: var(--background-soft);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.wtm-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.wtm-check-label {
+  font-size: 13px;
 }
 
 .wtm-hint,
