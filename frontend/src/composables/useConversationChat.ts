@@ -21,6 +21,7 @@ import { chatService } from '@/services/chat'
 import { userService } from '@/services/user'
 import { socketService } from '@/services/socket'
 import { toast } from 'vue-sonner'
+import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/endChat'
 
 // Define valid chat statuses
 type ChatStatus = 'open' | 'closed' | 'transferred'
@@ -198,28 +199,32 @@ export function useConversationChat(
   const endChat = async (requestRating = true) => {
     try {
       isLoading.value = true
-      
+
+      // Only the web widget can render a rating; on external channels the ask
+      // is dropped and the closing message says nothing about rating.
+      const askRating = requestRating && canRequestRating(chat.value.channel)
+
       // Create end chat message
       const timestamp = new Date().toISOString()
       const endChatMessage = {
-        message: "Thank you for contacting us. Do you mind rating our service?",
+        message: endChatMessageFor(chat.value.channel),
         message_type: "system",
         created_at: timestamp,
         session_id: chat.value.session_id,
         end_chat: true,
-        request_rating: requestRating,
+        request_rating: askRating,
         end_chat_reason: "AGENT_REQUEST",
         end_chat_description: "Agent manually ended the chat"
 
       }
-      
+
       // Add message locally
       chat.value.messages.push(endChatMessage)
-      
+
       // Update chat status locally
       chat.value.status = 'closed'
       chat.value.updated_at = timestamp
-      
+
       // Emit message through socket to end chat
       socketService.emit('agent_message', {
         message: endChatMessage.message,
@@ -227,14 +232,14 @@ export function useConversationChat(
         message_type: endChatMessage.message_type,
         created_at: timestamp,
         end_chat: true,
-        request_rating: requestRating,
+        request_rating: askRating,
         end_chat_reason: "AGENT_REQUEST",
         end_chat_description: "Agent manually ended the chat"
       })
-      
+
       // Show success toast
       toast.success('Chat ended successfully', {
-        description: requestRating ? 'Customer will be asked for feedback' : 'Chat has been closed',
+        description: askRating ? 'Customer will be asked for feedback' : 'Chat has been closed',
         duration: 4000,
         closeButton: true
       })
