@@ -130,6 +130,21 @@ def check_embedded_signup_access() -> None:
         )
 
 
+# Meta names a cause but never a remedy, so where its subcode pins the cause
+# down we say what to do about it. Only add a subcode here once its meaning has
+# been confirmed against a real Graph response — a wrong remedy sends someone
+# off fixing something that was never broken.
+GRAPH_GUIDANCE = {
+    # 2388185: seen creating an AUTHENTICATION template while the WABA's
+    # business_verification_status is not_verified. Meta allows the other
+    # categories in that state, so its "does not have permission" reads as a
+    # permanent account problem when it is really one unmet prerequisite.
+    2388185: "Verification-code templates need a verified business. "
+             "Complete business verification in Meta Business Settings, "
+             "or use the Utility category instead.",
+}
+
+
 def _graph_detail(data: dict, fallback: str) -> str:
     """Meta's own error text where it has one, so the UI can show the real
     reason (e.g. a duplicate template name) rather than a generic failure.
@@ -138,12 +153,17 @@ def _graph_detail(data: dict, fallback: str) -> str:
     nothing actionable. An unverified business creating an authentication
     template gets `message` "Application does not have permission for this
     action" but error_user_msg "This WhatsApp Business account does not have
-    permission to create message template" — only one of those is a clue.
+    permission to create message template" — only one of those is a clue, and
+    even that one only names the symptom, so GRAPH_GUIDANCE adds the fix.
     """
     error = data.get("error", {})
     if not isinstance(error, dict):
         return fallback
-    return error.get("error_user_msg") or error.get("message") or fallback
+    reason = error.get("error_user_msg") or error.get("message") or fallback
+    guidance = GRAPH_GUIDANCE.get(error.get("error_subcode"))
+    if not guidance:
+        return reason
+    return f"{reason.rstrip('. ')}. {guidance}"
 
 
 def _whatsapp_account_or_404(db: Session, account_id: UUID, organization: Organization):
