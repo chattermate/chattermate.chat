@@ -26,13 +26,19 @@ const PLACEHOLDER = /\{\{(\d+)\}\}/g
  */
 const AUTH_CODE_INDEX = 1
 
-/** Meta's fixed authentication copy. We cannot change any of it, so it is
- *  mirrored here purely to show what the customer will receive. */
-export const AUTH_SECURITY_NOTE = 'For your security, do not share this code.'
-export const authExpiryNote = (minutes: number): string =>
-  `This code expires in ${minutes} minutes.`
-export const authBodyPreview = (code: string): string =>
-  `${code.trim() || '<code>'} is your verification code.`
+/**
+ * Authentication copy belongs to Meta and is localised per language — Spanish
+ * puts the code mid-sentence, and the button label changes with it — so it is
+ * described here, never reproduced. Anything written out in English would be
+ * wrong for most templates. The create form fetches the real rendering from
+ * Meta's template-previews API.
+ */
+export const AUTH_DESCRIPTION = 'WhatsApp’s own verification-code message'
+
+export const authSendSummary = (code: string): string =>
+  code.trim()
+    ? `WhatsApp will send its verification-code message with the code ${code.trim()}.`
+    : 'WhatsApp will send its own verification-code message.'
 
 const placeholdersIn = (text: string): number[] => {
   const found = new Set<number>()
@@ -110,11 +116,11 @@ export const isSendable = (template: WhatsAppTemplate): boolean =>
 export const templateVariables = (template: WhatsAppTemplate): number[] =>
   isAuthentication(template) ? [AUTH_CODE_INDEX] : placeholdersIn(templateBody(template))
 
-/** What the customer sees when the template has nothing filled in yet.
- *  An authentication body is Meta's copy, not stored text, so it has to be
- *  reconstructed rather than read. */
+/** What to show for a template in a list. An authentication template stores no
+ *  body text, and its real copy is Meta's and language-specific, so it is
+ *  named rather than quoted. */
 export const templatePreviewText = (template: WhatsAppTemplate): string =>
-  isAuthentication(template) ? authBodyPreview('') : templateBody(template)
+  isAuthentication(template) ? AUTH_DESCRIPTION : templateBody(template)
 
 /** Body text with the agent's values substituted, for previewing before sending. */
 export const previewTemplate = (
@@ -122,7 +128,7 @@ export const previewTemplate = (
   values: Record<number, string>,
 ): string =>
   isAuthentication(template)
-    ? authBodyPreview(values[AUTH_CODE_INDEX] ?? '')
+    ? authSendSummary(values[AUTH_CODE_INDEX] ?? '')
     : templateBody(template).replace(/\{\{(\d+)\}\}/g, (placeholder, index) =>
         values[Number(index)]?.trim() || placeholder,
       )

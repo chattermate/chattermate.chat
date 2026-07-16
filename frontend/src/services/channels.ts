@@ -87,6 +87,14 @@ export interface EmbeddedSignupConfig {
   graph_version: string
 }
 
+/** Meta's own rendering of an authentication template in one language. */
+export interface WhatsAppTemplatePreview {
+  language: string
+  body?: string
+  footer?: string
+  buttons?: { text?: string; autofill_text?: string }[]
+}
+
 export interface ChannelAccount {
   id: string
   channel_type: ChannelType
@@ -176,6 +184,32 @@ const channelsService = {
     },
   ): Promise<WhatsAppTemplate> {
     const response = await api.post(`/channels/meta/whatsapp/${accountId}/templates`, payload)
+    return response.data
+  },
+
+  /**
+   * How Meta will render an authentication template in each language.
+   * Read-only — it creates nothing. Meta writes and localises this copy (the
+   * sentence order and the button label both change per language), so it is
+   * asked for rather than reproduced.
+   */
+  async previewWhatsAppTemplate(
+    accountId: string,
+    options: {
+      languages: string[]
+      add_security_recommendation: boolean
+      code_expiration_minutes?: number
+    },
+  ): Promise<WhatsAppTemplatePreview[]> {
+    const response = await api.get(`/channels/meta/whatsapp/${accountId}/templates/preview`, {
+      params: {
+        languages: options.languages.join(','),
+        add_security_recommendation: options.add_security_recommendation,
+        ...(options.code_expiration_minutes !== undefined
+          ? { code_expiration_minutes: options.code_expiration_minutes }
+          : {}),
+      },
+    })
     return response.data
   },
 

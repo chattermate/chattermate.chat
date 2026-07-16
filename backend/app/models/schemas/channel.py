@@ -110,6 +110,19 @@ class TemplateCreateRequest(BaseModel):
     components: list
 
 
+class TemplatePreviewOut(BaseModel):
+    """How Meta will actually render an authentication template in one language.
+
+    Meta writes and localises this copy — including the button label — so it is
+    fetched rather than reproduced. Guessing it in English was wrong the moment
+    a second language was picked.
+    """
+    language: str
+    body: Optional[str] = None
+    footer: Optional[str] = None
+    buttons: Optional[list] = None
+
+
 class TemplateUpsertRequest(BaseModel):
     """Submit the same template in several languages at once.
 

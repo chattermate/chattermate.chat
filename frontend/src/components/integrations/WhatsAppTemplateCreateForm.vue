@@ -15,11 +15,14 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { toast } from 'vue-sonner'
-import channelsService, { type TemplateCategory, type TemplateComponent } from '@/services/channels'
+import channelsService, {
+  type TemplateCategory,
+  type TemplateComponent,
+  type WhatsAppTemplatePreview,
+} from '@/services/channels'
 import { WHATSAPP_LANGUAGES, DEFAULT_LANGUAGE, languageLabel } from '@/utils/whatsappLanguages'
-import { AUTH_SECURITY_NOTE, authBodyPreview, authExpiryNote } from '@/utils/whatsappTemplates'
 import {
   LIMITS,
   emptyDraft,
@@ -112,15 +115,59 @@ const canCreate = computed(() => {
   return allErrors.value.length === 0
 })
 
-/** The preview of what Meta will actually send, assembled from its fixed parts. */
-const authPreview = computed(() => {
-  const lines = [authBodyPreview('')]
-  if (form.value.securityNote) lines.push(AUTH_SECURITY_NOTE)
-  if (expiryIsValid.value && form.value.expiryMinutes !== '') {
-    lines.push(authExpiryNote(Number(form.value.expiryMinutes)))
+/**
+ * What Meta will actually send, fetched rather than reproduced: it writes this
+ * copy and localises it per language — Spanish puts the code mid-sentence, and
+ * the button label changes too — so any version assembled here would be a
+ * plausible-looking lie the moment a second language was picked.
+ */
+const previews = ref<WhatsAppTemplatePreview[]>([])
+const previewLoading = ref(false)
+const previewError = ref('')
+let previewToken = 0
+let previewTimer: ReturnType<typeof setTimeout> | undefined
+
+const loadPreview = async () => {
+  if (!isAuth.value || authLanguages.value.length === 0) {
+    previews.value = []
+    return
   }
-  return lines.join('\n')
-})
+  const token = ++previewToken
+  previewLoading.value = true
+  previewError.value = ''
+  try {
+    const result = await channelsService.previewWhatsAppTemplate(props.accountId, {
+      languages: authLanguages.value,
+      add_security_recommendation: form.value.securityNote,
+      ...(expiryIsValid.value && form.value.expiryMinutes !== ''
+        ? { code_expiration_minutes: Number(form.value.expiryMinutes) }
+        : {}),
+    })
+    if (token !== previewToken) return
+    previews.value = result
+  } catch (error: any) {
+    if (token !== previewToken) return
+    previews.value = []
+    previewError.value = error?.response?.data?.detail || 'Could not load the preview'
+  } finally {
+    if (token === previewToken) previewLoading.value = false
+  }
+}
+
+// Coalesce the burst from typing an expiry; each keystroke would otherwise be
+// its own Graph round trip.
+const schedulePreview = () => {
+  clearTimeout(previewTimer)
+  previewTimer = setTimeout(loadPreview, 250)
+}
+
+watch(
+  () => [isAuth.value, authLanguages.value, form.value.securityNote, form.value.expiryMinutes],
+  schedulePreview,
+  { deep: true, immediate: true },
+)
+
+onBeforeUnmount(() => clearTimeout(previewTimer))
 
 /**
  * Authentication templates carry no body text: Meta builds the copy from these
@@ -251,15 +298,30 @@ const create = async () => {
     <template v-if="isAuth">
       <div class="wtm-field">
         <span class="wtm-label">Message</span>
-        <p class="wtm-fixed-body">{{ authPreview }}</p>
+        <div v-if="previewLoading && !previews.length" class="wtm-fixed-body wtm-preview-loading">
+          Loading preview…
+        </div>
+        <p v-else-if="previewError" class="wtm-fixed-body wtm-error">{{ previewError }}</p>
+        <div v-else-if="previews.length" class="wtm-previews" :aria-busy="previewLoading">
+          <div v-for="preview in previews" :key="preview.language" class="wtm-fixed-body">
+            <span class="wtm-preview-lang">{{ languageLabel(preview.language) }}</span>
+            <p class="wtm-preview-body">{{ preview.body }}</p>
+            <p v-if="preview.footer" class="wtm-preview-footer">{{ preview.footer }}</p>
+            <p v-if="preview.buttons?.[0]?.text" class="wtm-preview-button">
+              {{ preview.buttons[0].text }}
+            </p>
+          </div>
+        </div>
         <span class="wtm-hint">
-          WhatsApp writes this message and fills in the code when you send it.
+          WhatsApp writes this message in each language and fills in the code when you send it.
         </span>
       </div>
 
+      <!-- Not quoting the English wording: Meta localises it, and the preview
+           above shows the real sentence for each language chosen. -->
       <label class="wtm-field wtm-check">
         <input v-model="form.securityNote" type="checkbox" />
-        <span class="wtm-check-label">Add “{{ AUTH_SECURITY_NOTE }}”</span>
+        <span class="wtm-check-label">Add WhatsApp’s “do not share this code” reminder</span>
       </label>
 
       <label class="wtm-field">
@@ -278,9 +340,6 @@ const create = async () => {
         <span v-else class="wtm-hint">Minutes. Leave blank for no expiry notice.</span>
       </label>
 
-      <p class="wtm-hint wtm-standalone-hint">
-        WhatsApp adds its own copy-code button, labelled in each language.
-      </p>
     </template>
 
     <template v-else>
@@ -421,8 +480,44 @@ const create = async () => {
   color: var(--c-danger);
 }
 
-.wtm-standalone-hint {
-  margin: 0 0 12px;
+.wtm-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wtm-preview-lang {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.wtm-preview-body,
+.wtm-preview-footer,
+.wtm-preview-button {
+  margin: 0;
+}
+
+.wtm-preview-footer {
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+/* Reads as the button WhatsApp will render, not as body copy */
+.wtm-preview-button {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+  font-size: 13px;
+  color: var(--c-info);
+}
+
+.wtm-preview-loading {
+  font-style: italic;
 }
 
 .wtm-check {

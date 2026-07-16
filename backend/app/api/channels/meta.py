@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import secrets
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -44,6 +45,7 @@ from app.models.schemas.channel import (
     InstagramConnectRequest,
     TemplateCreateRequest,
     TemplateOut,
+    TemplatePreviewOut,
     TemplateSendRequest,
     TemplateUpsertRequest,
 )
@@ -456,6 +458,47 @@ async def create_whatsapp_template(
         language=request.language,
         components=request.components,
     )
+
+
+@router.get("/whatsapp/{account_id}/templates/preview", response_model=list[TemplatePreviewOut])
+async def preview_whatsapp_template(
+    account_id: UUID,
+    languages: str,
+    add_security_recommendation: bool = False,
+    code_expiration_minutes: Optional[int] = None,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """How Meta will render an authentication template, per language.
+
+    Meta writes this copy itself and localises it — the sentence order differs
+    by language and the button label with it — so it is asked for rather than
+    reproduced. Read-only: nothing is created.
+
+    `languages` is comma-separated, matching the Graph parameter.
+    """
+    account = _whatsapp_account_or_404(db, account_id, organization)
+    waba_id, access_token = _waba_credentials(db, account)
+
+    params = {
+        "category": "AUTHENTICATION",
+        "languages": languages,
+        "add_security_recommendation": str(add_security_recommendation).lower(),
+        "button_types": "OTP",
+    }
+    if code_expiration_minutes is not None:
+        params["code_expiration_minutes"] = code_expiration_minutes
+
+    ok, data = await graph_get(f"{waba_id}/message_template_previews", access_token, params=params)
+    if not ok:
+        raise HTTPException(status_code=502,
+                            detail=_graph_detail(data, "Could not preview the template"))
+
+    previews = data.get("data")
+    if not isinstance(previews, list):
+        raise HTTPException(status_code=502, detail="Unexpected preview response from Meta")
+    return [TemplatePreviewOut(**preview) for preview in previews]
 
 
 @router.post("/whatsapp/{account_id}/templates/upsert", response_model=list[TemplateOut])

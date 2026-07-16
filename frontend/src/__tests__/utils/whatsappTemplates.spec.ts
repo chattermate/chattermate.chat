@@ -27,6 +27,7 @@ import {
   isTemplateComplete,
   buildAuthComponents,
   buildTemplateComponents,
+  AUTH_DESCRIPTION,
 } from '../../utils/whatsappTemplates'
 
 const template = (text: string, extra: Partial<WhatsAppTemplate> = {}): WhatsAppTemplate => ({
@@ -221,10 +222,14 @@ describe('authentication templates', () => {
     expect(isTemplateComplete(authTemplate(), { 1: '123456' })).toBe(true)
   })
 
-  it("previews Meta's fixed copy rather than empty stored text", () => {
-    expect(templatePreviewText(authTemplate())).toBe('<code> is your verification code.')
-    expect(previewTemplate(authTemplate(), { 1: '123456' })).toBe(
-      '123456 is your verification code.',
+  it('describes the copy rather than fabricating it', () => {
+    // Meta writes and localises the real sentence — Spanish puts the code
+    // mid-sentence — so anything spelled out here would be wrong for most
+    // languages. The create form fetches the real rendering from Meta.
+    expect(templatePreviewText(authTemplate())).toBe(AUTH_DESCRIPTION)
+    expect(previewTemplate(authTemplate(), { 1: '123456' })).toContain('123456')
+    expect(previewTemplate(authTemplate(), { 1: '123456' })).not.toContain(
+      'is your verification code',
     )
   })
 

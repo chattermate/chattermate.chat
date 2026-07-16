@@ -559,3 +559,80 @@ class TestTemplateUpsert:
             "name": "x", "category": "AUTHENTICATION",
             "languages": ["en_US"], "components": []})
         assert r.status_code == 404
+
+
+class TestTemplatePreview:
+    """Meta writes and localises authentication copy — sentence order and the
+    button label both change per language — so the form asks rather than guesses."""
+
+    # Exactly what Graph returned for a real WABA
+    REAL = (True, {"data": [
+        {"language": "en_US",
+         "body": "*{{1}}* is your verification code. For your security, do not share this code.",
+         "footer": "Expires in 5 minutes.",
+         "buttons": [{"text": "Copy code", "autofill_text": "Autofill"}]},
+        {"language": "es_ES",
+         "body": "Tu código de verificación es *{{1}}*. Por tu seguridad, no lo compartas.",
+         "footer": "Vence en 5 minutos.",
+         "buttons": [{"text": "Copiar código", "autofill_text": "Autocompletar"}]},
+    ]})
+
+    def _url(self, account):
+        return f"{BASE}/whatsapp/{account.id}/templates/preview"
+
+    def test_returns_metas_copy_per_language(self, client, waba_account):
+        graph = AsyncMock(return_value=self.REAL)
+        with patch("app.api.channels.meta.graph_get", graph):
+            r = client.get(self._url(waba_account), params={
+                "languages": "en_US,es_ES",
+                "add_security_recommendation": "true",
+                "code_expiration_minutes": 5})
+
+        assert r.status_code == 200
+        body = r.json()
+        assert [p["language"] for p in body] == ["en_US", "es_ES"]
+        # The Spanish body puts the code mid-sentence — the reason this is fetched
+        assert body[1]["body"].startswith("Tu código")
+        assert body[1]["buttons"][0]["text"] == "Copiar código"
+        assert graph.await_args.args[0] == "WABA9/message_template_previews"
+
+    def test_passes_the_options_through_to_graph(self, client, waba_account):
+        graph = AsyncMock(return_value=self.REAL)
+        with patch("app.api.channels.meta.graph_get", graph):
+            client.get(self._url(waba_account), params={
+                "languages": "en_US",
+                "add_security_recommendation": "false",
+                "code_expiration_minutes": 10})
+
+        params = graph.await_args.kwargs["params"]
+        assert params["category"] == "AUTHENTICATION"
+        assert params["button_types"] == "OTP"
+        assert params["add_security_recommendation"] == "false"
+        assert params["code_expiration_minutes"] == 10
+
+    def test_omits_expiry_when_not_given(self, client, waba_account):
+        graph = AsyncMock(return_value=self.REAL)
+        with patch("app.api.channels.meta.graph_get", graph):
+            client.get(self._url(waba_account), params={"languages": "en_US"})
+
+        # No footer is wanted, so Meta must not be told to add one
+        assert "code_expiration_minutes" not in graph.await_args.kwargs["params"]
+
+    def test_surfaces_the_graph_reason(self, client, waba_account):
+        graph = AsyncMock(return_value=(False, {"error": {"message": "Invalid language"}}))
+        with patch("app.api.channels.meta.graph_get", graph):
+            r = client.get(self._url(waba_account), params={"languages": "zz_ZZ"})
+
+        assert r.status_code == 502
+        assert r.json()["detail"] == "Invalid language"
+
+    def test_requires_waba_id(self, client, whatsapp_account):
+        r = client.get(f"{BASE}/whatsapp/{whatsapp_account.id}/templates/preview",
+                       params={"languages": "en_US"})
+        assert r.status_code == 400
+
+    def test_rejects_other_orgs_account(self, client, db, waba_account):
+        waba_account.organization_id = uuid4()
+        db.commit()
+        r = client.get(self._url(waba_account), params={"languages": "en_US"})
+        assert r.status_code == 404
