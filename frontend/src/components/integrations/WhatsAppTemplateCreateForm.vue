@@ -44,8 +44,6 @@ const CATEGORIES: { value: TemplateCategory; label: string; hint: string }[] = [
 /** Meta's own bounds for code_expiration_minutes. */
 const MIN_EXPIRY = 1
 const MAX_EXPIRY = 90
-/** Meta caps OTP button text; a longer one round-trips to a rejection. */
-const MAX_BUTTON_TEXT = 25
 
 const creating = ref(false)
 const form = ref({
@@ -56,7 +54,6 @@ const form = ref({
   // Authentication only — Meta writes the body, we only choose these.
   securityNote: true,
   expiryMinutes: '' as number | '',
-  buttonText: 'Copy Code',
 })
 
 const isAuth = computed(() => form.value.category === 'AUTHENTICATION')
@@ -94,9 +91,7 @@ const expiryIsValid = computed(() => {
 const canCreate = computed(() => {
   if (!nameIsValid.value || creating.value) return false
   // An authentication template has no body to write — Meta supplies it.
-  if (isAuth.value) {
-    return expiryIsValid.value && !!form.value.buttonText.trim() && authLanguages.value.length > 0
-  }
+  if (isAuth.value) return expiryIsValid.value && authLanguages.value.length > 0
   return !!form.value.body.trim()
 })
 
@@ -123,9 +118,12 @@ const authComponents = (): TemplateComponent[] => {
   if (form.value.expiryMinutes !== '') {
     components.push({ type: 'FOOTER', code_expiration_minutes: Number(form.value.expiryMinutes) })
   }
+  // No `text`: Meta rejects it ("Unexpected key text on param buttons.0") and
+  // supplies its own localised button label. supported_apps is omitted too —
+  // that is only for ONE_TAP/ZERO_TAP.
   components.push({
     type: 'BUTTONS',
-    buttons: [{ type: 'OTP', otp_type: 'COPY_CODE', text: form.value.buttonText.trim() }],
+    buttons: [{ type: 'OTP', otp_type: 'COPY_CODE' }],
   })
   return components
 }
@@ -263,16 +261,9 @@ const create = async () => {
         <span v-else class="wtm-hint">Minutes. Leave blank for no expiry notice.</span>
       </label>
 
-      <label class="wtm-field">
-        <span class="wtm-label">Button text</span>
-        <input
-          v-model="form.buttonText"
-          class="wtm-input"
-          :maxlength="MAX_BUTTON_TEXT"
-          autocomplete="off"
-        />
-        <span class="wtm-hint">The copy-code button WhatsApp requires on these.</span>
-      </label>
+      <p class="wtm-hint wtm-standalone-hint">
+        WhatsApp adds its own copy-code button, labelled in each language.
+      </p>
     </template>
 
     <label v-else class="wtm-field">
@@ -375,6 +366,10 @@ const create = async () => {
 
 .wtm-chip-remove:hover {
   color: var(--c-danger);
+}
+
+.wtm-standalone-hint {
+  margin: 0 0 12px;
 }
 
 .wtm-check {
