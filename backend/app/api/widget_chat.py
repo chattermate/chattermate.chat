@@ -19,6 +19,7 @@ import datetime
 import json
 import os
 import re
+from types import SimpleNamespace
 from fastapi import APIRouter
 from app.core.socketio import sio
 from app.core.logger import get_logger
@@ -150,6 +151,7 @@ def validate_form_data(form_fields: list, form_data: dict) -> list:
 
 @sio.on('connect', namespace='/widget')
 async def widget_connect(sid, environ, auth):
+    db = None
     try:
        
         logger.info(f"Widget client connected: {auth}")
@@ -228,13 +230,24 @@ async def widget_connect(sid, environ, auth):
         except Exception:
             pass
         
+        # Snapshot only the fields the rest of the app reads from session['ai_config']
+        # (encrypted_api_key/model_name/model_type) into a plain, DB-independent object.
+        # This dict lives in the socket.io session store across the whole conversation,
+        # long after this handler's db session closes - caching the live ORM instance
+        # here would raise DetachedInstanceError on later access.
+        ai_config_snapshot = SimpleNamespace(
+            encrypted_api_key=ai_config.encrypted_api_key,
+            model_name=ai_config.model_name,
+            model_type=ai_config.model_type,
+        )
+
         session_data = {
             'widget_id': widget_id,
             'org_id': org_id,
             'agent_id': str(widget.agent_id),
             'customer_id': customer_id,
             'session_id': session_id,
-            'ai_config': ai_config,
+            'ai_config': ai_config_snapshot,
             'conversation_token': conversation_token,
             # Add rate limiting settings
             'enable_rate_limiting': enable_rate_limiting,
@@ -276,12 +289,16 @@ async def widget_connect(sid, environ, auth):
             'type': 'connection_error'
         }, to=sid, namespace='/widget')
         return False
+    finally:
+        if db:
+            db.close()
 
 
 @sio.on('chat', namespace='/widget')
 @socket_rate_limit(namespace='/widget')
 async def handle_widget_chat(sid, data):
     """Handle widget chat messages"""
+    db = None
     try:
         # Authenticate using conversation token
         session = await sio.get_session(sid, namespace='/widget')
@@ -821,11 +838,15 @@ async def handle_widget_chat(sid, data):
             'error': 'Unable to process your request, please try again later.',
             'type': 'chat_error'
         }, to=sid, namespace='/widget')
+    finally:
+        if db:
+            db.close()
 
 
 @sio.on('get_chat_history', namespace='/widget')
 @socket_rate_limit(namespace='/widget')
 async def get_widget_chat_history(sid):
+    db = None
     try:
         logger.info(f"Getting chat history for sid {sid}")
         # Get session data
@@ -925,6 +946,9 @@ async def get_widget_chat_history(sid):
             'error': 'Failed to get chat history',
             'type': 'chat_history_error'
         }, to=sid, namespace='/widget')
+    finally:
+        if db:
+            db.close()
 
 
 @sio.on('end_chat', namespace='/widget')
@@ -1018,6 +1042,7 @@ async def agent_connect(sid, environ, auth):
 # Add new socket event handler for agent messages
 @sio.on('agent_message', namespace='/agent')
 async def handle_agent_message(sid, data):
+    db = None
     try:
         session = await sio.get_session(sid, namespace='/agent')
         session_id = data['session_id']
@@ -1203,10 +1228,14 @@ async def handle_agent_message(sid, data):
             'error': 'Failed to send message',
             'type': 'message_error'
         }, to=sid, namespace='/agent')
+    finally:
+        if db:
+            db.close()
 
 # Add handlers for room management
 @sio.on('join_room', namespace='/agent')
 async def handle_join_room(sid, data):
+    db = None
     try:
         session = await sio.get_session(sid, namespace='/agent')
         session_id = data.get('session_id')
@@ -1256,6 +1285,9 @@ async def handle_join_room(sid, data):
             'error': 'Failed to join room',
             'type': 'room_error'
         }, to=sid, namespace='/agent')
+    finally:
+        if db:
+            db.close()
 
 @sio.on('leave_room', namespace='/agent')
 async def handle_leave_room(sid, data):
@@ -1295,6 +1327,7 @@ async def handle_taken_over(sid, data):
 @socket_rate_limit(namespace='/widget')
 async def handle_rating_submission(sid, data):
     """Handle rating submission from widget"""
+    db = None
     try:
         # Get session data and authenticate
         session = await sio.get_session(sid, namespace='/widget')
@@ -1368,12 +1401,16 @@ async def handle_rating_submission(sid, data):
             'error': 'Failed to submit rating',
             'type': 'rating_error'
         }, to=sid, namespace='/widget')
+    finally:
+        if db:
+            db.close()
 
 
 @sio.on('get_workflow_state', namespace='/widget')
 @socket_rate_limit(namespace='/widget') 
 async def handle_get_workflow_state(sid):
     """Get current workflow state and execute next node if no chat history"""
+    db = None
     try:
         logger.info(f"Getting workflow state for sid {sid}")
         # Get session data and authenticate
@@ -1631,12 +1668,16 @@ async def handle_get_workflow_state(sid):
             'error': 'Failed to get workflow state',
             'type': 'workflow_error'
         }, to=sid, namespace='/widget')
+    finally:
+        if db:
+            db.close()
 
 
 @sio.on('proceed_workflow', namespace='/widget')
 @socket_rate_limit(namespace='/widget')
 async def handle_proceed_workflow(sid, data):
     """Proceed to next workflow node after landing page interaction"""
+    db = None
     try:
         logger.info(f"Proceeding workflow for sid {sid}")
         # Get session data and authenticate
@@ -1810,6 +1851,9 @@ async def handle_proceed_workflow(sid, data):
             'error': 'Failed to proceed workflow',
             'type': 'workflow_error'
         }, to=sid, namespace='/widget')
+    finally:
+        if db:
+            db.close()
 
 
 @sio.on('submit_contact_info', namespace='/widget')
@@ -1820,6 +1864,7 @@ async def handle_contact_info(sid, data):
     Updates the customer record so the human agent can follow up. Non-blocking: the handoff
     already happened, so failures here never undo the transfer.
     """
+    db = None
     try:
         session = await sio.get_session(sid, namespace='/widget')
         widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
@@ -1869,12 +1914,16 @@ async def handle_contact_info(sid, data):
             }, room=session_id, namespace='/widget')
     except Exception as e:
         logger.error(f"Error handling contact info for sid {sid}: {str(e)}")
+    finally:
+        if db:
+            db.close()
 
 
 @sio.on('submit_form', namespace='/widget')
 @socket_rate_limit(namespace='/widget')
 async def handle_form_submission(sid, data):
     """Handle form submission from widget"""
+    db = None
     try:
         logger.info(f"Submitting form for sid {sid}")
         # Get session data and authenticate
@@ -2073,4 +2122,7 @@ async def handle_form_submission(sid, data):
             'error': 'Failed to submit form',
             'type': 'form_error'
         }, to=sid, namespace='/widget')
+    finally:
+        if db:
+            db.close()
 
