@@ -110,21 +110,45 @@ async def graph_post(path: str, access_token: str, payload: dict) -> SendResult:
     return SendResult(ok=False, error=last_error)
 
 
-async def graph_get(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
-    """GET a Graph node (used to validate tokens during onboarding).
-    Returns (ok, decoded-json). Token goes in the Authorization header (like
-    graph_post) so it never appears in URLs/proxy logs."""
+async def _graph_request(method: str, path: str, access_token: str,
+                         params: Optional[dict] = None,
+                         json_body: Optional[dict] = None) -> tuple[bool, dict]:
+    """Issue a Graph call and return (ok, decoded-json).
+
+    Unlike graph_post this keeps the whole response body, for calls where the
+    body is the result rather than just a message id. The token goes in the
+    Authorization header so it never appears in URLs or proxy logs. These are
+    management calls, not sends, so a failure surfaces to the caller instead of
+    being retried.
+    """
     try:
-        response = await _get_http_client().get(
+        response = await _get_http_client().request(
+            method,
             graph_url(path),
-            params=params or {},
+            params=params or None,
+            json=json_body,
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        data = response.json()
-        return (response.status_code < 300, data)
+        return (response.status_code < 300, response.json())
     except Exception as e:
-        logger.error(f"Graph GET {path} failed: {e}")
+        logger.error(f"Graph {method} {path} failed: {e}")
         return (False, {"error": {"message": str(e)}})
+
+
+async def graph_get(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
+    """GET a Graph node (validating tokens during onboarding, listing templates)."""
+    return await _graph_request("GET", path, access_token, params=params)
+
+
+async def graph_post_json(path: str, access_token: str, payload: dict) -> tuple[bool, dict]:
+    """POST to a Graph node, keeping the response body (e.g. creating a message
+    template returns its id, status and category)."""
+    return await _graph_request("POST", path, access_token, json_body=payload)
+
+
+async def graph_delete(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
+    """DELETE a Graph node (e.g. removing a message template by name)."""
+    return await _graph_request("DELETE", path, access_token, params=params)
 
 
 async def subscribe_app(node_id: str, access_token: str, subscribed_fields: Optional[str] = None) -> bool:
