@@ -18,7 +18,7 @@ limitations under the License.
 import { ref, computed } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type TemplateCategory, type TemplateComponent } from '@/services/channels'
-import { WHATSAPP_LANGUAGES, DEFAULT_LANGUAGE } from '@/utils/whatsappLanguages'
+import { WHATSAPP_LANGUAGES, DEFAULT_LANGUAGE, languageLabel } from '@/utils/whatsappLanguages'
 import { AUTH_SECURITY_NOTE, authBodyPreview, authExpiryNote } from '@/utils/whatsappTemplates'
 
 const props = defineProps<{
@@ -61,6 +61,27 @@ const form = ref({
 
 const isAuth = computed(() => form.value.category === 'AUTHENTICATION')
 
+/**
+ * Authentication templates can be created in several languages at once, because
+ * Meta writes the copy for each. Every other category needs its own translated
+ * body, so it stays single-language.
+ */
+const authLanguages = ref<string[]>([DEFAULT_LANGUAGE])
+const languageToAdd = ref('')
+const addableLanguages = computed(() =>
+  WHATSAPP_LANGUAGES.filter((language) => !authLanguages.value.includes(language.code)),
+)
+
+const addLanguage = () => {
+  if (!languageToAdd.value) return
+  authLanguages.value.push(languageToAdd.value)
+  languageToAdd.value = ''
+}
+
+const removeLanguage = (code: string) => {
+  authLanguages.value = authLanguages.value.filter((existing) => existing !== code)
+}
+
 // Meta only accepts lowercase letters, digits and underscores in a name.
 const nameIsValid = computed(() => /^[a-z0-9_]+$/.test(form.value.name))
 
@@ -73,7 +94,9 @@ const expiryIsValid = computed(() => {
 const canCreate = computed(() => {
   if (!nameIsValid.value || creating.value) return false
   // An authentication template has no body to write — Meta supplies it.
-  if (isAuth.value) return expiryIsValid.value && !!form.value.buttonText.trim()
+  if (isAuth.value) {
+    return expiryIsValid.value && !!form.value.buttonText.trim() && authLanguages.value.length > 0
+  }
   return !!form.value.body.trim()
 })
 
@@ -111,15 +134,27 @@ const create = async () => {
   if (!canCreate.value) return
   try {
     creating.value = true
-    await channelsService.createWhatsAppTemplate(props.accountId, {
-      name: form.value.name,
-      category: form.value.category,
-      language: form.value.language,
-      components: isAuth.value
-        ? authComponents()
-        : [{ type: 'BODY', text: form.value.body.trim() }],
-    })
-    toast.success('Template submitted', { description: 'Meta reviews it before it can be sent.' })
+    if (isAuth.value) {
+      const count = authLanguages.value.length
+      await channelsService.upsertWhatsAppTemplates(props.accountId, {
+        name: form.value.name,
+        category: form.value.category,
+        languages: authLanguages.value,
+        components: authComponents(),
+      })
+      toast.success(
+        count === 1 ? 'Template submitted' : `Template submitted in ${count} languages`,
+        { description: 'Meta reviews each one before it can be sent.' },
+      )
+    } else {
+      await channelsService.createWhatsAppTemplate(props.accountId, {
+        name: form.value.name,
+        category: form.value.category,
+        language: form.value.language,
+        components: [{ type: 'BODY', text: form.value.body.trim() }],
+      })
+      toast.success('Template submitted', { description: 'Meta reviews it before it can be sent.' })
+    }
     emit('created')
   } catch (error: any) {
     toast.error('Could not create template', {
@@ -151,7 +186,40 @@ const create = async () => {
       </select>
     </label>
 
-    <label class="wtm-field">
+    <!-- Meta writes authentication copy in every language, so several can be
+         submitted at once. Other categories need their own translated body. -->
+    <div v-if="isAuth" class="wtm-field">
+      <span class="wtm-label">Languages</span>
+      <ul v-if="authLanguages.length" class="wtm-chips">
+        <li v-for="code in authLanguages" :key="code" class="wtm-chip">
+          {{ languageLabel(code) }}
+          <button
+            type="button"
+            class="wtm-chip-remove"
+            :aria-label="`Remove ${languageLabel(code)}`"
+            @click="removeLanguage(code)"
+          >
+            ×
+          </button>
+        </li>
+      </ul>
+      <select
+        v-model="languageToAdd"
+        class="wtm-input"
+        aria-label="Add a language"
+        @change="addLanguage"
+      >
+        <option value="">Add a language…</option>
+        <option v-for="language in addableLanguages" :key="language.code" :value="language.code">
+          {{ language.label }} ({{ language.code }})
+        </option>
+      </select>
+      <span class="wtm-hint">
+        One template is created per language, and each counts towards your template limit.
+      </span>
+    </div>
+
+    <label v-else class="wtm-field">
       <span class="wtm-label">Language</span>
       <!-- Native select: the modal body scrolls, so a custom popover would be
            clipped — and native gives type-ahead over 111 options for free.
@@ -273,6 +341,40 @@ const create = async () => {
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.wtm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.wtm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--background-soft);
+  font-size: 12px;
+}
+
+.wtm-chip-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.wtm-chip-remove:hover {
+  color: var(--c-danger);
 }
 
 .wtm-check {

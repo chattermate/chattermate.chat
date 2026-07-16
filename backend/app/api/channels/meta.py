@@ -45,6 +45,7 @@ from app.models.schemas.channel import (
     TemplateCreateRequest,
     TemplateOut,
     TemplateSendRequest,
+    TemplateUpsertRequest,
 )
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository, ChannelConversationRepository
@@ -455,6 +456,54 @@ async def create_whatsapp_template(
         language=request.language,
         components=request.components,
     )
+
+
+@router.post("/whatsapp/{account_id}/templates/upsert", response_model=list[TemplateOut])
+async def upsert_whatsapp_templates(
+    account_id: UUID,
+    request: TemplateUpsertRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Submit the same template in several languages in one call.
+
+    Meta documents this for authentication templates, where it writes the copy
+    itself in each language — so one call yields a reviewable template per
+    language with nothing more to type. Every other category needs its own
+    translated body, so it goes one at a time through create_whatsapp_template.
+
+    This still creates one template per language: name and language together
+    identify a template, and each counts against the WABA's template limit.
+    """
+    account = _whatsapp_account_or_404(db, account_id, organization)
+    waba_id, access_token = _waba_credentials(db, account)
+
+    ok, data = await graph_post_json(f"{waba_id}/upsert_message_templates", access_token, {
+        "name": request.name,
+        "languages": request.languages,
+        "category": request.category,
+        "components": request.components,
+    })
+    if not ok:
+        raise HTTPException(status_code=502,
+                            detail=_graph_detail(data, "Could not create templates"))
+
+    created = data.get("data")
+    if not isinstance(created, list):
+        raise HTTPException(status_code=502, detail="Unexpected template response from Meta")
+    # Graph echoes id/status/language per template; the rest is what we submitted.
+    return [
+        TemplateOut(
+            id=template.get("id"),
+            name=request.name,
+            status=template.get("status"),
+            category=template.get("category") or request.category,
+            language=template.get("language"),
+            components=request.components,
+        )
+        for template in created
+    ]
 
 
 @router.delete("/whatsapp/{account_id}/templates")

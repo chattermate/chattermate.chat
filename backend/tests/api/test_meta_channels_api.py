@@ -497,3 +497,65 @@ class TestEmbeddedSignupConnect:
         assert credentials["access_token"] == "EAAG-rotated"
         assert credentials["verification_pin"] == pin
         assert credentials["waba_id"] == "WABA9"
+
+
+class TestTemplateUpsert:
+    """Meta writes authentication copy itself per language, so one upsert call
+    yields a reviewable template per language."""
+
+    def test_upsert_creates_one_template_per_language(self, client, waba_account):
+        graph = AsyncMock(return_value=(True, {"data": [
+            {"id": "T1", "status": "PENDING", "language": "en_US"},
+            {"id": "T2", "status": "PENDING", "language": "es_ES"},
+        ]}))
+        with patch("app.api.channels.meta.graph_post_json", graph):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
+                "name": "verification_code",
+                "category": "AUTHENTICATION",
+                "languages": ["en_US", "es_ES"],
+                "components": [{"type": "BODY", "add_security_recommendation": True}]})
+
+        assert r.status_code == 200
+        body = r.json()
+        assert [t["language"] for t in body] == ["en_US", "es_ES"]
+        # Graph echoes id/status/language only; name comes from the request
+        assert {t["name"] for t in body} == {"verification_code"}
+        assert graph.await_args.args[0] == "WABA9/upsert_message_templates"
+        assert graph.await_args.args[2]["languages"] == ["en_US", "es_ES"]
+
+    def test_upsert_requires_at_least_one_language(self, client, waba_account):
+        r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
+            "name": "x", "category": "AUTHENTICATION", "languages": [], "components": []})
+        assert r.status_code == 422
+
+    def test_upsert_surfaces_the_graph_reason(self, client, waba_account):
+        graph = AsyncMock(return_value=(False, {"error": {"message": "Invalid language"}}))
+        with patch("app.api.channels.meta.graph_post_json", graph):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
+                "name": "x", "category": "AUTHENTICATION",
+                "languages": ["zz_ZZ"], "components": []})
+
+        assert r.status_code == 502
+        assert r.json()["detail"] == "Invalid language"
+
+    def test_upsert_rejects_a_malformed_response(self, client, waba_account):
+        graph = AsyncMock(return_value=(True, {"data": {"not": "a list"}}))
+        with patch("app.api.channels.meta.graph_post_json", graph):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
+                "name": "x", "category": "AUTHENTICATION",
+                "languages": ["en_US"], "components": []})
+        assert r.status_code == 502
+
+    def test_upsert_requires_waba_id(self, client, whatsapp_account):
+        r = client.post(f"{BASE}/whatsapp/{whatsapp_account.id}/templates/upsert", json={
+            "name": "x", "category": "AUTHENTICATION",
+            "languages": ["en_US"], "components": []})
+        assert r.status_code == 400
+
+    def test_upsert_rejects_other_orgs_account(self, client, db, waba_account):
+        waba_account.organization_id = uuid4()
+        db.commit()
+        r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates/upsert", json={
+            "name": "x", "category": "AUTHENTICATION",
+            "languages": ["en_US"], "components": []})
+        assert r.status_code == 404

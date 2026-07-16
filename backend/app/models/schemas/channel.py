@@ -15,10 +15,10 @@ limitations under the License.
 """
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # The categories Meta accepts when a template is submitted for review.
 TemplateCategory = Literal["MARKETING", "UTILITY", "AUTHENTICATION"]
@@ -107,6 +107,18 @@ class TemplateCreateRequest(BaseModel):
     name: str
     category: TemplateCategory
     language: str = "en_US"
+    components: list
+
+
+class TemplateUpsertRequest(BaseModel):
+    """Submit the same template in several languages at once.
+
+    A template is identified by name *and* language, so this still creates one
+    template per language — it just does it in a single call.
+    """
+    name: str
+    category: TemplateCategory
+    languages: List[str] = Field(min_length=1)
     components: list
 
 

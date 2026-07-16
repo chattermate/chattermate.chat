@@ -179,6 +179,28 @@ const channelsService = {
     return response.data
   },
 
+  /**
+   * Submit the same template in several languages in one call. Meta documents
+   * this for authentication templates, where it writes the copy per language;
+   * other categories need their own translated body and go one at a time.
+   * Still one template per language — this only saves the round trips.
+   */
+  async upsertWhatsAppTemplates(
+    accountId: string,
+    payload: {
+      name: string
+      category: TemplateCategory
+      languages: string[]
+      components: TemplateComponent[]
+    },
+  ): Promise<WhatsAppTemplate[]> {
+    const response = await api.post(
+      `/channels/meta/whatsapp/${accountId}/templates/upsert`,
+      payload,
+    )
+    return response.data
+  },
+
   async deleteWhatsAppTemplate(accountId: string, name: string): Promise<void> {
     await api.delete(`/channels/meta/whatsapp/${accountId}/templates`, { params: { name } })
   },
