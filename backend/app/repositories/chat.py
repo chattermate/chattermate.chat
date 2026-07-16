@@ -144,7 +144,11 @@ class ChatRepository:
             self.db.rollback()
 
     def mark_delivery_failed(self, message_id: int, reason: Optional[str]) -> None:
-        """Flag a stored message as never delivered to the customer."""
+        """Flag a stored message as never delivered to the customer.
+
+        Sole writer of delivery_status, which therefore only ever holds a
+        failure reason — the inbox treats its presence as "not delivered".
+        """
         self.update_message_attributes(message_id, {'delivery_status': reason or 'failed'})
 
     def get_latest_bot_message(self, session_id: str | UUID) -> Optional[ChatHistory]:

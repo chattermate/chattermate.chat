@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import type { ChatDetail, Message } from '@/types/chat'
 import { formatDistanceToNow } from 'date-fns'
 import { chatService } from '@/services/chat'
@@ -25,6 +25,14 @@ import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/e
 
 // Define valid chat statuses
 type ChatStatus = 'open' | 'closed' | 'transferred'
+
+/** Emitted by the backend when a reply was saved but never reached the customer. */
+interface DeliveryErrorEvent {
+  error?: string
+  type?: string
+  session_id?: string
+  can_template?: boolean
+}
 
 export function useConversationChat(
   initialChat: ChatDetail,
@@ -262,6 +270,55 @@ export function useConversationChat(
       isLoading.value = false
     }
   }
+
+  // Mark the message this failure belongs to. It was pushed optimistically and
+  // has no id yet, so it is matched as the newest agent message not already
+  // marked — the one that was just sent. The backend stamps the stored row too,
+  // so a later refetch carries the real reason.
+  const markLatestAgentMessageUndelivered = () => {
+    for (let i = chat.value.messages.length - 1; i >= 0; i--) {
+      const message = chat.value.messages[i]
+      if (message.message_type !== 'agent' || message.attributes?.delivery_status) continue
+      message.attributes = { ...message.attributes, delivery_status: 'failed' }
+      return
+    }
+  }
+
+  // On external channels a send can fail after the message is already stored
+  // (typically once WhatsApp's 24h window closes). Without this the agent sees
+  // their message sitting in the thread and assumes it arrived.
+  const handleDeliveryError = (data: DeliveryErrorEvent) => {
+    if (data?.type !== 'delivery_error' || data.session_id !== chat.value.session_id) return
+    markLatestAgentMessageUndelivered()
+    toast.error('Message not delivered', {
+      description: data.error,
+      duration: 6000,
+      closeButton: true
+    })
+  }
+
+  const setupSocketListeners = () => {
+    socketService.on('error', handleDeliveryError)
+  }
+
+  const cleanupSocketListeners = () => {
+    socketService.off('error', handleDeliveryError)
+  }
+
+  const handleSocketReconnect = () => {
+    cleanupSocketListeners()
+    setupSocketListeners()
+  }
+
+  onMounted(() => {
+    setupSocketListeners()
+    socketService.onReconnect(handleSocketReconnect)
+  })
+
+  onBeforeUnmount(() => {
+    cleanupSocketListeners()
+    socketService.offReconnect(handleSocketReconnect)
+  })
 
   const formattedMessages = computed(() => {
     const formatted = chat.value.messages.map(msg => ({

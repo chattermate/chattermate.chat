@@ -281,6 +281,9 @@ onMounted(async () => {
                 </div>
               </template>
               <span class="message-time">{{ message.timeAgo }}</span>
+              <span v-if="message.attributes?.delivery_status" class="delivery-failed">
+                <i class="fas fa-circle-exclamation"></i> Not delivered
+              </span>
             </div>
             <span v-if="message.message_type === 'bot' || message.message_type === 'agent'" class="agent-name">
               {{ message.message_type === 'bot' ? (message.agent_name || chat.agent.name || 'AI Agent') : (message.user_name || 'Agent') }}
@@ -513,6 +516,20 @@ onMounted(async () => {
 
 .message.agent .message-time {
   color: color-mix(in srgb, var(--on-accent) 55%, transparent);
+}
+
+.delivery-failed {
+  font-size: 11px;
+  color: var(--c-danger);
+  margin-top: 2px;
+  display: block;
+  text-align: right;
+}
+
+/* The agent bubble is accent-filled: lift --c-danger toward the bubble's own
+   foreground for contrast while keeping it readably red, not just a timestamp */
+.message.agent .delivery-failed {
+  color: color-mix(in srgb, var(--c-danger) 65%, var(--on-accent));
 }
 
 .input-container {
