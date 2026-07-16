@@ -204,3 +204,125 @@ class TestTemplateSend:
         r = client.post(f"{BASE}/whatsapp/{whatsapp_account.id}/send-template", json={
             "session_id": str(uuid4()), "template_name": "hello_world"})
         assert r.status_code == 404
+
+
+@pytest.fixture
+def waba_account(db, test_organization):
+    """A number connected with its WABA id — the prerequisite for templates."""
+    return ChannelAccountRepository(db).create_account(
+        organization_id=test_organization.id,
+        channel_type="whatsapp",
+        external_account_id="PN777",
+        credentials={"access_token": "EAAG-token", "waba_id": "WABA9"},
+        display_name="Acme (+1777…)",
+    )
+
+
+class TestTemplateManagement:
+    def test_list_templates(self, client, waba_account):
+        graph = AsyncMock(return_value=(True, {"data": [
+            {"name": "hello_world", "status": "APPROVED", "category": "UTILITY",
+             "language": "en_US", "components": [{"type": "BODY", "text": "Hi"}]},
+            {"name": "promo", "status": "PENDING", "category": "MARKETING"},
+        ]}))
+        with patch("app.api.channels.meta.graph_get", graph):
+            r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
+
+        assert r.status_code == 200
+        assert [t["name"] for t in r.json()] == ["hello_world", "promo"]
+        # Templates live on the WABA, not the phone number
+        assert graph.await_args.args[0] == "WABA9/message_templates"
+
+    def test_list_templates_graph_failure_502(self, client, waba_account):
+        graph = AsyncMock(return_value=(False, {"error": {"message": "Bad token"}}))
+        with patch("app.api.channels.meta.graph_get", graph):
+            r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
+
+        assert r.status_code == 502
+        assert r.json()["detail"] == "Bad token"
+
+    def test_create_template(self, client, waba_account):
+        graph = AsyncMock(return_value=(True, {"id": "T1", "status": "PENDING",
+                                               "category": "UTILITY"}))
+        with patch("app.api.channels.meta.graph_post_json", graph):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
+                "name": "order_update", "category": "UTILITY", "language": "en_US",
+                "components": [{"type": "BODY", "text": "Your order {{1}} shipped"}]})
+
+        assert r.status_code == 200
+        body = r.json()
+        assert (body["id"], body["name"], body["status"]) == ("T1", "order_update", "PENDING")
+
+    def test_create_template_rejects_unknown_category(self, client, waba_account):
+        r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
+            "name": "x", "category": "NONSENSE", "components": []})
+        assert r.status_code == 422
+
+    def test_create_template_graph_failure_surfaces_reason(self, client, waba_account):
+        graph = AsyncMock(return_value=(False, {"error": {"message": "name already exists"}}))
+        with patch("app.api.channels.meta.graph_post_json", graph):
+            r = client.post(f"{BASE}/whatsapp/{waba_account.id}/templates", json={
+                "name": "dupe", "category": "UTILITY", "components": []})
+
+        assert r.status_code == 502
+        assert r.json()["detail"] == "name already exists"
+
+    def test_delete_template(self, client, waba_account):
+        graph = AsyncMock(return_value=(True, {"success": True}))
+        with patch("app.api.channels.meta.graph_delete", graph):
+            r = client.delete(f"{BASE}/whatsapp/{waba_account.id}/templates?name=promo")
+
+        assert r.status_code == 200
+        assert graph.await_args.args[0] == "WABA9/message_templates"
+        assert graph.await_args.args[2] == {"name": "promo"}
+
+    def test_templates_require_waba_id(self, client, whatsapp_account):
+        """Numbers connected without a WABA id can message but not manage
+        templates — that must be a clear 400, not a Graph failure."""
+        r = client.get(f"{BASE}/whatsapp/{whatsapp_account.id}/templates")
+        assert r.status_code == 400
+        assert "WhatsApp Business Account ID" in r.json()["detail"]
+
+    def test_templates_reject_non_whatsapp_account(self, client, db, test_organization):
+        messenger = ChannelAccountRepository(db).create_account(
+            organization_id=test_organization.id, channel_type="messenger",
+            external_account_id="PAGE9", credentials={"access_token": "t"},
+            display_name="Page")
+        r = client.get(f"{BASE}/whatsapp/{messenger.id}/templates")
+        assert r.status_code == 404
+
+    def test_templates_reject_other_orgs_account(self, client, db, waba_account):
+        waba_account.organization_id = uuid4()
+        db.commit()
+        r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
+        assert r.status_code == 404
+
+    def test_list_templates_follows_paging_cursor(self, client, waba_account):
+        """A template that exists but isn't listed can't be picked to reopen a
+        window, so a full page must be followed by the next one."""
+        first = {"data": [{"name": f"t{i}"} for i in range(100)],
+                 "paging": {"cursors": {"after": "CUR2"}}}
+        second = {"data": [{"name": "t100"}]}
+        graph = AsyncMock(side_effect=[(True, first), (True, second)])
+        with patch("app.api.channels.meta.graph_get", graph):
+            r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
+
+        assert r.status_code == 200
+        assert len(r.json()) == 101
+        assert graph.await_args_list[1].kwargs["params"]["after"] == "CUR2"
+
+    def test_list_templates_stops_on_short_page(self, client, waba_account):
+        graph = AsyncMock(return_value=(True, {
+            "data": [{"name": "only"}], "paging": {"cursors": {"after": "CUR2"}}}))
+        with patch("app.api.channels.meta.graph_get", graph):
+            r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
+
+        assert r.status_code == 200
+        assert graph.await_count == 1
+
+    def test_delete_template_refused_in_body_is_not_success(self, client, waba_account):
+        graph = AsyncMock(return_value=(True, {"success": False}))
+        with patch("app.api.channels.meta.graph_delete", graph):
+            r = client.delete(f"{BASE}/whatsapp/{waba_account.id}/templates?name=promo")
+
+        assert r.status_code == 502

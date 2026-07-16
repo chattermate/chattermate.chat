@@ -23,6 +23,7 @@ from sqlalchemy import func, or_, select, text, and_
 from sqlalchemy.sql import case
 from app.models.agent import Agent
 from app.models.session_to_agent import SessionToAgent
+from app.repositories.channels import ChannelConversationRepository
 from app.core.logger import get_logger
 from app.models.user import User
 from sqlalchemy.orm import joinedload
@@ -150,6 +151,20 @@ class ChatRepository:
         failure reason — the inbox treats its presence as "not delivered".
         """
         self.update_message_attributes(message_id, {'delivery_status': reason or 'failed'})
+
+    def _channel_account_id(self, channel: Optional[str], session_id) -> Optional[str]:
+        """Which connected account a channel conversation belongs to, so the
+        inbox can call account-scoped endpoints (e.g. sending a template).
+
+        Looked up separately rather than joined into the chat-detail query:
+        session_id is not unique on channel_conversations, so an outer join
+        would multiply that query's groups. Only fires for channel sessions,
+        and get_chat_detail fetches one session at a time.
+        """
+        if not channel or channel == 'web':
+            return None
+        conversation = ChannelConversationRepository(self.db).get_by_session(session_id)
+        return str(conversation.channel_account_id) if conversation else None
 
     def get_latest_bot_message(self, session_id: str | UUID) -> Optional[ChatHistory]:
         """Most recent bot reply in a session.
@@ -528,6 +543,7 @@ class ChatRepository:
             },
             'status': result.status,
             'channel': result.channel,
+            'channel_account_id': self._channel_account_id(result.channel, result.session_id),
             'group_id': str(result.group_id) if result.group_id else None,
             'session_id': result.session_id,
             'user_id': result.user_id,

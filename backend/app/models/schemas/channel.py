@@ -15,10 +15,13 @@ limitations under the License.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel
+
+# The categories Meta accepts when a template is submitted for review.
+TemplateCategory = Literal["MARKETING", "UTILITY", "AUTHENTICATION"]
 
 
 class ChannelAccountOut(BaseModel):
@@ -68,6 +71,25 @@ class TemplateSendRequest(BaseModel):
     template_name: str
     language: str = "en_US"
     components: Optional[list] = None
+
+
+class TemplateOut(BaseModel):
+    """A message template as it exists on the customer's WhatsApp Business
+    Account. Only APPROVED templates can actually be sent."""
+    id: Optional[str] = None
+    name: str
+    status: Optional[str] = None
+    category: Optional[str] = None
+    language: Optional[str] = None
+    components: Optional[list] = None
+
+
+class TemplateCreateRequest(BaseModel):
+    """Submit a new template to Meta for review."""
+    name: str
+    category: TemplateCategory
+    language: str = "en_US"
+    components: list
 
 
 class AgentChannelConfigRequest(BaseModel):
