@@ -37,11 +37,17 @@ const emit = defineEmits<{
   (e: 'connected', account: ChannelAccount): void
 }>()
 
-// Per-channel copy + credential fields
+// Where the credentials are copied from — linked so it's one click, not a
+// hostname to retype.
+const META_APPS_URL = 'https://developers.facebook.com/apps/'
+
+// Per-channel copy + credential fields. The intro is split around the link
+// rather than carrying markup, so it renders as escaped text.
 const META_FORMS = {
   whatsapp: {
     title: 'Connect WhatsApp',
-    intro: 'From your Meta app (developers.facebook.com → WhatsApp → API Setup), copy the phone number ID and a permanent access token.',
+    introBefore: 'From your Meta app (',
+    introAfter: ' → WhatsApp → API Setup), copy the phone number ID and a permanent access token.',
     fields: [
       { key: 'phone_number_id', label: 'Phone number ID', placeholder: '1234567890', secret: false },
       { key: 'access_token', label: 'Access token', placeholder: 'EAAG…', secret: true },
@@ -50,7 +56,8 @@ const META_FORMS = {
   },
   messenger: {
     title: 'Connect Messenger',
-    intro: 'From your Meta app (Messenger → Settings), generate a page access token for the Facebook Page you want to connect.',
+    introBefore: 'From your Meta app (',
+    introAfter: ' → Messenger → Settings), generate a page access token for the Facebook Page you want to connect.',
     fields: [
       { key: 'page_id', label: 'Facebook Page ID', placeholder: '1234567890', secret: false },
       { key: 'page_access_token', label: 'Page access token', placeholder: 'EAAG…', secret: true },
@@ -58,7 +65,8 @@ const META_FORMS = {
   },
   instagram: {
     title: 'Connect Instagram',
-    intro: 'Your Instagram account must be a professional account linked to a Facebook Page. Use the linked page’s access token.',
+    introBefore: 'Your Instagram account must be a professional account linked to a Facebook Page. Use the linked page’s access token, from ',
+    introAfter: ' → Instagram.',
     fields: [
       { key: 'ig_id', label: 'Instagram account ID', placeholder: '17841400000000000', secret: false },
       { key: 'page_access_token', label: 'Linked page access token', placeholder: 'EAAG…', secret: true },
@@ -116,41 +124,49 @@ onMounted(async () => {
 
 onBeforeUnmount(() => window.removeEventListener('message', handleSignupMessage))
 
+const completeEmbeddedSignup = async (response: { authResponse?: { code?: string } }) => {
+  const code = response.authResponse?.code
+  const session = signupSession.value
+  if (!code) {
+    // The popup was dismissed — not an error worth a toast.
+    signingUp.value = false
+    return
+  }
+  if (!session) {
+    // Signed in, but Meta never reported which number was set up, so there
+    // is nothing to connect. Say so rather than appearing to do nothing.
+    toast.error('WhatsApp signup did not complete', {
+      description: 'No number was set up. Try again, or enter credentials manually.',
+    })
+    signingUp.value = false
+    return
+  }
+  try {
+    account.value = await channelsService.connectWhatsAppEmbeddedSignup({
+      code,
+      waba_id: session.waba_id,
+      phone_number_id: session.phone_number_id,
+    })
+    toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
+  } catch (error: any) {
+    toast.error(error?.response?.data?.detail || 'Could not finish WhatsApp signup')
+  } finally {
+    signingUp.value = false
+  }
+}
+
 const startEmbeddedSignup = () => {
   if (!window.FB || signingUp.value) return
   signupSession.value = null
   signingUp.value = true
 
-  window.FB.login(async (response) => {
-    const code = response.authResponse?.code
-    const session = signupSession.value
-    if (!code) {
-      // The popup was dismissed — not an error worth a toast.
-      signingUp.value = false
-      return
-    }
-    if (!session) {
-      // Signed in, but Meta never reported which number was set up, so there
-      // is nothing to connect. Say so rather than appearing to do nothing.
-      toast.error('WhatsApp signup did not complete', {
-        description: 'No number was set up. Try again, or enter credentials manually.',
-      })
-      signingUp.value = false
-      return
-    }
-    try {
-      account.value = await channelsService.connectWhatsAppEmbeddedSignup({
-        code,
-        waba_id: session.waba_id,
-        phone_number_id: session.phone_number_id,
-      })
-      toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
-    } catch (error: any) {
-      toast.error(error?.response?.data?.detail || 'Could not finish WhatsApp signup')
-    } finally {
-      signingUp.value = false
-    }
-  }, signupLoginOptions(signupConfigId.value))
+  // The SDK type-checks its callback and rejects an AsyncFunction outright
+  // ("Expression is of type asyncfunction, not function"), so hand the async
+  // work off from a plain function rather than passing `async` here.
+  window.FB.login(
+    (response) => { void completeEmbeddedSignup(response) },
+    signupLoginOptions(signupConfigId.value),
+  )
 }
 
 const connect = async () => {
@@ -222,7 +238,14 @@ const saveAgent = async () => {
         </div>
 
         <template v-else>
-        <p class="meta-intro">{{ form.intro }}</p>
+        <p class="meta-intro">
+          {{ form.introBefore }}<a
+            :href="META_APPS_URL"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="meta-intro-link"
+          >developers.facebook.com</a>{{ form.introAfter }}
+        </p>
         <div v-for="field in form.fields" :key="field.key" class="meta-field">
           <label class="meta-label" :for="`meta-${field.key}`">{{ field.label }}</label>
           <input
@@ -311,6 +334,16 @@ const saveAgent = async () => {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
+}
+
+.meta-intro-link {
+  color: var(--accent-solid);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.meta-intro-link:hover {
+  text-decoration: none;
 }
 
 .meta-field {
