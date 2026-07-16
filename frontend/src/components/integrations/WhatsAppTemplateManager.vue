@@ -15,19 +15,15 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, {
   type ChannelAccount,
-  type TemplateCategory,
   type WhatsAppTemplate,
 } from '@/services/channels'
 import { templateBody } from '@/utils/whatsappTemplates'
-import {
-  WHATSAPP_LANGUAGES,
-  DEFAULT_LANGUAGE,
-  languageLabel,
-} from '@/utils/whatsappLanguages'
+import { languageLabel } from '@/utils/whatsappLanguages'
+import WhatsAppTemplateCreateForm from '@/components/integrations/WhatsAppTemplateCreateForm.vue'
 
 const props = defineProps<{
   accounts: ChannelAccount[]
@@ -35,39 +31,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-// Kept out of the template: the compiler cannot parse a mustache that itself
-// contains {{n}}, which is exactly the syntax being described here.
-const BODY_PLACEHOLDER = 'Hi {{1}}, your order {{2}} has shipped.'
-const VARIABLE_HINT = 'Use {{1}}, {{2}} for values you fill in when sending.'
-
-const CATEGORIES: { value: TemplateCategory; label: string; hint: string }[] = [
-  { value: 'UTILITY', label: 'Utility', hint: 'Order updates, reminders, account alerts.' },
-  { value: 'MARKETING', label: 'Marketing', hint: 'Offers and announcements.' },
-  { value: 'AUTHENTICATION', label: 'Authentication', hint: 'One-time passcodes.' },
-]
-
 const dialog = ref<HTMLElement | null>(null)
 const accountId = ref(props.accounts[0]?.id ?? '')
 const templates = ref<WhatsAppTemplate[]>([])
 const loading = ref(true)
 const loadError = ref('')
-const creating = ref(false)
 const showCreate = ref(false)
 const deletingName = ref('')
 const confirmingName = ref('')
-
-const form = ref({
-  name: '',
-  category: 'UTILITY' as TemplateCategory,
-  language: DEFAULT_LANGUAGE,
-  body: '',
-})
-
-// Meta only accepts lowercase letters, digits and underscores in a name.
-const nameIsValid = computed(() => /^[a-z0-9_]+$/.test(form.value.name))
-const canCreate = computed(
-  () => nameIsValid.value && !!form.value.body.trim() && !creating.value,
-)
 
 // Guards against a slow response for a previously selected number landing after
 // a newer one and rendering its templates under the wrong account.
@@ -103,32 +74,9 @@ onMounted(() => {
 
 watch(accountId, load)
 
-const resetForm = () => {
-  form.value = { name: '', category: 'UTILITY', language: DEFAULT_LANGUAGE, body: '' }
-}
-
-const create = async () => {
-  if (!canCreate.value) return
-  try {
-    creating.value = true
-    await channelsService.createWhatsAppTemplate(accountId.value, {
-      name: form.value.name,
-      category: form.value.category,
-      language: form.value.language,
-      components: [{ type: 'BODY', text: form.value.body.trim() }],
-    })
-    toast.success('Template submitted', { description: 'Meta reviews it before it can be sent.' })
-    resetForm()
-    showCreate.value = false
-    await load()
-  } catch (error: any) {
-    toast.error('Could not create template', {
-      description: error?.response?.data?.detail || 'Please try again',
-      closeButton: true,
-    })
-  } finally {
-    creating.value = false
-  }
+const onCreated = async () => {
+  showCreate.value = false
+  await load()
 }
 
 const remove = async (name: string) => {
@@ -238,60 +186,12 @@ const remove = async (name: string) => {
         </ul>
       </div>
 
-      <form v-if="showCreate" class="wtm-create" @submit.prevent="create">
-        <label class="wtm-field">
-          <span class="wtm-label">Name</span>
-          <input
-            v-model="form.name"
-            class="wtm-input"
-            placeholder="order_update"
-            autocomplete="off"
-          />
-          <span v-if="form.name && !nameIsValid" class="wtm-error">
-            Use lowercase letters, numbers and underscores only.
-          </span>
-        </label>
-
-        <label class="wtm-field">
-          <span class="wtm-label">Category</span>
-          <select v-model="form.category" class="wtm-input">
-            <option v-for="category in CATEGORIES" :key="category.value" :value="category.value">
-              {{ category.label }} — {{ category.hint }}
-            </option>
-          </select>
-        </label>
-
-        <label class="wtm-field">
-          <span class="wtm-label">Language</span>
-          <!-- Native select: .wtm-content scrolls, so a custom popover would be
-               clipped — and native gives type-ahead over 111 options for free.
-               The code is shown too: admins cross-reference it in Meta. -->
-          <select v-model="form.language" class="wtm-input">
-            <option v-for="language in WHATSAPP_LANGUAGES" :key="language.code" :value="language.code">
-              {{ language.label }} ({{ language.code }})
-            </option>
-          </select>
-        </label>
-
-        <label class="wtm-field">
-          <span class="wtm-label">Message</span>
-          <textarea
-            v-model="form.body"
-            class="wtm-input wtm-textarea"
-            rows="3"
-            :placeholder="BODY_PLACEHOLDER"
-          ></textarea>
-          <span class="wtm-hint">{{ VARIABLE_HINT }}</span>
-        </label>
-
-        <div class="wtm-actions">
-          <button type="button" class="wtm-btn" @click="showCreate = false">Cancel</button>
-          <button type="submit" class="wtm-btn wtm-btn-primary" :disabled="!canCreate">
-            <i v-if="creating" class="fas fa-spinner fa-spin"></i>
-            {{ creating ? 'Submitting…' : 'Submit for review' }}
-          </button>
-        </div>
-      </form>
+      <WhatsAppTemplateCreateForm
+        v-if="showCreate"
+        :account-id="accountId"
+        @created="onCreated"
+        @cancel="showCreate = false"
+      />
 
       <div v-else-if="templates.length > 0" class="wtm-actions">
         <button class="wtm-btn wtm-btn-primary" @click="showCreate = true">New template</button>
@@ -456,12 +356,6 @@ const remove = async (name: string) => {
   color: var(--muted);
 }
 
-.wtm-create {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-}
-
 .wtm-field {
   display: block;
   margin-bottom: 12px;
@@ -483,22 +377,6 @@ const remove = async (name: string) => {
   color: inherit;
   font-size: 14px;
   font-family: inherit;
-}
-
-.wtm-textarea {
-  resize: vertical;
-}
-
-.wtm-hint,
-.wtm-error {
-  display: block;
-  font-size: 12px;
-  margin-top: 4px;
-  color: var(--muted);
-}
-
-.wtm-error {
-  color: var(--c-danger);
 }
 
 .wtm-skeleton {
