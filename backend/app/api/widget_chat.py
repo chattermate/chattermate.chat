@@ -1218,7 +1218,10 @@ async def handle_agent_message(sid, data):
             await sio.emit('error', {
                 'error': error_message,
                 'type': 'delivery_error',
-                'session_id': session_id
+                'session_id': session_id,
+                # Lets the inbox offer the template action only when sending one
+                # would actually reopen the conversation.
+                'can_template': delivery.can_template,
             }, to=sid, namespace='/agent')
 
     except Exception as e:
