@@ -75,6 +75,18 @@ export interface WhatsAppTemplate {
   components?: TemplateComponent[]
 }
 
+/**
+ * Whether the WhatsApp connect UI can offer Embedded Signup. Everything but
+ * `enabled` is null when it can't — a self-hoster has no ChatterMate Meta app
+ * to onboard under, and the plan check stays on the server.
+ */
+export interface EmbeddedSignupConfig {
+  enabled: boolean
+  config_id: string | null
+  app_id: string | null
+  graph_version: string
+}
+
 export interface ChannelAccount {
   id: string
   channel_type: ChannelType
@@ -111,6 +123,22 @@ const channelsService = {
     waba_id?: string
   }): Promise<ChannelAccount> {
     const response = await api.post('/channels/meta/whatsapp', payload)
+    return response.data
+  },
+
+  /** Whether to offer Embedded Signup, and the ids the Meta SDK needs */
+  async getEmbeddedSignupConfig(): Promise<EmbeddedSignupConfig> {
+    const response = await api.get('/channels/meta/embedded-signup-config')
+    return response.data
+  },
+
+  /** Finish an Embedded Signup: the backend trades the code for the token */
+  async connectWhatsAppEmbeddedSignup(payload: {
+    code: string
+    waba_id: string
+    phone_number_id: string
+  }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/meta/whatsapp/embedded-signup', payload)
     return response.data
   },
 

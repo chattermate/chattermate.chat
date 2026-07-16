@@ -15,11 +15,17 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
+import {
+  loadMetaSdk,
+  parseSignupMessage,
+  signupLoginOptions,
+  type SignupSession,
+} from '@/utils/metaSdk'
 
 const props = defineProps<{
   channel: 'whatsapp' | 'messenger' | 'instagram'
@@ -69,6 +75,21 @@ const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
 const savingAgent = ref(false)
 
+// Embedded Signup: only offered for WhatsApp, and only when the server says
+// this deployment has a Meta app to onboard under and a plan that allows it.
+// Everyone else keeps the manual credentials form.
+const signupEnabled = ref(false)
+const signupConfigId = ref('')
+const signingUp = ref(false)
+/** The signup's two halves arrive separately and are joined once both land. */
+const signupSession = ref<SignupSession | null>(null)
+const showManualForm = ref(false)
+
+const handleSignupMessage = (event: MessageEvent) => {
+  const session = parseSignupMessage(event)
+  if (session) signupSession.value = session
+}
+
 onMounted(async () => {
   try {
     agents.value = await agentService.getOrganizationAgents()
@@ -77,7 +98,60 @@ onMounted(async () => {
   } catch (error) {
     console.error('Error loading agents:', error)
   }
+
+  if (props.channel !== 'whatsapp' || props.existingAccount) return
+  try {
+    const config = await channelsService.getEmbeddedSignupConfig()
+    if (!config.enabled || !config.config_id || !config.app_id) return
+    await loadMetaSdk(config.app_id, config.graph_version)
+    signupConfigId.value = config.config_id
+    signupEnabled.value = true
+    window.addEventListener('message', handleSignupMessage)
+  } catch (error) {
+    // Falling back to the manual form is a working path, not an error worth
+    // interrupting the user for.
+    console.error('Embedded Signup unavailable:', error)
+  }
 })
+
+onBeforeUnmount(() => window.removeEventListener('message', handleSignupMessage))
+
+const startEmbeddedSignup = () => {
+  if (!window.FB || signingUp.value) return
+  signupSession.value = null
+  signingUp.value = true
+
+  window.FB.login(async (response) => {
+    const code = response.authResponse?.code
+    const session = signupSession.value
+    if (!code) {
+      // The popup was dismissed — not an error worth a toast.
+      signingUp.value = false
+      return
+    }
+    if (!session) {
+      // Signed in, but Meta never reported which number was set up, so there
+      // is nothing to connect. Say so rather than appearing to do nothing.
+      toast.error('WhatsApp signup did not complete', {
+        description: 'No number was set up. Try again, or enter credentials manually.',
+      })
+      signingUp.value = false
+      return
+    }
+    try {
+      account.value = await channelsService.connectWhatsAppEmbeddedSignup({
+        code,
+        waba_id: session.waba_id,
+        phone_number_id: session.phone_number_id,
+      })
+      toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || 'Could not finish WhatsApp signup')
+    } finally {
+      signingUp.value = false
+    }
+  }, signupLoginOptions(signupConfigId.value))
+}
 
 const connect = async () => {
   const missing = form.value.fields.filter(f => !f.label.includes('optional') && !values.value[f.key]?.trim())
@@ -132,6 +206,22 @@ const saveAgent = async () => {
 
       <!-- Step 1: credentials -->
       <div v-if="!account" class="meta-modal-body">
+        <!-- One-click signup under ChatterMate's Meta app; the manual form
+             stays available for anyone who already has their own credentials. -->
+        <div v-if="signupEnabled && !showManualForm" class="meta-signup">
+          <p class="meta-intro">
+            Connect your WhatsApp Business number with Meta — no API credentials to copy.
+          </p>
+          <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startEmbeddedSignup">
+            <i v-if="signingUp" class="fas fa-spinner fa-spin"></i>
+            {{ signingUp ? 'Waiting for Meta…' : 'Continue with Facebook' }}
+          </button>
+          <button class="meta-link-btn" @click="showManualForm = true">
+            Enter credentials manually instead
+          </button>
+        </div>
+
+        <template v-else>
         <p class="meta-intro">{{ form.intro }}</p>
         <div v-for="field in form.fields" :key="field.key" class="meta-field">
           <label class="meta-label" :for="`meta-${field.key}`">{{ field.label }}</label>
@@ -151,6 +241,7 @@ const saveAgent = async () => {
             {{ connecting ? 'Connecting…' : 'Connect' }}
           </button>
         </div>
+        </template>
       </div>
 
       <!-- Step 2: route to an agent -->
@@ -270,5 +361,31 @@ const saveAgent = async () => {
 .meta-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.meta-signup {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.meta-signup-btn {
+  width: 100%;
+  padding: 12px;
+}
+
+.meta-link-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px;
+}
+
+.meta-link-btn:hover {
+  color: inherit;
 }
 </style>
