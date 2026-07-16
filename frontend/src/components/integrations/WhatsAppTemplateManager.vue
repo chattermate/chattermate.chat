@@ -43,21 +43,23 @@ const confirmingName = ref('')
  * pre-written, pre-localised ones built to pass its own review.
  *
  * The link is fetched rather than built: it is scoped to this number's Business
- * Account, and only the server can resolve which that is. It loads with the
- * list so the anchor is a real href by the time it is clicked — opening it
- * after an await instead would hand the browser a popup to block.
+ * Account, and only the server can resolve which that is. It is fetched up
+ * front so the anchor is a real href by the time it is clicked — resolving it
+ * on click, after an await, would hand the browser a popup to block.
  */
 const libraryUrl = ref('')
 
 // Guards against a slow response for a previously selected number landing after
 // a newer one and rendering its templates under the wrong account.
 let loadToken = 0
+// The link's own token: it is keyed to the account, not the list, so the two
+// reload on different schedules and cannot invalidate each other.
+let libraryToken = 0
 
 const load = async () => {
   const token = ++loadToken
   confirmingName.value = ''
   loadError.value = ''
-  libraryUrl.value = ''
   if (!accountId.value) {
     templates.value = []
     loading.value = false
@@ -81,29 +83,34 @@ const load = async () => {
  * Fetched alongside the list but deliberately not awaited with it: this costs a
  * Graph call, and failing it must not take the list down with it. Without a URL
  * the link simply doesn't render.
+ *
+ * Only ever called for a change of account. The link is derived from the
+ * account's Business Account, so re-resolving it when the list reloads would
+ * spend a Graph round trip to learn what we already know — and the list
+ * reloads on every "refresh" click and every delete.
  */
 const loadLibraryUrl = async () => {
-  const token = loadToken
+  const token = ++libraryToken
+  libraryUrl.value = ''
   if (!accountId.value) return
   try {
     const url = await channelsService.getWhatsAppTemplateLibraryUrl(accountId.value)
-    if (token === loadToken) libraryUrl.value = url
+    if (token === libraryToken) libraryUrl.value = url
   } catch {
     // Left empty: the list is still useful, and there is nothing to act on.
   }
 }
 
-const refresh = () => {
-  load()
-  loadLibraryUrl()
-}
-
 onMounted(() => {
   dialog.value?.focus()
-  refresh()
+  load()
+  loadLibraryUrl()
 })
 
-watch(accountId, refresh)
+watch(accountId, () => {
+  load()
+  loadLibraryUrl()
+})
 
 const remove = async (name: string) => {
   try {
@@ -211,13 +218,13 @@ const remove = async (name: string) => {
 
       <!-- Meta's Template Library is where these get written: ~150 pre-written,
            pre-localised templates, already shaped to pass its review. -->
-      <div v-if="accountId" class="wtm-create-guide">
+      <div v-if="accountId && !loading" class="wtm-create-guide">
         <h4 class="wtm-guide-title">Add a template</h4>
         <ol class="wtm-steps">
           <li>Open WhatsApp Manager and go to <strong>Template library</strong>.</li>
           <li>Pick a ready-made template, or choose <strong>Create template</strong> to write one.</li>
           <li>
-            Come back and <button type="button" class="wtm-link" @click="refresh">refresh</button>
+            Come back and <button type="button" class="wtm-link" @click="load">refresh</button>
             once Meta approves it.
           </li>
         </ol>

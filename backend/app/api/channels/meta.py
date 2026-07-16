@@ -15,7 +15,6 @@ limitations under the License.
 """
 
 import secrets
-from typing import Optional
 from urllib.parse import urlencode
 from uuid import UUID
 

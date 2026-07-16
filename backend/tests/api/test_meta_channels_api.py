@@ -478,7 +478,10 @@ class TestGraphErrorDetail:
     one that names the actual asset and rule. Exercised through delete, the
     remaining write path."""
 
-    # Verbatim from Graph, pairing a generic `message` with a specific user msg
+    # A real Graph body, kept for its shape: a generic OAuth `message` paired
+    # with a specific error_user_msg. Graph returned it for a template create —
+    # a path we no longer have — so read it as a fixture for the precedence
+    # rule, not as something delete itself can produce.
     UNVERIFIED = (False, {"error": {
         "message": "Application does not have permission for this action",
         "code": 10,
