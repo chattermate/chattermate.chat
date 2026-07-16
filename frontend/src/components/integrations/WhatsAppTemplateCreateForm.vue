@@ -15,11 +15,18 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type TemplateCategory, type TemplateComponent } from '@/services/channels'
 import { WHATSAPP_LANGUAGES, DEFAULT_LANGUAGE, languageLabel } from '@/utils/whatsappLanguages'
 import { AUTH_SECURITY_NOTE, authBodyPreview, authExpiryNote } from '@/utils/whatsappTemplates'
+import {
+  LIMITS,
+  emptyDraft,
+  draftErrors,
+  buildAuthoredComponents,
+} from '@/utils/whatsappTemplateDraft'
+import WhatsAppTemplateButtons from '@/components/integrations/WhatsAppTemplateButtons.vue'
 
 const props = defineProps<{
   accountId: string
@@ -50,11 +57,20 @@ const form = ref({
   name: '',
   category: 'UTILITY' as TemplateCategory,
   language: DEFAULT_LANGUAGE,
-  body: '',
   // Authentication only — Meta writes the body, we only choose these.
   securityNote: true,
   expiryMinutes: '' as number | '',
 })
+
+/** The parts we author ourselves. Unused for authentication. */
+const draft = ref(emptyDraft())
+const allErrors = computed(() => draftErrors(draft.value))
+
+// Don't greet an untouched form with "Message is required." — the submit button
+// is already disabled, so there is nothing to explain until they start.
+const touched = ref(false)
+watch(draft, () => { touched.value = true }, { deep: true })
+const authoringErrors = computed(() => (touched.value ? allErrors.value : []))
 
 const isAuth = computed(() => form.value.category === 'AUTHENTICATION')
 
@@ -92,7 +108,8 @@ const canCreate = computed(() => {
   if (!nameIsValid.value || creating.value) return false
   // An authentication template has no body to write — Meta supplies it.
   if (isAuth.value) return expiryIsValid.value && authLanguages.value.length > 0
-  return !!form.value.body.trim()
+  // Gates on every error, not just the revealed ones.
+  return allErrors.value.length === 0
 })
 
 /** The preview of what Meta will actually send, assembled from its fixed parts. */
@@ -149,7 +166,7 @@ const create = async () => {
         name: form.value.name,
         category: form.value.category,
         language: form.value.language,
-        components: [{ type: 'BODY', text: form.value.body.trim() }],
+        components: buildAuthoredComponents(draft.value),
       })
       toast.success('Template submitted', { description: 'Meta reviews it before it can be sent.' })
     }
@@ -266,16 +283,52 @@ const create = async () => {
       </p>
     </template>
 
-    <label v-else class="wtm-field">
-      <span class="wtm-label">Message</span>
-      <textarea
-        v-model="form.body"
-        class="wtm-input wtm-textarea"
-        rows="3"
-        :placeholder="BODY_PLACEHOLDER"
-      ></textarea>
-      <span class="wtm-hint">{{ VARIABLE_HINT }}</span>
-    </label>
+    <template v-else>
+      <label class="wtm-field">
+        <span class="wtm-label">Header (optional)</span>
+        <input
+          v-model="draft.header"
+          class="wtm-input"
+          :maxlength="LIMITS.header"
+          placeholder="Order update"
+          autocomplete="off"
+        />
+        <span class="wtm-hint">A short bold line above the message.</span>
+      </label>
+
+      <label class="wtm-field">
+        <span class="wtm-label">Message</span>
+        <textarea
+          v-model="draft.body"
+          class="wtm-input wtm-textarea"
+          rows="3"
+          :maxlength="LIMITS.body"
+          :placeholder="BODY_PLACEHOLDER"
+        ></textarea>
+        <span class="wtm-hint">{{ VARIABLE_HINT }}</span>
+      </label>
+
+      <label class="wtm-field">
+        <span class="wtm-label">Footer (optional)</span>
+        <input
+          v-model="draft.footer"
+          class="wtm-input"
+          :maxlength="LIMITS.footer"
+          placeholder="Reply STOP to opt out"
+          autocomplete="off"
+        />
+      </label>
+
+      <div class="wtm-field">
+        <span class="wtm-label">Buttons</span>
+        <WhatsAppTemplateButtons v-model="draft.buttons" />
+      </div>
+
+      <!-- Everything wrong at once, rather than revealing one problem per submit -->
+      <ul v-if="authoringErrors.length" class="wtm-errors">
+        <li v-for="error in authoringErrors" :key="error" class="wtm-error">{{ error }}</li>
+      </ul>
+    </template>
 
     <div class="wtm-actions">
       <button type="button" class="wtm-btn" @click="emit('cancel')">Cancel</button>
@@ -393,6 +446,12 @@ const create = async () => {
 
 .wtm-error {
   color: var(--c-danger);
+}
+
+.wtm-errors {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
 }
 
 .wtm-actions {
