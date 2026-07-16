@@ -47,6 +47,11 @@ export function useConversationChat(
   const messagesContainer = ref<HTMLElement | null>(null)
   const isLoading = ref(false)
   const currentUserId = userService.getUserId()
+  // Set once a send is refused because the messaging window closed and a
+  // template would reopen it. The frontend can't tell the window has expired on
+  // its own — it never sees the customer's last inbound time — so this is only
+  // known after the backend refuses a send.
+  const templateCanReopen = ref(false)
 
   const showTakeoverButton = computed(() => {
     // Show takeover button if:
@@ -106,9 +111,25 @@ export function useConversationChat(
   }
 
   // Watch for changes in messages and scroll to bottom
-  watch(() => chat.value.messages, () => {
+  watch(() => chat.value.messages, (messages) => {
     scrollToBottom()
+    // A customer message reopens the messaging window, so the closed-window
+    // notice must go — otherwise it sits above a composer that now works.
+    if (messages?.[messages.length - 1]?.message_type === 'user') {
+      templateCanReopen.value = false
+    }
   }, { deep: true })
+
+  // The same composable instance serves whichever chat is selected, so a
+  // closed window learned about in one conversation must not follow us to the
+  // next. Sending a template reopens the window, which also clears it.
+  watch(() => chat.value.session_id, () => {
+    templateCanReopen.value = false
+  })
+
+  const clearTemplateSuggestion = () => {
+    templateCanReopen.value = false
+  }
 
   const updateChat = (newChat: ChatDetail) => {
     chat.value = { ...newChat }
@@ -290,6 +311,7 @@ export function useConversationChat(
   const handleDeliveryError = (data: DeliveryErrorEvent) => {
     if (data?.type !== 'delivery_error' || data.session_id !== chat.value.session_id) return
     markLatestAgentMessageUndelivered()
+    if (data.can_template) templateCanReopen.value = true
     toast.error('Message not delivered', {
       description: data.error,
       duration: 6000,
@@ -351,6 +373,8 @@ export function useConversationChat(
     updateChat,
     replaceChatFromProps,
     handledByAI,
-    endChat
+    endChat,
+    templateCanReopen,
+    clearTemplateSuggestion
   }
 } 

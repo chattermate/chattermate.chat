@@ -24,6 +24,7 @@ import JiraTicketModal from '@/components/jira/JiraTicketModal.vue'
 import FileUpload from '@/components/common/FileUpload.vue'
 import { userService } from '@/services/user'
 import ChannelBadge from '@/components/common/ChannelBadge.vue'
+import WhatsAppTemplatePicker from '@/components/conversations/WhatsAppTemplatePicker.vue'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import type { Renderer } from 'marked'
@@ -57,8 +58,23 @@ const {
   updateChat,
   replaceChatFromProps,
   handledByAI,
-  endChat
+  endChat,
+  templateCanReopen,
+  clearTemplateSuggestion
 } = useConversationChat(props.chat, emit)
+
+// Templates are a WhatsApp-only way back into a conversation whose 24h window
+// closed, and they need the account the conversation arrived on.
+const showTemplatePicker = ref(false)
+const canUseTemplates = computed(
+  () => currentChat.value.channel === 'whatsapp' && !!currentChat.value.channel_account_id
+)
+
+const handleTemplateSent = () => {
+  showTemplatePicker.value = false
+  clearTemplateSuggestion()
+  emit('refresh')
+}
 
 // Add file handling functionality
 const {
@@ -179,9 +195,17 @@ onMounted(async () => {
         </div>
       </div>
       <div class="header-actions">
+        <button
+          v-if="canUseTemplates && !isChatClosed"
+          class="create-ticket-btn"
+          @click="showTemplatePicker = true"
+        >
+          <i class="fas fa-comment-dots"></i>
+          Send template
+        </button>
         <!-- Add Create Ticket button -->
-        <button 
-          v-if="canCreateTicket && jiraConnected" 
+        <button
+          v-if="canCreateTicket && jiraConnected"
           class="create-ticket-btn"
           @click="handleCreateTicket"
         >
@@ -305,6 +329,18 @@ onMounted(async () => {
     />
 
     <footer class="chat-input" v-if="!isChatClosed && !handledByAI">
+      <!-- The agent has just been told a reply couldn't be delivered; offer the
+           one action that gets the conversation back rather than leaving them
+           to retype into a composer that will fail again. -->
+      <div v-if="templateCanReopen && canUseTemplates" class="window-closed-notice">
+        <div class="window-closed-text">
+          <i class="fas fa-clock"></i>
+          <span>This customer's 24-hour window has closed. Send an approved template to reopen it.</span>
+        </div>
+        <button class="window-closed-btn" @click="showTemplatePicker = true">
+          Send template
+        </button>
+      </div>
       <div class="input-container" :class="{ disabled: !canSendMessage }" @paste="handleChatPaste">
         <FileUpload
           ref="fileUploadRef"
@@ -350,6 +386,14 @@ onMounted(async () => {
         This chat has been closed
       </div>
     </footer>
+
+    <WhatsAppTemplatePicker
+      v-if="showTemplatePicker && currentChat.channel_account_id"
+      :account-id="currentChat.channel_account_id"
+      :session-id="currentChat.session_id"
+      @close="showTemplatePicker = false"
+      @sent="handleTemplateSent"
+    />
   </div>
 </template>
 
@@ -530,6 +574,44 @@ onMounted(async () => {
    foreground for contrast while keeping it readably red, not just a timestamp */
 .message.agent .delivery-failed {
   color: color-mix(in srgb, var(--c-danger) 65%, var(--on-accent));
+}
+
+.window-closed-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-btn, 8px);
+  background: var(--warning-light);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.window-closed-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.window-closed-text i {
+  color: var(--warning);
+}
+
+.window-closed-btn {
+  padding: 7px 12px;
+  border-radius: var(--radius-btn, 8px);
+  border: none;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .input-container {
