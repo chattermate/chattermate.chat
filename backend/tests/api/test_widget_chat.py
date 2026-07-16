@@ -223,7 +223,11 @@ async def test_widget_connect(db, test_widget, test_ai_config, test_customer, mo
     assert session_data["agent_id"] == str(test_widget.agent_id)
     assert session_data["customer_id"] == str(test_customer.id)
     assert "session_id" in session_data
-    assert session_data["ai_config"] == test_ai_config
+    # ai_config is stored as a plain snapshot (not the live ORM object) so it survives
+    # after this handler's db session closes - see widget_chat.py's widget_connect.
+    assert session_data["ai_config"].encrypted_api_key == test_ai_config.encrypted_api_key
+    assert session_data["ai_config"].model_name == test_ai_config.model_name
+    assert session_data["ai_config"].model_type == test_ai_config.model_type
     assert session_data["conversation_token"] == conversation_token
 
 @pytest.mark.asyncio

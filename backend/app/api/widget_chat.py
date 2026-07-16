@@ -19,6 +19,7 @@ import datetime
 import json
 import os
 import re
+from types import SimpleNamespace
 from fastapi import APIRouter
 from app.core.socketio import sio
 from app.core.logger import get_logger
@@ -229,13 +230,24 @@ async def widget_connect(sid, environ, auth):
         except Exception:
             pass
         
+        # Snapshot only the fields the rest of the app reads from session['ai_config']
+        # (encrypted_api_key/model_name/model_type) into a plain, DB-independent object.
+        # This dict lives in the socket.io session store across the whole conversation,
+        # long after this handler's db session closes - caching the live ORM instance
+        # here would raise DetachedInstanceError on later access.
+        ai_config_snapshot = SimpleNamespace(
+            encrypted_api_key=ai_config.encrypted_api_key,
+            model_name=ai_config.model_name,
+            model_type=ai_config.model_type,
+        )
+
         session_data = {
             'widget_id': widget_id,
             'org_id': org_id,
             'agent_id': str(widget.agent_id),
             'customer_id': customer_id,
             'session_id': session_id,
-            'ai_config': ai_config,
+            'ai_config': ai_config_snapshot,
             'conversation_token': conversation_token,
             # Add rate limiting settings
             'enable_rate_limiting': enable_rate_limiting,
