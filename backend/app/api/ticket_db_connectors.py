@@ -47,6 +47,36 @@ router = APIRouter()
 manage_connectors = require_any_permission("manage_ticket_connectors", "manage_organization")
 
 
+# Map API secret field -> encrypted model column. Omitting a secret on update
+# keeps the stored value; the plaintext never round-trips to the client.
+_SSH_SECRET_COLUMNS = {
+    "ssh_password": "encrypted_ssh_password",
+    "ssh_private_key": "encrypted_ssh_private_key",
+    "ssh_private_key_passphrase": "encrypted_ssh_key_passphrase",
+}
+
+
+def _config_from_discover(payload, organization_id) -> DBConnectorConfig:
+    return DBConnectorConfig(
+        id=None,
+        organization_id=organization_id,
+        name="draft",
+        engine=payload.engine,
+        host=payload.host,
+        port=payload.port,
+        database=payload.database,
+        username=payload.username,
+        password=payload.password,
+        ssh_enabled=payload.ssh_enabled,
+        ssh_host=payload.ssh_host,
+        ssh_port=payload.ssh_port,
+        ssh_username=payload.ssh_username,
+        ssh_password=payload.ssh_password,
+        ssh_private_key=payload.ssh_private_key,
+        ssh_private_key_passphrase=payload.ssh_private_key_passphrase,
+    )
+
+
 def _get_connector_or_404(db: Session, connector_id: UUID, user: User) -> TicketDBConnector:
     connector = (
         db.query(TicketDBConnector)
@@ -92,18 +122,7 @@ async def discover_tables(
     """Pre-save connection test: connect with the given credentials and
     return the discoverable tables/columns for the allowlist picker."""
     check_ticketing_access(db, current_user.organization_id)
-    config = DBConnectorConfig(
-        id=None,
-        organization_id=current_user.organization_id,
-        name="draft",
-        engine=payload.engine,
-        host=payload.host,
-        port=payload.port,
-        database=payload.database,
-        username=payload.username,
-        password=payload.password,
-    )
-    return await _discover(config)
+    return await _discover(_config_from_discover(payload, current_user.organization_id))
 
 
 @router.post("", response_model=DBConnectorOut, status_code=201)
@@ -127,7 +146,15 @@ async def create_connector(
         masked_columns=payload.masked_columns,
         max_rows=payload.max_rows,
         statement_timeout_ms=payload.statement_timeout_ms,
+        ssh_enabled=payload.ssh_enabled,
+        ssh_host=payload.ssh_host,
+        ssh_port=payload.ssh_port,
+        ssh_username=payload.ssh_username,
     )
+    for field_name, column in _SSH_SECRET_COLUMNS.items():
+        value = getattr(payload, field_name, None)
+        if value:
+            setattr(connector, column, encrypt_api_key(value))
     db.add(connector)
     db.commit()
     db.refresh(connector)
@@ -147,6 +174,12 @@ async def update_connector(
     password = data.pop("password", None)
     if password:
         connector.encrypted_password = encrypt_api_key(password)
+    # SSH secrets map to encrypted_* columns; omitting one keeps the stored value.
+    for field_name, column in _SSH_SECRET_COLUMNS.items():
+        if field_name in data:
+            value = data.pop(field_name)
+            if value:
+                setattr(connector, column, encrypt_api_key(value))
     for key, value in data.items():
         setattr(connector, key, value)
     db.commit()

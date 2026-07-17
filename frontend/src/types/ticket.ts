@@ -233,6 +233,10 @@ export interface DbConnector {
   masked_columns?: string[] | null
   max_rows: number
   statement_timeout_ms: number
+  ssh_enabled: boolean
+  ssh_host?: string | null
+  ssh_port: number
+  ssh_username?: string | null
   last_test_at?: string | null
   last_test_ok?: boolean | null
   created_at?: string | null
@@ -251,6 +255,14 @@ export interface DbConnectorPayload {
   masked_columns?: string[]
   max_rows?: number
   statement_timeout_ms?: number
+  // SSH tunnel (bastion/jump host) — secrets are write-only.
+  ssh_enabled?: boolean
+  ssh_host?: string
+  ssh_port?: number
+  ssh_username?: string
+  ssh_password?: string
+  ssh_private_key?: string
+  ssh_private_key_passphrase?: string
 }
 
 export interface TicketDetail {

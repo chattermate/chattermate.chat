@@ -37,7 +37,34 @@ const form = reactive({
   username: '',
   password: '',
   max_rows: 100,
+  // SSH tunnel — production databases are usually behind a bastion.
+  ssh_enabled: false,
+  ssh_host: '',
+  ssh_port: 22,
+  ssh_username: '',
+  ssh_auth: 'key' as 'key' | 'password',
+  ssh_password: '',
+  ssh_private_key: '',
+  ssh_private_key_passphrase: '',
 })
+
+// Only the tunnel fields the API accepts, with the chosen auth method.
+function sshPayload() {
+  if (!form.ssh_enabled) return { ssh_enabled: false }
+  const base = {
+    ssh_enabled: true,
+    ssh_host: form.ssh_host.trim(),
+    ssh_port: form.ssh_port,
+    ssh_username: form.ssh_username.trim(),
+  }
+  return form.ssh_auth === 'password'
+    ? { ...base, ssh_password: form.ssh_password || undefined }
+    : {
+        ...base,
+        ssh_private_key: form.ssh_private_key || undefined,
+        ssh_private_key_passphrase: form.ssh_private_key_passphrase || undefined,
+      }
+}
 
 const isDiscovering = ref(false)
 const discoveredTables = ref<DbConnectorTable[] | null>(null)
@@ -72,6 +99,8 @@ function openCreateForm() {
   Object.assign(form, {
     name: '', engine: 'postgresql', host: '', port: 5432,
     database: '', username: '', password: '', max_rows: 100,
+    ssh_enabled: false, ssh_host: '', ssh_port: 22, ssh_username: '',
+    ssh_auth: 'key', ssh_password: '', ssh_private_key: '', ssh_private_key_passphrase: '',
   })
   resetPicker()
   showForm.value = true
@@ -95,7 +124,11 @@ async function discover() {
   try {
     const result = editingConnector.value
       ? await dbConnectorService.test(editingConnector.value.id)
-      : await dbConnectorService.discover({ ...form })
+      : await dbConnectorService.discover({
+          name: form.name, engine: form.engine, host: form.host, port: form.port,
+          database: form.database, username: form.username, password: form.password,
+          ...sshPayload(),
+        })
     if (!result.ok) {
       discoverError.value = result.error || 'Connection failed'
       discoveredTables.value = null
@@ -140,7 +173,11 @@ async function saveConnector() {
       await dbConnectorService.update(editingConnector.value.id, policy)
       toast.success('Connector updated')
     } else {
-      await dbConnectorService.create({ ...form, enabled: true, ...policy })
+      await dbConnectorService.create({
+        name: form.name, engine: form.engine, host: form.host, port: form.port,
+        database: form.database, username: form.username, password: form.password,
+        enabled: true, ...sshPayload(), ...policy,
+      })
       toast.success('Database connector created')
     }
     showForm.value = false
@@ -273,6 +310,62 @@ onMounted(fetchConnectors)
               <input v-model.number="form.max_rows" type="number" min="1" max="1000" class="field-input mono" />
             </label>
           </div>
+          <!-- SSH TUNNEL -->
+          <div class="ssh-block">
+            <label class="ssh-toggle">
+              <input v-model="form.ssh_enabled" type="checkbox" />
+              <span>
+                Connect through an SSH tunnel
+                <span class="ssh-hint">— for databases behind a bastion / jump host (typical in production)</span>
+              </span>
+            </label>
+            <div v-if="form.ssh_enabled" class="ssh-fields">
+              <p class="ssh-note">
+                The host and port above are resolved from the SSH host's network.
+              </p>
+              <div class="form-grid">
+                <label class="form-field">
+                  <span class="field-label">SSH host</span>
+                  <input v-model="form.ssh_host" class="field-input mono" placeholder="bastion.example.com" />
+                </label>
+                <label class="form-field">
+                  <span class="field-label">SSH port</span>
+                  <input v-model.number="form.ssh_port" type="number" class="field-input mono" />
+                </label>
+                <label class="form-field">
+                  <span class="field-label">SSH username</span>
+                  <input v-model="form.ssh_username" class="field-input mono" placeholder="ec2-user" />
+                </label>
+                <label class="form-field">
+                  <span class="field-label">Authentication</span>
+                  <select v-model="form.ssh_auth" class="field-input">
+                    <option value="key">Private key</option>
+                    <option value="password">Password</option>
+                  </select>
+                </label>
+                <label v-if="form.ssh_auth === 'password'" class="form-field wide">
+                  <span class="field-label">SSH password</span>
+                  <input v-model="form.ssh_password" type="password" class="field-input mono" />
+                </label>
+                <template v-else>
+                  <label class="form-field wide">
+                    <span class="field-label">Private key (PEM / OpenSSH)</span>
+                    <textarea
+                      v-model="form.ssh_private_key"
+                      class="field-input mono key-input"
+                      rows="4"
+                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;…"
+                    ></textarea>
+                  </label>
+                  <label class="form-field">
+                    <span class="field-label">Key passphrase (optional)</span>
+                    <input v-model="form.ssh_private_key_passphrase" type="password" class="field-input mono" />
+                  </label>
+                </template>
+              </div>
+            </div>
+          </div>
+
           <p class="tip-note">
             Tip: use a read-only replica and a database user with SELECT-only grants — a second
             fence beneath ChatterMate's own guardrails.
@@ -502,6 +595,35 @@ onMounted(fetchConnectors)
   font-size: 11.5px;
   color: var(--muted);
   line-height: 1.5;
+}
+.ssh-block {
+  margin-top: 14px;
+  border-top: 1px solid var(--o07);
+  padding-top: 13px;
+}
+.ssh-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text3);
+  cursor: pointer;
+}
+.ssh-hint {
+  color: var(--faint);
+  font-size: 12px;
+}
+.ssh-fields {
+  margin-top: 12px;
+}
+.ssh-note {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.key-input {
+  resize: vertical;
+  line-height: 1.4;
 }
 .editing-note {
   font-size: 13px;

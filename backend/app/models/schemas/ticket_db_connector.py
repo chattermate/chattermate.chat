@@ -36,7 +36,19 @@ class DBConnectorTableOut(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class DBConnectorDiscoverRequest(BaseModel):
+class SSHTunnelFields(BaseModel):
+    """Optional SSH bastion/jump-host tunnel. Auth is by private key
+    (preferred) or password; secrets are write-only."""
+    ssh_enabled: bool = False
+    ssh_host: Optional[str] = Field(default=None, max_length=500)
+    ssh_port: int = Field(default=22, ge=1, le=65535)
+    ssh_username: Optional[str] = Field(default=None, max_length=200)
+    ssh_password: Optional[str] = Field(default=None, max_length=1000)
+    ssh_private_key: Optional[str] = Field(default=None, max_length=20000)
+    ssh_private_key_passphrase: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DBConnectorDiscoverRequest(SSHTunnelFields):
     """Pre-save connection test: credentials go over TLS, are used once for
     discovery, and are never persisted by this endpoint."""
     engine: str = Field(pattern=f"^({'|'.join(ENGINES)})$")
@@ -53,7 +65,7 @@ class DBConnectorDiscoverResponse(BaseModel):
     tables: List[DBConnectorTableOut] = []
 
 
-class DBConnectorCreate(BaseModel):
+class DBConnectorCreate(SSHTunnelFields):
     name: str = Field(min_length=1, max_length=200)
     engine: str = Field(pattern=f"^({'|'.join(ENGINES)})$")
     host: str = Field(min_length=1, max_length=500)
@@ -82,6 +94,14 @@ class DBConnectorUpdate(BaseModel):
     masked_columns: Optional[List[str]] = Field(default=None, max_length=500)
     max_rows: Optional[int] = Field(default=None, ge=1, le=1000)
     statement_timeout_ms: Optional[int] = Field(default=None, ge=100, le=30000)
+    # SSH tunnel — omit a secret to keep the stored one.
+    ssh_enabled: Optional[bool] = None
+    ssh_host: Optional[str] = Field(default=None, max_length=500)
+    ssh_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    ssh_username: Optional[str] = Field(default=None, max_length=200)
+    ssh_password: Optional[str] = Field(default=None, max_length=1000)
+    ssh_private_key: Optional[str] = Field(default=None, max_length=20000)
+    ssh_private_key_passphrase: Optional[str] = Field(default=None, max_length=1000)
 
 
 class DBConnectorOut(BaseModel):
@@ -99,6 +119,11 @@ class DBConnectorOut(BaseModel):
     masked_columns: Optional[List[str]] = None
     max_rows: int
     statement_timeout_ms: int
+    # SSH tunnel — connection details only, never the key/password.
+    ssh_enabled: bool = False
+    ssh_host: Optional[str] = None
+    ssh_port: int = 22
+    ssh_username: Optional[str] = None
     last_test_at: Optional[datetime] = None
     last_test_ok: Optional[bool] = None
     created_at: Optional[datetime] = None

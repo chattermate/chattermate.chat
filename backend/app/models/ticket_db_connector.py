@@ -55,6 +55,20 @@ class TicketDBConnector(Base):
     encrypted_password = Column(Text, nullable=False)
 
     enabled = Column(Boolean, nullable=False, default=True, server_default=expression.true())
+
+    # SSH tunnel (bastion / jump host). Production databases are rarely
+    # directly reachable — the connection is forwarded through an SSH host.
+    # host/port above are then resolved from the SSH host's perspective.
+    ssh_enabled = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    ssh_host = Column(String(500), nullable=True)
+    ssh_port = Column(Integer, nullable=False, default=22, server_default="22")
+    ssh_username = Column(String(200), nullable=True)
+    # Exactly one auth method is used: private key preferred, else password.
+    # All encrypted with app.core.security.encrypt_api_key.
+    encrypted_ssh_password = Column(Text, nullable=True)
+    encrypted_ssh_private_key = Column(Text, nullable=True)
+    encrypted_ssh_key_passphrase = Column(Text, nullable=True)
+
     # ["schema.table", ...] — nothing is queryable unless listed here.
     allowed_tables = Column(JSON, nullable=True)
     # ["email", "phone", ...] — masked before the AI ever sees them; the AST

@@ -119,3 +119,5 @@ jinja2
 dnspython
 sqlglot>=30.0
 pymysql>=1.1
+sshtunnel>=0.4.0
+paramiko>=3.4,<4
