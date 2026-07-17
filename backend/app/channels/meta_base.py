@@ -203,32 +203,42 @@ TEMPLATE_PAGE_LIMIT = 100
 TEMPLATE_MAX_PAGES = 10
 
 
-async def fetch_message_templates(waba_id: str, access_token: str) -> tuple[bool, list | dict]:
-    """Every template on the WABA, following Graph's cursor.
+async def graph_list_all(path: str, access_token: str, params: dict,
+                         max_pages: int = TEMPLATE_MAX_PAGES) -> tuple[bool, list | dict]:
+    """Every node on a Graph edge, following its cursor.
 
-    A template that exists but isn't listed is an invisible failure — an agent
-    picking one would never see it — so this pages rather than showing the
-    first hundred and stopping. Returns (True, [template dicts]) or
-    (False, graph error body), matching the other helpers here.
+    A node that exists but isn't listed is an invisible failure — a Page the
+    customer administers but never sees offered, a template an agent cannot pick
+    — so this pages rather than stopping at the first page. Returns
+    (True, [node dicts]) or (False, graph error body), matching the other
+    helpers here. A `limit` in params lets a short final page end the walk one
+    round-trip early; without one it stops when Graph offers no `after` cursor.
     """
-    templates: list = []
-    params = {"fields": TEMPLATE_FIELDS, "limit": TEMPLATE_PAGE_LIMIT}
-    for _ in range(TEMPLATE_MAX_PAGES):
-        ok, data = await graph_get(f"{waba_id}/message_templates", access_token, params=params)
+    items: list = []
+    limit = params.get("limit")
+    for _ in range(max_pages):
+        ok, data = await graph_get(path, access_token, params=params)
         if not ok:
             return False, data
         page = data.get("data")
         if not isinstance(page, list):
             return False, data
-        templates.extend(page)
+        items.extend(page)
 
         after = (data.get("paging") or {}).get("cursors", {}).get("after")
-        if not after or len(page) < TEMPLATE_PAGE_LIMIT:
-            return True, templates
+        if not after or (limit is not None and len(page) < limit):
+            return True, items
         params = {**params, "after": after}
 
-    logger.warning(f"Stopped paging templates for WABA {waba_id} at {TEMPLATE_MAX_PAGES} pages")
-    return True, templates
+    logger.warning(f"Stopped paging {path} at {max_pages} pages")
+    return True, items
+
+
+async def fetch_message_templates(waba_id: str, access_token: str) -> tuple[bool, list | dict]:
+    """Every template on the WABA (see graph_list_all for the paging rationale)."""
+    return await graph_list_all(
+        f"{waba_id}/message_templates", access_token,
+        {"fields": TEMPLATE_FIELDS, "limit": TEMPLATE_PAGE_LIMIT})
 
 
 async def subscribe_app(node_id: str, access_token: str, subscribed_fields: Optional[str] = None) -> bool:

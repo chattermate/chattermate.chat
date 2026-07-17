@@ -90,8 +90,13 @@ class Settings(BaseSettings):
     # Our own random token echoed back during webhook GET verification
     META_WEBHOOK_VERIFY_TOKEN: str = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "")
     META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v21.0")
-    # Embedded Signup config id (cloud onboarding convenience; enterprise)
+    # WhatsApp Embedded Signup config id (cloud onboarding convenience)
     META_CONFIG_ID: str = os.getenv("META_CONFIG_ID", "")
+    # Facebook Login for Business config id, for connecting a Page (Messenger and
+    # Instagram DM both ride on the Page's token). A separate configuration from
+    # META_CONFIG_ID: it requests pages_messaging + pages_show_list and returns a
+    # user token, not a WhatsApp signup.
+    META_MESSENGER_CONFIG_ID: str = os.getenv("META_MESSENGER_CONFIG_ID", "")
 
     VERIFY_SSL_CERTIFICATES: bool = os.getenv("VERIFY_SSL_CERTIFICATES", "true").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")

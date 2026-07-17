@@ -126,23 +126,46 @@ def _generate_verification_pin() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
-def _embedded_signup_available() -> bool:
-    """Whether this deployment can offer Embedded Signup at all.
+# Channels that can be onboarded through a Meta login popup, each with the Meta
+# configuration that drives it. Messenger and Instagram DM both ride on a Page's
+# token, so one Facebook Login for Business configuration serves both.
+SIGNUP_CHANNELS = (
+    ChannelType.WHATSAPP.value,
+    ChannelType.MESSENGER.value,
+    ChannelType.INSTAGRAM.value,
+)
 
-    It onboards a customer's number under *our* approved Meta app, so without a
-    config id it structurally cannot work — a self-hoster has no such app and
-    gets the manual credentials form instead. That is the whole gate: like every
-    other integration, Embedded Signup is not restricted by plan.
+# Webhook fields a Page must subscribe our app to for Messenger to work.
+MESSENGER_SUBSCRIBED_FIELDS = "messages,messaging_postbacks"
+
+
+def _signup_config_id(channel: str) -> str:
+    """The Meta configuration id that onboards this channel, read at call time so
+    a settings override (tests, reloads) is always seen."""
+    return {
+        ChannelType.WHATSAPP.value: settings.META_CONFIG_ID,
+        ChannelType.MESSENGER.value: settings.META_MESSENGER_CONFIG_ID,
+        ChannelType.INSTAGRAM.value: settings.META_MESSENGER_CONFIG_ID,
+    }.get(channel, "")
+
+
+def _signup_available(channel: str) -> bool:
+    """Whether this deployment can offer the login flow for this channel.
+
+    Onboarding happens under *our* approved Meta app, so without a config id it
+    structurally cannot work — a self-hoster has no such app and gets the manual
+    credentials form instead. That is the whole gate: like every other
+    integration, signup is not restricted by plan.
     """
-    return bool(settings.META_CONFIG_ID)
+    return bool(_signup_config_id(channel))
 
 
-def check_embedded_signup_access() -> None:
-    if not _embedded_signup_available():
+def check_signup_access(channel: str) -> None:
+    if not _signup_available(channel):
         raise HTTPException(
             status_code=403,
-            detail="WhatsApp Embedded Signup is not configured on this deployment. "
-                   "Connect your number with its credentials instead.",
+            detail="Signup is not configured on this deployment for this channel. "
+                   "Connect with credentials instead.",
         )
 
 
@@ -230,15 +253,20 @@ def _upsert_account(db: Session, organization: Organization, channel_type: str,
 
 @router.get("/embedded-signup-config", response_model=EmbeddedSignupConfigOut)
 async def get_embedded_signup_config(
+    channel: str = ChannelType.WHATSAPP.value,
     current_user: User = Depends(require_permissions("manage_organization")),
 ):
-    """What the connect UI needs to decide between Embedded Signup and the
-    manual credentials form. The app id is returned here rather than baked into
-    the frontend build, so a self-hoster can point at their own app."""
-    enabled = _embedded_signup_available()
+    """What the connect UI needs to decide between a Meta login flow and the
+    manual credentials form, for the given channel. The app id is returned here
+    rather than baked into the frontend build, so a self-hoster can point at
+    their own app. A disabled channel returns no ids, so one channel's config
+    never leaks on another's request."""
+    if channel not in SIGNUP_CHANNELS:
+        raise HTTPException(status_code=404, detail="No signup flow for this channel")
+    enabled = _signup_available(channel)
     return EmbeddedSignupConfigOut(
         enabled=enabled,
-        config_id=settings.META_CONFIG_ID if enabled else None,
+        config_id=_signup_config_id(channel) if enabled else None,
         app_id=settings.META_APP_ID if enabled else None,
         graph_version=settings.META_GRAPH_VERSION,
     )
@@ -286,7 +314,7 @@ async def connect_whatsapp_embedded_signup(
     Only the way the credentials are obtained differs from connect_whatsapp —
     everything after that is the same upsert and webhook subscribe.
     """
-    check_embedded_signup_access()
+    check_signup_access(ChannelType.WHATSAPP.value)
 
     ok, data = await exchange_signup_code(request.code)
     access_token = data.get("access_token") if ok else None
@@ -364,7 +392,7 @@ async def connect_messenger(
         display_name=display_name,
     )
     if not await subscribe_app(request.page_id, request.page_access_token,
-                               subscribed_fields="messages,messaging_postbacks"):
+                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
         logger.warning(f"Page subscribe failed for {request.page_id}; webhook may need manual subscription")
     return to_account_out(db, account)
 
