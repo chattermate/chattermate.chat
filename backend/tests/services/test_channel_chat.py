@@ -389,3 +389,58 @@ async def test_channels_without_phone_keep_a_null_column(db, test_organization):
     cid = _get_or_create_customer(db, account, inbound, str(test_organization.id))
     customer = db.query(Customer).filter(Customer.id == _uuid.UUID(cid)).one()
     assert customer.phone is None
+
+
+@pytest.mark.asyncio
+async def test_outbound_context_reaches_the_agent(db, routed_account, use_test_db, test_ai_config, mock_sio):
+    """A reply to an outbound template is a fragment ("yes") — the agent gets
+    told what was sent, on every turn, via extra_context."""
+    from app.repositories.channels import ChannelConversationRepository
+
+    response = SimpleNamespace(message="ok", transfer_to_human=False,
+                               end_chat=False, request_lead_capture=False)
+    fake_agent = MagicMock()
+    fake_agent.get_response = AsyncMock(return_value=response)
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)) as create_async, \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock()):
+        # First inbound creates the conversation; stamp the outbound marker on
+        # it the way start_outbound_conversation does, then send the reply.
+        await process_channel_message(routed_account.id, make_inbound())
+        conversation = db.query(ChannelConversation).one()
+        ChannelConversationRepository(db).set_extra(conversation, {
+            **(conversation.extra or {}),
+            "outbound_template": "Hi Priya, your order A-12 shipped.",
+        })
+        await process_channel_message(routed_account.id, make_inbound(text="yes"))
+
+        extra = create_async.await_args.kwargs["extra_context"]
+        assert "Hi Priya, your order A-12 shipped." in extra
+        assert "started by your business" in extra
+
+
+@pytest.mark.asyncio
+async def test_ordinary_inbound_conversations_carry_no_outbound_context(db, routed_account, use_test_db, test_ai_config, mock_sio):
+    response = SimpleNamespace(message="ok", transfer_to_human=False,
+                               end_chat=False, request_lead_capture=False)
+    fake_agent = MagicMock()
+    fake_agent.get_response = AsyncMock(return_value=response)
+    fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+
+    with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)) as create_async, \
+         patch.object(channel_chat, "deliver_to_customer", AsyncMock()):
+        await process_channel_message(routed_account.id, make_inbound())
+
+    assert create_async.await_args.kwargs["extra_context"] is None
+
+
+def test_outbound_context_helper_quotes_the_template():
+    from app.services.channel_chat import _outbound_context
+    from types import SimpleNamespace as NS
+
+    assert _outbound_context(None) is None
+    assert _outbound_context(NS(extra=None)) is None
+    assert _outbound_context(NS(extra={})) is None
+    text = _outbound_context(NS(extra={"outbound_template": "Your code is 1234"}))
+    assert '"Your code is 1234"' in text

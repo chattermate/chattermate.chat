@@ -123,6 +123,7 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             db, account, ai_config, inbound,
             org_id=org_id, agent_id=str(agent_id),
             customer_id=customer_id, session_id=session_id,
+            conversation=conversation,
         )
         if response is None:
             # The agent hard-failed. Still send a reply so a typing indicator /
@@ -376,9 +377,29 @@ async def _within_message_limit(db: Session, org_id: str, ai_config) -> bool:
         return True
 
 
+def _outbound_context(conversation) -> Optional[str]:
+    """What the AI must know when a conversation began with OUR message.
+
+    A reply to an outbound template is a fragment — "yes", "how much?" —
+    that's meaningless without what was asked. agno's history only carries
+    turns it ran itself, and the outbound send never went through the agent,
+    so the template text is carried on the conversation row and injected as
+    instructions on every turn (see whatsapp_outbound.start_outbound_conversation).
+    """
+    template_text = ((conversation.extra or {}).get("outbound_template")
+                     if conversation is not None else None)
+    if not template_text:
+        return None
+    return (
+        "This conversation was started by your business: the customer was sent "
+        f"this WhatsApp message: \"{template_text}\". Read their messages as "
+        "replies to it, and don't greet them as if they contacted you first."
+    )
+
+
 async def _run_chat_agent(db: Session, account: ChannelAccount, ai_config,
                           inbound: InboundMessage, org_id: str, agent_id: str,
-                          customer_id: str, session_id: str):
+                          customer_id: str, session_id: str, conversation=None):
     """Run the AI agent for one turn. Workflow-enabled agents fall back to the
     plain agent on external channels (workflow forms/buttons are widget-only)."""
     chat_agent = await ChatAgent.create_async(
@@ -390,6 +411,7 @@ async def _run_chat_agent(db: Session, account: ChannelAccount, ai_config,
         customer_id=customer_id,
         session_id=session_id,
         channel=account.channel_type,
+        extra_context=_outbound_context(conversation),
     )
     try:
         return await chat_agent.get_response(
