@@ -129,4 +129,7 @@ def inbound(to: str, sender: str, text: str, message_id: str) -> InboundMessage:
         external_user_id=sender,
         external_message_id=message_id or "",
         text=text,
+        # The sender *is* the customer's number; providers vary on the leading
+        # '+' (Twilio sends it, Vonage doesn't) — normalize_phone accepts both.
+        profile={"phone": sender},
     )

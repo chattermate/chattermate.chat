@@ -327,3 +327,65 @@ async def test_enrich_customer_name_only_fetches_while_placeholder(db, account, 
     adapter.fetch_profile.reset_mock()
     await _enrich_customer_name(db, adapter, account, inbound, cid)
     adapter.fetch_profile.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_whatsapp_inbound_stores_the_phone(db, test_organization):
+    """The WhatsApp adapter declares profile['phone']; identity stores it."""
+    from app.services.channel_chat import _get_or_create_customer
+    from app.models.channels import ChannelAccount
+    from app.models.customer import Customer
+    from app.channels.base import InboundMessage
+    import uuid as _uuid
+
+    account = MagicMock(spec=ChannelAccount)
+    account.channel_type = "whatsapp"
+    inbound = InboundMessage(
+        external_account_id="PN1", external_conversation_id="916366602824",
+        external_user_id="916366602824", external_message_id="m1", text="hi",
+        profile={"name": "Priya", "phone": "+916366602824"})
+    cid = _get_or_create_customer(db, account, inbound, str(test_organization.id))
+    customer = db.query(Customer).filter(Customer.id == _uuid.UUID(cid)).one()
+    assert customer.phone == "+916366602824"
+    assert customer.email == "916366602824@whatsapp.channel"
+
+
+@pytest.mark.asyncio
+async def test_phone_unifies_one_human_across_channels(db, test_organization):
+    """A widget lead with a captured phone and a WhatsApp inbound from that
+    number resolve to ONE customer — the point of the phone identity key."""
+    from app.services.channel_chat import _get_or_create_customer
+    from app.models.channels import ChannelAccount
+    from app.repositories.customer import CustomerRepository
+    from app.channels.base import InboundMessage
+
+    widget_person = CustomerRepository(db).create_customer(
+        email="priya@example.com", organization_id=test_organization.id,
+        full_name="Priya", phone="+916366602824")
+
+    account = MagicMock(spec=ChannelAccount)
+    account.channel_type = "whatsapp"
+    inbound = InboundMessage(
+        external_account_id="PN1", external_conversation_id="916366602824",
+        external_user_id="916366602824", external_message_id="m2", text="hello",
+        profile={"phone": "+916366602824"})
+    cid = _get_or_create_customer(db, account, inbound, str(test_organization.id))
+    assert cid == str(widget_person.id)
+
+
+@pytest.mark.asyncio
+async def test_channels_without_phone_keep_a_null_column(db, test_organization):
+    from app.services.channel_chat import _get_or_create_customer
+    from app.models.channels import ChannelAccount
+    from app.models.customer import Customer
+    from app.channels.base import InboundMessage
+    import uuid as _uuid
+
+    account = MagicMock(spec=ChannelAccount)
+    account.channel_type = "messenger"
+    inbound = InboundMessage(
+        external_account_id="PG1", external_conversation_id="PSID9",
+        external_user_id="PSID9", external_message_id="m1", text="hi")
+    cid = _get_or_create_customer(db, account, inbound, str(test_organization.id))
+    customer = db.query(Customer).filter(Customer.id == _uuid.UUID(cid)).one()
+    assert customer.phone is None

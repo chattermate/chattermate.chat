@@ -32,6 +32,7 @@ from app.models.session_to_agent import SessionStatus
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.customer import CustomerRepository
+from app.utils.phone import normalize_msisdn
 from app.repositories.channels import (
     ChannelAccountRepository,
     ChannelConversationRepository,
@@ -204,6 +205,15 @@ def _handle_contact(db, conversation, interaction: ChannelInteraction) -> None:
     meta = dict(customer.meta_data or {})
     meta["phone"] = interaction.phone
     customer.meta_data = meta
+    # Also promote to the identity column (set-if-absent, conflict-guarded) so
+    # the person becomes phone-addressable; meta_data keeps the raw value for
+    # anything already reading it there. msisdn-lenient because the number is
+    # platform-relayed (Telegram sends it with or without '+'), and one commit
+    # for both writes — separate transactions left a crash window where the
+    # two stores disagreed.
+    phone = normalize_msisdn(interaction.phone)
+    if phone:
+        CustomerRepository(db).set_phone_if_absent(customer, phone)
     db.commit()
     logger.info(f"Stored shared phone for customer {conversation.customer_id}")
 
@@ -215,6 +225,11 @@ def _get_or_create_customer(db: Session, account: ChannelAccount,
     When the channel already gives us the customer's real email (e.g. the
     email channel), use it verbatim so the same person is unified across
     channels and the widget. Otherwise synthesize a stable per-channel address.
+
+    Phone is the second identity key: adapters that truthfully know the
+    customer's number (WhatsApp, SMS) declare it in profile['phone'], and the
+    repository resolves by phone before email — which is what unifies one human
+    across phone-bearing channels and outbound sends.
     """
     real_email = (inbound.profile or {}).get('email')
     real_name = (inbound.profile or {}).get('name')
@@ -227,6 +242,9 @@ def _get_or_create_customer(db: Session, account: ChannelAccount,
         email=channel_email,
         organization_id=uuid.UUID(org_id),
         full_name=real_name or placeholder,
+        # msisdn-lenient: adapters supply platform ids (wa_id, SMS sender),
+        # which are E.164-without-plus — trusted in a way typed digits aren't.
+        phone=normalize_msisdn((inbound.profile or {}).get('phone')),
     )
     # Upgrade an existing placeholder name once we've resolved the real one
     # (get_or_create doesn't update an existing customer's name).

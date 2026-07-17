@@ -62,7 +62,10 @@ class WhatsAppAdapter(MetaBaseAdapter):
                         external_user_id=str(wa_id),
                         external_message_id=str(message.get("id", "")),
                         text=text,
-                        profile={"name": name_by_wa_id.get(wa_id)},
+                        # wa_id is the customer's number in E.164-without-plus,
+                        # declared verbatim (like the SMS adapters) so the one
+                        # normalize_msisdn boundary owns all '+' handling.
+                        profile={"name": name_by_wa_id.get(wa_id), "phone": str(wa_id)},
                         timestamp=self._timestamp(message.get("timestamp")),
                     ))
         return messages

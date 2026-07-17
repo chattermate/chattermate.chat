@@ -194,3 +194,31 @@ def test_record_merges_into_existing_customer(db, test_agent, test_organization_
     db.refresh(anon)
     assert anon.merged_into_customer_id == existing.id
     assert anon.is_active is False
+
+
+def test_merge_moves_phone_to_the_survivor(db, test_agent, test_organization_id, config):
+    """Identifiers union on merge — and the phone MOVES rather than copies,
+    because two rows holding one phone would violate the (org, phone) unique
+    index at commit."""
+    from app.repositories.customer import CustomerRepository
+    from app.services.lead_capture import record_lead_capture
+
+    repo = CustomerRepository(db)
+    identified = repo.create_customer(
+        email="priya@example.com", organization_id=test_organization_id,
+        full_name="Priya")
+    anonymous = repo.create_customer(
+        email="916366602824@whatsapp.channel", organization_id=test_organization_id,
+        phone="+916366602824")
+
+    # The WhatsApp person tells the AI an email that already belongs to Priya.
+    record_lead_capture(
+        db, config, organization_id=test_organization_id, agent_id=test_agent.id,
+        customer_id=anonymous.id, session_id=None,
+        lead_data={"email": "priya@example.com"}, summary=None, consent=True)
+
+    db.refresh(identified)
+    db.refresh(anonymous)
+    assert anonymous.merged_into_customer_id == identified.id
+    assert identified.phone == "+916366602824"   # carried to the survivor
+    assert anonymous.phone is None               # moved, not copied

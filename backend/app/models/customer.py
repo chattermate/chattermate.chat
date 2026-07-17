@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, Enum as SQLEnum, func, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Index, JSON, Enum as SQLEnum, func, text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import enum
@@ -34,11 +34,25 @@ class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (
         UniqueConstraint('email', 'organization_id', name='uix_customer_email_org'),
+        # Phone is the second identity key: unique per org, but only where
+        # present (rows without a phone are the overwhelming majority and must
+        # never collide). Declared here — not only in the migration — so
+        # autogenerate never sees it as unknown and drops it, and so the
+        # sqlite test schema enforces the same uniqueness Postgres does
+        # (sqlite_where works, and both dialects treat NULLs as distinct).
+        Index('uix_customer_phone_org', 'organization_id', 'phone', unique=True,
+              postgresql_where=text('phone IS NOT NULL'),
+              sqlite_where=text('phone IS NOT NULL')),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, nullable=False)
     full_name = Column(String)
+    # Second identity key beside email, normalized E.164 with leading '+'
+    # (see app/utils/phone.py). Set by phone-bearing channels (WhatsApp, SMS,
+    # Telegram share-contact) and by lead capture; uniqueness via the partial
+    # index in __table_args__. Name is never an identity key.
+    phone = Column(String, nullable=True)
     # Arbitrary integrator-supplied fields (e.g. student_name, center_name) passed via
     # POST /generate-token's `custom_data` and surfaced to agents in the chat inbox.
     meta_data = Column(JSON, nullable=True)

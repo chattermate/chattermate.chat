@@ -226,3 +226,120 @@ def test_update_meta_data_nonexistent_customer(customer_repo):
     """Updating meta_data for a customer that doesn't exist returns None"""
     result = customer_repo.update_meta_data(uuid4(), {"a": "b"})
     assert result is None 
+
+class TestPhoneIdentity:
+    """customers.phone is the second identity key: phone-first resolution,
+    organic backfill, and the never-silently-merge conflict rule."""
+
+    def test_phone_lookup_beats_email_creation(self, customer_repo, test_organization_id):
+        existing = customer_repo.create_customer(
+            email="priya@example.com", organization_id=test_organization_id,
+            full_name="Priya", phone="+916366602824")
+
+        # Same human arrives via WhatsApp: synthesized email, same phone.
+        resolved = customer_repo.get_or_create_customer(
+            email="916366602824@whatsapp.channel",
+            organization_id=test_organization_id,
+            full_name="Whatsapp user 91636660",
+            phone="+916366602824")
+
+        assert resolved.id == existing.id
+        assert resolved.full_name == "Priya"          # nothing overwritten
+        assert resolved.email == "priya@example.com"  # no junk row minted
+
+    def test_backfills_phone_when_found_by_email(self, customer_repo, test_organization_id):
+        existing = customer_repo.create_customer(
+            email="916366602824@whatsapp.channel", organization_id=test_organization_id)
+        assert existing.phone is None
+
+        resolved = customer_repo.get_or_create_customer(
+            email="916366602824@whatsapp.channel",
+            organization_id=test_organization_id,
+            phone="+916366602824")
+
+        assert resolved.id == existing.id
+        assert resolved.phone == "+916366602824"
+
+    def test_creates_with_phone_when_nobody_matches(self, customer_repo, test_organization_id):
+        customer = customer_repo.get_or_create_customer(
+            email="447700900123@whatsapp.channel",
+            organization_id=test_organization_id,
+            phone="+447700900123")
+        assert customer.phone == "+447700900123"
+
+    def test_conflict_uses_phone_match_and_keeps_both_rows(self, customer_repo, test_organization_id, db):
+        """The Chatwoot trap: phone says A, email says B -> A wins the
+        conversation, nobody gets merged or overwritten."""
+        by_phone = customer_repo.create_customer(
+            email="a@example.com", organization_id=test_organization_id,
+            phone="+916366602824")
+        by_email = customer_repo.create_customer(
+            email="916366602824@whatsapp.channel", organization_id=test_organization_id)
+
+        resolved = customer_repo.get_or_create_customer(
+            email="916366602824@whatsapp.channel",
+            organization_id=test_organization_id,
+            phone="+916366602824")
+
+        assert resolved.id == by_phone.id
+        db.refresh(by_email)
+        assert by_email.merged_into_customer_id is None   # intact
+        assert by_email.phone is None                     # not clobbered
+
+    def test_without_phone_behaviour_is_unchanged(self, customer_repo, test_organization_id):
+        """Channels that declare no phone must take the exact old path."""
+        first = customer_repo.get_or_create_customer(
+            email="D7@telegram.channel", organization_id=test_organization_id,
+            full_name="Telegram user D7")
+        again = customer_repo.get_or_create_customer(
+            email="D7@telegram.channel", organization_id=test_organization_id)
+        assert again.id == first.id
+        assert again.phone is None
+
+
+class TestUpdateContactPhone:
+    """Set-if-absent with the same conflict-skip rule as email."""
+
+    def test_sets_phone_when_absent(self, customer_repo, test_organization_id):
+        customer = customer_repo.create_customer(
+            email="lead@example.com", organization_id=test_organization_id)
+        result = customer_repo.update_contact(customer.id, phone="+91 63666 02824")
+        assert result['phone_updated'] is True
+        assert customer_repo.get_by_id(customer.id).phone == "+916366602824"
+
+    def test_never_overwrites_an_existing_phone(self, customer_repo, test_organization_id):
+        customer = customer_repo.create_customer(
+            email="lead@example.com", organization_id=test_organization_id,
+            phone="+916366602824")
+        result = customer_repo.update_contact(customer.id, phone="+15550001111")
+        assert result['phone_updated'] is False
+        assert customer_repo.get_by_id(customer.id).phone == "+916366602824"
+
+    def test_skips_a_phone_owned_by_someone_else(self, customer_repo, test_organization_id):
+        customer_repo.create_customer(
+            email="owner@example.com", organization_id=test_organization_id,
+            phone="+916366602824")
+        other = customer_repo.create_customer(
+            email="other@example.com", organization_id=test_organization_id)
+
+        result = customer_repo.update_contact(other.id, phone="+916366602824")
+
+        assert result['phone_updated'] is False
+        assert customer_repo.get_by_id(other.id).phone is None
+
+    def test_skips_an_unresolvable_number_rather_than_guessing(self, customer_repo, test_organization_id):
+        customer = customer_repo.create_customer(
+            email="lead@example.com", organization_id=test_organization_id)
+        # Bare national digits: normalize_phone (strict) rejects them.
+        result = customer_repo.update_contact(customer.id, phone="6366602824")
+        assert result['phone_updated'] is False
+        assert customer_repo.get_by_id(customer.id).phone is None
+
+    def test_phone_update_composes_with_email_and_name(self, customer_repo, test_organization_id):
+        customer = customer_repo.create_customer(
+            email="1712345@noemail.com", organization_id=test_organization_id)
+        result = customer_repo.update_contact(
+            customer.id, email="real@example.com", full_name="Priya",
+            phone="+916366602824")
+        assert result == {'email_updated': True, 'name_updated': True,
+                          'phone_updated': True, 'email': 'real@example.com'}

@@ -129,6 +129,8 @@ class TestWhatsAppParse:
         assert m.external_message_id == "wamid.ABC"
         assert m.text == "hello whatsapp"
         assert m.profile["name"] == "Ada Lovelace"
+        # wa_id declared verbatim; the normalize_msisdn boundary adds the '+'
+        assert m.profile["phone"] == "447000000001"
         assert m.timestamp.tzinfo is not None
 
     def test_status_callback_yields_nothing(self):

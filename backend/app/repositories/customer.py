@@ -16,6 +16,7 @@ limitations under the License.
 
 from sqlalchemy.orm import Session
 from app.models.customer import Customer
+from app.utils.phone import normalize_phone
 from uuid import UUID
 from app.core.logger import get_logger
 
@@ -41,12 +42,32 @@ class CustomerRepository:
             logger.error(f"Error getting customer by email: {str(e)}")
             return None
 
+    def get_customer_by_phone(
+        self,
+        phone: str,
+        organization_id: UUID
+    ) -> Customer | None:
+        """Get existing customer by normalized E.164 phone and organization ID.
+
+        Callers must pass the output of normalize_phone — the column stores
+        only that shape, so an unnormalized value would silently never match.
+        """
+        try:
+            return self.db.query(Customer).filter(
+                Customer.phone == phone,
+                Customer.organization_id == organization_id
+            ).first()
+        except Exception as e:
+            logger.error(f"Error getting customer by phone: {str(e)}")
+            return None
+
     def create_customer(
         self,
         email: str,
         organization_id: UUID,
         full_name: str = None,
-        meta_data: dict = None
+        meta_data: dict = None,
+        phone: str = None
     ) -> Customer:
         """Create a new customer"""
         try:
@@ -54,7 +75,10 @@ class CustomerRepository:
                 email=email,
                 full_name=full_name,
                 meta_data=meta_data,
-                organization_id=organization_id
+                organization_id=organization_id,
+                # Defensive normalize: the identity column only ever holds the
+                # canonical E.164 shape, whoever the caller is.
+                phone=normalize_phone(phone)
             )
             self.db.add(customer)
             self.db.commit()
@@ -89,20 +113,80 @@ class CustomerRepository:
             self.db.rollback()
             return None
 
+    def set_phone_if_absent(self, customer: Customer, phone: str) -> bool:
+        """Stage `phone` on a customer that has none, unless another customer
+        in the org already owns it (then skip-and-log — never reassign or
+        merge on a phone collision; that judgement belongs to a human).
+
+        The single owner of the set-phone policy: get_or_create_customer's
+        backfill and update_contact both go through here, so the conflict rule
+        cannot drift between them. Stages only — the caller owns the commit.
+        """
+        if customer.phone:
+            return False
+        existing = self.get_customer_by_phone(phone, customer.organization_id)
+        if existing and existing.id != customer.id:
+            logger.warning(
+                f"Phone {phone} already belongs to customer {existing.id} in org "
+                f"{customer.organization_id}; not setting it on {customer.id}"
+            )
+            return False
+        customer.phone = phone
+        return True
+
     def get_or_create_customer(
         self,
         email: str,
         organization_id: UUID,
-        full_name: str = None
+        full_name: str = None,
+        phone: str = None
     ) -> Customer:
-        """Get existing customer or create new one"""
+        """Resolve a person by phone first, then email; create if neither hits.
+
+        Phone outranks email because where both exist the phone came verified
+        from the channel (Meta/the SMS provider), while the email may be a
+        synthesized per-channel placeholder. When the two match *different*
+        customers, no merging happens here — auto-merge on a soft signal is how
+        Chatwoot corrupted contacts (their #2811); the phone match wins the
+        conversation and both records stay intact for a human.
+
+        A customer found by email with no stored phone gets it backfilled, so
+        pre-existing channel contacts become phone-addressable on their next
+        message without any data migration.
+        """
+        # Defensive: the column must only ever hold the canonical shape, so an
+        # unnormalized value from a future caller degrades to no-phone rather
+        # than splitting one person into two spellings. Idempotent for the
+        # already-normalized values today's callers pass.
+        phone = normalize_phone(phone)
+        by_phone = self.get_customer_by_phone(phone, organization_id) if phone else None
+
+        if by_phone is not None:
+            # The email lookup is diagnostic-only here, so skip it on the hot
+            # path (every inbound message) when the emails trivially agree.
+            if by_phone.email != email:
+                by_email = self.get_customer_by_email(email, organization_id)
+                if by_email is not None and by_email.id != by_phone.id:
+                    logger.warning(
+                        f"Identity conflict in org {organization_id}: phone matches "
+                        f"customer {by_phone.id} but email {email} matches "
+                        f"{by_email.id}; using the phone match and leaving both "
+                        f"records for manual review"
+                    )
+            return by_phone
+
         customer = self.get_customer_by_email(email, organization_id)
-
         if not customer:
-            customer = self.create_customer(email, organization_id, full_name)
-        else:
-            logger.info(f"Customer already exists: {customer.id}")
+            return self.create_customer(email, organization_id, full_name, phone=phone)
 
+        if phone and self.set_phone_if_absent(customer, phone):
+            try:
+                self.db.commit()
+            except Exception as e:
+                # The partial unique index can race a concurrent insert; the
+                # customer is still the right one, just without the backfill.
+                self.db.rollback()
+                logger.warning(f"Could not backfill phone for customer {customer.id}: {e}")
         return customer
 
     def get_by_id(self, customer_id: UUID) -> Customer | None:
@@ -132,7 +216,8 @@ class CustomerRepository:
         self,
         customer_id: UUID,
         email: str = None,
-        full_name: str = None
+        full_name: str = None,
+        phone: str = None
     ) -> dict:
         """Update an existing customer's contact details (used by human-handoff capture).
 
@@ -141,10 +226,16 @@ class CustomerRepository:
           belongs to a different customer, the email update is skipped (logged) but the name
           can still be updated. A real existing email is never overwritten.
         - Sets ``full_name`` when a non-empty value is supplied.
+        - Sets ``phone`` (normalized E.164) only when the customer has none — automatic
+          capture paths must not overwrite a channel-verified number — and skips it when the
+          phone belongs to another customer in the org (same rule as email). Correcting an
+          existing phone is an explicit human act, not this method's job.
 
-        Returns ``{'email_updated': bool, 'name_updated': bool, 'email': str|None}``.
+        Returns ``{'email_updated': bool, 'name_updated': bool, 'phone_updated': bool,
+        'email': str|None}``.
         """
-        result = {'email_updated': False, 'name_updated': False, 'email': None}
+        result = {'email_updated': False, 'name_updated': False,
+                  'phone_updated': False, 'email': None}
         try:
             customer = self.get_by_id(customer_id)
             if not customer:
@@ -171,7 +262,17 @@ class CustomerRepository:
                     customer.full_name = full_name
                     result['name_updated'] = True
 
-            if result['email_updated'] or result['name_updated']:
+            if phone and not customer.phone:
+                normalized = normalize_phone(phone)
+                if not normalized:
+                    logger.warning(
+                        f"Captured phone {phone!r} for customer {customer_id} is not a "
+                        f"resolvable E.164 number; skipping"
+                    )
+                elif self.set_phone_if_absent(customer, normalized):
+                    result['phone_updated'] = True
+
+            if result['email_updated'] or result['name_updated'] or result['phone_updated']:
                 self.db.commit()
                 self.db.refresh(customer)
 

@@ -134,7 +134,14 @@ def record_lead_capture(
 
         # Update the customer's contact details so the People page / inbox show a real
         # email/name (reuses the handoff-capture logic + unique-constraint handling).
-        CustomerRepository(db).update_contact(target_customer_id, email=email or None, full_name=name)
+        # Phone included: an AI-captured number makes a widget lead WhatsApp-addressable.
+        # Deliberately strict: a captured number without a '+' country code is a
+        # national number we cannot resolve to one person worldwide, so it is
+        # dropped (logged) rather than guessed at — a wrong-country identity key
+        # is worse than an unset one.
+        CustomerRepository(db).update_contact(
+            target_customer_id, email=email or None, full_name=name,
+            phone=(field_values or {}).get('phone'))
 
         # Promote Visitor -> Lead; never downgrade an existing Customer.
         _promote_to_lead(db, target_customer_id, session_id, page_url=page_url, channel=channel)
@@ -172,6 +179,17 @@ def _merge_customer(db: Session, source_id, target) -> None:
     # Carry over a name the target lacks; keep the row for token resolution.
     if not (target.full_name or "").strip() and (source.full_name or "").strip():
         target.full_name = source.full_name
+    # Identifiers union on merge: the phone follows the surviving person. The
+    # source is cleared and FLUSHED before the target is set — the unique index
+    # on (organization_id, phone) is checked per-UPDATE, and SQLAlchemy orders
+    # same-mapper UPDATEs by primary key (random UUIDs), so without the flush
+    # the target could gain the phone while the source still holds it in the
+    # database, failing the whole merge intermittently.
+    if source.phone and not target.phone:
+        moved_phone = source.phone
+        source.phone = None
+        db.flush()
+        target.phone = moved_phone
     source.merged_into_customer_id = target.id
     source.is_active = False
 
