@@ -182,15 +182,15 @@ onMounted(async () => {
         <h2>{{ chat.customer.full_name || chat.customer.email }}</h2>
         <ChannelBadge :channel="chat.channel" />
         <div v-if="handledByAI" class="chat-closed-status">
-          <i class="fas fa-lock"></i>
+          <font-awesome-icon icon="fa-solid fa-lock" />
           Handled by AI
         </div>
         <div v-if="showTakenOverStatus" class="taken-over-status">
-          <i class="fas fa-user-clock"></i>
+          <font-awesome-icon icon="fa-solid fa-user-clock" />
           Taken over by {{ chat.user_name || 'another agent' }}
         </div>
         <div v-if="isChatClosed" class="chat-closed-status">
-          <i class="fas fa-lock"></i>
+          <font-awesome-icon icon="fa-solid fa-lock" />
           Chat closed
         </div>
       </div>
@@ -216,7 +216,7 @@ onMounted(async () => {
           class="create-ticket-btn"
           @click="handleCreateTicket"
         >
-          <i class="fas fa-ticket-alt"></i>
+          <font-awesome-icon icon="fa-solid fa-ticket-alt" />
           Create Ticket
         </button>
       </div>
@@ -289,7 +289,7 @@ onMounted(async () => {
                             target="_blank"
                             class="attachment-link"
                           >
-                            <i class="fas fa-download"></i>
+                            <font-awesome-icon icon="fa-solid fa-download" />
                             {{ attachment.filename }}
                             <span class="attachment-size">({{ formatFileSize(attachment.file_size) }})</span>
                           </a>
@@ -303,7 +303,7 @@ onMounted(async () => {
                         target="_blank"
                         class="attachment-link"
                       >
-                        <i class="fas fa-paperclip"></i>
+                        <font-awesome-icon icon="fa-solid fa-paperclip" />
                         {{ attachment.filename }}
                         <span class="attachment-size">({{ formatFileSize(attachment.file_size) }})</span>
                       </a>
@@ -383,13 +383,13 @@ onMounted(async () => {
 
     <footer v-else-if="handledByAI" class="chat-closed-footer">
       <div class="chat-closed-message">
-        <i class="fas fa-lock"></i>
+        <font-awesome-icon icon="fa-solid fa-lock" />
         This chat is being handled by AI
       </div>
     </footer>
     <footer v-else class="chat-closed-footer">
       <div class="chat-closed-message">
-        <i class="fas fa-lock"></i>
+        <font-awesome-icon icon="fa-solid fa-lock" />
         This chat has been closed
       </div>
     </footer>
@@ -708,7 +708,7 @@ onMounted(async () => {
   margin-top: 4px;
 }
 
-.taken-over-status i {
+.taken-over-status svg {
   font-size: 14px;
 }
 
@@ -732,7 +732,7 @@ onMounted(async () => {
   margin-top: 4px;
 }
 
-.chat-closed-status i {
+.chat-closed-status svg {
   font-size: 14px;
 }
 
@@ -754,7 +754,7 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.chat-closed-message i {
+.chat-closed-message svg {
   font-size: 16px;
 }
 
@@ -974,7 +974,7 @@ onMounted(async () => {
   border-color: var(--primary-color);
 }
 
-.attachment-link i {
+.attachment-link svg {
   font-size: 14px;
   color: var(--text-muted);
 }
@@ -996,7 +996,7 @@ onMounted(async () => {
   border-color: color-mix(in srgb, var(--on-accent) 32%, transparent);
 }
 
-.message.agent .attachment-link i,
+.message.agent .attachment-link svg,
 .message.agent .attachment-size {
   color: var(--on-accent);
 }

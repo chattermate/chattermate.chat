@@ -66,8 +66,7 @@ limitations under the License.
                 <td>
                   <div class="rating-display">
                     <span class="stars">
-                      <i v-for="n in 5" :key="n" class="fas fa-star" 
-                         :class="{ filled: n <= Math.round(agent.avg_rating) }"></i>
+                      <font-awesome-icon v-for="n in 5" :key="n" :class="{ filled: n <= Math.round(agent.avg_rating) }" icon="fa-solid fa-star" />
                     </span>
                     <span class="rating-value">{{ agent.avg_rating.toFixed(1) }}</span>
                   </div>
@@ -103,8 +102,7 @@ limitations under the License.
                 <td>
                   <div class="rating-display">
                     <span class="stars">
-                      <i v-for="n in 5" :key="n" class="fas fa-star" 
-                         :class="{ filled: n <= Math.round(agent.avg_rating) }"></i>
+                      <font-awesome-icon v-for="n in 5" :key="n" :class="{ filled: n <= Math.round(agent.avg_rating) }" icon="fa-solid fa-star" />
                     </span>
                     <span class="rating-value">{{ agent.avg_rating.toFixed(1) }}</span>
                   </div>
@@ -265,12 +263,12 @@ onMounted(() => {
   gap: 2px;
 }
 
-.stars i {
+.stars svg {
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
 
-.stars i.filled {
+.stars svg.filled {
   color: #FFD700;
 }
 
