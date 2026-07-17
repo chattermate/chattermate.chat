@@ -15,12 +15,15 @@ limitations under the License.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, desc, exists
+import re
+
+from sqlalchemy import and_, func, or_, desc, exists
 from typing import Optional, Tuple, List
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 
 from app.repositories.customer import CustomerRepository
+from app.utils.phone import normalize_phone
 from app.models.customer import Customer, LeadStage
 from app.models.chat_history import ChatHistory
 from app.models.lead_capture import LeadCaptureResponse
@@ -75,9 +78,32 @@ class PeopleRepository:
             return name, email, False
         return customer.full_name, None, True
 
+    # A person is IDENTIFIED when something could actually reach or recognize
+    # them: a real email (not the @noemail.com widget placeholder, not a
+    # synthesized {id}@{channel}.channel address), a phone, or a qualifying
+    # lead capture. Deliberately NOT name — name is never an identity key.
+    _REAL_EMAIL = and_(Customer.email.notilike("%@noemail.com"),
+                       Customer.email.notilike("%.channel"))
+
+    def _identified(self, qualified_cid):
+        return or_(self._REAL_EMAIL, Customer.phone.isnot(None),
+                   qualified_cid.isnot(None))
+
+    @staticmethod
+    def _search_clauses(search: str):
+        """Name/email substring match, plus phone when the term looks like a
+        number — matching on digits so "+91 63666" and "9163666" both hit."""
+        term = search.strip()
+        like = f"%{term}%"
+        clauses = [Customer.full_name.ilike(like), Customer.email.ilike(like)]
+        digits = re.sub(r"[\s\-().]", "", term)
+        if re.fullmatch(r"\+?\d{3,}", digits):
+            clauses.append(Customer.phone.like(f"%{digits.lstrip('+')}%"))
+        return or_(*clauses)
+
     def list_people(
         self, org_id: UUID, stage: Optional[str] = None, search: Optional[str] = None,
-        page: int = 1, page_size: int = 20,
+        page: int = 1, page_size: int = 20, view: str = "identified",
     ) -> Tuple[List[dict], int]:
         # Latest activity per customer (one aggregate row per customer — no N+1).
         last_activity_sq = (
@@ -115,14 +141,21 @@ class PeopleRepository:
             .filter(last_activity_sq.c.cid.isnot(None))
         )
 
+        # Identity split: the directory shows identified people; anonymous
+        # browser sessions are a funnel signal behind an explicit view, not
+        # the page (prod data: 5,873 of one org's 5,876 rows were anonymous).
+        if view == "anonymous":
+            q = q.filter(~self._identified(qualified_sq.c.cid))
+        else:
+            q = q.filter(self._identified(qualified_sq.c.cid))
+
         if stage and stage != "all":
             try:
                 q = q.filter(Customer.lead_stage == LeadStage(stage))
             except ValueError:
                 pass  # unknown stage → no filter
         if search:
-            like = f"%{search.strip()}%"
-            q = q.filter(or_(Customer.full_name.ilike(like), Customer.email.ilike(like)))
+            q = q.filter(self._search_clauses(search))
 
         total = q.count()
         rows = (
@@ -140,6 +173,7 @@ class PeopleRepository:
                 "id": customer.id,
                 "name": name,
                 "email": email,
+                "phone": customer.phone,
                 "is_anonymous": anon,
                 "lead_stage": customer.lead_stage,
                 "qualified": qcid is not None,
@@ -158,8 +192,18 @@ class PeopleRepository:
         organic = Customer.is_authenticated.is_(False)
         # Engaged = actually chatted (has chat history) — excludes empty widget-loads.
         engaged = exists().where(ChatHistory.customer_id == Customer.id)
+        # "Identified" for stats mirrors list_people's rule; qualified capture
+        # is expressed as an EXISTS here rather than the list's join.
+        has_capture = exists().where(and_(
+            LeadCaptureResponse.customer_id == Customer.id,
+            LeadCaptureResponse.qualified.is_(True)))
+        identified = or_(self._REAL_EMAIL, Customer.phone.isnot(None), has_capture)
         total = self.db.query(func.count(Customer.id)).filter(
-            Customer.organization_id == org_id, not_merged, organic, engaged).scalar() or 0
+            Customer.organization_id == org_id, not_merged, organic, engaged,
+            identified).scalar() or 0
+        anonymous = self.db.query(func.count(Customer.id)).filter(
+            Customer.organization_id == org_id, not_merged, organic, engaged,
+            ~identified).scalar() or 0
         new_leads = self.db.query(func.count(Customer.id)).filter(
             Customer.organization_id == org_id,
             not_merged, organic,
@@ -173,6 +217,7 @@ class PeopleRepository:
         ).scalar() or 0
         return {
             "total_people": total,
+            "anonymous": anonymous,
             "new_leads_7d": new_leads,
             "customers": customers,
             "synced_to_crm": 0,
@@ -220,6 +265,8 @@ class PeopleRepository:
             "id": customer.id,
             "name": name,
             "email": email,
+            "phone": customer.phone,
+            "identified": self.is_identified(customer, qualified),
             "is_anonymous": anon,
             "lead_stage": customer.lead_stage,
             "qualified": qualified,
@@ -267,6 +314,53 @@ class PeopleRepository:
                 "created_at": s.assigned_at,
             })
         return out
+
+    @staticmethod
+    def is_identified(customer: Customer, qualified: bool = False) -> bool:
+        """Python-side twin of the SQL identity rule, for single records."""
+        email = customer.email or ""
+        real_email = "@noemail.com" not in email and not email.endswith(".channel")
+        return bool(real_email or customer.phone or qualified)
+
+    def _has_qualified_capture(self, customer_id: UUID) -> bool:
+        return self.db.query(
+            exists().where(and_(LeadCaptureResponse.customer_id == customer_id,
+                                LeadCaptureResponse.qualified.is_(True)))
+        ).scalar()
+
+    def update_person(self, org_id: UUID, customer_id: UUID,
+                      full_name: Optional[str] = None,
+                      phone: Optional[str] = None) -> Tuple[Optional[Customer], Optional[str]]:
+        """Explicit human edit of a person's name/phone from the drawer.
+
+        Unlike the automatic capture paths (set-if-absent), a human may
+        CORRECT a wrong phone — overwrite is allowed, clearing via "" too.
+        Returns (customer, error): error is a human-readable refusal (bad
+        format / number belongs to someone else), customer is None only when
+        the record doesn't exist.
+        """
+        customer = self.get_customer(org_id, customer_id)
+        if not customer:
+            return None, None
+
+        if phone is not None:
+            if phone.strip() == "":
+                customer.phone = None
+            else:
+                normalized = normalize_phone(phone)
+                if not normalized:
+                    return customer, "Enter the number in international format, e.g. +91 63666 02824"
+                other = CustomerRepository(self.db).get_customer_by_phone(normalized, org_id)
+                if other and other.id != customer.id:
+                    return customer, "That number already belongs to another person"
+                customer.phone = normalized
+
+        if full_name is not None and full_name.strip():
+            customer.full_name = full_name.strip()
+
+        self.db.commit()
+        self.db.refresh(customer)
+        return customer, None
 
     def mark_customer(self, org_id: UUID, customer_id: UUID) -> Optional[Customer]:
         customer = self.get_customer(org_id, customer_id)

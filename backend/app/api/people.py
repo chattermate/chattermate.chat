@@ -25,7 +25,7 @@ from app.core.auth import get_current_user
 from app.models.user import User
 from app.repositories.people import PeopleRepository
 from app.models.schemas.people import (
-    PeopleListResponse, PeopleStats, PersonDetail, PersonListItem,
+    PeopleListResponse, PeopleStats, PersonDetail, PersonListItem, PersonUpdateRequest,
 )
 
 # Enterprise gating — People is part of Lead Management, a Pro-plan feature where
@@ -65,13 +65,19 @@ async def list_people(
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    view: str = Query("identified", pattern="^(identified|anonymous)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Paginated, filterable list of everyone the org's agents have touched."""
+    """Paginated, filterable list of the org's people.
+
+    The default view is identified people (real email, phone, or a qualifying
+    capture); anonymous browser sessions live behind view=anonymous — they are
+    a lead-capture funnel signal, not directory content."""
     _require_people_access(current_user, db)
     items, total = PeopleRepository(db).list_people(
-        current_user.organization_id, stage=stage, search=search, page=page, page_size=page_size,
+        current_user.organization_id, stage=stage, search=search, page=page,
+        page_size=page_size, view=view,
     )
     return PeopleListResponse(
         items=[PersonListItem(**i) for i in items],
@@ -112,8 +118,39 @@ async def mark_as_customer(
     """Manually promote a person to the Customer stage (phase 1: no automated signal)."""
     _require_people_access(current_user, db)
     repo = PeopleRepository(db)
-    customer = repo.mark_customer(current_user.organization_id, customer_id)
+    customer = repo.get_customer(current_user.organization_id, customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Person not found")
+    # An anonymous browser session cannot BE a customer — there is no one to
+    # recognize. Identify them first (the drawer's edit adds a phone/name).
+    if not repo.is_identified(customer, repo._has_qualified_capture(customer.id)):
+        raise HTTPException(status_code=400,
+                            detail="Add an email or phone first — this person is anonymous")
+    repo.mark_customer(current_user.organization_id, customer_id)
     detail = repo.get_detail(current_user.organization_id, customer_id)
+    return PersonDetail(**detail)
+
+
+@router.patch("/{customer_id}", response_model=PersonDetail)
+async def update_person(
+    customer_id: UUID,
+    request: PersonUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Explicit human edit of a person's name/phone — the identification tool.
+
+    This is the one path allowed to CORRECT a phone (the automatic capture
+    paths are set-if-absent): a mistyped outbound number must be fixable."""
+    _require_people_access(current_user, db)
+    repo = PeopleRepository(db)
+    customer, error = repo.update_person(
+        current_user.organization_id, customer_id,
+        full_name=request.full_name, phone=request.phone,
+    )
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    detail = repo.get_detail(current_user.organization_id, customer.id)
     return PersonDetail(**detail)

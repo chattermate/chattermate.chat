@@ -20,6 +20,7 @@ export interface PersonListItem {
   id: string
   name?: string | null
   email?: string | null
+  phone?: string | null
   is_anonymous: boolean
   lead_stage: LeadStage
   qualified: boolean
@@ -38,6 +39,8 @@ export interface PeopleListResponse {
 
 export interface PeopleStats {
   total_people: number
+  /** Engaged-but-unidentified sessions — the count behind the Anonymous tab */
+  anonymous: number
   new_leads_7d: number
   customers: number
   synced_to_crm: number
@@ -60,6 +63,9 @@ export interface PersonDetail {
   id: string
   name?: string | null
   email?: string | null
+  phone?: string | null
+  /** Real email, phone, or qualifying capture — gates person actions */
+  identified: boolean
   is_anonymous: boolean
   lead_stage: LeadStage
   qualified: boolean

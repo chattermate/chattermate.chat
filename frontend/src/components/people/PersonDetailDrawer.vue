@@ -26,6 +26,38 @@ const person = ref<PersonDetail | null>(null)
 const loading = ref(true)
 const marking = ref(false)
 
+// Inline contact edit — the identification tool: adding a phone/name is what
+// turns an anonymous session into a person (and unlocks the actions below).
+const editing = ref(false)
+const saving = ref(false)
+const editName = ref('')
+const editPhone = ref('')
+
+function startEdit() {
+  editName.value = person.value?.name || ''
+  editPhone.value = person.value?.phone || ''
+  editing.value = true
+}
+
+async function saveEdit() {
+  saving.value = true
+  try {
+    person.value = await peopleService.updatePerson(props.customerId, {
+      full_name: editName.value.trim() || undefined,
+      // "" deliberately passes through: it clears a wrong number.
+      phone: editPhone.value.trim(),
+    })
+    editing.value = false
+    emit('updated')
+  } catch (error: any) {
+    toast.error('Could not save', {
+      description: error?.response?.data?.detail || 'Please try again',
+    })
+  } finally {
+    saving.value = false
+  }
+}
+
 const attrEntries = computed(() => Object.entries(person.value?.captured_attributes || {}))
 
 async function load() {
@@ -41,8 +73,10 @@ async function markCustomer() {
     person.value = await peopleService.markAsCustomer(props.customerId)
     toast.success('Marked as customer')
     emit('updated', 'customer')
-  } catch {
-    toast.error('Failed to mark as customer')
+  } catch (error: any) {
+    toast.error('Failed to mark as customer', {
+      description: error?.response?.data?.detail || undefined,
+    })
   } finally {
     marking.value = false
   }
@@ -63,7 +97,10 @@ onMounted(load)
       <div class="pdd-head">
         <div class="pdd-head-main" v-if="person">
           <div class="pdd-name">{{ person.name || (person.is_anonymous ? 'Anonymous visitor' : (person.email || '—')) }}</div>
-          <div class="pdd-email">{{ person.is_anonymous ? 'anonymous' : (person.email || '') }}</div>
+          <div class="pdd-email">
+            {{ person.is_anonymous ? 'anonymous' : (person.email || '') }}
+            <span v-if="person.phone" class="pdd-phone">{{ person.phone }}</span>
+          </div>
         </div>
         <button class="pdd-close" @click="emit('close')">✕</button>
       </div>
@@ -82,9 +119,43 @@ onMounted(load)
           <button class="pdd-sync-btn" disabled title="Coming soon">Sync now</button>
         </div>
 
-        <button v-if="person.lead_stage !== 'customer'" class="pdd-mark" :disabled="marking" @click="markCustomer">
+        <button
+          v-if="person.lead_stage !== 'customer'"
+          class="pdd-mark"
+          :disabled="marking || !person.identified"
+          :title="person.identified ? '' : 'Add an email or phone first — this person is anonymous'"
+          @click="markCustomer"
+        >
           {{ marking ? 'Marking…' : 'Mark as customer' }}
         </button>
+        <p v-if="!person.identified" class="pdd-identify-hint">
+          Anonymous visitor — add a name or phone below to identify them.
+        </p>
+
+        <!-- Contact edit: the one place a wrong phone can be corrected -->
+        <div class="pdd-section-title">
+          CONTACT
+          <button v-if="!editing" type="button" class="pdd-edit-link" @click="startEdit">Edit</button>
+        </div>
+        <div v-if="editing" class="pdd-edit">
+          <label class="pdd-edit-field">
+            <span>Name</span>
+            <input v-model="editName" placeholder="Priya" autocomplete="off" />
+          </label>
+          <label class="pdd-edit-field">
+            <span>Phone</span>
+            <input v-model="editPhone" placeholder="+91 63666 02824" autocomplete="off" />
+          </label>
+          <div class="pdd-edit-actions">
+            <button type="button" class="pdd-edit-btn" @click="editing = false">Cancel</button>
+            <button type="button" class="pdd-edit-btn primary" :disabled="saving" @click="saveEdit">
+              {{ saving ? 'Saving…' : 'Save' }}
+            </button>
+          </div>
+        </div>
+        <div v-else class="pdd-attrs">
+          <div class="pdd-attr"><span class="pdd-attr-k">Phone</span><span class="pdd-attr-v">{{ person.phone || '—' }}</span></div>
+        </div>
 
         <!-- AI qualification summary -->
         <template v-if="person.summary">
@@ -150,6 +221,16 @@ onMounted(load)
 .pdd-sync-btn { padding: 7px 14px; border-radius: 9px; border: 1px solid var(--border-color); background: transparent; font-size: 13px; opacity: .5; cursor: default; }
 .pdd-mark { width: 100%; padding: 10px; border-radius: 10px; border: none; background: var(--accent-solid); color: var(--on-accent-solid); font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 22px; }
 .pdd-mark:disabled { opacity: .6; cursor: default; }
+.pdd-identify-hint { font-size: 12px; color: var(--muted); margin: -14px 0 18px; }
+.pdd-phone { margin-left: 8px; font-variant-numeric: tabular-nums; }
+.pdd-edit-link { margin-left: auto; border: none; background: none; color: var(--c-info); font-size: 11px; letter-spacing: normal; text-transform: none; cursor: pointer; padding: 0; }
+.pdd-edit { background: var(--o05); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.pdd-edit-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.pdd-edit-field input { padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; }
+.pdd-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.pdd-edit-btn { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; font-size: 12.5px; cursor: pointer; color: var(--text); }
+.pdd-edit-btn.primary { background: var(--accent-solid); color: var(--on-accent-solid); border-color: transparent; }
+.pdd-edit-btn:disabled { opacity: .6; cursor: default; }
 .pdd-section-title { font-size: 10.5px; letter-spacing: .07em; color: var(--muted); margin: 18px 0 12px; display: flex; align-items: center; gap: 8px; }
 .pdd-summary { background: var(--purple-bg); border: 1px solid var(--purple-border, var(--o12)); border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.55; color: var(--text2); }
 .pdd-count { font-weight: 600; }
