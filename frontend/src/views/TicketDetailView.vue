@@ -27,6 +27,7 @@ import TicketActivityFeed from '@/components/tickets/TicketActivityFeed.vue'
 import TicketSidePanel from '@/components/tickets/TicketSidePanel.vue'
 import TicketInvestigationPanel from '@/components/tickets/TicketInvestigationPanel.vue'
 import TicketRcaDoc from '@/components/tickets/TicketRcaDoc.vue'
+import TicketApprovalBanner from '@/components/tickets/TicketApprovalBanner.vue'
 import { permissionChecks } from '@/utils/permissions'
 import type { TicketPriority, TicketStatus } from '@/types/ticket'
 
@@ -38,10 +39,25 @@ const {
   detail, investigation, ticket, activities, hasActiveRun, isLoading, isSavingComment,
   error, setStatus, setPriority, setSeverity, setTitle, setDescription,
   setAssignee, setCustomer, addComment, resolve, reopen, investigate,
-  saveRcaDraft, sendRcaToCustomer,
+  saveRcaDraft, sendRcaToCustomer, approveProposal, rejectProposal,
 } = useTicketDetail(ticketId)
 
 const canManage = permissionChecks.canManageTickets()
+const canApprove = permissionChecks.canApproveTicketActions()
+
+// The banner shows a pending proposal always; a decided one only while the
+// ticket still reflects that decision (approved → resolved states).
+const bannerProposal = computed(() => {
+  const proposal = investigation.value?.proposal
+  if (!proposal) return null
+  if (proposal.status === 'pending') return proposal
+  if (proposal.status === 'approved' &&
+      ['resolved', 'resolved_pending_confirmation', 'closed'].includes(ticket.value?.status || '')) {
+    return proposal
+  }
+  if (proposal.status === 'rejected' && !hasActiveRun.value) return proposal
+  return null
+})
 const titleDraft = ref<string | null>(null)
 const showResolvePanel = ref(false)
 const resolveOutcome = ref('fixed')
@@ -204,6 +220,16 @@ async function submitResolve() {
             </div>
           </div>
         </div>
+
+        <!-- L2 APPROVAL BANNER — pinned above everything else -->
+        <TicketApprovalBanner
+          v-if="bannerProposal"
+          :proposal="bannerProposal"
+          :hypotheses="investigation?.hypotheses || []"
+          :can-approve="canApprove"
+          @approve="approveProposal"
+          @reject="(reason, reinvestigate) => rejectProposal(reason, reinvestigate)"
+        />
 
         <div v-if="hasActiveRun" class="run-banner">
           <span class="run-dot"></span>

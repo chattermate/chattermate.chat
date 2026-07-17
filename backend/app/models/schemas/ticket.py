@@ -193,6 +193,27 @@ class RCADocumentOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class ProposalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    run_id: Optional[UUID] = None
+    summary: str
+    customer_message: Optional[str] = None
+    confidence: Optional[float] = None
+    status: str
+    decided_by_user_id: Optional[UUID] = None
+    decided_by_name: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    reject_reason: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class ProposalRejectRequest(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=MAX_COMMENT_LENGTH)
+    # Re-enqueue a refined investigation with the reason as context.
+    reinvestigate: bool = False
+
+
 class InvestigationDetailResponse(BaseModel):
     """Glass-box payload for the ticket detail page: the (latest or requested)
     investigation run with its hypotheses, evidence events and RCA document."""
@@ -200,6 +221,8 @@ class InvestigationDetailResponse(BaseModel):
     hypotheses: List[HypothesisOut] = []
     events: List[InvestigationEventOut] = []
     rca: Optional[RCADocumentOut] = None
+    # Latest proposal (any status) — drives the approval banner.
+    proposal: Optional[ProposalOut] = None
 
 
 class RcaUpdate(BaseModel):
@@ -318,6 +341,8 @@ class TicketSettingsOut(BaseModel):
     jira_escalation_priority: Optional[str] = None
     investigation_mcp_tool_ids: Optional[List[int]] = None
     alert_webhook_enabled: bool
+    # Only exposed to settings managers; forms the intake URL path.
+    alert_webhook_secret: Optional[str] = None
     max_tool_calls_per_run: int
     max_runs_per_ticket: int
 

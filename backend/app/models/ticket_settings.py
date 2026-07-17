@@ -83,9 +83,11 @@ class OrganizationTicketSettings(Base):
     # deliberately separate from the chat-facing MCPToolToAgent m2m so
     # observability connectors are never handed to the customer-facing agent.
     investigation_mcp_tool_ids = Column(JSON, nullable=True)
-    # Alert-webhook intake (Grafana/Datadog/CloudWatch alerts auto-open
-    # tickets). UI toggle ships now; the intake endpoint is roadmap.
+    # Alert-webhook intake: Grafana/Datadog/CloudWatch alerts auto-open
+    # tickets via POST /tickets/webhooks/alerts/{org_id}/{secret}.
     alert_webhook_enabled = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    # URL-path token authenticating alert posts; rotated by re-enabling.
+    alert_webhook_secret = Column(String(64), nullable=True)
 
     # Investigation budgets.
     max_tool_calls_per_run = Column(Integer, nullable=False, default=25, server_default="25")

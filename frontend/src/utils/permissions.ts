@@ -38,5 +38,6 @@ export const permissionChecks = {
   canManageKnowledge: () => hasPermission('manage_knowledge'),
   canViewAnalytics: () => hasPermission('view_analytics'),
   canViewTickets: () => hasAnyPermission(['view_tickets', 'manage_tickets']),
-  canManageTickets: () => hasPermission('manage_tickets')
+  canManageTickets: () => hasPermission('manage_tickets'),
+  canApproveTicketActions: () => hasPermission('approve_ticket_actions')
 }

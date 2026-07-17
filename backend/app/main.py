@@ -109,6 +109,19 @@ app.include_router(
     tags=["tickets"]
 )
 
+from app.api import ticket_db_connectors, ticket_webhooks
+app.include_router(
+    ticket_db_connectors.router,
+    prefix=f"{settings.API_V1_STR}/ticket-db-connectors",
+    tags=["tickets"]
+)
+
+app.include_router(
+    ticket_webhooks.router,
+    prefix=f"{settings.API_V1_STR}/tickets/webhooks",
+    tags=["tickets"]
+)
+
 app.include_router(
     channel_webhooks.router,
     prefix=f"{settings.API_V1_STR}/webhooks",

@@ -215,6 +215,56 @@ class InvestigationEvent(Base):
     __table_args__ = (Index("ix_investigation_events_run_seq", "run_id", "seq"),)
 
 
+class ProposalStatus(_ValueStrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+class TicketProposal(Base):
+    """Autonomy L2: a resolution the AI proposes and a human decides on.
+    Approval resolves the ticket and notifies the customer; a rejection can
+    feed a refined investigation run (the reason becomes its context_note).
+    ChatterMate never executes infrastructure changes — approval records the
+    decision, humans/runbooks perform any mutation."""
+    __tablename__ = "ticket_proposals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("investigation_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Internal proposal: what the AI believes resolves the ticket and why.
+    summary = Column(Text, nullable=False)
+    # Plain-language message sent to the customer on approval.
+    customer_message = Column(Text, nullable=True)
+    confidence = Column(Float, nullable=True)
+    status = Column(String, nullable=False, default=ProposalStatus.PENDING)
+    decided_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    reject_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    decided_by = relationship("User", foreign_keys=[decided_by_user_id])
+
+
 class RCADocument(Base):
     """Structured, versioned root-cause analysis generated from captured
     evidence. customer_summary is the plain-language section a human edits and

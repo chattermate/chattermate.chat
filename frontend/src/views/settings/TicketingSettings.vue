@@ -16,10 +16,14 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { useTicketingSettings } from '@/composables/useTicketingSettings'
 import { PRIORITIES, priorityMeta } from '@/components/tickets/ticketMeta'
 import TicketConnectorsSection from '@/components/tickets/TicketConnectorsSection.vue'
+import TicketDbConnectorsSection from '@/components/tickets/TicketDbConnectorsSection.vue'
+import { getApiUrl } from '@/config/api'
+import { userService } from '@/services/user'
 import type { SlaTarget, TicketPriority } from '@/types/ticket'
 
 const { settings, isLoading, isSaving, error, planGated, save } = useTicketingSettings()
@@ -50,8 +54,7 @@ const AUTONOMY_CARDS = [
       { label: 'Close ticket', ok: false },
     ],
     warn: false,
-    // Proposal/approval flows land with the investigation engine.
-    disabled: true,
+    disabled: false,
   },
   {
     level: 3,
@@ -64,9 +67,24 @@ const AUTONOMY_CARDS = [
       { label: 'Close ticket', ok: true },
     ],
     warn: true,
-    disabled: true,
+    disabled: false,
   },
 ]
+
+const webhookUrl = computed(() => {
+  if (!settings.value?.alert_webhook_enabled || !settings.value?.alert_webhook_secret) return null
+  const orgId = userService.getCurrentUser()?.organization_id
+  if (!orgId) return null
+  return `${getApiUrl()}/tickets/webhooks/alerts/${orgId}/${settings.value.alert_webhook_secret}`
+})
+
+function copyWebhookUrl() {
+  if (!webhookUrl.value) return
+  navigator.clipboard
+    .writeText(webhookUrl.value)
+    .then(() => toast.success('Webhook URL copied'))
+    .catch(() => {})
+}
 
 const DEFAULT_SLA: Record<TicketPriority, SlaTarget> = {
   urgent: { first_response_minutes: 15, resolution_minutes: 120 },
@@ -256,6 +274,73 @@ function saveAll() {
           :selected-ids="settings.investigation_mcp_tool_ids || []"
           @update:selected-ids="(ids: number[]) => save({ investigation_mcp_tool_ids: ids })"
         />
+      </section>
+
+      <!-- GUARDRAILED DATABASE ACCESS -->
+      <section class="section">
+        <div class="section-head-row">
+          <h2 class="section-title">Database connector</h2>
+          <span class="lock-chip">🔒 Read-only — the AI can never write</span>
+        </div>
+        <p class="section-hint">
+          Let the investigator verify facts directly in your database. Only SELECTs over tables
+          you explicitly allowlist; sensitive columns are masked before the AI ever sees them;
+          every query is validated, row-limited and audited.
+        </p>
+        <TicketDbConnectorsSection />
+      </section>
+
+      <!-- ALERT WEBHOOK -->
+      <section class="section">
+        <div class="section-head-row">
+          <h2 class="section-title">Alert webhook intake</h2>
+          <label class="toggle-row inline">
+            <input
+              type="checkbox"
+              :checked="settings.alert_webhook_enabled"
+              @change="save({ alert_webhook_enabled: ($event.target as HTMLInputElement).checked })"
+            />
+            Enabled
+          </label>
+        </div>
+        <p class="section-hint">
+          Point Grafana, Datadog or CloudWatch alert webhooks here — alerts open tickets and
+          trigger investigation proactively, before a customer reports the issue. Re-fired
+          alerts attach to the existing open ticket.
+        </p>
+        <div v-if="webhookUrl" class="webhook-row">
+          <code class="webhook-url">{{ webhookUrl }}</code>
+          <button class="copy-webhook" @click="copyWebhookUrl">Copy</button>
+        </div>
+      </section>
+
+      <!-- JIRA ESCALATION -->
+      <section class="section">
+        <div class="section-head-row">
+          <h2 class="section-title">Jira escalation</h2>
+          <label class="toggle-row inline">
+            <input
+              type="checkbox"
+              :checked="settings.jira_escalation_enabled"
+              @change="save({ jira_escalation_enabled: ($event.target as HTMLInputElement).checked })"
+            />
+            Enabled
+          </label>
+        </div>
+        <p class="section-hint">
+          One-way sync: tickets at or above the chosen priority also open a Jira issue (using
+          your connected Jira and the agent's project). ChatterMate stays the source of truth.
+        </p>
+        <div v-if="settings.jira_escalation_enabled" class="jira-row">
+          <span class="timeout-label">Escalate tickets with priority</span>
+          <select
+            class="sla-input jira-select"
+            :value="settings.jira_escalation_priority || 'urgent'"
+            @change="save({ jira_escalation_priority: ($event.target as HTMLSelectElement).value as TicketPriority })"
+          >
+            <option v-for="p in PRIORITIES" :key="p" :value="p">{{ priorityMeta(p).label }} or higher</option>
+          </select>
+        </div>
       </section>
 
       <div class="save-bar" v-if="isDirty">
@@ -569,6 +654,54 @@ function saveAll() {
   background: var(--teal-bg-10);
   padding: 2px 8px;
   border-radius: 20px;
+}
+.lock-chip {
+  font-size: 11px;
+  color: var(--muted2);
+  background: var(--o05);
+  border: 1px solid var(--o08);
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.webhook-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.webhook-url {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--surface);
+  border: 1px solid var(--o08);
+  border-radius: 9px;
+  padding: 9px 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.copy-webhook {
+  padding: 8px 14px;
+  background: var(--accent-bg-08);
+  border: none;
+  color: var(--accent-ink);
+  border-radius: 9px;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.jira-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.jira-select {
+  width: auto;
+  font-family: inherit;
 }
 .save-bar {
   position: sticky;

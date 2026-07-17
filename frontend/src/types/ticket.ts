@@ -184,12 +184,73 @@ export interface RcaDocument {
   updated_at?: string | null
 }
 
+export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
+
+export interface TicketProposal {
+  id: string
+  run_id?: string | null
+  summary: string
+  customer_message?: string | null
+  confidence?: number | null
+  status: ProposalStatus
+  decided_by_user_id?: string | null
+  decided_by_name?: string | null
+  decided_at?: string | null
+  reject_reason?: string | null
+  created_at?: string | null
+}
+
 /** Glass-box payload for the ticket detail page. */
 export interface InvestigationDetail {
   run: InvestigationRun | null
   hypotheses: InvestigationHypothesis[]
   events: InvestigationEvent[]
   rca: RcaDocument | null
+  proposal: TicketProposal | null
+}
+
+export interface DbConnectorColumn {
+  name: string
+  type: string
+}
+
+export interface DbConnectorTable {
+  schema: string
+  table: string
+  columns: DbConnectorColumn[]
+}
+
+export interface DbConnector {
+  id: string
+  name: string
+  engine: 'postgresql' | 'mysql'
+  host: string
+  port: number
+  database: string
+  username: string
+  enabled: boolean
+  allowed_tables?: string[] | null
+  masked_columns?: string[] | null
+  max_rows: number
+  statement_timeout_ms: number
+  last_test_at?: string | null
+  last_test_ok?: boolean | null
+  created_at?: string | null
+}
+
+export interface DbConnectorPayload {
+  name: string
+  engine: 'postgresql' | 'mysql'
+  host: string
+  port: number
+  database: string
+  username: string
+  password?: string
+  enabled?: boolean
+  allowed_tables?: string[]
+  masked_columns?: string[]
+  max_rows?: number
+  statement_timeout_ms?: number
 }
 
 export interface TicketDetail {
@@ -280,6 +341,7 @@ export interface TicketSettings {
   jira_escalation_priority?: TicketPriority | null
   investigation_mcp_tool_ids?: number[] | null
   alert_webhook_enabled: boolean
+  alert_webhook_secret?: string | null
   max_tool_calls_per_run: number
   max_runs_per_ticket: number
 }

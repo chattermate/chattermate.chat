@@ -25,11 +25,14 @@ from app.models.investigation import (
     InvestigationRun,
     InvestigationRunType,
     InvestigationTrigger,
+    ProposalStatus,
+    TicketProposal,
 )
 from app.models.session_to_agent import SessionToAgent
 from app.models.ticket import (
     OPEN_TICKET_STATUSES,
     TICKET_STATUS_TRANSITIONS,
+    ResolutionOutcome,
     Ticket,
     TicketPriority,
     TicketSource,
@@ -447,6 +450,136 @@ class TicketService:
             )
         )
         return run
+
+    # ---------- autonomy L2: propose / approve ----------
+
+    def create_proposal(
+        self,
+        ticket: Ticket,
+        run_id: Optional[UUID],
+        summary: str,
+        customer_message: Optional[str],
+        confidence: Optional[float],
+    ) -> TicketProposal:
+        """Record an AI-proposed resolution and park the ticket in
+        awaiting_approval. Any earlier pending proposal is superseded."""
+        (
+            self.db.query(TicketProposal)
+            .filter(
+                TicketProposal.ticket_id == ticket.id,
+                TicketProposal.status == ProposalStatus.PENDING.value,
+            )
+            .update({TicketProposal.status: ProposalStatus.SUPERSEDED.value})
+        )
+        proposal = TicketProposal(
+            ticket_id=ticket.id,
+            organization_id=ticket.organization_id,
+            run_id=run_id,
+            summary=summary,
+            customer_message=customer_message,
+            confidence=confidence,
+        )
+        self.db.add(proposal)
+        self.db.flush()
+        self._add_activity(
+            ticket,
+            TicketActivityType.AI_RESOLUTION_PROPOSED,
+            actor_type=TicketActorType.AI,
+            body=summary,
+            metadata={"proposal_id": str(proposal.id), "confidence": confidence},
+        )
+        if TicketStatus(str(ticket.status)) in TICKET_STATUS_TRANSITIONS and (
+            TicketStatus.AWAITING_APPROVAL
+            in TICKET_STATUS_TRANSITIONS[TicketStatus(str(ticket.status))]
+        ):
+            self.transition_status(
+                ticket, TicketStatus.AWAITING_APPROVAL, actor_type=TicketActorType.AI
+            )
+        return proposal
+
+    async def approve_proposal(
+        self, ticket: Ticket, proposal: TicketProposal, user_id: UUID
+    ) -> Ticket:
+        """Human approval: the proposed resolution is applied — the ticket
+        resolves (pending customer confirmation) and the customer gets the
+        proposal's message. Any infra change stays with humans/runbooks."""
+        proposal.status = ProposalStatus.APPROVED
+        proposal.decided_by_user_id = user_id
+        proposal.decided_at = datetime.now(timezone.utc)
+        self._add_activity(
+            ticket,
+            TicketActivityType.AI_RESOLUTION_APPROVED,
+            actor_type=TicketActorType.USER,
+            actor_user_id=user_id,
+            body=proposal.summary,
+            metadata={"proposal_id": str(proposal.id)},
+        )
+        # The AI resolved it (a human signed off) — counts as AI-resolved.
+        await self.resolve(
+            ticket,
+            outcome=ResolutionOutcome.FIXED,
+            resolution_summary=proposal.summary,
+            customer_message=proposal.customer_message,
+            actor_type=TicketActorType.AI,
+        )
+        return ticket
+
+    def reject_proposal(
+        self,
+        ticket: Ticket,
+        proposal: TicketProposal,
+        user_id: UUID,
+        reason: Optional[str],
+        reinvestigate: bool = False,
+    ) -> Optional[InvestigationRun]:
+        """Human rejection. Optionally feeds the reason into a refined
+        investigation run (bounded by max_runs_per_ticket)."""
+        proposal.status = ProposalStatus.REJECTED
+        proposal.decided_by_user_id = user_id
+        proposal.decided_at = datetime.now(timezone.utc)
+        proposal.reject_reason = reason
+        self._add_activity(
+            ticket,
+            TicketActivityType.AI_RESOLUTION_REJECTED,
+            actor_type=TicketActorType.USER,
+            actor_user_id=user_id,
+            body=reason,
+            metadata={"proposal_id": str(proposal.id), "reinvestigate": reinvestigate},
+        )
+        if str(ticket.status) == TicketStatus.AWAITING_APPROVAL.value:
+            self.transition_status(
+                ticket, TicketStatus.OPEN,
+                actor_type=TicketActorType.USER, actor_user_id=user_id,
+                reason="Proposal rejected",
+            )
+        if not reinvestigate:
+            return None
+        return self.enqueue_run(
+            ticket,
+            run_type=InvestigationRunType.INVESTIGATION,
+            trigger=InvestigationTrigger.REJECTION_FEEDBACK,
+            requested_by_user_id=user_id,
+            context_note=reason,
+        )
+
+    def pending_proposal(self, ticket_id: UUID) -> Optional[TicketProposal]:
+        return (
+            self.db.query(TicketProposal)
+            .filter(
+                TicketProposal.ticket_id == ticket_id,
+                TicketProposal.status == ProposalStatus.PENDING.value,
+            )
+            .order_by(TicketProposal.created_at.desc())
+            .first()
+        )
+
+    def latest_proposal(self, ticket_id: UUID) -> Optional[TicketProposal]:
+        return (
+            self.db.query(TicketProposal)
+            .filter(TicketProposal.ticket_id == ticket_id)
+            .order_by(TicketProposal.created_at.desc())
+            .first()
+        )
 
     # ---------- customer communications ----------
 

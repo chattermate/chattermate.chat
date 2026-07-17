@@ -32,6 +32,8 @@ from app.models.schemas.ticket import (
     InvestigationDetailResponse,
     InvestigationEventOut,
     InvestigationRunOut,
+    ProposalOut,
+    ProposalRejectRequest,
     RCADocumentOut,
     RcaUpdate,
     TicketCommentCreate,
@@ -77,6 +79,9 @@ def require_any_permission(*permissions: str):
 
 view_tickets = require_any_permission("view_tickets", "manage_tickets")
 manage_tickets = require_any_permission("manage_tickets")
+# Approving/rejecting AI-proposed resolutions is a separate trust boundary
+# from day-to-day ticket management.
+approve_actions = require_any_permission("approve_ticket_actions")
 
 
 def _service(db: Session) -> TicketService:
@@ -194,6 +199,10 @@ async def update_settings(
     settings = TicketSettingsRepository(db).get_or_create(current_user.organization_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(settings, key, value.value if hasattr(value, "value") else value)
+    # First enable mints the intake secret (re-enabling keeps it stable).
+    if settings.alert_webhook_enabled and not settings.alert_webhook_secret:
+        import secrets as py_secrets
+        settings.alert_webhook_secret = py_secrets.token_urlsafe(24)
     db.commit()
     db.refresh(settings)
     return settings
@@ -366,6 +375,10 @@ async def update_ticket(
             )
         for key, value in data.items():
             setattr(ticket, key, value.value if hasattr(value, "value") else value)
+        from app.services.ticket_jira import maybe_escalate_to_jira
+        await maybe_escalate_to_jira(
+            db, service, ticket, service.settings_repo.get_or_create(current_user.organization_id)
+        )
         db.commit()
     except ValueError as e:
         db.rollback()
@@ -539,7 +552,75 @@ async def get_investigation(
             InvestigationEventOut.model_validate(e) for e in service.run_repo.list_events(run.id)
         ] if run else [],
         rca=_rca_out(rca),
+        proposal=_proposal_out(service.latest_proposal(ticket.id)),
     )
+
+
+def _proposal_out(proposal) -> Optional[ProposalOut]:
+    if proposal is None:
+        return None
+    out = ProposalOut.model_validate(proposal)
+    if proposal.decided_by is not None:
+        out.decided_by_name = proposal.decided_by.full_name
+    return out
+
+
+@router.post("/{ticket_id}/proposal/approve", response_model=ProposalOut)
+async def approve_proposal(
+    ticket_id: UUID,
+    current_user: User = Depends(approve_actions),
+    db: Session = Depends(get_db),
+):
+    """Approve the pending AI-proposed resolution: the ticket resolves and
+    the customer is notified with the proposal's message."""
+    check_ticketing_access(db, current_user.organization_id)
+    service = _service(db)
+    ticket = _get_ticket_or_404(db, ticket_id, current_user)
+    proposal = service.pending_proposal(ticket.id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="No pending proposal for this ticket")
+    try:
+        await service.approve_proposal(ticket, proposal, current_user.id)
+        db.commit()
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.refresh(proposal)
+    await emit_ticket_update(
+        current_user.organization_id, ticket.id, "status", {"status": str(ticket.status)}
+    )
+    return _proposal_out(proposal)
+
+
+@router.post("/{ticket_id}/proposal/reject", response_model=ProposalOut)
+async def reject_proposal(
+    ticket_id: UUID,
+    payload: ProposalRejectRequest,
+    current_user: User = Depends(approve_actions),
+    db: Session = Depends(get_db),
+):
+    """Reject the pending proposal; optionally re-run the investigation with
+    the rejection reason as context."""
+    check_ticketing_access(db, current_user.organization_id)
+    service = _service(db)
+    ticket = _get_ticket_or_404(db, ticket_id, current_user)
+    proposal = service.pending_proposal(ticket.id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="No pending proposal for this ticket")
+    try:
+        service.reject_proposal(
+            ticket, proposal, current_user.id, payload.reason,
+            reinvestigate=payload.reinvestigate,
+        )
+        db.commit()
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.refresh(proposal)
+    await emit_ticket_update(
+        current_user.organization_id, ticket.id, "status", {"status": str(ticket.status)}
+    )
+    return _proposal_out(proposal)
 
 
 def _rca_out(rca) -> Optional[RCADocumentOut]:

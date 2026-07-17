@@ -57,5 +57,7 @@ class Permission(Base):
             ("view_subscription", "Can view subscription details"),
             ("view_tickets", "Can view tickets"),
             ("manage_tickets", "Can manage tickets"),
+            ("approve_ticket_actions", "Can approve AI-proposed ticket resolutions"),
+            ("manage_ticket_connectors", "Can manage ticket investigation connectors"),
             ("super_admin", "Has all permissions")
         ]

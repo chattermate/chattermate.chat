@@ -417,6 +417,11 @@ class InvestigationRepository:
     def enqueue(self, run: InvestigationRun) -> Optional[InvestigationRun]:
         """Insert a pending run unless the ticket already has an active one
         (double-guarded by uq_investigation_runs_one_active in Postgres)."""
+        # Sessions run with autoflush=False: the caller may have just moved
+        # the previous run to a terminal state in this same session, and
+        # without a flush the guard query would still see the stale row and
+        # silently refuse the enqueue (bit the triage -> investigation chain).
+        self.db.flush()
         if self.get_active_for_ticket(run.ticket_id) is not None:
             return None
         self.db.add(run)

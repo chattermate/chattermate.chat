@@ -181,6 +181,28 @@ export function useTicketDetail(ticketId: Ref<string>) {
     }
   }
 
+  async function approveProposal() {
+    if (!detail.value) return
+    try {
+      await ticketService.approveProposal(detail.value.ticket.id)
+      await refresh(true)
+      toast.success('Proposal approved — ticket resolved, customer notified')
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to approve the proposal')
+    }
+  }
+
+  async function rejectProposal(reason?: string, reinvestigate = false) {
+    if (!detail.value) return
+    try {
+      await ticketService.rejectProposal(detail.value.ticket.id, reason, reinvestigate)
+      await refresh(true)
+      toast.success(reinvestigate ? 'Rejected — a refined investigation is queued' : 'Proposal rejected')
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to reject the proposal')
+    }
+  }
+
   useTicketSocket((event) => {
     if (event.ticket_id === ticketId.value) refresh(true)
   })
@@ -225,5 +247,7 @@ export function useTicketDetail(ticketId: Ref<string>) {
     investigate,
     saveRcaDraft,
     sendRcaToCustomer,
+    approveProposal,
+    rejectProposal,
   }
 }

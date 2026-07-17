@@ -168,6 +168,9 @@ async def _process_triage(db, run, service: TicketService, ticket: Ticket, agent
     # Auto-chain: tickets created with auto-investigate on flow straight into
     # a full investigation when the org has connectors configured.
     settings_row = service.settings_repo.get_or_create(ticket.organization_id)
+    # Escalation policy runs on the post-triage priority.
+    from app.services.ticket_jira import maybe_escalate_to_jira
+    await maybe_escalate_to_jira(db, service, ticket, settings_row)
     if (
         str(run.trigger) == InvestigationTrigger.AUTO_ON_CREATE.value
         and settings_row.auto_investigate_on_create
@@ -184,6 +187,92 @@ async def _process_triage(db, run, service: TicketService, ticket: Ticket, agent
         ticket.organization_id, ticket.id, "triage",
         {"status": str(ticket.status), "priority": str(ticket.priority)},
     )
+
+
+async def _apply_autonomy(
+    service: TicketService, ticket: Ticket, run, rca, hypotheses, settings_row, partial: bool
+) -> str:
+    """Apply the org's autonomy level to a finished investigation.
+
+    L1: nothing — the RCA is informational.
+    L2: create a proposal for human approval.
+    L3: auto-resolve, but ONLY behind hard guards enforced here in code:
+        a complete (non-partial) run, at least one validated hypothesis,
+        RCA confidence >= the org threshold, and a reachable customer.
+        Anything less falls back to an L2 proposal.
+    """
+    if rca is None:
+        return "none"
+    level = settings_row.autonomy_level or 1
+    if level < 2:
+        return "none"
+    if str(ticket.status) in (
+        TicketStatus.RESOLVED.value,
+        TicketStatus.RESOLVED_PENDING_CONFIRMATION.value,
+        TicketStatus.CLOSED.value,
+    ):
+        return "none"
+
+    summary = rca.remediation or rca.conclusion or rca.summary or ""
+    if not summary.strip():
+        return "none"
+    has_validated = any(str(h.status) == "validated" for h in hypotheses)
+    confidence = rca.confidence or 0.0
+
+    if (
+        level >= 3
+        and not partial
+        and has_validated
+        and confidence >= (settings_row.min_confidence_to_auto_resolve or 0.85)
+        and service.can_notify_customer(ticket)
+    ):
+        try:
+            await service.resolve(
+                ticket,
+                outcome="fixed",
+                resolution_summary=summary,
+                customer_message=rca.customer_summary,
+                actor_type=TicketActorType.AI,
+            )
+            return "auto_resolved"
+        except Exception as e:
+            logger.error(f"L3 auto-resolve failed for {ticket.display_number}: {e}")
+
+    service.create_proposal(
+        ticket,
+        run_id=run.id,
+        summary=summary,
+        customer_message=rca.customer_summary,
+        confidence=confidence,
+    )
+    return "proposed"
+
+
+def _build_db_tools(db, ticket: Ticket, run):
+    """Guardrailed read-only DB tools from the org's enabled connectors with
+    a non-empty table allowlist. None when there are none."""
+    try:
+        from app.models.ticket_db_connector import TicketDBConnector
+        from app.services.db_connector_service import DBConnectorConfig
+        from app.tools.guardrailed_db_toolkit import GuardrailedDBTools
+
+        connectors = (
+            db.query(TicketDBConnector)
+            .filter(
+                TicketDBConnector.organization_id == ticket.organization_id,
+                TicketDBConnector.enabled == True,  # noqa: E712
+            )
+            .all()
+        )
+        configs = [
+            DBConnectorConfig.from_model(c) for c in connectors if c.allowed_tables
+        ]
+        if not configs:
+            return None
+        return GuardrailedDBTools(configs, ticket_id=ticket.id, run_id=run.id)
+    except Exception as e:
+        logger.error(f"Failed to build DB tools for {ticket.display_number}: {e}")
+        return None
 
 
 async def _process_investigation(db, run, service: TicketService, ticket: Ticket, agent, previous_status: str) -> None:
@@ -233,7 +322,10 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
             mcp_tools = await manager.initialize_mcp_tools_by_ids(
                 str(ticket.organization_id), tool_ids
             )
-            recorder.map_connectors(mcp_tools)
+        db_tools = _build_db_tools(db, ticket, run)
+        if db_tools is not None:
+            mcp_tools = list(mcp_tools) + [db_tools]
+        recorder.map_connectors(mcp_tools)
         try:
             hypotheses, budget_exhausted = await asyncio.wait_for(
                 run_investigation_phases(
@@ -262,6 +354,10 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
         db, run, ticket, agent, context_message, hypotheses, recorder, partial
     )
 
+    autonomy_action = await _apply_autonomy(
+        service, ticket, run, rca, hypotheses, settings_row, partial
+    )
+
     validated = sum(1 for h in hypotheses if str(h.status) == "validated")
     service._add_activity(
         ticket,
@@ -274,6 +370,7 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
             "validated": validated,
             "rca_version": rca.version if rca else None,
             "partial": partial,
+            "autonomy_action": autonomy_action,
         },
     )
 

@@ -16,6 +16,9 @@ limitations under the License.
 
 import api from './api'
 import type {
+  DbConnector,
+  DbConnectorPayload,
+  DbConnectorTable,
   InvestigationDetail,
   InvestigationRun,
   RcaDocument,
@@ -24,6 +27,7 @@ import type {
   TicketCreatePayload,
   TicketDetail,
   TicketListResponse,
+  TicketProposal,
   TicketSettings,
   TicketStats,
   TicketUpdatePayload,
@@ -164,6 +168,31 @@ export const ticketService = {
     }
   },
 
+  async approveProposal(id: string): Promise<TicketProposal> {
+    try {
+      const response = await api.post(`/tickets/${id}/proposal/approve`)
+      return response.data
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to approve the proposal')
+    }
+  },
+
+  async rejectProposal(
+    id: string,
+    reason?: string,
+    reinvestigate = false,
+  ): Promise<TicketProposal> {
+    try {
+      const response = await api.post(`/tickets/${id}/proposal/reject`, {
+        reason,
+        reinvestigate,
+      })
+      return response.data
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to reject the proposal')
+    }
+  },
+
   async getTicketBySession(sessionId: string): Promise<Ticket | null> {
     try {
       const response = await api.get(`/tickets/by-session/${sessionId}`)
@@ -199,5 +228,38 @@ export const ticketService = {
     } catch (error: any) {
       throw errorMessage(error, 'Failed to save ticketing settings')
     }
+  },
+}
+
+export const dbConnectorService = {
+  async list(): Promise<DbConnector[]> {
+    const response = await api.get('/ticket-db-connectors')
+    return response.data
+  },
+
+  async discover(
+    payload: DbConnectorPayload,
+  ): Promise<{ ok: boolean; error?: string; tables: DbConnectorTable[] }> {
+    const response = await api.post('/ticket-db-connectors/discover', payload)
+    return response.data
+  },
+
+  async create(payload: DbConnectorPayload): Promise<DbConnector> {
+    const response = await api.post('/ticket-db-connectors', payload)
+    return response.data
+  },
+
+  async update(id: string, patch: Partial<DbConnectorPayload>): Promise<DbConnector> {
+    const response = await api.patch(`/ticket-db-connectors/${id}`, patch)
+    return response.data
+  },
+
+  async remove(id: string): Promise<void> {
+    await api.delete(`/ticket-db-connectors/${id}`)
+  },
+
+  async test(id: string): Promise<{ ok: boolean; error?: string; tables: DbConnectorTable[] }> {
+    const response = await api.post(`/ticket-db-connectors/${id}/test`)
+    return response.data
   },
 }
