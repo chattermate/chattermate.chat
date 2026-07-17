@@ -96,6 +96,7 @@ export type TicketActivityType =
   | 'ai_resolution_rejected'
   | 'customer_notified'
   | 'customer_replied'
+  | 'customer_linked'
   | 'csat_requested'
   | 'reopened'
   | 'jira_escalated'
@@ -181,6 +182,9 @@ export interface TicketCreatePayload {
 export interface TicketUpdatePayload {
   title?: string
   description?: string
+  /** Set/replace the ticket's customer by email (find-or-create in the org). */
+  customer_email?: string
+  customer_name?: string
   status?: TicketStatus
   priority?: TicketPriority
   severity?: number

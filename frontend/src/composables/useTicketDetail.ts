@@ -73,8 +73,24 @@ export function useTicketDetail(ticketId: Ref<string>) {
   const setPriority = (priority: TicketPriority) => patch({ priority }, 'Failed to change the priority')
   const setSeverity = (severity: number) => patch({ severity }, 'Failed to change the severity')
   const setTitle = (title: string) => patch({ title }, 'Failed to rename the ticket')
+  const setDescription = (description: string) =>
+    patch({ description }, 'Failed to update the description')
   const setAssignee = (assignee_user_id: string | null) =>
     patch({ assignee_user_id }, 'Failed to assign the ticket')
+
+  async function setCustomer(email: string, name?: string) {
+    if (!detail.value || !email.trim()) return
+    try {
+      await ticketService.updateTicket(detail.value.ticket.id, {
+        customer_email: email.trim(),
+        customer_name: name?.trim() || undefined,
+      })
+      await refresh(true)
+      toast.success('Customer linked')
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to link the customer')
+    }
+  }
 
   async function addComment(body: string, isInternal = true) {
     if (!detail.value || !body.trim()) return
@@ -155,7 +171,9 @@ export function useTicketDetail(ticketId: Ref<string>) {
     setPriority,
     setSeverity,
     setTitle,
+    setDescription,
     setAssignee,
+    setCustomer,
     addComment,
     resolve,
     reopen,

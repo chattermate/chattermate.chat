@@ -34,8 +34,8 @@ const ticketId = computed(() => String(route.params.id))
 
 const {
   detail, ticket, activities, hasActiveRun, isLoading, isSavingComment,
-  error, setStatus, setPriority, setSeverity, setTitle, setAssignee,
-  addComment, resolve, reopen, investigate,
+  error, setStatus, setPriority, setSeverity, setTitle, setDescription,
+  setAssignee, setCustomer, addComment, resolve, reopen, investigate,
 } = useTicketDetail(ticketId)
 
 const canManage = permissionChecks.canManageTickets()
@@ -59,6 +59,19 @@ const isReopenable = computed(() =>
 // No linked conversation and no customer email → nothing to deliver through,
 // so hide every "send to customer" affordance instead of faking it.
 const canNotifyCustomer = computed(() => detail.value?.can_notify_customer ?? false)
+
+const isEditingDescription = ref(false)
+const descriptionDraft = ref('')
+
+function startDescriptionEdit() {
+  descriptionDraft.value = ticket.value?.description || ''
+  isEditingDescription.value = true
+}
+
+async function saveDescription() {
+  await setDescription(descriptionDraft.value.trim())
+  isEditingDescription.value = false
+}
 
 function commitTitle() {
   if (titleDraft.value !== null && ticket.value && titleDraft.value.trim() && titleDraft.value !== ticket.value.title) {
@@ -109,6 +122,7 @@ async function submitResolve() {
             class="title-input"
             :value="titleDraft ?? ticket.title"
             :readonly="!canManage"
+            :title="canManage ? 'Click to edit the title' : undefined"
             @input="titleDraft = ($event.target as HTMLInputElement).value"
             @blur="commitTitle"
             @keydown.enter="($event.target as HTMLInputElement).blur()"
@@ -226,9 +240,30 @@ async function submitResolve() {
           </div>
         </div>
 
-        <div v-if="ticket.description" class="description-card">
-          <div class="card-label">Description</div>
-          <p class="description-text">{{ ticket.description }}</p>
+        <div v-if="ticket.description || canManage" class="description-card">
+          <div class="card-header-row">
+            <div class="card-label">Description</div>
+            <button
+              v-if="canManage && !isEditingDescription"
+              class="edit-btn"
+              @click="startDescriptionEdit"
+            >
+              {{ ticket.description ? 'Edit' : 'Add' }}
+            </button>
+          </div>
+          <template v-if="isEditingDescription">
+            <textarea
+              v-model="descriptionDraft"
+              class="description-editor"
+              placeholder="What's happening? Include any error, customer impact, and steps…"
+            ></textarea>
+            <div class="edit-actions">
+              <button class="action-btn" @click="isEditingDescription = false">Cancel</button>
+              <button class="edit-save" @click="saveDescription">Save</button>
+            </div>
+          </template>
+          <p v-else-if="ticket.description" class="description-text">{{ ticket.description }}</p>
+          <p v-else class="description-empty">No description yet.</p>
         </div>
 
         <div v-if="ticket.ai_summary" class="summary-card">
@@ -251,6 +286,7 @@ async function submitResolve() {
         :linked-session-ids="detail?.linked_session_ids || []"
         :can-manage="canManage"
         @assign="setAssignee"
+        @set-customer="setCustomer"
       />
     </div>
   </div>
@@ -334,9 +370,14 @@ async function submitResolve() {
   color: var(--text);
   background: transparent;
   border: none;
+  border-bottom: 1px dashed transparent;
   outline: none;
   padding: 2px 0;
   margin: 0 0 4px;
+}
+.title-input:not([readonly]):hover,
+.title-input:not([readonly]):focus {
+  border-bottom-color: var(--o16);
 }
 .original-title {
   font-size: 11.5px;
@@ -493,6 +534,55 @@ async function submitResolve() {
   color: var(--text3);
   white-space: pre-wrap;
   word-break: break-word;
+}
+.description-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--faint);
+}
+.card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.edit-btn {
+  font-size: 11.5px;
+  color: var(--accent-ink);
+  background: var(--accent-bg-08);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.description-editor {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  background: var(--bg2);
+  border: 1px solid var(--o10);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.55;
+  outline: none;
+}
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 10px;
+}
+.edit-save {
+  padding: 7px 15px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  border: none;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
 }
 @media (max-width: 1100px) {
   .detail-grid {

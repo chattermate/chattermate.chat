@@ -41,6 +41,7 @@ class TicketActivityType(_ValueStrEnum):
     AI_RESOLUTION_REJECTED = "ai_resolution_rejected"
     CUSTOMER_NOTIFIED = "customer_notified"
     CUSTOMER_REPLIED = "customer_replied"
+    CUSTOMER_LINKED = "customer_linked"
     CSAT_REQUESTED = "csat_requested"
     REOPENED = "reopened"
     JIRA_ESCALATED = "jira_escalated"

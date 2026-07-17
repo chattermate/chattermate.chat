@@ -351,6 +351,12 @@ async def update_ticket(
                 data.pop("group_id", ticket.group_id),
                 actor_user_id=current_user.id,
             )
+        customer_email = data.pop("customer_email", None)
+        customer_name = data.pop("customer_name", None)
+        if customer_email:
+            service.set_customer(
+                ticket, customer_email, customer_name, actor_user_id=current_user.id
+            )
         for key, value in data.items():
             setattr(ticket, key, value.value if hasattr(value, "value") else value)
         db.commit()

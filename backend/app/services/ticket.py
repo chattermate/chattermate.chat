@@ -128,13 +128,9 @@ class TicketService:
         settings = self.settings_repo.get_or_create(organization_id)
 
         if customer_id is None and customer_email:
-            from app.repositories.customer import CustomerRepository
-            customer = CustomerRepository(self.db).get_or_create_customer(
-                email=customer_email.strip().lower(),
-                organization_id=organization_id,
-                full_name=(customer_name or "").strip() or None,
+            customer_id = self._resolve_customer_by_email(
+                organization_id, customer_email, customer_name
             )
-            customer_id = customer.id
 
         session_record = None
         if session_id is not None:
@@ -497,6 +493,41 @@ class TicketService:
             )
         except Exception as e:
             logger.error(f"CSAT request failed for {ticket.display_number}: {e}")
+
+    def _resolve_customer_by_email(
+        self, organization_id: UUID, customer_email: str, customer_name: Optional[str]
+    ) -> UUID:
+        from app.repositories.customer import CustomerRepository
+        customer = CustomerRepository(self.db).get_or_create_customer(
+            email=customer_email.strip().lower(),
+            organization_id=organization_id,
+            full_name=(customer_name or "").strip() or None,
+        )
+        return customer.id
+
+    def set_customer(
+        self,
+        ticket: Ticket,
+        customer_email: str,
+        customer_name: Optional[str] = None,
+        actor_user_id: Optional[UUID] = None,
+    ) -> Ticket:
+        """Set/replace the ticket's customer by email (find-or-create)."""
+        customer_id = self._resolve_customer_by_email(
+            ticket.organization_id, customer_email, customer_name
+        )
+        if ticket.customer_id == customer_id:
+            return ticket
+        ticket.customer_id = customer_id
+        self._add_activity(
+            ticket,
+            TicketActivityType.CUSTOMER_LINKED,
+            actor_type=TicketActorType.USER if actor_user_id else TicketActorType.SYSTEM,
+            actor_user_id=actor_user_id,
+            body=f"Customer set to {customer_email.strip().lower()}",
+            metadata={"customer_id": str(customer_id)},
+        )
+        return ticket
 
     def can_notify_customer(self, ticket: Ticket) -> bool:
         """Whether any outbound path to the customer exists: a linked

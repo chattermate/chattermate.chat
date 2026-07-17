@@ -215,6 +215,23 @@ class TestCustomerEmailPath:
         )
         assert service.can_notify_customer(with_session) is True
 
+    def test_set_customer_links_and_records_activity(
+        self, service, db, test_organization
+    ):
+        ticket = make_ticket(service, db, test_organization)
+        assert ticket.customer_id is None
+        service.set_customer(ticket, "Late@Example.com", "Late Add")
+        db.commit()
+        db.refresh(ticket)
+        assert ticket.customer.email == "late@example.com"
+        assert service.can_notify_customer(ticket) is True
+        last = service.activity_repo.list_for_ticket(ticket.id)[-1]
+        assert last.activity_type == TicketActivityType.CUSTOMER_LINKED.value
+        # Setting the same customer again is a no-op (no duplicate activity).
+        count_before = len(service.activity_repo.list_for_ticket(ticket.id))
+        service.set_customer(ticket, "late@example.com")
+        assert len(service.activity_repo.list_for_ticket(ticket.id)) == count_before
+
     @pytest.mark.asyncio
     async def test_direct_email_fallback_records_activity(
         self, service, db, test_organization

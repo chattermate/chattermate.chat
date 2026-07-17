@@ -61,6 +61,9 @@ class TicketUpdate(BaseModel):
     model_dump(exclude_unset=True))."""
     title: Optional[str] = Field(default=None, min_length=1, max_length=MAX_TITLE_LENGTH)
     description: Optional[str] = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    # Set/replace the ticket's customer by email (find-or-create in the org).
+    customer_email: Optional[EmailStr] = None
+    customer_name: Optional[str] = Field(default=None, max_length=200)
     status: Optional[TicketStatus] = None
     priority: Optional[TicketPriority] = None
     severity: Optional[int] = Field(default=None, ge=1, le=3)

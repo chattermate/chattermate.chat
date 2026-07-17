@@ -27,11 +27,30 @@ const props = defineProps<{
   canManage: boolean
 }>()
 
-const emit = defineEmits<{ (e: 'assign', userId: string | null): void }>()
+const emit = defineEmits<{
+  (e: 'assign', userId: string | null): void
+  (e: 'set-customer', email: string, name?: string): void
+}>()
 
 const router = useRouter()
 const { users, fetchUsers } = useUsers()
 const isPickingAssignee = ref(false)
+
+const isEditingCustomer = ref(false)
+const customerEmailDraft = ref('')
+const customerNameDraft = ref('')
+
+function startCustomerEdit() {
+  customerEmailDraft.value = props.ticket.customer?.email || ''
+  customerNameDraft.value = props.ticket.customer?.full_name || ''
+  isEditingCustomer.value = true
+}
+
+function saveCustomer() {
+  if (!customerEmailDraft.value.trim()) return
+  emit('set-customer', customerEmailDraft.value, customerNameDraft.value)
+  isEditingCustomer.value = false
+}
 
 onMounted(() => {
   if (props.canManage) fetchUsers().catch(() => {})
@@ -86,8 +105,42 @@ function pickAssignee(userId: string | null) {
     </div>
 
     <div class="panel-card">
-      <div class="card-label">Customer</div>
-      <div v-if="ticket.customer" class="customer-row">
+      <div class="card-label-row">
+        <div class="card-label">Customer</div>
+        <button
+          v-if="canManage && !isEditingCustomer"
+          class="change-btn"
+          @click="startCustomerEdit"
+        >
+          {{ ticket.customer ? 'Edit' : 'Add' }}
+        </button>
+      </div>
+      <template v-if="isEditingCustomer">
+        <input
+          v-model="customerEmailDraft"
+          type="email"
+          class="customer-input"
+          placeholder="customer@company.com"
+          maxlength="320"
+        />
+        <input
+          v-model="customerNameDraft"
+          class="customer-input"
+          placeholder="Name (optional)"
+          maxlength="200"
+        />
+        <div class="customer-edit-actions">
+          <button class="customer-cancel" @click="isEditingCustomer = false">Cancel</button>
+          <button
+            class="customer-save"
+            :disabled="!customerEmailDraft.trim()"
+            @click="saveCustomer"
+          >
+            Save
+          </button>
+        </div>
+      </template>
+      <div v-else-if="ticket.customer" class="customer-row">
         <span class="customer-avatar">
           {{ (ticket.customer.full_name || ticket.customer.email || '?')[0]?.toUpperCase() }}
         </span>
@@ -195,6 +248,50 @@ function pickAssignee(userId: string | null) {
   font-size: 12px;
   color: var(--faint);
   line-height: 1.5;
+}
+.card-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.customer-input {
+  width: 100%;
+  padding: 8px 11px;
+  background: var(--bg2);
+  border: 1px solid var(--o10);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  margin-bottom: 8px;
+}
+.customer-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.customer-cancel {
+  padding: 6px 12px;
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  color: var(--muted);
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.customer-save {
+  padding: 6px 14px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+.customer-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .customer-avatar {
   width: 34px;
