@@ -17,7 +17,7 @@ limitations under the License.
 from typing import ClassVar, List
 
 from app.channels.base import InboundMessage, SendResult
-from app.channels.meta_base import MetaBaseAdapter, graph_post
+from app.channels.meta_base import MetaBaseAdapter, graph_get, graph_post
 from app.channels.registry import register_adapter
 from app.models.channels import ChannelAccount, ChannelConversation, ChannelType
 from app.core.logger import get_logger
@@ -33,6 +33,9 @@ class MessengerAdapter(MetaBaseAdapter):
     envelope and Graph send, so InstagramAdapter subclasses this."""
 
     channel_type: ClassVar[str] = ChannelType.MESSENGER.value
+    # Graph fields on the sender node that carry a display name. Instagram user
+    # nodes expose different ones, so it overrides this and _display_name.
+    profile_fields: ClassVar[str] = "first_name,last_name"
 
     def parse_inbound(self, payload: dict) -> List[InboundMessage]:
         """Normalize entry[].messaging[] events. Echoes, delivery/read receipts
@@ -91,6 +94,26 @@ class MessengerAdapter(MetaBaseAdapter):
 
     def format_outbound(self, markdown: str) -> str:
         return markdown[:MAX_MESSAGE_LENGTH]
+
+    async def fetch_profile(self, account: ChannelAccount, external_user_id: str) -> dict:
+        """The customer's name, which the webhook never carries — Messenger
+        sends only a PSID, so without this every customer shows as
+        "Messenger user 2742…" in People.
+
+        Best-effort: a lookup failure must not cost us the message, so it
+        degrades to {} (the placeholder stays) rather than raising. Reading a
+        sender's name needs no permission beyond messaging them.
+        """
+        ok, data = await graph_get(external_user_id, self.access_token(account),
+                                   params={"fields": self.profile_fields})
+        if not ok:
+            return {}
+        name = self._display_name(data)
+        return {"name": name} if name else {}
+
+    @staticmethod
+    def _display_name(data: dict) -> str:
+        return " ".join(p for p in (data.get("first_name"), data.get("last_name")) if p).strip()
 
 
 register_adapter(MessengerAdapter())

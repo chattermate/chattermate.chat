@@ -27,6 +27,12 @@ from app.models.channels import ChannelType
 
 class InstagramAdapter(MessengerAdapter):
     channel_type: ClassVar[str] = ChannelType.INSTAGRAM.value
+    # An IG user node exposes name/username, not the Messenger first/last name.
+    profile_fields: ClassVar[str] = "name,username"
+
+    @staticmethod
+    def _display_name(data: dict) -> str:
+        return (data.get("name") or data.get("username") or "").strip()
 
 
 register_adapter(InstagramAdapter())

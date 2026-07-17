@@ -17,7 +17,7 @@ limitations under the License.
 import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -177,6 +177,47 @@ class TestMessengerInstagramParse:
         assert len(messages) == 1
         assert messages[0].external_account_id == "IG7"
         assert messages[0].external_conversation_id == "IGSID2"
+
+
+class TestProfileEnrichment:
+    """The inbound payload carries only a sender id, so the customer's real name
+    is looked up on demand — otherwise everyone shows as 'Messenger user 2742…'."""
+
+    def _adapter(self, channel, monkeypatch, graph_return):
+        adapter = get_adapter(channel)
+        monkeypatch.setattr(adapter, "access_token", lambda account: "PAGE_TOKEN")
+        graph = AsyncMock(return_value=graph_return)
+        monkeypatch.setattr("app.channels.messenger.graph_get", graph)
+        return adapter, graph
+
+    @pytest.mark.asyncio
+    async def test_messenger_resolves_the_senders_name(self, monkeypatch):
+        adapter, graph = self._adapter(
+            "messenger", monkeypatch, (True, {"first_name": "Ada", "last_name": "Lovelace"}))
+        assert await adapter.fetch_profile(MagicMock(), "PSID1") == {"name": "Ada Lovelace"}
+        graph.assert_awaited_once_with(
+            "PSID1", "PAGE_TOKEN", params={"fields": "first_name,last_name"})
+
+    @pytest.mark.asyncio
+    async def test_a_graph_failure_degrades_to_no_name(self, monkeypatch):
+        """A lookup failure must not lose the message — it keeps the placeholder."""
+        adapter, _ = self._adapter(
+            "messenger", monkeypatch, (False, {"error": {"message": "rate limited"}}))
+        assert await adapter.fetch_profile(MagicMock(), "PSID1") == {}
+
+    @pytest.mark.asyncio
+    async def test_instagram_uses_the_ig_name_fields(self, monkeypatch):
+        adapter, graph = self._adapter(
+            "instagram", monkeypatch, (True, {"name": "Ada", "username": "ada_l"}))
+        assert await adapter.fetch_profile(MagicMock(), "IGSID1") == {"name": "Ada"}
+        graph.assert_awaited_once_with(
+            "IGSID1", "PAGE_TOKEN", params={"fields": "name,username"})
+
+    @pytest.mark.asyncio
+    async def test_instagram_falls_back_to_username(self, monkeypatch):
+        adapter, _ = self._adapter(
+            "instagram", monkeypatch, (True, {"username": "ada_l"}))
+        assert await adapter.fetch_profile(MagicMock(), "IGSID1") == {"name": "ada_l"}
 
 
 class TestDeliveryWindow:
