@@ -195,6 +195,11 @@ onMounted(async () => {
         </div>
       </div>
       <div class="header-actions">
+        <!-- The thread only streams once a human takes the chat over; while the
+             AI is answering this is how you pull the latest turns. -->
+        <button class="refresh-chat-btn" title="Refresh conversation" @click="emit('refresh')">
+          <i class="fas fa-rotate-right"></i>
+        </button>
         <button
           v-if="canUseTemplates && !isChatClosed"
           class="create-ticket-btn"
@@ -754,6 +759,23 @@ onMounted(async () => {
 
 
 
+
+.refresh-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-btn, 8px);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.refresh-chat-btn:hover {
+  color: var(--text);
+}
 
 .create-ticket-btn {
   background: var(--accent-solid);
