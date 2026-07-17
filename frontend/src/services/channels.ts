@@ -106,6 +106,25 @@ const channelsService = {
     return response.data
   },
 
+  /**
+   * The WhatsApp numbers an outbound conversation can be sent FROM.
+   *
+   * Both entry points want this exact question answered, and each was asking
+   * it by fetching the whole account list and applying the same filter. It
+   * resolves to [] rather than throwing: a surface that cannot list accounts
+   * should hide its entry point, not break the page around it.
+   */
+  async listActiveWhatsAppAccounts(): Promise<ChannelAccount[]> {
+    try {
+      const accounts = await this.listAccounts()
+      return accounts.filter(
+        (account) => account.channel_type === 'whatsapp' && account.is_active,
+      )
+    } catch {
+      return []
+    }
+  },
+
   /** Connect a Telegram bot by token; backend validates and registers the webhook */
   async connectTelegram(botToken: string): Promise<ChannelAccount> {
     const response = await api.post('/channels/telegram', { bot_token: botToken })

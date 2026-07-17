@@ -22,12 +22,13 @@ limitations under the License.
  * conversation" button and the People drawer's "Message on WhatsApp" — so
  * template choice and variable filling can never diverge between them.
  */
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { peopleService } from '@/services/people'
 import type { PersonListItem } from '@/types/people'
 import { DEFAULT_LANGUAGE } from '@/utils/whatsappLanguages'
+import BaseModal from '@/components/common/BaseModal.vue'
 import WhatsAppTemplateSelect, {
   type TemplateSelection,
 } from '@/components/conversations/WhatsAppTemplateSelect.vue'
@@ -48,7 +49,6 @@ const emit = defineEmits<{
 // carries per-user caps. The server enforces the same rule.
 const OUTBOUND_CATEGORIES = ['UTILITY', 'AUTHENTICATION']
 
-const dialog = ref<HTMLElement | null>(null)
 const accountId = ref(props.accounts[0]?.id ?? '')
 const to = ref(props.person?.phone ?? '')
 const name = ref('')
@@ -167,27 +167,11 @@ const send = async () => {
   }
 }
 
-onMounted(() => dialog.value?.focus())
 onBeforeUnmount(() => clearTimeout(searchTimer))
 </script>
 
 <template>
-  <div
-    ref="dialog"
-    class="nwc-modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="nwc-title"
-    tabindex="-1"
-    @click.self="emit('close')"
-    @keydown.esc="emit('close')"
-  >
-    <div class="nwc-content">
-      <div class="nwc-header">
-        <h3 id="nwc-title">New WhatsApp conversation</h3>
-        <button class="nwc-close" aria-label="Close" @click="emit('close')">×</button>
-      </div>
-
+  <BaseModal title="New WhatsApp conversation" width="560px" @close="emit('close')">
       <!-- Meta's opt-in policy is the operator's obligation; state it, don't police it -->
       <p class="nwc-intro">
         Only message people who agreed to hear from you on WhatsApp — Meta blocks businesses
@@ -247,10 +231,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
         />
       </div>
 
-      <div class="nwc-actions">
-        <button class="nwc-btn" @click="emit('close')">Cancel</button>
+      <template #actions>
+        <button class="modal-btn" @click="emit('close')">Cancel</button>
         <button
-          class="nwc-btn nwc-btn-primary"
+          class="modal-btn modal-btn-primary"
           :disabled="!canSend"
           :aria-busy="sending"
           @click="send"
@@ -258,59 +242,16 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
           <font-awesome-icon v-if="sending" icon="fa-solid fa-spinner" spin />
           {{ sending ? 'Sending…' : 'Send and open conversation' }}
         </button>
-      </div>
-    </div>
-  </div>
+      </template>
+  </BaseModal>
 </template>
 
 <style scoped>
-.nwc-modal {
-  position: fixed;
-  inset: 0;
-  background: var(--scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 16px;
-}
 
-.nwc-modal:focus {
-  outline: none;
-}
 
-.nwc-content {
-  background: var(--background-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 12px);
-  width: min(560px, 100%);
-  max-height: min(720px, calc(100vh - 32px));
-  display: flex;
-  flex-direction: column;
-  padding: 24px;
-  overflow-y: auto;
-}
 
-.nwc-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
 
-.nwc-header h3 {
-  margin: 0;
-  font-family: var(--font-display);
-}
 
-.nwc-close {
-  background: none;
-  border: none;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--muted);
-}
 
 .nwc-intro {
   margin: 0 0 16px;
@@ -398,32 +339,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
   font-variant-numeric: tabular-nums;
 }
 
-.nwc-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 6px;
-}
 
-.nwc-btn {
-  padding: 9px 16px;
-  border-radius: var(--radius-btn, 8px);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid var(--border-color);
-  background: var(--background-soft);
-  color: inherit;
-}
 
-.nwc-btn-primary {
-  background: var(--accent-solid);
-  color: var(--on-accent-solid);
-  border-color: transparent;
-}
 
-.nwc-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 </style>

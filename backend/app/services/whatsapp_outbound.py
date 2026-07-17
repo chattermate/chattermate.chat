@@ -22,6 +22,8 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.channels import get_adapter
+from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE
+from app.services.channel_chat import placeholder_name
 from app.channels.meta_base import fetch_message_templates
 from app.core.logger import get_logger
 from app.models.channels import ChannelAccount
@@ -160,7 +162,7 @@ def _resolve_customer(db: Session, account: ChannelAccount, phone: str,
     customer = repo.get_or_create_customer(
         email=f"{wa_id}@whatsapp.channel",
         organization_id=account.organization_id,
-        full_name=customer_name or f"Whatsapp user {wa_id[:8]}",
+        full_name=customer_name or placeholder_name(account.channel_type, wa_id),
         phone=phone,
     )
     # First-touch source for People's Source column; setdefault semantics so a
@@ -176,7 +178,7 @@ async def start_outbound_conversation(
     *,
     to: str,
     template_name: str,
-    language: str = "en_US",
+    language: str = DEFAULT_TEMPLATE_LANGUAGE,
     components: Optional[list] = None,
     customer_id: Optional[UUID] = None,
     customer_name: Optional[str] = None,

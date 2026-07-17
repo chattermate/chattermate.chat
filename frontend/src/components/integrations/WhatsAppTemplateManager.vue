@@ -21,6 +21,7 @@ import channelsService, {
   type ChannelAccount,
   type WhatsAppTemplate,
 } from '@/services/channels'
+import BaseModal from '@/components/common/BaseModal.vue'
 import { templatePreviewText, templateKey } from '@/utils/whatsappTemplates'
 import { languageLabel } from '@/utils/whatsappLanguages'
 
@@ -30,7 +31,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const dialog = ref<HTMLElement | null>(null)
 const accountId = ref(props.accounts[0]?.id ?? '')
 const templates = ref<WhatsAppTemplate[]>([])
 const loading = ref(true)
@@ -102,7 +102,6 @@ const loadLibraryUrl = async () => {
 }
 
 onMounted(() => {
-  dialog.value?.focus()
   load()
   loadLibraryUrl()
 })
@@ -152,22 +151,7 @@ const remove = async (name: string) => {
 </script>
 
 <template>
-  <div
-    ref="dialog"
-    class="wtm-modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="wtm-title"
-    tabindex="-1"
-    @click.self="emit('close')"
-    @keydown.esc="emit('close')"
-  >
-    <div class="wtm-content">
-      <div class="wtm-header">
-        <h3 id="wtm-title">WhatsApp templates</h3>
-        <button class="wtm-close" aria-label="Close" @click="emit('close')">×</button>
-      </div>
-
+  <BaseModal title="WhatsApp templates" width="620px" @close="emit('close')">
       <p class="wtm-intro">
         Templates reopen a conversation after the customer's 24-hour window closes. You write them
         in WhatsApp Manager; once Meta approves one, it appears here and your agents can send it.
@@ -267,58 +251,15 @@ const remove = async (name: string) => {
           <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" />
         </a>
       </div>
-    </div>
-  </div>
+  </BaseModal>
 </template>
 
 <style scoped>
-.wtm-modal {
-  position: fixed;
-  inset: 0;
-  background: var(--scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 16px;
-}
 
-.wtm-modal:focus {
-  outline: none;
-}
 
-.wtm-content {
-  background: var(--background-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 12px);
-  width: min(620px, 100%);
-  max-height: min(760px, calc(100vh - 32px));
-  display: flex;
-  flex-direction: column;
-  padding: 24px;
-  overflow-y: auto;
-}
 
-.wtm-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
 
-.wtm-header h3 {
-  margin: 0;
-  font-family: var(--font-display);
-}
 
-.wtm-close {
-  background: none;
-  border: none;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--muted);
-}
 
 .wtm-intro {
   margin: 0 0 16px;

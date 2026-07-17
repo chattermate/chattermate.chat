@@ -20,6 +20,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE
+
 
 class ChannelAccountOut(BaseModel):
     """Connected channel account as exposed to the settings UI (no secrets)."""
@@ -66,7 +68,7 @@ class TemplateSendRequest(BaseModel):
     """Reopen an expired WhatsApp window with an approved template."""
     session_id: UUID
     template_name: str
-    language: str = "en_US"
+    language: str = DEFAULT_TEMPLATE_LANGUAGE
     components: Optional[list] = None
 
 
@@ -79,7 +81,7 @@ class OutboundConversationRequest(BaseModel):
     only names a newly created person (never renames an existing one)."""
     to: str
     template_name: str
-    language: str = "en_US"
+    language: str = DEFAULT_TEMPLATE_LANGUAGE
     components: Optional[list] = None
     customer_id: Optional[UUID] = None
     customer_name: Optional[str] = None

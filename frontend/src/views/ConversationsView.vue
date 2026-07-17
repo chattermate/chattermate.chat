@@ -44,14 +44,8 @@ const whatsappAccounts = ref<ChannelAccount[]>([])
 const showNewConversation = ref(false)
 
 const loadWhatsAppAccounts = async () => {
-  try {
-    const accounts = await channelsService.listAccounts()
-    whatsappAccounts.value = accounts.filter(
-      (account) => account.channel_type === 'whatsapp' && account.is_active,
-    )
-  } catch {
-    whatsappAccounts.value = []  // hidden button, not a broken page
-  }
+  // Resolves to [] on failure — a hidden button, not a broken page.
+  whatsappAccounts.value = await channelsService.listActiveWhatsAppAccounts()
 }
 
 const onConversationStarted = (sessionId: string) => {

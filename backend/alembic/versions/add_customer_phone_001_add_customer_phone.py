@@ -17,10 +17,10 @@ customers.phone: a second identity key beside email, normalized E.164 with a
 leading '+'. Phone-bearing channels (WhatsApp, SMS, Telegram share-contact)
 resolve people by it, so it must be unique per org — but only where present,
 hence a partial unique index rather than a UniqueConstraint (rows without a
-phone are the overwhelming majority and must never collide). The index lives
-only here, not in the model's __table_args__, following the
-uq_faq_generation_jobs_one_active precedent: partial indexes are Postgres
-syntax and the sqlite test schema is built from the models.
+phone are the overwhelming majority and must never collide). The index is
+declared in the model's __table_args__ as well as created here — so
+autogenerate never sees it as unknown and drops it, and so the sqlite test
+schema enforces the same uniqueness Postgres does. Keep the two in step.
 
 No backfill: WhatsApp/SMS aren't live yet, so no rows carry a phone anywhere
 to backfill from.

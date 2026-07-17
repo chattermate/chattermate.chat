@@ -238,11 +238,11 @@ def _get_or_create_customer(db: Session, account: ChannelAccount,
         channel_email = real_email.lower()
     else:
         channel_email = f"{inbound.external_user_id}@{account.channel_type}.channel"
-    placeholder = f"{account.channel_type.capitalize()} user {inbound.external_user_id[:8]}"
     customer = CustomerRepository(db).get_or_create_customer(
         email=channel_email,
         organization_id=uuid.UUID(org_id),
-        full_name=real_name or placeholder,
+        full_name=real_name or placeholder_name(account.channel_type,
+                                                inbound.external_user_id),
         # msisdn-lenient: adapters supply platform ids (wa_id, SMS sender),
         # which are E.164-without-plus — trusted in a way typed digits aren't.
         phone=normalize_msisdn((inbound.profile or {}).get('phone')),
@@ -257,6 +257,18 @@ def _get_or_create_customer(db: Session, account: ChannelAccount,
             db.rollback()
             logger.error(f"Failed to update customer name: {e}")
     return str(customer.id)
+
+
+def placeholder_name(channel_type: str, external_user_id: str) -> str:
+    """The stand-in name for a channel person we don't know yet.
+
+    Paired with _is_placeholder_name deliberately: one builds the string, the
+    other recognises it, and the two only work if they agree exactly. Spelling
+    either out a second time somewhere else (an outbound send, say) makes them
+    agree by coincidence — and the day the format changes, the detector
+    silently stops matching and every real name upgrade stops happening.
+    """
+    return f"{channel_type.capitalize()} user {external_user_id[:8]}"
 
 
 def _is_placeholder_name(name: str, channel_type: str) -> bool:
