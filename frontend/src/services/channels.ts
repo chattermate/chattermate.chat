@@ -180,6 +180,27 @@ const channelsService = {
     await api.delete(`/channels/meta/whatsapp/${accountId}/templates`, { params: { name } })
   },
 
+  /**
+   * Start a WhatsApp conversation with a phone number via an approved
+   * Utility/Authentication template. Returns the session to open in the
+   * inbox; a reply lands there and the AI answers with the template as
+   * context. customer_id links to a person picked from People.
+   */
+  async startWhatsAppConversation(
+    accountId: string,
+    payload: {
+      to: string
+      template_name: string
+      language?: string
+      components?: TemplateComponent[]
+      customer_id?: string
+      customer_name?: string
+    },
+  ): Promise<{ session_id: string }> {
+    const response = await api.post(`/channels/meta/whatsapp/${accountId}/conversations`, payload)
+    return response.data
+  },
+
   /** Send an approved template to reopen a conversation whose 24h window closed */
   async sendWhatsAppTemplate(
     accountId: string,

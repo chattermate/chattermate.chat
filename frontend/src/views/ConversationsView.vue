@@ -25,6 +25,8 @@ import type { Conversation, ChatDetail } from '@/types/chat'
 import { chatService } from '@/services/chat'
 import { agentService } from '@/services/agent'
 import api from '@/services/api'
+import channelsService, { type ChannelAccount } from '@/services/channels'
+import NewWhatsAppConversation from '@/components/conversations/NewWhatsAppConversation.vue'
 
 const route = useRoute()
 // Deep-link target session (e.g. from analytics "Sessions Needing Attention")
@@ -35,6 +37,28 @@ const initialSessionId = ref<string | null>(
 const conversations = ref<Conversation[]>([])
 const loading = ref(true)
 const error = ref('')
+
+// Outbound exists only when it can work: at least one active WhatsApp number.
+// (The server additionally requires an agent routed to it.)
+const whatsappAccounts = ref<ChannelAccount[]>([])
+const showNewConversation = ref(false)
+
+const loadWhatsAppAccounts = async () => {
+  try {
+    const accounts = await channelsService.listAccounts()
+    whatsappAccounts.value = accounts.filter(
+      (account) => account.channel_type === 'whatsapp' && account.is_active,
+    )
+  } catch {
+    whatsappAccounts.value = []  // hidden button, not a broken page
+  }
+}
+
+const onConversationStarted = (sessionId: string) => {
+  showNewConversation.value = false
+  initialSessionId.value = sessionId
+  loadConversations(1)
+}
 // Select the matching tab when deep-linking (closed sessions live under the "Closed" tab)
 const statusFilter = ref<'open' | 'closed'>(
   route.query.status === 'closed' ? 'closed' : 'open'
@@ -198,6 +222,7 @@ const loadAgents = async () => {
 }
 
 onMounted(() => {
+  loadWhatsAppAccounts()
   loadConversations(1)
   loadUsers()
   loadAgents()
@@ -270,6 +295,14 @@ const handleChatClosed = (_sessionId?: string) => {
       <div class="header-content">
         <h1>Conversations</h1>
         <div class="header-actions">
+          <button
+            v-if="whatsappAccounts.length"
+            class="new-conversation-btn"
+            @click="showNewConversation = true"
+          >
+            <i class="fab fa-whatsapp"></i>
+            New conversation
+          </button>
           <ConversationFilters
             :showFilters="showFilters"
             :filterValues="filterValues"
@@ -299,7 +332,14 @@ const handleChatClosed = (_sessionId?: string) => {
         </div>
       </div>
     </header>
-    
+
+    <NewWhatsAppConversation
+      v-if="showNewConversation"
+      :accounts="whatsappAccounts"
+      @close="showNewConversation = false"
+      @started="onConversationStarted"
+    />
+
     <div class="main-content">
       <ConversationsList 
         ref="conversationsListRef"
@@ -369,6 +409,20 @@ const handleChatClosed = (_sessionId?: string) => {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text);
+}
+
+.new-conversation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: var(--radius-btn, 8px);
+  border: none;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .header-actions {

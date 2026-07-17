@@ -15,8 +15,11 @@ limitations under the License.
 -->
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { peopleService } from '@/services/people'
+import channelsService, { type ChannelAccount } from '@/services/channels'
+import NewWhatsAppConversation from '@/components/conversations/NewWhatsAppConversation.vue'
 import type { PersonDetail } from '@/types/people'
 
 const props = defineProps<{ customerId: string }>()
@@ -82,13 +85,42 @@ async function markCustomer() {
   }
 }
 
+// "Message on WhatsApp" — the drawer is the person-centric entry point to the
+// same modal the Conversations button opens. Disabled-with-reason, matching
+// the Sync-now pattern above it.
+const router = useRouter()
+const whatsappAccounts = ref<ChannelAccount[]>([])
+const showNewConversation = ref(false)
+
+async function loadWhatsAppAccounts() {
+  try {
+    const accounts = await channelsService.listAccounts()
+    whatsappAccounts.value = accounts.filter(
+      (a) => a.channel_type === 'whatsapp' && a.is_active,
+    )
+  } catch {
+    whatsappAccounts.value = []
+  }
+}
+
+const whatsappDisabledReason = computed(() => {
+  if (!whatsappAccounts.value.length) return 'Connect WhatsApp in Settings → Integrations first'
+  return ''
+})
+
+function onConversationStarted(sessionId: string) {
+  showNewConversation.value = false
+  emit('close')
+  router.push({ path: '/conversations', query: { session: sessionId } })
+}
+
 function stageLabel(s?: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '' }
 function fmt(d?: string | null) {
   if (!d) return ''
   try { return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) } catch { return '' }
 }
 
-onMounted(load)
+onMounted(() => { load(); loadWhatsAppAccounts() })
 </script>
 
 <template>
@@ -131,6 +163,16 @@ onMounted(load)
         <p v-if="!person.identified" class="pdd-identify-hint">
           Anonymous visitor — add a name or phone below to identify them.
         </p>
+
+        <button
+          class="pdd-whatsapp"
+          :disabled="!!whatsappDisabledReason"
+          :title="whatsappDisabledReason"
+          @click="showNewConversation = true"
+        >
+          <i class="fab fa-whatsapp"></i>
+          Message on WhatsApp
+        </button>
 
         <!-- Contact edit: the one place a wrong phone can be corrected -->
         <div class="pdd-section-title">
@@ -198,6 +240,14 @@ onMounted(load)
         <div v-else class="pdd-none">No conversations yet.</div>
       </div>
     </aside>
+
+    <NewWhatsAppConversation
+      v-if="showNewConversation && person"
+      :accounts="whatsappAccounts"
+      :person="{ id: person.id, name: person.name, phone: person.phone }"
+      @close="showNewConversation = false"
+      @started="onConversationStarted"
+    />
   </div>
 </template>
 
@@ -222,6 +272,8 @@ onMounted(load)
 .pdd-mark { width: 100%; padding: 10px; border-radius: 10px; border: none; background: var(--accent-solid); color: var(--on-accent-solid); font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 22px; }
 .pdd-mark:disabled { opacity: .6; cursor: default; }
 .pdd-identify-hint { font-size: 12px; color: var(--muted); margin: -14px 0 18px; }
+.pdd-whatsapp { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: 10px; border: 1px solid var(--border-color); background: transparent; color: var(--text); font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 22px; }
+.pdd-whatsapp:disabled { opacity: .55; cursor: default; }
 .pdd-phone { margin-left: 8px; font-variant-numeric: tabular-nums; }
 .pdd-edit-link { margin-left: auto; border: none; background: none; color: var(--c-info); font-size: 11px; letter-spacing: normal; text-transform: none; cursor: pointer; padding: 0; }
 .pdd-edit { background: var(--o05); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
