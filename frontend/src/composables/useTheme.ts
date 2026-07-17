@@ -34,7 +34,12 @@ const resolve = (m: ThemeMode): 'dark' | 'light' =>
 
 const apply = (m: ThemeMode) => {
   if (typeof document !== 'undefined') {
-    document.documentElement.setAttribute('data-theme', resolve(m))
+    const resolved = resolve(m)
+    document.documentElement.setAttribute('data-theme', resolved)
+    // Keep the browser/PWA chrome color in sync (values = --bg per theme)
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', resolved === 'dark' ? '#0B0C10' : '#EEF0F4')
   }
 }
 

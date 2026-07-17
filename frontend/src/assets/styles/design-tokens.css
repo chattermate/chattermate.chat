@@ -178,6 +178,11 @@
   --icon-opacity: 0.5;
   --icon-active-opacity: 0.9;
 
+  /* Mobile app shell */
+  --bottom-nav-height: 56px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
   /* Breakpoints */
   --breakpoint-xs: 480px;
   --breakpoint-sm: 768px;

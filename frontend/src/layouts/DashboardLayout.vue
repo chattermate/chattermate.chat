@@ -15,13 +15,16 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, provide, computed } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useTheme } from '@/composables/useTheme'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
+import BottomNav from '@/components/layout/BottomNav.vue'
+import MoreSheet from '@/components/layout/MoreSheet.vue'
 import userAvatar from '@/assets/user.svg'
 import notificationIcon from '@/assets/notification.svg'
 import NotificationList from '@/components/notifications/NotificationList.vue'
+import EnablePushPrompt from '@/components/notifications/EnablePushPrompt.vue'
 import { userService } from '@/services/user'
 import type { User } from '@/types/user'
 import { useNotifications } from '@/composables/useNotifications'
@@ -30,6 +33,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { updateUserStatus } from '@/services/users'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { isAbsoluteUrl } from '@/utils/avatars'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 
 const props = defineProps<{
     hideSidebar?: boolean
@@ -38,12 +42,13 @@ const props = defineProps<{
 
 // Initialize sidebar state based on current route and screen size
 const route = useRoute()
-const isMobile = computed(() => window.innerWidth <= 1024)
+const { isMobile: isPhone, isTablet: isMobile } = useBreakpoint()
 const isSidebarOpen = ref(
     route.path !== '/conversations' && !isMobile.value
 )
 const showUserMenu = ref(false)
 const showNotifications = ref(false)
+const showMoreSheet = ref(false)
 const currentUser = ref<User>(userService.getCurrentUser() as User)
 const userName = ref(userService.getUserName())
 const userRole = ref(userService.getUserRole())
@@ -56,7 +61,9 @@ const themeTitle = computed(() =>
     : themeMode.value === 'light' ? 'Theme: Light — click for System'
     : 'Theme: System — click for Dark'
 )
-useNotifications()
+// Attaches push listeners when permission is already granted; the permission
+// request itself only happens from the EnablePushPrompt user gesture.
+const { enableNotifications } = useNotifications()
 const router = useRouter()
 
 const PAGE_TITLES: Record<string, string> = {
@@ -118,13 +125,22 @@ const toggleOnlineStatus = async () => {
   }
 }
 
+// Bottom nav shows on phones only; hidden in fullscreen workflows and on the
+// full-screen chat pane (mobile chat detail = /conversations with ?session=)
+const showBottomNav = computed(() =>
+    isPhone.value &&
+    !props.hideSidebar &&
+    !(route.path === '/conversations' && route.query.session)
+)
+
 // Watch for route changes to update sidebar state and close menus
 watch(
   () => route.path,
   (newPath) => {
     showUserMenu.value = false
     showNotifications.value = false
-    
+    showMoreSheet.value = false
+
     // Set sidebar state based on route and screen size
     if (newPath === '/conversations') {
       isSidebarOpen.value = false // Collapsed for conversations
@@ -144,21 +160,18 @@ const fetchUnreadCount = async () => {
     }
 }
 
-const handleResize = () => {
-    // Close sidebar on tablet/mobile when resizing
-    if (window.innerWidth <= 1024 && isSidebarOpen.value) {
+// React to breakpoint changes (was a manual resize listener)
+watch(isMobile, (mobile) => {
+    if (mobile && isSidebarOpen.value) {
         isSidebarOpen.value = false
-    }
-    // Open sidebar on desktop when resizing from mobile
-    if (window.innerWidth > 1024 && !isSidebarOpen.value && route.path !== '/conversations') {
+    } else if (!mobile && !isSidebarOpen.value && route.path !== '/conversations') {
         isSidebarOpen.value = true
     }
-}
+})
 
 onMounted(() => {
     fetchUnreadCount()
-    window.addEventListener('resize', handleResize)
-    
+
     if (hasEnterpriseModule) {
         initializeSubscriptionStore().then(() => {
             subscriptionStore.value.fetchCurrentPlan().then(() => {
@@ -171,17 +184,13 @@ onMounted(() => {
     }
 })
 
-onUnmounted(() => {
-    window.removeEventListener('resize', handleResize)
-})
-
 const toggleSidebar = () => {
     isSidebarOpen.value = !isSidebarOpen.value
 }
 
 const closeSidebar = () => {
     // On mobile, close the sidebar when clicking backdrop
-    if (window.innerWidth <= 1024) {
+    if (isMobile.value) {
         isSidebarOpen.value = false
     }
 }
@@ -194,8 +203,14 @@ const navigateToUpgrade = () => {
 const layoutClasses = computed(() => ({
     'sidebar-collapsed': !isSidebarOpen.value || props.hideSidebar,
     'header-hidden': props.hideHeader,
-    'fullscreen-workflow': props.hideSidebar && props.hideHeader
+    'fullscreen-workflow': props.hideSidebar && props.hideHeader,
+    'has-bottom-nav': showBottomNav.value
 }))
+
+const openNotificationsFromSheet = () => {
+    showMoreSheet.value = false
+    showNotifications.value = true
+}
 
 </script>
 
@@ -292,9 +307,6 @@ const layoutClasses = computed(() => ({
                                 </span>
                             </button>
 
-                            <NotificationList :is-open="showNotifications" @close="showNotifications = false"
-                                @notification-read="fetchUnreadCount" />
-
                             <div class="topbar-divider" aria-hidden="true"></div>
 
                             <div class="user-profile">
@@ -356,6 +368,33 @@ const layoutClasses = computed(() => ({
                 </div>
             </footer>
         </div>
+
+        <!-- Notification drawer (fixed) — outside the header so the More sheet
+             can open it on pages that hide the header (e.g. Inbox) -->
+        <NotificationList :is-open="showNotifications" @close="showNotifications = false"
+            @notification-read="fetchUnreadCount" />
+
+        <EnablePushPrompt @enable="enableNotifications" />
+
+        <!-- Mobile app shell -->
+        <BottomNav
+            v-if="showBottomNav"
+            :unread-count="unreadCount"
+            :more-open="showMoreSheet"
+            @more="showMoreSheet = true"
+        />
+        <MoreSheet
+            :open="showMoreSheet"
+            :is-online="currentUser?.is_online"
+            :status-updating="statusUpdating"
+            :theme-mode="themeMode"
+            :unread-count="unreadCount"
+            @close="showMoreSheet = false"
+            @toggle-status="toggleOnlineStatus"
+            @toggle-theme="toggleTheme"
+            @notifications="openNotificationsFromSheet"
+            @logout="logout"
+        />
     </div>
 </template>
 
@@ -364,6 +403,7 @@ const layoutClasses = computed(() => ({
     display: grid;
     grid-template-columns: auto 1fr;
     height: 100vh;
+    height: 100dvh;
     transition: grid-template-columns var(--transition-normal);
     overflow: hidden;
     width: 100%;
@@ -438,6 +478,8 @@ const layoutClasses = computed(() => ({
     position: sticky;
     top: 0;
     z-index: 50;
+    /* Standalone PWA: content extends under the status bar (black-translucent) */
+    padding-top: var(--safe-top);
 }
 
 .topbar-page-title {
@@ -957,6 +999,7 @@ const layoutClasses = computed(() => ({
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     width: 100%;
     overflow-y: auto;
     overflow-x: hidden;
@@ -975,20 +1018,24 @@ const layoutClasses = computed(() => ({
 .dashboard-layout.fullscreen-workflow .main-content {
     padding: 0;
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 .dashboard-layout.fullscreen-workflow .content {
     padding: 0;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
 .dashboard-layout.header-hidden .main-content {
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 .dashboard-layout.header-hidden .content {
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
@@ -1110,9 +1157,29 @@ const layoutClasses = computed(() => ({
     .header-content {
         padding: var(--space-sm);
     }
-    
+
     .content {
         padding: var(--space-sm);
+    }
+
+    /* Bottom nav replaces the hamburger/drawer on phones */
+    .hamburger-menu {
+        display: none;
+    }
+
+    /* Reserve space for the fixed bottom nav */
+    .dashboard-layout.has-bottom-nav .content {
+        padding-bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + var(--space-sm));
+    }
+
+    .dashboard-layout.has-bottom-nav .footer {
+        display: none;
+    }
+
+    /* Full-height pages (Inbox): shrink the content area instead of padding it */
+    .dashboard-layout.has-bottom-nav.header-hidden .content {
+        height: calc(100dvh - var(--bottom-nav-height) - var(--safe-bottom));
+        padding-bottom: 0;
     }
     
     .right-section {

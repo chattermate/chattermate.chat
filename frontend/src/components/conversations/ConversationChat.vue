@@ -19,6 +19,7 @@ import { onMounted, watch, nextTick, ref, computed, onBeforeUnmount } from 'vue'
 import type { ChatDetail } from '@/types/chat'
 import { useConversationChat } from '@/composables/useConversationChat'
 import { useConversationFiles } from '@/composables/useConversationFiles'
+import { useVisualViewport } from '@/composables/useVisualViewport'
 import { useJiraTicket } from '@/composables/useJiraTicket'
 import JiraTicketModal from '@/components/jira/JiraTicketModal.vue'
 import FileUpload from '@/components/common/FileUpload.vue'
@@ -38,6 +39,8 @@ const emit = defineEmits<{
   (e: 'chatUpdated', data: ChatDetail): void
   (e: 'clearUnread', sessionId: string): void
   (e: 'view-product', productId: string): void
+  (e: 'back'): void
+  (e: 'info'): void
 }>()
 
 // Create a local ref to track the current chat state
@@ -159,6 +162,10 @@ const handleTicketCreated = (ticketKey: string) => {
 
 
 
+// Keep the composer above the on-screen keyboard on installed iOS PWAs, where
+// the keyboard overlays the viewport instead of resizing it
+useVisualViewport(() => scrollToBottom())
+
 // Watch for chat changes and update the internal state
 watch(() => props.chat, (newChat) => {
   if (newChat) {
@@ -178,6 +185,9 @@ onMounted(async () => {
 <template>
   <div class="chat-layout">
     <header class="chat-header">
+      <button class="back-btn" aria-label="Back to conversations" @click="emit('back')">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
       <div class="user-info">
         <h2>{{ chat.customer.full_name || chat.customer.email }}</h2>
         <ChannelBadge :channel="chat.channel" />
@@ -218,6 +228,9 @@ onMounted(async () => {
         >
           <font-awesome-icon icon="fa-solid fa-ticket-alt" />
           Create Ticket
+        </button>
+        <button class="info-btn" aria-label="Conversation details" @click="emit('info')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="1.1" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
     </header>
@@ -335,7 +348,18 @@ onMounted(async () => {
       @ticket-created="handleTicketCreated"
     />
 
-    <footer class="chat-input" v-if="!isChatClosed && !handledByAI">
+    <!-- Transferred and not yet claimed: the composer is replaced by the
+         primary "Take over chat" action (per the mobile-app design; applies on
+         desktop too — previously this was a disabled input). -->
+    <footer v-if="showTakeoverButton" class="chat-input takeover-footer">
+      <div class="takeover-caption">The AI has handed this chat to a human</div>
+      <button class="takeover-button" :disabled="isLoading" @click="handleTakeover">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12h11m0 0l-4-4m4 4l-4 4"/><path d="M5 5v14"/></svg>
+        Take over chat
+      </button>
+    </footer>
+
+    <footer class="chat-input" v-else-if="!isChatClosed && !handledByAI">
       <!-- The agent has just been told a reply couldn't be delivered; offer the
            one action that gets the conversation back rather than leaving them
            to retype into a composer that will fail again. -->
@@ -423,7 +447,70 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   width: 100%;
+}
+
+/* Mobile-only affordances (back chevron, info button) */
+.back-btn,
+.info-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.info-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  color: var(--text3);
+}
+
+.takeover-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.takeover-caption {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.takeover-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 50px;
+  border: none;
+  border-radius: 13px;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+  transition: filter var(--transition-fast), opacity var(--transition-fast);
+}
+
+.takeover-button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.takeover-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .chat-content {
@@ -1043,5 +1130,67 @@ onMounted(async () => {
   margin: 0;
   padding: 4px 8px;
   font-size: 12px;
+}
+
+/* Mobile: full-screen chat pane */
+@media (max-width: 768px) {
+  .chat-layout {
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .back-btn {
+    display: flex;
+    width: 44px;
+    height: 44px;
+    margin-left: -10px;
+  }
+
+  .info-btn {
+    display: flex;
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-header {
+    padding: calc(8px + var(--safe-top)) 12px 8px;
+  }
+
+  .user-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .user-info h2 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-actions {
+    gap: 8px;
+  }
+
+  .create-ticket-btn {
+    margin-right: 0;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .refresh-chat-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .message {
+    max-width: 85%;
+  }
+
+  /* Keyboard-aware, safe-area-aware composer */
+  .chat-input,
+  .chat-closed-footer {
+    padding: 12px 14px calc(12px + var(--safe-bottom) + var(--kb-offset, 0px));
+  }
 }
 </style> 

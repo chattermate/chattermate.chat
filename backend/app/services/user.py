@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import json
+
 from app.models.user import User
 from app.models.notification import Notification
 from app.core.logger import get_logger
@@ -30,16 +32,24 @@ async def send_fcm_notification(user_id: str, notification: Notification, db):
         if not user or not user.fcm_token_web:
             return
 
-        # Create FCM message
+        metadata = notification.notification_metadata or {}
+
+        # Data-only FCM message (no messaging.Notification): with a notification
+        # payload the Firebase web SDK auto-displays its own copy in the service
+        # worker AND swallows clicks on it, so the app's tagged, deep-linking
+        # notification would appear as a duplicate. The service worker renders
+        # the notification itself from this data. session_id is flattened out of
+        # the metadata so a click can deep-link to /conversations?session=<id>;
+        # metadata is JSON (str() produced a Python repr the frontend could
+        # never parse).
         message = messaging.Message(
-            notification=messaging.Notification(
-                title=notification.title,
-                body=notification.message,
-            ),
             data={
+                'title': notification.title or '',
+                'body': notification.message or '',
                 'type': notification.type,
                 'notification_id': str(notification.id),
-                'metadata': str(notification.notification_metadata or {})
+                'session_id': str(metadata.get('session_id') or ''),
+                'metadata': json.dumps(metadata, default=str)
             },
             token=user.fcm_token_web,
         )

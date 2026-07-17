@@ -436,4 +436,28 @@ onMounted(fetchNotifications)
     font-size: 12.5px;
     color: var(--faint);
 }
+
+/* Mobile: full-screen panel per design */
+@media (max-width: 768px) {
+    .notification-drawer {
+        width: 100%;
+        max-width: 100vw;
+        right: -100vw;
+        height: 100vh;
+        height: 100dvh;
+        border-left: none;
+    }
+
+    .notification-drawer.open {
+        right: 0;
+    }
+
+    .drawer-header {
+        padding-top: calc(20px + var(--safe-top));
+    }
+
+    .drawer-content {
+        padding-bottom: var(--safe-bottom);
+    }
+}
 </style>

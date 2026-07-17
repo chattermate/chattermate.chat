@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import json
+
 import pytest
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from uuid import uuid4
@@ -85,13 +87,14 @@ async def test_send_fcm_notification_success(mock_db, sample_user, sample_notifi
         mock_query.filter.assert_called_once()
         mock_query.filter.return_value.first.assert_called_once()
         
-        # Verify Firebase message was created correctly
+        # Verify Firebase message was created correctly: data-only (a
+        # notification payload would make the web SDK show a duplicate copy)
         mock_messaging.Message.assert_called_once()
-        mock_messaging.Notification.assert_called_once_with(
-            title=sample_notification.title,
-            body=sample_notification.message,
-        )
-        
+        mock_messaging.Notification.assert_not_called()
+        data = mock_messaging.Message.call_args[1]['data']
+        assert data['title'] == sample_notification.title
+        assert data['body'] == sample_notification.message
+
         # Verify message was sent
         mock_messaging.send.assert_called_once()
 
@@ -179,13 +182,18 @@ async def test_send_fcm_notification_message_structure(mock_db, sample_user, sam
         # Call the function
         await send_fcm_notification(str(sample_user.id), sample_notification, mock_db)
         
-        # Verify message was created with correct parameters
+        # Verify message was created with correct parameters: data-only payload
+        # (title/body in data so the web SDK doesn't auto-display a duplicate),
+        # metadata as JSON (not a Python repr), session_id flattened for SW
+        # deep links
         mock_messaging.Message.assert_called_once_with(
-            notification=mock_messaging.Notification.return_value,
             data={
+                'title': sample_notification.title,
+                'body': sample_notification.message,
                 'type': sample_notification.type,
                 'notification_id': str(sample_notification.id),
-                'metadata': str(sample_notification.notification_metadata)
+                'session_id': '',
+                'metadata': json.dumps(sample_notification.notification_metadata)
             },
             token=sample_user.fcm_token_web,
         )
