@@ -209,8 +209,37 @@ class CustomerRepository:
 
     @staticmethod
     def is_placeholder_email(email: str | None) -> bool:
-        """True if the email is missing or an auto-generated anonymous placeholder."""
-        return (not email) or ('@noemail.com' in email)
+        """True if the email is missing or an auto-generated stand-in.
+
+        Two kinds exist, and neither can receive mail:
+        - ``…@noemail.com`` — an anonymous widget visitor.
+        - ``…@<channel>.channel`` — synthesized from a platform id (a wa_id, a
+          Telegram user id) so channel people have an identity key at all. It
+          was never an address, and treating it as one is why a channel
+          customer's captured email was silently dropped and why the handoff
+          form never asked them for one.
+        """
+        return (not email) or ('@noemail.com' in email) or email.endswith('.channel')
+
+    @staticmethod
+    def display_email(email: str | None) -> str | None:
+        """The email to show a human — None when we only ever had a stand-in.
+        Showing `916…@whatsapp.channel` in an Email field states something
+        untrue about the person."""
+        return None if CustomerRepository.is_placeholder_email(email) else email
+
+    @staticmethod
+    def _email_is_identity_key(customer) -> bool:
+        """True when this customer is *found* by their synthesized address.
+
+        A phone-less channel (Telegram, Messenger, Instagram, Slack, LINE) has
+        no other key: `_get_or_create_customer` looks the person up by
+        `{platform_id}@{channel}.channel` on every inbound message. Overwrite
+        it with a real address and the next message finds nobody and mints a
+        duplicate. Where a phone exists it is the key, so the email is free to
+        become the person's actual address.
+        """
+        return (customer.email or '').endswith('.channel') and not customer.phone
 
     def update_contact(
         self,
@@ -243,8 +272,10 @@ class CustomerRepository:
 
             if email:
                 email = email.strip()
-                # Only replace a placeholder/empty email — don't clobber a real one
+                # Only replace a placeholder/empty email — don't clobber a real one,
+                # and never one that is still doing duty as the identity key.
                 if email and self.is_placeholder_email(customer.email) \
+                        and not self._email_is_identity_key(customer) \
                         and email.lower() != (customer.email or '').lower():
                     existing = self.get_customer_by_email(email, customer.organization_id)
                     if existing and existing.id != customer.id:

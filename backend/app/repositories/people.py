@@ -70,7 +70,9 @@ class PeopleRepository:
         """Return (name, email, is_anonymous), preferring the customer's own contact
         and falling back to the captured lead's email/name when the record is bare."""
         if not self._is_anonymous(customer):
-            return customer.full_name, customer.email, False
+            # display_email: a channel person's `{id}@{channel}.channel` key is
+            # not an address and must not be shown as one.
+            return customer.full_name, CustomerRepository.display_email(customer.email), False
         captured = captured or {}
         email = captured.get("email")
         name = (customer.full_name or "").strip() or captured.get("name")

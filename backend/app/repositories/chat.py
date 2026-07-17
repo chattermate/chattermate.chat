@@ -26,6 +26,7 @@ from app.models.session_to_agent import SessionToAgent
 from app.repositories.channels import ChannelConversationRepository
 from app.core.logger import get_logger
 from app.models.user import User
+from app.repositories.customer import CustomerRepository
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 from pydantic import BaseModel
@@ -394,7 +395,7 @@ class ChatRepository:
         return [{
             'customer': {
                 'id': r.customer_id,
-                'email': r.customer_email,
+                'email': CustomerRepository.display_email(r.customer_email),
                 'full_name': r.customer_full_name
             },
             'agent': {
@@ -532,7 +533,7 @@ class ChatRepository:
         return {
             'customer': {
                 'id': result.customer_id,
-                'email': result.customer_email,
+                'email': CustomerRepository.display_email(result.customer_email),
                 'full_name': result.customer_full_name,
                 'meta_data': result.customer_meta_data
             },

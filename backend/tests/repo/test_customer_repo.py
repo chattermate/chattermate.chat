@@ -343,3 +343,52 @@ class TestUpdateContactPhone:
             phone="+916366602824")
         assert result == {'email_updated': True, 'name_updated': True,
                           'phone_updated': True, 'email': 'real@example.com'}
+
+
+class TestPlaceholderEmails:
+    """A `{id}@{channel}.channel` address is a synthesized identity key, not an
+    address — but it is still the ONLY key a phone-less channel has."""
+
+    def test_channel_addresses_are_placeholders(self, customer_repo):
+        assert CustomerRepository.is_placeholder_email("916366602824@whatsapp.channel") is True
+        assert CustomerRepository.is_placeholder_email("555@telegram.channel") is True
+        assert CustomerRepository.is_placeholder_email("1712345@noemail.com") is True
+        assert CustomerRepository.is_placeholder_email(None) is True
+        assert CustomerRepository.is_placeholder_email("priya@example.com") is False
+
+    def test_display_email_hides_stand_ins(self, customer_repo):
+        assert CustomerRepository.display_email("916366602824@whatsapp.channel") is None
+        assert CustomerRepository.display_email("1712345@noemail.com") is None
+        assert CustomerRepository.display_email("priya@example.com") == "priya@example.com"
+
+    def test_captured_email_lands_when_a_phone_holds_the_identity(self, customer_repo, test_organization_id):
+        """WhatsApp/SMS: the phone is the key, so the email is free to become real."""
+        customer = customer_repo.create_customer(
+            email="916366602824@whatsapp.channel", organization_id=test_organization_id,
+            phone="+916366602824")
+
+        result = customer_repo.update_contact(customer.id, email="priya@example.com")
+
+        assert result['email_updated'] is True
+        assert customer_repo.get_by_id(customer.id).email == "priya@example.com"
+
+    def test_phoneless_channel_keeps_its_key_so_no_duplicate_is_minted(self, customer_repo, test_organization_id):
+        """Telegram has no phone: the .channel address is how the next inbound
+        message finds this person. Overwriting it would create a second row."""
+        customer = customer_repo.create_customer(
+            email="555@telegram.channel", organization_id=test_organization_id)
+
+        result = customer_repo.update_contact(customer.id, email="ada@example.com")
+
+        assert result['email_updated'] is False
+        assert customer_repo.get_by_id(customer.id).email == "555@telegram.channel"
+        # And the lookup that every inbound message does still resolves.
+        assert customer_repo.get_customer_by_email(
+            "555@telegram.channel", test_organization_id).id == customer.id
+
+    def test_widget_placeholder_still_replaceable(self, customer_repo, test_organization_id):
+        """Unchanged behaviour: @noemail.com was never an identity key."""
+        customer = customer_repo.create_customer(
+            email="1712345@noemail.com", organization_id=test_organization_id)
+        result = customer_repo.update_contact(customer.id, email="real@example.com")
+        assert result['email_updated'] is True
