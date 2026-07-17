@@ -26,7 +26,9 @@ from app.channels.base import WindowStatus
 from app.channels.meta_base import (
     verify_meta_signature,
     verify_challenge,
+    exchange_for_long_lived_token,
     graph_get,
+    graph_list_all,
     graph_post_json,
     WINDOW_HOURS,
 )
@@ -281,3 +283,44 @@ class TestGraphHelpers:
 
         assert ok is False
         assert "connection reset" in body["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_long_lived_exchange_uses_app_credentials_not_a_bearer(self, graph_client, monkeypatch):
+        """Like the signup-code exchange, this authenticates with the app secret
+        in the query, so it must carry no Authorization header."""
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        monkeypatch.setattr(settings, "META_APP_SECRET", "SEKRET")
+        graph_client.response = _FakeResponse(200, {"access_token": "LONGLIVED"})
+
+        ok, body = await exchange_for_long_lived_token("short-token")
+
+        assert (ok, body["access_token"]) == (True, "LONGLIVED")
+        call = graph_client.calls[0]
+        assert call["headers"].get("Authorization") is None
+        assert call["params"]["grant_type"] == "fb_exchange_token"
+        assert call["params"]["fb_exchange_token"] == "short-token"
+        assert "SEKRET" not in call["url"]
+
+    @pytest.mark.asyncio
+    async def test_graph_list_all_follows_the_cursor(self, graph_client):
+        """Two full pages then a short one: it must return every node, not stop
+        at the first page."""
+        pages = [
+            _FakeResponse(200, {"data": [{"id": "1"}, {"id": "2"}],
+                                "paging": {"cursors": {"after": "c1"}}}),
+            _FakeResponse(200, {"data": [{"id": "3"}]}),
+        ]
+        call_count = {"n": 0}
+
+        async def request(method, url, params=None, json=None, headers=None):
+            graph_client.calls.append({"method": method, "url": url, "params": params})
+            r = pages[call_count["n"]]
+            call_count["n"] += 1
+            return r
+
+        graph_client.request = request
+        ok, items = await graph_list_all("me/accounts", "tok", {"limit": 2})
+
+        assert ok is True
+        assert [i["id"] for i in items] == ["1", "2", "3"]
+        assert graph_client.calls[1]["params"]["after"] == "c1"

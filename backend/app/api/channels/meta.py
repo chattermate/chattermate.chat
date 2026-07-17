@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import json
 import secrets
+import time
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -25,12 +27,15 @@ from app.api.channels.accounts import get_org_account_or_404, to_account_out
 from app.channels import get_adapter
 from app.channels.meta_base import (
     debug_token,
+    exchange_for_long_lived_token,
     exchange_signup_code,
     fetch_message_templates,
     graph_get,
+    graph_list_all,
     register_phone_number,
     subscribe_app,
 )
+from app.core.security import decrypt_api_key, encrypt_api_key
 from app.core.auth import (
     INBOX_PERMISSIONS,
     get_current_organization,
@@ -48,6 +53,10 @@ from app.models.schemas.channel import (
     EmbeddedSignupRequest,
     WhatsAppConnectRequest,
     MessengerConnectRequest,
+    MessengerSignupConnectRequest,
+    MessengerSignupPagesOut,
+    MessengerSignupRequest,
+    MessengerPageOut,
     InstagramConnectRequest,
     OutboundConversationOut,
     OutboundConversationRequest,
@@ -167,6 +176,67 @@ def check_signup_access(channel: str) -> None:
             detail="Signup is not configured on this deployment for this channel. "
                    "Connect with credentials instead.",
         )
+
+
+# The signup code is single-use and lives ~10 minutes; the sealed page list it
+# produces should not outlive it, so a stale one fails cleanly with a retry.
+SIGNUP_TOKEN_TTL_SECONDS = 600
+# 500 Pages; an agency ceiling, not a limit a real customer reaches.
+PAGE_LIST_MAX_PAGES = 5
+
+
+def _seal_signup_pages(organization_id, pages: list[dict]) -> str:
+    """Carry a signup's Page tokens through the picker without the browser ever
+    holding them in the clear.
+
+    The tokens go back to the client as ciphertext only we can open, so step 2
+    needs no server-side session — which matters because the two requests are
+    not guaranteed to hit the same worker. Binding the org and an expiry inside
+    means a leaked blob cannot be replayed by another tenant, or after the
+    signup's own code would already have died.
+    """
+    payload = {
+        "org": str(organization_id),
+        "exp": int(time.time()) + SIGNUP_TOKEN_TTL_SECONDS,
+        "pages": pages,
+    }
+    return encrypt_api_key(json.dumps(payload))
+
+
+def _open_signup_pages(signup_token: str, organization: Organization) -> list[dict]:
+    """The sealed page list, or 400 if it is forged, expired or another org's.
+
+    One generic message across every reject path, so it is not an oracle for
+    which check tripped.
+    """
+    invalid = HTTPException(status_code=400,
+                            detail="That signup has expired — please connect again")
+    try:
+        # decrypt raises ValueError on a bad token; json.loads raises
+        # JSONDecodeError, a ValueError subclass — one except covers both.
+        payload = json.loads(decrypt_api_key(signup_token))
+    except ValueError:
+        raise invalid
+    if not isinstance(payload, dict) or payload.get("org") != str(organization.id):
+        raise invalid
+    if float(payload.get("exp", 0)) <= time.time():
+        raise invalid
+    pages = payload.get("pages")
+    if not isinstance(pages, list):
+        raise invalid
+    return pages
+
+
+async def _list_manageable_pages(user_token: str, fields: str) -> list[dict]:
+    """The Pages this signup granted us, each with its own Page access token."""
+    ok, data = await graph_list_all(
+        "me/accounts", user_token, {"fields": fields, "limit": 100},
+        max_pages=PAGE_LIST_MAX_PAGES)
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail=_graph_detail(data, "Could not list your Facebook Pages"))
+    return data
 
 
 def _graph_detail(data: dict, fallback: str) -> str:
@@ -394,6 +464,83 @@ async def connect_messenger(
     if not await subscribe_app(request.page_id, request.page_access_token,
                                subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
         logger.warning(f"Page subscribe failed for {request.page_id}; webhook may need manual subscription")
+    return to_account_out(db, account)
+
+
+@router.post("/messenger/signup/pages", response_model=MessengerSignupPagesOut)
+async def list_messenger_signup_pages(
+    request: MessengerSignupRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+):
+    """Step 1 of Facebook Login for Business: trade the code for the customer's
+    Pages so they can pick which to connect.
+
+    The Page tokens are sealed into signup_token and never reach the browser;
+    only the ids and names come back for the picker.
+    """
+    check_signup_access(ChannelType.MESSENGER.value)
+
+    ok, data = await exchange_signup_code(request.code)
+    user_token = data.get("access_token") if ok else None
+    if not user_token:
+        # The code is short-lived (~10 minutes) and single-use, so a stale or
+        # replayed one lands here rather than on a Graph error later.
+        raise HTTPException(status_code=400, detail=_graph_detail(
+            data, "Could not complete signup — please try connecting again"))
+
+    # Page tokens inherit the user token's lifetime; extend it first so the ones
+    # we store keep working for months. Best-effort — an already-long-lived
+    # token comes back unchanged, and a failure only risks earlier expiry.
+    ok, extended = await exchange_for_long_lived_token(user_token)
+    if ok and extended.get("access_token"):
+        user_token = extended["access_token"]
+    else:
+        logger.warning("Could not extend the Messenger signup token; page tokens may expire early")
+
+    pages = await _list_manageable_pages(user_token, "id,name,access_token")
+    if not pages:
+        raise HTTPException(status_code=400, detail=(
+            "No Facebook Pages were shared with ChatterMate. Run the connect "
+            "again and tick the Page you want to use."))
+
+    return MessengerSignupPagesOut(
+        signup_token=_seal_signup_pages(organization.id, pages),
+        pages=[MessengerPageOut(id=p["id"], name=p.get("name") or p["id"]) for p in pages],
+    )
+
+
+@router.post("/messenger/signup/connect", response_model=ChannelAccountOut)
+async def connect_messenger_signup(
+    request: MessengerSignupConnectRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Step 2: connect the Page the customer picked in step 1.
+
+    page_id is a selector into the list we fetched ourselves, never a caller
+    claim: the token stored is the one /me/accounts returned for that Page, so a
+    caller cannot connect a Page they do not administer. This is the Messenger
+    equivalent of _verify_signup_assets, and matters for the same reason —
+    webhooks resolve accounts by external id with no org scoping.
+    """
+    check_signup_access(ChannelType.MESSENGER.value)
+    pages = _open_signup_pages(request.signup_token, organization)
+
+    page = next((p for p in pages if p.get("id") == request.page_id), None)
+    if page is None or not page.get("access_token"):
+        raise HTTPException(status_code=400, detail="That Page was not part of this signup")
+
+    account = _upsert_account(
+        db, organization, ChannelType.MESSENGER.value,
+        external_account_id=page["id"],
+        credentials={"access_token": page["access_token"]},
+        display_name=request.display_name or page.get("name") or page["id"],
+    )
+    if not await subscribe_app(page["id"], page["access_token"],
+                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
+        logger.warning(f"Page subscribe failed for {page['id']} after signup")
     return to_account_out(db, account)
 
 

@@ -28,6 +28,7 @@ from app.core.application import app
 from app.core.auth import get_current_user, get_current_organization
 from app.core.config import settings
 from app.database import get_db
+from app.api.channels.meta import _seal_signup_pages
 from app.channels.base import SendResult
 from app.repositories.channels import ChannelAccountRepository
 
@@ -379,6 +380,24 @@ class TestEmbeddedSignupConfig:
         monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
         assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
 
+    def test_messenger_config_id_returned_for_messenger(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        body = client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()
+        assert (body["enabled"], body["config_id"], body["app_id"]) == (True, "MCFG", "APP1")
+
+    def test_whatsapp_config_id_not_served_to_messenger(self, client, monkeypatch):
+        """The WhatsApp config id must not leak on a Messenger request: Messenger
+        has its own config, and an unset one means the manual form, not WhatsApp's."""
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "")
+        body = client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()
+        assert body["enabled"] is False
+        assert body["config_id"] is None
+
+    def test_unknown_channel_404(self, client):
+        assert client.get(f"{BASE}/embedded-signup-config?channel=carrier-pigeon").status_code == 404
+
 
 class TestEmbeddedSignupConnect:
     ES = f"{BASE}/whatsapp/embedded-signup"
@@ -513,6 +532,126 @@ class TestEmbeddedSignupConnect:
         assert credentials["access_token"] == "EAAG-rotated"
         assert credentials["verification_pin"] == pin
         assert credentials["waba_id"] == "WABA9"
+
+
+class TestMessengerSignup:
+    """Facebook Login for Business: the code exchanges to a user token, we list
+    the customer's Pages, and connect the one they pick. The Page tokens ride
+    back to step 2 sealed in signup_token, never through the browser."""
+
+    PAGES = f"{BASE}/messenger/signup/pages"
+    CONNECT = f"{BASE}/messenger/signup/connect"
+
+    # As /me/accounts lists them for the exchanged user token
+    TWO_PAGES = [
+        {"id": "PAGE1", "name": "Acme Support", "access_token": "EAAG-page1"},
+        {"id": "PAGE2", "name": "Acme Sales", "access_token": "EAAG-page2"},
+    ]
+
+    @pytest.fixture(autouse=True)
+    def enabled(self, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+
+    def _list_pages(self, client, pages=None,
+                    long_lived=(True, {"access_token": "LONGLIVED"})):
+        """Drive step 1, returning (response, graph_list_all mock)."""
+        lister = AsyncMock(return_value=(True, self.TWO_PAGES if pages is None else pages))
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "USERTOKEN"}))), \
+             patch("app.api.channels.meta.exchange_for_long_lived_token",
+                   AsyncMock(return_value=long_lived)), \
+             patch("app.api.channels.meta.graph_list_all", lister):
+            r = client.post(self.PAGES, json={"code": "FB-code"})
+        return r, lister
+
+    def _signup_token(self, client):
+        return self._list_pages(client)[0].json()["signup_token"]
+
+    def test_lists_pages_without_leaking_their_tokens(self, client):
+        r, _ = self._list_pages(client)
+        assert r.status_code == 200
+        body = r.json()
+        assert [p["id"] for p in body["pages"]] == ["PAGE1", "PAGE2"]
+        assert all(set(p.keys()) == {"id", "name"} for p in body["pages"])
+        # The whole point of the sealed token: no page token in the wire response
+        assert "EAAG-page1" not in r.text and "EAAG-page2" not in r.text
+
+    def test_connect_stores_the_token_meta_gave_us_for_that_page(self, client, db):
+        token = self._signup_token(client)
+        subscribe = AsyncMock(return_value=True)
+        with patch("app.api.channels.meta.subscribe_app", subscribe):
+            r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE2"})
+
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "Acme Sales"
+        repo = ChannelAccountRepository(db)
+        account = repo.get_by_external_id("messenger", "PAGE2")
+        assert repo.get_credentials(account)["access_token"] == "EAAG-page2"
+        subscribe.assert_awaited_once_with(
+            "PAGE2", "EAAG-page2", subscribed_fields="messages,messaging_postbacks")
+
+    def test_rejects_a_page_that_was_not_in_the_signup(self, client, db):
+        """page_id is a selector into a list we fetched, not a claim — a Page the
+        signup never offered cannot be connected, and its token is unknown to us."""
+        token = self._signup_token(client)
+        with patch("app.api.channels.meta.subscribe_app", AsyncMock()) as subscribe:
+            r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE_I_DO_NOT_OWN"})
+
+        assert r.status_code == 400
+        subscribe.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE_I_DO_NOT_OWN") is None
+
+    def test_rejects_another_orgs_signup_token(self, client, db):
+        """A blob sealed for one org must not connect under another — it is bound
+        to the org id inside the ciphertext, not just handed to the browser."""
+        foreign = _seal_signup_pages(uuid4(), self.TWO_PAGES)
+        r = client.post(self.CONNECT, json={"signup_token": foreign, "page_id": "PAGE1"})
+
+        assert r.status_code == 400
+        assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE1") is None
+
+    def test_rejects_an_expired_signup_token(self, client, monkeypatch):
+        monkeypatch.setattr("app.api.channels.meta.SIGNUP_TOKEN_TTL_SECONDS", -10)
+        token = self._signup_token(client)
+        r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE1"})
+        assert r.status_code == 400
+
+    def test_rejects_a_forged_signup_token(self, client):
+        """A garbage token is a clean 400, not a 500 — decrypt's ValueError is caught."""
+        r = client.post(self.CONNECT, json={"signup_token": "not-a-real-token", "page_id": "PAGE1"})
+        assert r.status_code == 400
+
+    def test_no_pages_is_a_clear_400(self, client):
+        r, _ = self._list_pages(client, pages=[])
+        assert r.status_code == 400
+        assert "No Facebook Pages" in r.json()["detail"]
+
+    def test_stale_code_is_400(self, client):
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(False, {"error": {"message": "Code expired"}}))):
+            r = client.post(self.PAGES, json={"code": "FB-code"})
+        assert r.status_code == 400
+        assert r.json()["detail"] == "Code expired"
+
+    def test_signup_uses_the_long_lived_token_for_page_lookup(self, client):
+        """Page tokens inherit the user token's life, so the lookup must use the
+        extended token — otherwise every Page dies about an hour after launch."""
+        _, lister = self._list_pages(client)
+        assert lister.await_args.args[0] == "me/accounts"
+        assert lister.await_args.args[1] == "LONGLIVED"
+
+    def test_pages_still_listed_when_extension_fails(self, client):
+        r, lister = self._list_pages(client, long_lived=(False, {"error": {"message": "nope"}}))
+        assert r.status_code == 200
+        assert lister.await_args.args[1] == "USERTOKEN"
+
+    def test_rejected_without_messenger_config_id(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "")
+        exchange = AsyncMock()
+        with patch("app.api.channels.meta.exchange_signup_code", exchange):
+            r = client.post(self.PAGES, json={"code": "FB-code"})
+        assert r.status_code == 403
+        exchange.assert_not_awaited()
 
 
 class TestGraphErrorDetail:

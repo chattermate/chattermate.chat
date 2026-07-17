@@ -183,6 +183,24 @@ async def exchange_signup_code(code: str) -> tuple[bool, dict]:
     })
 
 
+async def exchange_for_long_lived_token(short_lived_token: str) -> tuple[bool, dict]:
+    """Trade a user token for a 60-day one.
+
+    Page tokens inherit their lifetime from the user token they were read with:
+    from a short-lived one they die in about an hour, from a long-lived one they
+    never expire. We store the Page token and send with it for months, so this
+    runs before /me/accounts. An already-long-lived token comes back unchanged,
+    so it is safe to call unconditionally. App credentials authenticate it, so
+    like exchange_signup_code it carries no bearer token.
+    """
+    return await _graph_request("GET", "oauth/access_token", None, params={
+        "grant_type": "fb_exchange_token",
+        "client_id": settings.META_APP_ID,
+        "client_secret": settings.META_APP_SECRET,
+        "fb_exchange_token": short_lived_token,
+    })
+
+
 async def register_phone_number(phone_number_id: str, access_token: str, pin: str) -> tuple[bool, dict]:
     """Enable a number for Cloud API sending.
 
