@@ -561,7 +561,8 @@ class TestMessengerSignup:
              patch("app.api.channels.meta.exchange_for_long_lived_token",
                    AsyncMock(return_value=long_lived)), \
              patch("app.api.channels.meta.graph_list_all", lister):
-            r = client.post(self.PAGES, json={"code": "FB-code"})
+            r = client.post(self.PAGES, json={
+                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
         return r, lister
 
     def _signup_token(self, client):
@@ -629,7 +630,8 @@ class TestMessengerSignup:
     def test_stale_code_is_400(self, client):
         with patch("app.api.channels.meta.exchange_signup_code",
                    AsyncMock(return_value=(False, {"error": {"message": "Code expired"}}))):
-            r = client.post(self.PAGES, json={"code": "FB-code"})
+            r = client.post(self.PAGES, json={
+                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
         assert r.status_code == 400
         assert r.json()["detail"] == "Code expired"
 
@@ -649,7 +651,8 @@ class TestMessengerSignup:
         monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "")
         exchange = AsyncMock()
         with patch("app.api.channels.meta.exchange_signup_code", exchange):
-            r = client.post(self.PAGES, json={"code": "FB-code"})
+            r = client.post(self.PAGES, json={
+                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
         assert r.status_code == 403
         exchange.assert_not_awaited()
 

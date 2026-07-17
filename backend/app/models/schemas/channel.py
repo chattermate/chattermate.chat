@@ -104,8 +104,13 @@ class EmbeddedSignupRequest(BaseModel):
 
 class MessengerSignupRequest(BaseModel):
     """The code Facebook Login for Business hands back. Unlike WhatsApp's
-    Embedded Signup it names no assets — the Pages are ours to look up."""
+    Embedded Signup it names no assets — the Pages are ours to look up.
+
+    redirect_uri is the OAuth callback URL the login popup used; the code is
+    bound to it, so the token exchange must send the exact same value back. The
+    client owns it (it must also be a registered Valid OAuth Redirect URI)."""
     code: str
+    redirect_uri: str
 
 
 class MessengerPageOut(BaseModel):

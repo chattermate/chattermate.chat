@@ -481,7 +481,11 @@ async def list_messenger_signup_pages(
     """
     check_signup_access(ChannelType.MESSENGER.value)
 
-    ok, data = await exchange_signup_code(request.code)
+    # The OAuth popup bound the code to its callback URL; the exchange must send
+    # that exact value back or Graph rejects the code as a mismatch. The client
+    # used it and it is a registered Valid OAuth Redirect URI, so it is trusted
+    # only as far as Meta's own redirect-match check allows.
+    ok, data = await exchange_signup_code(request.code, redirect_uri=request.redirect_uri)
     user_token = data.get("access_token") if ok else None
     if not user_token:
         # The code is short-lived (~10 minutes) and single-use, so a stale or

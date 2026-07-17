@@ -18,6 +18,14 @@ const SDK_SRC = 'https://connect.facebook.net/en_US/sdk.js'
 const SDK_SCRIPT_ID = 'facebook-jssdk'
 
 /**
+ * Static page Meta redirects the Login-for-Business popup to (see
+ * public/meta-oauth-callback.html). Its full URL — origin + this path — is the
+ * redirect_uri, so it must be registered as a Valid OAuth Redirect URI and is
+ * sent to the server to exchange the code against.
+ */
+export const META_OAUTH_CALLBACK_PATH = '/meta-oauth-callback.html'
+
+/**
  * Origins Embedded Signup posts its result from.
  *
  * Meta's own sample checks `origin.endsWith('facebook.com')`, which any
@@ -138,3 +146,68 @@ export const signupLoginOptions = (configId: string, channel: SignupChannel = 'w
   override_default_response_type: true,
   ...(channel === 'whatsapp' ? { extras: { setup: {} } } : {}),
 })
+
+export interface BusinessLoginConfig {
+  appId: string
+  configId: string
+  graphVersion: string
+  /** window.location.origin + META_OAUTH_CALLBACK_PATH */
+  redirectUri: string
+}
+
+/**
+ * Run Facebook Login for Business as a first-party OAuth popup and resolve the
+ * returned code.
+ *
+ * Why not FB.login: the JS SDK binds the code to an internal xd_arbiter
+ * redirect that regenerates every login, so it can never be a registered Valid
+ * OAuth Redirect URI — fatal once the app enforces Strict Mode (which it does,
+ * non-negotiably). Driving the dialog ourselves with our own callback URL means
+ * the code is bound to a value we control and the server can reproduce.
+ *
+ * The same redirectUri must go to the token exchange, so the caller passes it
+ * on to the server. Resolves with the code, rejects on error, popup-block, or
+ * the user closing the window ('cancelled').
+ */
+export const runBusinessLogin = (config: BusinessLoginConfig): Promise<string> =>
+  new Promise((resolve, reject) => {
+    // CSRF: Meta echoes state back on the redirect; we only accept a match.
+    const state = crypto.randomUUID()
+    const url = `https://www.facebook.com/${config.graphVersion}/dialog/oauth?` +
+      new URLSearchParams({
+        client_id: config.appId,
+        config_id: config.configId,
+        response_type: 'code',
+        override_default_response_type: 'true',
+        redirect_uri: config.redirectUri,
+        state,
+        display: 'popup',
+      }).toString()
+
+    const popup = window.open(url, 'meta-login', 'width=600,height=720')
+    if (!popup) {
+      reject(new Error('Popup blocked — allow pop-ups for this site and try again'))
+      return
+    }
+
+    const cleanup = () => {
+      window.removeEventListener('message', onMessage)
+      window.clearInterval(closedTimer)
+    }
+    const onMessage = (event: MessageEvent) => {
+      // The callback page is same-origin, so anything else is not our reply.
+      if (event.origin !== window.location.origin) return
+      const data = event.data
+      if (!data || data.source !== 'meta-oauth') return
+      cleanup()
+      try { popup.close() } catch { /* already closed */ }
+      if (data.state !== state) reject(new Error('Login could not be verified'))
+      else if (data.error) reject(new Error(data.error))
+      else if (!data.code) reject(new Error('Login did not return a code'))
+      else resolve(data.code)
+    }
+    const closedTimer = window.setInterval(() => {
+      if (popup.closed) { cleanup(); reject(new Error('cancelled')) }
+    }, 500)
+    window.addEventListener('message', onMessage)
+  })

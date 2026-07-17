@@ -168,19 +168,27 @@ async def debug_token(input_token: str) -> tuple[bool, dict]:
     return True, data.get("data", {})
 
 
-async def exchange_signup_code(code: str) -> tuple[bool, dict]:
-    """Trade an Embedded Signup code for the customer's business access token.
+async def exchange_signup_code(code: str, redirect_uri: Optional[str] = None) -> tuple[bool, dict]:
+    """Trade a login code for the customer's access token.
 
     The app credentials authenticate this call, so it is the one Graph request
-    that carries no bearer token. There is no redirect_uri: Embedded Signup
-    hands the code back through the JS SDK rather than a redirect, so none was
-    ever issued and sending one is rejected as a mismatch.
+    that carries no bearer token.
+
+    redirect_uri must match whatever the login dialog used, or Graph rejects the
+    code as a mismatch:
+      - WhatsApp Embedded Signup issues its code through the JS SDK with no
+        redirect_uri, so it passes None and we omit the param.
+      - Facebook Login for Business runs as a first-party OAuth popup bound to
+        our own callback URL, so that flow passes that exact callback URL.
     """
-    return await _graph_request("GET", "oauth/access_token", None, params={
+    params = {
         "client_id": settings.META_APP_ID,
         "client_secret": settings.META_APP_SECRET,
         "code": code,
-    })
+    }
+    if redirect_uri is not None:
+        params["redirect_uri"] = redirect_uri
+    return await _graph_request("GET", "oauth/access_token", None, params=params)
 
 
 async def exchange_for_long_lived_token(short_lived_token: str) -> tuple[bool, dict]:

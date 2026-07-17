@@ -27,7 +27,9 @@ import MessengerPagePicker from './MessengerPagePicker.vue'
 import {
   loadMetaSdk,
   parseSignupMessage,
+  runBusinessLogin,
   signupLoginOptions,
+  META_OAUTH_CALLBACK_PATH,
   type SignupChannel,
   type SignupSession,
 } from '@/utils/metaSdk'
@@ -116,6 +118,8 @@ const savingAgent = ref(false)
 // the manual credentials form.
 const signupEnabled = ref(false)
 const signupConfigId = ref('')
+const signupAppId = ref('')
+const signupGraphVersion = ref('')
 const signingUp = ref(false)
 /** WhatsApp only: its two halves arrive separately and are joined once both land. */
 const signupSession = ref<SignupSession | null>(null)
@@ -146,12 +150,17 @@ onMounted(async () => {
   try {
     const config = await channelsService.getEmbeddedSignupConfig(props.channel)
     if (!config.enabled || !config.config_id || !config.app_id) return
-    await loadMetaSdk(config.app_id, config.graph_version)
     signupConfigId.value = config.config_id
+    signupAppId.value = config.app_id
+    signupGraphVersion.value = config.graph_version
     signupEnabled.value = true
-    // Only Embedded Signup reports its result out of band via postMessage;
-    // Facebook Login for Business returns everything through the login callback.
-    if (props.channel === 'whatsapp') window.addEventListener('message', handleSignupMessage)
+    // WhatsApp uses the JS SDK (Embedded Signup, which also reports its result
+    // out of band via postMessage). Messenger drives its own OAuth popup, so it
+    // needs neither the SDK nor the message listener.
+    if (props.channel === 'whatsapp') {
+      await loadMetaSdk(config.app_id, config.graph_version)
+      window.addEventListener('message', handleSignupMessage)
+    }
   } catch (error) {
     // Falling back to the manual form is a working path, not an error worth
     // interrupting the user for.
@@ -179,8 +188,8 @@ const finishWhatsAppSignup = async (code: string) => {
   toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
 }
 
-const finishMessengerSignup = async (code: string) => {
-  const { pages, signup_token } = await channelsService.listMessengerSignupPages(code)
+const finishMessengerSignup = async (code: string, redirectUri: string) => {
+  const { pages, signup_token } = await channelsService.listMessengerSignupPages(code, redirectUri)
   messengerSignupToken.value = signup_token
   // One Page needs no picker — connect it and go straight to agent assignment.
   if (pages.length === 1) {
@@ -210,7 +219,8 @@ const onPageSelected = async (pageId: string) => {
   }
 }
 
-const completeSignup = async (response: { authResponse?: { code?: string } }) => {
+// WhatsApp: the JS SDK's login callback.
+const completeWhatsAppSignup = async (response: { authResponse?: { code?: string } }) => {
   const code = response.authResponse?.code
   if (!code) {
     // The popup was dismissed — not an error worth a toast.
@@ -218,8 +228,7 @@ const completeSignup = async (response: { authResponse?: { code?: string } }) =>
     return
   }
   try {
-    if (props.channel === 'messenger') await finishMessengerSignup(code)
-    else await finishWhatsAppSignup(code)
+    await finishWhatsAppSignup(code)
   } catch (error: any) {
     toast.error(error?.response?.data?.detail || 'Could not finish connecting')
   } finally {
@@ -227,16 +236,45 @@ const completeSignup = async (response: { authResponse?: { code?: string } }) =>
   }
 }
 
+// Messenger: our own OAuth popup (not FB.login — see runBusinessLogin).
+const startMessengerLogin = async () => {
+  signingUp.value = true
+  const redirectUri = window.location.origin + META_OAUTH_CALLBACK_PATH
+  try {
+    const code = await runBusinessLogin({
+      appId: signupAppId.value,
+      configId: signupConfigId.value,
+      graphVersion: signupGraphVersion.value,
+      redirectUri,
+    })
+    await finishMessengerSignup(code, redirectUri)
+  } catch (error: any) {
+    // The user closing the popup is not an error worth a toast.
+    if (error?.message !== 'cancelled') {
+      toast.error(error?.response?.data?.detail || error?.message || 'Could not finish connecting')
+    }
+  } finally {
+    signingUp.value = false
+  }
+}
+
 const startSignup = () => {
-  if (!window.FB || signingUp.value) return
+  if (signingUp.value) return
+
+  if (props.channel === 'messenger') {
+    // Must open synchronously in the click handler or the browser blocks it.
+    void startMessengerLogin()
+    return
+  }
+
+  if (!window.FB) return
   signupSession.value = null
   signingUp.value = true
-
   // The SDK type-checks its callback and rejects an AsyncFunction outright
   // ("Expression is of type asyncfunction, not function"), so hand the async
   // work off from a plain function rather than passing `async` here.
   window.FB.login(
-    (response) => { void completeSignup(response) },
+    (response) => { void completeWhatsAppSignup(response) },
     signupLoginOptions(signupConfigId.value, props.channel),
   )
 }

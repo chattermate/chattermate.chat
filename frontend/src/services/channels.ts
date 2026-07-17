@@ -183,8 +183,11 @@ const channelsService = {
 
   /** Step 1 of Facebook Login for Business: trade the code for the Pages the
    * customer can connect. Their tokens stay sealed in signup_token. */
-  async listMessengerSignupPages(code: string): Promise<MessengerSignupPages> {
-    const response = await api.post('/channels/meta/messenger/signup/pages', { code })
+  async listMessengerSignupPages(code: string, redirectUri: string): Promise<MessengerSignupPages> {
+    const response = await api.post('/channels/meta/messenger/signup/pages', {
+      code,
+      redirect_uri: redirectUri,
+    })
     return response.data
   },
 
