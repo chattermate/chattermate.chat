@@ -198,7 +198,9 @@ onMounted(async () => {
         <!-- The thread only streams once a human takes the chat over; while the
              AI is answering this is how you pull the latest turns. -->
         <button class="refresh-chat-btn" title="Refresh conversation" @click="emit('refresh')">
-          <i class="fas fa-rotate-right"></i>
+          <!-- font-awesome-icon, not <i class="fas">: the FA CSS isn't loaded
+               and dom.watch() isn't on, so bare <i> tags render nothing. -->
+          <font-awesome-icon icon="fa-solid fa-rotate-right" />
         </button>
         <button
           v-if="canUseTemplates && !isChatClosed"
