@@ -70,6 +70,27 @@ class TemplateSendRequest(BaseModel):
     components: Optional[list] = None
 
 
+class OutboundConversationRequest(BaseModel):
+    """Start a WhatsApp conversation with a phone number — the customer has
+    not messaged us; an approved template is the only thing Meta will deliver.
+
+    customer_id links the conversation to a person the agent picked in People;
+    without it the customer is resolved by phone or created. customer_name
+    only names a newly created person (never renames an existing one)."""
+    to: str
+    template_name: str
+    language: str = "en_US"
+    components: Optional[list] = None
+    customer_id: Optional[UUID] = None
+    customer_name: Optional[str] = None
+
+
+class OutboundConversationOut(BaseModel):
+    """The session the outbound send created (or reused): everything else —
+    the inbox thread, template resend, AI takeover on reply — keys off it."""
+    session_id: UUID
+
+
 class EmbeddedSignupRequest(BaseModel):
     """What the Embedded Signup JS SDK hands back: a short-lived code to trade
     for the customer's business token, plus the assets it created."""

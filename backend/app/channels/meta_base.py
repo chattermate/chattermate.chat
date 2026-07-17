@@ -178,6 +178,43 @@ async def register_phone_number(phone_number_id: str, access_token: str, pin: st
                                 json_body={"messaging_product": "whatsapp", "pin": pin})
 
 
+# Template fields worth reading back from Graph; components carries the body
+# text and any {{n}} variables the UI has to prompt for.
+TEMPLATE_FIELDS = "name,status,category,language,components"
+TEMPLATE_PAGE_LIMIT = 100
+# Backstop against paging forever on a malformed cursor. Well above Meta's own
+# per-WABA template ceiling, so a real account never reaches it.
+TEMPLATE_MAX_PAGES = 10
+
+
+async def fetch_message_templates(waba_id: str, access_token: str) -> tuple[bool, list | dict]:
+    """Every template on the WABA, following Graph's cursor.
+
+    A template that exists but isn't listed is an invisible failure — an agent
+    picking one would never see it — so this pages rather than showing the
+    first hundred and stopping. Returns (True, [template dicts]) or
+    (False, graph error body), matching the other helpers here.
+    """
+    templates: list = []
+    params = {"fields": TEMPLATE_FIELDS, "limit": TEMPLATE_PAGE_LIMIT}
+    for _ in range(TEMPLATE_MAX_PAGES):
+        ok, data = await graph_get(f"{waba_id}/message_templates", access_token, params=params)
+        if not ok:
+            return False, data
+        page = data.get("data")
+        if not isinstance(page, list):
+            return False, data
+        templates.extend(page)
+
+        after = (data.get("paging") or {}).get("cursors", {}).get("after")
+        if not after or len(page) < TEMPLATE_PAGE_LIMIT:
+            return True, templates
+        params = {**params, "after": after}
+
+    logger.warning(f"Stopped paging templates for WABA {waba_id} at {TEMPLATE_MAX_PAGES} pages")
+    return True, templates
+
+
 async def subscribe_app(node_id: str, access_token: str, subscribed_fields: Optional[str] = None) -> bool:
     """Subscribe our app to a Page/WABA so its messages reach our webhook.
     Best-effort: onboarding still succeeds if this fails (can be retried)."""

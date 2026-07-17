@@ -25,12 +25,13 @@ from app.api.channels.accounts import get_org_account_or_404, to_account_out
 from app.channels import get_adapter
 from app.channels.meta_base import (
     exchange_signup_code,
+    fetch_message_templates,
     graph_delete,
     graph_get,
     register_phone_number,
     subscribe_app,
 )
-from app.core.auth import get_current_organization, require_permissions
+from app.core.auth import get_current_organization, get_current_user, require_permissions
 from app.core.config import settings
 from app.database import get_db
 from app.models.channels import ChannelType
@@ -42,24 +43,20 @@ from app.models.schemas.channel import (
     WhatsAppConnectRequest,
     MessengerConnectRequest,
     InstagramConnectRequest,
+    OutboundConversationOut,
+    OutboundConversationRequest,
     TemplateLibraryOut,
     TemplateOut,
     TemplateSendRequest,
 )
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository, ChannelConversationRepository
+from app.services.whatsapp_outbound import OutboundError, start_outbound_conversation
 from app.core.logger import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)
 
-# Template fields worth reading back from Graph; components carries the body
-# text and any {{n}} variables the UI has to prompt for.
-TEMPLATE_FIELDS = "name,status,category,language,components"
-TEMPLATE_PAGE_LIMIT = 100
-# Backstop against paging forever on a malformed cursor. Well above Meta's own
-# per-WABA template ceiling, so a real account never reaches it.
-TEMPLATE_MAX_PAGES = 10
 # Meta's own template authoring UI, which is where we send people to write one.
 TEMPLATE_LIBRARY_URL = "https://business.facebook.com/latest/whatsapp_manager/template_library"
 
@@ -152,33 +149,28 @@ def _whatsapp_account_or_404(db: Session, account_id: UUID, organization: Organi
     return account
 
 
+# Template sending is inbox work — reopening a window, starting a conversation
+# — done by support agents, not org admins. Mirrors the People-page rule
+# (people.py _VIEW_PERMISSIONS): either chat capability grants it, and
+# require_permissions' AND semantics can't express that.
+_INBOX_PERMISSIONS = {"view_all_chats", "manage_chats", "super_admin"}
+
+
+async def require_inbox_agent(current_user: User = Depends(get_current_user)) -> User:
+    permissions = {p.name for p in (current_user.role.permissions if current_user.role else [])}
+    if permissions.isdisjoint(_INBOX_PERMISSIONS):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return current_user
+
+
 async def _fetch_all_templates(waba_id: str, access_token: str) -> list[TemplateOut]:
-    """Every template on the WABA, following Graph's cursor.
-
-    A template that exists but isn't listed is an invisible failure — the agent
-    picking one to reopen a closed window would never see it — so this pages
-    rather than showing the first hundred and stopping.
-    """
-    templates: list[TemplateOut] = []
-    params = {"fields": TEMPLATE_FIELDS, "limit": TEMPLATE_PAGE_LIMIT}
-    for _ in range(TEMPLATE_MAX_PAGES):
-        ok, data = await graph_get(f"{waba_id}/message_templates", access_token, params=params)
-        if not ok:
-            raise HTTPException(status_code=502,
-                                detail=_graph_detail(data, "Could not list templates"))
-        page = data.get("data")
-        if not isinstance(page, list):
-            raise HTTPException(status_code=502,
-                                detail="Unexpected template response from Meta")
-        templates.extend(TemplateOut(**template) for template in page)
-
-        after = (data.get("paging") or {}).get("cursors", {}).get("after")
-        if not after or len(page) < TEMPLATE_PAGE_LIMIT:
-            return templates
-        params = {**params, "after": after}
-
-    logger.warning(f"Stopped paging templates for WABA {waba_id} at {TEMPLATE_MAX_PAGES} pages")
-    return templates
+    """Every template on the WABA (transport lives in meta_base; this wrapper
+    owns the HTTP error surface)."""
+    ok, data = await fetch_message_templates(waba_id, access_token)
+    if not ok:
+        raise HTTPException(status_code=502,
+                            detail=_graph_detail(data, "Could not list templates"))
+    return [TemplateOut(**template) for template in data]
 
 
 def _waba_credentials(db: Session, account) -> tuple[str, str]:
@@ -397,11 +389,38 @@ async def disconnect_meta_account(
     return {"status": "disconnected"}
 
 
+@router.post("/whatsapp/{account_id}/conversations", response_model=OutboundConversationOut)
+async def start_whatsapp_conversation(
+    account_id: UUID,
+    request: OutboundConversationRequest,
+    current_user: User = Depends(require_inbox_agent),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Start a WhatsApp conversation with a phone number via an approved
+    Utility/Authentication template. The thin route: policy lives in the
+    service so the Phase-2 scheduler can call the same function."""
+    account = _whatsapp_account_or_404(db, account_id, organization)
+    try:
+        session_id = await start_outbound_conversation(
+            db, account,
+            to=request.to,
+            template_name=request.template_name,
+            language=request.language,
+            components=request.components,
+            customer_id=request.customer_id,
+            customer_name=request.customer_name,
+        )
+    except OutboundError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    return OutboundConversationOut(session_id=session_id)
+
+
 @router.post("/whatsapp/{account_id}/send-template")
 async def send_whatsapp_template(
     account_id: UUID,
     request: TemplateSendRequest,
-    current_user: User = Depends(require_permissions("manage_organization")),
+    current_user: User = Depends(require_inbox_agent),
     organization: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db),
 ):

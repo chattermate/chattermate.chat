@@ -42,6 +42,14 @@ def client(db, test_user, test_organization, monkeypatch):
     monkeypatch.setattr(settings, "META_APP_SECRET", APP_SECRET)
     monkeypatch.setattr(settings, "META_WEBHOOK_VERIFY_TOKEN", "vtok")
 
+    # Template sending is inbox-agent work (require_inbox_agent), not an
+    # org-admin capability; the shared test_role only carries admin perms.
+    from app.models.permission import Permission
+    inbox_perm = Permission(name="view_all_chats")
+    db.add(inbox_perm)
+    test_user.role.permissions.append(inbox_perm)
+    db.commit()
+
     async def override_user():
         return test_user
 
@@ -225,7 +233,7 @@ class TestTemplateManagement:
              "language": "en_US", "components": [{"type": "BODY", "text": "Hi"}]},
             {"name": "promo", "status": "PENDING", "category": "MARKETING"},
         ]}))
-        with patch("app.api.channels.meta.graph_get", graph):
+        with patch("app.channels.meta_base.graph_get", graph):
             r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
 
         assert r.status_code == 200
@@ -235,7 +243,7 @@ class TestTemplateManagement:
 
     def test_list_templates_graph_failure_502(self, client, waba_account):
         graph = AsyncMock(return_value=(False, {"error": {"message": "Bad token"}}))
-        with patch("app.api.channels.meta.graph_get", graph):
+        with patch("app.channels.meta_base.graph_get", graph):
             r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
 
         assert r.status_code == 502
@@ -278,7 +286,7 @@ class TestTemplateManagement:
                  "paging": {"cursors": {"after": "CUR2"}}}
         second = {"data": [{"name": "t100"}]}
         graph = AsyncMock(side_effect=[(True, first), (True, second)])
-        with patch("app.api.channels.meta.graph_get", graph):
+        with patch("app.channels.meta_base.graph_get", graph):
             r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
 
         assert r.status_code == 200
@@ -288,7 +296,7 @@ class TestTemplateManagement:
     def test_list_templates_stops_on_short_page(self, client, waba_account):
         graph = AsyncMock(return_value=(True, {
             "data": [{"name": "only"}], "paging": {"cursors": {"after": "CUR2"}}}))
-        with patch("app.api.channels.meta.graph_get", graph):
+        with patch("app.channels.meta_base.graph_get", graph):
             r = client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
 
         assert r.status_code == 200
@@ -569,3 +577,138 @@ class TestTemplateLibraryLink:
         waba_account.organization_id = uuid4()
         db.commit()
         assert self._url(client, waba_account).status_code == 404
+
+
+class TestOutboundConversation:
+    """POST /whatsapp/{account_id}/conversations — start a conversation from a
+    phone number. The identity, window and rollback rules live here."""
+
+    URL = lambda self, a: f"{BASE}/whatsapp/{a.id}/conversations"
+
+    APPROVED_UTILITY = [{
+        "name": "order_update", "language": "en_US", "status": "APPROVED",
+        "category": "UTILITY",
+        "components": [{"type": "BODY", "text": "Hi {{1}}, your order {{2}} shipped."}],
+    }]
+
+    BODY_PARAMS = [{"type": "body", "parameters": [
+        {"type": "text", "text": "Priya"}, {"type": "text", "text": "A-12"}]}]
+
+    @pytest.fixture
+    def routed(self, db, waba_account, test_agent):
+        from app.repositories.channels import AgentChannelConfigRepository
+        AgentChannelConfigRepository(db).set_agent(waba_account.id, test_agent.id)
+        return waba_account
+
+    def _send(self, client, account, templates=None, send_ok=True, **overrides):
+        from unittest.mock import MagicMock
+        payload = {"to": "+91 63666 02824", "template_name": "order_update",
+                   "language": "en_US", "components": self.BODY_PARAMS, **overrides}
+        adapter = MagicMock()
+        adapter.send_template = AsyncMock(return_value=SendResult(
+            ok=send_ok, external_message_id="wamid.OUT1" if send_ok else None,
+            error=None if send_ok else "Recipient not on WhatsApp"))
+        with patch("app.services.whatsapp_outbound.fetch_message_templates",
+                   AsyncMock(return_value=(True, templates or self.APPROVED_UTILITY))), \
+             patch("app.services.whatsapp_outbound.get_adapter", lambda _: adapter):
+            return client.post(self.URL(account), json=payload), adapter
+
+    def test_creates_person_session_and_windowless_conversation(self, client, db, routed):
+        from app.models.customer import Customer
+        from app.models.chat_history import ChatHistory
+        from app.repositories.channels import ChannelConversationRepository
+
+        r, adapter = self._send(client, routed, customer_name="Priya")
+
+        assert r.status_code == 200
+        session_id = r.json()["session_id"]
+
+        customer = db.query(Customer).filter(Customer.phone == "+916366602824").one()
+        assert customer.full_name == "Priya"
+        assert customer.email == "916366602824@whatsapp.channel"
+        assert customer.lead_source == {"channel": "whatsapp", "via": "outbound"}
+
+        conversation = ChannelConversationRepository(db).get_by_session(session_id)
+        # The window lie: no inbound message means no open 24h window.
+        assert conversation.last_inbound_at is None
+        assert conversation.extra["outbound_template"] == "Hi Priya, your order A-12 shipped."
+
+        from uuid import UUID as _UUID
+        row = db.query(ChatHistory).filter(
+            ChatHistory.session_id == _UUID(session_id)).one()
+        assert row.message == "Hi Priya, your order A-12 shipped."
+        assert row.message_type == "bot"
+        assert row.attributes["outbound_template"] == "order_update"
+
+        adapter.send_template.assert_awaited_once()
+
+    def test_window_reports_expired_until_they_reply(self, client, db, routed):
+        from app.channels import get_adapter
+        from app.channels.base import WindowStatus
+        from app.repositories.channels import ChannelConversationRepository
+
+        r, _ = self._send(client, routed)
+        conversation = ChannelConversationRepository(db).get_by_session(r.json()["session_id"])
+        assert get_adapter("whatsapp").check_delivery_window(conversation) \
+            == WindowStatus.TEMPLATE_REQUIRED
+
+    def test_second_send_reuses_the_open_session(self, client, db, routed):
+        r1, _ = self._send(client, routed)
+        r2, _ = self._send(client, routed)
+        assert r1.json()["session_id"] == r2.json()["session_id"]
+
+    def test_attaches_to_an_existing_person_by_phone(self, client, db, routed, test_organization):
+        from app.models.customer import Customer
+        from app.repositories.customer import CustomerRepository
+        existing = CustomerRepository(db).create_customer(
+            email="priya@example.com", organization_id=test_organization.id,
+            full_name="Priya", phone="+916366602824")
+
+        r, _ = self._send(client, routed)
+
+        assert r.status_code == 200
+        # No junk row: the conversation belongs to the person who owns the phone.
+        assert db.query(Customer).filter(Customer.phone == "+916366602824").count() == 1
+        from app.repositories.channels import ChannelConversationRepository
+        conversation = ChannelConversationRepository(db).get_by_session(r.json()["session_id"])
+        assert conversation.customer_id == existing.id
+
+    def test_failed_send_leaves_no_empty_thread(self, client, db, routed):
+        from app.models.channels import ChannelConversation
+        from app.models.session_to_agent import SessionToAgent
+
+        r, _ = self._send(client, routed, send_ok=False)
+
+        assert r.status_code == 502
+        assert "Recipient not on WhatsApp" in r.json()["detail"]
+        assert db.query(ChannelConversation).filter(
+            ChannelConversation.external_conversation_id == "916366602824").count() == 0
+        assert db.query(SessionToAgent).count() == 0
+
+    def test_marketing_templates_cannot_start_conversations(self, client, routed):
+        marketing = [{**self.APPROVED_UTILITY[0], "category": "MARKETING"}]
+        r, _ = self._send(client, routed, templates=marketing)
+        assert r.status_code == 400
+        assert "Marketing" in r.json()["detail"]
+
+    def test_unapproved_template_is_refused(self, client, routed):
+        pending = [{**self.APPROVED_UTILITY[0], "status": "PENDING"}]
+        r, _ = self._send(client, routed, templates=pending)
+        assert r.status_code == 400
+        assert "not approved" in r.json()["detail"]
+
+    def test_requires_a_routed_agent(self, client, waba_account):
+        r, _ = self._send(client, waba_account)  # nothing routed
+        assert r.status_code == 400
+        assert "Route an agent" in r.json()["detail"]
+
+    def test_rejects_a_number_without_country_code(self, client, routed):
+        r, _ = self._send(client, routed, to="6366602824")
+        assert r.status_code == 400
+        assert "international format" in r.json()["detail"]
+
+    def test_rejects_other_orgs_account(self, client, db, routed):
+        routed.organization_id = uuid4()
+        db.commit()
+        r, _ = self._send(client, routed)
+        assert r.status_code == 404

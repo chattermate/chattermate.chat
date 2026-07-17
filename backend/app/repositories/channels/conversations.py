@@ -92,6 +92,11 @@ class ChannelConversationRepository:
             logger.error(f"Error updating conversation extra: {str(e)}")
             self.db.rollback()
 
+    # Sentinel: "created in response to an inbound message" (the default).
+    # None is a meaningful value — an outbound-started conversation has no
+    # inbound yet, so no 24h delivery window is open — so it can't be the default.
+    _INBOUND_NOW = object()
+
     def create(
         self,
         channel_account_id: UUID,
@@ -103,8 +108,11 @@ class ChannelConversationRepository:
         agent_id: Optional[UUID] = None,
         customer_id: Optional[UUID] = None,
         extra: Optional[dict] = None,
+        last_inbound_at: Optional[datetime] = _INBOUND_NOW,
     ) -> ChannelConversation:
         try:
+            if last_inbound_at is self._INBOUND_NOW:
+                last_inbound_at = datetime.now(timezone.utc)
             conversation = ChannelConversation(
                 channel_account_id=channel_account_id,
                 channel_type=channel_type,
@@ -114,7 +122,7 @@ class ChannelConversationRepository:
                 organization_id=organization_id,
                 agent_id=agent_id,
                 customer_id=customer_id,
-                last_inbound_at=datetime.now(timezone.utc),
+                last_inbound_at=last_inbound_at,
                 extra=extra or {},
             )
             self.db.add(conversation)
