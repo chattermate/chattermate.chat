@@ -147,6 +147,27 @@ async def graph_post_json(path: str, access_token: str, payload: dict) -> tuple[
     return await _graph_request("POST", path, access_token, json_body=payload)
 
 
+async def debug_token(input_token: str) -> tuple[bool, dict]:
+    """Inspect a token: what it is, who it belongs to, and whether it is ours.
+
+    Returns Meta's `data` object, which for a Page token carries
+    `type: "PAGE"`, `profile_id` (the page id), `app_id`, `is_valid` and the
+    granted `scopes`.
+
+    This authenticates with app credentials rather than the token being
+    inspected, so it needs no permission on the asset. Reading the Page node
+    directly (`me?fields=id,name`) would instead demand `pages_read_engagement`
+    — unrelated to messaging, and absent from a token that can nonetheless send
+    perfectly well.
+    """
+    app_token = f"{settings.META_APP_ID}|{settings.META_APP_SECRET}"
+    ok, data = await _graph_request("GET", "debug_token", app_token,
+                                    params={"input_token": input_token})
+    if not ok:
+        return False, data
+    return True, data.get("data", {})
+
+
 async def exchange_signup_code(code: str) -> tuple[bool, dict]:
     """Trade an Embedded Signup code for the customer's business access token.
 

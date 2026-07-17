@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.api.channels.accounts import get_org_account_or_404, to_account_out
 from app.channels import get_adapter
 from app.channels.meta_base import (
+    debug_token,
     exchange_signup_code,
     fetch_message_templates,
     graph_get,
@@ -70,6 +71,20 @@ def _whatsapp_display_name(profile: dict, phone_number_id: str) -> str:
     """How a connected number is labelled in the UI, from its Graph profile."""
     return (f"{profile.get('verified_name', 'WhatsApp')} "
             f"({profile.get('display_phone_number', phone_number_id)})")
+
+
+async def _page_name(page_id: str, access_token: str) -> str:
+    """The Page's name for the UI label, falling back to its id.
+
+    Reading it needs pages_read_engagement, which messaging does not require —
+    so a token without it still connects and simply shows the id.
+    """
+    ok, data = await graph_get(page_id, access_token, params={"fields": "name"})
+    if not ok or not data.get("name"):
+        logger.info(f"No name for page {page_id} (pages_read_engagement not granted); "
+                    f"labelling with the id")
+        return page_id
+    return data["name"]
 
 
 async def _verify_signup_assets(waba_id: str, phone_number_id: str, access_token: str) -> dict:
@@ -323,16 +338,30 @@ async def connect_messenger(
     db: Session = Depends(get_db),
 ):
     """Connect a Facebook Page for Messenger with a page access token."""
-    ok, data = await graph_get("me", request.page_access_token, params={"fields": "id,name"})
-    if not ok or str(data.get("id")) != request.page_id:
-        raise HTTPException(status_code=400,
-                            detail="Could not verify page token (token invalid or not for this page)")
+    # Inspect the token rather than reading the Page node: `me?fields=id,name`
+    # needs pages_read_engagement, which a messaging token has no reason to
+    # carry — it would reject a token that sends perfectly well.
+    ok, info = await debug_token(request.page_access_token)
+    if not ok or not info.get("is_valid"):
+        raise HTTPException(status_code=400, detail=_graph_detail(
+            info, "That token is not valid — generate a fresh Page access token"))
+    if info.get("type") != "PAGE":
+        raise HTTPException(status_code=400, detail=(
+            f"That is a {str(info.get('type', 'user')).lower()} access token, not a Page "
+            f"access token. In the Meta app dashboard go to Messenger → Settings and "
+            f"click Generate on the row for your Page."))
+    if str(info.get("profile_id")) != request.page_id:
+        raise HTTPException(status_code=400, detail=(
+            f"That token is for Page {info.get('profile_id')}, not the Page ID you "
+            f"entered. Webhooks are routed by Page ID, so the two must match."))
 
+    display_name = request.display_name or await _page_name(
+        request.page_id, request.page_access_token)
     account = _upsert_account(
         db, organization, ChannelType.MESSENGER.value,
         external_account_id=request.page_id,
         credentials={"access_token": request.page_access_token},
-        display_name=request.display_name or data.get("name", request.page_id),
+        display_name=display_name,
     )
     if not await subscribe_app(request.page_id, request.page_access_token,
                                subscribed_fields="messages,messaging_postbacks"):

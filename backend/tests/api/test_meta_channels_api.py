@@ -156,12 +156,63 @@ class TestMetaConnect:
                 "phone_number_id": "PN9", "access_token": "bad"})
         assert r.status_code == 400
 
+    def test_connect_messenger_success(self, client, db):
+        # A real messaging token carries pages_messaging but not
+        # pages_read_engagement, so the page name is unreadable — that must not
+        # block the connect, only the label.
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "PAGE9", "is_valid": True,
+            "scopes": ["pages_messaging"]}))
+        name = AsyncMock(return_value=(False, {"error": {"message": "needs pages_read_engagement"}}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", name), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "PAGE9"
+        account = ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9")
+        assert ChannelAccountRepository(db).get_credentials(account)["access_token"] == "EAAG-x"
+
+    def test_connect_messenger_uses_page_name_when_readable(self, client):
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "PAGE9", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {"name": "Acme Support"}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "Acme Support"
+
     def test_connect_messenger_token_page_mismatch(self, client):
-        graph = AsyncMock(return_value=(True, {"id": "OTHER_PAGE", "name": "Nope"}))
-        with patch("app.api.channels.meta.graph_get", graph):
+        # Webhooks route on page id; a token for a different page would leave
+        # every inbound message unmatched.
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "OTHER_PAGE", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect):
             r = client.post(f"{BASE}/messenger", json={
                 "page_id": "PAGE9", "page_access_token": "EAAG-x"})
         assert r.status_code == 400
+        assert "OTHER_PAGE" in r.json()["detail"]
+
+    def test_connect_messenger_rejects_a_user_token(self, client):
+        inspect = AsyncMock(return_value=(True, {
+            "type": "USER", "profile_id": "PAGE9", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 400
+        assert "Page access token" in r.json()["detail"]
+
+    def test_connect_messenger_rejects_an_expired_token(self, client):
+        inspect = AsyncMock(return_value=(True, {
+            "is_valid": False, "error": {"message": "Session has expired"}}))
+        with patch("app.api.channels.meta.debug_token", inspect):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 400
+        assert "Session has expired" in r.json()["detail"]
 
     def test_connect_instagram_success(self, client, db):
         graph = AsyncMock(return_value=(True, {"id": "IG7", "username": "acme"}))
