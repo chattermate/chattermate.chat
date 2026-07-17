@@ -282,3 +282,10 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Native checkboxes/radios follow the design accent instead of the browser
+   default (blue), so form controls match the theme app-wide. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent-ink);
+}

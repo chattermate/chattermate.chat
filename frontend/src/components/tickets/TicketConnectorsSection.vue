@@ -19,6 +19,10 @@ import { onMounted, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { mcpService } from '@/services/mcp'
 import type { MCPTool, MCPTransportType } from '@/types/mcp'
+import grafanaLogo from '@/assets/grafana-logo.svg'
+import elasticsearchLogo from '@/assets/elasticsearch-logo.svg'
+import sentryLogo from '@/assets/sentry-logo.svg'
+import cloudwatchLogo from '@/assets/cloudwatch-logo.svg'
 
 const props = defineProps<{ selectedIds: number[] }>()
 const emit = defineEmits<{ (e: 'update:selected-ids', ids: number[]): void }>()
@@ -36,7 +40,7 @@ const PRESETS = [
   {
     key: 'grafana',
     name: 'Grafana',
-    icon: '📈',
+    logo: grafanaLogo,
     desc: 'Loki, Prometheus, Elastic & CloudWatch via your Grafana data sources',
     transport: 'http' as MCPTransportType,
     url: 'http://your-mcp-grafana-host:8000/mcp',
@@ -48,7 +52,7 @@ const PRESETS = [
   {
     key: 'elasticsearch',
     name: 'Elasticsearch',
-    icon: '🔍',
+    logo: elasticsearchLogo,
     desc: 'Query indices, mappings and logs directly',
     transport: 'stdio' as MCPTransportType,
     url: '',
@@ -60,7 +64,7 @@ const PRESETS = [
   {
     key: 'sentry',
     name: 'Sentry',
-    icon: '🐛',
+    logo: sentryLogo,
     desc: 'Errors, issues and traces',
     transport: 'http' as MCPTransportType,
     url: 'https://mcp.sentry.dev/mcp',
@@ -72,7 +76,7 @@ const PRESETS = [
   {
     key: 'cloudwatch',
     name: 'CloudWatch',
-    icon: '☁️',
+    logo: cloudwatchLogo,
     desc: 'AWS logs, metrics and alarms',
     transport: 'stdio' as MCPTransportType,
     url: '',
@@ -178,12 +182,12 @@ onMounted(fetchConnectors)
         class="preset-tile"
         @click="applyPreset(preset)"
       >
-        <span class="preset-icon">{{ preset.icon }}</span>
+        <img :src="preset.logo" :alt="`${preset.name} logo`" class="preset-logo" />
         <span class="preset-name">{{ preset.name }}</span>
         <span class="preset-desc">{{ preset.desc }}</span>
       </button>
       <button class="preset-tile custom" @click="applyPreset(null)">
-        <span class="preset-icon">＋</span>
+        <span class="preset-icon"><font-awesome-icon :icon="['fas', 'plus']" /></span>
         <span class="preset-name">Add MCP connector</span>
         <span class="preset-desc">Any platform with an MCP server — Splunk, Datadog, New Relic, your own</span>
       </button>
@@ -300,8 +304,18 @@ onMounted(fetchConnectors)
 .preset-tile.custom {
   border-style: dashed;
 }
+.preset-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
 .preset-icon {
-  font-size: 17px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  color: var(--muted);
 }
 .preset-name {
   font-family: var(--font-display);
