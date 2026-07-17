@@ -82,8 +82,17 @@ def _render_body(template: dict, components: Optional[list]) -> str:
 
 
 async def _approved_outbound_template(db: Session, account: ChannelAccount,
-                                      name: str, language: str) -> dict:
-    """The template this send is allowed to use, or the reason it isn't."""
+                                      name: str, language: str,
+                                      *, starts_conversation: bool) -> dict:
+    """The template this send is allowed to use, or the reason it isn't.
+
+    `starts_conversation` decides whether the Utility/Authentication rule
+    applies. It is a rule about business-INITIATED contact, so it belongs only
+    to a send that opens a thread with someone who never wrote to us. Reaching
+    an existing conversation is the reopen case: the customer did message us,
+    which is why Meta accepts Marketing there — and why the inbox picker has
+    never been category-gated.
+    """
     credentials = ChannelAccountRepository(db).get_credentials(account)
     waba_id = credentials.get("waba_id")
     if not waba_id:
@@ -102,7 +111,8 @@ async def _approved_outbound_template(db: Session, account: ChannelAccount,
         raise OutboundError(404, f"No template named {name} in {language} on this account")
     if str(template.get("status", "")).upper() != "APPROVED":
         raise OutboundError(400, f"Template {name} is not approved yet")
-    if str(template.get("category", "")).upper() not in OUTBOUND_CATEGORIES:
+    if starts_conversation and \
+            str(template.get("category", "")).upper() not in OUTBOUND_CATEGORIES:
         raise OutboundError(
             400,
             "Only Utility and Authentication templates can start a conversation. "
@@ -186,15 +196,19 @@ async def start_outbound_conversation(
         raise OutboundError(400, "Enter the number in international format, e.g. +91 63666 02824")
     wa_id = to_wa_id(phone)
 
-    template = await _approved_outbound_template(db, account, template_name, language)
-
     agent_id = AgentChannelConfigRepository(db).get_active_agent_id(account.id)
     if agent_id is None:
         raise OutboundError(400, "Route an agent to this number first — "
                                  "otherwise nobody would answer the reply")
 
+    # Resolved BEFORE the template is validated: whether this opens a thread or
+    # rejoins one decides which rules the template must satisfy.
     conv_repo = ChannelConversationRepository(db)
     existing = conv_repo.get_active(account.id, wa_id)
+
+    template = await _approved_outbound_template(
+        db, account, template_name, language, starts_conversation=existing is None)
+
     if existing is not None:
         # An open conversation already carries this number; send there instead
         # of splitting the thread. The window may even be open, but a template
@@ -231,11 +245,21 @@ async def start_outbound_conversation(
             # A failed send must not leave an empty thread in the inbox: drop
             # the conversation, then the session it points at. The customer
             # row stays — harmless, and reused on the next attempt.
+            #
+            # Guarded, because an exception escaping here would replace the 502
+            # (which names Meta's actual reason) with an opaque 500 AND leave
+            # the empty thread this block exists to remove. Failing to clean up
+            # is worth a log; losing the reason the send failed is not.
             from app.models.session_to_agent import SessionToAgent
-            db.delete(conversation)
-            db.query(SessionToAgent).filter(
-                SessionToAgent.session_id == session_id).delete()
-            db.commit()
+            try:
+                db.delete(conversation)
+                db.query(SessionToAgent).filter(
+                    SessionToAgent.session_id == session_id).delete()
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Could not roll back the empty outbound thread for "
+                             f"session {session_id}: {e}")
         raise OutboundError(502, result.error or "WhatsApp did not accept the message")
 
     rendered = _render_body(template, components)

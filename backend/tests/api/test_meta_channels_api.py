@@ -742,6 +742,23 @@ class TestOutboundConversation:
         assert r.status_code == 400
         assert "Marketing" in r.json()["detail"]
 
+    def test_marketing_is_allowed_once_a_conversation_exists(self, client, db, routed):
+        """The Utility/Auth rule is about business-INITIATED contact. Reaching
+        an open conversation is the reopen case — the customer did message us,
+        which is why Meta accepts Marketing there and why the inbox picker has
+        never been gated. Gating it here refused a legal send, and made the
+        same template succeed from the inbox and fail from the modal."""
+        marketing = [{**self.APPROVED_UTILITY[0], "category": "MARKETING"}]
+
+        first, _ = self._send(client, routed)          # Utility opens the thread
+        assert first.status_code == 200
+
+        second, adapter = self._send(client, routed, templates=marketing)
+
+        assert second.status_code == 200
+        assert second.json()["session_id"] == first.json()["session_id"]
+        adapter.send_template.assert_awaited_once()
+
     def test_unapproved_template_is_refused(self, client, routed):
         pending = [{**self.APPROVED_UTILITY[0], "status": "PENDING"}]
         r, _ = self._send(client, routed, templates=pending)
