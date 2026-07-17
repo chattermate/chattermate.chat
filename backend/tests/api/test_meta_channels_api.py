@@ -249,15 +249,6 @@ class TestTemplateManagement:
         assert r.status_code == 502
         assert r.json()["detail"] == "Bad token"
 
-    def test_delete_template(self, client, waba_account):
-        graph = AsyncMock(return_value=(True, {"success": True}))
-        with patch("app.api.channels.meta.graph_delete", graph):
-            r = client.delete(f"{BASE}/whatsapp/{waba_account.id}/templates?name=promo")
-
-        assert r.status_code == 200
-        assert graph.await_args.args[0] == "WABA9/message_templates"
-        assert graph.await_args.args[2] == {"name": "promo"}
-
     def test_templates_require_waba_id(self, client, whatsapp_account):
         """Numbers connected without a WABA id can message but not manage
         templates — that must be a clear 400, not a Graph failure."""
@@ -301,14 +292,6 @@ class TestTemplateManagement:
 
         assert r.status_code == 200
         assert graph.await_count == 1
-
-    def test_delete_template_refused_in_body_is_not_success(self, client, waba_account):
-        graph = AsyncMock(return_value=(True, {"success": False}))
-        with patch("app.api.channels.meta.graph_delete", graph):
-            r = client.delete(f"{BASE}/whatsapp/{waba_account.id}/templates?name=promo")
-
-        assert r.status_code == 502
-
 
 class TestEmbeddedSignupConfig:
     """Embedded Signup onboards a number under ChatterMate's own approved Meta
@@ -483,14 +466,16 @@ class TestEmbeddedSignupConnect:
 
 class TestGraphErrorDetail:
     """Meta's `message` is often a generic OAuth string; error_user_msg is the
-    one that names the actual asset and rule. Exercised through delete, the
-    remaining write path."""
+    one that names the actual asset and rule.
+
+    Tested directly rather than through an endpoint: it is a pure function used
+    by every Graph-facing route, and pinning it to whichever route happens to
+    exist is what made this class need rewriting when template delete went away.
+    """
 
     # A real Graph body, kept for its shape: a generic OAuth `message` paired
-    # with a specific error_user_msg. Graph returned it for a template create —
-    # a path we no longer have — so read it as a fixture for the precedence
-    # rule, not as something delete itself can produce.
-    UNVERIFIED = (False, {"error": {
+    # with a specific error_user_msg.
+    UNVERIFIED = {"error": {
         "message": "Application does not have permission for this action",
         "code": 10,
         "type": "OAuthException",
@@ -498,40 +483,31 @@ class TestGraphErrorDetail:
         "error_user_title": "Cannot create message template",
         "error_user_msg": "This WhatsApp Business account does not have permission "
                           "to create message template",
-    }})
+    }}
 
-    def _delete(self, client, account):
-        return client.delete(f"{BASE}/whatsapp/{account.id}/templates", params={"name": "x"})
+    def test_prefers_metas_human_readable_reason(self):
+        from app.api.channels.meta import _graph_detail
 
-    def test_prefers_metas_human_readable_reason(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_delete", AsyncMock(return_value=self.UNVERIFIED)):
-            r = self._delete(client, waba_account)
-
-        assert r.status_code == 502
         # Not the useless "Application does not have permission for this action"
-        assert r.json()["detail"] == (
+        assert _graph_detail(self.UNVERIFIED, "fallback") == (
             "This WhatsApp Business account does not have permission to create message template"
         )
 
-    def test_falls_back_to_message_when_there_is_no_user_msg(self, client, waba_account):
-        graph = AsyncMock(return_value=(False, {"error": {"message": "Invalid parameter"}}))
-        with patch("app.api.channels.meta.graph_delete", graph):
-            r = self._delete(client, waba_account)
+    def test_falls_back_to_message_when_there_is_no_user_msg(self):
+        from app.api.channels.meta import _graph_detail
 
-        assert r.json()["detail"] == "Invalid parameter"
+        assert _graph_detail({"error": {"message": "Invalid parameter"}}, "fallback") == (
+            "Invalid parameter")
 
-    def test_falls_back_to_our_own_text_when_graph_says_nothing(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_delete", AsyncMock(return_value=(False, {}))):
-            r = self._delete(client, waba_account)
+    def test_falls_back_to_our_own_text_when_graph_says_nothing(self):
+        from app.api.channels.meta import _graph_detail
 
-        assert r.json()["detail"] == "Could not delete template"
+        assert _graph_detail({}, "Could not read templates") == "Could not read templates"
 
-    def test_survives_an_error_that_is_not_an_object(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_delete",
-                   AsyncMock(return_value=(False, {"error": "boom"}))):
-            r = self._delete(client, waba_account)
+    def test_survives_an_error_that_is_not_an_object(self):
+        from app.api.channels.meta import _graph_detail
 
-        assert r.json()["detail"] == "Could not delete template"
+        assert _graph_detail({"error": "boom"}, "fallback") == "fallback"
 
 
 class TestTemplateLibraryLink:
@@ -835,9 +811,8 @@ class TestInboxAgentCanActuallyReachTheFeature:
         assert r.status_code == 200
         assert any(a["channel_type"] == "whatsapp" for a in r.json())
 
-    def test_still_cannot_manage_templates(self, inbox_client, waba_account):
-        """Loosened for reading and sending, not for authoring: creating and
-        deleting templates on the WABA stays an org-admin capability."""
-        r = inbox_client.delete(
-            f"{BASE}/whatsapp/{waba_account.id}/templates?name=order_update")
+    def test_still_cannot_reach_the_template_library_link(self, inbox_client, waba_account):
+        """Loosened for reading and sending, not for authoring: the route into
+        WhatsApp Manager, where templates are written, stays org-admin."""
+        r = inbox_client.get(f"{BASE}/whatsapp/{waba_account.id}/template-library")
         assert r.status_code == 403

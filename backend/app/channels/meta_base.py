@@ -147,11 +147,6 @@ async def graph_post_json(path: str, access_token: str, payload: dict) -> tuple[
     return await _graph_request("POST", path, access_token, json_body=payload)
 
 
-async def graph_delete(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
-    """DELETE a Graph node (e.g. removing a message template by name)."""
-    return await _graph_request("DELETE", path, access_token, params=params)
-
-
 async def exchange_signup_code(code: str) -> tuple[bool, dict]:
     """Trade an Embedded Signup code for the customer's business access token.
 

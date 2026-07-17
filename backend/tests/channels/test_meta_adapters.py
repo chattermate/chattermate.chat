@@ -26,8 +26,8 @@ from app.channels.base import WindowStatus
 from app.channels.meta_base import (
     verify_meta_signature,
     verify_challenge,
+    graph_get,
     graph_post_json,
-    graph_delete,
     WINDOW_HOURS,
 )
 from app.core.config import settings
@@ -240,7 +240,7 @@ def graph_client(monkeypatch):
 
 
 class TestGraphHelpers:
-    """graph_post_json/graph_delete keep the whole response body, unlike
+    """graph_post_json/graph_get keep the whole response body, unlike
     graph_post which reduces it to a message id."""
 
     @pytest.mark.asyncio
@@ -263,21 +263,21 @@ class TestGraphHelpers:
         assert "sekret" not in call["url"]
 
     @pytest.mark.asyncio
-    async def test_delete_passes_params_and_reports_failure(self, graph_client):
+    async def test_params_are_passed_and_a_4xx_is_reported_not_raised(self, graph_client):
         graph_client.response = _FakeResponse(400, {"error": {"message": "not found"}})
 
-        ok, body = await graph_delete("WABA1/message_templates", "tok", {"name": "gone"})
+        ok, body = await graph_get("WABA1/message_templates", "tok", {"fields": "name"})
 
         assert ok is False
         assert body["error"]["message"] == "not found"
-        assert graph_client.calls[0]["method"] == "DELETE"
-        assert graph_client.calls[0]["params"] == {"name": "gone"}
+        assert graph_client.calls[0]["method"] == "GET"
+        assert graph_client.calls[0]["params"] == {"fields": "name"}
 
     @pytest.mark.asyncio
     async def test_network_error_is_reported_not_raised(self, graph_client):
         graph_client.error = RuntimeError("connection reset")
 
-        ok, body = await graph_delete("WABA1/message_templates", "tok")
+        ok, body = await graph_get("WABA1/message_templates", "tok")
 
         assert ok is False
         assert "connection reset" in body["error"]["message"]

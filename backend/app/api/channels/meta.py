@@ -26,7 +26,6 @@ from app.channels import get_adapter
 from app.channels.meta_base import (
     exchange_signup_code,
     fetch_message_templates,
-    graph_delete,
     graph_get,
     register_phone_number,
     subscribe_app,
@@ -489,24 +488,3 @@ async def get_whatsapp_template_library(
             params["business_id"] = business_id
 
     return TemplateLibraryOut(url=f"{TEMPLATE_LIBRARY_URL}?{urlencode(params)}")
-
-
-@router.delete("/whatsapp/{account_id}/templates")
-async def delete_whatsapp_template(
-    account_id: UUID,
-    name: str,
-    current_user: User = Depends(require_permissions("manage_organization")),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Delete a template by name. Meta removes every language variant of it."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    waba_id, access_token = _waba_credentials(db, account)
-
-    ok, data = await graph_delete(f"{waba_id}/message_templates", access_token, {"name": name})
-    # Graph reports a refused delete in the body, not the status code; treating
-    # that as success would drop the row from the UI while it lives on the WABA.
-    if not ok or data.get("success") is False:
-        raise HTTPException(status_code=502,
-                            detail=_graph_detail(data, "Could not delete template"))
-    return {"status": "deleted"}

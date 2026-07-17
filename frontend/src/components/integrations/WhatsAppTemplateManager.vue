@@ -16,7 +16,6 @@ limitations under the License.
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
-import { toast } from 'vue-sonner'
 import channelsService, {
   type ChannelAccount,
   type WhatsAppTemplate,
@@ -35,8 +34,6 @@ const accountId = ref(props.accounts[0]?.id ?? '')
 const templates = ref<WhatsAppTemplate[]>([])
 const loading = ref(true)
 const loadError = ref('')
-const deletingName = ref('')
-const confirmingName = ref('')
 
 /**
  * Templates are written in Meta's Template Library, not here — it has ~150
@@ -58,7 +55,6 @@ let libraryToken = 0
 
 const load = async () => {
   const token = ++loadToken
-  confirmingName.value = ''
   loadError.value = ''
   if (!accountId.value) {
     templates.value = []
@@ -87,7 +83,7 @@ const load = async () => {
  * Only ever called for a change of account. The link is derived from the
  * account's Business Account, so re-resolving it when the list reloads would
  * spend a Graph round trip to learn what we already know — and the list
- * reloads on every "refresh" click and every delete.
+ * reloads on every "refresh" click.
  */
 const loadLibraryUrl = async () => {
   const token = ++libraryToken
@@ -111,146 +107,82 @@ watch(accountId, () => {
   loadLibraryUrl()
 })
 
-/**
- * How many rows share this name — i.e. how many language versions one Delete
- * destroys. Meta's delete-by-name takes every language with it, so this is the
- * blast radius the agent needs to see BEFORE confirming, not after.
- */
-const languageCount = (template: WhatsAppTemplate): number =>
-  templates.value.filter((t) => t.name === template.name).length
-
-const deleteWarning = (template: WhatsAppTemplate): string => {
-  const count = languageCount(template)
-  return count > 1 ? `Delete all ${count} languages?` : 'Delete?'
-}
-
-const deleteLabel = (template: WhatsAppTemplate): string => {
-  const count = languageCount(template)
-  return count > 1
-    ? `Delete ${template.name} — all ${count} language versions`
-    : `Delete ${template.name}`
-}
-
-const remove = async (name: string) => {
-  const count = templates.value.filter((t) => t.name === name).length
-  try {
-    deletingName.value = name
-    await channelsService.deleteWhatsAppTemplate(accountId.value, name)
-    toast.success(count > 1 ? `Deleted ${name} (${count} languages)` : `Deleted ${name}`)
-    confirmingName.value = ''
-    await load()
-  } catch (error: any) {
-    toast.error('Could not delete template', {
-      description: error?.response?.data?.detail || 'Please try again',
-      closeButton: true,
-    })
-  } finally {
-    deletingName.value = ''
-  }
-}
 </script>
 
 <template>
   <BaseModal title="WhatsApp templates" width="620px" @close="emit('close')">
-      <p class="wtm-intro">
-        Templates reopen a conversation after the customer's 24-hour window closes. You write them
-        in WhatsApp Manager; once Meta approves one, it appears here and your agents can send it.
-      </p>
+    <p class="wtm-intro">
+      Templates reopen a conversation after the customer's 24-hour window closes. You write them
+      in WhatsApp Manager; once Meta approves one, it appears here and your agents can send it.
+    </p>
 
-      <label v-if="accounts.length > 1" class="wtm-field">
-        <span class="wtm-label">Number</span>
-        <select v-model="accountId" class="wtm-input">
-          <option v-for="account in accounts" :key="account.id" :value="account.id">
-            {{ account.display_name || account.external_account_id }}
-          </option>
-        </select>
-      </label>
+    <label v-if="accounts.length > 1" class="wtm-field">
+      <span class="wtm-label">Number</span>
+      <select v-model="accountId" class="wtm-input">
+        <option v-for="account in accounts" :key="account.id" :value="account.id">
+          {{ account.display_name || account.external_account_id }}
+        </option>
+      </select>
+    </label>
 
-      <div class="wtm-body">
-        <div v-if="loading" class="wtm-skeleton" aria-live="polite" aria-busy="true">
-          <div v-for="n in 3" :key="n" class="wtm-skeleton-row"></div>
-        </div>
-
-        <div v-else-if="loadError" class="wtm-empty">
-          <font-awesome-icon icon="fa-solid fa-circle-exclamation" />
-          <p>{{ loadError }}</p>
-        </div>
-
-        <div v-else-if="templates.length === 0" class="wtm-empty">
-          <p>No templates yet.</p>
-        </div>
-
-        <ul v-else class="wtm-list">
-          <!-- Keyed on name+language: one name can have a row per language, and
-               Vue needs them distinct. -->
-          <li v-for="template in templates" :key="templateKey(template)" class="wtm-row">
-            <div class="wtm-row-main">
-              <div class="wtm-row-head">
-                <span class="wtm-name">{{ template.name }}</span>
-                <span v-if="template.status" class="wtm-pill" :class="template.status.toLowerCase()">
-                  {{ template.status }}
-                </span>
-              </div>
-              <div class="wtm-row-meta">
-                <span v-if="template.category">{{ template.category }}</span>
-                <span v-if="template.language">· {{ languageLabel(template.language) }}</span>
-              </div>
-              <p class="wtm-row-body">{{ templatePreviewText(template) }}</p>
-            </div>
-
-            <div class="wtm-row-actions">
-              <!-- Meta deletes a template by NAME, taking every language with
-                   it. The list shows one row per language, so without saying so
-                   an agent tidying up an unused Spanish variant would destroy
-                   the English one in production use — unrecoverable without
-                   re-authoring and re-submitting for review. -->
-              <template v-if="confirmingName === template.name">
-                <span class="wtm-confirm-text">{{ deleteWarning(template) }}</span>
-                <button
-                  class="wtm-btn wtm-btn-danger"
-                  :disabled="deletingName === template.name"
-                  @click="remove(template.name)"
-                >
-                  {{ deletingName === template.name ? 'Deleting…' : 'Yes' }}
-                </button>
-                <button class="wtm-btn" @click="confirmingName = ''">No</button>
-              </template>
-              <button
-                v-else
-                class="wtm-btn"
-                :aria-label="deleteLabel(template)"
-                @click="confirmingName = template.name"
-              >
-                Delete
-              </button>
-            </div>
-          </li>
-        </ul>
+    <div class="wtm-body">
+      <div v-if="loading" class="wtm-skeleton" aria-live="polite" aria-busy="true">
+        <div v-for="n in 3" :key="n" class="wtm-skeleton-row"></div>
       </div>
 
-      <!-- Meta's Template Library is where these get written: ~150 pre-written,
-           pre-localised templates, already shaped to pass its review. -->
-      <div v-if="accountId && !loading" class="wtm-create-guide">
-        <h4 class="wtm-guide-title">Add a template</h4>
-        <ol class="wtm-steps">
-          <li>Open WhatsApp Manager and go to <strong>Template library</strong>.</li>
-          <li>Pick a ready-made template, or choose <strong>Create template</strong> to write one.</li>
-          <li>
-            Come back and <button type="button" class="wtm-link" @click="load">refresh</button>
-            once Meta approves it.
-          </li>
-        </ol>
-        <a
-          v-if="libraryUrl"
-          class="wtm-btn wtm-btn-primary wtm-guide-link"
-          :href="libraryUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open WhatsApp Manager
-          <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" />
-        </a>
+      <div v-else-if="loadError" class="wtm-empty">
+        <font-awesome-icon icon="fa-solid fa-circle-exclamation" />
+        <p>{{ loadError }}</p>
       </div>
+
+      <div v-else-if="templates.length === 0" class="wtm-empty">
+        <p>No templates yet.</p>
+      </div>
+
+      <ul v-else class="wtm-list">
+        <!-- Keyed on name+language: one name can have a row per language, and
+             Vue needs them distinct. -->
+        <li v-for="template in templates" :key="templateKey(template)" class="wtm-row">
+          <div class="wtm-row-main">
+            <div class="wtm-row-head">
+              <span class="wtm-name">{{ template.name }}</span>
+              <span v-if="template.status" class="wtm-pill" :class="template.status.toLowerCase()">
+                {{ template.status }}
+              </span>
+            </div>
+            <div class="wtm-row-meta">
+              <span v-if="template.category">{{ template.category }}</span>
+              <span v-if="template.language">· {{ languageLabel(template.language) }}</span>
+            </div>
+            <p class="wtm-row-body">{{ templatePreviewText(template) }}</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Meta's Template Library is where these get written: ~150 pre-written,
+         pre-localised templates, already shaped to pass its review. -->
+    <div v-if="accountId && !loading" class="wtm-create-guide">
+      <h4 class="wtm-guide-title">Add a template</h4>
+      <ol class="wtm-steps">
+        <li>Open WhatsApp Manager and go to <strong>Template library</strong>.</li>
+        <li>Pick a ready-made template, or choose <strong>Create template</strong> to write one.</li>
+        <li>
+          Come back and <button type="button" class="wtm-link" @click="load">refresh</button>
+          once Meta approves it.
+        </li>
+      </ol>
+      <a
+        v-if="libraryUrl"
+        class="wtm-btn wtm-btn-primary wtm-guide-link"
+        :href="libraryUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Open WhatsApp Manager
+        <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" />
+      </a>
+    </div>
   </BaseModal>
 </template>
 
@@ -356,17 +288,7 @@ const remove = async (name: string) => {
   word-break: break-word;
 }
 
-.wtm-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
 
-.wtm-confirm-text {
-  font-size: 13px;
-  color: var(--muted);
-}
 
 .wtm-field {
   display: block;
@@ -490,14 +412,5 @@ const remove = async (name: string) => {
   border-color: transparent;
 }
 
-.wtm-btn-danger {
-  background: var(--c-danger);
-  color: var(--on-accent-solid);
-  border-color: transparent;
-}
 
-.wtm-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 </style>

@@ -195,10 +195,6 @@ const channelsService = {
     return response.data.url
   },
 
-  async deleteWhatsAppTemplate(accountId: string, name: string): Promise<void> {
-    await api.delete(`/channels/meta/whatsapp/${accountId}/templates`, { params: { name } })
-  },
-
   /**
    * Start a WhatsApp conversation with a phone number via an approved
    * Utility/Authentication template. Returns the session to open in the
