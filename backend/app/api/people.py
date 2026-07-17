@@ -21,7 +21,7 @@ from uuid import UUID
 
 from app.core.logger import get_logger
 from app.database import get_db
-from app.core.auth import get_current_user
+from app.core.auth import INBOX_PERMISSIONS, get_current_user, has_any_permission
 from app.models.user import User
 from app.repositories.people import PeopleRepository
 from app.models.schemas.people import (
@@ -40,14 +40,14 @@ except ImportError:
 router = APIRouter()
 logger = get_logger(__name__)
 
-# People is an org-wide view of every lead/customer, so it needs a broad
-# chat-viewing capability — not the limited "assigned chats only" permission.
-_VIEW_PERMISSIONS = {"view_all_chats", "manage_chats"}
-
-
 def _require_people_access(current_user: User, db: Session) -> None:
-    perms = {p.name for p in current_user.role.permissions}
-    if perms.isdisjoint(_VIEW_PERMISSIONS):
+    # People is an org-wide view of every lead/customer, so it needs a broad
+    # chat capability — not the limited "assigned chats only" permission.
+    # INBOX_PERMISSIONS is shared with the WhatsApp template/outbound endpoints
+    # so the two surfaces agree on who works the inbox, and has_any_permission
+    # honours the super_admin bypass this check used to miss (a super_admin
+    # could send templates but got 403 here).
+    if not has_any_permission(current_user, INBOX_PERMISSIONS):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
     # Pro-plan gate (Lead Management) where the enterprise module is present.
     if HAS_ENTERPRISE:

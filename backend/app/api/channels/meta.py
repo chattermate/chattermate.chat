@@ -31,7 +31,13 @@ from app.channels.meta_base import (
     register_phone_number,
     subscribe_app,
 )
-from app.core.auth import get_current_organization, get_current_user, require_permissions
+from app.core.auth import (
+    INBOX_PERMISSIONS,
+    get_current_organization,
+    get_current_user,
+    require_any_permission,
+    require_permissions,
+)
 from app.core.config import settings
 from app.database import get_db
 from app.models.channels import ChannelType
@@ -150,17 +156,9 @@ def _whatsapp_account_or_404(db: Session, account_id: UUID, organization: Organi
 
 
 # Template sending is inbox work — reopening a window, starting a conversation
-# — done by support agents, not org admins. Mirrors the People-page rule
-# (people.py _VIEW_PERMISSIONS): either chat capability grants it, and
-# require_permissions' AND semantics can't express that.
-_INBOX_PERMISSIONS = {"view_all_chats", "manage_chats", "super_admin"}
-
-
-async def require_inbox_agent(current_user: User = Depends(get_current_user)) -> User:
-    permissions = {p.name for p in (current_user.role.permissions if current_user.role else [])}
-    if permissions.isdisjoint(_INBOX_PERMISSIONS):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    return current_user
+# — done by support agents, not org admins. INBOX_PERMISSIONS is shared with
+# the People page so the two surfaces can't disagree about who works the inbox.
+require_inbox_agent = require_any_permission(*INBOX_PERMISSIONS)
 
 
 async def _fetch_all_templates(waba_id: str, access_token: str) -> list[TemplateOut]:
@@ -446,7 +444,11 @@ async def send_whatsapp_template(
 @router.get("/whatsapp/{account_id}/templates", response_model=list[TemplateOut])
 async def list_whatsapp_templates(
     account_id: UUID,
-    current_user: User = Depends(require_permissions("manage_organization")),
+    # Inbox-agent, not org-admin: this is what the send-template picker and the
+    # New-conversation modal read. Gating it tighter than the send it feeds made
+    # the loosening of those endpoints a no-op — the agent could send a template
+    # but never see one to pick.
+    current_user: User = Depends(require_inbox_agent),
     organization: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db),
 ):

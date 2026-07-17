@@ -780,3 +780,64 @@ class TestOutboundConversation:
         db.commit()
         r, _ = self._send(client, routed)
         assert r.status_code == 404
+
+
+class TestInboxAgentCanActuallyReachTheFeature:
+    """A support agent with ONLY view_all_chats — no manage_organization.
+
+    Every other test in this file runs as an admin who was also given
+    view_all_chats, so none of them could observe that the endpoints the
+    picker READS were still admin-only while the sends they feed had been
+    loosened. That mismatch made the whole feature unreachable for exactly
+    the role it was opened up for.
+    """
+
+    @pytest.fixture
+    def inbox_client(self, db, test_organization, waba_account, test_agent, monkeypatch):
+        from app.models.permission import Permission
+        from app.models.role import Role
+        from app.models.user import User
+        from app.core.security import get_password_hash
+        from app.repositories.channels import AgentChannelConfigRepository
+
+        monkeypatch.setattr(settings, "META_APP_SECRET", APP_SECRET)
+        AgentChannelConfigRepository(db).set_agent(waba_account.id, test_agent.id)
+
+        role = Role(name="Support Agent", organization_id=test_organization.id)
+        role.permissions = [Permission(name="view_all_chats")]
+        db.add(role); db.commit(); db.refresh(role)
+        agent_user = User(
+            id=uuid4(), organization_id=test_organization.id,
+            email="support@example.com", full_name="Support",
+            hashed_password=get_password_hash("pw"), is_active=True,
+            role_id=role.id)
+        db.add(agent_user); db.commit()
+
+        app.dependency_overrides[get_current_user] = lambda: agent_user
+        app.dependency_overrides[get_current_organization] = lambda: test_organization
+        app.dependency_overrides[get_db] = lambda: (yield db)
+        yield TestClient(app)
+        app.dependency_overrides.clear()
+
+    def test_can_list_the_templates_the_picker_needs(self, inbox_client, waba_account):
+        templates = [{"name": "order_update", "language": "en_US",
+                      "status": "APPROVED", "category": "UTILITY",
+                      "components": [{"type": "BODY", "text": "Hi {{1}}"}]}]
+        with patch("app.api.channels.meta.fetch_message_templates",
+                   AsyncMock(return_value=(True, templates))):
+            r = inbox_client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
+        assert r.status_code == 200
+        assert r.json()[0]["name"] == "order_update"
+
+    def test_can_see_the_accounts_that_gate_the_new_conversation_button(
+            self, inbox_client, waba_account):
+        r = inbox_client.get("/api/v1/channels/accounts")
+        assert r.status_code == 200
+        assert any(a["channel_type"] == "whatsapp" for a in r.json())
+
+    def test_still_cannot_manage_templates(self, inbox_client, waba_account):
+        """Loosened for reading and sending, not for authoring: creating and
+        deleting templates on the WABA stays an org-admin capability."""
+        r = inbox_client.delete(
+            f"{BASE}/whatsapp/{waba_account.id}/templates?name=order_update")
+        assert r.status_code == 403
