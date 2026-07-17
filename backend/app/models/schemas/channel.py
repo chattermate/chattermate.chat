@@ -20,6 +20,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE
+
 
 class ChannelAccountOut(BaseModel):
     """Connected channel account as exposed to the settings UI (no secrets)."""
@@ -66,8 +68,65 @@ class TemplateSendRequest(BaseModel):
     """Reopen an expired WhatsApp window with an approved template."""
     session_id: UUID
     template_name: str
-    language: str = "en_US"
+    language: str = DEFAULT_TEMPLATE_LANGUAGE
     components: Optional[list] = None
+
+
+class OutboundConversationRequest(BaseModel):
+    """Start a WhatsApp conversation with a phone number — the customer has
+    not messaged us; an approved template is the only thing Meta will deliver.
+
+    customer_id links the conversation to a person the agent picked in People;
+    without it the customer is resolved by phone or created. customer_name
+    only names a newly created person (never renames an existing one)."""
+    to: str
+    template_name: str
+    language: str = DEFAULT_TEMPLATE_LANGUAGE
+    components: Optional[list] = None
+    customer_id: Optional[UUID] = None
+    customer_name: Optional[str] = None
+
+
+class OutboundConversationOut(BaseModel):
+    """The session the outbound send created (or reused): everything else —
+    the inbox thread, template resend, AI takeover on reply — keys off it."""
+    session_id: UUID
+
+
+class EmbeddedSignupRequest(BaseModel):
+    """What the Embedded Signup JS SDK hands back: a short-lived code to trade
+    for the customer's business token, plus the assets it created."""
+    code: str
+    waba_id: str
+    phone_number_id: str
+    display_name: Optional[str] = None
+
+
+class EmbeddedSignupConfigOut(BaseModel):
+    """Tells the connect UI whether to offer Embedded Signup. Everything but
+    `enabled` is None when it isn't, so nothing leaks to orgs without it."""
+    enabled: bool
+    config_id: Optional[str] = None
+    app_id: Optional[str] = None
+    graph_version: str
+
+
+class TemplateOut(BaseModel):
+    """A message template as it exists on the customer's WhatsApp Business
+    Account. Only APPROVED templates can actually be sent."""
+    id: Optional[str] = None
+    name: str
+    status: Optional[str] = None
+    category: Optional[str] = None
+    language: Optional[str] = None
+    components: Optional[list] = None
+
+
+class TemplateLibraryOut(BaseModel):
+    """A deep link into Meta's Template Library for one WhatsApp Business
+    Account — which is where templates get written. We list and send them; Meta
+    authors them."""
+    url: str
 
 
 class AgentChannelConfigRequest(BaseModel):

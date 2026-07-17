@@ -20,6 +20,11 @@ uploads/
 *.csr.crt
 /shopify/
 
+# WordPress plugin source lives in its own repo (chattermate-wordpress-plugin);
+# only the built, installable zip is tracked here for manual download.
+/wordpress/*
+!/wordpress/chattermate-chat.zip
+
 # Firebase service account key (contains sensitive credentials)
 chattermate-13e0a-firebase-adminsdk-7dqo6-57f3de88cb.json
 

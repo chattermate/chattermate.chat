@@ -146,10 +146,15 @@ export function useConversationsList(props: {
 
  
 
-  const loadChatDetail = async (sessionId: string) => {
+  /**
+   * @param force refetch even when this chat is already open — the Refresh
+   *   button. Live socket updates only arrive once a human takes a chat over;
+   *   while the AI is answering, this is how an agent pulls the latest turns.
+   */
+  const loadChatDetail = async (sessionId: string, force = false) => {
     try {
       // Only load full chat detail if it's a new chat or not loaded yet
-      if (!selectedChat.value || selectedChat.value.session_id !== sessionId) {
+      if (force || !selectedChat.value || selectedChat.value.session_id !== sessionId) {
         chatLoading.value = true
         selectedId.value = sessionId
         const detail = await chatService.getChatDetail(sessionId)

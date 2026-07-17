@@ -156,13 +156,19 @@ def db() -> Generator:
     """Create a fresh database for each test."""
     # Create all tables
     create_tables()
-    
+
     # Create a new session for testing
     db = TestingSessionLocal()
+    real_close = db.close
+    # Handlers under test now close their own db session (see the widget_chat.py DB
+    # pool leak fix) via `db = next(get_db())` monkeypatched to this shared fixture
+    # session. A real close() here would expunge/detach fixture objects mid-test, so
+    # it's neutered until the fixture's own teardown below.
+    db.close = lambda: None
     try:
         yield db
     finally:
-        db.close()
+        real_close()
         # Drop all tables after test
         Base.metadata.drop_all(bind=engine)
 

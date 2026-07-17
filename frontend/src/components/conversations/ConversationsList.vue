@@ -322,7 +322,9 @@ onBeforeUnmount(() => {
         v-else-if="selectedChat"
         :chat="selectedChat"
         @refresh="() => {
-          selectedChat && loadChatDetail(selectedChat.session_id);
+          // force: this chat is already open, and loadChatDetail skips a session
+          // it thinks it has — without it this refetch was a silent no-op.
+          selectedChat && loadChatDetail(selectedChat.session_id, true);
           emit('refresh');
         }"
         @chatUpdated="selectedChat = $event"

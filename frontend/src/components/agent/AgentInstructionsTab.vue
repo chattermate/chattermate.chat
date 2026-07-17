@@ -315,7 +315,7 @@ const handleSave = () => {
             <div v-else class="no-groups-message">
               <p>No groups available.</p>
               <router-link to="/human-agents" class="create-group-link">
-                Create Group <i class="fas fa-arrow-right"></i>
+                Create Group <font-awesome-icon icon="fa-solid fa-arrow-right" />
               </router-link>
             </div>
           </div>
@@ -753,7 +753,7 @@ input:checked + .slider:before {
   opacity: 0.8;
 }
 
-.create-group-link i {
+.create-group-link svg {
   font-size: 0.8em;
 }
 

@@ -27,6 +27,7 @@ import { permissionChecks } from '@/utils/permissions'
 import FileUpload from '@/components/common/FileUpload.vue'
 import { userService } from '@/services/user'
 import ChannelBadge from '@/components/common/ChannelBadge.vue'
+import WhatsAppTemplatePicker from '@/components/conversations/WhatsAppTemplatePicker.vue'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import type { Renderer } from 'marked'
@@ -60,8 +61,23 @@ const {
   updateChat,
   replaceChatFromProps,
   handledByAI,
-  endChat
+  endChat,
+  templateCanReopen,
+  clearTemplateSuggestion
 } = useConversationChat(props.chat, emit)
+
+// Templates are a WhatsApp-only way back into a conversation whose 24h window
+// closed, and they need the account the conversation arrived on.
+const showTemplatePicker = ref(false)
+const canUseTemplates = computed(
+  () => currentChat.value.channel === 'whatsapp' && !!currentChat.value.channel_account_id
+)
+
+const handleTemplateSent = () => {
+  showTemplatePicker.value = false
+  clearTemplateSuggestion()
+  emit('refresh')
+}
 
 // Add file handling functionality
 const {
@@ -185,19 +201,34 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
         <h2>{{ chat.customer.full_name || chat.customer.email }}</h2>
         <ChannelBadge :channel="chat.channel" />
         <div v-if="handledByAI" class="chat-closed-status">
-          <i class="fas fa-lock"></i>
+          <font-awesome-icon icon="fa-solid fa-lock" />
           Handled by AI
         </div>
         <div v-if="showTakenOverStatus" class="taken-over-status">
-          <i class="fas fa-user-clock"></i>
+          <font-awesome-icon icon="fa-solid fa-user-clock" />
           Taken over by {{ chat.user_name || 'another agent' }}
         </div>
         <div v-if="isChatClosed" class="chat-closed-status">
-          <i class="fas fa-lock"></i>
+          <font-awesome-icon icon="fa-solid fa-lock" />
           Chat closed
         </div>
       </div>
       <div class="header-actions">
+        <!-- The thread only streams once a human takes the chat over; while the
+             AI is answering this is how you pull the latest turns. -->
+        <button class="refresh-chat-btn" title="Refresh conversation" @click="emit('refresh')">
+          <!-- font-awesome-icon, not <i class="fas">: the FA CSS isn't loaded
+               and dom.watch() isn't on, so bare <i> tags render nothing. -->
+          <font-awesome-icon icon="fa-solid fa-rotate-right" />
+        </button>
+        <button
+          v-if="canUseTemplates && !isChatClosed"
+          class="create-ticket-btn"
+          @click="showTemplatePicker = true"
+        >
+          <font-awesome-icon icon="fa-solid fa-comment-dots" />
+          Send template
+        </button>
         <template v-if="canCreateTicket">
           <!-- A native ticket already exists for this conversation -->
           <button
@@ -205,14 +236,14 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
             class="create-ticket-btn"
             @click="$router.push(`/tickets/${linkedTicketId}`)"
           >
-            <i class="fas fa-ticket-alt"></i>
+            <font-awesome-icon icon="fa-solid fa-ticket-alt" />
             View ticket
           </button>
           <!-- Jira connected: keep the familiar Jira flow primary, native in
                the dropdown (orgs that configured Jira keep their board). -->
           <div v-else-if="jiraConnected" class="ticket-btn-group">
             <button class="create-ticket-btn" @click="handleCreateTicket">
-              <i class="fas fa-ticket-alt"></i>
+              <font-awesome-icon icon="fa-solid fa-ticket-alt" />
               Create Ticket
             </button>
             <button
@@ -238,7 +269,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
             class="create-ticket-btn"
             @click="showTicketModal = true"
           >
-            <i class="fas fa-ticket-alt"></i>
+            <font-awesome-icon icon="fa-solid fa-ticket-alt" />
             Create Ticket
           </button>
         </template>
@@ -312,7 +343,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
                             target="_blank"
                             class="attachment-link"
                           >
-                            <i class="fas fa-download"></i>
+                            <font-awesome-icon icon="fa-solid fa-download" />
                             {{ attachment.filename }}
                             <span class="attachment-size">({{ formatFileSize(attachment.file_size) }})</span>
                           </a>
@@ -326,7 +357,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
                         target="_blank"
                         class="attachment-link"
                       >
-                        <i class="fas fa-paperclip"></i>
+                        <font-awesome-icon icon="fa-solid fa-paperclip" />
                         {{ attachment.filename }}
                         <span class="attachment-size">({{ formatFileSize(attachment.file_size) }})</span>
                       </a>
@@ -335,6 +366,9 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
                 </div>
               </template>
               <span class="message-time">{{ message.timeAgo }}</span>
+              <span v-if="message.attributes?.delivery_status" class="delivery-failed">
+                <font-awesome-icon icon="fa-solid fa-circle-exclamation" /> Not delivered
+              </span>
             </div>
             <span v-if="message.message_type === 'bot' || message.message_type === 'agent'" class="agent-name">
               {{ message.message_type === 'bot' ? (message.agent_name || chat.agent.name || 'AI Agent') : (message.user_name || 'Agent') }}
@@ -365,6 +399,18 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
     />
 
     <footer class="chat-input" v-if="!isChatClosed && !handledByAI">
+      <!-- The agent has just been told a reply couldn't be delivered; offer the
+           one action that gets the conversation back rather than leaving them
+           to retype into a composer that will fail again. -->
+      <div v-if="templateCanReopen && canUseTemplates" class="window-closed-notice">
+        <div class="window-closed-text">
+          <font-awesome-icon icon="fa-solid fa-clock" />
+          <span>This customer's 24-hour window has closed. Send an approved template to reopen it.</span>
+        </div>
+        <button class="window-closed-btn" @click="showTemplatePicker = true">
+          Send template
+        </button>
+      </div>
       <div class="input-container" :class="{ disabled: !canSendMessage }" @paste="handleChatPaste">
         <FileUpload
           ref="fileUploadRef"
@@ -400,16 +446,24 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
 
     <footer v-else-if="handledByAI" class="chat-closed-footer">
       <div class="chat-closed-message">
-        <i class="fas fa-lock"></i>
+        <font-awesome-icon icon="fa-solid fa-lock" />
         This chat is being handled by AI
       </div>
     </footer>
     <footer v-else class="chat-closed-footer">
       <div class="chat-closed-message">
-        <i class="fas fa-lock"></i>
+        <font-awesome-icon icon="fa-solid fa-lock" />
         This chat has been closed
       </div>
     </footer>
+
+    <WhatsAppTemplatePicker
+      v-if="showTemplatePicker && currentChat.channel_account_id"
+      :account-id="currentChat.channel_account_id"
+      :session-id="currentChat.session_id"
+      @close="showTemplatePicker = false"
+      @sent="handleTemplateSent"
+    />
   </div>
 </template>
 
@@ -578,6 +632,58 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
   color: color-mix(in srgb, var(--on-accent) 55%, transparent);
 }
 
+.delivery-failed {
+  font-size: 11px;
+  color: var(--c-danger);
+  margin-top: 2px;
+  display: block;
+  text-align: right;
+}
+
+/* The agent bubble is accent-filled: lift --c-danger toward the bubble's own
+   foreground for contrast while keeping it readably red, not just a timestamp */
+.message.agent .delivery-failed {
+  color: color-mix(in srgb, var(--c-danger) 65%, var(--on-accent));
+}
+
+.window-closed-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-btn, 8px);
+  background: var(--warning-light);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.window-closed-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.window-closed-text svg {
+  color: var(--warning);
+}
+
+.window-closed-btn {
+  padding: 7px 12px;
+  border-radius: var(--radius-btn, 8px);
+  border: none;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .input-container {
   display: flex;
   align-items: flex-end;
@@ -665,7 +771,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
   margin-top: 4px;
 }
 
-.taken-over-status i {
+.taken-over-status svg {
   font-size: 14px;
 }
 
@@ -689,7 +795,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
   margin-top: 4px;
 }
 
-.chat-closed-status i {
+.chat-closed-status svg {
   font-size: 14px;
 }
 
@@ -711,13 +817,30 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
   gap: 8px;
 }
 
-.chat-closed-message i {
+.chat-closed-message svg {
   font-size: 16px;
 }
 
 
 
 
+
+.refresh-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-btn, 8px);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.refresh-chat-btn:hover {
+  color: var(--text);
+}
 
 .create-ticket-btn {
   background: var(--accent-solid);
@@ -966,7 +1089,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
   border-color: var(--primary-color);
 }
 
-.attachment-link i {
+.attachment-link svg {
   font-size: 14px;
   color: var(--text-muted);
 }
@@ -988,7 +1111,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
   border-color: color-mix(in srgb, var(--on-accent) 32%, transparent);
 }
 
-.message.agent .attachment-link i,
+.message.agent .attachment-link svg,
 .message.agent .attachment-size {
   color: var(--on-accent);
 }

@@ -15,11 +15,17 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
+import {
+  loadMetaSdk,
+  parseSignupMessage,
+  signupLoginOptions,
+  type SignupSession,
+} from '@/utils/metaSdk'
 
 const props = defineProps<{
   channel: 'whatsapp' | 'messenger' | 'instagram'
@@ -31,11 +37,17 @@ const emit = defineEmits<{
   (e: 'connected', account: ChannelAccount): void
 }>()
 
-// Per-channel copy + credential fields
+// Where the credentials are copied from — linked so it's one click, not a
+// hostname to retype.
+const META_APPS_URL = 'https://developers.facebook.com/apps/'
+
+// Per-channel copy + credential fields. The intro is split around the link
+// rather than carrying markup, so it renders as escaped text.
 const META_FORMS = {
   whatsapp: {
     title: 'Connect WhatsApp',
-    intro: 'From your Meta app (developers.facebook.com → WhatsApp → API Setup), copy the phone number ID and a permanent access token.',
+    introBefore: 'From your Meta app (',
+    introAfter: ' → WhatsApp → API Setup), copy the phone number ID and a permanent access token.',
     fields: [
       { key: 'phone_number_id', label: 'Phone number ID', placeholder: '1234567890', secret: false },
       { key: 'access_token', label: 'Access token', placeholder: 'EAAG…', secret: true },
@@ -44,7 +56,8 @@ const META_FORMS = {
   },
   messenger: {
     title: 'Connect Messenger',
-    intro: 'From your Meta app (Messenger → Settings), generate a page access token for the Facebook Page you want to connect.',
+    introBefore: 'From your Meta app (',
+    introAfter: ' → Messenger → Settings), generate a page access token for the Facebook Page you want to connect.',
     fields: [
       { key: 'page_id', label: 'Facebook Page ID', placeholder: '1234567890', secret: false },
       { key: 'page_access_token', label: 'Page access token', placeholder: 'EAAG…', secret: true },
@@ -52,7 +65,8 @@ const META_FORMS = {
   },
   instagram: {
     title: 'Connect Instagram',
-    intro: 'Your Instagram account must be a professional account linked to a Facebook Page. Use the linked page’s access token.',
+    introBefore: 'Your Instagram account must be a professional account linked to a Facebook Page. Use the linked page’s access token, from ',
+    introAfter: ' → Instagram.',
     fields: [
       { key: 'ig_id', label: 'Instagram account ID', placeholder: '17841400000000000', secret: false },
       { key: 'page_access_token', label: 'Linked page access token', placeholder: 'EAAG…', secret: true },
@@ -69,6 +83,21 @@ const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
 const savingAgent = ref(false)
 
+// Embedded Signup: only offered for WhatsApp, and only when the server says
+// this deployment has a Meta app to onboard under and a plan that allows it.
+// Everyone else keeps the manual credentials form.
+const signupEnabled = ref(false)
+const signupConfigId = ref('')
+const signingUp = ref(false)
+/** The signup's two halves arrive separately and are joined once both land. */
+const signupSession = ref<SignupSession | null>(null)
+const showManualForm = ref(false)
+
+const handleSignupMessage = (event: MessageEvent) => {
+  const session = parseSignupMessage(event)
+  if (session) signupSession.value = session
+}
+
 onMounted(async () => {
   try {
     agents.value = await agentService.getOrganizationAgents()
@@ -77,7 +106,68 @@ onMounted(async () => {
   } catch (error) {
     console.error('Error loading agents:', error)
   }
+
+  if (props.channel !== 'whatsapp' || props.existingAccount) return
+  try {
+    const config = await channelsService.getEmbeddedSignupConfig()
+    if (!config.enabled || !config.config_id || !config.app_id) return
+    await loadMetaSdk(config.app_id, config.graph_version)
+    signupConfigId.value = config.config_id
+    signupEnabled.value = true
+    window.addEventListener('message', handleSignupMessage)
+  } catch (error) {
+    // Falling back to the manual form is a working path, not an error worth
+    // interrupting the user for.
+    console.error('Embedded Signup unavailable:', error)
+  }
 })
+
+onBeforeUnmount(() => window.removeEventListener('message', handleSignupMessage))
+
+const completeEmbeddedSignup = async (response: { authResponse?: { code?: string } }) => {
+  const code = response.authResponse?.code
+  const session = signupSession.value
+  if (!code) {
+    // The popup was dismissed — not an error worth a toast.
+    signingUp.value = false
+    return
+  }
+  if (!session) {
+    // Signed in, but Meta never reported which number was set up, so there
+    // is nothing to connect. Say so rather than appearing to do nothing.
+    toast.error('WhatsApp signup did not complete', {
+      description: 'No number was set up. Try again, or enter credentials manually.',
+    })
+    signingUp.value = false
+    return
+  }
+  try {
+    account.value = await channelsService.connectWhatsAppEmbeddedSignup({
+      code,
+      waba_id: session.waba_id,
+      phone_number_id: session.phone_number_id,
+    })
+    toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
+  } catch (error: any) {
+    toast.error(error?.response?.data?.detail || 'Could not finish WhatsApp signup')
+  } finally {
+    signingUp.value = false
+  }
+}
+
+const startEmbeddedSignup = () => {
+  if (!window.FB || signingUp.value) return
+  signupSession.value = null
+  signingUp.value = true
+
+  // The SDK type-checks its callback and rejects an AsyncFunction outright
+  // ("Expression is of type asyncfunction, not function"), so hand the async
+  // work off from a plain function rather than passing `async` here.
+  window.FB.login(
+    (response) => { void completeEmbeddedSignup(response) },
+    signupLoginOptions(signupConfigId.value),
+  )
+}
 
 const connect = async () => {
   const missing = form.value.fields.filter(f => !f.label.includes('optional') && !values.value[f.key]?.trim())
@@ -132,7 +222,30 @@ const saveAgent = async () => {
 
       <!-- Step 1: credentials -->
       <div v-if="!account" class="meta-modal-body">
-        <p class="meta-intro">{{ form.intro }}</p>
+        <!-- One-click signup under ChatterMate's Meta app; the manual form
+             stays available for anyone who already has their own credentials. -->
+        <div v-if="signupEnabled && !showManualForm" class="meta-signup">
+          <p class="meta-intro">
+            Connect your WhatsApp Business number with Meta — no API credentials to copy.
+          </p>
+          <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startEmbeddedSignup">
+            <font-awesome-icon v-if="signingUp" icon="fa-solid fa-spinner" spin />
+            {{ signingUp ? 'Waiting for Meta…' : 'Continue with Facebook' }}
+          </button>
+          <button class="meta-link-btn" @click="showManualForm = true">
+            Enter credentials manually instead
+          </button>
+        </div>
+
+        <template v-else>
+        <p class="meta-intro">
+          {{ form.introBefore }}<a
+            :href="META_APPS_URL"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="meta-intro-link"
+          >developers.facebook.com</a>{{ form.introAfter }}
+        </p>
         <div v-for="field in form.fields" :key="field.key" class="meta-field">
           <label class="meta-label" :for="`meta-${field.key}`">{{ field.label }}</label>
           <input
@@ -151,6 +264,7 @@ const saveAgent = async () => {
             {{ connecting ? 'Connecting…' : 'Connect' }}
           </button>
         </div>
+        </template>
       </div>
 
       <!-- Step 2: route to an agent -->
@@ -222,6 +336,16 @@ const saveAgent = async () => {
   line-height: 1.6;
 }
 
+.meta-intro-link {
+  color: var(--accent-solid);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.meta-intro-link:hover {
+  text-decoration: none;
+}
+
 .meta-field {
   margin-bottom: 12px;
 }
@@ -270,5 +394,31 @@ const saveAgent = async () => {
 .meta-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.meta-signup {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.meta-signup-btn {
+  width: 100%;
+  padding: 12px;
+}
+
+.meta-link-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px;
+}
+
+.meta-link-btn:hover {
+  color: inherit;
 }
 </style>

@@ -282,7 +282,7 @@ const handleProfilePicClick = () => {
             />
             <span v-else class="avatar-initial">{{ avatarInitial }}</span>
             <div class="profile-pic-overlay">
-              <i class="fas fa-camera"></i>
+              <font-awesome-icon icon="fa-solid fa-camera" />
               <span>Change Photo</span>
             </div>
           </div>
@@ -523,7 +523,7 @@ const handleProfilePicClick = () => {
   gap: 2px;
 }
 
-.profile-pic-overlay i {
+.profile-pic-overlay svg {
   font-size: 1rem;
 }
 

@@ -17,7 +17,7 @@ limitations under the License.
 from fastapi import Depends, HTTPException, status, Cookie, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Iterable, Optional, List
 
 from app.database import get_db
 from app.models.user import User
@@ -70,6 +70,46 @@ def require_permissions(*required_permissions: str):
         current_user: User = Depends(get_current_user)
     ) -> User:
         if not check_permissions(current_user, list(required_permissions)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions"
+            )
+        return current_user
+    return permission_checker
+
+
+# Working the inbox: seeing conversations and the people in them. Either chat
+# capability grants it — which require_permissions, whose semantics are AND,
+# cannot express. Defined once because it gates two surfaces (the WhatsApp
+# template/outbound endpoints and the People page) that must agree: a role
+# that can open a conversation but not read the templates it needs to answer
+# one has the feature only in theory.
+#
+# manage_all_chats, not "manage_chats" — the latter appears in several hand-
+# rolled checks but is not in Permission.default_permissions(), so it has
+# never matched anyone.
+INBOX_PERMISSIONS = ("view_all_chats", "manage_all_chats")
+
+
+def has_any_permission(user: User, permissions: Iterable[str]) -> bool:
+    """True when the user holds AT LEAST ONE of `permissions`.
+
+    The OR counterpart to check_permissions, and it honours the same
+    super_admin bypass — hand-rolled `isdisjoint` checks kept forgetting it,
+    so a super_admin could send templates but got 403 from People.
+    """
+    if not user.role or not user.role.permissions:
+        return False
+    held = {p.name for p in user.role.permissions}
+    return "super_admin" in held or not held.isdisjoint(set(permissions))
+
+
+def require_any_permission(*permissions: str):
+    """Dependency: the user needs any one of `permissions`."""
+    async def permission_checker(
+        current_user: User = Depends(get_current_user)
+    ) -> User:
+        if not has_any_permission(current_user, permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"

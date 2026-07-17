@@ -42,6 +42,9 @@ const page = ref(1)
 const pageSize = 20
 const loading = ref(false)
 const stage = ref<'all' | 'visitor' | 'lead' | 'customer'>('all')
+// The identity split: the directory shows identified people; anonymous
+// browser sessions are a funnel count behind their own tab.
+const view = ref<'identified' | 'anonymous'>('identified')
 const search = ref('')
 const selectedId = ref<string | null>(null)
 
@@ -62,7 +65,8 @@ async function loadList() {
   loading.value = true
   try {
     const res = await peopleService.listPeople({
-      stage: stage.value, search: search.value || undefined, page: page.value, page_size: pageSize,
+      stage: stage.value, search: search.value || undefined, page: page.value,
+      page_size: pageSize, view: view.value,
     })
     items.value = res.items
     total.value = res.total
@@ -73,7 +77,8 @@ async function loadList() {
   }
 }
 
-function setStage(s: typeof stage.value) { stage.value = s; page.value = 1; loadList() }
+function setStage(s: typeof stage.value) { stage.value = s; view.value = 'identified'; page.value = 1; loadList() }
+function showAnonymous() { view.value = 'anonymous'; stage.value = 'all'; page.value = 1; loadList() }
 function nextPage() { if (page.value < totalPages.value) { page.value++; loadList() } }
 function prevPage() { if (page.value > 1) { page.value--; loadList() } }
 
@@ -169,7 +174,12 @@ onMounted(() => {
     <!-- toolbar -->
     <div class="pv-toolbar">
       <div class="pv-tabs">
-        <button v-for="s in STAGES" :key="s.value" class="pv-tab" :class="{ on: stage === s.value }" @click="setStage(s.value)">{{ s.label }}</button>
+        <button v-for="s in STAGES" :key="s.value" class="pv-tab" :class="{ on: view === 'identified' && stage === s.value }" @click="setStage(s.value)">{{ s.label }}</button>
+        <!-- Anonymous sessions are a lead-capture funnel signal, not directory
+             content — an explicit tab, never the default view. -->
+        <button class="pv-tab pv-tab-anon" :class="{ on: view === 'anonymous' }" @click="showAnonymous()">
+          Anonymous<span v-if="stats?.anonymous" class="pv-tab-count">{{ stats.anonymous }}</span>
+        </button>
       </div>
       <input class="pv-search" v-model="search" placeholder="Search name, email or company…" />
     </div>
@@ -186,6 +196,7 @@ onMounted(() => {
             <span class="pv-name">{{ p.name || (p.is_anonymous ? 'Anonymous visitor' : (p.email || '—')) }}</span>
             <span class="pv-email">
               {{ p.is_anonymous ? 'anonymous' : (p.email || '') }}
+              <span v-if="p.phone" class="pv-phone">{{ p.phone }}</span>
               <span class="pv-id" :title="String(p.id)">{{ shortId(p) }}</span>
             </span>
           </span>
@@ -250,6 +261,8 @@ onMounted(() => {
 .pv-tabs { display: flex; gap: 4px; padding: 4px; background: var(--o05); border-radius: 11px; }
 .pv-tab { padding: 8px 14px; border: none; background: transparent; border-radius: 8px; font-size: 13.5px; cursor: pointer; color: var(--muted); }
 .pv-tab.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.pv-tab-count { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--o10); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pv-phone { color: var(--muted); font-variant-numeric: tabular-nums; }
 .pv-search { flex: 1; min-width: 240px; max-width: 340px; padding: 9px 13px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 13.5px; background: var(--bg); color: var(--text); }
 .pv-table { background: var(--surface); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden; }
 .pv-thead, .pv-row { display: grid; grid-template-columns: minmax(0,2.4fr) 1fr 1.2fr .9fr .9fr .7fr; gap: 14px; align-items: center; padding: 12px 20px; }

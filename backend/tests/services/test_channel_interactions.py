@@ -89,6 +89,8 @@ async def test_contact_stores_phone(db, account, conversation, use_test_db, fake
 
     customer = db.query(Customer).filter(Customer.id == conversation.customer_id).one()
     assert customer.meta_data.get("phone") == "+441234567890"
+    # Promoted to the identity column too, so the person is phone-addressable
+    assert customer.phone == "+441234567890"
 
 
 @pytest.mark.asyncio

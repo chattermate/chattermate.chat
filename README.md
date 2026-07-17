@@ -8,7 +8,7 @@
 
 > **Open-source AI customer support platform with human handoff.** A no-code AI chatbot for 24/7 customer service automation — multi-model AI (OpenAI, Anthropic Claude, Google Gemini, Mistral, xAI Grok, DeepSeek, Groq), intelligent AI-to-human handover, **Shopify & e-commerce support**, Slack and Jira integrations, visual workflow builder, and a fully themeable chat widget. Use the free hosted service or self-host it as an **open-source alternative to Intercom, Zendesk, and Chatbase**.
 
-**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)** | **[Shopify App](https://apps.shopify.com/chattermate-chat)**
+**[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)** | **[Shopify App](https://apps.shopify.com/chattermate-chat)** | **[WordPress Plugin](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip)**
 
 ---
 
@@ -46,6 +46,7 @@ ChatterMate is a **no-code AI customer support platform** that enables businesse
 |---------|-------------|
 | 🤝 **Smart Human Handoff** | Intelligent AI-to-human transfer with **business hours awareness**, real-time availability detection, and context-aware escalation messages. |
 | 🛍️ **Shopify & E-commerce Support** | Native **Shopify integration** ([App Store listing](https://apps.shopify.com/chattermate-chat)) — answer order, shipping, and product questions from store data. Works for any online store. |
+| 📝 **WordPress Plugin** | Official **WordPress plugin** ([download](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip)) — add the chat widget to any WordPress site by entering your Widget ID. No theme edits required. |
 | 🧠 **Multi-Model AI Support** | Choose your AI provider — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **Mistral**, **xAI (Grok)**, **DeepSeek**, and **Groq** — with your own API key, or enter a custom model ID. Switch providers anytime without code changes. |
 | 💬 **Ask Anything Mode** | Let visitors start conversations instantly — no signup or email required. Perfect for Q&A, documentation assistants, and exploratory chat experiences. |
 | 📎 **File Attachments** | Customers can share **images, PDFs, Word docs, spreadsheets**, and more directly in chat. Secure uploads with S3 storage and magic byte validation. |
@@ -379,6 +380,9 @@ Yes — human handoff is a core feature, not an add-on. ChatterMate detects frus
 **Does ChatterMate work with Shopify?**
 Yes. Install it from the [Shopify App Store](https://apps.shopify.com/chattermate-chat) to answer order-status, shipping, and product questions directly from your store data. The widget also embeds on any other e-commerce or website platform with one line of code.
 
+**Does ChatterMate work with WordPress?**
+Yes. Download the [WordPress plugin](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip), install it via **Plugins → Add New → Upload Plugin**, then enter your Widget ID under **Settings → ChatterMate Chat**. The chat launcher appears on your site with no theme edits. A WordPress.org directory listing is in progress.
+
 **Can I self-host ChatterMate?**
 Yes. Run the full stack (Postgres, Redis, backend, frontend) on your own infrastructure with `npm install -g chattermate-deploy` — see [Quick Start](#quick-start). Self-hosting gives you complete data ownership.
 
@@ -449,5 +453,5 @@ Contributions are accepted under Apache-2.0 with a [Developer Certificate of Ori
 </p>
 
 <p align="center">
-  <b>Keywords:</b> AI customer support, AI chatbot, Shopify chatbot, ecommerce chatbot, customer support automation, open source help desk, live chat software, self-hosted chatbot, Intercom alternative, Zendesk alternative, Chatbase alternative, no-code chatbot builder, human handoff, Jira integration, Slack bot, multilingual chatbot
+  <b>Keywords:</b> AI customer support, AI chatbot, Shopify chatbot, WordPress chatbot, WordPress chat plugin, ecommerce chatbot, customer support automation, open source help desk, live chat software, self-hosted chatbot, Intercom alternative, Zendesk alternative, Chatbase alternative, no-code chatbot builder, human handoff, Jira integration, Slack bot, multilingual chatbot
 </p>

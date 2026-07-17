@@ -180,6 +180,8 @@ class ChatDetailResponse(BaseModel):
     messages: List[Message]
     status: SessionStatus
     channel: str = 'web'
+    # Which connected channel account this conversation arrived on; None for web.
+    channel_account_id: Optional[UUID] = None
     group_id: Optional[UUID]
     session_id: UUID
     user_id: Optional[UUID]

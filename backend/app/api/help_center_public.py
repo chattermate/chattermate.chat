@@ -108,22 +108,33 @@ async def _chrome_context(row: HelpCenterSettings) -> dict:
     }
 
 
-def _faq_json_ld(groups) -> dict:
-    """schema.org FAQPage structured data (Google FAQ rich results). Uses the
-    plain-text form of the (Markdown) answer."""
+def _question_entity(faq: FAQ) -> dict:
+    """One schema.org Question + acceptedAnswer, from the plain-text form of the
+    (Markdown) answer."""
+    return {
+        "@type": "Question",
+        "name": faq.question,
+        "acceptedAnswer": {"@type": "Answer", "text": to_plain_text(faq.answer)},
+    }
+
+
+def _faq_page_json_ld(faqs) -> dict:
+    """schema.org FAQPage structured data (Google FAQ rich results).
+
+    FAQPage - not QAPage - is the correct type for these owner-authored answers.
+    QAPage models community/forum pages where users submit competing answers and
+    requires answerCount/upvoteCount, which don't apply here.
+    """
     return {
         "@context": "https://schema.org",
         "@type": "FAQPage",
-        "mainEntity": [
-            {
-                "@type": "Question",
-                "name": faq.question,
-                "acceptedAnswer": {"@type": "Answer", "text": to_plain_text(faq.answer)},
-            }
-            for _category, faqs in groups
-            for faq in faqs
-        ],
+        "mainEntity": [_question_entity(faq) for faq in faqs],
     }
+
+
+def _faq_json_ld(groups) -> dict:
+    """FAQPage structured data for the index page's grouped-by-category FAQs."""
+    return _faq_page_json_ld(faq for _category, faqs in groups for faq in faqs)
 
 
 def _card_view(faq: FAQ) -> dict:
@@ -204,15 +215,7 @@ async def article(slug: str, request: Request, db: Session = Depends(get_db)):
         "related": related,
     }
     canonical = f"{live_url(row)}/a/{faq.slug}"
-    json_ld = {
-        "@context": "https://schema.org",
-        "@type": "QAPage",
-        "mainEntity": {
-            "@type": "Question",
-            "name": faq.question,
-            "acceptedAnswer": {"@type": "Answer", "text": to_plain_text(faq.answer)},
-        },
-    }
+    json_ld = _faq_page_json_ld([faq])
     context = {
         **await _chrome_context(row),
         "request": request,

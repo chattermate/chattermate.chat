@@ -24,6 +24,7 @@ import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import TelegramConnectModal from '@/components/integrations/TelegramConnectModal.vue'
 import MetaChannelConnect from '@/components/integrations/MetaChannelConnect.vue'
+import WhatsAppTemplateManager from '@/components/integrations/WhatsAppTemplateManager.vue'
 import ChannelConnectModal from '@/components/integrations/ChannelConnectModal.vue'
 
 // Import logos
@@ -59,6 +60,7 @@ const channelsLoading = ref(true)
 const showTelegramModal = ref(false)
 // Which Meta connect modal is open (null = none)
 const metaModalChannel = ref<'whatsapp' | 'messenger' | 'instagram' | null>(null)
+const showTemplateManager = ref(false)
 // Which credential connect modal is open (null = none)
 const credentialModalChannel = ref<'email' | 'sms' | 'line' | 'slack' | null>(null)
 // Account being managed (null = fresh connect). Also used for Telegram/Meta manage.
@@ -304,6 +306,9 @@ interface IntegrationCard {
   color?: string;
   connectAction?: () => void;
   disconnectAction?: () => void;
+  /** An extra action on the connected card, alongside Manage/Disconnect. */
+  extraActionLabel?: string;
+  extraAction?: () => void;
 }
 
 // List of available integrations
@@ -359,16 +364,19 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
     connectAction: () => { showTelegramModal.value = true },
     disconnectAction: handleDisconnectTelegram
   },
-  // Meta channels are pending Meta app review — shown as "coming soon"
   ...(['whatsapp', 'messenger', 'instagram'] as const).map(channel => {
     const meta = {
       whatsapp: { name: 'WhatsApp', logo: whatsappLogo, color: 'teal',
-        description: 'Let customers message your AI agent on WhatsApp Business.' },
+        description: 'Let customers message your AI agent on WhatsApp Business.',
+        disconnect: handleDisconnectWhatsApp },
       messenger: { name: 'Messenger', logo: messengerLogo, color: 'accent',
-        description: 'Let customers chat with your AI agent on Facebook Messenger.' },
+        description: 'Let customers chat with your AI agent on Facebook Messenger.',
+        disconnect: handleDisconnectMessenger },
       instagram: { name: 'Instagram', logo: instagramLogo, color: 'purple',
-        description: 'Let customers DM your AI agent on Instagram.' },
+        description: 'Let customers DM your AI agent on Instagram.',
+        disconnect: handleDisconnectInstagram },
     }[channel]
+    const accounts = accountsFor(channel)
     return {
       id: channel,
       name: meta.name,
@@ -376,9 +384,15 @@ const availableIntegrations = computed<IntegrationCard[]>(() => [
       logo: meta.logo,
       category: 'MESSAGING',
       color: meta.color,
-      connected: false,
-      isLoading: false,
-      comingSoon: true,
+      connected: accounts.length > 0,
+      teamName: accounts.map(a => a.display_name).filter(Boolean).join(', '),
+      isLoading: channelsLoading.value,
+      connectAction: () => { metaModalChannel.value = channel },
+      disconnectAction: meta.disconnect,
+      // Templates are WhatsApp-only — the other Meta channels have no equivalent.
+      ...(channel === 'whatsapp' && accounts.length > 0
+        ? { extraActionLabel: 'Templates', extraAction: () => { showTemplateManager.value = true } }
+        : {})
     }
   }),
   ...(['email', 'sms', 'line'] as const).map(channel => {
@@ -612,6 +626,13 @@ onMounted(async () => {
           <!-- Connected: Manage + Disconnect -->
           <div v-else-if="integration.connected" class="int-actions">
             <button class="int-btn int-btn-manage" @click="manageIntegration(integration)">Manage</button>
+            <button
+              v-if="integration.extraAction"
+              class="int-btn int-btn-manage"
+              @click="integration.extraAction()"
+            >
+              {{ integration.extraActionLabel }}
+            </button>
             <button class="int-btn int-btn-disconnect" @click="showDisconnectConfirmation(integration.id)">
               Disconnect
             </button>
@@ -782,6 +803,13 @@ onMounted(async () => {
     :existing-account="metaModalAccount"
     @close="metaModalChannel = null; metaModalAccount = null"
     @connected="onChannelConnected"
+  />
+
+  <!-- WhatsApp template management -->
+  <WhatsAppTemplateManager
+    v-if="showTemplateManager"
+    :accounts="accountsFor('whatsapp')"
+    @close="showTemplateManager = false"
   />
 
   <!-- Credential Connect Modal (Email / SMS / LINE) -->
