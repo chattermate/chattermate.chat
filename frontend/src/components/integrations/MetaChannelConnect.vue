@@ -337,7 +337,9 @@ const saveAgent = async () => {
 }
 
 .meta-intro-link {
-  color: var(--accent-solid);
+  /* --accent-ink, not --accent-solid: the latter is the lime fill and stays
+     lime in both themes, which is unreadable as text on a light background. */
+  color: var(--accent-ink);
   text-decoration: underline;
   font-weight: 600;
 }
