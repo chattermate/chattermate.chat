@@ -23,6 +23,7 @@ import { socketService } from '@/services/socket'
 import { toast } from 'vue-sonner'
 import api from '@/services/api'
 import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/endChat'
+import { getInitials } from '@/utils/text'
 
 interface Props {
   chatInfo: ChatDetail | null
@@ -213,15 +214,9 @@ const metaDataEntries = computed(() => {
 })
 
 // Initials for the mobile hero avatar
-const customerInitials = computed(() => {
-  const name = props.chatInfo?.customer?.full_name || props.chatInfo?.customer?.email || ''
-  return name
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part: string) => part[0]?.toUpperCase() || '')
-    .join('') || '?'
-})
+const customerInitials = computed(() =>
+  getInitials(props.chatInfo?.customer?.full_name || props.chatInfo?.customer?.email)
+)
 
 // Load users for reassign dropdown
 const loadUsers = async () => {
@@ -739,7 +734,7 @@ const confirmReassign = async () => {
   .chat-info-sidebar.mobile-fullscreen {
     position: fixed;
     inset: 0;
-    z-index: 1050;
+    z-index: var(--z-fullscreen-page);
     height: 100vh;
     height: 100dvh;
     border-left: none;

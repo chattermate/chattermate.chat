@@ -16,16 +16,10 @@ limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const permissions = vi.hoisted(() => ({
-  canViewAgents: vi.fn(() => true),
-  canManageUsers: vi.fn(() => true),
-  canViewChats: vi.fn(() => true),
-  canManageKnowledge: vi.fn(() => true),
-  canViewAnalytics: vi.fn(() => true),
-  canViewOrganization: vi.fn(() => true),
-  canManageOrganization: vi.fn(() => true),
-  canViewAIConfig: vi.fn(() => true),
-}))
+const permissions = await vi.hoisted(async () => {
+  const { createPermissionMocks } = await import('../../fixtures/permissions')
+  return createPermissionMocks()
+})
 
 vi.mock('@/utils/permissions', () => ({
   permissionChecks: permissions,

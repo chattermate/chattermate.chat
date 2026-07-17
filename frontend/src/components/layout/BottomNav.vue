@@ -79,7 +79,7 @@ const badgeText = computed(() => formatBadgeCount(props.unreadCount))
         left: 0;
         right: 0;
         bottom: 0;
-        z-index: 900;
+        z-index: var(--z-bottom-nav);
         display: flex;
         justify-content: space-between;
         background: var(--bg2);

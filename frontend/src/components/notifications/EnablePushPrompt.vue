@@ -18,6 +18,7 @@ limitations under the License.
 import { ref, onMounted } from 'vue'
 import { isShopifyEmbedded } from '@/pwa/register'
 import { usePWAInstall } from '@/composables/usePWAInstall'
+import { navIconSvg } from '@/components/layout/navIcons'
 
 const emit = defineEmits<{
   // Parent (DashboardLayout) owns the notifications composable instance and
@@ -67,9 +68,7 @@ const enable = () => {
 <template>
   <Transition name="push-prompt">
     <div v-if="visible" class="push-prompt" role="dialog" aria-label="Enable notifications">
-      <div class="bell-tile" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-      </div>
+      <div class="bell-tile" aria-hidden="true" v-html="navIconSvg('bell', 28)"></div>
 
       <template v-if="needsInstallFirst">
         <div class="prompt-title">Install to get notifications</div>
@@ -99,7 +98,7 @@ const enable = () => {
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-index: 1090;
+  z-index: var(--z-prompt);
   width: 340px;
   max-width: calc(100vw - 40px);
   background: var(--bg2);

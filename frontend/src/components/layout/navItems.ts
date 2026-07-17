@@ -18,6 +18,9 @@ import { computed } from 'vue'
 import { permissionChecks } from '@/utils/permissions'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
+// Re-exported so nav consumers keep a single import site
+export { NAV_ICONS, navIconSvg } from './navIcons'
+
 export interface NavItem {
     to?: string;
     icon?: string;
@@ -26,33 +29,9 @@ export interface NavItem {
     show?: boolean;
 }
 
-// Inline stroke icons matching the design (stroke="currentColor" so they
-// inherit the nav color — muted by default, lime when active)
-export const NAV_ICONS: Record<string, string> = {
-    agents: '<rect x="5" y="8" width="14" height="11" rx="3"/><line x1="12" y1="4" x2="12" y2="8"/><circle cx="9" cy="13" r="1" fill="currentColor"/><circle cx="15" cy="13" r="1" fill="currentColor"/>',
-    humans: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5 0 0 1 11 0"/><circle cx="16.5" cy="9" r="2.3"/><path d="M15 19a4.5 4 0 0 1 5.5-3.6"/>',
-    inbox: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 13h5l1.5 2.5h4L19 13h2"/>',
-    people: '<circle cx="9" cy="8" r="2.6"/><path d="M4 18a5 4.5 0 0 1 10 0"/><path d="M15.5 6.2a2.6 2.6 0 0 1 0 4.6"/><path d="M16 13.6A5 4.5 0 0 1 20 18"/>',
-    analytics: '<line x1="5" y1="17" x2="5" y2="13"/><line x1="10" y1="17" x2="10" y2="9"/><line x1="15" y1="17" x2="15" y2="6"/><line x1="20" y1="17" x2="20" y2="11"/>',
-    knowledge: '<path d="M4 5.5A2 2 0 0 1 6 4h5v16H6a2 2 0 0 0-2 1.5z"/><path d="M20 5.5A2 2 0 0 0 18 4h-5v16h5a2 2 0 0 1 2 1.5z"/>',
-    faq: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.3a2.7 2.7 0 0 1 5.2 1c0 1.8-2.5 2-2.5 3.3"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>',
-    org: '<rect x="4" y="4" width="14" height="16" rx="2"/><line x1="20" y1="20" x2="20" y2="11"/><line x1="18" y1="11" x2="22" y2="11"/><circle cx="8" cy="9" r=".6" fill="currentColor"/><circle cx="12" cy="9" r=".6" fill="currentColor"/><circle cx="8" cy="13" r=".6" fill="currentColor"/><circle cx="12" cy="13" r=".6" fill="currentColor"/>',
-    subscription: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="7" y1="14" x2="11" y2="14"/>',
-    integrations: '<line x1="12" y1="12" x2="6" y2="6"/><line x1="12" y1="12" x2="18" y2="6"/><line x1="12" y1="12" x2="12" y2="19"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="19" r="2"/>',
-    widgets: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><circle cx="16.5" cy="16.5" r="3.5"/>',
-    aiconfig: '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="9" cy="8" r="2.4"/><circle cx="15" cy="16" r="2.4"/>',
-    usersettings: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 5.5 0 0 1 13 0"/>',
-    more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
-    bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
-    logout: '<path d="M15 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2"/><path d="M10 12h11m0 0-3-3m3 3-3 3"/>',
-}
-
 // Shared unread-badge cap (bottom nav, More sheet, header bell)
 export const formatBadgeCount = (count?: number) =>
     count && count > 99 ? '99+' : String(count || '')
-
-export const navIconSvg = (name?: string, size = 19) =>
-    `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${name === 'analytics' ? 2 : 1.7}" stroke-linecap="round" stroke-linejoin="round">${name ? (NAV_ICONS[name] || '') : ''}</svg>`
 
 // Bottom-nav primary slots, in display order (remaining links go to the More sheet)
 export const PRIMARY_NAV_PATHS = ['/conversations', '/people', '/ai-agents', '/analytics']

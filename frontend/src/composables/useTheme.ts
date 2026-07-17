@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 import { ref, computed } from 'vue'
+import { THEME_COLORS } from '@/config/themeColors'
 
 export type ThemeMode = 'dark' | 'light' | 'system'
 
@@ -36,10 +37,10 @@ const apply = (m: ThemeMode) => {
   if (typeof document !== 'undefined') {
     const resolved = resolve(m)
     document.documentElement.setAttribute('data-theme', resolved)
-    // Keep the browser/PWA chrome color in sync (values = --bg per theme)
+    // Keep the browser/PWA chrome color in sync with the page background
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', resolved === 'dark' ? '#0B0C10' : '#EEF0F4')
+      ?.setAttribute('content', THEME_COLORS[resolved])
   }
 }
 

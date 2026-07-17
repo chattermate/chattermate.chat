@@ -19,18 +19,10 @@ import { mount } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import BottomNav from '@/components/layout/BottomNav.vue'
 
-vi.mock('@/utils/permissions', () => ({
-  permissionChecks: {
-    canViewAgents: () => true,
-    canManageUsers: () => true,
-    canViewChats: () => true,
-    canManageKnowledge: () => true,
-    canViewAnalytics: () => true,
-    canViewOrganization: () => true,
-    canManageOrganization: () => true,
-    canViewAIConfig: () => true,
-  },
-}))
+vi.mock('@/utils/permissions', async () => {
+  const { createPermissionMocks } = await import('../../fixtures/permissions')
+  return { permissionChecks: createPermissionMocks() }
+})
 
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({ hasEnterpriseModule: false }),

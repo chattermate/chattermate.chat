@@ -8,6 +8,7 @@ import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import { VitePWA } from 'vite-plugin-pwa'
+import { THEME_COLORS } from './src/config/themeColors'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -92,8 +93,8 @@ export default defineConfig(({ command, mode }) => {
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        background_color: '#0B0C10',
-        theme_color: '#0B0C10',
+        background_color: THEME_COLORS.dark,
+        theme_color: THEME_COLORS.dark,
         icons: [
           { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },

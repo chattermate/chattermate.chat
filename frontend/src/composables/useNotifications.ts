@@ -23,6 +23,7 @@ import {
   refreshFCMToken,
   getMessagingIfSupported
 } from '@/services/firebase'
+import { SW_MESSAGE, CONVERSATIONS_PATH, conversationSessionUrl } from '@/pwa/pushContract'
 import mitt from '@/utils/emitter'
 
 // Match backend NotificationType enum
@@ -52,7 +53,7 @@ export function useNotifications() {
     if (!sessionId) return undefined
     return {
       label: 'Open',
-      onClick: () => router.push(`/conversations?session=${encodeURIComponent(sessionId)}`)
+      onClick: () => router.push(conversationSessionUrl(sessionId))
     }
   }
 
@@ -113,11 +114,17 @@ export function useNotifications() {
   const listenForBgNotification = () => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data?.eventType === 'BACKGROUND_NOTIFICATION') {
+        if (event.data?.eventType === SW_MESSAGE.BACKGROUND_NOTIFICATION) {
           handleNewNotification(event.data)
         }
-        // SW notificationclick fallback for tabs it can't navigate() itself
-        if (event.data?.eventType === 'OPEN_CONVERSATION' && event.data.url) {
+        // SW notificationclick fallback for tabs it can't navigate() itself.
+        // Pin the target to the inbox — never route to an arbitrary string
+        // from a message event.
+        if (
+          event.data?.eventType === SW_MESSAGE.OPEN_CONVERSATION &&
+          typeof event.data.url === 'string' &&
+          event.data.url.startsWith(CONVERSATIONS_PATH)
+        ) {
           router.push(event.data.url)
         }
       })

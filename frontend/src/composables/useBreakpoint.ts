@@ -16,6 +16,9 @@ limitations under the License.
 
 import { ref, type Ref } from 'vue'
 
+// Must match --breakpoint-sm / --breakpoint-md in design-tokens.css and the
+// @media (max-width: 768px/1024px) blocks across components — CSS media
+// queries can't read JS constants, so changing the cutoff means updating both.
 export const MOBILE_BREAKPOINT = 768
 export const TABLET_BREAKPOINT = 1024
 

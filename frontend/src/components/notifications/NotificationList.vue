@@ -185,7 +185,7 @@ onMounted(fetchNotifications)
     border-left: 1px solid var(--o08);
     box-shadow: -20px 0 50px rgba(0, 0, 0, 0.4);
     transition: right 0.3s ease;
-    z-index: 1000;
+    z-index: var(--z-drawer);
     display: flex;
     flex-direction: column;
 }

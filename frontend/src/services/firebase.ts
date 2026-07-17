@@ -54,13 +54,20 @@ export const initializeFirebase = () => {
  * on iOS Safari (not installed to Home Screen) the Push API doesn't exist and
  * getMessaging() throws, taking the whole app bundle down with it.
  */
-export const isPushSupported = () => isSupported().catch(() => false)
+// Memoized: firebase's isSupported() probes IndexedDB on every call
+let pushSupported: Promise<boolean> | null = null
+export const isPushSupported = () =>
+  (pushSupported ??= isSupported().catch(() => false))
 
 export const getMessagingIfSupported = async (): Promise<Messaging | null> => {
   if (!(await isPushSupported())) return null
   const { getMessaging } = await import('firebase/messaging')
   return getMessaging(initializeFirebase() ?? undefined)
 }
+
+// Last token synced to the backend — skips the per-page-load POST when getToken
+// returns the same value (it almost always does).
+const FCM_TOKEN_KEY = 'cm-fcm-token-synced'
 
 // Mint an FCM token against the app service worker and store it server-side.
 // Requires notification permission to already be granted.
@@ -78,7 +85,12 @@ const registerFCMToken = async (): Promise<boolean> => {
     vapidKey: getFirebaseVapidKey(),
     serviceWorkerRegistration,
   })
-  await userService.updateFCMToken(token)
+  // Keyed per user so a re-login on the same browser still syncs its token
+  const synced = `${userService.getUserId()}:${token}`
+  if (localStorage.getItem(FCM_TOKEN_KEY) !== synced) {
+    await userService.updateFCMToken(token)
+    localStorage.setItem(FCM_TOKEN_KEY, synced)
+  }
   return true
 }
 

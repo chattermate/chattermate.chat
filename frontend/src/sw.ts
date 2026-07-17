@@ -26,10 +26,11 @@ limitations under the License.
 
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
-import { StaleWhileRevalidate, CacheFirst } from 'workbox-strategies'
+import { NetworkFirst, CacheFirst } from 'workbox-strategies'
 import { clientsClaim } from 'workbox-core'
 import { initializeApp } from 'firebase/app'
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw'
+import { SW_MESSAGE, conversationSessionUrl } from './pwa/pushContract'
 
 declare let self: ServiceWorkerGlobalScope
 
@@ -48,10 +49,13 @@ registerRoute(
 )
 
 // Runtime config is substituted per-environment at container start, so it must
-// never be precached — but caching it makes offline boot possible.
+// never be precached. NetworkFirst (not StaleWhileRevalidate): online clients
+// must always boot on the CURRENT environment's config — a stale cached copy
+// could keep credentialed traffic pointed at a rotated-away endpoint. The
+// cache only serves offline boots.
 registerRoute(
   ({ url }) => url.origin === self.location.origin && url.pathname === '/config.js',
-  new StaleWhileRevalidate({ cacheName: 'runtime-config' }),
+  new NetworkFirst({ cacheName: 'runtime-config', networkTimeoutSeconds: 3 }),
 )
 
 registerRoute(
@@ -94,7 +98,7 @@ if (firebaseConfig.apiKey) {
     // Let any open windows refresh their in-app notification state
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       clients.forEach((client) =>
-        client.postMessage({ eventType: 'BACKGROUND_NOTIFICATION', data: payload.data }),
+        client.postMessage({ eventType: SW_MESSAGE.BACKGROUND_NOTIFICATION, data: payload.data }),
       )
     })
   })
@@ -104,8 +108,7 @@ if (firebaseConfig.apiKey) {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
-  const sessionId = event.notification.data?.session_id
-  const url = sessionId ? `/conversations?session=${encodeURIComponent(sessionId)}` : '/'
+  const url = conversationSessionUrl(event.notification.data?.session_id)
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
@@ -119,7 +122,7 @@ self.addEventListener('notificationclick', (event) => {
           // page so the in-app router performs the navigation.
           await client.navigate(url)
         } catch {
-          client.postMessage({ eventType: 'OPEN_CONVERSATION', url })
+          client.postMessage({ eventType: SW_MESSAGE.OPEN_CONVERSATION, url })
         }
         return
       }

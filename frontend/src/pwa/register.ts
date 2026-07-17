@@ -56,10 +56,14 @@ export function setupPWA() {
  * when no SW gets registered (vite dev, or a failed registration), so race it
  * against a timeout instead of hanging callers forever.
  */
+// Generous enough for a cold first install on low-end devices; a miss only
+// delays token registration to the next visit.
+const SW_READY_TIMEOUT_MS = 8000
+
 export async function getSWRegistration(): Promise<ServiceWorkerRegistration | undefined> {
   if (!('serviceWorker' in navigator) || isShopifyEmbedded()) return undefined
   return Promise.race([
     navigator.serviceWorker.ready,
-    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 4000)),
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), SW_READY_TIMEOUT_MS)),
   ])
 }
