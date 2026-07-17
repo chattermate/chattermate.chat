@@ -20,7 +20,13 @@ import { formatDistanceToNow } from 'date-fns'
 import type { TicketActivity } from '@/types/ticket'
 import { ticketInitials } from './ticketMeta'
 
-defineProps<{ activities: TicketActivity[]; canComment: boolean; isSaving: boolean }>()
+defineProps<{
+  activities: TicketActivity[]
+  canComment: boolean
+  isSaving: boolean
+  /** Delivery path to the customer exists — shows the "Send to customer" toggle. */
+  canMessageCustomer?: boolean
+}>()
 const emit = defineEmits<{ (e: 'comment', body: string, isInternal: boolean): void }>()
 
 const draft = ref('')
@@ -89,10 +95,11 @@ function avatarText(activity: TicketActivity): string {
         @keydown.ctrl.enter="submit"
       ></textarea>
       <div class="composer-actions">
-        <label class="visibility-toggle">
+        <label v-if="canMessageCustomer" class="visibility-toggle">
           <input v-model="customerVisible" type="checkbox" />
           Send to customer
         </label>
+        <span v-else class="no-customer-note">Internal note — no customer linked</span>
         <button class="post-btn" :disabled="!draft.trim() || isSaving" @click="submit">
           {{ isSaving ? 'Posting…' : 'Comment' }}
         </button>
@@ -237,6 +244,10 @@ function avatarText(activity: TicketActivity): string {
   font-size: 12px;
   color: var(--muted);
   cursor: pointer;
+}
+.no-customer-note {
+  font-size: 12px;
+  color: var(--faint);
 }
 .post-btn {
   padding: 8px 16px;

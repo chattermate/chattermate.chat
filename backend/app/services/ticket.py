@@ -111,6 +111,8 @@ class TicketService:
         tags: Optional[List[str]] = None,
         source: str = TicketSource.MANUAL,
         customer_id: Optional[UUID] = None,
+        customer_email: Optional[str] = None,
+        customer_name: Optional[str] = None,
         session_id: Optional[UUID] = None,
         agent_id: Optional[UUID] = None,
         assignee_user_id: Optional[UUID] = None,
@@ -119,8 +121,20 @@ class TicketService:
     ) -> Tuple[Ticket, List[Tuple[Ticket, float]]]:
         """Create a ticket, link its session, mirror the legacy session
         columns, and enqueue triage. Returns (ticket, possible_duplicates).
-        Caller commits."""
+        Caller commits.
+
+        customer_email (manual tickets): resolved to an existing customer in
+        the org or a new record — the direct-email notification path."""
         settings = self.settings_repo.get_or_create(organization_id)
+
+        if customer_id is None and customer_email:
+            from app.repositories.customer import CustomerRepository
+            customer = CustomerRepository(self.db).get_or_create_customer(
+                email=customer_email.strip().lower(),
+                organization_id=organization_id,
+                full_name=(customer_name or "").strip() or None,
+            )
+            customer_id = customer.id
 
         session_record = None
         if session_id is not None:
@@ -484,16 +498,24 @@ class TicketService:
         except Exception as e:
             logger.error(f"CSAT request failed for {ticket.display_number}: {e}")
 
+    def can_notify_customer(self, ticket: Ticket) -> bool:
+        """Whether any outbound path to the customer exists: a linked
+        conversation, or a customer with an email for direct sending."""
+        if self.repo.get_session_ids(ticket.id):
+            return True
+        return bool(ticket.customer and ticket.customer.email)
+
     async def send_customer_message(
         self, ticket: Ticket, message: str, record_activity: bool = True
     ) -> None:
-        """Deliver a ticket message through the customer's session channel
-        (widget socket or email/WhatsApp/... adapter) and persist it to the
-        conversation history. record_activity=False when the caller already
-        wrote its own activity row (customer-visible comments)."""
+        """Deliver a ticket message to the customer: through the linked
+        conversation's channel (widget socket or email/WhatsApp/... adapter)
+        when one exists, by direct email otherwise (manual tickets).
+        record_activity=False when the caller already wrote its own activity
+        row (customer-visible comments)."""
         session_record = self._primary_session(ticket)
         if session_record is None:
-            logger.info(f"Ticket {ticket.display_number}: no linked session to notify")
+            await self._send_direct_email(ticket, message, record_activity)
             return
         try:
             from app.services.message_delivery import deliver_to_customer
@@ -527,6 +549,37 @@ class TicketService:
             )
         except Exception as e:
             logger.error(f"Customer notification failed for {ticket.display_number}: {e}")
+
+    async def _send_direct_email(
+        self, ticket: Ticket, message: str, record_activity: bool
+    ) -> None:
+        """Email fallback for tickets with no linked conversation."""
+        to_email = ticket.customer.email if ticket.customer else None
+        if not to_email:
+            logger.info(
+                f"Ticket {ticket.display_number}: no linked session or customer email to notify"
+            )
+            return
+        from app.services.ticket_email import send_ticket_email
+        sent = await send_ticket_email(
+            self.db,
+            ticket.organization_id,
+            to_email,
+            subject=f"[{ticket.display_number}] {ticket.title}",
+            body=message,
+        )
+        if not sent:
+            return
+        if ticket.first_response_at is None:
+            ticket.first_response_at = datetime.now(timezone.utc)
+        if not record_activity:
+            return
+        self._add_activity(
+            ticket, TicketActivityType.CUSTOMER_NOTIFIED,
+            actor_type=TicketActorType.SYSTEM,
+            body=message,
+            metadata={"channel": "email", "to": to_email},
+        )
 
     def _primary_session(self, ticket: Ticket) -> Optional[SessionToAgent]:
         session_ids = self.repo.get_session_ids(ticket.id)

@@ -184,6 +184,78 @@ class TestTriagePriorityValidation:
         assert str(ticket.priority) == "urgent"
 
 
+class TestCustomerEmailPath:
+    def test_create_with_email_finds_or_creates_customer(
+        self, service, db, test_organization
+    ):
+        ticket = make_ticket(
+            service, db, test_organization,
+            customer_email="Jane@Example.com", customer_name="Jane Doe",
+        )
+        assert ticket.customer is not None
+        assert ticket.customer.email == "jane@example.com"
+        assert ticket.customer.full_name == "Jane Doe"
+        # Same email reuses the record instead of duplicating it.
+        second = make_ticket(
+            service, db, test_organization, customer_email="jane@example.com"
+        )
+        assert second.customer_id == ticket.customer_id
+
+    def test_can_notify_requires_session_or_email(
+        self, service, db, test_organization, test_session
+    ):
+        no_contact = make_ticket(service, db, test_organization)
+        assert service.can_notify_customer(no_contact) is False
+        with_email = make_ticket(
+            service, db, test_organization, customer_email="c@example.com"
+        )
+        assert service.can_notify_customer(with_email) is True
+        with_session = make_ticket(
+            service, db, test_organization, session_id=test_session.session_id
+        )
+        assert service.can_notify_customer(with_session) is True
+
+    @pytest.mark.asyncio
+    async def test_direct_email_fallback_records_activity(
+        self, service, db, test_organization
+    ):
+        ticket = make_ticket(
+            service, db, test_organization, customer_email="c@example.com"
+        )
+        with patch(
+            "app.services.ticket_email.send_ticket_email", return_value=True
+        ) as send:
+            await service.send_customer_message(ticket, "We are on it")
+        send.assert_awaited_once()
+        assert send.await_args.kwargs["subject"].startswith(f"[{ticket.display_number}]")
+        last = service.activity_repo.list_for_ticket(ticket.id)[-1]
+        assert last.activity_type == TicketActivityType.CUSTOMER_NOTIFIED.value
+        assert last.activity_metadata["channel"] == "email"
+        assert ticket.first_response_at is not None
+
+    @pytest.mark.asyncio
+    async def test_no_contact_is_a_silent_noop(self, service, db, test_organization):
+        ticket = make_ticket(service, db, test_organization)
+        with patch(
+            "app.services.ticket_email.send_ticket_email", return_value=True
+        ) as send:
+            await service.send_customer_message(ticket, "hello?")
+        send.assert_not_awaited()
+        types = [a.activity_type for a in service.activity_repo.list_for_ticket(ticket.id)]
+        assert TicketActivityType.CUSTOMER_NOTIFIED.value not in types
+
+    @pytest.mark.asyncio
+    async def test_failed_send_records_nothing(self, service, db, test_organization):
+        ticket = make_ticket(
+            service, db, test_organization, customer_email="c@example.com"
+        )
+        with patch("app.services.ticket_email.send_ticket_email", return_value=False):
+            await service.send_customer_message(ticket, "We are on it")
+        types = [a.activity_type for a in service.activity_repo.list_for_ticket(ticket.id)]
+        assert TicketActivityType.CUSTOMER_NOTIFIED.value not in types
+        assert ticket.first_response_at is None
+
+
 class TestStatusMachine:
     def test_legal_transition(self, service, db, test_organization):
         ticket = make_ticket(service, db, test_organization)

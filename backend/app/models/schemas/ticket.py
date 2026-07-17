@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 # Reuse the ORM enums so the API contract can never drift from the DB.
 from app.models.investigation import InvestigationRunStatus, InvestigationRunType
@@ -39,6 +39,10 @@ class TicketCreate(BaseModel):
     severity: Optional[int] = Field(default=None, ge=1, le=3)
     tags: Optional[List[str]] = Field(default=None, max_length=MAX_TAGS)
     customer_id: Optional[UUID] = None
+    # Manual tickets: resolve/create the customer by email so direct-email
+    # notifications have somewhere to go. Ignored when customer_id is set.
+    customer_email: Optional[EmailStr] = None
+    customer_name: Optional[str] = Field(default=None, max_length=200)
     session_id: Optional[UUID] = None
     assignee_user_id: Optional[UUID] = None
     group_id: Optional[UUID] = None
@@ -205,6 +209,9 @@ class TicketDetailResponse(BaseModel):
     runs: List[InvestigationRunOut]
     linked_session_ids: List[UUID]
     possible_duplicates: List[TicketListItem] = []
+    # Whether any outbound path to the customer exists (linked conversation or
+    # customer email) — gates the "send to customer" affordances in the UI.
+    can_notify_customer: bool = False
 
 
 class TicketStats(BaseModel):

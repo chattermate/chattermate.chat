@@ -131,6 +131,8 @@ export interface TicketDetail {
   runs: InvestigationRun[]
   linked_session_ids: string[]
   possible_duplicates?: TicketListItem[]
+  /** Linked conversation or customer email exists — gates "send to customer" UI. */
+  can_notify_customer?: boolean
 }
 
 export interface Pagination {
@@ -168,6 +170,9 @@ export interface TicketCreatePayload {
   severity?: number
   tags?: string[]
   customer_id?: string
+  /** Manual tickets: find-or-create the customer by email for direct-email notifications. */
+  customer_email?: string
+  customer_name?: string
   session_id?: string
   assignee_user_id?: string
   group_id?: string

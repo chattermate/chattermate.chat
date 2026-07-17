@@ -272,6 +272,8 @@ async def create_ticket(
             tags=payload.tags,
             source=TicketSource.HUMAN_AGENT if payload.session_id else TicketSource.MANUAL,
             customer_id=payload.customer_id,
+            customer_email=payload.customer_email,
+            customer_name=payload.customer_name,
             session_id=payload.session_id,
             assignee_user_id=payload.assignee_user_id,
             group_id=payload.group_id,
@@ -298,6 +300,7 @@ async def create_ticket(
         possible_duplicates=[
             _list_item(service, t, False, settings) for t, _score in duplicates
         ],
+        can_notify_customer=service.can_notify_customer(ticket),
     )
 
 
@@ -315,6 +318,7 @@ async def get_ticket(
         activities=[_activity_out(a) for a in service.activity_repo.list_for_ticket(ticket.id)],
         runs=[InvestigationRunOut.model_validate(r) for r in service.run_repo.list_for_ticket(ticket.id)],
         linked_session_ids=service.repo.get_session_ids(ticket.id),
+        can_notify_customer=service.can_notify_customer(ticket),
     )
 
 

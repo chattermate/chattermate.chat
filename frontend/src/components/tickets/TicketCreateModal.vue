@@ -15,9 +15,11 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { ticketService } from '@/services/tickets'
+import { peopleService } from '@/services/people'
+import type { PersonListItem } from '@/types/people'
 import type { TicketDetail, TicketPriority } from '@/types/ticket'
 import { PRIORITIES, priorityMeta } from './ticketMeta'
 
@@ -40,6 +42,37 @@ const fromConversation = ref(false)
 const isDrafting = ref(false)
 const isSubmitting = ref(false)
 
+// Manual tickets have no conversation to deliver through — collecting an
+// email gives notifications a direct-email path. Suggestions come from the
+// org's identified People.
+const customerEmail = ref('')
+const customerName = ref('')
+const customerSuggestions = ref<PersonListItem[]>([])
+let suggestTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(customerEmail, (query) => {
+  if (suggestTimer) clearTimeout(suggestTimer)
+  const term = query.trim()
+  if (term.length < 2) {
+    customerSuggestions.value = []
+    return
+  }
+  const matched = customerSuggestions.value.find((p) => p.email === term)
+  if (matched && !customerName.value) customerName.value = matched.name || ''
+  suggestTimer = setTimeout(async () => {
+    try {
+      const response = await peopleService.listPeople({ search: term, page_size: 8 })
+      customerSuggestions.value = response.items.filter((p) => p.email)
+    } catch {
+      customerSuggestions.value = []
+    }
+  }, 300)
+})
+
+onBeforeUnmount(() => {
+  if (suggestTimer) clearTimeout(suggestTimer)
+})
+
 watch(
   () => props.open,
   (open) => {
@@ -48,6 +81,9 @@ watch(
       description.value = ''
       priority.value = 'medium'
       fromConversation.value = false
+      customerEmail.value = ''
+      customerName.value = ''
+      customerSuggestions.value = []
       if (props.sessionId) useConversationDraft()
     }
   },
@@ -72,11 +108,14 @@ async function submit() {
   if (!title.value.trim() || isSubmitting.value) return
   isSubmitting.value = true
   try {
+    const linkSession = fromConversation.value && props.sessionId
     const detail = await ticketService.createTicket({
       title: title.value.trim(),
       description: description.value.trim() || undefined,
       priority: priority.value,
-      session_id: fromConversation.value && props.sessionId ? props.sessionId : undefined,
+      session_id: linkSession ? props.sessionId! : undefined,
+      customer_email: !linkSession ? customerEmail.value.trim() || undefined : undefined,
+      customer_name: !linkSession ? customerName.value.trim() || undefined : undefined,
     })
     toast.success(`Ticket ${detail.ticket.display_number} created`)
     emit('created', detail)
@@ -139,6 +178,37 @@ async function submit() {
             class="field-textarea"
             placeholder="What's happening? Include any error, customer impact, and steps…"
           ></textarea>
+
+          <template v-if="!fromConversation">
+            <label class="field-label">Customer email <span class="optional">(optional — used to notify them)</span></label>
+            <input
+              v-model="customerEmail"
+              class="field-input"
+              type="email"
+              list="ticket-customer-suggestions"
+              placeholder="customer@company.com"
+              maxlength="320"
+            />
+            <datalist id="ticket-customer-suggestions">
+              <option
+                v-for="person in customerSuggestions"
+                :key="person.id"
+                :value="person.email || ''"
+              >
+                {{ person.name || person.email }}
+              </option>
+            </datalist>
+
+            <template v-if="customerEmail.trim()">
+              <label class="field-label">Customer name <span class="optional">(optional)</span></label>
+              <input
+                v-model="customerName"
+                class="field-input"
+                placeholder="Jane Doe"
+                maxlength="200"
+              />
+            </template>
+          </template>
 
           <label class="field-label">Priority</label>
           <div class="priority-pills">
@@ -269,6 +339,10 @@ async function submit() {
   font-size: 11.5px;
   color: var(--faint);
   margin-bottom: 6px;
+}
+.optional {
+  color: var(--muted2);
+  font-weight: var(--font-weight-normal);
 }
 .field-input,
 .field-textarea {

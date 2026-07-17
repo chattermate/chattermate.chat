@@ -56,6 +56,10 @@ const isReopenable = computed(() =>
   ['resolved', 'closed', 'resolved_pending_confirmation'].includes(ticket.value?.status || ''),
 )
 
+// No linked conversation and no customer email → nothing to deliver through,
+// so hide every "send to customer" affordance instead of faking it.
+const canNotifyCustomer = computed(() => detail.value?.can_notify_customer ?? false)
+
 function commitTitle() {
   if (titleDraft.value !== null && ticket.value && titleDraft.value.trim() && titleDraft.value !== ticket.value.title) {
     setTitle(titleDraft.value.trim())
@@ -197,21 +201,28 @@ async function submitResolve() {
               {{ label }}
             </option>
           </select>
-          <label class="field-label">Message to the customer (plain language)</label>
-          <textarea
-            v-model="resolveCustomerMessage"
-            class="resolve-textarea"
-            placeholder="What happened and what was done to fix it…"
-          ></textarea>
+          <template v-if="canNotifyCustomer">
+            <label class="field-label">Message to the customer (plain language)</label>
+            <textarea
+              v-model="resolveCustomerMessage"
+              class="resolve-textarea"
+              placeholder="What happened and what was done to fix it…"
+            ></textarea>
+          </template>
           <div class="resolve-actions">
             <button class="action-btn" @click="showResolvePanel = false">Cancel</button>
             <button class="resolve-submit" @click="submitResolve">
-              Resolve & notify customer
+              {{ canNotifyCustomer ? 'Resolve & notify customer' : 'Resolve' }}
             </button>
           </div>
           <div class="resolve-hint">
-            The ticket waits for customer confirmation and closes automatically after the
-            configured timeout.
+            <template v-if="canNotifyCustomer">
+              The ticket waits for customer confirmation and closes automatically after the
+              configured timeout.
+            </template>
+            <template v-else>
+              No customer is linked to this ticket, so no notification will be sent.
+            </template>
           </div>
         </div>
 
@@ -228,6 +239,7 @@ async function submitResolve() {
         <TicketActivityFeed
           :activities="activities"
           :can-comment="true"
+          :can-message-customer="canNotifyCustomer"
           :is-saving="isSavingComment"
           @comment="addComment"
         />

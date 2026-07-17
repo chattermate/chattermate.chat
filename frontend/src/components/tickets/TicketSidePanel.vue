@@ -85,9 +85,9 @@ function pickAssignee(userId: string | null) {
       </div>
     </div>
 
-    <div v-if="ticket.customer" class="panel-card">
+    <div class="panel-card">
       <div class="card-label">Customer</div>
-      <div class="customer-row">
+      <div v-if="ticket.customer" class="customer-row">
         <span class="customer-avatar">
           {{ (ticket.customer.full_name || ticket.customer.email || '?')[0]?.toUpperCase() }}
         </span>
@@ -95,6 +95,9 @@ function pickAssignee(userId: string | null) {
           <div class="assignee-name">{{ ticket.customer.full_name || 'Customer' }}</div>
           <div class="assignee-sub">{{ ticket.customer.email }}</div>
         </div>
+      </div>
+      <div v-else class="no-customer">
+        No customer linked — notifications can't be sent for this ticket.
       </div>
     </div>
 
@@ -187,6 +190,11 @@ function pickAssignee(userId: string | null) {
   border-radius: 9px;
   background: var(--accent-solid);
   color: var(--on-accent-solid);
+}
+.no-customer {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.5;
 }
 .customer-avatar {
   width: 34px;
