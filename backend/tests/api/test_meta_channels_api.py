@@ -657,6 +657,66 @@ class TestMessengerSignup:
         exchange.assert_not_awaited()
 
 
+class TestInstagramSignup:
+    """Same Login-for-Business popup as Messenger, but the picker offers the
+    Instagram account linked to each Page and connects it by its own id."""
+
+    PAGES = f"{BASE}/instagram/signup/pages"
+    CONNECT = f"{BASE}/instagram/signup/connect"
+
+    # /me/accounts with the IG fields: one Page has a linked account, one doesn't.
+    PAGES_WITH_IG = [
+        {"id": "PAGE1", "name": "Acme", "access_token": "EAAG-page1",
+         "instagram_business_account": {"id": "IG100", "username": "acme"}},
+        {"id": "PAGE2", "name": "No IG", "access_token": "EAAG-page2"},
+    ]
+
+    @pytest.fixture(autouse=True)
+    def enabled(self, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+
+    def _list_pages(self, client, pages=None):
+        lister = AsyncMock(return_value=(True, self.PAGES_WITH_IG if pages is None else pages))
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "USERTOKEN"}))), \
+             patch("app.api.channels.meta.exchange_for_long_lived_token",
+                   AsyncMock(return_value=(True, {"access_token": "LONGLIVED"}))), \
+             patch("app.api.channels.meta.graph_list_all", lister):
+            r = client.post(self.PAGES, json={
+                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
+        return r, lister
+
+    def test_only_offers_pages_with_a_linked_ig_account(self, client):
+        r, _ = self._list_pages(client)
+        assert r.status_code == 200
+        pages = r.json()["pages"]
+        # PAGE2 has no linked IG account, so it must not be offered.
+        assert [p["id"] for p in pages] == ["PAGE1"]
+        assert pages[0]["name"] == "@acme"
+        assert "EAAG-page1" not in r.text  # token stays sealed
+
+    def test_connect_stores_the_ig_account_id_not_the_page_id(self, client, db):
+        token = self._list_pages(client)[0].json()["signup_token"]
+        subscribe = AsyncMock(return_value=True)
+        with patch("app.api.channels.meta.subscribe_app", subscribe):
+            r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE1"})
+
+        assert r.status_code == 200
+        repo = ChannelAccountRepository(db)
+        # Keyed by the IG account id (webhooks route on it), with the Page token.
+        account = repo.get_by_external_id("instagram", "IG100")
+        assert account is not None
+        assert repo.get_credentials(account)["access_token"] == "EAAG-page1"
+        assert account.display_name == "@acme"
+        subscribe.assert_awaited_once_with(
+            "PAGE1", "EAAG-page1", subscribed_fields="messages,messaging_postbacks")
+
+    def test_no_linked_ig_account_is_a_clear_400(self, client):
+        r, _ = self._list_pages(client, pages=[self.PAGES_WITH_IG[1]])
+        assert r.status_code == 400
+        assert "Instagram professional account" in r.json()["detail"]
+
+
 class TestGraphErrorDetail:
     """Meta's `message` is often a generic OAuth string; error_user_msg is the
     one that names the actual asset and rule.

@@ -43,7 +43,7 @@ const choose = (pageId: string) => {
 
 <template>
   <div class="picker">
-    <p class="picker-intro">Choose the Facebook Page to connect:</p>
+    <p class="picker-intro">Choose the account to connect:</p>
     <ul class="picker-list">
       <li v-for="page in pages" :key="page.id">
         <button

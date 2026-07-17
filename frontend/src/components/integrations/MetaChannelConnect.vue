@@ -35,11 +35,15 @@ import {
 } from '@/utils/metaSdk'
 
 // Channels this modal offers one-click connect for. WhatsApp uses Embedded
-// Signup; Messenger uses Facebook Login for Business. (Instagram rides on the
-// same Page login but isn't wired here yet.)
-const SIGNUP_CHANNELS: SignupChannel[] = ['whatsapp', 'messenger']
+// Signup (the JS SDK); Messenger and Instagram use Facebook Login for Business
+// (our own OAuth popup).
+const SIGNUP_CHANNELS: SignupChannel[] = ['whatsapp', 'messenger', 'instagram']
 const isSignupChannel = (c: string): c is SignupChannel =>
   (SIGNUP_CHANNELS as string[]).includes(c)
+// The two channels that go through the Login-for-Business popup rather than the
+// WhatsApp SDK.
+const isBusinessLoginChannel = (c: string): c is 'messenger' | 'instagram' =>
+  c === 'messenger' || c === 'instagram'
 
 // Copy for the one-click pane, per channel.
 const SIGNUP_COPY: Record<SignupChannel, { intro: string; cta: string }> = {
@@ -125,9 +129,9 @@ const signingUp = ref(false)
 const signupSession = ref<SignupSession | null>(null)
 const showManualForm = ref(false)
 
-// Messenger's Login for Business can grant several Pages; the customer picks one.
-const messengerPages = ref<MessengerSignupPage[]>([])
-const messengerSignupToken = ref('')
+// Login for Business can grant several accounts; the customer picks one.
+const signupPages = ref<MessengerSignupPage[]>([])
+const signupToken = ref('')
 const connectingPage = ref(false)
 
 const signupCopy = computed(() => SIGNUP_COPY[props.channel])
@@ -188,32 +192,33 @@ const finishWhatsAppSignup = async (code: string) => {
   toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
 }
 
-const finishMessengerSignup = async (code: string, redirectUri: string) => {
-  const { pages, signup_token } = await channelsService.listMessengerSignupPages(code, redirectUri)
-  messengerSignupToken.value = signup_token
-  // One Page needs no picker — connect it and go straight to agent assignment.
+const finishBusinessSignup = async (channel: 'messenger' | 'instagram', code: string, redirectUri: string) => {
+  const { pages, signup_token } = await channelsService.listSignupPages(channel, code, redirectUri)
+  signupToken.value = signup_token
+  // One account needs no picker — connect it and go straight to agent assignment.
   if (pages.length === 1) {
-    await connectMessengerPage(pages[0].id)
+    await connectSignupPage(pages[0].id)
   } else {
-    messengerPages.value = pages
+    signupPages.value = pages
   }
 }
 
-const connectMessengerPage = async (pageId: string) => {
-  account.value = await channelsService.connectMessengerSignup({
-    signup_token: messengerSignupToken.value,
+const connectSignupPage = async (pageId: string) => {
+  const channel = props.channel as 'messenger' | 'instagram'
+  account.value = await channelsService.connectSignupPage(channel, {
+    signup_token: signupToken.value,
     page_id: pageId,
   })
-  toast.success(`Connected ${account.value.display_name || 'Messenger'}`)
+  toast.success(`Connected ${account.value.display_name || form.value.title.replace('Connect ', '')}`)
 }
 
 /** The picker's choice — its own loading state, since the login popup is long gone. */
 const onPageSelected = async (pageId: string) => {
   try {
     connectingPage.value = true
-    await connectMessengerPage(pageId)
+    await connectSignupPage(pageId)
   } catch (error: any) {
-    toast.error(error?.response?.data?.detail || 'Could not connect that Page')
+    toast.error(error?.response?.data?.detail || 'Could not connect that account')
   } finally {
     connectingPage.value = false
   }
@@ -236,8 +241,8 @@ const completeWhatsAppSignup = async (response: { authResponse?: { code?: string
   }
 }
 
-// Messenger: our own OAuth popup (not FB.login — see runBusinessLogin).
-const startMessengerLogin = async () => {
+// Messenger + Instagram: our own OAuth popup (not FB.login — see runBusinessLogin).
+const startBusinessLogin = async (channel: 'messenger' | 'instagram') => {
   signingUp.value = true
   const redirectUri = window.location.origin + META_OAUTH_CALLBACK_PATH
   try {
@@ -247,7 +252,7 @@ const startMessengerLogin = async () => {
       graphVersion: signupGraphVersion.value,
       redirectUri,
     })
-    await finishMessengerSignup(code, redirectUri)
+    await finishBusinessSignup(channel, code, redirectUri)
   } catch (error: any) {
     // The user closing the popup is not an error worth a toast.
     if (error?.message !== 'cancelled') {
@@ -261,9 +266,9 @@ const startMessengerLogin = async () => {
 const startSignup = () => {
   if (signingUp.value) return
 
-  if (props.channel === 'messenger') {
+  if (isBusinessLoginChannel(props.channel)) {
     // Must open synchronously in the click handler or the browser blocks it.
-    void startMessengerLogin()
+    void startBusinessLogin(props.channel)
     return
   }
 
@@ -332,11 +337,11 @@ const saveAgent = async () => {
 
       <!-- Step 1: credentials -->
       <div v-if="!account" class="meta-modal-body">
-        <!-- Login for Business can grant several Pages at once; the customer
+        <!-- Login for Business can grant several accounts at once; the customer
              picks which one this channel answers. -->
         <MessengerPagePicker
-          v-if="messengerPages.length"
-          :pages="messengerPages"
+          v-if="signupPages.length"
+          :pages="signupPages"
           :connecting="connectingPage"
           @select="onPageSelected"
         />

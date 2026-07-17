@@ -239,6 +239,28 @@ async def _list_manageable_pages(user_token: str, fields: str) -> list[dict]:
     return data
 
 
+async def _signup_user_token(request: MessengerSignupRequest) -> str:
+    """Trade a Login-for-Business code for a long-lived user token.
+
+    Shared by the Messenger and Instagram flows — everything up to listing the
+    customer's Pages is identical. Page tokens inherit the user token's lifetime,
+    so it is extended first (best-effort; a failure only risks earlier expiry).
+    """
+    ok, data = await exchange_signup_code(request.code, redirect_uri=request.redirect_uri)
+    user_token = data.get("access_token") if ok else None
+    if not user_token:
+        # The code is short-lived (~10 minutes) and single-use, so a stale or
+        # replayed one lands here rather than on a Graph error later.
+        raise HTTPException(status_code=400, detail=_graph_detail(
+            data, "Could not complete signup — please try connecting again"))
+
+    ok, extended = await exchange_for_long_lived_token(user_token)
+    if ok and extended.get("access_token"):
+        return extended["access_token"]
+    logger.warning("Could not extend the signup token; page tokens may expire early")
+    return user_token
+
+
 def _graph_detail(data: dict, fallback: str) -> str:
     """Meta's own error text where it has one, so the UI can show the real
     reason (e.g. a template that cannot be deleted) rather than a generic
@@ -480,27 +502,7 @@ async def list_messenger_signup_pages(
     only the ids and names come back for the picker.
     """
     check_signup_access(ChannelType.MESSENGER.value)
-
-    # The OAuth popup bound the code to its callback URL; the exchange must send
-    # that exact value back or Graph rejects the code as a mismatch. The client
-    # used it and it is a registered Valid OAuth Redirect URI, so it is trusted
-    # only as far as Meta's own redirect-match check allows.
-    ok, data = await exchange_signup_code(request.code, redirect_uri=request.redirect_uri)
-    user_token = data.get("access_token") if ok else None
-    if not user_token:
-        # The code is short-lived (~10 minutes) and single-use, so a stale or
-        # replayed one lands here rather than on a Graph error later.
-        raise HTTPException(status_code=400, detail=_graph_detail(
-            data, "Could not complete signup — please try connecting again"))
-
-    # Page tokens inherit the user token's lifetime; extend it first so the ones
-    # we store keep working for months. Best-effort — an already-long-lived
-    # token comes back unchanged, and a failure only risks earlier expiry.
-    ok, extended = await exchange_for_long_lived_token(user_token)
-    if ok and extended.get("access_token"):
-        user_token = extended["access_token"]
-    else:
-        logger.warning("Could not extend the Messenger signup token; page tokens may expire early")
+    user_token = await _signup_user_token(request)
 
     pages = await _list_manageable_pages(user_token, "id,name,access_token")
     if not pages:
@@ -545,6 +547,77 @@ async def connect_messenger_signup(
     if not await subscribe_app(page["id"], page["access_token"],
                                subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
         logger.warning(f"Page subscribe failed for {page['id']} after signup")
+    return to_account_out(db, account)
+
+
+# A Page carries its linked Instagram professional account inline, so one
+# /me/accounts call lists both the Page tokens and the IG ids to connect.
+INSTAGRAM_PAGE_FIELDS = "id,name,access_token,instagram_business_account{id,username}"
+
+
+@router.post("/instagram/signup/pages", response_model=MessengerSignupPagesOut)
+async def list_instagram_signup_pages(
+    request: MessengerSignupRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+):
+    """Step 1 for Instagram: same Login-for-Business popup as Messenger, but the
+    picker offers the Instagram account linked to each Page, not the Page."""
+    check_signup_access(ChannelType.INSTAGRAM.value)
+    user_token = await _signup_user_token(request)
+
+    pages = await _list_manageable_pages(user_token, INSTAGRAM_PAGE_FIELDS)
+    # Only Pages with a linked professional account can receive Instagram DMs.
+    ig_pages = [p for p in pages if p.get("instagram_business_account")]
+    if not ig_pages:
+        raise HTTPException(status_code=400, detail=(
+            "None of your Facebook Pages has an Instagram professional account "
+            "linked. Link one in the Page's settings, then connect again."))
+
+    return MessengerSignupPagesOut(
+        signup_token=_seal_signup_pages(organization.id, ig_pages),
+        pages=[MessengerPageOut(
+            id=p["id"],
+            name="@" + (p["instagram_business_account"].get("username") or p["id"]),
+        ) for p in ig_pages],
+    )
+
+
+@router.post("/instagram/signup/connect", response_model=ChannelAccountOut)
+async def connect_instagram_signup(
+    request: MessengerSignupConnectRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Step 2 for Instagram: connect the account the customer picked.
+
+    page_id selects a Page out of the list we fetched; the account stored is its
+    linked Instagram business account, keyed by that account's own id (webhooks
+    route Instagram events by it), with the Page token that sends its DMs.
+    """
+    check_signup_access(ChannelType.INSTAGRAM.value)
+    pages = _open_signup_pages(request.signup_token, organization)
+
+    page = next((p for p in pages if p.get("id") == request.page_id), None)
+    if page is None or not page.get("access_token"):
+        raise HTTPException(status_code=400, detail="That account was not part of this signup")
+
+    ig = page.get("instagram_business_account") or {}
+    ig_id = ig.get("id")
+    if not ig_id:
+        raise HTTPException(status_code=400, detail="That Page has no linked Instagram account")
+
+    account = _upsert_account(
+        db, organization, ChannelType.INSTAGRAM.value,
+        external_account_id=str(ig_id),
+        credentials={"access_token": page["access_token"]},
+        display_name=request.display_name or ("@" + (ig.get("username") or str(ig_id))),
+    )
+    # Instagram DMs are delivered through the linked Page's app subscription.
+    if not await subscribe_app(page["id"], page["access_token"],
+                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
+        logger.warning(f"Page subscribe failed for {page['id']} after Instagram signup")
     return to_account_out(db, account)
 
 
