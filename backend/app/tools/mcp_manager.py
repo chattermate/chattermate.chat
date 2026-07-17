@@ -261,7 +261,7 @@ class ChatAgentMCPMixin:
                           org_id: str = None, agent_id: str = None, customer_id: str = None, 
                           session_id: str = None, custom_system_prompt: str = None,
                           transfer_to_human: bool | None = None, source: str = None,
-                          channel: str = None):
+                          channel: str = None, extra_context: str = None):
         """
         Async factory method to create a ChatAgent with MCP tools initialized.
         """
@@ -288,7 +288,8 @@ class ChatAgentMCPMixin:
             transfer_to_human=transfer_to_human,
             mcp_tools=mcp_tools,
             source=source,
-            channel=channel
+            channel=channel,
+            extra_context=extra_context
         )
         
         # Attach the MCP manager to the instance for cleanup

@@ -15,13 +15,22 @@ limitations under the License.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, desc, exists
+import re
+
+from sqlalchemy import and_, func, or_, desc, exists
+from sqlalchemy.exc import IntegrityError
 from typing import Optional, Tuple, List
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 
-from app.repositories.customer import CustomerRepository
+from app.repositories.customer import (
+    CustomerRepository,
+    PHONE_KEYED_CHANNELS,
+    PHONE_KEYED_CHANNEL_SUFFIXES,
+)
+from app.utils.phone import normalize_phone
 from app.models.customer import Customer, LeadStage
+from app.models.channels.channel_conversation import ChannelConversation
 from app.models.chat_history import ChatHistory
 from app.models.lead_capture import LeadCaptureResponse
 from app.models.session_to_agent import SessionToAgent
@@ -67,7 +76,9 @@ class PeopleRepository:
         """Return (name, email, is_anonymous), preferring the customer's own contact
         and falling back to the captured lead's email/name when the record is bare."""
         if not self._is_anonymous(customer):
-            return customer.full_name, customer.email, False
+            # display_email: a channel person's `{id}@{channel}.channel` key is
+            # not an address and must not be shown as one.
+            return customer.full_name, CustomerRepository.display_email(customer.email), False
         captured = captured or {}
         email = captured.get("email")
         name = (customer.full_name or "").strip() or captured.get("name")
@@ -75,9 +86,36 @@ class PeopleRepository:
             return name, email, False
         return customer.full_name, None, True
 
+    # A person is IDENTIFIED when something could actually reach or recognize
+    # them: a real email (not the @noemail.com widget placeholder, not a
+    # synthesized {id}@{channel}.channel address), a phone, or a qualifying
+    # lead capture. Deliberately NOT name — name is never an identity key.
+    # The SQL restatement of CustomerRepository.is_placeholder_email — the one
+    # copy that cannot be avoided, since this runs in the database. Its three
+    # clauses mirror that function's three: empty, @noemail.com, .channel.
+    _REAL_EMAIL = and_(Customer.email != "",
+                       Customer.email.notilike("%@noemail.com"),
+                       Customer.email.notilike("%.channel"))
+
+    def _identified(self, qualified_cid):
+        return or_(self._REAL_EMAIL, Customer.phone.isnot(None),
+                   qualified_cid.isnot(None))
+
+    @staticmethod
+    def _search_clauses(search: str):
+        """Name/email substring match, plus phone when the term looks like a
+        number — matching on digits so "+91 63666" and "9163666" both hit."""
+        term = search.strip()
+        like = f"%{term}%"
+        clauses = [Customer.full_name.ilike(like), Customer.email.ilike(like)]
+        digits = re.sub(r"[\s\-().]", "", term)
+        if re.fullmatch(r"\+?\d{3,}", digits):
+            clauses.append(Customer.phone.like(f"%{digits.lstrip('+')}%"))
+        return or_(*clauses)
+
     def list_people(
         self, org_id: UUID, stage: Optional[str] = None, search: Optional[str] = None,
-        page: int = 1, page_size: int = 20,
+        page: int = 1, page_size: int = 20, view: str = "identified",
     ) -> Tuple[List[dict], int]:
         # Latest activity per customer (one aggregate row per customer — no N+1).
         last_activity_sq = (
@@ -115,14 +153,21 @@ class PeopleRepository:
             .filter(last_activity_sq.c.cid.isnot(None))
         )
 
+        # Identity split: the directory shows identified people; anonymous
+        # browser sessions are a funnel signal behind an explicit view, not
+        # the page (prod data: 5,873 of one org's 5,876 rows were anonymous).
+        if view == "anonymous":
+            q = q.filter(~self._identified(qualified_sq.c.cid))
+        else:
+            q = q.filter(self._identified(qualified_sq.c.cid))
+
         if stage and stage != "all":
             try:
                 q = q.filter(Customer.lead_stage == LeadStage(stage))
             except ValueError:
                 pass  # unknown stage → no filter
         if search:
-            like = f"%{search.strip()}%"
-            q = q.filter(or_(Customer.full_name.ilike(like), Customer.email.ilike(like)))
+            q = q.filter(self._search_clauses(search))
 
         total = q.count()
         rows = (
@@ -140,6 +185,7 @@ class PeopleRepository:
                 "id": customer.id,
                 "name": name,
                 "email": email,
+                "phone": customer.phone,
                 "is_anonymous": anon,
                 "lead_stage": customer.lead_stage,
                 "qualified": qcid is not None,
@@ -158,8 +204,18 @@ class PeopleRepository:
         organic = Customer.is_authenticated.is_(False)
         # Engaged = actually chatted (has chat history) — excludes empty widget-loads.
         engaged = exists().where(ChatHistory.customer_id == Customer.id)
+        # "Identified" for stats mirrors list_people's rule; qualified capture
+        # is expressed as an EXISTS here rather than the list's join.
+        has_capture = exists().where(and_(
+            LeadCaptureResponse.customer_id == Customer.id,
+            LeadCaptureResponse.qualified.is_(True)))
+        identified = or_(self._REAL_EMAIL, Customer.phone.isnot(None), has_capture)
         total = self.db.query(func.count(Customer.id)).filter(
-            Customer.organization_id == org_id, not_merged, organic, engaged).scalar() or 0
+            Customer.organization_id == org_id, not_merged, organic, engaged,
+            identified).scalar() or 0
+        anonymous = self.db.query(func.count(Customer.id)).filter(
+            Customer.organization_id == org_id, not_merged, organic, engaged,
+            ~identified).scalar() or 0
         new_leads = self.db.query(func.count(Customer.id)).filter(
             Customer.organization_id == org_id,
             not_merged, organic,
@@ -173,6 +229,7 @@ class PeopleRepository:
         ).scalar() or 0
         return {
             "total_people": total,
+            "anonymous": anonymous,
             "new_leads_7d": new_leads,
             "customers": customers,
             "synced_to_crm": 0,
@@ -220,6 +277,8 @@ class PeopleRepository:
             "id": customer.id,
             "name": name,
             "email": email,
+            "phone": customer.phone,
+            "identified": self.is_identified(customer, qualified),
             "is_anonymous": anon,
             "lead_stage": customer.lead_stage,
             "qualified": qualified,
@@ -267,6 +326,91 @@ class PeopleRepository:
                 "created_at": s.assigned_at,
             })
         return out
+
+    @staticmethod
+    def is_identified(customer: Customer, qualified: bool = False) -> bool:
+        """Python-side twin of the SQL identity rule (_identified), for single
+        records. Defers to is_placeholder_email so the rule for what counts as
+        a real address lives in exactly one place — _REAL_EMAIL below is its
+        unavoidable SQL restatement, and a third hand-rolled copy here is how
+        the three quietly drift apart."""
+        real_email = not CustomerRepository.is_placeholder_email(customer.email)
+        return bool(real_email or customer.phone or qualified)
+
+    def _has_qualified_capture(self, customer_id: UUID) -> bool:
+        return self.db.query(
+            exists().where(and_(LeadCaptureResponse.customer_id == customer_id,
+                                LeadCaptureResponse.qualified.is_(True)))
+        ).scalar()
+
+    def _phone_is_sole_identity_key(self, customer: Customer) -> bool:
+        """True when losing the phone would make this person unfindable.
+
+        A WhatsApp/SMS person starts out keyed by BOTH their synthesized
+        `{number}@whatsapp.channel` address and their phone. Once a capture
+        upgrades that address to a real email (which update_contact allows
+        precisely because the phone is a key), the phone is all that is left
+        for inbound routing: nothing about a WhatsApp message carries an email.
+
+        Change or clear the phone in that state and their next message finds
+        nobody and mints a duplicate — the exact failure the phone key exists
+        to prevent.
+        """
+        if not customer.phone:
+            return False
+        if (customer.email or "").endswith(PHONE_KEYED_CHANNEL_SUFFIXES):
+            return False  # still findable by their synthesized address
+        return self.db.query(
+            exists().where(and_(
+                ChannelConversation.customer_id == customer.id,
+                ChannelConversation.channel_type.in_(PHONE_KEYED_CHANNELS),
+            ))
+        ).scalar()
+
+    def update_person(self, org_id: UUID, customer_id: UUID,
+                      full_name: Optional[str] = None,
+                      phone: Optional[str] = None) -> Tuple[Optional[Customer], Optional[str]]:
+        """Explicit human edit of a person's name/phone from the drawer.
+
+        Unlike the automatic capture paths (set-if-absent), a human may
+        CORRECT a wrong phone — overwrite is allowed, clearing via "" too.
+        Returns (customer, error): error is a human-readable refusal (bad
+        format / number belongs to someone else / it is their only identity),
+        customer is None only when the record doesn't exist.
+        """
+        customer = self.get_customer(org_id, customer_id)
+        if not customer:
+            return None, None
+
+        if phone is not None:
+            normalized = None if phone.strip() == "" else normalize_phone(phone)
+            if phone.strip() != "" and not normalized:
+                return customer, "Enter the number in international format, e.g. +91 63666 02824"
+            if normalized != customer.phone and self._phone_is_sole_identity_key(customer):
+                return customer, (
+                    "This number is how their WhatsApp messages find them — changing "
+                    "it here would split them into a second person. Ask them to "
+                    "message from the new number instead."
+                )
+            if normalized is not None:
+                other = CustomerRepository(self.db).get_customer_by_phone(normalized, org_id)
+                if other and other.id != customer.id:
+                    return customer, "That number already belongs to another person"
+            customer.phone = normalized
+
+        if full_name is not None and full_name.strip():
+            customer.full_name = full_name.strip()
+
+        try:
+            self.db.commit()
+        except IntegrityError:
+            # The uniqueness check above is not atomic with the write: two
+            # agents assigning the same number concurrently both pass it. The
+            # index is the real arbiter — report its refusal the same way.
+            self.db.rollback()
+            return customer, "That number already belongs to another person"
+        self.db.refresh(customer)
+        return customer, None
 
     def mark_customer(self, org_id: UUID, customer_id: UUID) -> Optional[Customer]:
         customer = self.get_customer(org_id, customer_id)

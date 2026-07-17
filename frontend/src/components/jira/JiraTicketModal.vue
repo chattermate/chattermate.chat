@@ -85,17 +85,17 @@ initModal()
       <div class="ticket-modal-header">
         <h3>Create Jira Ticket</h3>
         <button class="close-modal-btn" @click="handleClose">
-          <i class="fas fa-times"></i>
+          <font-awesome-icon icon="fa-solid fa-times" />
         </button>
       </div>
 
       <div v-if="jiraLoading" class="ticket-loading">
-        <i class="fas fa-spinner fa-spin"></i>
+        <font-awesome-icon icon="fa-solid fa-spinner" spin />
         Checking Jira connection...
       </div>
 
       <div v-else-if="!jiraConnected" class="ticket-not-connected">
-        <i class="fas fa-exclamation-triangle"></i>
+        <font-awesome-icon icon="fa-solid fa-exclamation-triangle" />
         <p>Jira is not connected. Please connect Jira in the settings.</p>
         <router-link to="/settings/integrations" class="connect-jira-btn">
           Connect Jira
@@ -106,7 +106,7 @@ initModal()
         <div class="form-group">
           <label for="ticket-project">Project *</label>
           <div v-if="loadingProjects" class="loading-indicator">
-            <i class="fas fa-spinner fa-spin"></i> Loading projects...
+            <font-awesome-icon icon="fa-solid fa-spinner" spin /> Loading projects...
           </div>
           <select 
             v-else
@@ -128,7 +128,7 @@ initModal()
         <div class="form-group">
           <label for="ticket-issue-type">Issue Type *</label>
           <div v-if="loadingIssueTypes" class="loading-indicator">
-            <i class="fas fa-spinner fa-spin"></i> Loading issue types...
+            <font-awesome-icon icon="fa-solid fa-spinner" spin /> Loading issue types...
           </div>
           <select 
             v-else
@@ -150,13 +150,13 @@ initModal()
 
         <div v-if="selectedProject && selectedIssueType" class="form-group">
           <div v-if="checkingPriorityAvailability" class="loading-indicator">
-            <i class="fas fa-spinner fa-spin"></i> Checking priority availability...
+            <font-awesome-icon icon="fa-solid fa-spinner" spin /> Checking priority availability...
           </div>
           
           <template v-else-if="priorityAvailable">
             <label for="ticket-priority">Priority</label>
             <div v-if="loadingPriorities" class="loading-indicator">
-              <i class="fas fa-spinner fa-spin"></i> Loading priorities...
+              <font-awesome-icon icon="fa-solid fa-spinner" spin /> Loading priorities...
             </div>
             <select 
               v-else
@@ -175,7 +175,7 @@ initModal()
           </template>
           
           <div v-else class="priority-unavailable">
-            <i class="fas fa-info-circle"></i>
+            <font-awesome-icon icon="fa-solid fa-info-circle" />
             Priority field is not available for this project/issue type
           </div>
         </div>
@@ -207,13 +207,13 @@ initModal()
             @click="handleSubmit"
             :disabled="!isFormValid || creatingTicket"
           >
-            <i v-if="creatingTicket" class="fas fa-spinner fa-spin"></i>
+            <font-awesome-icon v-if="creatingTicket" icon="fa-solid fa-spinner" spin />
             {{ creatingTicket ? 'Creating...' : 'Create Ticket' }}
           </button>
         </div>
 
         <div v-if="createdTicketKey" class="ticket-created">
-          <i class="fas fa-check-circle"></i>
+          <font-awesome-icon icon="fa-solid fa-check-circle" />
           Ticket created: <strong>{{ createdTicketKey }}</strong>
         </div>
       </div>
@@ -286,14 +286,14 @@ initModal()
   color: var(--text-muted);
 }
 
-.ticket-loading i,
-.ticket-not-connected i {
+.ticket-loading svg,
+.ticket-not-connected svg {
   font-size: 24px;
   margin-bottom: 16px;
   display: block;
 }
 
-.ticket-not-connected i {
+.ticket-not-connected svg {
   color: var(--warning);
 }
 
@@ -359,7 +359,7 @@ initModal()
   font-size: 14px;
 }
 
-.loading-indicator i {
+.loading-indicator svg {
   margin-right: 8px;
 }
 
@@ -416,7 +416,7 @@ initModal()
   gap: 8px;
 }
 
-.ticket-created i {
+.ticket-created svg {
   font-size: 18px;
 }
 
@@ -431,7 +431,7 @@ initModal()
   gap: 8px;
 }
 
-.priority-unavailable i {
+.priority-unavailable svg {
   color: var(--warning);
   font-size: 16px;
 }

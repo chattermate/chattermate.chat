@@ -22,6 +22,8 @@ export interface ListPeopleParams {
   search?: string
   page?: number
   page_size?: number
+  /** 'identified' (default) or 'anonymous' — the identity split */
+  view?: string
 }
 
 export const peopleService = {
@@ -42,6 +44,15 @@ export const peopleService = {
 
   async markAsCustomer(customerId: string): Promise<PersonDetail> {
     const response = await api.post(`/people/${customerId}/mark-customer`)
+    return response.data
+  },
+
+  /** Explicit human edit — the one path allowed to correct a phone. */
+  async updatePerson(
+    customerId: string,
+    payload: { full_name?: string; phone?: string },
+  ): Promise<PersonDetail> {
+    const response = await api.patch(`/people/${customerId}`, payload)
     return response.data
   },
 }

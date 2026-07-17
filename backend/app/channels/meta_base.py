@@ -110,21 +110,104 @@ async def graph_post(path: str, access_token: str, payload: dict) -> SendResult:
     return SendResult(ok=False, error=last_error)
 
 
-async def graph_get(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
-    """GET a Graph node (used to validate tokens during onboarding).
-    Returns (ok, decoded-json). Token goes in the Authorization header (like
-    graph_post) so it never appears in URLs/proxy logs."""
+async def _graph_request(method: str, path: str, access_token: Optional[str],
+                         params: Optional[dict] = None,
+                         json_body: Optional[dict] = None) -> tuple[bool, dict]:
+    """Issue a Graph call and return (ok, decoded-json).
+
+    Unlike graph_post this keeps the whole response body, for calls where the
+    body is the result rather than just a message id. The token goes in the
+    Authorization header so it never appears in URLs or proxy logs; pass None
+    for the one endpoint that authenticates with app credentials instead. These
+    are management calls, not sends, so a failure surfaces to the caller
+    instead of being retried.
+    """
     try:
-        response = await _get_http_client().get(
+        response = await _get_http_client().request(
+            method,
             graph_url(path),
-            params=params or {},
-            headers={"Authorization": f"Bearer {access_token}"},
+            params=params or None,
+            json=json_body,
+            headers={"Authorization": f"Bearer {access_token}"} if access_token else {},
         )
-        data = response.json()
-        return (response.status_code < 300, data)
+        return (response.status_code < 300, response.json())
     except Exception as e:
-        logger.error(f"Graph GET {path} failed: {e}")
+        logger.error(f"Graph {method} {path} failed: {e}")
         return (False, {"error": {"message": str(e)}})
+
+
+async def graph_get(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
+    """GET a Graph node (validating tokens during onboarding, listing templates)."""
+    return await _graph_request("GET", path, access_token, params=params)
+
+
+async def graph_post_json(path: str, access_token: str, payload: dict) -> tuple[bool, dict]:
+    """POST to a Graph node, keeping the response body (e.g. creating a message
+    template returns its id, status and category)."""
+    return await _graph_request("POST", path, access_token, json_body=payload)
+
+
+async def exchange_signup_code(code: str) -> tuple[bool, dict]:
+    """Trade an Embedded Signup code for the customer's business access token.
+
+    The app credentials authenticate this call, so it is the one Graph request
+    that carries no bearer token. There is no redirect_uri: Embedded Signup
+    hands the code back through the JS SDK rather than a redirect, so none was
+    ever issued and sending one is rejected as a mismatch.
+    """
+    return await _graph_request("GET", "oauth/access_token", None, params={
+        "client_id": settings.META_APP_ID,
+        "client_secret": settings.META_APP_SECRET,
+        "code": code,
+    })
+
+
+async def register_phone_number(phone_number_id: str, access_token: str, pin: str) -> tuple[bool, dict]:
+    """Enable a number for Cloud API sending.
+
+    A number onboarded through Embedded Signup is attached to the WABA but not
+    yet usable; registering it with a two-step-verification PIN is what makes it
+    able to send.
+    """
+    return await _graph_request("POST", f"{phone_number_id}/register", access_token,
+                                json_body={"messaging_product": "whatsapp", "pin": pin})
+
+
+# Template fields worth reading back from Graph; components carries the body
+# text and any {{n}} variables the UI has to prompt for.
+TEMPLATE_FIELDS = "name,status,category,language,components"
+TEMPLATE_PAGE_LIMIT = 100
+# Backstop against paging forever on a malformed cursor. Well above Meta's own
+# per-WABA template ceiling, so a real account never reaches it.
+TEMPLATE_MAX_PAGES = 10
+
+
+async def fetch_message_templates(waba_id: str, access_token: str) -> tuple[bool, list | dict]:
+    """Every template on the WABA, following Graph's cursor.
+
+    A template that exists but isn't listed is an invisible failure — an agent
+    picking one would never see it — so this pages rather than showing the
+    first hundred and stopping. Returns (True, [template dicts]) or
+    (False, graph error body), matching the other helpers here.
+    """
+    templates: list = []
+    params = {"fields": TEMPLATE_FIELDS, "limit": TEMPLATE_PAGE_LIMIT}
+    for _ in range(TEMPLATE_MAX_PAGES):
+        ok, data = await graph_get(f"{waba_id}/message_templates", access_token, params=params)
+        if not ok:
+            return False, data
+        page = data.get("data")
+        if not isinstance(page, list):
+            return False, data
+        templates.extend(page)
+
+        after = (data.get("paging") or {}).get("cursors", {}).get("after")
+        if not after or len(page) < TEMPLATE_PAGE_LIMIT:
+            return True, templates
+        params = {**params, "after": after}
+
+    logger.warning(f"Stopped paging templates for WABA {waba_id} at {TEMPLATE_MAX_PAGES} pages")
+    return True, templates
 
 
 async def subscribe_app(node_id: str, access_token: str, subscribed_fields: Optional[str] = None) -> bool:

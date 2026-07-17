@@ -53,6 +53,8 @@ class TestTwilio:
         req = make_req(params={"From": "+44700", "To": "+1555", "Body": " hi ", "MessageSid": "SM1"})
         m = get_provider("twilio").parse_inbound(req, account_with({}))[0]
         assert m.external_conversation_id == "+44700" and m.text == "hi"
+        # The sender IS the customer's number — declared so identity can use it
+        assert m.profile["phone"] == "+44700"
 
     @pytest.mark.asyncio
     async def test_verify_signature(self):

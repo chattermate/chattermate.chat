@@ -236,7 +236,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str) -> 
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None):
+    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -616,6 +616,16 @@ Keep your responses concise and focused. Provide clear, actionable information i
             system_message = [
                 "You are a helpful customer service agent.",
             ]
+
+        # Per-conversation context (e.g. the outbound template that opened this
+        # thread). Appended last so it composes with the configured behaviour —
+        # custom_system_prompt REPLACES the prompt, which is exactly what this
+        # must never do. Same additive pattern as the Jira/Shopify sections.
+        if extra_context:
+            if isinstance(system_message, list):
+                system_message = [*system_message, extra_context]
+            else:
+                system_message += "\n\n" + extra_context
 
         # Initialize model with utility function
         base_max_tokens = 2000 if (self.shopify_instructions_added or self.mcp_instructions_added) else 1000

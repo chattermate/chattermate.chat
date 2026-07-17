@@ -17,6 +17,7 @@ limitations under the License.
 from typing import ClassVar, List
 
 from app.channels.base import InboundMessage, SendResult, WindowStatus
+from app.channels.constants import DEFAULT_TEMPLATE_LANGUAGE
 from app.channels.meta_base import MetaBaseAdapter, graph_post
 from app.channels.registry import register_adapter
 from app.models.channels import ChannelAccount, ChannelConversation, ChannelType
@@ -62,7 +63,10 @@ class WhatsAppAdapter(MetaBaseAdapter):
                         external_user_id=str(wa_id),
                         external_message_id=str(message.get("id", "")),
                         text=text,
-                        profile={"name": name_by_wa_id.get(wa_id)},
+                        # wa_id is the customer's number in E.164-without-plus,
+                        # declared verbatim (like the SMS adapters) so the one
+                        # normalize_msisdn boundary owns all '+' handling.
+                        profile={"name": name_by_wa_id.get(wa_id), "phone": str(wa_id)},
                         timestamp=self._timestamp(message.get("timestamp")),
                     ))
         return messages
@@ -125,7 +129,8 @@ class WhatsAppAdapter(MetaBaseAdapter):
         )
 
     async def send_template(self, account: ChannelAccount, conversation: ChannelConversation,
-                            template_name: str, language: str = "en_US", components: list = None) -> SendResult:
+                            template_name: str, language: str = DEFAULT_TEMPLATE_LANGUAGE,
+                            components: list = None) -> SendResult:
         """Send an approved template message — the only way to reach a customer
         outside the 24h window."""
         template: dict = {"name": template_name, "language": {"code": language}}

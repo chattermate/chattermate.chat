@@ -26,6 +26,7 @@ class PersonListItem(BaseModel):
     id: UUID
     name: Optional[str] = None
     email: Optional[str] = None
+    phone: Optional[str] = None
     is_anonymous: bool = False
     lead_stage: LeadStage
     qualified: bool = False
@@ -44,6 +45,9 @@ class PeopleListResponse(BaseModel):
 
 class PeopleStats(BaseModel):
     total_people: int
+    # Engaged-but-unidentified browser sessions — the lead-capture funnel's
+    # raw top, shown as a count beside the tabs, not as directory rows.
+    anonymous: int = 0
     new_leads_7d: int
     customers: int
     synced_to_crm: int = 0  # phase 1: always 0
@@ -66,6 +70,10 @@ class PersonDetail(BaseModel):
     id: UUID
     name: Optional[str] = None
     email: Optional[str] = None
+    phone: Optional[str] = None
+    # True when something can reach/recognize this person (real email, phone,
+    # or a qualifying capture). Gates Mark-as-customer and outbound actions.
+    identified: bool = False
     is_anonymous: bool = False
     lead_stage: LeadStage
     qualified: bool = False
@@ -79,3 +87,9 @@ class PersonDetail(BaseModel):
     captured_attributes: Dict[str, Any] = {}
     timeline: List[TimelineEntry] = []
     conversations: List[PersonConversation] = []
+
+
+class PersonUpdateRequest(BaseModel):
+    """Drawer edit: both fields optional; phone "" clears the number."""
+    full_name: Optional[str] = None
+    phone: Optional[str] = None

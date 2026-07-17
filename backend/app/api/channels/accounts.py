@@ -20,7 +20,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_organization, require_permissions
+from app.core.auth import (
+    INBOX_PERMISSIONS,
+    get_current_organization,
+    require_any_permission,
+    require_permissions,
+)
 from app.core.config import settings
 from app.database import get_db
 from app.models.channels import ChannelType
@@ -68,7 +73,12 @@ def to_account_out(db: Session, account, config=_UNRESOLVED) -> ChannelAccountOu
 
 @router.get("/accounts", response_model=List[ChannelAccountOut])
 async def list_channel_accounts(
-    current_user: User = Depends(require_permissions("manage_organization")),
+    # Org admins (Integrations settings) OR inbox agents: the inbox reads this
+    # to know whether there is a WhatsApp number to start a conversation from,
+    # so gating it admin-only hid the feature from the people it is for.
+    # ChannelAccountOut carries no secrets — ids, names, and the webhook URL.
+    current_user: User = Depends(
+        require_any_permission("manage_organization", *INBOX_PERMISSIONS)),
     organization: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db),
 ):

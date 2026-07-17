@@ -248,3 +248,37 @@
     flex: 1;
   }
 }
+
+/* Modal buttons.
+   Global rather than scoped because BaseModal takes its actions through a
+   slot, and slot content is styled by the parent — three modals were each
+   carrying a byte-identical private copy of these rules.
+   Distinct from .btn above, which is the app's louder primary action: these
+   are the quieter Cancel/Confirm pair a dialog footer wants. */
+.modal-btn {
+  padding: 9px 16px;
+  border-radius: var(--radius-btn, 8px);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--background-soft);
+  color: inherit;
+}
+
+.modal-btn-primary {
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  border-color: transparent;
+}
+
+.modal-btn-danger {
+  background: var(--c-danger, var(--danger));
+  color: var(--on-accent-solid);
+  border-color: transparent;
+}
+
+.modal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

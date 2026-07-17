@@ -23,7 +23,13 @@ import pytest
 
 from app.channels import get_adapter
 from app.channels.base import WindowStatus
-from app.channels.meta_base import verify_meta_signature, verify_challenge, WINDOW_HOURS
+from app.channels.meta_base import (
+    verify_meta_signature,
+    verify_challenge,
+    graph_get,
+    graph_post_json,
+    WINDOW_HOURS,
+)
 from app.core.config import settings
 
 
@@ -123,6 +129,8 @@ class TestWhatsAppParse:
         assert m.external_message_id == "wamid.ABC"
         assert m.text == "hello whatsapp"
         assert m.profile["name"] == "Ada Lovelace"
+        # wa_id declared verbatim; the normalize_msisdn boundary adds the '+'
+        assert m.profile["phone"] == "447000000001"
         assert m.timestamp.tzinfo is not None
 
     def test_status_callback_yields_nothing(self):
@@ -197,3 +205,79 @@ class TestDeliveryWindow:
         conv = MagicMock()
         conv.last_inbound_at = None
         assert get_adapter("whatsapp").check_delivery_window(conv) is WindowStatus.TEMPLATE_REQUIRED
+
+
+class _FakeResponse:
+    def __init__(self, status_code=200, body=None):
+        self.status_code = status_code
+        self._body = {} if body is None else body
+
+    def json(self):
+        return self._body
+
+
+class _RecordingClient:
+    """Stands in for the shared Graph http client, capturing what was sent."""
+
+    def __init__(self):
+        self.response = _FakeResponse()
+        self.error = None
+        self.calls = []
+
+    async def request(self, method, url, params=None, json=None, headers=None):
+        self.calls.append({"method": method, "url": url, "params": params,
+                           "json": json, "headers": headers})
+        if self.error:
+            raise self.error
+        return self.response
+
+
+@pytest.fixture
+def graph_client(monkeypatch):
+    client = _RecordingClient()
+    monkeypatch.setattr("app.channels.meta_base._get_http_client", lambda: client)
+    return client
+
+
+class TestGraphHelpers:
+    """graph_post_json/graph_get keep the whole response body, unlike
+    graph_post which reduces it to a message id."""
+
+    @pytest.mark.asyncio
+    async def test_post_json_returns_full_body(self, graph_client):
+        created = {"id": "T1", "status": "PENDING", "category": "UTILITY"}
+        graph_client.response = _FakeResponse(200, created)
+
+        ok, body = await graph_post_json("WABA1/message_templates", "tok", {"name": "hello"})
+
+        assert (ok, body) == (True, created)
+        assert graph_client.calls[0]["method"] == "POST"
+        assert graph_client.calls[0]["json"] == {"name": "hello"}
+
+    @pytest.mark.asyncio
+    async def test_token_travels_in_header_not_url(self, graph_client):
+        await graph_post_json("WABA1/message_templates", "sekret", {})
+
+        call = graph_client.calls[0]
+        assert call["headers"]["Authorization"] == "Bearer sekret"
+        assert "sekret" not in call["url"]
+
+    @pytest.mark.asyncio
+    async def test_params_are_passed_and_a_4xx_is_reported_not_raised(self, graph_client):
+        graph_client.response = _FakeResponse(400, {"error": {"message": "not found"}})
+
+        ok, body = await graph_get("WABA1/message_templates", "tok", {"fields": "name"})
+
+        assert ok is False
+        assert body["error"]["message"] == "not found"
+        assert graph_client.calls[0]["method"] == "GET"
+        assert graph_client.calls[0]["params"] == {"fields": "name"}
+
+    @pytest.mark.asyncio
+    async def test_network_error_is_reported_not_raised(self, graph_client):
+        graph_client.error = RuntimeError("connection reset")
+
+        ok, body = await graph_get("WABA1/message_templates", "tok")
+
+        assert ok is False
+        assert "connection reset" in body["error"]["message"]
