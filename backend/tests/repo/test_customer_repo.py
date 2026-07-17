@@ -386,6 +386,25 @@ class TestPlaceholderEmails:
         assert customer_repo.get_customer_by_email(
             "555@telegram.channel", test_organization_id).id == customer.id
 
+    def test_telegram_keeps_its_key_even_after_sharing_a_phone(self, customer_repo, test_organization_id):
+        """The trap: Telegram CAN learn a phone (share-contact button), but its
+        inbound messages never carry one — so the address is still the lookup
+        key. Having a phone must not be mistaken for being found by it."""
+        customer = customer_repo.create_customer(
+            email="555@telegram.channel", organization_id=test_organization_id)
+        # They tapped "Share my phone number" during a handover.
+        customer_repo.update_contact(customer.id, phone="+447700900123")
+        db_customer = customer_repo.get_by_id(customer.id)
+        assert db_customer.phone == "+447700900123"
+
+        # Now the handoff form captures their real email.
+        result = customer_repo.update_contact(customer.id, email="ada@example.com")
+
+        assert result['email_updated'] is False
+        # The key survives, so their next Telegram message still finds them.
+        assert customer_repo.get_customer_by_email(
+            "555@telegram.channel", test_organization_id).id == customer.id
+
     def test_widget_placeholder_still_replaceable(self, customer_repo, test_organization_id):
         """Unchanged behaviour: @noemail.com was never an identity key."""
         customer = customer_repo.create_customer(

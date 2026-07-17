@@ -22,6 +22,17 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Synthesized addresses (`{platform_id}@{channel}.channel`) whose channel also
+# declares the customer's phone on every inbound message — i.e. where the
+# platform id IS the number, so identity resolves by phone and the address is
+# redundant. Keep in step with the adapters that set profile['phone']:
+# app/channels/whatsapp.py and app/channels/sms/base.py.
+#
+# Telegram is deliberately absent. It can learn a phone (share-contact button)
+# but never sends it with a message, so it is still found by this address.
+PHONE_KEYED_CHANNEL_SUFFIXES = ('@whatsapp.channel', '@sms.channel')
+
+
 class CustomerRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -232,14 +243,22 @@ class CustomerRepository:
     def _email_is_identity_key(customer) -> bool:
         """True when this customer is *found* by their synthesized address.
 
-        A phone-less channel (Telegram, Messenger, Instagram, Slack, LINE) has
-        no other key: `_get_or_create_customer` looks the person up by
-        `{platform_id}@{channel}.channel` on every inbound message. Overwrite
-        it with a real address and the next message finds nobody and mints a
-        duplicate. Where a phone exists it is the key, so the email is free to
-        become the person's actual address.
+        `_get_or_create_customer` resolves by phone first, but only for channels
+        whose adapter declares one on EVERY inbound message — WhatsApp and SMS,
+        where the platform id is the number. For those, the phone is the key and
+        the address is free to become the person's real one.
+
+        Every other channel is found by `{platform_id}@{channel}.channel` alone.
+        Telegram is the trap: it can learn a phone via the share-contact button,
+        so the customer HAS one — but its inbound messages never carry it, so
+        the lookup is still by address. Overwrite it and their next message
+        finds nobody and mints a duplicate. Storing a phone must not be mistaken
+        for being found by it.
         """
-        return (customer.email or '').endswith('.channel') and not customer.phone
+        email = customer.email or ''
+        if not email.endswith('.channel'):
+            return False
+        return not (email.endswith(PHONE_KEYED_CHANNEL_SUFFIXES) and customer.phone)
 
     def update_contact(
         self,
