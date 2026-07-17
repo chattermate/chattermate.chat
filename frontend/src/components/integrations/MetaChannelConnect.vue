@@ -229,7 +229,7 @@ const saveAgent = async () => {
             Connect your WhatsApp Business number with Meta — no API credentials to copy.
           </p>
           <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startEmbeddedSignup">
-            <i v-if="signingUp" class="fas fa-spinner fa-spin"></i>
+            <font-awesome-icon v-if="signingUp" icon="fa-solid fa-spinner" spin />
             {{ signingUp ? 'Waiting for Meta…' : 'Continue with Facebook' }}
           </button>
           <button class="meta-link-btn" @click="showManualForm = true">

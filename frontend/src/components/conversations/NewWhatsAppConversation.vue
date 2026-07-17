@@ -72,6 +72,8 @@ let pickedPhone: string | null = props.person?.phone ?? null
 const suggestions = ref<PersonListItem[]>([])
 const peopleAvailable = ref(true)
 let searchTimer: ReturnType<typeof setTimeout> | undefined
+/** Guards against out-of-order responses — see searchPeople. */
+let searchToken = 0
 
 const searchPeople = async () => {
   const term = to.value.trim()
@@ -79,11 +81,23 @@ const searchPeople = async () => {
     suggestions.value = []
     return
   }
+  // The debounce limits how OFTEN we ask, not what order the answers arrive in:
+  // pause mid-number and two requests are in flight. A broader prefix scans more
+  // rows, so it tends to resolve LAST and overwrite the narrower result — the
+  // agent then picks from suggestions for a number they have already moved past.
+  const token = ++searchToken
   try {
     const result = await peopleService.listPeople({ search: term, page_size: 5 })
+    if (token !== searchToken) return
     suggestions.value = result.items.filter((p) => p.phone || p.name)
-  } catch {
-    peopleAvailable.value = false
+  } catch (error: any) {
+    if (token !== searchToken) return
+    // Only a 403 means People genuinely isn't available to this user (non-Pro
+    // plan or missing permission) and is worth latching off. Latching on ANY
+    // error let a single network blip kill autocomplete for the rest of the
+    // modal's life — and a silently dead autocomplete invites exactly the
+    // duplicate person that picking someone exists to prevent.
+    if (error?.response?.status === 403) peopleAvailable.value = false
     suggestions.value = []
   }
 }
@@ -99,7 +113,13 @@ watch(to, () => {
 })
 
 const pick = (person: PersonListItem) => {
-  pickedPerson.value = { id: person.id, label: person.name || person.email || '' }
+  // Falls back to the phone like the props path does: searchPeople admits
+  // anyone with a phone OR a name, so a phone-only person reaches here and
+  // would otherwise render "Sending to" followed by nothing.
+  pickedPerson.value = {
+    id: person.id,
+    label: person.name || person.email || person.phone || 'this person',
+  }
   pickedPhone = person.phone ?? null
   if (person.phone) to.value = person.phone
   suggestions.value = []
@@ -235,7 +255,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
           :aria-busy="sending"
           @click="send"
         >
-          <i v-if="sending" class="fas fa-spinner fa-spin"></i>
+          <font-awesome-icon v-if="sending" icon="fa-solid fa-spinner" spin />
           {{ sending ? 'Sending…' : 'Send and open conversation' }}
         </button>
       </div>
@@ -342,7 +362,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
   left: 0;
   right: 0;
   z-index: 10;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-md);
 }
 
 .nwc-suggestion {

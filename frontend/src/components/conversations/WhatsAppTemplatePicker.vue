@@ -100,7 +100,7 @@ const send = async () => {
           :aria-busy="sending"
           @click="send"
         >
-          <i v-if="sending" class="fas fa-spinner fa-spin"></i>
+          <font-awesome-icon v-if="sending" icon="fa-solid fa-spinner" spin />
           {{ sending ? 'Sending…' : 'Send template' }}
         </button>
       </div>

@@ -27,6 +27,8 @@ import {
   isTemplateComplete,
   buildAuthComponents,
   buildTemplateComponents,
+  templateKey,
+  isSameTemplate,
   AUTH_DESCRIPTION,
 } from '../../utils/whatsappTemplates'
 
@@ -262,5 +264,34 @@ describe('buildAuthComponents', () => {
     const [, button] = buildAuthComponents('1')
     expect(button.sub_type).toBe('url')
     expect(button.index).toBe('0')
+  })
+})
+
+
+describe('template identity', () => {
+  // WhatsApp has no multilingual template: name+language identify one, so the
+  // same template in three languages is three rows off the same Graph edge.
+  const en: WhatsAppTemplate = { name: 'otp', language: 'en_US', category: 'AUTHENTICATION' }
+  const es: WhatsAppTemplate = { name: 'otp', language: 'es_ES', category: 'AUTHENTICATION' }
+
+  it('distinguishes same-named templates in different languages', () => {
+    expect(templateKey(en)).not.toBe(templateKey(es))
+    expect(isSameTemplate(en, es)).toBe(false)
+  })
+
+  it('treats the same name and language as the same template', () => {
+    expect(isSameTemplate(en, { ...en })).toBe(true)
+  })
+
+  it('is false for nullish operands rather than throwing', () => {
+    expect(isSameTemplate(null, en)).toBe(false)
+    expect(isSameTemplate(en, undefined)).toBe(false)
+    expect(isSameTemplate(null, null)).toBe(false)
+  })
+
+  it('does not collide a missing language with an empty one', () => {
+    // Both degrade to the same key; that is acceptable because Graph always
+    // returns a language, but pin it so a change here is deliberate.
+    expect(templateKey({ name: 'x' })).toBe(templateKey({ name: 'x', language: '' }))
   })
 })

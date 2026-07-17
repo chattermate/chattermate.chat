@@ -170,7 +170,7 @@ onMounted(() => { load(); loadWhatsAppAccounts() })
           :title="whatsappDisabledReason"
           @click="showNewConversation = true"
         >
-          <i class="fab fa-whatsapp"></i>
+          <font-awesome-icon :icon="['fab', 'whatsapp']" />
           Message on WhatsApp
         </button>
 

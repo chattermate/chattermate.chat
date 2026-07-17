@@ -300,7 +300,7 @@ const handleChatClosed = (_sessionId?: string) => {
             class="new-conversation-btn"
             @click="showNewConversation = true"
           >
-            <i class="fab fa-whatsapp"></i>
+            <font-awesome-icon :icon="['fab', 'whatsapp']" />
             New conversation
           </button>
           <ConversationFilters

@@ -36,6 +36,8 @@ import {
   previewTemplate,
   isTemplateComplete,
   buildTemplateComponents,
+  isSameTemplate,
+  templateKey,
 } from '@/utils/whatsappTemplates'
 import { languageLabel } from '@/utils/whatsappLanguages'
 
@@ -82,7 +84,10 @@ const fieldLabel = (index: number) =>
 
 const select = (template: WhatsAppTemplate) => {
   // Re-clicking the current choice must not wipe what has been typed into it.
-  if (selected.value?.name === template.name) return
+  // Compared by name AND language: a same-named sibling is a DIFFERENT
+  // template, and returning early there silently kept the language already
+  // chosen — sending English to someone the agent picked Spanish for.
+  if (isSameTemplate(selected.value, template)) return
   selected.value = template
   values.value = {}
 }
@@ -117,7 +122,7 @@ onMounted(async () => {
   </div>
 
   <div v-else-if="loadError" class="tps-empty">
-    <i class="fas fa-circle-exclamation"></i>
+    <font-awesome-icon icon="fa-solid fa-circle-exclamation" />
     <p>{{ loadError }}</p>
   </div>
 
@@ -130,12 +135,15 @@ onMounted(async () => {
 
   <div v-else class="tps-body">
     <ul class="tps-list" aria-label="Approved templates">
-      <li v-for="template in sendable" :key="template.name">
+      <!-- Keyed and compared on name+language: one name can have a row per
+           language, and keying on the name alone gave Vue duplicate keys and
+           lit every sibling up as selected at once. -->
+      <li v-for="template in sendable" :key="templateKey(template)">
         <button
           type="button"
           class="tps-option"
-          :class="{ selected: selected?.name === template.name }"
-          :aria-pressed="selected?.name === template.name"
+          :class="{ selected: isSameTemplate(selected, template) }"
+          :aria-pressed="isSameTemplate(selected, template)"
           @click="select(template)"
         >
           <span class="tps-option-head">

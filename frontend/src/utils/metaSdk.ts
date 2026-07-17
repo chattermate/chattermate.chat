@@ -82,7 +82,13 @@ export const loadMetaSdk = (appId: string, graphVersion: string): Promise<Facebo
     script.defer = true
     script.crossOrigin = 'anonymous'
     script.onerror = () => {
-      // Let a later attempt retry rather than caching the failure forever.
+      // Let a later attempt retry rather than caching the failure forever —
+      // and take the dead tag with it. Left in place, the retry's `already
+      // present?` check above would find it and return from inside the promise
+      // executor without resolving or rejecting, so `await loadMetaSdk()` would
+      // hang forever: the Embedded Signup button simply never appears, and no
+      // catch ever runs to say why.
+      script.remove()
       sdkPromise = null
       reject(new Error('Could not load the Meta SDK'))
     }

@@ -54,6 +54,26 @@ export const templateBody = (template: WhatsAppTemplate): string =>
   componentOfType(template, 'BODY')?.text ?? ''
 
 /**
+ * What identifies one template. WhatsApp has no multilingual template: name and
+ * language together identify one, so `order_update` in five languages is five
+ * templates and Graph returns a row for each.
+ *
+ * Keying on the name alone therefore treats siblings as the same thing — the
+ * list renders duplicate keys, every language of a name highlights as selected
+ * at once, and picking a different language is a no-op that silently sends the
+ * one already chosen. Meta doesn't return `id` on the list edge (see
+ * TEMPLATE_FIELDS in meta_base.py), so the pair is the identity we have.
+ */
+export const templateKey = (template: WhatsAppTemplate): string =>
+  `${template.name}|${template.language ?? ''}`
+
+/** Whether two rows are the same template, not merely same-named. */
+export const isSameTemplate = (
+  a: WhatsAppTemplate | null | undefined,
+  b: WhatsAppTemplate | null | undefined,
+): boolean => !!a && !!b && templateKey(a) === templateKey(b)
+
+/**
  * True for an authentication template — a one-time passcode.
  *
  * Meta owns these entirely: the body is its own fixed copy, assembled from

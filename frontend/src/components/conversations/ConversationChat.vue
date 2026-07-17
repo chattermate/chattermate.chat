@@ -207,7 +207,7 @@ onMounted(async () => {
           class="create-ticket-btn"
           @click="showTemplatePicker = true"
         >
-          <i class="fas fa-comment-dots"></i>
+          <font-awesome-icon icon="fa-solid fa-comment-dots" />
           Send template
         </button>
         <!-- Add Create Ticket button -->
@@ -313,7 +313,7 @@ onMounted(async () => {
               </template>
               <span class="message-time">{{ message.timeAgo }}</span>
               <span v-if="message.attributes?.delivery_status" class="delivery-failed">
-                <i class="fas fa-circle-exclamation"></i> Not delivered
+                <font-awesome-icon icon="fa-solid fa-circle-exclamation" /> Not delivered
               </span>
             </div>
             <span v-if="message.message_type === 'bot' || message.message_type === 'agent'" class="agent-name">
@@ -341,7 +341,7 @@ onMounted(async () => {
            to retype into a composer that will fail again. -->
       <div v-if="templateCanReopen && canUseTemplates" class="window-closed-notice">
         <div class="window-closed-text">
-          <i class="fas fa-clock"></i>
+          <font-awesome-icon icon="fa-solid fa-clock" />
           <span>This customer's 24-hour window has closed. Send an approved template to reopen it.</span>
         </div>
         <button class="window-closed-btn" @click="showTemplatePicker = true">
@@ -605,7 +605,7 @@ onMounted(async () => {
   color: var(--text);
 }
 
-.window-closed-text i {
+.window-closed-text svg {
   color: var(--warning);
 }
 

@@ -21,7 +21,7 @@ import channelsService, {
   type ChannelAccount,
   type WhatsAppTemplate,
 } from '@/services/channels'
-import { templatePreviewText } from '@/utils/whatsappTemplates'
+import { templatePreviewText, templateKey } from '@/utils/whatsappTemplates'
 import { languageLabel } from '@/utils/whatsappLanguages'
 
 const props = defineProps<{
@@ -112,11 +112,32 @@ watch(accountId, () => {
   loadLibraryUrl()
 })
 
+/**
+ * How many rows share this name — i.e. how many language versions one Delete
+ * destroys. Meta's delete-by-name takes every language with it, so this is the
+ * blast radius the agent needs to see BEFORE confirming, not after.
+ */
+const languageCount = (template: WhatsAppTemplate): number =>
+  templates.value.filter((t) => t.name === template.name).length
+
+const deleteWarning = (template: WhatsAppTemplate): string => {
+  const count = languageCount(template)
+  return count > 1 ? `Delete all ${count} languages?` : 'Delete?'
+}
+
+const deleteLabel = (template: WhatsAppTemplate): string => {
+  const count = languageCount(template)
+  return count > 1
+    ? `Delete ${template.name} — all ${count} language versions`
+    : `Delete ${template.name}`
+}
+
 const remove = async (name: string) => {
+  const count = templates.value.filter((t) => t.name === name).length
   try {
     deletingName.value = name
     await channelsService.deleteWhatsAppTemplate(accountId.value, name)
-    toast.success(`Deleted ${name}`)
+    toast.success(count > 1 ? `Deleted ${name} (${count} languages)` : `Deleted ${name}`)
     confirmingName.value = ''
     await load()
   } catch (error: any) {
@@ -167,7 +188,7 @@ const remove = async (name: string) => {
         </div>
 
         <div v-else-if="loadError" class="wtm-empty">
-          <i class="fas fa-circle-exclamation"></i>
+          <font-awesome-icon icon="fa-solid fa-circle-exclamation" />
           <p>{{ loadError }}</p>
         </div>
 
@@ -176,7 +197,9 @@ const remove = async (name: string) => {
         </div>
 
         <ul v-else class="wtm-list">
-          <li v-for="template in templates" :key="template.name" class="wtm-row">
+          <!-- Keyed on name+language: one name can have a row per language, and
+               Vue needs them distinct. -->
+          <li v-for="template in templates" :key="templateKey(template)" class="wtm-row">
             <div class="wtm-row-main">
               <div class="wtm-row-head">
                 <span class="wtm-name">{{ template.name }}</span>
@@ -192,8 +215,13 @@ const remove = async (name: string) => {
             </div>
 
             <div class="wtm-row-actions">
+              <!-- Meta deletes a template by NAME, taking every language with
+                   it. The list shows one row per language, so without saying so
+                   an agent tidying up an unused Spanish variant would destroy
+                   the English one in production use — unrecoverable without
+                   re-authoring and re-submitting for review. -->
               <template v-if="confirmingName === template.name">
-                <span class="wtm-confirm-text">Delete?</span>
+                <span class="wtm-confirm-text">{{ deleteWarning(template) }}</span>
                 <button
                   class="wtm-btn wtm-btn-danger"
                   :disabled="deletingName === template.name"
@@ -206,7 +234,7 @@ const remove = async (name: string) => {
               <button
                 v-else
                 class="wtm-btn"
-                :aria-label="`Delete ${template.name}`"
+                :aria-label="deleteLabel(template)"
                 @click="confirmingName = template.name"
               >
                 Delete
@@ -236,7 +264,7 @@ const remove = async (name: string) => {
           rel="noopener noreferrer"
         >
           Open WhatsApp Manager
-          <i class="fas fa-arrow-up-right-from-square"></i>
+          <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" />
         </a>
       </div>
     </div>
