@@ -16,6 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { useTicketingSettings } from '@/composables/useTicketingSettings'
 import { PRIORITIES, priorityMeta } from '@/components/tickets/ticketMeta'
 import type { SlaTarget, TicketPriority } from '@/types/ticket'
@@ -122,6 +123,7 @@ function saveAll() {
 </script>
 
 <template>
+  <DashboardLayout>
   <div class="ticketing-settings">
     <div class="page-header">
       <h1 class="page-title">Ticketing settings</h1>
@@ -260,6 +262,7 @@ function saveAll() {
       </div>
     </template>
   </div>
+  </DashboardLayout>
 </template>
 
 <style scoped>

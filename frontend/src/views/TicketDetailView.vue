@@ -18,6 +18,7 @@ limitations under the License.
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
+import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { useTicketDetail } from '@/composables/useTicketDetail'
 import { SELECTABLE_STATUSES, statusMeta, PRIORITIES, priorityMeta } from '@/components/tickets/ticketMeta'
 import TicketStatusBadge from '@/components/tickets/TicketStatusBadge.vue'
@@ -80,6 +81,7 @@ async function submitResolve() {
 </script>
 
 <template>
+  <DashboardLayout>
   <div class="ticket-detail-view">
     <div v-if="isLoading && !ticket" class="loading-state">Loading ticket…</div>
     <div v-else-if="error && !ticket" class="error-state">
@@ -240,6 +242,7 @@ async function submitResolve() {
       />
     </div>
   </div>
+  </DashboardLayout>
 </template>
 
 <style scoped>

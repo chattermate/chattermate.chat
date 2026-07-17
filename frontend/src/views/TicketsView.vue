@@ -18,6 +18,7 @@ limitations under the License.
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatDistanceToNow } from 'date-fns'
+import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { useTicketsWorkspace } from '@/composables/useTicketsWorkspace'
 import { formatSlaCountdown, ticketInitials } from '@/components/tickets/ticketMeta'
 import TicketStatusBadge from '@/components/tickets/TicketStatusBadge.vue'
@@ -64,6 +65,7 @@ function openTicket(id: string) {
 </script>
 
 <template>
+  <DashboardLayout>
   <div class="tickets-view">
     <div class="page-header">
       <div>
@@ -166,6 +168,7 @@ function openTicket(id: string) {
       @created="refresh()"
     />
   </div>
+  </DashboardLayout>
 </template>
 
 <style scoped>
