@@ -57,6 +57,7 @@ from app.models.ticket_activity import TicketActivity, TicketActivityType, Ticke
 from app.models.ticket_settings import OrganizationTicketSettings
 from app.models.investigation import (
     InvestigationRun, InvestigationRunType, InvestigationRunStatus, InvestigationTrigger,
+    InvestigationHypothesis, InvestigationEvent, RCADocument,
 )
 
 
@@ -121,4 +122,7 @@ __all__ = [
     "InvestigationRunType",
     "InvestigationRunStatus",
     "InvestigationTrigger",
+    "InvestigationHypothesis",
+    "InvestigationEvent",
+    "RCADocument",
 ]

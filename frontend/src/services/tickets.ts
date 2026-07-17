@@ -16,7 +16,9 @@ limitations under the License.
 
 import api from './api'
 import type {
+  InvestigationDetail,
   InvestigationRun,
+  RcaDocument,
   Ticket,
   TicketActivity,
   TicketCreatePayload,
@@ -120,12 +122,45 @@ export const ticketService = {
     }
   },
 
-  async investigate(id: string): Promise<InvestigationRun> {
+  async investigate(
+    id: string,
+    options: { run_type?: 'triage' | 'investigation'; context_note?: string } = {},
+  ): Promise<InvestigationRun> {
     try {
-      const response = await api.post(`/tickets/${id}/investigate`)
+      const response = await api.post(`/tickets/${id}/investigate`, options)
       return response.data
     } catch (error: any) {
       throw errorMessage(error, 'Failed to start the AI run')
+    }
+  },
+
+  async getInvestigation(id: string): Promise<InvestigationDetail> {
+    try {
+      const response = await api.get(`/tickets/${id}/investigation`)
+      return response.data
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to load the investigation')
+    }
+  },
+
+  async updateRca(
+    id: string,
+    patch: { customer_summary?: string; mark_reviewed?: boolean },
+  ): Promise<RcaDocument> {
+    try {
+      const response = await api.patch(`/tickets/${id}/rca`, patch)
+      return response.data
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to save the RCA')
+    }
+  },
+
+  async sendRcaToCustomer(id: string): Promise<TicketActivity> {
+    try {
+      const response = await api.post(`/tickets/${id}/rca/send-customer`)
+      return response.data
+    } catch (error: any) {
+      throw errorMessage(error, 'Failed to send the summary to the customer')
     }
   },
 

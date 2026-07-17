@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
@@ -26,7 +27,13 @@ from app.database import get_db
 from app.models.investigation import InvestigationRunType, InvestigationTrigger
 from app.models.schemas.pagination import Pagination
 from app.models.schemas.ticket import (
+    HypothesisOut,
+    InvestigateRequest,
+    InvestigationDetailResponse,
+    InvestigationEventOut,
     InvestigationRunOut,
+    RCADocumentOut,
+    RcaUpdate,
     TicketCommentCreate,
     TicketCreate,
     TicketDetailResponse,
@@ -470,23 +477,134 @@ async def reopen_ticket(
 @router.post("/{ticket_id}/investigate", response_model=InvestigationRunOut, status_code=201)
 async def investigate_ticket(
     ticket_id: UUID,
+    payload: Optional[InvestigateRequest] = None,
     current_user: User = Depends(manage_tickets),
     db: Session = Depends(get_db),
 ):
-    """Manually (re-)enqueue an AI run for this ticket."""
+    """Manually (re-)enqueue an AI run — a full investigation by default."""
     check_ticketing_access(db, current_user.organization_id)
     service = _service(db)
     ticket = _get_ticket_or_404(db, ticket_id, current_user)
+    payload = payload or InvestigateRequest()
     run = service.enqueue_run(
         ticket,
-        run_type=InvestigationRunType.TRIAGE,
+        run_type=payload.run_type,
         trigger=InvestigationTrigger.MANUAL,
         requested_by_user_id=current_user.id,
+        context_note=payload.context_note,
     )
     if run is None:
         raise HTTPException(
-            status_code=409, detail="An AI run is already active for this ticket"
+            status_code=409,
+            detail="An AI run is already active for this ticket, or its run limit was reached",
         )
     db.commit()
     db.refresh(run)
+    await emit_ticket_update(current_user.organization_id, ticket.id, "run", {"status": "pending"})
     return InvestigationRunOut.model_validate(run)
+
+
+@router.get("/{ticket_id}/investigation", response_model=InvestigationDetailResponse)
+async def get_investigation(
+    ticket_id: UUID,
+    run_id: Optional[UUID] = None,
+    current_user: User = Depends(view_tickets),
+    db: Session = Depends(get_db),
+):
+    """Glass-box payload: the latest (or requested) investigation run with its
+    hypotheses, evidence events and the ticket's current RCA document."""
+    check_ticketing_access(db, current_user.organization_id)
+    service = _service(db)
+    ticket = _get_ticket_or_404(db, ticket_id, current_user)
+
+    run = None
+    if run_id is not None:
+        run = service.run_repo.get_by_id(run_id)
+        # The run must belong to this ticket — run_id alone is not an
+        # authorization boundary.
+        if run is None or run.ticket_id != ticket.id:
+            raise HTTPException(status_code=404, detail="Run not found")
+    else:
+        run = service.run_repo.latest_run_of_type(
+            ticket.id, InvestigationRunType.INVESTIGATION.value
+        )
+
+    rca = service.run_repo.latest_rca(ticket.id)
+    return InvestigationDetailResponse(
+        run=InvestigationRunOut.model_validate(run) if run else None,
+        hypotheses=[
+            HypothesisOut.model_validate(h) for h in service.run_repo.list_hypotheses(run.id)
+        ] if run else [],
+        events=[
+            InvestigationEventOut.model_validate(e) for e in service.run_repo.list_events(run.id)
+        ] if run else [],
+        rca=_rca_out(rca),
+    )
+
+
+def _rca_out(rca) -> Optional[RCADocumentOut]:
+    if rca is None:
+        return None
+    out = RCADocumentOut.model_validate(rca)
+    if rca.reviewed_by is not None:
+        out.reviewed_by_name = rca.reviewed_by.full_name
+    return out
+
+
+@router.patch("/{ticket_id}/rca", response_model=RCADocumentOut)
+async def update_rca(
+    ticket_id: UUID,
+    payload: RcaUpdate,
+    current_user: User = Depends(manage_tickets),
+    db: Session = Depends(get_db),
+):
+    """Edit the RCA's customer summary and/or stamp the reviewer byline."""
+    check_ticketing_access(db, current_user.organization_id)
+    service = _service(db)
+    ticket = _get_ticket_or_404(db, ticket_id, current_user)
+    rca = service.run_repo.latest_rca(ticket.id)
+    if rca is None:
+        raise HTTPException(status_code=404, detail="No RCA document for this ticket")
+    if payload.customer_summary is not None:
+        rca.customer_summary = payload.customer_summary
+    if payload.mark_reviewed:
+        rca.reviewed_by_user_id = current_user.id
+        rca.reviewed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(rca)
+    return _rca_out(rca)
+
+
+@router.post("/{ticket_id}/rca/send-customer", response_model=TicketActivityOut)
+async def send_rca_to_customer(
+    ticket_id: UUID,
+    current_user: User = Depends(manage_tickets),
+    db: Session = Depends(get_db),
+):
+    """Send the RCA's customer summary to the customer (a manual human action
+    at autonomy L1/L2). Stamps the sender as reviewer."""
+    check_ticketing_access(db, current_user.organization_id)
+    service = _service(db)
+    ticket = _get_ticket_or_404(db, ticket_id, current_user)
+    rca = service.run_repo.latest_rca(ticket.id)
+    if rca is None or not (rca.customer_summary or "").strip():
+        raise HTTPException(status_code=404, detail="No customer summary to send")
+    if not service.can_notify_customer(ticket):
+        raise HTTPException(
+            status_code=400,
+            detail="No customer channel — link a conversation or set a customer email first",
+        )
+    rca.reviewed_by_user_id = current_user.id
+    rca.reviewed_at = datetime.now(timezone.utc)
+    activity = service.add_comment(
+        ticket,
+        rca.customer_summary,
+        is_internal=False,
+        actor_type=TicketActorType.USER,
+        actor_user_id=current_user.id,
+    )
+    await service.send_customer_message(ticket, rca.customer_summary, record_activity=False)
+    db.commit()
+    db.refresh(activity)
+    await emit_ticket_update(current_user.organization_id, ticket.id, "comment")
+    return _activity_out(activity)

@@ -120,10 +120,76 @@ export interface InvestigationRun {
   trigger: string
   error?: string | null
   tool_calls_used: number
+  max_tool_calls?: number
   model_name?: string | null
   started_at?: string | null
   finished_at?: string | null
   created_at?: string | null
+}
+
+export type HypothesisStatus = 'pending' | 'testing' | 'validated' | 'invalidated' | 'inconclusive'
+
+export interface InvestigationHypothesis {
+  id: string
+  idx: number
+  title: string
+  rationale?: string | null
+  status: HypothesisStatus
+  confidence?: number | null
+  conclusion?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface InvestigationEvent {
+  id: string
+  hypothesis_id?: string | null
+  seq: number
+  event_type: 'phase' | 'tool_call'
+  label?: string | null
+  tool_name?: string | null
+  connector_name?: string | null
+  tool_input?: string | null
+  tool_result?: string | null
+  duration_ms?: number | null
+  error?: string | null
+  created_at?: string | null
+}
+
+export interface RcaTimelineEntry {
+  time: string
+  event: string
+}
+
+export interface RcaDocument {
+  id: string
+  run_id?: string | null
+  version: number
+  summary?: string | null
+  impact?: string | null
+  timeline?: RcaTimelineEntry[] | null
+  investigation_log?: string | null
+  contributing_factors?: string[] | null
+  conclusion?: string | null
+  remediation?: string | null
+  prevention?: string | null
+  customer_summary?: string | null
+  confidence?: number | null
+  is_partial: boolean
+  generated_by: string
+  reviewed_by_user_id?: string | null
+  reviewed_by_name?: string | null
+  reviewed_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+/** Glass-box payload for the ticket detail page. */
+export interface InvestigationDetail {
+  run: InvestigationRun | null
+  hypotheses: InvestigationHypothesis[]
+  events: InvestigationEvent[]
+  rca: RcaDocument | null
 }
 
 export interface TicketDetail {

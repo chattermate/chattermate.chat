@@ -19,6 +19,7 @@ import { toast } from 'vue-sonner'
 import { ticketService } from '@/services/tickets'
 import { useTicketSocket } from '@/composables/useTicketSocket'
 import type {
+  InvestigationDetail,
   Ticket,
   TicketActivity,
   TicketDetail,
@@ -33,6 +34,7 @@ const IDLE_POLL_MS = 15000
 
 export function useTicketDetail(ticketId: Ref<string>) {
   const detail = ref<TicketDetail | null>(null)
+  const investigation = ref<InvestigationDetail | null>(null)
   const isLoading = ref(true)
   const error = ref<string | null>(null)
   const isSavingComment = ref(false)
@@ -47,7 +49,14 @@ export function useTicketDetail(ticketId: Ref<string>) {
     if (!ticketId.value) return
     if (!silent) isLoading.value = true
     try {
-      detail.value = await ticketService.getTicket(ticketId.value)
+      // The glass box loads alongside the ticket; its failure (e.g. plan
+      // gate) must never take the whole page down.
+      const [detailData, investigationData] = await Promise.all([
+        ticketService.getTicket(ticketId.value),
+        ticketService.getInvestigation(ticketId.value).catch(() => null),
+      ])
+      detail.value = detailData
+      investigation.value = investigationData
       error.value = null
     } catch (e: any) {
       if (!silent) error.value = e?.message || 'Failed to load the ticket'
@@ -126,14 +135,49 @@ export function useTicketDetail(ticketId: Ref<string>) {
     }
   }
 
-  async function investigate() {
+  async function investigate(contextNote?: string) {
     if (!detail.value) return
     try {
-      await ticketService.investigate(detail.value.ticket.id)
+      await ticketService.investigate(detail.value.ticket.id, {
+        run_type: 'investigation',
+        context_note: contextNote,
+      })
       await refresh(true)
-      toast.success('AI run queued')
+      toast.success('AI investigation queued')
     } catch (e: any) {
       toast.error(e?.message || 'Failed to start the AI run')
+    }
+  }
+
+  async function saveRcaDraft(customerSummary: string) {
+    if (!detail.value) return
+    try {
+      await ticketService.updateRca(detail.value.ticket.id, {
+        customer_summary: customerSummary,
+        mark_reviewed: true,
+      })
+      await refresh(true)
+      toast.success('Draft saved')
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save the draft')
+    }
+  }
+
+  async function sendRcaToCustomer(customerSummary?: string) {
+    if (!detail.value) return
+    try {
+      // Persist any unsaved edit first so what's sent is what's shown.
+      if (customerSummary !== undefined) {
+        await ticketService.updateRca(detail.value.ticket.id, {
+          customer_summary: customerSummary,
+          mark_reviewed: true,
+        })
+      }
+      await ticketService.sendRcaToCustomer(detail.value.ticket.id)
+      await refresh(true)
+      toast.success('Summary sent to the customer')
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to send the summary')
     }
   }
 
@@ -160,6 +204,7 @@ export function useTicketDetail(ticketId: Ref<string>) {
 
   return {
     detail,
+    investigation,
     ticket,
     activities,
     hasActiveRun,
@@ -178,5 +223,7 @@ export function useTicketDetail(ticketId: Ref<string>) {
     resolve,
     reopen,
     investigate,
+    saveRcaDraft,
+    sendRcaToCustomer,
   }
 }

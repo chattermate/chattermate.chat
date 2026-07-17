@@ -19,6 +19,7 @@ import { computed, ref, watch } from 'vue'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { useTicketingSettings } from '@/composables/useTicketingSettings'
 import { PRIORITIES, priorityMeta } from '@/components/tickets/ticketMeta'
+import TicketConnectorsSection from '@/components/tickets/TicketConnectorsSection.vue'
 import type { SlaTarget, TicketPriority } from '@/types/ticket'
 
 const { settings, isLoading, isSaving, error, planGated, save } = useTicketingSettings()
@@ -241,18 +242,20 @@ function saveAll() {
         </div>
       </section>
 
-      <!-- CONNECTORS (Phase 3/4 preview) -->
+      <!-- CONNECTORS -->
       <section class="section">
         <div class="section-head-row">
           <h2 class="section-title">Investigation connectors</h2>
           <span class="mcp-tag">via MCP</span>
         </div>
         <p class="section-hint">
-          Read-only access to your logs, metrics and databases so the AI can gather evidence
-          during investigations. Connectors attach to the
-          <strong>investigation agent only</strong> — never the customer-facing chat agent.
-          Coming with the investigation engine.
+          Read-only access to your logs, metrics and errors so the AI can gather evidence during
+          investigations. Selected connectors are attached to every investigation run.
         </p>
+        <TicketConnectorsSection
+          :selected-ids="settings.investigation_mcp_tool_ids || []"
+          @update:selected-ids="(ids: number[]) => save({ investigation_mcp_tool_ids: ids })"
+        />
       </section>
 
       <div class="save-bar" v-if="isDirty">

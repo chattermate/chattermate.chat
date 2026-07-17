@@ -17,10 +17,22 @@ limitations under the License.
 import enum
 import uuid
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import expression, func
 
 from app.database import Base
 
@@ -112,4 +124,143 @@ class InvestigationRun(Base):
             "status",
             postgresql_where=(status.in_(ACTIVE_RUN_STATUSES)),
         ),
+    )
+
+
+class HypothesisStatus(_ValueStrEnum):
+    PENDING = "pending"
+    TESTING = "testing"
+    VALIDATED = "validated"
+    INVALIDATED = "invalidated"
+    INCONCLUSIVE = "inconclusive"
+
+
+class InvestigationHypothesis(Base):
+    """One hypothesis (H1..Hn) of an investigation run. Each is tested with
+    bounded tool calls and marked validated/invalidated/inconclusive with a
+    confidence — the glass-box UI renders these as cards."""
+    __tablename__ = "investigation_hypotheses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("investigation_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ticket_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # 1-based display order (H1, H2, ...).
+    idx = Column(Integer, nullable=False, default=1)
+    title = Column(String(300), nullable=False)
+    rationale = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default=HypothesisStatus.PENDING)
+    confidence = Column(Float, nullable=True)
+    # What testing showed, written after the verdict.
+    conclusion = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class InvestigationEventType(_ValueStrEnum):
+    # A phase marker ("Generating hypotheses", "Testing H2") — powers the
+    # live ticker line.
+    PHASE = "phase"
+    TOOL_CALL = "tool_call"
+
+
+class InvestigationEvent(Base):
+    """Evidence is a first-class row, never just markdown: every tool call the
+    investigator makes is captured here (query, result snippet, timing) via
+    agno tool_hooks. RCA citations and the glass-box UI derive from these."""
+    __tablename__ = "investigation_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("investigation_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ticket_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    hypothesis_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("investigation_hypotheses.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Monotonic order within the run.
+    seq = Column(Integer, nullable=False, default=0)
+    event_type = Column(String, nullable=False, default=InvestigationEventType.TOOL_CALL)
+    # Human-readable line for phase events / the ticker.
+    label = Column(String(300), nullable=True)
+    tool_name = Column(String(200), nullable=True)
+    # Which configured connector (MCP server) served the call.
+    connector_name = Column(String(200), nullable=True)
+    # PII-redacted and truncated at capture time — raw payloads never land.
+    tool_input = Column(Text, nullable=True)
+    tool_result = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_investigation_events_run_seq", "run_id", "seq"),)
+
+
+class RCADocument(Base):
+    """Structured, versioned root-cause analysis generated from captured
+    evidence. customer_summary is the plain-language section a human edits and
+    sends; reviewed_by_user_id powers the "reviewed by" byline."""
+    __tablename__ = "rca_documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("investigation_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    version = Column(Integer, nullable=False, default=1)
+
+    summary = Column(Text, nullable=True)
+    impact = Column(Text, nullable=True)
+    # [{"time": "...", "event": "..."}] — ISO timestamps or relative labels.
+    timeline = Column(JSON, nullable=True)
+    investigation_log = Column(Text, nullable=True)
+    # ["...", ...]
+    contributing_factors = Column(JSON, nullable=True)
+    # Cites hypotheses/evidence inline as [H1 · 0.92].
+    conclusion = Column(Text, nullable=True)
+    remediation = Column(Text, nullable=True)
+    prevention = Column(Text, nullable=True)
+    customer_summary = Column(Text, nullable=True)
+    confidence = Column(Float, nullable=True)
+    # Set when the investigation ended early (wall-clock/tool budget).
+    is_partial = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+
+    generated_by = Column(String, nullable=False, default="ai", server_default="ai")
+    reviewed_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_user_id])
+
+    __table_args__ = (
+        UniqueConstraint("ticket_id", "version", name="uq_rca_documents_ticket_version"),
     )

@@ -25,6 +25,8 @@ import TicketStatusBadge from '@/components/tickets/TicketStatusBadge.vue'
 import TicketAiStateChip from '@/components/tickets/TicketAiStateChip.vue'
 import TicketActivityFeed from '@/components/tickets/TicketActivityFeed.vue'
 import TicketSidePanel from '@/components/tickets/TicketSidePanel.vue'
+import TicketInvestigationPanel from '@/components/tickets/TicketInvestigationPanel.vue'
+import TicketRcaDoc from '@/components/tickets/TicketRcaDoc.vue'
 import { permissionChecks } from '@/utils/permissions'
 import type { TicketPriority, TicketStatus } from '@/types/ticket'
 
@@ -33,9 +35,10 @@ const router = useRouter()
 const ticketId = computed(() => String(route.params.id))
 
 const {
-  detail, ticket, activities, hasActiveRun, isLoading, isSavingComment,
+  detail, investigation, ticket, activities, hasActiveRun, isLoading, isSavingComment,
   error, setStatus, setPriority, setSeverity, setTitle, setDescription,
   setAssignee, setCustomer, addComment, resolve, reopen, investigate,
+  saveRcaDraft, sendRcaToCustomer,
 } = useTicketDetail(ticketId)
 
 const canManage = permissionChecks.canManageTickets()
@@ -179,10 +182,10 @@ async function submitResolve() {
               <button
                 v-if="canManage && !hasActiveRun"
                 class="action-btn"
-                title="Run AI triage again"
-                @click="investigate"
+                title="Run an AI investigation (hypotheses + evidence + RCA)"
+                @click="investigate()"
               >
-                ↻ Re-run AI
+                ⚡ Investigate
               </button>
               <button
                 v-if="canManage && isReopenable"
@@ -270,6 +273,21 @@ async function submitResolve() {
           <div class="card-label">AI summary</div>
           <p class="description-text">{{ ticket.ai_summary }}</p>
         </div>
+
+        <!-- GLASS BOX: hypotheses + evidence of the latest investigation run -->
+        <TicketInvestigationPanel
+          v-if="investigation?.run"
+          :investigation="investigation"
+        />
+
+        <TicketRcaDoc
+          v-if="investigation?.rca"
+          :rca="investigation.rca"
+          :can-manage="canManage"
+          :can-notify="canNotifyCustomer"
+          @save-draft="saveRcaDraft"
+          @send-customer="sendRcaToCustomer"
+        />
 
         <TicketActivityFeed
           :activities="activities"

@@ -17,7 +17,7 @@ Shared display metadata for ticket statuses / priorities / AI states.
 Colors come from the design tokens so both themes work.
 */
 
-import type { TicketAiState, TicketPriority, TicketStatus } from '@/types/ticket'
+import type { HypothesisStatus, TicketAiState, TicketPriority, TicketStatus } from '@/types/ticket'
 
 export interface ChipMeta {
   label: string
@@ -74,6 +74,18 @@ export function priorityMeta(priority: TicketPriority): ChipMeta {
 
 export function aiStateMeta(state?: TicketAiState | null) {
   return (state && AI_STATE_META[state]) || AI_STATE_META.human
+}
+
+export const HYPOTHESIS_STATUS_META: Record<HypothesisStatus, ChipMeta> = {
+  pending: { label: 'Pending', color: 'var(--c-neutral)' },
+  testing: { label: 'Testing', color: 'var(--c-info)' },
+  validated: { label: 'Validated', color: 'var(--c-positive)' },
+  invalidated: { label: 'Invalidated', color: 'var(--c-danger)' },
+  inconclusive: { label: 'Inconclusive', color: 'var(--c-warn)' },
+}
+
+export function hypothesisMeta(status: HypothesisStatus): ChipMeta {
+  return HYPOTHESIS_STATUS_META[status] || { label: status, color: 'var(--c-neutral)' }
 }
 
 export function ticketInitials(name?: string | null): string {

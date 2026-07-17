@@ -13,9 +13,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-AI ticket worker: processes pending investigation runs (Phase 2: triage) and
-runs lifecycle hygiene (confirmation-timeout close + CSAT). Runs as its own
-container: `python -m app.workers.ticket_investigator`.
+AI ticket worker: processes pending runs (triage + hypothesis-driven
+investigation with MCP evidence gathering) and runs lifecycle hygiene
+(confirmation-timeout close + CSAT). Runs as its own container:
+`python -m app.workers.ticket_investigator`.
 """
 
 import asyncio
@@ -30,6 +31,7 @@ from app.models.investigation import (
     InvestigationRun,
     InvestigationRunStatus,
     InvestigationRunType,
+    InvestigationTrigger,
 )
 from app.models.ticket import ResolutionOutcome, Ticket, TicketStatus
 from app.models.ticket_activity import TicketActivityType, TicketActorType
@@ -97,10 +99,20 @@ async def process_run(run_id: UUID) -> None:
         run.status = InvestigationRunStatus.RUNNING
         run.started_at = datetime.now(timezone.utc)
         previous_status = str(ticket.status)
-        if previous_status == TicketStatus.OPEN.value:
+        is_investigation = str(run.run_type) == InvestigationRunType.INVESTIGATION.value
+        if is_investigation:
+            if previous_status in (
+                TicketStatus.OPEN.value, TicketStatus.TRIAGING.value,
+                TicketStatus.REOPENED.value, TicketStatus.IN_PROGRESS.value,
+            ):
+                ticket.status = TicketStatus.INVESTIGATING
+        elif previous_status == TicketStatus.OPEN.value:
             ticket.status = TicketStatus.TRIAGING
         db.commit()
-        await emit_ticket_update(ticket.organization_id, ticket.id, "run", {"status": "running"})
+        await emit_ticket_update(
+            ticket.organization_id, ticket.id, "run",
+            {"status": "running", "run_type": str(run.run_type)},
+        )
 
         try:
             config = AIConfigRepository(db).get_active_config(ticket.organization_id)
@@ -119,30 +131,12 @@ async def process_run(run_id: UUID) -> None:
                 run.llm_calls = (run.llm_calls or 0) + 1
             agent.on_llm_call = count_call
 
-            transcript, similar = await _build_triage_context(db, service, ticket)
-            result = await asyncio.wait_for(
-                agent.triage(ticket.title, ticket.description, transcript, similar),
-                timeout=TRIAGE_WALL_SECONDS,
-            )
-
-            if result is not None:
-                _apply_triage(service, ticket, result)
+            if is_investigation:
+                await _process_investigation(db, run, service, ticket, agent, previous_status)
             else:
-                logger.warning(f"Triage produced no result for {ticket.display_number}")
-
-            # Triage done — the ticket goes back to plain open unless a human
-            # already moved it (investigation runs come with Phase 3).
-            if str(ticket.status) == TicketStatus.TRIAGING.value:
-                ticket.status = previous_status
-            run.status = InvestigationRunStatus.COMPLETED
-            run.finished_at = datetime.now(timezone.utc)
-            db.commit()
-            await emit_ticket_update(
-                ticket.organization_id, ticket.id, "triage",
-                {"status": str(ticket.status), "priority": str(ticket.priority)},
-            )
+                await _process_triage(db, run, service, ticket, agent, previous_status)
         except asyncio.TimeoutError:
-            _fail_run(db, run, ticket, previous_status, "Triage timed out")
+            _fail_run(db, run, ticket, previous_status, "AI run timed out")
         except Exception as e:
             logger.error(f"Investigation run {run_id} failed: {e}")
             try:
@@ -150,6 +144,154 @@ async def process_run(run_id: UUID) -> None:
             except Exception:
                 pass
             _fail_run(db, run, ticket, previous_status, str(e))
+
+
+async def _process_triage(db, run, service: TicketService, ticket: Ticket, agent, previous_status: str) -> None:
+    transcript, similar = await _build_triage_context(db, service, ticket)
+    result = await asyncio.wait_for(
+        agent.triage(ticket.title, ticket.description, transcript, similar),
+        timeout=TRIAGE_WALL_SECONDS,
+    )
+
+    if result is not None:
+        _apply_triage(service, ticket, result)
+    else:
+        logger.warning(f"Triage produced no result for {ticket.display_number}")
+
+    # Triage done — the ticket goes back to plain open unless a human
+    # already moved it.
+    if str(ticket.status) == TicketStatus.TRIAGING.value:
+        ticket.status = previous_status
+    run.status = InvestigationRunStatus.COMPLETED
+    run.finished_at = datetime.now(timezone.utc)
+
+    # Auto-chain: tickets created with auto-investigate on flow straight into
+    # a full investigation when the org has connectors configured.
+    settings_row = service.settings_repo.get_or_create(ticket.organization_id)
+    if (
+        str(run.trigger) == InvestigationTrigger.AUTO_ON_CREATE.value
+        and settings_row.auto_investigate_on_create
+        and (settings_row.investigation_mcp_tool_ids or [])
+    ):
+        service.enqueue_run(
+            ticket,
+            run_type=InvestigationRunType.INVESTIGATION,
+            trigger=InvestigationTrigger.AUTO_ON_CREATE,
+            settings=settings_row,
+        )
+    db.commit()
+    await emit_ticket_update(
+        ticket.organization_id, ticket.id, "triage",
+        {"status": str(ticket.status), "priority": str(ticket.priority)},
+    )
+
+
+async def _process_investigation(db, run, service: TicketService, ticket: Ticket, agent, previous_status: str) -> None:
+    """Hypothesis-driven investigation: connect the org's MCP connectors,
+    generate + test hypotheses (evidence recorded per tool call), then write
+    the RCA document. MCP init and cleanup happen in this same task — the
+    anyio cancel-scope requirement."""
+    from app.repositories.ticket import InvestigationRepository
+    from app.services.ticket_investigation import (
+        EvidenceRecorder,
+        run_investigation_phases,
+        synthesize_and_store_rca,
+    )
+    from app.tools.mcp_manager import MCPToolsManager
+
+    settings_row = service.settings_repo.get_or_create(ticket.organization_id)
+    recorder = EvidenceRecorder(run.id, ticket.id)
+
+    service._add_activity(
+        ticket,
+        TicketActivityType.AI_INVESTIGATION_STARTED,
+        actor_type=TicketActorType.AI,
+        body="AI investigation started",
+        metadata={"run_id": str(run.id), "trigger": str(run.trigger)},
+    )
+    db.commit()
+
+    transcript, similar = await _build_triage_context(db, service, ticket)
+    extra_sections = []
+    if ticket.ai_summary:
+        extra_sections.append(f"TRIAGE SUMMARY: {ticket.ai_summary} (intent: {ticket.intent})")
+    if run.context_note:
+        # e.g. the human's rejection reason feeding a refined run.
+        extra_sections.append(f"REVIEWER FEEDBACK ON THE PREVIOUS RUN:\n{run.context_note[:2000]}")
+    context_message = agent.build_context_message(
+        ticket.title, ticket.description, transcript, similar, extra_sections=extra_sections
+    )
+
+    manager = MCPToolsManager()
+    mcp_tools = []
+    hypotheses = []
+    partial = False
+    try:
+        tool_ids = settings_row.investigation_mcp_tool_ids or []
+        if tool_ids:
+            recorder.record_phase("Connecting investigation connectors")
+            mcp_tools = await manager.initialize_mcp_tools_by_ids(
+                str(ticket.organization_id), tool_ids
+            )
+            recorder.map_connectors(mcp_tools)
+        try:
+            hypotheses, budget_exhausted = await asyncio.wait_for(
+                run_investigation_phases(
+                    db, run, ticket, agent, context_message, mcp_tools, recorder
+                ),
+                timeout=run.max_wall_seconds or 600,
+            )
+            partial = budget_exhausted
+        except asyncio.TimeoutError:
+            partial = True
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            hypotheses = InvestigationRepository(db).list_hypotheses(run.id)
+            for hypothesis in hypotheses:
+                if str(hypothesis.status) in ("pending", "testing"):
+                    hypothesis.status = "inconclusive"
+                    hypothesis.conclusion = "Not completed — the run's wall-clock budget was reached."
+            db.commit()
+    finally:
+        await manager.cleanup_mcp_tools()
+
+    run.tool_calls_used = recorder.tool_calls
+    rca = await synthesize_and_store_rca(
+        db, run, ticket, agent, context_message, hypotheses, recorder, partial
+    )
+
+    validated = sum(1 for h in hypotheses if str(h.status) == "validated")
+    service._add_activity(
+        ticket,
+        TicketActivityType.AI_INVESTIGATION_COMPLETED,
+        actor_type=TicketActorType.AI,
+        body=(rca.summary if rca else "Investigation finished without an RCA document"),
+        metadata={
+            "run_id": str(run.id),
+            "hypotheses": len(hypotheses),
+            "validated": validated,
+            "rca_version": rca.version if rca else None,
+            "partial": partial,
+        },
+    )
+
+    if str(ticket.status) == TicketStatus.INVESTIGATING.value:
+        restore = previous_status
+        if restore in (TicketStatus.TRIAGING.value, TicketStatus.INVESTIGATING.value):
+            restore = TicketStatus.OPEN.value
+        ticket.status = restore
+    run.status = (
+        InvestigationRunStatus.BUDGET_EXCEEDED if partial else InvestigationRunStatus.COMPLETED
+    )
+    run.finished_at = datetime.now(timezone.utc)
+    service._sync_linked_sessions(ticket)
+    db.commit()
+    await emit_ticket_update(
+        ticket.organization_id, ticket.id, "run",
+        {"status": str(run.status), "rca": rca is not None},
+    )
 
 
 def _apply_triage(service: TicketService, ticket: Ticket, result) -> None:
@@ -195,8 +337,9 @@ def _fail_run(db, run: InvestigationRun, ticket: Ticket, previous_status: str, e
     run.status = InvestigationRunStatus.FAILED
     run.error = error[:2000]
     run.finished_at = datetime.now(timezone.utc)
-    if ticket is not None and str(ticket.status) == TicketStatus.TRIAGING.value:
-        ticket.status = previous_status
+    transient = (TicketStatus.TRIAGING.value, TicketStatus.INVESTIGATING.value)
+    if ticket is not None and str(ticket.status) in transient:
+        ticket.status = previous_status if previous_status not in transient else TicketStatus.OPEN.value
     db.commit()
 
 

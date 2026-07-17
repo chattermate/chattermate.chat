@@ -24,8 +24,12 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.logger import get_logger
 from app.models.investigation import (
     ACTIVE_RUN_STATUSES,
+    InvestigationEvent,
+    InvestigationHypothesis,
     InvestigationRun,
     InvestigationRunStatus,
+    InvestigationRunType,
+    RCADocument,
 )
 from app.models.ticket import (
     OPEN_TICKET_STATUSES,
@@ -428,6 +432,50 @@ class InvestigationRepository:
             .all()
         )
         return [r[0] for r in rows]
+
+    def latest_run_of_type(self, ticket_id: UUID, run_type: str) -> Optional[InvestigationRun]:
+        return (
+            self.db.query(InvestigationRun)
+            .filter(
+                InvestigationRun.ticket_id == ticket_id,
+                InvestigationRun.run_type == run_type,
+            )
+            .order_by(InvestigationRun.created_at.desc())
+            .first()
+        )
+
+    def list_hypotheses(self, run_id: UUID) -> List[InvestigationHypothesis]:
+        return (
+            self.db.query(InvestigationHypothesis)
+            .filter(InvestigationHypothesis.run_id == run_id)
+            .order_by(InvestigationHypothesis.idx)
+            .all()
+        )
+
+    def list_events(self, run_id: UUID, limit: int = 500) -> List[InvestigationEvent]:
+        return (
+            self.db.query(InvestigationEvent)
+            .filter(InvestigationEvent.run_id == run_id)
+            .order_by(InvestigationEvent.seq)
+            .limit(limit)
+            .all()
+        )
+
+    def latest_rca(self, ticket_id: UUID) -> Optional[RCADocument]:
+        return (
+            self.db.query(RCADocument)
+            .filter(RCADocument.ticket_id == ticket_id)
+            .order_by(RCADocument.version.desc())
+            .first()
+        )
+
+    def next_rca_version(self, ticket_id: UUID) -> int:
+        current = (
+            self.db.query(func.max(RCADocument.version))
+            .filter(RCADocument.ticket_id == ticket_id)
+            .scalar()
+        )
+        return (current or 0) + 1
 
     def reap_orphaned_runs(self) -> int:
         """Fail 'running' rows left behind by a dead worker (startup pass)."""
