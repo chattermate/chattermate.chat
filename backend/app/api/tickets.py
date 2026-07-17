@@ -185,7 +185,13 @@ async def get_settings(
 ):
     check_ticketing_access(db, current_user.organization_id)
     from app.repositories.ticket import TicketSettingsRepository
-    return TicketSettingsRepository(db).get_or_create(current_user.organization_id)
+    settings = TicketSettingsRepository(db).get_or_create(current_user.organization_id)
+    out = TicketSettingsOut.model_validate(settings)
+    # The alert-webhook secret is the sole credential for the intake endpoint —
+    # only settings managers (who can rotate it) may read it back.
+    if not check_permissions(current_user, ["manage_organization"]):
+        out.alert_webhook_secret = None
+    return out
 
 
 @router.put("/settings", response_model=TicketSettingsOut)

@@ -483,16 +483,25 @@ class InvestigationRepository:
         return (current or 0) + 1
 
     def reap_orphaned_runs(self) -> int:
-        """Fail 'running' rows left behind by a dead worker (startup pass)."""
+        """Fail 'running' rows left behind by a dead worker (startup pass), and
+        un-stick their tickets. Without the ticket reset a crash mid-run leaves
+        the ticket in triaging/investigating with no active run — its ai_state
+        would read 'investigating' forever (nothing else recovers it)."""
         orphaned = (
             self.db.query(InvestigationRun)
             .filter(InvestigationRun.status == InvestigationRunStatus.RUNNING)
             .all()
         )
+        transient = (TicketStatus.TRIAGING.value, TicketStatus.INVESTIGATING.value)
         for run in orphaned:
             run.status = InvestigationRunStatus.FAILED
             run.error = "Worker restarted while run was in progress"
             run.finished_at = datetime.now(timezone.utc)
+            # NB: self is InvestigationRepository — query the Ticket directly,
+            # not self.get_by_id (that resolves run ids).
+            ticket = self.db.query(Ticket).filter(Ticket.id == run.ticket_id).first()
+            if ticket is not None and str(ticket.status) in transient:
+                ticket.status = TicketStatus.OPEN.value
         if orphaned:
             self.db.commit()
         return len(orphaned)

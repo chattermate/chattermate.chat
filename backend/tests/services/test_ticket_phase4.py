@@ -229,6 +229,30 @@ class TestRunChaining:
         assert str(chained.run_type) == "investigation"
 
 
+class TestOrphanReap:
+    def test_reap_resets_stranded_ticket(self, db, service, ticket):
+        """A worker crash mid-run must not leave the ticket stuck in a
+        transient status with no active run."""
+        from app.models.investigation import InvestigationRun, InvestigationRunStatus, InvestigationRunType
+        from app.repositories.ticket import InvestigationRepository
+
+        run = InvestigationRun(
+            ticket_id=ticket.id,
+            organization_id=ticket.organization_id,
+            run_type=InvestigationRunType.INVESTIGATION,
+            status=InvestigationRunStatus.RUNNING,
+        )
+        db.add(run)
+        ticket.status = TicketStatus.INVESTIGATING
+        db.commit()
+
+        reaped = InvestigationRepository(db).reap_orphaned_runs()
+        db.expire_all()
+        assert reaped == 1
+        assert str(run.status) == InvestigationRunStatus.FAILED.value
+        assert str(ticket.status) == TicketStatus.OPEN.value
+
+
 class TestAlertParsing:
     def test_grafana_shape(self):
         title, description, severity = _parse_alert(

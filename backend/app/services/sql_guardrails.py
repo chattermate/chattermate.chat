@@ -190,15 +190,51 @@ def validate_sql(
 
     # Masked columns may not be referenced at all — output-name masking alone
     # is alias-bypassable (SELECT email AS x), and blocking references also
-    # prevents value probing via WHERE clauses. SELECT * stays allowed; its
-    # output is masked by name in mask_rows.
+    # prevents value probing via WHERE clauses. SELECT * and t.* stay allowed:
+    # they expand to real column names that mask_rows redacts by name.
     masked = {c.strip().lower() for c in masked_columns or [] if c and c.strip()}
     if masked:
+        # Names that denote a whole row when used as a bare value.
+        scope_names = {t.name.lower() for t in statement.find_all(exp.Table) if t.name}
+        scope_names |= {
+            t.alias.lower() for t in statement.find_all(exp.Table) if t.alias
+        }
+        scope_names |= cte_names
+
         for column in statement.find_all(exp.Column):
-            if (column.name or "").lower() in masked:
+            # A qualified/bare star (t.* or *) nested inside a function or cast
+            # collapses the row into one value (to_jsonb(c.*), (c.*)::text),
+            # defeating name-based masking — only a top-level projection star
+            # is safe. Same for a bare Star node.
+            if isinstance(column.this, exp.Star) and not isinstance(column.parent, exp.Select):
+                return SqlValidationResult(
+                    ok=False,
+                    reason="Row expansion (t.*) inside an expression is not allowed with masked columns",
+                )
+            if (column.name or "").lower() in masked and not isinstance(column.this, exp.Star):
                 return SqlValidationResult(
                     ok=False,
                     reason=f"Column '{column.name}' is masked and cannot be referenced",
+                )
+            # A bare (unqualified) reference to a table/alias/CTE name is a
+            # whole-row value — SELECT customers, to_jsonb(c), c::text, row(c).
+            # These serialize masked fields past name-based masking.
+            if not column.table and (column.name or "").lower() in scope_names:
+                return SqlValidationResult(
+                    ok=False,
+                    reason=(
+                        f"Whole-row reference to '{column.name}' is not allowed with "
+                        "masked columns — select individual columns instead"
+                    ),
+                )
+        for star in statement.find_all(exp.Star):
+            # Safe: top-level projection (SELECT *), the star of a t.* Column
+            # node (handled above), and count(*) — a cardinality marker that
+            # never exposes row values.
+            if not isinstance(star.parent, (exp.Select, exp.Column, exp.Count)):
+                return SqlValidationResult(
+                    ok=False,
+                    reason="Row expansion (*) inside an expression is not allowed with masked columns",
                 )
 
     statement = _force_limit(statement, max_rows)

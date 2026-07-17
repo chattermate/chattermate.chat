@@ -185,6 +185,37 @@ class TestMaskedColumns:
     def test_unmasked_columns_fine(self):
         assert check("SELECT id, full_name FROM customers", masked=["email"]).ok
 
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            # Whole-row serialization collapses masked fields into one value
+            # that name-based masking can't see — all must be blocked.
+            "SELECT to_jsonb(t) FROM customers t",
+            "SELECT row_to_json(customers) FROM customers",
+            "SELECT customers FROM customers",
+            "SELECT array_agg(customers) FROM customers",
+            "SELECT hstore(customers) FROM customers",
+            "SELECT CAST(customers AS text) FROM customers",
+            "SELECT customers::text FROM customers",
+            "SELECT to_json(c.*) FROM customers c",
+            "SELECT (c.*)::text FROM customers c",
+        ],
+    )
+    def test_whole_row_serialization_blocked(self, sql):
+        assert not check(sql, masked=["email"]).ok
+
+    def test_whole_row_allowed_without_masking(self):
+        # No masked columns → whole-row serialization is fine.
+        assert check("SELECT to_jsonb(t) FROM customers t", masked=[]).ok
+
+    def test_star_and_count_still_allowed_with_masking(self):
+        # SELECT * / t.* expand to real column names (mask_rows redacts them);
+        # count(*) is a cardinality marker, not row data.
+        assert check("SELECT * FROM customers", masked=["email"]).ok
+        assert check("SELECT c.* FROM customers c", masked=["email"]).ok
+        assert check("SELECT count(*) FROM customers", masked=["email"]).ok
+        assert check("SELECT array_agg(id) FROM customers", masked=["email"]).ok
+
     def test_mask_rows_output(self):
         rows = mask_rows(
             ["id", "Email", "name"],

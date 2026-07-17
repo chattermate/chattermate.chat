@@ -28,6 +28,7 @@ from app.core.logger import get_logger
 from app.core.security import decrypt_api_key
 from app.database import SessionLocal
 from app.models.investigation import (
+    HypothesisStatus,
     InvestigationRun,
     InvestigationRunStatus,
     InvestigationRunType,
@@ -45,6 +46,10 @@ logger = get_logger(__name__)
 RUN_POLL_INTERVAL_SECONDS = 15
 LIFECYCLE_POLL_INTERVAL_SECONDS = 300
 TRIAGE_WALL_SECONDS = 120
+# Fallbacks when a run row / settings row leaves a budget unset (mirrors the
+# model server_defaults so behaviour can't drift between them).
+DEFAULT_MAX_WALL_SECONDS = 600
+DEFAULT_AUTO_RESOLVE_CONFIDENCE = 0.85
 
 
 async def _build_triage_context(db, service: TicketService, ticket: Ticket):
@@ -174,7 +179,7 @@ async def _process_triage(db, run, service: TicketService, ticket: Ticket, agent
     if (
         str(run.trigger) == InvestigationTrigger.AUTO_ON_CREATE.value
         and settings_row.auto_investigate_on_create
-        and (settings_row.investigation_mcp_tool_ids or [])
+        and _has_investigation_sources(db, ticket, settings_row)
     ):
         service.enqueue_run(
             ticket,
@@ -216,20 +221,25 @@ async def _apply_autonomy(
     summary = rca.remediation or rca.conclusion or rca.summary or ""
     if not summary.strip():
         return "none"
-    has_validated = any(str(h.status) == "validated" for h in hypotheses)
+    has_validated = any(str(h.status) == HypothesisStatus.VALIDATED.value for h in hypotheses)
     confidence = rca.confidence or 0.0
+    # Explicit None check — a configured 0.0 threshold must not fall back to
+    # the default via `or`.
+    threshold = settings_row.min_confidence_to_auto_resolve
+    if threshold is None:
+        threshold = DEFAULT_AUTO_RESOLVE_CONFIDENCE
 
     if (
         level >= 3
         and not partial
         and has_validated
-        and confidence >= (settings_row.min_confidence_to_auto_resolve or 0.85)
+        and confidence >= threshold
         and service.can_notify_customer(ticket)
     ):
         try:
             await service.resolve(
                 ticket,
-                outcome="fixed",
+                outcome=ResolutionOutcome.FIXED,
                 resolution_summary=summary,
                 customer_message=rca.customer_summary,
                 actor_type=TicketActorType.AI,
@@ -246,6 +256,25 @@ async def _apply_autonomy(
         confidence=confidence,
     )
     return "proposed"
+
+
+def _has_investigation_sources(db, ticket: Ticket, settings_row) -> bool:
+    """Whether the org has anything for an investigation to gather evidence
+    from — MCP connectors OR a guardrailed DB connector. Auto-chaining on MCP
+    alone would silently skip DB-connector-only orgs."""
+    if settings_row.investigation_mcp_tool_ids or []:
+        return True
+    from app.models.ticket_db_connector import TicketDBConnector
+    return (
+        db.query(TicketDBConnector.id)
+        .filter(
+            TicketDBConnector.organization_id == ticket.organization_id,
+            TicketDBConnector.enabled == True,  # noqa: E712
+            TicketDBConnector.allowed_tables.isnot(None),
+        )
+        .first()
+        is not None
+    )
 
 
 def _build_db_tools(db, ticket: Ticket, run):
@@ -275,18 +304,46 @@ def _build_db_tools(db, ticket: Ticket, run):
         return None
 
 
+async def _investigate_with_tools(
+    db, run, service, ticket, agent, context_message, settings_row, recorder
+):
+    """Connect the org's investigation tools (MCP connectors + guardrailed DB
+    connectors), run the hypothesis phases, then clean the tools up — ALL in
+    this one coroutine. It's driven under asyncio.wait_for (a child task), so
+    MCP init, every tool call and cleanup must live in the same task or the
+    anyio cancel scope owning the MCP streams gets crossed on timeout."""
+    from app.services.ticket_investigation import run_investigation_phases
+    from app.tools.mcp_manager import MCPToolsManager
+
+    manager = MCPToolsManager()
+    mcp_tools = []
+    try:
+        tool_ids = settings_row.investigation_mcp_tool_ids or []
+        if tool_ids:
+            recorder.record_phase("Connecting investigation connectors")
+            mcp_tools = await manager.initialize_mcp_tools_by_ids(
+                str(ticket.organization_id), tool_ids
+            )
+        db_tools = _build_db_tools(db, ticket, run)
+        if db_tools is not None:
+            mcp_tools = list(mcp_tools) + [db_tools]
+        recorder.map_connectors(mcp_tools)
+        return await run_investigation_phases(
+            db, run, ticket, agent, context_message, mcp_tools, recorder
+        )
+    finally:
+        await manager.cleanup_mcp_tools()
+
+
 async def _process_investigation(db, run, service: TicketService, ticket: Ticket, agent, previous_status: str) -> None:
-    """Hypothesis-driven investigation: connect the org's MCP connectors,
-    generate + test hypotheses (evidence recorded per tool call), then write
-    the RCA document. MCP init and cleanup happen in this same task — the
-    anyio cancel-scope requirement."""
+    """Hypothesis-driven investigation: connect the org's tools, generate +
+    test hypotheses (evidence recorded per tool call), then write the RCA
+    document."""
     from app.repositories.ticket import InvestigationRepository
     from app.services.ticket_investigation import (
         EvidenceRecorder,
-        run_investigation_phases,
         synthesize_and_store_rca,
     )
-    from app.tools.mcp_manager import MCPToolsManager
 
     settings_row = service.settings_repo.get_or_create(ticket.organization_id)
     recorder = EvidenceRecorder(run.id, ticket.id)
@@ -311,43 +368,30 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
         ticket.title, ticket.description, transcript, similar, extra_sections=extra_sections
     )
 
-    manager = MCPToolsManager()
-    mcp_tools = []
     hypotheses = []
     partial = False
     try:
-        tool_ids = settings_row.investigation_mcp_tool_ids or []
-        if tool_ids:
-            recorder.record_phase("Connecting investigation connectors")
-            mcp_tools = await manager.initialize_mcp_tools_by_ids(
-                str(ticket.organization_id), tool_ids
-            )
-        db_tools = _build_db_tools(db, ticket, run)
-        if db_tools is not None:
-            mcp_tools = list(mcp_tools) + [db_tools]
-        recorder.map_connectors(mcp_tools)
+        hypotheses, budget_exhausted = await asyncio.wait_for(
+            _investigate_with_tools(
+                db, run, service, ticket, agent, context_message, settings_row, recorder
+            ),
+            timeout=run.max_wall_seconds or DEFAULT_MAX_WALL_SECONDS,
+        )
+        partial = budget_exhausted
+    except asyncio.TimeoutError:
+        partial = True
         try:
-            hypotheses, budget_exhausted = await asyncio.wait_for(
-                run_investigation_phases(
-                    db, run, ticket, agent, context_message, mcp_tools, recorder
-                ),
-                timeout=run.max_wall_seconds or 600,
-            )
-            partial = budget_exhausted
-        except asyncio.TimeoutError:
-            partial = True
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            hypotheses = InvestigationRepository(db).list_hypotheses(run.id)
-            for hypothesis in hypotheses:
-                if str(hypothesis.status) in ("pending", "testing"):
-                    hypothesis.status = "inconclusive"
-                    hypothesis.conclusion = "Not completed — the run's wall-clock budget was reached."
-            db.commit()
-    finally:
-        await manager.cleanup_mcp_tools()
+            db.rollback()
+        except Exception:
+            pass
+        hypotheses = InvestigationRepository(db).list_hypotheses(run.id)
+        for hypothesis in hypotheses:
+            if str(hypothesis.status) in (
+                HypothesisStatus.PENDING.value, HypothesisStatus.TESTING.value
+            ):
+                hypothesis.status = HypothesisStatus.INCONCLUSIVE.value
+                hypothesis.conclusion = "Not completed — the run's wall-clock budget was reached."
+        db.commit()
 
     run.tool_calls_used = recorder.tool_calls
     rca = await synthesize_and_store_rca(
@@ -461,8 +505,13 @@ async def run_ticket_lifecycle() -> None:
     with SessionLocal() as db:
         service = TicketService(db)
         now = datetime.now(timezone.utc)
+        # defer the pgvector embedding: this hygiene pass never reads it, and
+        # pulling a 384-dim vector per row × up to 500 rows every 5 minutes is
+        # pure waste.
+        from sqlalchemy.orm import defer
         candidates = (
             db.query(Ticket)
+            .options(defer(Ticket.embedding))
             .filter(
                 Ticket.status == TicketStatus.RESOLVED_PENDING_CONFIRMATION.value,
                 Ticket.confirmation_requested_at.isnot(None),
