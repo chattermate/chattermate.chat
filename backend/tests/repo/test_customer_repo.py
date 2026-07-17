@@ -411,3 +411,71 @@ class TestPlaceholderEmails:
             email="1712345@noemail.com", organization_id=test_organization_id)
         result = customer_repo.update_contact(customer.id, email="real@example.com")
         assert result['email_updated'] is True
+
+
+class TestPhoneIdentityHazards:
+    """The ways a phone key can attach a conversation to the wrong row."""
+
+    def test_merged_row_never_owns_a_live_number(self, customer_repo, test_organization_id):
+        """A merged-away row is invisible in People and uneditable — so if it
+        kept a phone, the phone lookup (the FIRST thing every inbound WhatsApp
+        message does) would attach that conversation to a row nobody can see."""
+        survivor = customer_repo.create_customer(
+            email="real@example.com", organization_id=test_organization_id,
+            phone="+447700900111")
+        tombstone = customer_repo.create_customer(
+            email="old@example.com", organization_id=test_organization_id,
+            phone="+447700900222")
+        tombstone.merged_into_customer_id = survivor.id
+        customer_repo.db.commit()
+
+        # The number the tombstone still holds must not resolve to it.
+        assert customer_repo.get_customer_by_phone(
+            "+447700900222", test_organization_id) is None
+
+    def test_inbound_wins_a_race_instead_of_being_dropped(
+            self, customer_repo, test_organization_id, monkeypatch):
+        """A concurrent insert on the phone index must not surface as an
+        exception: process_channel_message swallows it and the customer's
+        message is never answered. The winner's row is the right answer."""
+        from sqlalchemy.exc import IntegrityError
+
+        winner = customer_repo.create_customer(
+            email="919999900001@whatsapp.channel",
+            organization_id=test_organization_id, phone="+919999900001")
+
+        # Simulate losing the race: our lookup saw nothing, the insert collides.
+        calls = {"n": 0}
+        real_create = customer_repo.create_customer
+
+        def racing_create(*args, **kwargs):
+            calls["n"] += 1
+            raise IntegrityError("duplicate key", None, Exception("conflict"))
+
+        monkeypatch.setattr(customer_repo, "create_customer", racing_create)
+        monkeypatch.setattr(customer_repo, "_resolve_existing",
+                            lambda e, o, p: None if calls["n"] == 0 else winner)
+
+        resolved = customer_repo.get_or_create_customer(
+            email="919999900001@whatsapp.channel",
+            organization_id=test_organization_id, phone="+919999900001")
+
+        assert resolved.id == winner.id
+        assert calls["n"] == 1
+
+    def test_race_with_no_winner_still_raises(
+            self, customer_repo, test_organization_id, monkeypatch):
+        """The retry must not swallow a genuine IntegrityError — if re-resolving
+        finds nobody, the constraint fired for a reason we don't understand."""
+        from sqlalchemy.exc import IntegrityError
+
+        def always_conflicts(*args, **kwargs):
+            raise IntegrityError("duplicate key", None, Exception("conflict"))
+
+        monkeypatch.setattr(customer_repo, "create_customer", always_conflicts)
+        monkeypatch.setattr(customer_repo, "_resolve_existing", lambda e, o, p: None)
+
+        with pytest.raises(IntegrityError):
+            customer_repo.get_or_create_customer(
+                email="x@whatsapp.channel", organization_id=test_organization_id,
+                phone="+919999900009")

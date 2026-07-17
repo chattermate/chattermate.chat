@@ -226,3 +226,74 @@ def test_mark_customer_is_gated_on_identity(repo, db, test_organization_id):
     repo.update_person(test_organization_id, anon.id, phone="+916366602824")
     db.refresh(anon)
     assert repo.is_identified(anon) is True
+
+
+def _whatsapp_conversation(db, org_id, customer, wa_id="919999900001"):
+    """A WhatsApp conversation — what makes a person reachable BY PHONE, and so
+    what makes their phone load-bearing for inbound routing."""
+    from app.models.channels.channel_conversation import ChannelConversation
+    conv = ChannelConversation(
+        channel_account_id=uuid4(), channel_type="whatsapp",
+        external_conversation_id=wa_id, external_user_id=wa_id,
+        session_id=uuid4(), organization_id=org_id, customer_id=customer.id)
+    db.add(conv); db.commit()
+    return conv
+
+
+class TestPhoneAsSoleIdentityKey:
+    """A WhatsApp person starts keyed by both their @whatsapp.channel address
+    and their phone. Once a capture upgrades that address to a real email, the
+    phone is all that's left — nothing about a WhatsApp message carries email."""
+
+    def test_editing_the_only_key_is_refused(self, repo, db, test_organization_id):
+        person = _customer(db, test_organization_id, email="w@corp.com",
+                           phone="+919999900001")
+        _whatsapp_conversation(db, test_organization_id, person)
+
+        updated, error = repo.update_person(
+            test_organization_id, person.id, phone="+919999900002")
+
+        assert error is not None and "split them into a second person" in error
+        db.refresh(person)
+        assert person.phone == "+919999900001"   # unchanged
+
+    def test_clearing_the_only_key_is_refused(self, repo, db, test_organization_id):
+        person = _customer(db, test_organization_id, email="w@corp.com",
+                           phone="+919999900001")
+        _whatsapp_conversation(db, test_organization_id, person)
+
+        _, error = repo.update_person(test_organization_id, person.id, phone="")
+
+        assert error is not None
+        db.refresh(person)
+        assert person.phone == "+919999900001"
+
+    def test_still_editable_while_the_channel_address_survives(
+            self, repo, db, test_organization_id):
+        """Not yet captured: they're still findable by 919…@whatsapp.channel,
+        so the phone is a correctable detail, not their only identity."""
+        person = _customer(db, test_organization_id,
+                           email="919999900001@whatsapp.channel",
+                           phone="+919999900001")
+        _whatsapp_conversation(db, test_organization_id, person)
+
+        _, error = repo.update_person(
+            test_organization_id, person.id, phone="+919999900002")
+
+        assert error is None
+        db.refresh(person)
+        assert person.phone == "+919999900002"
+
+    def test_widget_person_phone_stays_freely_editable(
+            self, repo, db, test_organization_id):
+        """No phone-keyed channel: a typo'd number is just a typo. This is the
+        common case and must not be caught by the guard."""
+        person = _customer(db, test_organization_id, email="w@corp.com",
+                           phone="+919999900001")
+
+        _, error = repo.update_person(
+            test_organization_id, person.id, phone="+919999900002")
+
+        assert error is None
+        db.refresh(person)
+        assert person.phone == "+919999900002"

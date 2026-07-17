@@ -18,13 +18,19 @@ from sqlalchemy.orm import Session
 import re
 
 from sqlalchemy import and_, func, or_, desc, exists
+from sqlalchemy.exc import IntegrityError
 from typing import Optional, Tuple, List
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 
-from app.repositories.customer import CustomerRepository
+from app.repositories.customer import (
+    CustomerRepository,
+    PHONE_KEYED_CHANNELS,
+    PHONE_KEYED_CHANNEL_SUFFIXES,
+)
 from app.utils.phone import normalize_phone
 from app.models.customer import Customer, LeadStage
+from app.models.channels.channel_conversation import ChannelConversation
 from app.models.chat_history import ChatHistory
 from app.models.lead_capture import LeadCaptureResponse
 from app.models.session_to_agent import SessionToAgent
@@ -84,7 +90,11 @@ class PeopleRepository:
     # them: a real email (not the @noemail.com widget placeholder, not a
     # synthesized {id}@{channel}.channel address), a phone, or a qualifying
     # lead capture. Deliberately NOT name — name is never an identity key.
-    _REAL_EMAIL = and_(Customer.email.notilike("%@noemail.com"),
+    # The SQL restatement of CustomerRepository.is_placeholder_email — the one
+    # copy that cannot be avoided, since this runs in the database. Its three
+    # clauses mirror that function's three: empty, @noemail.com, .channel.
+    _REAL_EMAIL = and_(Customer.email != "",
+                       Customer.email.notilike("%@noemail.com"),
                        Customer.email.notilike("%.channel"))
 
     def _identified(self, qualified_cid):
@@ -319,15 +329,42 @@ class PeopleRepository:
 
     @staticmethod
     def is_identified(customer: Customer, qualified: bool = False) -> bool:
-        """Python-side twin of the SQL identity rule, for single records."""
-        email = customer.email or ""
-        real_email = "@noemail.com" not in email and not email.endswith(".channel")
+        """Python-side twin of the SQL identity rule (_identified), for single
+        records. Defers to is_placeholder_email so the rule for what counts as
+        a real address lives in exactly one place — _REAL_EMAIL below is its
+        unavoidable SQL restatement, and a third hand-rolled copy here is how
+        the three quietly drift apart."""
+        real_email = not CustomerRepository.is_placeholder_email(customer.email)
         return bool(real_email or customer.phone or qualified)
 
     def _has_qualified_capture(self, customer_id: UUID) -> bool:
         return self.db.query(
             exists().where(and_(LeadCaptureResponse.customer_id == customer_id,
                                 LeadCaptureResponse.qualified.is_(True)))
+        ).scalar()
+
+    def _phone_is_sole_identity_key(self, customer: Customer) -> bool:
+        """True when losing the phone would make this person unfindable.
+
+        A WhatsApp/SMS person starts out keyed by BOTH their synthesized
+        `{number}@whatsapp.channel` address and their phone. Once a capture
+        upgrades that address to a real email (which update_contact allows
+        precisely because the phone is a key), the phone is all that is left
+        for inbound routing: nothing about a WhatsApp message carries an email.
+
+        Change or clear the phone in that state and their next message finds
+        nobody and mints a duplicate — the exact failure the phone key exists
+        to prevent.
+        """
+        if not customer.phone:
+            return False
+        if (customer.email or "").endswith(PHONE_KEYED_CHANNEL_SUFFIXES):
+            return False  # still findable by their synthesized address
+        return self.db.query(
+            exists().where(and_(
+                ChannelConversation.customer_id == customer.id,
+                ChannelConversation.channel_type.in_(PHONE_KEYED_CHANNELS),
+            ))
         ).scalar()
 
     def update_person(self, org_id: UUID, customer_id: UUID,
@@ -338,29 +375,40 @@ class PeopleRepository:
         Unlike the automatic capture paths (set-if-absent), a human may
         CORRECT a wrong phone — overwrite is allowed, clearing via "" too.
         Returns (customer, error): error is a human-readable refusal (bad
-        format / number belongs to someone else), customer is None only when
-        the record doesn't exist.
+        format / number belongs to someone else / it is their only identity),
+        customer is None only when the record doesn't exist.
         """
         customer = self.get_customer(org_id, customer_id)
         if not customer:
             return None, None
 
         if phone is not None:
-            if phone.strip() == "":
-                customer.phone = None
-            else:
-                normalized = normalize_phone(phone)
-                if not normalized:
-                    return customer, "Enter the number in international format, e.g. +91 63666 02824"
+            normalized = None if phone.strip() == "" else normalize_phone(phone)
+            if phone.strip() != "" and not normalized:
+                return customer, "Enter the number in international format, e.g. +91 63666 02824"
+            if normalized != customer.phone and self._phone_is_sole_identity_key(customer):
+                return customer, (
+                    "This number is how their WhatsApp messages find them — changing "
+                    "it here would split them into a second person. Ask them to "
+                    "message from the new number instead."
+                )
+            if normalized is not None:
                 other = CustomerRepository(self.db).get_customer_by_phone(normalized, org_id)
                 if other and other.id != customer.id:
                     return customer, "That number already belongs to another person"
-                customer.phone = normalized
+            customer.phone = normalized
 
         if full_name is not None and full_name.strip():
             customer.full_name = full_name.strip()
 
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            # The uniqueness check above is not atomic with the write: two
+            # agents assigning the same number concurrently both pass it. The
+            # index is the real arbiter — report its refusal the same way.
+            self.db.rollback()
+            return customer, "That number already belongs to another person"
         self.db.refresh(customer)
         return customer, None
 

@@ -642,6 +642,57 @@ class TestOutboundConversation:
 
         adapter.send_template.assert_awaited_once()
 
+    def test_picked_person_at_someone_elses_number_is_refused(self, client, db, routed):
+        """`to` and `customer_id` arrive as independent fields. Binding Alice to
+        Bob's number is unrecoverable: Bob's reply resolves BY PHONE to Bob, so
+        history splits and the thread never appears on the profile it claims."""
+        from app.repositories.customer import CustomerRepository
+        repo = CustomerRepository(db)
+        alice = repo.create_customer(email="alice@example.com",
+                                     organization_id=routed.organization_id,
+                                     full_name="Alice")
+        repo.create_customer(email="bob@example.com",
+                             organization_id=routed.organization_id,
+                             full_name="Bob", phone="+916366602824")
+
+        r, adapter = self._send(client, routed, customer_id=str(alice.id))
+
+        assert r.status_code == 400
+        assert "already belongs to Bob" in r.json()["detail"]
+        adapter.send_template.assert_not_awaited()
+
+    def test_picked_person_with_a_different_number_is_refused(self, client, db, routed):
+        """Their own number is on file and it isn't this one — silently sending
+        anyway is how a person acquires a second, unlinked identity."""
+        from app.repositories.customer import CustomerRepository
+        alice = CustomerRepository(db).create_customer(
+            email="alice@example.com", organization_id=routed.organization_id,
+            full_name="Alice", phone="+911111111111")
+
+        r, adapter = self._send(client, routed, customer_id=str(alice.id))
+
+        assert r.status_code == 400
+        assert "different number on file" in r.json()["detail"]
+        adapter.send_template.assert_not_awaited()
+
+    def test_picked_person_without_a_number_adopts_the_typed_one(self, client, db, routed):
+        """The drawer's real use: message a known person at a number you type.
+        No conflict, so it binds and backfills — no duplicate row."""
+        from app.models.customer import Customer
+        from app.repositories.customer import CustomerRepository
+        alice = CustomerRepository(db).create_customer(
+            email="alice@example.com", organization_id=routed.organization_id,
+            full_name="Alice")
+
+        r, _ = self._send(client, routed, customer_id=str(alice.id))
+
+        assert r.status_code == 200
+        db.refresh(alice)
+        assert alice.phone == "+916366602824"
+        # And no second person was minted for the number.
+        assert db.query(Customer).filter(
+            Customer.phone == "+916366602824").count() == 1
+
     def test_window_reports_expired_until_they_reply(self, client, db, routed):
         from app.channels import get_adapter
         from app.channels.base import WindowStatus

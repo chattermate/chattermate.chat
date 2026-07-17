@@ -185,11 +185,28 @@ def _merge_customer(db: Session, source_id, target) -> None:
     # same-mapper UPDATEs by primary key (random UUIDs), so without the flush
     # the target could gain the phone while the source still holds it in the
     # database, failing the whole merge intermittently.
-    if source.phone and not target.phone:
+    #
+    # The clear is UNCONDITIONAL, even when the target already has a number and
+    # there is nowhere to move it to. A merged row is invisible in People and
+    # resolves to the target everywhere a human looks — but phone lookup is the
+    # FIRST thing get_or_create_customer tries, so a tombstone left holding a
+    # live number would silently capture that person's next WhatsApp message
+    # onto a row nobody can see or edit.
+    if source.phone:
         moved_phone = source.phone
         source.phone = None
         db.flush()
-        target.phone = moved_phone
+        if not target.phone:
+            target.phone = moved_phone
+        elif target.phone != moved_phone:
+            # Two real numbers, one column: the survivor keeps theirs. Logged
+            # because it is the one thing this merge cannot preserve — a
+            # customer_identifiers table is what would (see the plan's
+            # evolution path), not a second column.
+            logger.info(
+                f"Merge {source.id} -> {target.id}: dropped second phone "
+                f"{moved_phone} (target keeps {target.phone})"
+            )
     source.merged_into_customer_id = target.id
     source.is_active = False
 

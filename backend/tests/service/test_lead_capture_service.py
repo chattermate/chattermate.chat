@@ -222,3 +222,35 @@ def test_merge_moves_phone_to_the_survivor(db, test_agent, test_organization_id,
     assert anonymous.merged_into_customer_id == identified.id
     assert identified.phone == "+916366602824"   # carried to the survivor
     assert anonymous.phone is None               # moved, not copied
+
+
+def test_merge_never_leaves_a_live_number_on_the_tombstone(
+        db, test_agent, test_organization_id, config):
+    """The branch the move test doesn't reach: when BOTH rows have a phone
+    there is nowhere to move the source's to. It must still be cleared —
+    a merged row is invisible in People, but phone lookup is the first thing
+    every inbound WhatsApp message does, so a number left on it would capture
+    that conversation onto a row nobody can see or edit."""
+    from app.repositories.customer import CustomerRepository
+    from app.services.lead_capture import record_lead_capture
+
+    repo = CustomerRepository(db)
+    identified = repo.create_customer(
+        email="priya@example.com", organization_id=test_organization_id,
+        full_name="Priya", phone="+447700900111")     # work mobile
+    anonymous = repo.create_customer(
+        email="916366602824@whatsapp.channel", organization_id=test_organization_id,
+        phone="+916366602824")                        # personal mobile
+
+    record_lead_capture(
+        db, config, organization_id=test_organization_id, agent_id=test_agent.id,
+        customer_id=anonymous.id, session_id=None,
+        lead_data={"email": "priya@example.com"}, summary=None, consent=True)
+
+    db.refresh(identified)
+    db.refresh(anonymous)
+    assert anonymous.merged_into_customer_id == identified.id
+    assert identified.phone == "+447700900111"   # survivor keeps theirs
+    assert anonymous.phone is None               # dropped, not left live
+    # And the dropped number resolves to nobody, rather than to a tombstone.
+    assert repo.get_customer_by_phone("+916366602824", test_organization_id) is None

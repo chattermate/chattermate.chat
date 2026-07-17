@@ -115,15 +115,34 @@ def _resolve_customer(db: Session, account: ChannelAccount, phone: str,
                       customer_id: Optional[UUID], customer_name: Optional[str]):
     """The person this conversation belongs to.
 
-    An explicitly picked person is trusted (their phone is set if absent);
-    otherwise resolution reuses the same repository policy as inbound — which
-    is exactly what guarantees their later reply lands on this same customer.
+    A picked person must actually OWN the number being messaged — the two
+    arrive as independent fields, and binding a conversation to one person at
+    another person's number is unrecoverable: the reply resolves by phone to
+    somebody else, so history splits across two customers and the thread never
+    appears on the profile of the person actually in it.
+
+    set_phone_if_absent's skip-and-log is right for the automatic inbound
+    paths, where there is nobody to tell. Here there is a human waiting on a
+    response, so a conflict is refused instead of silently ignored.
     """
     repo = CustomerRepository(db)
     if customer_id is not None:
         customer = repo.get_by_id(customer_id)
         if customer is None or customer.organization_id != account.organization_id:
             raise OutboundError(404, "Customer not found")
+        if customer.phone and customer.phone != phone:
+            raise OutboundError(
+                400,
+                f"{customer.full_name or 'That person'} has a different number on "
+                f"file. Send to their number, or update it on their profile first.",
+            )
+        owner = repo.get_customer_by_phone(phone, account.organization_id)
+        if owner is not None and owner.id != customer.id:
+            raise OutboundError(
+                400,
+                f"{phone} already belongs to {owner.full_name or 'another person'}. "
+                f"Pick them instead, or clear the number from their profile.",
+            )
         repo.set_phone_if_absent(customer, phone)
         return customer
 

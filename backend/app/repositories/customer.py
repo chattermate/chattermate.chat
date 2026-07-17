@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.models.customer import Customer
 from app.utils.phone import normalize_phone
@@ -22,15 +23,19 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Synthesized addresses (`{platform_id}@{channel}.channel`) whose channel also
-# declares the customer's phone on every inbound message — i.e. where the
-# platform id IS the number, so identity resolves by phone and the address is
-# redundant. Keep in step with the adapters that set profile['phone']:
-# app/channels/whatsapp.py and app/channels/sms/base.py.
+# Channels that declare the customer's phone on EVERY inbound message — i.e.
+# where the platform id IS the number, so identity resolves by phone and the
+# synthesized `{platform_id}@{channel}.channel` address is redundant. Keep in
+# step with the adapters that set profile['phone']: app/channels/whatsapp.py
+# and app/channels/sms/base.py.
 #
 # Telegram is deliberately absent. It can learn a phone (share-contact button)
-# but never sends it with a message, so it is still found by this address.
-PHONE_KEYED_CHANNEL_SUFFIXES = ('@whatsapp.channel', '@sms.channel')
+# but never sends it with a message, so it is still found by its address.
+PHONE_KEYED_CHANNELS = ('whatsapp', 'sms')
+
+# The same fact expressed as address suffixes. Derived, not spelled out twice —
+# the two must never disagree about which channels these are.
+PHONE_KEYED_CHANNEL_SUFFIXES = tuple(f'@{c}.channel' for c in PHONE_KEYED_CHANNELS)
 
 
 class CustomerRepository:
@@ -62,11 +67,18 @@ class CustomerRepository:
 
         Callers must pass the output of normalize_phone — the column stores
         only that shape, so an unnormalized value would silently never match.
+
+        Merged-away rows are excluded, as everywhere else a person is resolved
+        (lead_capture, People). It matters more here than anywhere: this is the
+        FIRST lookup on every inbound WhatsApp/SMS message, so a tombstone
+        still holding a number would capture that conversation onto a row
+        People hides and no drawer can edit.
         """
         try:
             return self.db.query(Customer).filter(
                 Customer.phone == phone,
-                Customer.organization_id == organization_id
+                Customer.organization_id == organization_id,
+                Customer.merged_into_customer_id.is_(None)
             ).first()
         except Exception as e:
             logger.error(f"Error getting customer by phone: {str(e)}")
@@ -170,6 +182,40 @@ class CustomerRepository:
         # than splitting one person into two spellings. Idempotent for the
         # already-normalized values today's callers pass.
         phone = normalize_phone(phone)
+        customer = self._resolve_existing(email, organization_id, phone)
+        if customer is not None:
+            return customer
+
+        try:
+            return self.create_customer(email, organization_id, full_name, phone=phone)
+        except IntegrityError:
+            # Lost a race: a concurrent request created this person between our
+            # lookup and our insert. Either unique key can be the one that
+            # fired — (organization_id, email) or the partial index on
+            # (organization_id, phone) — and the phone one is new, so a
+            # WhatsApp customer messaging while an agent starts an outbound
+            # send to them now collides on DIFFERENT emails, which the email
+            # constraint never caught. Re-resolve: the winner's row is the
+            # right answer. Without this the exception reaches
+            # process_channel_message's blanket except and the customer's
+            # message is silently never answered.
+            self.db.rollback()
+            customer = self._resolve_existing(email, organization_id, phone)
+            if customer is None:
+                raise
+            return customer
+
+    def _resolve_existing(
+        self,
+        email: str,
+        organization_id: UUID,
+        phone: str | None
+    ) -> Customer | None:
+        """Phone first, then email — the resolution order, without the create.
+
+        Split out so the post-IntegrityError retry re-runs exactly the lookup
+        that just lost the race, rather than a second, drifting copy of it.
+        """
         by_phone = self.get_customer_by_phone(phone, organization_id) if phone else None
 
         if by_phone is not None:
@@ -188,7 +234,7 @@ class CustomerRepository:
 
         customer = self.get_customer_by_email(email, organization_id)
         if not customer:
-            return self.create_customer(email, organization_id, full_name, phone=phone)
+            return None
 
         if phone and self.set_phone_if_absent(customer, phone):
             try:
