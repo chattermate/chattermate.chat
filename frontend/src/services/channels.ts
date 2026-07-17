@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
+import type { SignupChannel } from '@/utils/metaSdk'
 
 // Types
 export type ChannelType =
@@ -87,6 +88,19 @@ export interface EmbeddedSignupConfig {
   graph_version: string
 }
 
+/** A Facebook Page offered in the Messenger signup picker (no token — that
+ * stays sealed in signup_token on the server). */
+export interface MessengerSignupPage {
+  id: string
+  name: string
+}
+
+export interface MessengerSignupPages {
+  pages: MessengerSignupPage[]
+  /** Opaque blob carrying the Pages' access tokens back to the connect step */
+  signup_token: string
+}
+
 export interface ChannelAccount {
   id: string
   channel_type: ChannelType
@@ -145,9 +159,9 @@ const channelsService = {
     return response.data
   },
 
-  /** Whether to offer Embedded Signup, and the ids the Meta SDK needs */
-  async getEmbeddedSignupConfig(): Promise<EmbeddedSignupConfig> {
-    const response = await api.get('/channels/meta/embedded-signup-config')
+  /** Whether to offer a Meta login flow for this channel, and the ids the SDK needs */
+  async getEmbeddedSignupConfig(channel: SignupChannel = 'whatsapp'): Promise<EmbeddedSignupConfig> {
+    const response = await api.get('/channels/meta/embedded-signup-config', { params: { channel } })
     return response.data
   },
 
@@ -161,9 +175,22 @@ const channelsService = {
     return response.data
   },
 
-  /** Connect a Facebook Page for Messenger */
+  /** Connect a Facebook Page for Messenger (manual page token) */
   async connectMessenger(payload: { page_id: string; page_access_token: string }): Promise<ChannelAccount> {
     const response = await api.post('/channels/meta/messenger', payload)
+    return response.data
+  },
+
+  /** Step 1 of Facebook Login for Business: trade the code for the Pages the
+   * customer can connect. Their tokens stay sealed in signup_token. */
+  async listMessengerSignupPages(code: string): Promise<MessengerSignupPages> {
+    const response = await api.post('/channels/meta/messenger/signup/pages', { code })
+    return response.data
+  },
+
+  /** Step 2: connect the picked Page; the backend uses the token it sealed, not ours */
+  async connectMessengerSignup(payload: { signup_token: string; page_id: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/meta/messenger/signup/connect', payload)
     return response.data
   },
 

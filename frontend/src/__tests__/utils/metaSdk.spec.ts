@@ -75,4 +75,14 @@ describe('signupLoginOptions', () => {
       extras: { setup: {} },
     })
   })
+
+  it('sends the WhatsApp setup extra for WhatsApp', () => {
+    expect(signupLoginOptions('CFG1', 'whatsapp').extras).toEqual({ setup: {} })
+  })
+
+  it('omits the setup extra for Facebook Login for Business', () => {
+    // extras.setup opens Embedded Signup; Messenger/Instagram must not send it.
+    expect(signupLoginOptions('CFG1', 'messenger')).not.toHaveProperty('extras')
+    expect(signupLoginOptions('CFG1', 'instagram')).not.toHaveProperty('extras')
+  })
 })

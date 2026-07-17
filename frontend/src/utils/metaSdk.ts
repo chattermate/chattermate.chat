@@ -30,6 +30,9 @@ const TRUSTED_ORIGINS = [
   'https://business.facebook.com',
 ]
 
+/** Channels connectable through a Meta login popup. */
+export type SignupChannel = 'whatsapp' | 'messenger' | 'instagram'
+
 export interface SignupSession {
   waba_id: string
   phone_number_id: string
@@ -101,9 +104,11 @@ export const loadMetaSdk = (appId: string, graphVersion: string): Promise<Facebo
 /**
  * Read a signup result out of a postMessage, or null if it isn't one.
  *
- * The SDK reports the created WABA and phone number through postMessage while
- * the authorization code comes back via the FB.login callback, so the two
- * halves must be correlated by the caller.
+ * WhatsApp Embedded Signup only: it reports the created WABA and phone number
+ * through postMessage while the authorization code comes back via the FB.login
+ * callback, so the two halves must be correlated by the caller. Facebook Login
+ * for Business (Messenger/Instagram) has no postMessage — its code alone is
+ * enough — so this is not part of that flow.
  */
 export const parseSignupMessage = (event: MessageEvent): SignupSession | null => {
   if (!TRUSTED_ORIGINS.includes(event.origin)) return null
@@ -120,10 +125,16 @@ export const parseSignupMessage = (event: MessageEvent): SignupSession | null =>
   }
 }
 
-/** Options for the Embedded Signup popup. */
-export const signupLoginOptions = (configId: string) => ({
+/**
+ * Options for the Meta login popup that onboards a channel.
+ *
+ * `extras.setup` is WhatsApp Embedded Signup's own parameter — Facebook Login
+ * for Business is a plain permissions grant and takes none, so passing it would
+ * open the wrong flow.
+ */
+export const signupLoginOptions = (configId: string, channel: SignupChannel = 'whatsapp') => ({
   config_id: configId,
   response_type: 'code',
   override_default_response_type: true,
-  extras: { setup: {} },
+  ...(channel === 'whatsapp' ? { extras: { setup: {} } } : {}),
 })
