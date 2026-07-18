@@ -173,4 +173,38 @@ const generateTitle = computed(() =>
   opacity: 0.6;
   cursor: default;
 }
+
+/* ── Mobile ─────────────────────────────────────────────────────────────
+   Three actions wrapped 2 + 1, leaving a stranded Regenerate button. Below
+   768px they share one row as equal thirds. */
+@media (max-width: 768px) {
+  .generate-bar {
+    padding: 14px 16px;
+    gap: 14px;
+  }
+
+  .generate-bar__actions {
+    width: 100%;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 12px 8px;
+    /* 44px minimum touch target (Apple HIG / WCAG 2.5.8) */
+    min-height: 44px;
+    white-space: nowrap;
+  }
+}
+
+/* Labels alone would overflow three-up on the narrowest phones */
+@media (max-width: 400px) {
+  .btn {
+    font-size: 12.5px;
+    gap: 5px;
+  }
+}
 </style>

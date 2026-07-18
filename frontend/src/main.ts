@@ -23,6 +23,7 @@ import VueApexCharts from 'vue3-apexcharts'
 import App from './App.vue'
 import router from './router'
 import { initializeFirebase } from './services/firebase'
+import { setupPWA } from './pwa/register'
 import 'floating-vue/dist/style.css'
 import FloatingVue from 'floating-vue'
 
@@ -51,6 +52,7 @@ app.component('font-awesome-icon', FontAwesomeIcon)
 app.use(FloatingVue)
 
 initializeFirebase()
+setupPWA()
 
 // Initialize GTM only if enterprise module is available
 // Cannot use useEnterpriseFeatures() here — runs before Vue app mounts

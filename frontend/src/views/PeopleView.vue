@@ -22,6 +22,7 @@ import PersonDetailDrawer from '@/components/people/PersonDetailDrawer.vue'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { subscriptionStorage } from '@/utils/storage'
+import { getInitials } from '@/utils/text'
 
 const { hasEnterpriseModule } = useEnterpriseFeatures()
 
@@ -47,6 +48,17 @@ const stage = ref<'all' | 'visitor' | 'lead' | 'customer'>('all')
 const view = ref<'identified' | 'anonymous'>('identified')
 const search = ref('')
 const selectedId = ref<string | null>(null)
+
+// One definition per column: `label` heads the desktop table, `short` labels
+// the same value inside the mobile card (which has no table header to name it).
+const COLUMNS = {
+  person: { label: 'Person', short: 'Person' },
+  stage: { label: 'Stage', short: 'Stage' },
+  source: { label: 'Source', short: 'Source' },
+  captured: { label: 'Captured', short: 'Captured' },
+  activity: { label: 'Last activity', short: 'Active' },
+  sync: { label: 'Sync', short: 'Sync' },
+} as const
 
 const STAGES = [
   { value: 'all', label: 'All' },
@@ -89,8 +101,9 @@ watch(search, () => {
 })
 
 function initials(p: PersonListItem): string {
+  // Anonymous visitors get the dashed empty avatar, not letters
   if (p.is_anonymous || !p.name) return ''
-  return p.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+  return getInitials(p.name, '')
 }
 function stageLabel(s: string) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function fmtDate(d?: string | null) {
@@ -186,11 +199,11 @@ onMounted(() => {
 
     <!-- table -->
     <div class="pv-table">
-      <div class="pv-thead">
-        <span>Person</span><span>Stage</span><span>Source</span><span>Captured</span><span>Last activity</span><span>Sync</span>
+      <div class="pv-thead rcards-head">
+        <span>{{ COLUMNS.person.label }}</span><span>{{ COLUMNS.stage.label }}</span><span>{{ COLUMNS.source.label }}</span><span>{{ COLUMNS.captured.label }}</span><span>{{ COLUMNS.activity.label }}</span><span>{{ COLUMNS.sync.label }}</span>
       </div>
-      <button v-for="p in items" :key="p.id" class="pv-row" @click="selectedId = p.id">
-        <span class="pv-person">
+      <button v-for="p in items" :key="p.id" class="pv-row rcards-row" @click="selectedId = p.id">
+        <span class="pv-person rcards-primary">
           <span class="pv-avatar" :class="{ anon: p.is_anonymous }">{{ initials(p) }}</span>
           <span class="pv-person-text">
             <span class="pv-name">{{ p.name || (p.is_anonymous ? 'Anonymous visitor' : (p.email || '—')) }}</span>
@@ -201,14 +214,26 @@ onMounted(() => {
             </span>
           </span>
         </span>
-        <span class="pv-stage">
+        <span class="pv-stage rcards-badge">
           <span class="pv-badge" :class="p.lead_stage">{{ stageLabel(p.lead_stage) }}</span>
           <span v-if="p.qualified" class="pv-star" title="Qualified">★</span>
         </span>
-        <span class="pv-source" :title="sourceTitle(p)">{{ sourceLabel(p) }}</span>
-        <span>{{ fmtDate(p.captured_at) }}</span>
-        <span>{{ fmtDate(p.last_activity) }}</span>
-        <span class="pv-sync">{{ p.synced ? 'Synced' : '—' }}</span>
+        <span class="pv-source rcards-meta" :title="sourceTitle(p)">
+          <span class="rcards-label">{{ COLUMNS.source.short }}</span>
+          <span class="rcards-value">{{ sourceLabel(p) }}</span>
+        </span>
+        <span class="pv-captured rcards-meta">
+          <span class="rcards-label">{{ COLUMNS.captured.short }}</span>
+          <span class="rcards-value">{{ fmtDate(p.captured_at) }}</span>
+        </span>
+        <span class="pv-activity rcards-meta">
+          <span class="rcards-label">{{ COLUMNS.activity.short }}</span>
+          <span class="rcards-value">{{ fmtDate(p.last_activity) }}</span>
+        </span>
+        <span class="pv-sync rcards-meta">
+          <span class="rcards-label">{{ COLUMNS.sync.short }}</span>
+          <span class="rcards-value">{{ p.synced ? 'Synced' : '—' }}</span>
+        </span>
       </button>
       <div v-if="!loading && items.length === 0" class="pv-empty">No people match this filter.</div>
       <div v-if="loading" class="pv-empty">Loading…</div>
@@ -265,7 +290,12 @@ onMounted(() => {
 .pv-phone { color: var(--muted); font-variant-numeric: tabular-nums; }
 .pv-search { flex: 1; min-width: 240px; max-width: 340px; padding: 9px 13px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 13.5px; background: var(--bg); color: var(--text); }
 .pv-table { background: var(--surface); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden; }
-.pv-thead, .pv-row { display: grid; grid-template-columns: minmax(0,2.4fr) 1fr 1.2fr .9fr .9fr .7fr; gap: 14px; align-items: center; padding: 12px 20px; }
+.pv-thead, .pv-row { padding: 12px 20px; }
+/* Desktop-only grid: below 769px the shared .rcards-* card layout takes over,
+   and a scoped rule here would outrank that global utility. */
+@media (min-width: 769px) {
+  .pv-thead, .pv-row { display: grid; grid-template-columns: minmax(0,2.4fr) 1fr 1.2fr .9fr .9fr .7fr; gap: 14px; align-items: center; }
+}
 .pv-thead { font-size: 10.5px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color); background: var(--o05); }
 .pv-row { width: 100%; border: none; background: transparent; border-bottom: 1px solid var(--border-color); cursor: pointer; text-align: left; font-size: 13.5px; color: var(--text); }
 .pv-row:hover { background: var(--o05); }
@@ -289,4 +319,39 @@ onMounted(() => {
 .pv-pager { display: flex; align-items: center; gap: 10px; }
 .pv-pager button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; cursor: pointer; }
 .pv-pager button:disabled { opacity: .4; cursor: default; }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────
+   The row/card switch itself comes from the shared .rcards-* utility in
+   components.css; only People-specific sizing lives here. */
+@media (max-width: 768px) {
+  .people-view { padding: 16px 12px; }
+  .pv-header { margin-bottom: 18px; }
+  .pv-title { font-size: 22px; }
+  .pv-sub { font-size: 13.5px; }
+
+  /* Four KPIs as a 2×2 grid — all visible, no horizontal scroll */
+  .pv-kpis { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .pv-kpi { padding: 12px 14px; border-radius: 12px; }
+  .pv-kpi-label { margin-bottom: 6px; }
+  .pv-kpi-value { font-size: 22px; }
+
+  .pv-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+
+  /* Five stage tabs don't fit 375px — swipe them instead of wrapping */
+  .pv-tabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .pv-tabs::-webkit-scrollbar { display: none; }
+  .pv-tab { flex-shrink: 0; padding: 8px 12px; }
+
+  /* 16px keeps iOS from zooming the field on focus */
+  .pv-search { max-width: none; min-width: 0; width: 100%; padding: 11px 13px; font-size: 16px; }
+
+  .pv-row { padding: 14px 16px; }
+  .pv-name { font-size: 15px; }
+  .pv-avatar { width: 38px; height: 38px; font-size: 13px; }
+
+  /* Sync is CRM plumbing — not worth a phone row */
+  .pv-sync { display: none; }
+
+  .pv-foot { padding: 12px 16px; }
+}
 </style>

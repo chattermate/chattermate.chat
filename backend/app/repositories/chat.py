@@ -277,6 +277,7 @@ class ChatRepository:
         status: Optional[str] = None,
         user_id: Optional[str | UUID] = None,
         user_groups: Optional[List[str]] = None,
+        include_unassigned: bool = False,
         organization_id: Optional[str | UUID] = None,
         user_name: Optional[str] = None,
         filter_user_id: Optional[str | UUID] = None,
@@ -356,18 +357,22 @@ class ChatRepository:
         if date_to:
             query = query.filter(ChatHistory.created_at <= date_to)
         
-        # Use OR condition for user_id and user_groups
-        if user_id and user_groups:
-            query = query.filter(
-                or_(
-                    SessionToAgent.user_id == user_id,
-                    SessionToAgent.group_id.in_(user_groups)
-                )
-            )
-        elif user_id:
-            query = query.filter(SessionToAgent.user_id == user_id)
-        elif user_groups:
-            query = query.filter(SessionToAgent.group_id.in_(user_groups))
+        # Scope to what this user may see: their own sessions, their groups'
+        # queue, and — with view_unassigned_chats — the unclaimed AI queue.
+        # Callers who may see everything pass none of these.
+        visibility = []
+        if user_id:
+            visibility.append(SessionToAgent.user_id == user_id)
+        if user_groups:
+            visibility.append(SessionToAgent.group_id.in_(user_groups))
+        if include_unassigned:
+            # Nobody has taken it yet — the AI is still handling it. group_id
+            # is irrelevant: a chat transferred to another group is still
+            # claimable, and it is exactly what "unassigned" means.
+            visibility.append(SessionToAgent.user_id.is_(None))
+
+        if visibility:
+            query = query.filter(or_(*visibility))
 
         # Group by and order
         query = query.group_by(
@@ -415,10 +420,18 @@ class ChatRepository:
     async def check_session_access(
         self,
         session_id: str | UUID,
-        user_id: str | UUID,
-        user_groups: List[str]
+        user_id: Optional[str | UUID],
+        user_groups: Optional[List[str]],
+        include_unassigned: bool = False
     ) -> bool:
-        """Check if user has access to a chat session"""
+        """Check if user has access to a chat session.
+
+        Mirrors the visibility filter in get_recent_chats — the two must agree,
+        or a session shows in the list and 404s when opened. A None user_id
+        means "this caller has no assigned-chat grant"; it must never be
+        compared against session.user_id, since both being NULL would silently
+        hand over every unclaimed session.
+        """
         if isinstance(session_id, str):
             session_id = UUID(session_id)
         if isinstance(user_id, str):
@@ -429,13 +442,18 @@ class ChatRepository:
             .filter(SessionToAgent.session_id == session_id)
             .first()
         )
-        
+
         if not session:
             return False
-            
-        return (
-            session.user_id == user_id or
-            (session.group_id and str(session.group_id) in user_groups)
+
+        if include_unassigned and session.user_id is None:
+            return True
+
+        if user_id is not None and session.user_id == user_id:
+            return True
+
+        return bool(
+            session.group_id and user_groups and str(session.group_id) in user_groups
         )
 
     async def get_chat_detail(

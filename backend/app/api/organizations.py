@@ -93,25 +93,33 @@ async def create_organization(
                 db.flush()
             permissions[name] = perm
 
-        # Create default roles
+        # Create default roles. Exactly one must be is_default: nothing enforces
+        # that, and get_default_role() just takes .first() with no ordering, so
+        # two defaults means a newly invited user lands on whichever row the
+        # database happens to yield. It has to be Agent — the org creator is
+        # given Admin explicitly below.
         admin_role = Role(
             name="Admin",
             description="Full access to all features",
             organization_id=organization.id,
-            is_default=True
+            is_default=False
         )
         admin_role.permissions = list(permissions.values())  # All permissions
         db.add(admin_role)
 
         agent_role = Role(
             name="Agent",
-            description="Access to assigned chats",
+            description="Access to assigned chats and the unclaimed AI queue",
             organization_id=organization.id,
             is_default=True
         )
         agent_role.permissions = [
             permissions["view_assigned_chats"],
-            permissions["manage_assigned_chats"]
+            permissions["manage_assigned_chats"],
+            # Lets an agent see and claim chats the AI is still handling
+            permissions["view_unassigned_chats"],
+            # Read-only directory access; mutating a person still needs more
+            permissions["view_people"]
         ]
         db.add(agent_role)
         db.flush()

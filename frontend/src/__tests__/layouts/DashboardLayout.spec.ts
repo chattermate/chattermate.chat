@@ -43,7 +43,10 @@ vi.mock('@/composables/useAuth', () => ({
 }))
 
 vi.mock('@/composables/useNotifications', () => ({
-  useNotifications: vi.fn()
+  useNotifications: vi.fn(() => ({
+    hasPermission: { value: false },
+    enableNotifications: vi.fn()
+  }))
 }))
 
 vi.mock('@/composables/useEnterpriseFeatures', () => ({

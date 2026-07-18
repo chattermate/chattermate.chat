@@ -340,7 +340,7 @@ onMounted(async () => {
 
       <!-- Agents table -->
       <div class="people-table">
-        <div class="table-head">
+        <div class="table-head rcards-head">
           <div class="th th-agent">AGENT</div>
           <div class="th">STATUS</div>
           <div class="th">ROLE</div>
@@ -350,9 +350,9 @@ onMounted(async () => {
           <div class="th"></div>
         </div>
 
-        <div v-for="row in filteredRows" :key="row.id" class="table-row">
+        <div v-for="row in filteredRows" :key="row.id" class="table-row rcards-row">
           <!-- AGENT -->
-          <div class="cell-agent">
+          <div class="cell-agent rcards-primary">
             <div class="avatar">
               <img
                 v-if="resolveAvatar(row.profile_pic)"
@@ -379,7 +379,7 @@ onMounted(async () => {
           </div>
 
           <!-- STATUS -->
-          <div>
+          <div class="rcards-badge">
             <span class="status-pill" :class="row.is_online ? 'online' : 'offline'">
               <span class="pill-dot"></span>
               {{ row.is_online ? 'Available' : 'Offline' }}
@@ -387,14 +387,16 @@ onMounted(async () => {
           </div>
 
           <!-- ROLE -->
-          <div>
+          <div class="rcards-meta">
+            <span class="rcards-label">Role</span>
             <span class="role-badge2" :class="{ admin: row.is_admin }">
               {{ row.role || '—' }}
             </span>
           </div>
 
           <!-- TEAMS -->
-          <div class="cell-teams">
+          <div class="cell-teams rcards-meta">
+            <span class="rcards-label">Teams</span>
             <template v-if="row.groups.length">
               <span v-for="(t, i) in row.groups" :key="i" class="team-chip">{{ t }}</span>
             </template>
@@ -402,7 +404,8 @@ onMounted(async () => {
           </div>
 
           <!-- LIVE LOAD -->
-          <div>
+          <div class="rcards-meta">
+            <span class="rcards-label">Load</span>
             <span v-if="!row.capacity" class="load-dash">—</span>
             <div v-else class="load">
               <div class="pips">
@@ -423,7 +426,10 @@ onMounted(async () => {
           </div>
 
           <!-- RESOLVED -->
-          <div class="cell-resolved">{{ row.resolved_chats }}</div>
+          <div class="cell-resolved rcards-meta">
+            <span class="rcards-label">Resolved</span>
+            <span class="rcards-value">{{ row.resolved_chats }}</span>
+          </div>
 
           <!-- MENU -->
           <Menu as="div" class="row-menu">
@@ -608,13 +614,17 @@ onMounted(async () => {
   padding: 18px 0 6px;
 }
 
-.table-head,
-.table-row {
-  display: grid;
-  grid-template-columns:
-    minmax(220px, 2.2fr) 130px 92px minmax(150px, 1.5fr) 132px 88px 40px;
-  gap: 14px;
-  align-items: center;
+/* Desktop-only grid: below 769px the shared .rcards-* card layout takes over,
+   and a scoped rule here would outrank that global utility. */
+@media (min-width: 769px) {
+  .table-head,
+  .table-row {
+    display: grid;
+    grid-template-columns:
+      minmax(220px, 2.2fr) 130px 92px minmax(150px, 1.5fr) 132px 88px 40px;
+    gap: 14px;
+    align-items: center;
+  }
 }
 
 .table-head {
@@ -1052,4 +1062,75 @@ onMounted(async () => {
   background: var(--o10);
   color: var(--text);
 }
-</style> 
+
+/* ── Mobile ──────────────────────────────────────────────────────────────
+   The table→card switch comes from the shared .rcards-* utility in
+   components.css; only Human Agents specifics live here. */
+@media (max-width: 768px) {
+  /* Four KPIs as a 2×2 grid — all visible, no horizontal scroll */
+  .kpi-strip {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .kpi-card {
+    padding: 12px 14px;
+    border-radius: 12px;
+  }
+
+  .kpi-value {
+    font-size: 22px;
+    margin: 6px 0 2px;
+  }
+
+  .kpi-sub {
+    font-size: 11.5px;
+  }
+
+  .people-table {
+    padding: 6px 0;
+  }
+
+  .table-row {
+    padding: 14px 16px;
+  }
+
+  /* Line 1 is full with the avatar, name and status pill, so the row menu
+     tails the meta line instead of wrapping on its own */
+  .row-menu {
+    order: 5;
+    margin-left: auto;
+    justify-self: auto;
+  }
+
+  .menu-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Compact meta line: the labels already identify each value */
+  .role-badge2,
+  .team-chip {
+    font-size: 11px;
+    padding: 1px 7px;
+  }
+
+  .load-label,
+  .cell-resolved {
+    font-size: 12px;
+  }
+
+  /* Centred numeral is a table affordance; inline in a card it reads as a gap */
+  .cell-resolved {
+    text-align: left;
+    font-size: 12px;
+    font-family: var(--font-sans);
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  .cell-teams {
+    flex-wrap: wrap;
+  }
+}
+</style>

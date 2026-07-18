@@ -90,6 +90,14 @@ def require_permissions(*required_permissions: str):
 # never matched anyone.
 INBOX_PERMISSIONS = ("view_all_chats", "manage_all_chats")
 
+# The people directory. view_people is the read-only grant handed to agents;
+# the org-wide chat permissions imply it, so admins keep access unchanged.
+PEOPLE_READ_PERMISSIONS = ("view_people",) + INBOX_PERMISSIONS
+
+# Mutating a person (marking a customer, editing attributes) stays with the
+# roles that can already manage the whole inbox.
+PEOPLE_WRITE_PERMISSIONS = INBOX_PERMISSIONS
+
 
 def has_any_permission(user: User, permissions: Iterable[str]) -> bool:
     """True when the user holds AT LEAST ONE of `permissions`.
@@ -418,9 +426,11 @@ async def get_unified_chat_auth(request: Request, db: Session = Depends(get_db))
                             headers={"WWW-Authenticate": "Bearer"},
                         )
                     pat_permissions = {p.name for p in current_user.role.permissions}
-                    pat_can_view_all = "view_all_chats" in pat_permissions
-                    pat_can_view_assigned = "view_assigned_chats" in pat_permissions
-                    if not (pat_can_view_all or pat_can_view_assigned):
+                    pat_is_super_admin = "super_admin" in pat_permissions
+                    pat_can_view_all = pat_is_super_admin or "view_all_chats" in pat_permissions
+                    pat_can_view_assigned = pat_is_super_admin or "view_assigned_chats" in pat_permissions
+                    pat_can_view_unassigned = pat_is_super_admin or "view_unassigned_chats" in pat_permissions
+                    if not (pat_can_view_all or pat_can_view_assigned or pat_can_view_unassigned):
                         raise HTTPException(status_code=403, detail="Not enough permissions")
                     return {
                         "auth_type": "pat",
@@ -428,7 +438,8 @@ async def get_unified_chat_auth(request: Request, db: Session = Depends(get_db))
                         "user_id": current_user.id,
                         "current_user": current_user,
                         "can_view_all": pat_can_view_all,
-                        "can_view_assigned": pat_can_view_assigned
+                        "can_view_assigned": pat_can_view_assigned,
+                        "can_view_unassigned": pat_can_view_unassigned
                     }
 
                 payload = verify_token(access_token)
@@ -464,22 +475,26 @@ async def get_unified_chat_auth(request: Request, db: Session = Depends(get_db))
 
                 # Check chat permissions
                 user_permissions = {p.name for p in current_user.role.permissions}
-                can_view_all = "view_all_chats" in user_permissions
-                can_view_assigned = "view_assigned_chats" in user_permissions
+                is_super_admin = "super_admin" in user_permissions
+                can_view_all = is_super_admin or "view_all_chats" in user_permissions
+                can_view_assigned = is_super_admin or "view_assigned_chats" in user_permissions
+                # The unclaimed AI queue — sessions no human has taken yet
+                can_view_unassigned = is_super_admin or "view_unassigned_chats" in user_permissions
 
-                if not (can_view_all or can_view_assigned):
+                if not (can_view_all or can_view_assigned or can_view_unassigned):
                     raise HTTPException(
                         status_code=403,
                         detail="Not enough permissions"
                     )
-                
+
                 return {
                     "auth_type": "jwt",
                     "organization_id": current_user.organization_id,  # Keep as UUID
                     "user_id": current_user.id,
                     "current_user": current_user,
                     "can_view_all": can_view_all,
-                    "can_view_assigned": can_view_assigned
+                    "can_view_assigned": can_view_assigned,
+                    "can_view_unassigned": can_view_unassigned
                 }
             except HTTPException:
                 raise

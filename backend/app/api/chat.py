@@ -78,23 +78,26 @@ async def get_recent_chats(
         
         # For JWT auth, use permissions from auth_info
         current_user = auth_info['current_user']
-        can_view_all = auth_info['can_view_all']
-        can_view_assigned = auth_info['can_view_assigned']
-        
+        can_view_all = auth_info.get('can_view_all', False)
+        can_view_assigned = auth_info.get('can_view_assigned', False)
+        can_view_unassigned = auth_info.get('can_view_unassigned', False)
+
         # Get user's group IDs
         user_group_ids = [str(group.id) for group in current_user.groups]
         logger.debug(f"User groups: {user_group_ids}")
         logger.debug(f"current_user.user_id: {current_user.id}")
-        
-        # If user can only view assigned chats, filter by user_id and groups
-        if not can_view_all and can_view_assigned:
+
+        # Scoped inbox: own sessions + group queue (view_assigned_chats) and/or
+        # the unclaimed AI queue (view_unassigned_chats)
+        if not can_view_all:
             return chat_repo.get_recent_chats(
                 skip=skip,
                 limit=limit,
                 agent_id=agent_id,
                 status=status,
-                user_id=current_user.id,  # Pass UUID directly
-                user_groups=user_group_ids,
+                user_id=current_user.id if can_view_assigned else None,
+                user_groups=user_group_ids if can_view_assigned else None,
+                include_unassigned=can_view_unassigned,
                 organization_id=organization_id,
                 user_name=user_name,
                 filter_user_id=user_id,  # New parameter for filtering by specific user
@@ -102,7 +105,7 @@ async def get_recent_chats(
                 date_from=date_from,
                 date_to=date_to
             )
-        
+
         # For users with view_all_chats permission
         return chat_repo.get_recent_chats(
             skip=skip,
@@ -157,18 +160,21 @@ async def get_chat_detail(
         else:
             # For JWT auth, use permissions from auth_info
             current_user = auth_info['current_user']
-            can_view_all = auth_info['can_view_all']
-            can_view_assigned = auth_info['can_view_assigned']
+            can_view_all = auth_info.get('can_view_all', False)
+            can_view_assigned = auth_info.get('can_view_assigned', False)
+            can_view_unassigned = auth_info.get('can_view_unassigned', False)
 
             # Get user's group IDs
             user_group_ids = [str(group.id) for group in current_user.groups]
 
-            # If user can only view assigned chats, verify access
-            if not can_view_all and can_view_assigned:
+            # Scoped readers must own the session, share its group, or — with
+            # view_unassigned_chats — find it unclaimed
+            if not can_view_all:
                 has_access = await chat_repo.check_session_access(
                     session_id=session_id_uuid,
-                    user_id=current_user.id,
-                    user_groups=user_group_ids
+                    user_id=current_user.id if can_view_assigned else None,
+                    user_groups=user_group_ids if can_view_assigned else [],
+                    include_unassigned=can_view_unassigned
                 )
                 if not has_access:
                     raise HTTPException(

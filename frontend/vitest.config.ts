@@ -8,6 +8,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // vite-plugin-pwa virtual module doesn't exist under vitest
+      'virtual:pwa-register': fileURLToPath(
+        new URL('./src/__tests__/stubs/pwa-register.ts', import.meta.url)
+      ),
     },
   },
   test: {

@@ -393,4 +393,48 @@ function answerPreview(md: string): string {
   font-weight: 500;
   cursor: pointer;
 }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────
+   The status pill plus two icon buttons took ~200px of a 375px row, leaving
+   the question a column so narrow it wrapped a word per line. Below 768px
+   the controls drop to their own line and the question gets the full width. */
+@media (max-width: 768px) {
+  .faq-card__row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .faq-card__body {
+    flex: 1 1 auto;
+  }
+
+  .faq-card__controls {
+    flex: 1 0 100%;
+    justify-content: flex-end;
+  }
+
+  .faq-card__question {
+    font-size: 15px;
+  }
+
+  /* 44px minimum touch target (Apple HIG / WCAG 2.5.8) */
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .pill {
+    min-height: 44px;
+  }
+
+  .edit-actions {
+    flex-wrap: wrap;
+  }
+
+  .btn-save,
+  .btn-cancel {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}
 </style>

@@ -23,6 +23,9 @@ import { socketService } from '@/services/socket'
 import { toast } from 'vue-sonner'
 import api from '@/services/api'
 import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/endChat'
+import { getInitials } from '@/utils/text'
+import { canTakeOverChat } from '@/utils/chatState'
+import { permissionChecks } from '@/utils/permissions'
 
 interface Props {
   chatInfo: ChatDetail | null
@@ -55,14 +58,13 @@ const currentUserId = userService.getUserId()
 // Messenger, ...) the ask is dropped, so the confirmation must not promise it.
 const askRating = computed(() => canRequestRating(props.chatInfo?.channel))
 
-const canTakeOver = computed(() => {
-  if (!props.chatInfo) return false
-  return (
-    (props.chatInfo.status === 'transferred' && 
-     (!props.chatInfo.user_id || props.chatInfo.user_id !== currentUserId)) ||
-    (props.chatInfo.status === 'open' && !props.chatInfo.user_id)
-  )
-})
+// Shared with the chat pane so both surfaces offer takeover on the same rule.
+// This drops main's `status === 'transferred' && user_id !== currentUserId`
+// arm deliberately: takeover_session returns False once user_id is set, so
+// that arm only ever rendered a button that failed on click.
+const canTakeOver = computed(
+  () => canTakeOverChat(props.chatInfo) && permissionChecks.canTakeOverChats()
+)
 
 const canEndChat = computed(() => {
   if (!props.chatInfo) return false
@@ -213,6 +215,11 @@ const metaDataEntries = computed(() => {
     }))
 })
 
+// Initials for the mobile hero avatar
+const customerInitials = computed(() =>
+  getInitials(props.chatInfo?.customer?.full_name || props.chatInfo?.customer?.email)
+)
+
 // Load users for reassign dropdown
 const loadUsers = async () => {
   if (loadingUsers.value) return
@@ -268,6 +275,13 @@ const confirmReassign = async () => {
     </div>
     
     <div class="chat-info-content">
+      <!-- Mobile-only hero per the app design; hidden on desktop -->
+      <div class="customer-hero">
+        <div class="customer-avatar">{{ customerInitials }}</div>
+        <div class="customer-hero-name">{{ chatInfo.customer.full_name || chatInfo.customer.email || 'Customer' }}</div>
+        <div v-if="chatInfo.customer.email" class="customer-hero-email">{{ chatInfo.customer.email }}</div>
+      </div>
+
       <div class="info-section">
         <h4>Customer</h4>
         <div class="info-item">
@@ -455,6 +469,46 @@ const confirmReassign = async () => {
 
 .chat-info-content {
   padding: var(--space-lg);
+}
+
+/* Mobile-only customer hero (hidden on desktop) */
+.customer-hero {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-sm) 0 var(--space-lg);
+  border-bottom: 1px solid var(--o07);
+  margin-bottom: var(--space-lg);
+}
+
+.customer-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--grad-purple-teal);
+  color: var(--on-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: var(--font-weight-bold);
+  margin-bottom: 14px;
+}
+
+.customer-hero-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-display);
+  color: var(--text);
+}
+
+.customer-hero-email {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 4px;
 }
 
 .info-section {
@@ -676,6 +730,45 @@ const confirmReassign = async () => {
 .cancel-btn:hover {
   background: var(--o10);
   color: var(--text);
+}
+
+/* Mobile: full-screen "Details" page (class applied by ConversationsView) */
+@media (max-width: 768px) {
+  .chat-info-sidebar.mobile-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-fullscreen-page);
+    height: 100vh;
+    height: 100dvh;
+    border-left: none;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chat-info-sidebar.mobile-fullscreen .chat-info-header {
+    padding-top: calc(var(--space-md) + var(--safe-top));
+  }
+
+  .chat-info-sidebar.mobile-fullscreen .chat-info-content {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: calc(var(--space-lg) + var(--safe-bottom));
+  }
+
+  .chat-info-sidebar.mobile-fullscreen .customer-hero {
+    display: flex;
+  }
+
+  .chat-info-sidebar.mobile-fullscreen .close-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-info-sidebar.mobile-fullscreen .action-btn {
+    min-height: 48px;
+    font-size: 15px;
+  }
 }
 
 .confirm-btn {

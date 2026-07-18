@@ -15,8 +15,8 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import ConversationsList from '@/components/conversations/ConversationsList.vue'
 import ConversationFilters from '@/components/conversations/ConversationFilters.vue'
@@ -27,12 +27,45 @@ import { agentService } from '@/services/agent'
 import api from '@/services/api'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import NewWhatsAppConversation from '@/components/conversations/NewWhatsAppConversation.vue'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 
 const route = useRoute()
+const router = useRouter()
+const { isMobile } = useBreakpoint()
 // Deep-link target session (e.g. from analytics "Sessions Needing Attention")
 const initialSessionId = ref<string | null>(
   typeof route.query.session === 'string' ? route.query.session : null
 )
+
+// On mobile the ?session= query drives which pane is visible (list vs chat) so
+// the hardware back button walks chat → list. It's also kept reactive for push
+// deep-links into an already-open app.
+watch(
+  () => route.query.session,
+  (session) => {
+    if (typeof session === 'string' && session) {
+      initialSessionId.value = session
+    } else {
+      initialSessionId.value = null
+      if (isMobile.value) {
+        conversationsListRef.value?.clearSelectedChat()
+      }
+    }
+  }
+)
+
+// Mobile pane state (list vs full-screen chat vs full-screen info)
+const mobileChatOpen = computed(() => isMobile.value && !!route.query.session)
+const mobileInfoOpen = computed(() => mobileChatOpen.value && route.query.info === '1')
+
+// Open a session: on mobile through the URL (history-backed), on desktop locally
+const openSession = (sessionId: string) => {
+  if (isMobile.value) {
+    router.push({ query: { ...route.query, session: sessionId } })
+  } else {
+    initialSessionId.value = sessionId
+  }
+}
 
 const conversations = ref<Conversation[]>([])
 const loading = ref(true)
@@ -50,7 +83,7 @@ const loadWhatsAppAccounts = async () => {
 
 const onConversationStarted = (sessionId: string) => {
   showNewConversation.value = false
-  initialSessionId.value = sessionId
+  openSession(sessionId)
   loadConversations(1)
 }
 // Select the matching tab when deep-linking (closed sessions live under the "Closed" tab)
@@ -261,13 +294,40 @@ const handleChatSelected = (chatDetail: ChatDetail) => {
 }
 
 const closeChatInfo = () => {
+  if (mobileInfoOpen.value) {
+    router.back()
+    return
+  }
   showChatInfo.value = false
   // Don't clear selectedChatInfo so we can reopen it
 }
 
 const toggleChatInfo = () => {
-  if (selectedChatInfo.value) {
+  if (!selectedChatInfo.value) return
+  if (isMobile.value) {
+    openMobileInfo()
+  } else {
     showChatInfo.value = !showChatInfo.value
+  }
+}
+
+// Full-screen info page on mobile, pushed so the back button closes it
+const openMobileInfo = () => {
+  if (selectedChatInfo.value && !mobileInfoOpen.value) {
+    router.push({ query: { ...route.query, info: '1' } })
+  }
+}
+
+// Back from the full-screen chat pane — always lands on the conversations
+// list. router.back() only when the previous entry IS the list (normal tap
+// flow); otherwise (push deep link, analytics link, external entry) clear the
+// query in place so the chevron doesn't leave the Inbox.
+const handleChatBack = () => {
+  const previous = window.history.state?.back
+  if (typeof previous === 'string' && previous.startsWith('/conversations') && !previous.includes('session=')) {
+    router.back()
+  } else {
+    router.replace({ query: { ...route.query, session: undefined, info: undefined } })
   }
 }
 
@@ -278,6 +338,9 @@ const handleChatClosed = (_sessionId?: string) => {
   if (conversationsListRef.value) {
     conversationsListRef.value.clearSelectedChat()
   }
+  if (mobileChatOpen.value) {
+    router.replace({ query: { ...route.query, session: undefined, info: undefined } })
+  }
 }
 
 
@@ -285,6 +348,7 @@ const handleChatClosed = (_sessionId?: string) => {
 
 <template>
   <DashboardLayout :hideHeader="true">
+    <div class="conversations-page" :class="{ 'mobile-chat-open': mobileChatOpen }">
     <header class="page-header">
       <div class="header-content">
         <h1>Conversations</h1>
@@ -335,7 +399,7 @@ const handleChatClosed = (_sessionId?: string) => {
     />
 
     <div class="main-content">
-      <ConversationsList 
+      <ConversationsList
         ref="conversationsListRef"
         :conversations="conversations"
         :loading="loading"
@@ -347,16 +411,21 @@ const handleChatClosed = (_sessionId?: string) => {
         :total-count="totalItems"
         :show-chat-info="showChatInfo && !!selectedChatInfo"
         :initial-session-id="initialSessionId"
+        :mobile-pane="mobileChatOpen ? 'chat' : 'list'"
         @refresh="loadConversations(1)"
         @update-filter="updateFilter"
         @load-more="loadMoreConversations"
         @chat-updated="handleChatUpdated"
         @chat-selected="handleChatSelected"
+        @select="openSession"
+        @back="handleChatBack"
+        @info="openMobileInfo"
         @clear-unread="() => {}"
       />
-      
+
       <ChatInfoPanel
-        v-if="showChatInfo"
+        v-if="isMobile ? mobileInfoOpen : showChatInfo"
+        :class="{ 'mobile-fullscreen': mobileInfoOpen }"
         :chatInfo="selectedChatInfo"
         :users="users"
         @close="closeChatInfo"
@@ -365,14 +434,22 @@ const handleChatClosed = (_sessionId?: string) => {
         @chatClosed="handleChatClosed"
       />
     </div>
+    </div>
   </DashboardLayout>
 </template>
 
 <style scoped>
+.conversations-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .main-content {
   display: grid;
   grid-template-columns: 1fr 350px;
-  height: calc(100vh - 80px);
+  flex: 1;
+  min-height: 0;
   width: 100%;
   overflow: hidden;
   position: relative;
@@ -385,7 +462,7 @@ const handleChatClosed = (_sessionId?: string) => {
 }
 
 .page-header {
-  padding: 14px var(--space-lg);
+  padding: calc(14px + var(--safe-top)) var(--space-lg) 14px;
   border-bottom: 1px solid var(--o08);
   background: var(--bg2);
 }
@@ -469,14 +546,23 @@ const handleChatClosed = (_sessionId?: string) => {
     gap: var(--space-sm);
     align-items: flex-start;
   }
-  
+
   .header-actions {
     align-self: flex-end;
   }
-  
+
   .main-content {
-    height: calc(100vh - 120px);
     grid-template-columns: 1fr !important;
+  }
+
+  /* Full-screen chat pane: the chat's own header replaces the page header */
+  .conversations-page.mobile-chat-open .page-header {
+    display: none;
+  }
+
+  /* The desktop info toggle lives in the page header; on mobile it's in the chat */
+  .info-toggle-btn {
+    display: none;
   }
 }
 
