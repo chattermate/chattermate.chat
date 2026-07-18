@@ -306,6 +306,30 @@ async def _enrich_customer_name(db: Session, adapter, account: ChannelAccount,
         logger.error(f"Failed to update customer name: {e}")
 
 
+def _agent_changed(session_record, agent_id) -> bool:
+    """Whether this channel now answers with a different agent than the one the
+    open session was started with.
+
+    A session is bound to one agent: its stored history, and the AI runtime's
+    own memory for that session id, belong to that agent. Carrying it over to a
+    newly configured agent makes the new agent answer out of the previous one's
+    retrieved knowledge, and splits the inbox list in two — the conversations
+    query groups by agent *and* session, while the detail view keys on session
+    alone, so the same thread appears twice and neither row opens the other.
+
+    A missing session likewise needs a new one. A human-handled or
+    transferred chat is left alone: rotating it would drop the agent out of a
+    live conversation mid-reply.
+    """
+    if session_record is None:
+        return True
+    if session_record.user_id is not None:
+        return False
+    if session_record.status == SessionStatus.TRANSFERRED:
+        return False
+    return str(session_record.agent_id) != str(agent_id)
+
+
 def _get_or_create_session(db: Session, account: ChannelAccount, inbound: InboundMessage,
                            agent_id, customer_id: str, org_id: str):
     """Find the open session for this platform conversation or start a new one."""
@@ -314,8 +338,17 @@ def _get_or_create_session(db: Session, account: ChannelAccount, inbound: Inboun
 
     conversation = conv_repo.get_active(account.id, inbound.external_conversation_id)
     if conversation is not None:
-        conv_repo.touch_inbound(conversation)
-        return session_repo.get_session(conversation.session_id), conversation
+        session_record = session_repo.get_session(conversation.session_id)
+        if not _agent_changed(session_record, agent_id):
+            conv_repo.touch_inbound(conversation)
+            return session_record, conversation
+        # Retire the thread so the newly configured agent starts clean. Closing
+        # the session is what makes get_active skip it, so the create below
+        # opens a fresh conversation for the same platform thread.
+        logger.info(
+            f"Agent changed for {account.channel_type} account {account.id}; "
+            f"starting a new session for conversation {inbound.external_conversation_id}")
+        session_repo.close_session(conversation.session_id)
 
     session_id = str(uuid.uuid4())
     session_record = session_repo.create_session(
