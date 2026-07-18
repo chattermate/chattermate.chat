@@ -26,6 +26,39 @@ export const isShopifyEmbedded = (): boolean => {
   }
 }
 
+/**
+ * Offer the new build rather than forcing it: an agent mid-reply should not
+ * have the page reloaded under them. vue-sonner is imported lazily so the
+ * registration path stays off the startup critical path.
+ */
+async function promptForUpdate(reload: (reloadPage?: boolean) => Promise<void>) {
+  try {
+    const { toast } = await import('vue-sonner')
+    toast('A new version of ChatterMate is available', {
+      description: 'Reload to pick up the latest changes.',
+      duration: Number.POSITIVE_INFINITY,
+      action: {
+        label: 'Reload',
+        onClick: async () => {
+          // reload() hands SKIP_WAITING to the waiting worker, but its own
+          // page-refresh depends on a controllerchange that doesn't fire
+          // reliably when the SW already claimed this client — verified: the
+          // new worker activated and precached the new build while the open
+          // document kept running the old CSS. Reload explicitly so the
+          // document actually picks the new assets up.
+          try {
+            await reload(true)
+          } finally {
+            window.location.reload()
+          }
+        },
+      },
+    })
+  } catch (err) {
+    console.error('Failed to show update prompt:', err)
+  }
+}
+
 export function setupPWA() {
   if (!('serviceWorker' in navigator) || isShopifyEmbedded()) return
 
@@ -47,7 +80,12 @@ export function setupPWA() {
     })
     .catch(() => {})
 
-  registerSW({ immediate: true })
+  const updateSW = registerSW({
+    immediate: true,
+    onNeedRefresh() {
+      promptForUpdate(updateSW)
+    },
+  })
 }
 
 /**

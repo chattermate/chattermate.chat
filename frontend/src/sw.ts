@@ -34,8 +34,16 @@ import { SW_MESSAGE, conversationSessionUrl } from './pwa/pushContract'
 
 declare let self: ServiceWorkerGlobalScope
 
-// Activate updated workers immediately (auto-update flow)
-self.skipWaiting()
+// A new worker waits until the page asks it to take over, so an agent is
+// never reloaded mid-reply. The page prompts and then posts SKIP_WAITING.
+// Calling skipWaiting() unconditionally here activated the new worker while
+// the open tab kept running the previous bundle's CSS and JS — the app looked
+// stale until someone happened to reload.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
 clientsClaim()
 
 precacheAndRoute(self.__WB_MANIFEST)
