@@ -22,12 +22,14 @@ import pytest
 
 from app.channels.base import InboundMessage
 from app.models.channels import ChannelConversation
+from app.models.agent import AgentType
 from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.repositories.channels import (
     ChannelAccountRepository,
     ChannelConversationRepository,
     AgentChannelConfigRepository,
 )
+from app.repositories.agent import AgentRepository
 from app.repositories.chat import ChatRepository
 from app.services import channel_chat
 from app.services.channel_chat import process_channel_message
@@ -201,6 +203,87 @@ async def test_reuses_open_session_for_same_conversation(db, routed_account, use
         await process_channel_message(routed_account.id, make_inbound("second"))
 
     assert db.query(ChannelConversation).count() == 1
+
+
+class TestAgentChangeStartsANewSession:
+    """A session belongs to one agent: its history, and the AI runtime's memory
+    for that session id, are that agent's. Reusing it after the channel is
+    pointed at a different agent made the new agent answer out of the previous
+    one's retrieved knowledge, and split the inbox in two — the conversations
+    list groups by agent *and* session while the detail view keys on session
+    alone, so one thread showed twice and neither row opened the other."""
+
+    @staticmethod
+    async def _send(routed_account, text):
+        response = SimpleNamespace(message="ok", transfer_to_human=False,
+                                   end_chat=False, request_lead_capture=False)
+        fake_agent = MagicMock()
+        fake_agent.get_response = AsyncMock(return_value=response)
+        fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+        with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
+             patch.object(channel_chat, "deliver_to_customer", AsyncMock()):
+            await process_channel_message(routed_account.id, make_inbound(text))
+
+    @pytest.mark.asyncio
+    async def test_a_new_agent_gets_a_new_session(self, db, routed_account, use_test_db,
+                                                  test_ai_config, test_organization, mock_sio):
+        await self._send(routed_account, "first")
+        first = db.query(ChannelConversation).one()
+
+        other = AgentRepository(db).create_agent(
+            name="Other Agent", agent_type=AgentType.CUSTOMER_SUPPORT,
+            org_id=test_organization.id, instructions=["help"])
+        AgentChannelConfigRepository(db).set_agent(routed_account.id, other.id)
+
+        await self._send(routed_account, "second")
+
+        # Same platform thread, but a second conversation and a second session.
+        conversations = db.query(ChannelConversation).order_by(
+            ChannelConversation.created_at).all()
+        assert len(conversations) == 2
+        assert conversations[0].session_id != conversations[1].session_id
+        assert {c.external_conversation_id for c in conversations} == {"222"}
+
+        # The retired session is closed, so it stops being picked up, and each
+        # session is bound to exactly one agent.
+        old = db.query(SessionToAgent).filter_by(session_id=first.session_id).one()
+        new = db.query(SessionToAgent).filter_by(session_id=conversations[1].session_id).one()
+        assert old.status == SessionStatus.CLOSED
+        assert str(new.agent_id) == str(other.id)
+
+    @pytest.mark.asyncio
+    async def test_the_same_agent_keeps_its_session(self, db, routed_account, use_test_db,
+                                                    test_ai_config, mock_sio):
+        """The guard must not fire on every message — only on a real change."""
+        await self._send(routed_account, "first")
+        await self._send(routed_account, "second")
+
+        assert db.query(ChannelConversation).count() == 1
+        assert db.query(SessionToAgent).filter_by(
+            status=SessionStatus.CLOSED).count() == 0
+
+    @pytest.mark.asyncio
+    async def test_a_human_handled_chat_is_not_rotated(self, db, routed_account, use_test_db,
+                                                       test_ai_config, test_organization,
+                                                       test_user, mock_sio):
+        """Rotating here would drop the human agent out of a live conversation."""
+        await self._send(routed_account, "first")
+        conversation = db.query(ChannelConversation).one()
+        session = db.query(SessionToAgent).filter_by(
+            session_id=conversation.session_id).one()
+        session.user_id = test_user.id
+        db.commit()
+
+        other = AgentRepository(db).create_agent(
+            name="Other Agent 2", agent_type=AgentType.CUSTOMER_SUPPORT,
+            org_id=test_organization.id, instructions=["help"])
+        AgentChannelConfigRepository(db).set_agent(routed_account.id, other.id)
+
+        await self._send(routed_account, "while a human is on it")
+
+        assert db.query(ChannelConversation).count() == 1
+        assert db.query(SessionToAgent).filter_by(
+            session_id=conversation.session_id).one().status != SessionStatus.CLOSED
 
 
 @pytest.mark.asyncio
