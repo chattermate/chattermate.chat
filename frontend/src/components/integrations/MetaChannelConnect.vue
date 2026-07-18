@@ -15,48 +15,13 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
-import channelsService, {
-  type ChannelAccount,
-  type MessengerSignupPage,
-} from '@/services/channels'
+import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
 import MessengerPagePicker from './MessengerPagePicker.vue'
-import {
-  loadMetaSdk,
-  parseSignupMessage,
-  runBusinessLogin,
-  runInstagramLogin,
-  signupLoginOptions,
-  META_OAUTH_CALLBACK_PATH,
-  type SignupChannel,
-  type SignupSession,
-} from '@/utils/metaSdk'
-
-// Channels this modal offers one-click connect for. Each uses a different Meta
-// login: WhatsApp its Embedded Signup SDK, Messenger Facebook Login for
-// Business (a Page), Instagram its own Instagram Login (no Page at all).
-const SIGNUP_CHANNELS: SignupChannel[] = ['whatsapp', 'messenger', 'instagram']
-const isSignupChannel = (c: string): c is SignupChannel =>
-  (SIGNUP_CHANNELS as string[]).includes(c)
-
-// Copy for the one-click pane, per channel.
-const SIGNUP_COPY: Record<SignupChannel, { intro: string; cta: string }> = {
-  whatsapp: {
-    intro: 'Sign in with Facebook to connect your WhatsApp Business number.',
-    cta: 'Continue with Facebook',
-  },
-  messenger: {
-    intro: 'Sign in with Facebook to connect your Page.',
-    cta: 'Continue with Facebook',
-  },
-  instagram: {
-    intro: 'Sign in with Instagram to connect your professional account.',
-    cta: 'Continue with Instagram',
-  },
-}
+import { useMetaSignup } from '@/composables/useMetaSignup'
 
 const props = defineProps<{
   channel: 'whatsapp' | 'messenger' | 'instagram'
@@ -114,29 +79,22 @@ const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
 const savingAgent = ref(false)
 
-// One-click signup is offered only when the server says this deployment has a
-// Meta app to onboard under (a config id for the channel). Everyone else keeps
-// the manual credentials form.
-const signupEnabled = ref(false)
-const signupConfigId = ref('')
-const signupAppId = ref('')
-const signupGraphVersion = ref('')
-const signingUp = ref(false)
-/** WhatsApp only: its two halves arrive separately and are joined once both land. */
-const signupSession = ref<SignupSession | null>(null)
-const showManualForm = ref(false)
-
-// Login for Business can grant several accounts; the customer picks one.
-const signupPages = ref<MessengerSignupPage[]>([])
-const signupToken = ref('')
-const connectingPage = ref(false)
-
-const signupCopy = computed(() => SIGNUP_COPY[props.channel])
-
-const handleSignupMessage = (event: MessageEvent) => {
-  const session = parseSignupMessage(event)
-  if (session) signupSession.value = session
-}
+// The three one-click logins live in their own composable; this component owns
+// the manual credentials form and agent assignment.
+const {
+  signupEnabled,
+  signingUp,
+  showManualForm,
+  signupPages,
+  connectingPage,
+  copy: signupCopy,
+  startSignup,
+  onPageSelected,
+} = useMetaSignup({
+  channel: props.channel,
+  existingAccount: props.existingAccount,
+  onConnected: (connected) => { account.value = connected },
+})
 
 onMounted(async () => {
   try {
@@ -146,154 +104,7 @@ onMounted(async () => {
   } catch (error) {
     console.error('Error loading agents:', error)
   }
-
-  if (!isSignupChannel(props.channel) || props.existingAccount) return
-  try {
-    const config = await channelsService.getEmbeddedSignupConfig(props.channel)
-    if (!config.enabled || !config.app_id) return
-    // The Facebook logins are driven by a Login-for-Business configuration;
-    // Instagram Login has none, so requiring one here would hide its button.
-    if (props.channel !== 'instagram' && !config.config_id) return
-    // Empty for Instagram Login, which authorizes with the app id alone.
-    signupConfigId.value = config.config_id ?? ''
-    signupAppId.value = config.app_id
-    signupGraphVersion.value = config.graph_version
-    signupEnabled.value = true
-    // WhatsApp uses the JS SDK (Embedded Signup, which also reports its result
-    // out of band via postMessage). Messenger drives its own OAuth popup, so it
-    // needs neither the SDK nor the message listener.
-    if (props.channel === 'whatsapp') {
-      await loadMetaSdk(config.app_id, config.graph_version)
-      window.addEventListener('message', handleSignupMessage)
-    }
-  } catch (error) {
-    // Falling back to the manual form is a working path, not an error worth
-    // interrupting the user for.
-    console.error('One-click signup unavailable:', error)
-  }
 })
-
-onBeforeUnmount(() => window.removeEventListener('message', handleSignupMessage))
-
-const finishWhatsAppSignup = async (code: string) => {
-  const session = signupSession.value
-  if (!session) {
-    // Signed in, but Meta never reported which number was set up, so there
-    // is nothing to connect. Say so rather than appearing to do nothing.
-    toast.error('WhatsApp signup did not complete', {
-      description: 'No number was set up. Try again, or enter credentials manually.',
-    })
-    return
-  }
-  account.value = await channelsService.connectWhatsAppEmbeddedSignup({
-    code,
-    waba_id: session.waba_id,
-    phone_number_id: session.phone_number_id,
-  })
-  toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
-}
-
-const finishMessengerSignup = async (code: string, redirectUri: string) => {
-  const { pages, signup_token } = await channelsService.listMessengerSignupPages(code, redirectUri)
-  signupToken.value = signup_token
-  // One Page needs no picker — connect it and go straight to agent assignment.
-  if (pages.length === 1) {
-    await connectPickedPage(pages[0].id)
-  } else {
-    signupPages.value = pages
-  }
-}
-
-const connectPickedPage = async (pageId: string) => {
-  account.value = await channelsService.connectMessengerSignup({
-    signup_token: signupToken.value,
-    page_id: pageId,
-  })
-  toast.success(`Connected ${account.value.display_name || 'Messenger'}`)
-}
-
-/** The picker's choice — its own loading state, since the login popup is long gone. */
-const onPageSelected = async (pageId: string) => {
-  try {
-    connectingPage.value = true
-    await connectPickedPage(pageId)
-  } catch (error: any) {
-    toast.error(error?.response?.data?.detail || 'Could not connect that account')
-  } finally {
-    connectingPage.value = false
-  }
-}
-
-// WhatsApp: the JS SDK's login callback.
-const completeWhatsAppSignup = async (response: { authResponse?: { code?: string } }) => {
-  const code = response.authResponse?.code
-  if (!code) {
-    // The popup was dismissed — not an error worth a toast.
-    signingUp.value = false
-    return
-  }
-  try {
-    await finishWhatsAppSignup(code)
-  } catch (error: any) {
-    toast.error(error?.response?.data?.detail || 'Could not finish connecting')
-  } finally {
-    signingUp.value = false
-  }
-}
-
-/** Shared shape of the two popup logins: run it, connect, surface failures. */
-const runPopupConnect = async (connect: (redirectUri: string) => Promise<void>) => {
-  signingUp.value = true
-  const redirectUri = window.location.origin + META_OAUTH_CALLBACK_PATH
-  try {
-    await connect(redirectUri)
-  } catch (error: any) {
-    // The user closing the popup is not an error worth a toast.
-    if (error?.message !== 'cancelled') {
-      toast.error(error?.response?.data?.detail || error?.message || 'Could not finish connecting')
-    }
-  } finally {
-    signingUp.value = false
-  }
-}
-
-// Messenger: Facebook Login for Business, then pick a Page.
-const startMessengerLogin = () => runPopupConnect(async (redirectUri) => {
-  const code = await runBusinessLogin({
-    appId: signupAppId.value,
-    configId: signupConfigId.value,
-    graphVersion: signupGraphVersion.value,
-    redirectUri,
-  })
-  await finishMessengerSignup(code, redirectUri)
-})
-
-// Instagram: Instagram Login — one account, so it connects in a single step.
-const startInstagramLogin = () => runPopupConnect(async (redirectUri) => {
-  const code = await runInstagramLogin({ appId: signupAppId.value, redirectUri })
-  account.value = await channelsService.connectInstagramLogin(code, redirectUri)
-  toast.success(`Connected ${account.value.display_name || 'Instagram'}`)
-})
-
-const startSignup = () => {
-  if (signingUp.value) return
-
-  // Both popups must open synchronously in the click handler or the browser
-  // blocks them.
-  if (props.channel === 'messenger') { void startMessengerLogin(); return }
-  if (props.channel === 'instagram') { void startInstagramLogin(); return }
-
-  if (!window.FB) return
-  signupSession.value = null
-  signingUp.value = true
-  // The SDK type-checks its callback and rejects an AsyncFunction outright
-  // ("Expression is of type asyncfunction, not function"), so hand the async
-  // work off from a plain function rather than passing `async` here.
-  window.FB.login(
-    (response) => { void completeWhatsAppSignup(response) },
-    signupLoginOptions(signupConfigId.value, props.channel),
-  )
-}
 
 const connect = async () => {
   const missing = form.value.fields.filter(f => !f.label.includes('optional') && !values.value[f.key]?.trim())
