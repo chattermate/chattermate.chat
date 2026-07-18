@@ -38,7 +38,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const { moreNavItems } = useNavItems()
+const { moreNavGroups } = useNavItems()
 
 const themeLabel = computed(() =>
     props.themeMode === 'dark' ? 'Dark' : props.themeMode === 'light' ? 'Light' : 'System'
@@ -90,20 +90,23 @@ const navigate = (to?: string) => {
                         <span class="row-value">{{ themeLabel }}</span>
                     </button>
 
-                    <!-- Overflow nav links -->
-                    <div class="sheet-card">
-                        <button
-                            v-for="item in moreNavItems"
-                            :key="item.to"
-                            type="button"
-                            class="sheet-row"
-                            @click="navigate(item.to)"
-                        >
-                            <span class="row-icon" v-html="navIconSvg(item.icon, 20)"></span>
-                            <span class="row-label">{{ item.label }}</span>
-                            <span class="row-chevron" aria-hidden="true" v-html="navIconSvg('chevronRight', 18)"></span>
-                        </button>
-                    </div>
+                    <!-- Overflow nav links, grouped exactly as the desktop sidebar -->
+                    <template v-for="group in moreNavGroups" :key="group.section">
+                        <div v-if="group.section" class="sheet-section">{{ group.section }}</div>
+                        <div class="sheet-card">
+                            <button
+                                v-for="item in group.items"
+                                :key="item.to"
+                                type="button"
+                                class="sheet-row"
+                                @click="navigate(item.to)"
+                            >
+                                <span class="row-icon" v-html="navIconSvg(item.icon, 20)"></span>
+                                <span class="row-label">{{ item.label }}</span>
+                                <span class="row-chevron" aria-hidden="true" v-html="navIconSvg('chevronRight', 18)"></span>
+                            </button>
+                        </div>
+                    </template>
 
                     <!-- Notifications -->
                     <button type="button" class="sheet-row standalone" @click="emit('notifications')">
@@ -250,6 +253,17 @@ const navigate = (to?: string) => {
 
 .toggle-track.on .toggle-knob {
     transform: translateX(20px);
+}
+
+.sheet-section {
+    padding: 0 4px;
+    margin-bottom: 8px;
+    color: var(--faint);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: var(--font-weight-medium);
+    text-transform: uppercase;
+    letter-spacing: .1em;
 }
 
 .sheet-card {

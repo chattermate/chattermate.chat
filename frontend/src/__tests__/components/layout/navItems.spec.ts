@@ -76,4 +76,26 @@ describe('useNavItems', () => {
     const { moreNavItems } = useNavItems()
     expect(moreNavItems.value.map((i) => i.to)).not.toContain('/settings/subscription')
   })
+
+  // Guards the whole point of the More sheet: mobile must expose exactly the
+  // same destinations as the desktop sidebar, so adding a nav item can never
+  // silently leave phones without it.
+  it('surfaces every sidebar destination across the bottom nav and More sheet', () => {
+    const { navItems, primaryNavItems, moreNavGroups } = useNavItems()
+
+    const sidebarPaths = navItems.value.filter((i) => i.to).map((i) => i.to)
+    const mobilePaths = [
+      ...primaryNavItems.value.map((i) => i.to),
+      ...moreNavGroups.value.flatMap((g) => g.items.map((i) => i.to)),
+    ]
+
+    expect(mobilePaths.slice().sort()).toEqual(sidebarPaths.slice().sort())
+  })
+
+  it('keeps the sidebar section headings in the More sheet', () => {
+    const { moreNavGroups } = useNavItems()
+    expect(moreNavGroups.value.map((g) => g.section)).toEqual(['Main Menu', 'Settings'])
+    // No empty groups — a section fully covered by the bottom nav is dropped
+    moreNavGroups.value.forEach((g) => expect(g.items.length).toBeGreaterThan(0))
+  })
 })

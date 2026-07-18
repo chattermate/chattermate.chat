@@ -29,6 +29,11 @@ export interface NavItem {
     show?: boolean;
 }
 
+export interface NavGroup {
+    section: string;
+    items: NavItem[];
+}
+
 // Shared unread-badge cap (bottom nav, More sheet, header bell)
 export const formatBadgeCount = (count?: number) =>
     count && count > 99 ? '99+' : String(count || '')
@@ -138,5 +143,30 @@ export function useNavItems() {
         navItems.value.filter(item => item.to && !PRIMARY_NAV_PATHS.includes(item.to))
     )
 
-    return { navItems, primaryNavItems, moreNavItems }
+    // Same overflow links, but keeping the sidebar's section headings so the
+    // More sheet reads as the same menu as the desktop nav rather than a flat
+    // list someone has to audit against it.
+    const moreNavGroups = computed<NavGroup[]>(() => {
+        const groups: NavGroup[] = []
+        let current: NavGroup | null = null
+
+        for (const item of navItems.value) {
+            if (item.section) {
+                current = { section: item.section, items: [] }
+                groups.push(current)
+                continue
+            }
+            if (!item.to || PRIMARY_NAV_PATHS.includes(item.to)) continue
+            if (!current) {
+                current = { section: '', items: [] }
+                groups.push(current)
+            }
+            current.items.push(item)
+        }
+
+        // A section whose every link is in the bottom nav has nothing to show
+        return groups.filter(group => group.items.length > 0)
+    })
+
+    return { navItems, primaryNavItems, moreNavItems, moreNavGroups }
 }
