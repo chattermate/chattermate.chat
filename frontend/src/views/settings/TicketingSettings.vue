@@ -237,6 +237,11 @@ function saveAll() {
             Collect CSAT after resolution
           </label>
         </div>
+        <p class="section-hint">
+          Customer emails are sent from your connected email inbox —
+          <router-link to="/settings/integrations" class="hint-link">connect one under Integrations</router-link>
+          to send from your own domain; otherwise ChatterMate's address is used.
+        </p>
         <div class="template-grid">
           <div class="template-card">
             <div class="card-label">Template · Ticket created</div>
@@ -398,6 +403,13 @@ function saveAll() {
   font-size: 12.5px;
   color: var(--muted);
   line-height: 1.5;
+}
+.hint-link {
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+.hint-link:hover {
+  text-decoration: underline;
 }
 .section-head-row {
   display: flex;
