@@ -53,9 +53,7 @@ const SIGNUP_COPY: Record<SignupChannel, { intro: string; cta: string }> = {
     cta: 'Continue with Facebook',
   },
   instagram: {
-    // Instagram Login involves no Facebook Page or account at all, so the copy
-    // must not imply one — that is the whole reason this flow exists.
-    intro: 'Connect your Instagram professional account — no Facebook Page, and no API credentials to copy.',
+    intro: 'Sign in with Instagram to connect your professional account.',
     cta: 'Continue with Instagram',
   },
 }
