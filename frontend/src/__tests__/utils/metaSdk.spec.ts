@@ -115,9 +115,11 @@ describe('OAuth login popups', () => {
     expect(url.searchParams.get('client_id')).toBe('IGAPP')
     expect(url.searchParams.get('response_type')).toBe('code')
     expect(url.searchParams.get('redirect_uri')).toBe('https://app.test/cb.html')
-    // Must stay an Instagram sign-in — no Page, no Facebook fallback.
-    expect(url.searchParams.get('enable_fb_login')).toBe('0')
+    expect(url.searchParams.get('force_reauth')).toBe('true')
     expect(url.searchParams.get('scope')).toContain('instagram_business_manage_messages')
+    // Least privilege: we only read the account and handle DMs, so no
+    // comments/publishing/insights scopes to enlarge App Review.
+    expect(url.searchParams.get('scope')).not.toContain('content_publish')
     expect(url.searchParams.get('state')).toBeTruthy()
   })
 

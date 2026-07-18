@@ -242,7 +242,7 @@ export const runInstagramLogin = (config: InstagramLoginConfig): Promise<string>
       response_type: 'code',
       scope: INSTAGRAM_SCOPES,
       state,
-      // Keep it an Instagram sign-in rather than falling through to Facebook.
-      enable_fb_login: '0',
-      force_authentication: '1',
+      // Make the business pick the account deliberately rather than silently
+      // reusing whoever is already signed in on this browser.
+      force_reauth: 'true',
     }).toString())
