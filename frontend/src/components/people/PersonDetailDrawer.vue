@@ -245,7 +245,7 @@ onMounted(() => { load(); loadWhatsAppAccounts() })
 </template>
 
 <style scoped>
-.pdd-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 1000; display: flex; justify-content: flex-end; }
+.pdd-overlay { position: fixed; inset: 0; background: var(--scrim, rgba(0,0,0,.4)); z-index: var(--z-drawer, 1000); display: flex; justify-content: flex-end; }
 .pdd { width: 440px; max-width: 94vw; height: 100%; background: var(--surface); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; box-shadow: -12px 0 40px rgba(0,0,0,.2); }
 .pdd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--border-color); }
 .pdd-name { font-size: 18px; font-weight: 700; }
@@ -299,4 +299,25 @@ onMounted(() => { load(); loadWhatsAppAccounts() })
 .pdd-status { font-size: 11px; color: var(--muted); }
 .pdd-snippet { font-size: 13px; color: var(--muted); line-height: 1.5; }
 .pdd-convo-date { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* Mobile: full-screen sheet rather than a 440px drawer with a dead sliver */
+@media (max-width: 768px) {
+  .pdd {
+    width: 100%;
+    max-width: 100%;
+    border-left: none;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .pdd-head {
+    padding: calc(16px + var(--safe-top, 0px)) 16px 16px;
+  }
+
+  .pdd-close { width: 40px; height: 40px; }
+
+  .pdd-body {
+    padding: 16px 16px calc(24px + var(--safe-bottom, 0px));
+  }
+}
 </style>

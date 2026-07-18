@@ -22,6 +22,7 @@ import PersonDetailDrawer from '@/components/people/PersonDetailDrawer.vue'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { subscriptionStorage } from '@/utils/storage'
+import { getInitials } from '@/utils/text'
 
 const { hasEnterpriseModule } = useEnterpriseFeatures()
 
@@ -89,8 +90,9 @@ watch(search, () => {
 })
 
 function initials(p: PersonListItem): string {
+  // Anonymous visitors get the dashed empty avatar, not letters
   if (p.is_anonymous || !p.name) return ''
-  return p.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+  return getInitials(p.name, '')
 }
 function stageLabel(s: string) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function fmtDate(d?: string | null) {
@@ -205,10 +207,20 @@ onMounted(() => {
           <span class="pv-badge" :class="p.lead_stage">{{ stageLabel(p.lead_stage) }}</span>
           <span v-if="p.qualified" class="pv-star" title="Qualified">★</span>
         </span>
-        <span class="pv-source" :title="sourceTitle(p)">{{ sourceLabel(p) }}</span>
-        <span>{{ fmtDate(p.captured_at) }}</span>
-        <span>{{ fmtDate(p.last_activity) }}</span>
-        <span class="pv-sync">{{ p.synced ? 'Synced' : '—' }}</span>
+        <!-- .pv-cell-label is desktop-hidden: the mobile card layout drops the
+             table header, so each meta value needs to name itself. -->
+        <span class="pv-source" :title="sourceTitle(p)">
+          <span class="pv-cell-label">Source</span>{{ sourceLabel(p) }}
+        </span>
+        <span class="pv-captured">
+          <span class="pv-cell-label">Captured</span>{{ fmtDate(p.captured_at) }}
+        </span>
+        <span class="pv-activity">
+          <span class="pv-cell-label">Active</span>{{ fmtDate(p.last_activity) }}
+        </span>
+        <span class="pv-sync">
+          <span class="pv-cell-label">Sync</span>{{ p.synced ? 'Synced' : '—' }}
+        </span>
       </button>
       <div v-if="!loading && items.length === 0" class="pv-empty">No people match this filter.</div>
       <div v-if="loading" class="pv-empty">Loading…</div>
@@ -289,4 +301,74 @@ onMounted(() => {
 .pv-pager { display: flex; align-items: center; gap: 10px; }
 .pv-pager button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; cursor: pointer; }
 .pv-pager button:disabled { opacity: .4; cursor: default; }
+
+/* Inline labels only exist for the mobile card layout */
+.pv-cell-label { display: none; }
+
+/* ── Mobile: the 6-column table becomes stacked cards ───────────────────── */
+@media (max-width: 768px) {
+  .people-view { padding: 16px 12px; }
+  .pv-header { margin-bottom: 18px; }
+  .pv-title { font-size: 22px; }
+  .pv-sub { font-size: 13.5px; }
+
+  /* Four KPIs as a 2×2 grid — all visible, no horizontal scroll */
+  .pv-kpis { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .pv-kpi { padding: 12px 14px; border-radius: 12px; }
+  .pv-kpi-label { margin-bottom: 6px; }
+  .pv-kpi-value { font-size: 22px; }
+
+  .pv-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+
+  /* Five stage tabs don't fit 375px — swipe them instead of wrapping */
+  .pv-tabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .pv-tabs::-webkit-scrollbar { display: none; }
+  .pv-tab { flex-shrink: 0; padding: 8px 12px; }
+
+  .pv-search { max-width: none; min-width: 0; width: 100%; padding: 11px 13px; font-size: 15px; }
+
+  .pv-thead { display: none; }
+
+  /* Line 1: person + stage badge. The person's flex-basis fills the row so the
+     meta values below it wrap onto their own line. */
+  .pv-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 14px 16px;
+  }
+
+  .pv-person { flex: 1 1 calc(100% - 110px); }
+  .pv-stage { flex: 0 0 auto; margin-left: auto; }
+  .pv-name { font-size: 15px; }
+  .pv-avatar { width: 38px; height: 38px; font-size: 13px; }
+
+  .pv-source,
+  .pv-captured,
+  .pv-activity {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+    max-width: 100%;
+  }
+
+  .pv-source { min-width: 0; }
+
+  .pv-cell-label {
+    display: inline;
+    font-size: 10.5px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--faint, var(--muted));
+  }
+
+  /* Sync is CRM plumbing — not worth a phone row */
+  .pv-sync { display: none; }
+
+  .pv-foot { padding: 12px 16px; }
+}
 </style>
