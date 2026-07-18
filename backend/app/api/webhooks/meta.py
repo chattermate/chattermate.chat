@@ -65,15 +65,17 @@ async def meta_webhook(
     background.
     """
     raw_body = await request.body()
-    signature_ok = verify_meta_signature(raw_body, request.headers.get("x-hub-signature-256", ""))
-    # TODO(debug): remove once Instagram delivery is confirmed. Logs before the
-    # signature gate so a rejected payload is distinguishable from one that
-    # never arrived at all.
-    logger.info(f"Meta webhook in: signature_ok={signature_ok} body={raw_body[:500]!r}")
-    if not signature_ok:
+    if not verify_meta_signature(raw_body, request.headers.get("x-hub-signature-256", "")):
+        # Logged so a rejected delivery is distinguishable from one that never
+        # arrived; the body is untrusted and unlogged.
+        logger.warning(f"Meta webhook rejected: bad signature ({len(raw_body)} bytes)")
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()
+    # TODO(debug): remove once Instagram delivery is confirmed in production.
+    # Ids only — the body carries customer message text.
+    logger.info(f"Meta webhook: object={payload.get('object')} "
+                f"entries={[e.get('id') for e in payload.get('entry', []) if isinstance(e, dict)]}")
     channel_type = _OBJECT_TO_CHANNEL.get(payload.get("object"))
     if channel_type is None:
         # Unknown product subscription — ack so Meta doesn't retry forever
