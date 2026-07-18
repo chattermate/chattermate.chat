@@ -149,25 +149,38 @@ const allSelected = () => props.selectedCount === props.count && props.count > 0
 
 /* ── Mobile ─────────────────────────────────────────────────────────────
    The decorative rule took flex:1 of the header, squeezing the toggle until
-   the name broke mid-phrase ("ACCOUNT &" / "SECURITY"). Dropping the rule
-   gives name and count the whole row. */
+   the name broke mid-phrase ("ACCOUNT &" / "SECURITY").
+
+   Grid rather than flex-wrap: the chevron owns column 1 and the text owns
+   column 2, so the count sits under the name and the chevron can never be
+   pushed onto a line of its own however narrow the screen or long the
+   category name. */
 @media (max-width: 768px) {
   .category-group__rule {
     display: none;
   }
 
   .category-group__toggle {
-    flex: 1 1 auto;
+    flex: 1;
     min-width: 0;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
     row-gap: 2px;
     text-align: left;
     /* 44px minimum touch target (Apple HIG / WCAG 2.5.8) */
     min-height: 44px;
   }
 
-  .category-group__name {
-    white-space: nowrap;
+  .category-group__chevron {
+    grid-row: 1 / span 2;
+  }
+
+  .category-group__name,
+  .category-group__count {
+    grid-column: 2;
+    min-width: 0;
   }
 }
 </style>
