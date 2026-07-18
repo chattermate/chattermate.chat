@@ -14,27 +14,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import json
 import secrets
-from urllib.parse import urlencode
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.channels.accounts import get_org_account_or_404, to_account_out
-from app.channels import get_adapter
 from app.channels.meta_base import (
+    debug_token,
+    exchange_for_long_lived_token,
+    exchange_instagram_code,
+    exchange_instagram_long_lived,
     exchange_signup_code,
-    fetch_message_templates,
     graph_get,
+    graph_detail,
+    graph_list_all,
+    instagram_token_payload,
     register_phone_number,
     subscribe_app,
+    subscribe_instagram_app,
+    GRAPH_INSTAGRAM_BASE,
 )
+from app.core.security import decrypt_api_key, encrypt_api_key
 from app.core.auth import (
-    INBOX_PERMISSIONS,
     get_current_organization,
-    get_current_user,
-    require_any_permission,
     require_permissions,
 )
 from app.core.config import settings
@@ -47,29 +53,38 @@ from app.models.schemas.channel import (
     EmbeddedSignupRequest,
     WhatsAppConnectRequest,
     MessengerConnectRequest,
+    MessengerSignupConnectRequest,
+    MessengerSignupPagesOut,
+    MessengerSignupRequest,
+    MessengerPageOut,
     InstagramConnectRequest,
-    OutboundConversationOut,
-    OutboundConversationRequest,
-    TemplateLibraryOut,
-    TemplateOut,
-    TemplateSendRequest,
+    InstagramLoginRequest,
 )
 from app.models.user import User
-from app.repositories.channels import ChannelAccountRepository, ChannelConversationRepository
-from app.services.whatsapp_outbound import OutboundError, start_outbound_conversation
+from app.repositories.channels import ChannelAccountRepository
 from app.core.logger import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)
 
-# Meta's own template authoring UI, which is where we send people to write one.
-TEMPLATE_LIBRARY_URL = "https://business.facebook.com/latest/whatsapp_manager/template_library"
-
-
 def _whatsapp_display_name(profile: dict, phone_number_id: str) -> str:
     """How a connected number is labelled in the UI, from its Graph profile."""
     return (f"{profile.get('verified_name', 'WhatsApp')} "
             f"({profile.get('display_phone_number', phone_number_id)})")
+
+
+async def _page_name(page_id: str, access_token: str) -> str:
+    """The Page's name for the UI label, falling back to its id.
+
+    Reading it needs pages_read_engagement, which messaging does not require —
+    so a token without it still connects and simply shows the id.
+    """
+    ok, data = await graph_get(page_id, access_token, params={"fields": "name"})
+    if not ok or not data.get("name"):
+        logger.info(f"No name for page {page_id} (pages_read_engagement not granted); "
+                    f"labelling with the id")
+        return page_id
+    return data["name"]
 
 
 async def _verify_signup_assets(waba_id: str, phone_number_id: str, access_token: str) -> dict:
@@ -89,7 +104,7 @@ async def _verify_signup_assets(waba_id: str, phone_number_id: str, access_token
     if not ok:
         raise HTTPException(
             status_code=400,
-            detail=_graph_detail(data, "Could not read that WhatsApp Business Account"))
+            detail=graph_detail(data, "Could not read that WhatsApp Business Account"))
 
     numbers = data.get("data")
     if not isinstance(numbers, list):
@@ -111,80 +126,164 @@ def _generate_verification_pin() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
-def _embedded_signup_available() -> bool:
-    """Whether this deployment can offer Embedded Signup at all.
+# Channels that can be onboarded through a Meta login popup, each with the Meta
+# configuration that drives it. WhatsApp and Messenger run Facebook logins;
+# Instagram runs Instagram Login, which needs no Facebook Page at all.
+SIGNUP_CHANNELS = (
+    ChannelType.WHATSAPP.value,
+    ChannelType.MESSENGER.value,
+    ChannelType.INSTAGRAM.value,
+)
 
-    It onboards a customer's number under *our* approved Meta app, so without a
-    config id it structurally cannot work — a self-hoster has no such app and
-    gets the manual credentials form instead. That is the whole gate: like every
-    other integration, Embedded Signup is not restricted by plan.
+# Webhook fields a Page must subscribe our app to for Messenger to work.
+MESSENGER_SUBSCRIBED_FIELDS = "messages,messaging_postbacks"
+
+
+def _signup_config_id(channel: str) -> str:
+    """The Facebook Login-for-Business configuration that onboards this channel,
+    read at call time so a settings override (tests, reloads) is always seen.
+
+    Instagram Login has no configuration — it is gated on its own app id.
     """
-    return bool(settings.META_CONFIG_ID)
+    return {
+        ChannelType.WHATSAPP.value: settings.META_CONFIG_ID,
+        ChannelType.MESSENGER.value: settings.META_MESSENGER_CONFIG_ID,
+    }.get(channel, "")
 
 
-def check_embedded_signup_access() -> None:
-    if not _embedded_signup_available():
+def _signup_app_id(channel: str) -> str:
+    """The app the login popup authenticates against. Instagram Login uses the
+    Instagram app; the Facebook flows use the Meta app."""
+    if channel == ChannelType.INSTAGRAM.value:
+        return settings.INSTAGRAM_APP_ID
+    return settings.META_APP_ID
+
+
+def _signup_available(channel: str) -> bool:
+    """Whether this deployment can offer the login flow for this channel.
+
+    Onboarding happens under *our* app, so without its credentials it
+    structurally cannot work — a self-hoster has none and gets the manual
+    credentials form instead. That is the whole gate: like every other
+    integration, signup is not restricted by plan.
+    """
+    if channel == ChannelType.INSTAGRAM.value:
+        return bool(settings.INSTAGRAM_APP_ID and settings.INSTAGRAM_APP_SECRET)
+    return bool(_signup_config_id(channel))
+
+
+def _signup_allowed_for(user: User) -> bool:
+    """Whether this account may use one-click signup.
+
+    An empty allowlist means everyone, which is the end state. While the Meta
+    app is in App Review the login only succeeds for people with a role on that
+    app, so the allowlist keeps the button off everyone it would only fail for.
+    Read at call time so the list can be changed without a code deploy.
+    """
+    allowed = {email.strip().lower()
+               for email in settings.SIGNUP_ALLOWED_EMAILS.split(",")
+               if email.strip()}
+    return not allowed or (user.email or "").strip().lower() in allowed
+
+
+def check_signup_access(channel: str, user: User) -> None:
+    if not _signup_available(channel):
         raise HTTPException(
             status_code=403,
-            detail="WhatsApp Embedded Signup is not configured on this deployment. "
-                   "Connect your number with its credentials instead.",
+            detail="Signup is not configured on this deployment for this channel. "
+                   "Connect with credentials instead.",
+        )
+    # Separate from the deployment gate so the reason is honest: the flow exists
+    # here, this account just isn't one of the ones it is open to yet.
+    if not _signup_allowed_for(user):
+        raise HTTPException(
+            status_code=403,
+            detail="One-click connect is limited to selected accounts on this "
+                   "deployment. Connect with credentials instead.",
         )
 
 
-def _graph_detail(data: dict, fallback: str) -> str:
-    """Meta's own error text where it has one, so the UI can show the real
-    reason (e.g. a template that cannot be deleted) rather than a generic
-    failure.
+# The signup code is single-use and lives ~10 minutes; the sealed page list it
+# produces should not outlive it, so a stale one fails cleanly with a retry.
+SIGNUP_TOKEN_TTL_SECONDS = 600
+# 500 Pages; an agency ceiling, not a limit a real customer reaches.
+PAGE_LIST_MAX_PAGES = 5
 
-    error_user_msg first: `message` is often a generic OAuth string that says
-    nothing actionable — Graph will pair a `message` of "Application does not
-    have permission for this action" with an error_user_msg that names the
-    actual asset and rule. Only one of those is a clue.
+
+def _seal_signup_pages(organization_id, pages: list[dict]) -> str:
+    """Carry a signup's Page tokens through the picker without the browser ever
+    holding them in the clear.
+
+    The tokens go back to the client as ciphertext only we can open, so step 2
+    needs no server-side session — which matters because the two requests are
+    not guaranteed to hit the same worker. Binding the org and an expiry inside
+    means a leaked blob cannot be replayed by another tenant, or after the
+    signup's own code would already have died.
     """
-    error = data.get("error", {})
-    if not isinstance(error, dict):
-        return fallback
-    return error.get("error_user_msg") or error.get("message") or fallback
+    payload = {
+        "org": str(organization_id),
+        "exp": int(time.time()) + SIGNUP_TOKEN_TTL_SECONDS,
+        "pages": pages,
+    }
+    return encrypt_api_key(json.dumps(payload))
 
 
-def _whatsapp_account_or_404(db: Session, account_id: UUID, organization: Organization):
-    account = get_org_account_or_404(db, account_id, organization)
-    if account.channel_type != ChannelType.WHATSAPP.value:
-        raise HTTPException(status_code=404, detail="Channel account not found")
-    return account
+def _open_signup_pages(signup_token: str, organization: Organization) -> list[dict]:
+    """The sealed page list, or 400 if it is forged, expired or another org's.
+
+    One generic message across every reject path, so it is not an oracle for
+    which check tripped.
+    """
+    invalid = HTTPException(status_code=400,
+                            detail="That signup has expired — please connect again")
+    try:
+        # decrypt raises ValueError on a bad token; json.loads raises
+        # JSONDecodeError, a ValueError subclass — one except covers both.
+        payload = json.loads(decrypt_api_key(signup_token))
+    except ValueError:
+        raise invalid
+    if not isinstance(payload, dict) or payload.get("org") != str(organization.id):
+        raise invalid
+    if float(payload.get("exp", 0)) <= time.time():
+        raise invalid
+    pages = payload.get("pages")
+    if not isinstance(pages, list):
+        raise invalid
+    return pages
 
 
-# Template sending is inbox work — reopening a window, starting a conversation
-# — done by support agents, not org admins. INBOX_PERMISSIONS is shared with
-# the People page so the two surfaces can't disagree about who works the inbox.
-require_inbox_agent = require_any_permission(*INBOX_PERMISSIONS)
-
-
-async def _fetch_all_templates(waba_id: str, access_token: str) -> list[TemplateOut]:
-    """Every template on the WABA (transport lives in meta_base; this wrapper
-    owns the HTTP error surface)."""
-    ok, data = await fetch_message_templates(waba_id, access_token)
+async def _list_manageable_pages(user_token: str, fields: str) -> list[dict]:
+    """The Pages this signup granted us, each with its own Page access token."""
+    ok, data = await graph_list_all(
+        "me/accounts", user_token, {"fields": fields, "limit": 100},
+        max_pages=PAGE_LIST_MAX_PAGES)
     if not ok:
-        raise HTTPException(status_code=502,
-                            detail=_graph_detail(data, "Could not list templates"))
-    return [TemplateOut(**template) for template in data]
-
-
-def _waba_credentials(db: Session, account) -> tuple[str, str]:
-    """(waba_id, access_token) for a WhatsApp account.
-
-    Templates live on the WhatsApp Business Account, not the phone number, and
-    the WABA id is optional in the credential blob — accounts connected without
-    it can send and receive but cannot manage templates.
-    """
-    credentials = ChannelAccountRepository(db).get_credentials(account)
-    waba_id = credentials.get("waba_id")
-    if not waba_id:
         raise HTTPException(
             status_code=400,
-            detail="Reconnect this number with its WhatsApp Business Account ID to manage templates",
-        )
-    return waba_id, credentials["access_token"]
+            detail=graph_detail(data, "Could not list your Facebook Pages"))
+    return data
+
+
+async def _signup_user_token(request: MessengerSignupRequest) -> str:
+    """Trade a Facebook Login-for-Business code for a long-lived user token.
+
+    Page tokens inherit the user token's lifetime, so it is extended first
+    (best-effort; a failure only risks earlier expiry). Instagram does not come
+    through here — Instagram Login is its own OAuth against its own host.
+    """
+    ok, data = await exchange_signup_code(request.code, redirect_uri=request.redirect_uri)
+    user_token = data.get("access_token") if ok else None
+    if not user_token:
+        # The code is short-lived (~10 minutes) and single-use, so a stale or
+        # replayed one lands here rather than on a Graph error later.
+        raise HTTPException(status_code=400, detail=graph_detail(
+            data, "Could not complete signup — please try connecting again"))
+
+    ok, extended = await exchange_for_long_lived_token(user_token)
+    if ok and extended.get("access_token"):
+        return extended["access_token"]
+    logger.warning("Could not extend the signup token; page tokens may expire early")
+    return user_token
 
 
 def _upsert_account(db: Session, organization: Organization, channel_type: str,
@@ -215,16 +314,25 @@ def _upsert_account(db: Session, organization: Organization, channel_type: str,
 
 @router.get("/embedded-signup-config", response_model=EmbeddedSignupConfigOut)
 async def get_embedded_signup_config(
+    channel: str = ChannelType.WHATSAPP.value,
     current_user: User = Depends(require_permissions("manage_organization")),
 ):
-    """What the connect UI needs to decide between Embedded Signup and the
-    manual credentials form. The app id is returned here rather than baked into
-    the frontend build, so a self-hoster can point at their own app."""
-    enabled = _embedded_signup_available()
+    """What the connect UI needs to decide between a Meta login flow and the
+    manual credentials form, for the given channel. The app id is returned here
+    rather than baked into the frontend build, so a self-hoster can point at
+    their own app. A disabled channel returns no ids, so one channel's config
+    never leaks on another's request."""
+    if channel not in SIGNUP_CHANNELS:
+        raise HTTPException(status_code=404, detail="No signup flow for this channel")
+    # Both halves of the same gate the connect endpoints enforce, so an account
+    # outside the allowlist is shown the manual form rather than a button that
+    # would 403 on click.
+    enabled = _signup_available(channel) and _signup_allowed_for(current_user)
     return EmbeddedSignupConfigOut(
         enabled=enabled,
-        config_id=settings.META_CONFIG_ID if enabled else None,
-        app_id=settings.META_APP_ID if enabled else None,
+        # Instagram Login has no configuration id, only an app id.
+        config_id=(_signup_config_id(channel) or None) if enabled else None,
+        app_id=_signup_app_id(channel) if enabled else None,
         graph_version=settings.META_GRAPH_VERSION,
     )
 
@@ -271,7 +379,7 @@ async def connect_whatsapp_embedded_signup(
     Only the way the credentials are obtained differs from connect_whatsapp —
     everything after that is the same upsert and webhook subscribe.
     """
-    check_embedded_signup_access()
+    check_signup_access(ChannelType.WHATSAPP.value, current_user)
 
     ok, data = await exchange_signup_code(request.code)
     access_token = data.get("access_token") if ok else None
@@ -280,7 +388,7 @@ async def connect_whatsapp_embedded_signup(
         # replayed one lands here rather than on a Graph error later.
         raise HTTPException(
             status_code=400,
-            detail=_graph_detail(data, "Could not complete signup — please try connecting again"),
+            detail=graph_detail(data, "Could not complete signup — please try connecting again"),
         )
 
     profile = await _verify_signup_assets(
@@ -294,7 +402,7 @@ async def connect_whatsapp_embedded_signup(
     if not registered:
         logger.warning(
             f"Phone {request.phone_number_id} not registered after signup: "
-            f"{_graph_detail(register_data, 'unknown error')}")
+            f"{graph_detail(register_data, 'unknown error')}")
 
     credentials = {"access_token": access_token, "waba_id": request.waba_id}
     # Only keep the PIN we actually set on the number. Storing one from a failed
@@ -323,20 +431,150 @@ async def connect_messenger(
     db: Session = Depends(get_db),
 ):
     """Connect a Facebook Page for Messenger with a page access token."""
-    ok, data = await graph_get("me", request.page_access_token, params={"fields": "id,name"})
-    if not ok or str(data.get("id")) != request.page_id:
-        raise HTTPException(status_code=400,
-                            detail="Could not verify page token (token invalid or not for this page)")
+    # Inspect the token rather than reading the Page node: `me?fields=id,name`
+    # needs pages_read_engagement, which a messaging token has no reason to
+    # carry — it would reject a token that sends perfectly well.
+    ok, info = await debug_token(request.page_access_token)
+    if not ok or not info.get("is_valid"):
+        raise HTTPException(status_code=400, detail=graph_detail(
+            info, "That token is not valid — generate a fresh Page access token"))
+    if info.get("type") != "PAGE":
+        raise HTTPException(status_code=400, detail=(
+            f"That is a {str(info.get('type', 'user')).lower()} access token, not a Page "
+            f"access token. In the Meta app dashboard go to Messenger → Settings and "
+            f"click Generate on the row for your Page."))
+    if str(info.get("profile_id")) != request.page_id:
+        raise HTTPException(status_code=400, detail=(
+            f"That token is for Page {info.get('profile_id')}, not the Page ID you "
+            f"entered. Webhooks are routed by Page ID, so the two must match."))
 
+    display_name = request.display_name or await _page_name(
+        request.page_id, request.page_access_token)
     account = _upsert_account(
         db, organization, ChannelType.MESSENGER.value,
         external_account_id=request.page_id,
         credentials={"access_token": request.page_access_token},
-        display_name=request.display_name or data.get("name", request.page_id),
+        display_name=display_name,
     )
     if not await subscribe_app(request.page_id, request.page_access_token,
-                               subscribed_fields="messages,messaging_postbacks"):
+                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
         logger.warning(f"Page subscribe failed for {request.page_id}; webhook may need manual subscription")
+    return to_account_out(db, account)
+
+
+@router.post("/messenger/signup/pages", response_model=MessengerSignupPagesOut)
+async def list_messenger_signup_pages(
+    request: MessengerSignupRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+):
+    """Step 1 of Facebook Login for Business: trade the code for the customer's
+    Pages so they can pick which to connect.
+
+    The Page tokens are sealed into signup_token and never reach the browser;
+    only the ids and names come back for the picker.
+    """
+    check_signup_access(ChannelType.MESSENGER.value, current_user)
+    user_token = await _signup_user_token(request)
+
+    pages = await _list_manageable_pages(user_token, "id,name,access_token")
+    if not pages:
+        raise HTTPException(status_code=400, detail=(
+            "No Facebook Pages were shared with ChatterMate. Run the connect "
+            "again and tick the Page you want to use."))
+
+    return MessengerSignupPagesOut(
+        signup_token=_seal_signup_pages(organization.id, pages),
+        pages=[MessengerPageOut(id=p["id"], name=p.get("name") or p["id"]) for p in pages],
+    )
+
+
+@router.post("/messenger/signup/connect", response_model=ChannelAccountOut)
+async def connect_messenger_signup(
+    request: MessengerSignupConnectRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Step 2: connect the Page the customer picked in step 1.
+
+    page_id is a selector into the list we fetched ourselves, never a caller
+    claim: the token stored is the one /me/accounts returned for that Page, so a
+    caller cannot connect a Page they do not administer. This is the Messenger
+    equivalent of _verify_signup_assets, and matters for the same reason —
+    webhooks resolve accounts by external id with no org scoping.
+    """
+    check_signup_access(ChannelType.MESSENGER.value, current_user)
+    pages = _open_signup_pages(request.signup_token, organization)
+
+    page = next((p for p in pages if p.get("id") == request.page_id), None)
+    if page is None or not page.get("access_token"):
+        raise HTTPException(status_code=400, detail="That Page was not part of this signup")
+
+    account = _upsert_account(
+        db, organization, ChannelType.MESSENGER.value,
+        external_account_id=page["id"],
+        credentials={"access_token": page["access_token"]},
+        display_name=request.display_name or page.get("name") or page["id"],
+    )
+    if not await subscribe_app(page["id"], page["access_token"],
+                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
+        logger.warning(f"Page subscribe failed for {page['id']} after signup")
+    return to_account_out(db, account)
+
+
+@router.post("/instagram/login/connect", response_model=ChannelAccountOut)
+async def connect_instagram_login(
+    request: InstagramLoginRequest,
+    current_user: User = Depends(require_permissions("manage_organization")),
+    organization: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db),
+):
+    """Connect an Instagram professional account through Instagram Login.
+
+    Unlike Messenger this needs no Facebook Page: the business signs in with
+    Instagram itself, so the login returns exactly one account and there is
+    nothing to pick. The token is an Instagram user token, used against
+    graph.instagram.com rather than the Facebook graph.
+    """
+    check_signup_access(ChannelType.INSTAGRAM.value, current_user)
+
+    ok, data = await exchange_instagram_code(request.code, request.redirect_uri)
+    token_data = instagram_token_payload(data) if ok else {}
+    access_token = token_data.get("access_token")
+    user_id = token_data.get("user_id")
+    if not access_token or not user_id:
+        # The code is single-use and short-lived, so a stale or replayed one
+        # lands here rather than on a Graph error later.
+        raise HTTPException(status_code=400, detail=graph_detail(
+            data, "Could not complete Instagram login — please try connecting again"))
+
+    # The login token lasts about an hour; without extending it the connection
+    # dies silently mid-conversation. Best-effort, like the Page flow.
+    ok, extended = await exchange_instagram_long_lived(access_token)
+    if ok and extended.get("access_token"):
+        access_token = extended["access_token"]
+    else:
+        logger.warning("Could not extend the Instagram token; it may expire within the hour")
+
+    ok, profile = await graph_get("me", access_token,
+                                  params={"fields": "user_id,username"},
+                                  base=GRAPH_INSTAGRAM_BASE)
+    username = profile.get("username") if ok else None
+    # Webhooks route Instagram events by the professional account id, which /me
+    # reports as user_id. The login response also carries a user_id but it can
+    # be app-scoped, and keying on the wrong one means inbound DMs never match
+    # any account — silently, with no error. Prefer the authoritative one.
+    account_id = str((profile.get("user_id") if ok else None) or user_id)
+
+    account = _upsert_account(
+        db, organization, ChannelType.INSTAGRAM.value,
+        external_account_id=account_id,
+        credentials={"access_token": access_token},
+        display_name=request.display_name or ("@" + (username or account_id)),
+    )
+    if not await subscribe_instagram_app(access_token):
+        logger.warning(f"Instagram webhook subscribe failed for {account_id}; DMs may not arrive")
     return to_account_out(db, account)
 
 
@@ -384,107 +622,3 @@ async def disconnect_meta_account(
         raise HTTPException(status_code=404, detail="Channel account not found")
     ChannelAccountRepository(db).delete(account)
     return {"status": "disconnected"}
-
-
-@router.post("/whatsapp/{account_id}/conversations", response_model=OutboundConversationOut)
-async def start_whatsapp_conversation(
-    account_id: UUID,
-    request: OutboundConversationRequest,
-    current_user: User = Depends(require_inbox_agent),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Start a WhatsApp conversation with a phone number via an approved
-    Utility/Authentication template. The thin route: policy lives in the
-    service so the Phase-2 scheduler can call the same function."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    try:
-        session_id = await start_outbound_conversation(
-            db, account,
-            to=request.to,
-            template_name=request.template_name,
-            language=request.language,
-            components=request.components,
-            customer_id=request.customer_id,
-            customer_name=request.customer_name,
-        )
-    except OutboundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.detail)
-    return OutboundConversationOut(session_id=session_id)
-
-
-@router.post("/whatsapp/{account_id}/send-template")
-async def send_whatsapp_template(
-    account_id: UUID,
-    request: TemplateSendRequest,
-    current_user: User = Depends(require_inbox_agent),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Send an approved template message to reopen an expired 24h window."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-
-    conversation = ChannelConversationRepository(db).get_by_session(request.session_id)
-    if conversation is None or conversation.channel_account_id != account.id:
-        raise HTTPException(status_code=404, detail="Conversation not found for this account")
-
-    adapter = get_adapter(ChannelType.WHATSAPP.value)
-    result = await adapter.send_template(
-        account, conversation,
-        template_name=request.template_name,
-        language=request.language,
-        components=request.components,
-    )
-    if not result.ok:
-        raise HTTPException(status_code=502, detail=result.error or "Template send failed")
-    return {"status": "sent", "external_message_id": result.external_message_id}
-
-
-@router.get("/whatsapp/{account_id}/templates", response_model=list[TemplateOut])
-async def list_whatsapp_templates(
-    account_id: UUID,
-    # Inbox-agent, not org-admin: this is what the send-template picker and the
-    # New-conversation modal read. Gating it tighter than the send it feeds made
-    # the loosening of those endpoints a no-op — the agent could send a template
-    # but never see one to pick.
-    current_user: User = Depends(require_inbox_agent),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """List the message templates on this number's WhatsApp Business Account."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    waba_id, access_token = _waba_credentials(db, account)
-    return await _fetch_all_templates(waba_id, access_token)
-
-
-@router.get("/whatsapp/{account_id}/template-library", response_model=TemplateLibraryOut)
-async def get_whatsapp_template_library(
-    account_id: UUID,
-    current_user: User = Depends(require_permissions("manage_organization")),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Where to go to write a template: Meta's own Template Library, opened on
-    this number's WhatsApp Business Account.
-
-    Templates are not authored here. Meta's library holds ~150 pre-written,
-    pre-localised utility templates plus its authentication ones, all shaped to
-    pass its own review — a form of ours could only ever be a worse version of
-    that, and every rule it encodes (categories, variable numbering, which
-    buttons may be mixed) is Meta's to change without telling us.
-
-    The link is built per account rather than hardcoded: business_id scopes the
-    page to the right portfolio. It is best-effort — a business we cannot read
-    gives a link that lands less precisely, not a dead button.
-    """
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    waba_id, access_token = _waba_credentials(db, account)
-
-    params = {"asset_id": waba_id}
-    ok, data = await graph_get(waba_id, access_token, params={"fields": "owner_business_info"})
-    if ok:
-        business_id = (data.get("owner_business_info") or {}).get("id")
-        if business_id:
-            params["business_id"] = business_id
-
-    return TemplateLibraryOut(url=f"{TEMPLATE_LIBRARY_URL}?{urlencode(params)}")

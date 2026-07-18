@@ -54,7 +54,14 @@ const loadingUsers = ref(false)
 // Chat action functions
 const currentUserId = userService.getUserId()
 
-// Shared with the chat pane so both surfaces offer takeover on the same rule
+// Only the web widget can render a rating; on external channels (WhatsApp,
+// Messenger, ...) the ask is dropped, so the confirmation must not promise it.
+const askRating = computed(() => canRequestRating(props.chatInfo?.channel))
+
+// Shared with the chat pane so both surfaces offer takeover on the same rule.
+// This drops main's `status === 'transferred' && user_id !== currentUserId`
+// arm deliberately: takeover_session returns False once user_id is set, so
+// that arm only ever rendered a button that failed on click.
 const canTakeOver = computed(
   () => canTakeOverChat(props.chatInfo) && permissionChecks.canTakeOverChats()
 )
@@ -124,9 +131,6 @@ const confirmEndChat = async () => {
   try {
     actionLoading.value = true
     
-    // Only the web widget can render a rating; on external channels the ask is
-    // dropped and the closing message says nothing about rating.
-    const askRating = canRequestRating(props.chatInfo.channel)
     const timestamp = new Date().toISOString()
     const endChatMessage = {
       message: endChatMessageFor(props.chatInfo.channel),
@@ -134,7 +138,7 @@ const confirmEndChat = async () => {
       created_at: timestamp,
       session_id: props.chatInfo.session_id,
       end_chat: true,
-      request_rating: askRating,
+      request_rating: askRating.value,
       end_chat_reason: "AGENT_REQUEST",
       end_chat_description: "Agent manually ended the chat"
     }
@@ -146,13 +150,13 @@ const confirmEndChat = async () => {
       message_type: endChatMessage.message_type,
       created_at: timestamp,
       end_chat: true,
-      request_rating: askRating,
+      request_rating: askRating.value,
       end_chat_reason: "AGENT_REQUEST",
       end_chat_description: "Agent manually ended the chat"
     })
 
     toast.success('Chat ended successfully', {
-      description: askRating ? 'Customer will be asked for feedback' : 'Chat has been closed',
+      description: askRating.value ? 'Customer will be asked for feedback' : 'Chat has been closed',
       duration: 4000,
       closeButton: true
     })
@@ -377,11 +381,12 @@ const confirmReassign = async () => {
     <div v-if="showEndChatConfirm" class="end-chat-modal">
       <div class="end-chat-modal-content">
         <h3>End Chat</h3>
-        <p>Are you sure you want to end this chat and request customer feedback?</p>
+        <p v-if="askRating">Are you sure you want to end this chat and request customer feedback?</p>
+        <p v-else>Are you sure you want to end this chat?</p>
         <div class="end-chat-modal-actions">
           <button class="cancel-btn" @click="cancelEndChat">Cancel</button>
           <button class="confirm-btn" @click="confirmEndChat" :disabled="actionLoading">
-            {{ actionLoading ? 'Ending...' : 'End Chat & Request Rating' }}
+            {{ actionLoading ? 'Ending...' : (askRating ? 'End Chat & Request Rating' : 'End Chat') }}
           </button>
         </div>
       </div>
