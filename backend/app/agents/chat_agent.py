@@ -290,13 +290,15 @@ class ChatAgent(ChatAgentMCPMixin):
                     shopify_config = None
 
             # Native AI ticketing takes precedence over the Jira toolkit when
-            # the org's plan allows it (Jira stays available for manual
-            # escalation from the dashboard).
+            # the org's plan allows it AND this agent has ticketing switched on
+            # (per-agent toggle, default on). Jira stays available for manual
+            # escalation from the dashboard.
             self.ticketing_enabled = False
             if agent_id and org_id and session_id:
                 try:
                     from app.services.ticket_access import ticketing_allowed
-                    self.ticketing_enabled = ticketing_allowed(db, org_id)
+                    agent_toggle_on = getattr(self.agent_data, "ticketing_enabled", True) if self.agent_data else True
+                    self.ticketing_enabled = agent_toggle_on and ticketing_allowed(db, org_id)
                 except Exception as e:
                     logger.error(f"Failed to check ticketing access: {e}")
 

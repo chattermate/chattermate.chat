@@ -38,6 +38,7 @@ export interface Agent {
   // Allowed attachment type categories: 'images', 'documents', 'office', 'text'
   allowed_attachment_types: string[] | null
   require_token_auth: boolean
+  ticketing_enabled: boolean
   knowledge: Array<{
     id: number
     name: string
@@ -66,6 +67,7 @@ export interface AgentUpdate {
   allow_attachments?: boolean
   allowed_attachment_types?: string[] | null
   require_token_auth?: boolean
+  ticketing_enabled?: boolean
   customization?: AgentCustomization
 }
 

@@ -75,6 +75,16 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
+  // Native AI ticketing (per-agent toggle)
+  ticketingEnabled: {
+    type: Boolean,
+    default: true
+  },
+  // True when the org's plan doesn't include AI ticketing — locks the toggle.
+  ticketingLocked: {
+    type: Boolean,
+    default: false
+  },
   // Shopify props
   shopifyIntegrationEnabled: {
     type: Boolean,
@@ -134,12 +144,18 @@ const toggleChannelAccount = async (account: ChannelAccount) => {
 
 const emit = defineEmits([
   'toggle-create-ticket',
+  'toggle-ticketing',
   'handle-project-change',
   'handle-issue-type-change',
   'save-jira-config',
   'toggle-shopify-integration',
   'save-shopify-config'
 ])
+
+const toggleTicketing = () => {
+  if (props.ticketingLocked) return
+  emit('toggle-ticketing')
+}
 
 // Create local copies of the props
 const localSelectedProject = ref(props.selectedProject)
@@ -271,6 +287,44 @@ onMounted(async () => {
       <p class="section-description">
         Let this agent take action in the tools you already use.
       </p>
+
+      <!-- Native AI Ticketing (per-agent toggle) -->
+      <div class="integration-section">
+        <div class="integration-head">
+          <div class="integration-head-left">
+            <div class="integration-badge badge-lime">TK</div>
+            <div class="integration-heading">
+              <div class="integration-title">
+                AI Ticketing
+                <font-awesome-icon v-if="ticketingLocked" :icon="['fas', 'lock']" class="lock-icon" />
+              </div>
+              <div class="integration-desc">
+                Let this agent open native support tickets that the AI investigates and resolves.
+              </div>
+            </div>
+          </div>
+          <label
+            class="switch"
+            v-tooltip="ticketingLocked ? 'Available on the Pro plan — upgrade to enable AI ticketing.' : 'Turn native AI ticketing on or off for this agent'"
+          >
+            <input
+              type="checkbox"
+              :checked="ticketingEnabled && !ticketingLocked"
+              :disabled="ticketingLocked"
+              @change="toggleTicketing"
+            >
+            <span class="slider" :class="{ locked: ticketingLocked }"></span>
+          </label>
+        </div>
+        <p v-if="ticketingLocked" class="helper-text">
+          AI Ticketing is a Pro-plan feature.
+          <router-link to="/settings/subscription" class="connect-link">Upgrade to enable</router-link>
+        </p>
+        <p v-else class="helper-text">
+          When on, this agent creates tickets during chats; Jira auto-ticketing below takes
+          precedence when enabled.
+        </p>
+      </div>
 
       <!-- Jira Integration -->
       <div class="integration-section">
@@ -612,6 +666,12 @@ onMounted(async () => {
   font-weight: 600;
 }
 
+.lock-icon {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .integration-desc {
   font-size: 13.5px;
   color: var(--muted);
@@ -695,6 +755,11 @@ input:focus + .slider {
 
 input:checked + .slider:before {
   transform: translateX(24px);
+}
+
+.slider.locked {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .jira-status {

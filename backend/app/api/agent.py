@@ -210,6 +210,7 @@ async def create_agent(
             allow_attachments=agent.allow_attachments or False,
             allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth or False,
+            ticketing_enabled=agent.ticketing_enabled if agent.ticketing_enabled is not None else True,
             knowledge=[],
             groups=[]
         )
@@ -312,6 +313,7 @@ async def update_agent(
             allow_attachments=agent.allow_attachments,
             allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth,
+            ticketing_enabled=agent.ticketing_enabled if agent.ticketing_enabled is not None else True,
             knowledge=[{
                 "id": k.id,
                 "name": k.source,
@@ -376,6 +378,7 @@ async def get_organization_agents(
                 allow_attachments=agent.allow_attachments or False,
                 allowed_attachment_types=agent.allowed_attachment_types,
                 require_token_auth=agent.require_token_auth or False,
+                ticketing_enabled=agent.ticketing_enabled if agent.ticketing_enabled is not None else True,
                 knowledge=[{
                     "id": k.id,
                     "name": k.source,
@@ -568,6 +571,7 @@ async def update_agent_groups(
             allow_attachments=agent.allow_attachments,
             allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth,
+            ticketing_enabled=agent.ticketing_enabled if agent.ticketing_enabled is not None else True,
             groups=agent.groups,
             knowledge=[{
                 "id": k.id,

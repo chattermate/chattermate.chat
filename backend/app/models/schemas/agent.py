@@ -53,6 +53,7 @@ class AgentBase(BaseModel):
         description="List of allowed attachment type categories: 'images', 'documents', 'office', 'text'. If null/empty, all types allowed."
     )
     require_token_auth: bool = False
+    ticketing_enabled: bool = True
 
 
 class AgentCreate(AgentBase):
@@ -78,6 +79,7 @@ class AgentUpdate(BaseModel):
         description="List of allowed attachment type categories: 'images', 'documents', 'office', 'text'. If null/empty, all types allowed."
     )
     require_token_auth: Optional[bool] = None
+    ticketing_enabled: Optional[bool] = None
 
 
 class AgentKnowledge(BaseModel):
@@ -108,6 +110,7 @@ class AgentResponse(BaseModel):
     allow_attachments: bool = False
     allowed_attachment_types: Optional[List[str]] = None
     require_token_auth: bool = False
+    ticketing_enabled: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

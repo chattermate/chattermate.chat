@@ -133,6 +133,9 @@ class Agent(Base):
     # If empty or null, all types are allowed when attachments are enabled
     allowed_attachment_types = Column(JSON, default=None, nullable=True)
     require_token_auth = Column(Boolean, default=False, nullable=False)
+    # Per-agent switch for native AI ticketing (org plan must also allow it).
+    # Defaults on so paid orgs get ticketing on every agent out of the box.
+    ticketing_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Relationships
