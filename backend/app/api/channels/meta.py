@@ -172,12 +172,34 @@ def _signup_available(channel: str) -> bool:
     return bool(_signup_config_id(channel))
 
 
-def check_signup_access(channel: str) -> None:
+def _signup_allowed_for(user: User) -> bool:
+    """Whether this account may use one-click signup.
+
+    An empty allowlist means everyone, which is the end state. While the Meta
+    app is in App Review the login only succeeds for people with a role on that
+    app, so the allowlist keeps the button off everyone it would only fail for.
+    Read at call time so the list can be changed without a code deploy.
+    """
+    allowed = {email.strip().lower()
+               for email in settings.SIGNUP_ALLOWED_EMAILS.split(",")
+               if email.strip()}
+    return not allowed or (user.email or "").strip().lower() in allowed
+
+
+def check_signup_access(channel: str, user: User) -> None:
     if not _signup_available(channel):
         raise HTTPException(
             status_code=403,
             detail="Signup is not configured on this deployment for this channel. "
                    "Connect with credentials instead.",
+        )
+    # Separate from the deployment gate so the reason is honest: the flow exists
+    # here, this account just isn't one of the ones it is open to yet.
+    if not _signup_allowed_for(user):
+        raise HTTPException(
+            status_code=403,
+            detail="One-click connect is limited to selected accounts on this "
+                   "deployment. Connect with credentials instead.",
         )
 
 
@@ -302,7 +324,10 @@ async def get_embedded_signup_config(
     never leaks on another's request."""
     if channel not in SIGNUP_CHANNELS:
         raise HTTPException(status_code=404, detail="No signup flow for this channel")
-    enabled = _signup_available(channel)
+    # Both halves of the same gate the connect endpoints enforce, so an account
+    # outside the allowlist is shown the manual form rather than a button that
+    # would 403 on click.
+    enabled = _signup_available(channel) and _signup_allowed_for(current_user)
     return EmbeddedSignupConfigOut(
         enabled=enabled,
         # Instagram Login has no configuration id, only an app id.
@@ -354,7 +379,7 @@ async def connect_whatsapp_embedded_signup(
     Only the way the credentials are obtained differs from connect_whatsapp —
     everything after that is the same upsert and webhook subscribe.
     """
-    check_signup_access(ChannelType.WHATSAPP.value)
+    check_signup_access(ChannelType.WHATSAPP.value, current_user)
 
     ok, data = await exchange_signup_code(request.code)
     access_token = data.get("access_token") if ok else None
@@ -449,7 +474,7 @@ async def list_messenger_signup_pages(
     The Page tokens are sealed into signup_token and never reach the browser;
     only the ids and names come back for the picker.
     """
-    check_signup_access(ChannelType.MESSENGER.value)
+    check_signup_access(ChannelType.MESSENGER.value, current_user)
     user_token = await _signup_user_token(request)
 
     pages = await _list_manageable_pages(user_token, "id,name,access_token")
@@ -479,7 +504,7 @@ async def connect_messenger_signup(
     equivalent of _verify_signup_assets, and matters for the same reason —
     webhooks resolve accounts by external id with no org scoping.
     """
-    check_signup_access(ChannelType.MESSENGER.value)
+    check_signup_access(ChannelType.MESSENGER.value, current_user)
     pages = _open_signup_pages(request.signup_token, organization)
 
     page = next((p for p in pages if p.get("id") == request.page_id), None)
@@ -512,7 +537,7 @@ async def connect_instagram_login(
     nothing to pick. The token is an Instagram user token, used against
     graph.instagram.com rather than the Facebook graph.
     """
-    check_signup_access(ChannelType.INSTAGRAM.value)
+    check_signup_access(ChannelType.INSTAGRAM.value, current_user)
 
     ok, data = await exchange_instagram_code(request.code, request.redirect_uri)
     token_data = instagram_token_payload(data) if ok else {}

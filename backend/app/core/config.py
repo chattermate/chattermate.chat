@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     # signs in with Instagram and we get an Instagram user token.
     INSTAGRAM_APP_ID: str = os.getenv("INSTAGRAM_APP_ID", "")
     INSTAGRAM_APP_SECRET: str = os.getenv("INSTAGRAM_APP_SECRET", "")
+    # Comma-separated emails allowed to use one-click Meta signup. Empty means
+    # everyone, which is the end state — this exists so the flow can be exercised
+    # in production while the Meta app is still in App Review, since until it is
+    # approved the login only works for people with a role on the app anyway.
+    SIGNUP_ALLOWED_EMAILS: str = os.getenv("SIGNUP_ALLOWED_EMAILS", "")
 
     VERIFY_SSL_CERTIFICATES: bool = os.getenv("VERIFY_SSL_CERTIFICATES", "true").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")

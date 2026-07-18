@@ -399,6 +399,66 @@ class TestEmbeddedSignupConfig:
         assert client.get(f"{BASE}/embedded-signup-config?channel=carrier-pigeon").status_code == 404
 
 
+class TestSignupAllowlist:
+    """While the Meta app is in App Review its login only works for people with
+    a role on the app, so SIGNUP_ALLOWED_EMAILS keeps the button off every
+    account it would only fail for. Empty means everyone — the end state, and
+    what every other test in this file relies on."""
+
+    def test_open_to_everyone_when_unset(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "")
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
+
+    def test_disabled_for_an_account_not_on_the_list(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "someone.else@example.com")
+        body = client.get(f"{BASE}/embedded-signup-config").json()
+
+        assert body["enabled"] is False
+        # The ids are what make the popup possible, so a gated-out account must
+        # not receive them either.
+        assert body["config_id"] is None
+        assert body["app_id"] is None
+
+    def test_enabled_for_an_account_on_the_list(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS",
+                            "first@example.com, test.user@example.com")
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
+
+    def test_matching_ignores_case_and_padding(self, client, monkeypatch):
+        """The list is hand-edited in an env var, so stray spacing or a
+        capitalised address must not silently lock the account out."""
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "  Test.User@Example.COM  ,")
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
+
+    def test_connect_is_refused_for_an_account_not_on_the_list(self, client, monkeypatch):
+        """The gate is enforced server-side, not just hidden in the UI — the
+        config endpoint only decides which pane is shown."""
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "someone.else@example.com")
+        exchange = AsyncMock(return_value=(True, {"access_token": "T"}))
+        with patch("app.api.channels.meta.exchange_signup_code", exchange):
+            r = client.post(f"{BASE}/whatsapp/embedded-signup", json={
+                "code": "CODE", "waba_id": "W1", "phone_number_id": "P1"})
+
+        assert r.status_code == 403
+        # Refused before the code is spent, so a retry once allowed still works.
+        exchange.assert_not_awaited()
+
+    def test_messenger_signup_is_refused_for_an_account_not_on_the_list(
+            self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "someone.else@example.com")
+        r = client.post(f"{BASE}/messenger/signup/pages",
+                        json={"code": "CODE", "redirect_uri": "https://x/cb"})
+
+        assert r.status_code == 403
+
+
 class TestEmbeddedSignupConnect:
     ES = f"{BASE}/whatsapp/embedded-signup"
     PAYLOAD = {"code": "AQD-code", "waba_id": "WABA9", "phone_number_id": "PN555"}
