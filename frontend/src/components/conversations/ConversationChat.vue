@@ -199,7 +199,9 @@ onMounted(async () => {
         </div>
         <div v-if="showTakenOverStatus" class="taken-over-status">
           <font-awesome-icon icon="fa-solid fa-user-clock" />
-          Taken over by {{ chat.user_name || 'another agent' }}
+          <span class="status-text" :title="`Taken over by ${chat.user_name || 'another agent'}`">
+            Taken over by {{ chat.user_name || 'another agent' }}
+          </span>
         </div>
         <div v-if="isChatClosed" class="chat-closed-status">
           <font-awesome-icon icon="fa-solid fa-lock" />
@@ -822,6 +824,11 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+/* text-overflow can't act on a flex item, so the label carries it */
+.status-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1182,12 +1189,12 @@ onMounted(async () => {
   }
 
   .chat-header {
-    padding: calc(6px + var(--safe-top)) 10px 6px;
-    gap: 6px;
+    padding: calc(4px + var(--safe-top)) 6px 4px;
+    gap: 2px;
   }
 
   .header-actions {
-    gap: 6px;
+    gap: 2px;
   }
 
   /* Icon-only actions on phones — labels would squeeze the customer name */
@@ -1195,10 +1202,12 @@ onMounted(async () => {
     display: none;
   }
 
+  /* 44px minimum touch target (Apple HIG / WCAG 2.5.8) — the header pads
+     tightly instead of shrinking the controls */
   .create-ticket-btn {
     margin-right: 0;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     justify-content: center;
   }
@@ -1206,8 +1215,8 @@ onMounted(async () => {
   .refresh-chat-btn,
   .info-btn,
   .back-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .message {

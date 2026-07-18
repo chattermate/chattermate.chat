@@ -22,151 +22,155 @@ import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 export { NAV_ICONS, navIconSvg } from './navIcons'
 
 export interface NavItem {
-    to?: string;
-    icon?: string;
-    label?: string;
-    section?: string;
-    show?: boolean;
+  to?: string
+  icon?: string
+  label?: string
+  section?: string
+  show?: boolean
 }
 
 export interface NavGroup {
-    section: string;
-    items: NavItem[];
+  section: string
+  items: NavItem[]
 }
 
 // Shared unread-badge cap (bottom nav, More sheet, header bell)
 export const formatBadgeCount = (count?: number) =>
-    count && count > 99 ? '99+' : String(count || '')
+  count && count > 99 ? '99+' : String(count || '')
 
 // Bottom-nav primary slots, in display order (remaining links go to the More sheet)
 export const PRIMARY_NAV_PATHS = ['/conversations', '/people', '/ai-agents', '/analytics']
 
 export function useNavItems() {
-    const { hasEnterpriseModule } = useEnterpriseFeatures()
+  const { hasEnterpriseModule } = useEnterpriseFeatures()
 
-    const navItems = computed<NavItem[]>(() => [
-        {
-            section: 'Main Menu'
-        },
-        {
+  // Section membership is explicit rather than inferred from array position:
+  // a header can be permission-hidden while one of its items is not (User
+  // Settings is always visible), which silently orphaned items into the
+  // preceding section.
+  const navGroups = computed<NavGroup[]>(() =>
+    [
+      {
+        section: 'Main Menu',
+        items: [
+          {
             to: '/ai-agents',
             icon: 'agents',
             label: 'AI Agents',
-            show: permissionChecks.canViewAgents()
-        },
-        {
+            show: permissionChecks.canViewAgents(),
+          },
+          {
             to: '/human-agents',
             icon: 'humans',
             label: 'Human Agents',
-            show: permissionChecks.canManageUsers()
-        },
-        {
+            show: permissionChecks.canManageUsers(),
+          },
+          {
             to: '/conversations',
             icon: 'inbox',
             label: 'Inbox',
-            show: permissionChecks.canViewChats()
-        },
-        {
+            show: permissionChecks.canViewChats(),
+          },
+          {
             to: '/people',
             icon: 'people',
             label: 'People',
-            show: permissionChecks.canViewChats()
-        },
-        {
+            show: permissionChecks.canViewChats(),
+          },
+          {
             to: '/knowledge',
             icon: 'knowledge',
             label: 'Knowledge',
-            show: permissionChecks.canManageKnowledge()
-        },
-        {
+            show: permissionChecks.canManageKnowledge(),
+          },
+          {
             to: '/faq',
             icon: 'faq',
             label: 'Help center',
-            show: permissionChecks.canManageKnowledge()
-        },
-        {
+            show: permissionChecks.canManageKnowledge(),
+          },
+          {
             to: '/analytics',
             icon: 'analytics',
             label: 'Analytics',
-            show: permissionChecks.canViewAnalytics()
-        },
-        {
-            section: 'Settings',
-            show: permissionChecks.canViewOrganization() || permissionChecks.canViewAIConfig()
-        },
-        {
+            show: permissionChecks.canViewAnalytics(),
+          },
+        ],
+      },
+      {
+        section: 'Settings',
+        items: [
+          {
             to: '/settings/organization',
             icon: 'org',
             label: 'Organization',
-            show: permissionChecks.canViewOrganization()
-        },
-        {
+            show: permissionChecks.canViewOrganization(),
+          },
+          {
             to: '/settings/subscription',
             icon: 'subscription',
             label: 'Subscription',
-            show: hasEnterpriseModule && permissionChecks.canViewOrganization()
-        },
-        {
+            show: hasEnterpriseModule && permissionChecks.canViewOrganization(),
+          },
+          {
             to: '/settings/integrations',
             icon: 'integrations',
             label: 'Integrations',
-            show: permissionChecks.canViewOrganization()
-        },
-        {
+            show: permissionChecks.canViewOrganization(),
+          },
+          {
             to: '/settings/widget-apps',
             icon: 'widgets',
             label: 'Widget Apps',
-            show: permissionChecks.canManageOrganization()
-        },
-        {
+            show: permissionChecks.canManageOrganization(),
+          },
+          {
             to: '/settings/ai-config',
             icon: 'aiconfig',
             label: 'AI Configuration',
-            show: permissionChecks.canViewAIConfig()
-        },
-        {
+            show: permissionChecks.canViewAIConfig(),
+          },
+          {
             to: '/settings/user',
             icon: 'usersettings',
             label: 'User Settings',
-            show: true
-        }
-    ].filter(item => item.show !== false))
+            show: true,
+          },
+        ],
+      },
+    ]
+      .map((group) => ({ ...group, items: group.items.filter((item) => item.show !== false) }))
+      // A section is visible when it has something to show — no separate
+      // permission flag to drift from its items
+      .filter((group) => group.items.length > 0),
+  )
 
-    // Bottom-nav slots in design order; overflow links for the More sheet
-    const primaryNavItems = computed<NavItem[]>(() =>
-        PRIMARY_NAV_PATHS
-            .map(path => navItems.value.find(item => item.to === path))
-            .filter((item): item is NavItem => !!item)
-    )
+  // Flat list (heading followed by its links) for the desktop sidebar
+  const navItems = computed<NavItem[]>(() =>
+    navGroups.value.flatMap((group) => [{ section: group.section }, ...group.items]),
+  )
 
-    const moreNavItems = computed<NavItem[]>(() =>
-        navItems.value.filter(item => item.to && !PRIMARY_NAV_PATHS.includes(item.to))
-    )
+  // Bottom-nav slots in design order
+  const primaryNavItems = computed<NavItem[]>(() =>
+    PRIMARY_NAV_PATHS.map((path) => navItems.value.find((item) => item.to === path)).filter(
+      (item): item is NavItem => !!item,
+    ),
+  )
 
-    // Same overflow links, but keeping the sidebar's section headings so the
-    // More sheet reads as the same menu as the desktop nav rather than a flat
-    // list someone has to audit against it.
-    const moreNavGroups = computed<NavGroup[]>(() => {
-        const groups: NavGroup[] = []
-        let current: NavGroup | null = null
+  // Everything the bottom nav doesn't carry, still grouped like the sidebar
+  const moreNavGroups = computed<NavGroup[]>(() =>
+    navGroups.value
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.to && !PRIMARY_NAV_PATHS.includes(item.to)),
+      }))
+      .filter((group) => group.items.length > 0),
+  )
 
-        for (const item of navItems.value) {
-            if (item.section) {
-                current = { section: item.section, items: [] }
-                groups.push(current)
-                continue
-            }
-            if (!item.to || PRIMARY_NAV_PATHS.includes(item.to)) continue
-            if (!current) {
-                current = { section: '', items: [] }
-                groups.push(current)
-            }
-            current.items.push(item)
-        }
+  // Derived from the groups so there is one definition of "overflow link"
+  const moreNavItems = computed<NavItem[]>(() =>
+    moreNavGroups.value.flatMap((group) => group.items),
+  )
 
-        // A section whose every link is in the bottom nav has nothing to show
-        return groups.filter(group => group.items.length > 0)
-    })
-
-    return { navItems, primaryNavItems, moreNavItems, moreNavGroups }
+  return { navGroups, navItems, primaryNavItems, moreNavItems, moreNavGroups }
 }

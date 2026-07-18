@@ -282,3 +282,14 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Nav section heading — shared by the desktop sidebar and the mobile More
+   sheet so the two menus can't drift apart visually. */
+.nav-section-heading {
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}

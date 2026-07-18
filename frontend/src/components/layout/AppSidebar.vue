@@ -60,7 +60,7 @@ const handleNavigation = () => {
         <nav class="sidebar-nav">
             <div v-for="(item, index) in navItems" :key="index">
                 <!-- Section Header -->
-                <div v-if="item.section" class="nav-section" :class="{ 'collapsed': isCollapsed }">
+                <div v-if="item.section" class="nav-section nav-section-heading" :class="{ 'collapsed': isCollapsed }">
                     <span v-if="!isCollapsed">{{ item.section }}</span>
                 </div>
 
@@ -171,15 +171,10 @@ const handleNavigation = () => {
     padding: 18px 8px;
 }
 
+/* Typography comes from the shared .nav-section-heading (components.css) */
 .nav-section {
     padding: 0 13px;
     margin: 4px 0 12px;
-    color: var(--faint);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: var(--font-weight-medium);
-    text-transform: uppercase;
-    letter-spacing: .1em;
 }
 
 /* Collapsed: section label becomes an invisible spacer, no divider line */

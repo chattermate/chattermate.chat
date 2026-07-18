@@ -91,8 +91,8 @@ const navigate = (to?: string) => {
                     </button>
 
                     <!-- Overflow nav links, grouped exactly as the desktop sidebar -->
-                    <template v-for="group in moreNavGroups" :key="group.section">
-                        <div v-if="group.section" class="sheet-section">{{ group.section }}</div>
+                    <template v-for="(group, index) in moreNavGroups" :key="group.section || index">
+                        <div v-if="group.section" class="sheet-section nav-section-heading">{{ group.section }}</div>
                         <div class="sheet-card">
                             <button
                                 v-for="item in group.items"
@@ -255,15 +255,10 @@ const navigate = (to?: string) => {
     transform: translateX(20px);
 }
 
+/* Typography comes from the shared .nav-section-heading (components.css) */
 .sheet-section {
     padding: 0 4px;
     margin-bottom: 8px;
-    color: var(--faint);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: var(--font-weight-medium);
-    text-transform: uppercase;
-    letter-spacing: .1em;
 }
 
 .sheet-card {

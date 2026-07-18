@@ -98,4 +98,29 @@ describe('useNavItems', () => {
     // No empty groups — a section fully covered by the bottom nav is dropped
     moreNavGroups.value.forEach((g) => expect(g.items.length).toBeGreaterThan(0))
   })
+
+  // User Settings is always visible while the Settings heading used to be
+  // permission-gated separately, which orphaned the item into Main Menu.
+  it('keeps always-visible settings items under Settings for restricted users', () => {
+    permissions.canViewOrganization.mockReturnValue(false)
+    permissions.canManageOrganization.mockReturnValue(false)
+    permissions.canViewAIConfig.mockReturnValue(false)
+
+    const { moreNavGroups } = useNavItems()
+    const settings = moreNavGroups.value.find((g) => g.section === 'Settings')
+
+    expect(settings?.items.map((i) => i.to)).toEqual(['/settings/user'])
+    expect(moreNavGroups.value.find((g) => g.section === 'Main Menu')?.items.map((i) => i.to))
+      .not.toContain('/settings/user')
+  })
+
+  it('drops a section whose every item is permission-hidden', () => {
+    Object.values(permissions).forEach((fn) => fn.mockReturnValue(false))
+
+    const { moreNavGroups, navItems } = useNavItems()
+
+    // Only User Settings survives, so Main Menu disappears entirely
+    expect(moreNavGroups.value.map((g) => g.section)).toEqual(['Settings'])
+    expect(navItems.value.filter((i) => i.section).map((i) => i.section)).toEqual(['Settings'])
+  })
 })

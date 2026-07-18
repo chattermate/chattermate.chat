@@ -245,7 +245,7 @@ onMounted(() => { load(); loadWhatsAppAccounts() })
 </template>
 
 <style scoped>
-.pdd-overlay { position: fixed; inset: 0; background: var(--scrim, rgba(0,0,0,.4)); z-index: var(--z-drawer, 1000); display: flex; justify-content: flex-end; }
+.pdd-overlay { position: fixed; inset: 0; background: var(--scrim); z-index: var(--z-drawer); display: flex; justify-content: flex-end; }
 .pdd { width: 440px; max-width: 94vw; height: 100%; background: var(--surface); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; box-shadow: -12px 0 40px rgba(0,0,0,.2); }
 .pdd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--border-color); }
 .pdd-name { font-size: 18px; font-weight: 700; }
@@ -311,13 +311,14 @@ onMounted(() => { load(); loadWhatsAppAccounts() })
   }
 
   .pdd-head {
-    padding: calc(16px + var(--safe-top, 0px)) 16px 16px;
+    padding: calc(16px + var(--safe-top)) 16px 16px;
   }
 
-  .pdd-close { width: 40px; height: 40px; }
+  /* 44px minimum touch target (Apple HIG / WCAG 2.5.8) */
+  .pdd-close { width: 44px; height: 44px; }
 
   .pdd-body {
-    padding: 16px 16px calc(24px + var(--safe-bottom, 0px));
+    padding: 16px 16px calc(24px + var(--safe-bottom));
   }
 }
 </style>

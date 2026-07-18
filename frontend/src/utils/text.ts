@@ -16,16 +16,25 @@ limitations under the License.
 
 /**
  * Avatar initials from a display name or email ("John Doe" → "JD",
- * "john.doe@x.com" → "JD"). Single source of truth — PeopleView, UserList and
- * GroupList still carry older local variants that should migrate here.
+ * "john.doe@x.com" → "JD"). Single source of truth — UserList and GroupList
+ * still carry older local variants that should migrate here.
+ *
+ * Names split on whitespace only, so "Jean-Luc Picard" stays "JP" rather than
+ * losing the surname to the hyphen. The ./_/- separators apply to emails,
+ * where they're the only word boundaries available.
  */
 export function getInitials(name?: string | null, fallback = '?'): string {
+  const value = (name || '').trim()
+  if (!value) return fallback
+
+  const isEmail = value.includes('@') && !/\s/.test(value)
+  const words = isEmail ? value.split('@')[0].split(/[._-]+/) : value.split(/\s+/)
+
   return (
-    (name || '')
-      .split(/[\s@._-]+/)
+    words
       .filter(Boolean)
       .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() || '')
+      .map((word) => word[0]?.toUpperCase() || '')
       .join('') || fallback
   )
 }

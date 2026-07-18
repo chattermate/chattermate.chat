@@ -49,6 +49,17 @@ const view = ref<'identified' | 'anonymous'>('identified')
 const search = ref('')
 const selectedId = ref<string | null>(null)
 
+// One definition per column: `label` heads the desktop table, `short` labels
+// the same value inside the mobile card (which has no table header to name it).
+const COLUMNS = {
+  person: { label: 'Person', short: 'Person' },
+  stage: { label: 'Stage', short: 'Stage' },
+  source: { label: 'Source', short: 'Source' },
+  captured: { label: 'Captured', short: 'Captured' },
+  activity: { label: 'Last activity', short: 'Active' },
+  sync: { label: 'Sync', short: 'Sync' },
+} as const
+
 const STAGES = [
   { value: 'all', label: 'All' },
   { value: 'visitor', label: 'Visitors' },
@@ -189,7 +200,7 @@ onMounted(() => {
     <!-- table -->
     <div class="pv-table">
       <div class="pv-thead">
-        <span>Person</span><span>Stage</span><span>Source</span><span>Captured</span><span>Last activity</span><span>Sync</span>
+        <span>{{ COLUMNS.person.label }}</span><span>{{ COLUMNS.stage.label }}</span><span>{{ COLUMNS.source.label }}</span><span>{{ COLUMNS.captured.label }}</span><span>{{ COLUMNS.activity.label }}</span><span>{{ COLUMNS.sync.label }}</span>
       </div>
       <button v-for="p in items" :key="p.id" class="pv-row" @click="selectedId = p.id">
         <span class="pv-person">
@@ -210,16 +221,20 @@ onMounted(() => {
         <!-- .pv-cell-label is desktop-hidden: the mobile card layout drops the
              table header, so each meta value needs to name itself. -->
         <span class="pv-source" :title="sourceTitle(p)">
-          <span class="pv-cell-label">Source</span>{{ sourceLabel(p) }}
+          <span class="pv-cell-label">{{ COLUMNS.source.short }}</span>
+          <span class="pv-cell-value">{{ sourceLabel(p) }}</span>
         </span>
         <span class="pv-captured">
-          <span class="pv-cell-label">Captured</span>{{ fmtDate(p.captured_at) }}
+          <span class="pv-cell-label">{{ COLUMNS.captured.short }}</span>
+          <span class="pv-cell-value">{{ fmtDate(p.captured_at) }}</span>
         </span>
         <span class="pv-activity">
-          <span class="pv-cell-label">Active</span>{{ fmtDate(p.last_activity) }}
+          <span class="pv-cell-label">{{ COLUMNS.activity.short }}</span>
+          <span class="pv-cell-value">{{ fmtDate(p.last_activity) }}</span>
         </span>
         <span class="pv-sync">
-          <span class="pv-cell-label">Sync</span>{{ p.synced ? 'Synced' : '—' }}
+          <span class="pv-cell-label">{{ COLUMNS.sync.short }}</span>
+          <span class="pv-cell-value">{{ p.synced ? 'Synced' : '—' }}</span>
         </span>
       </button>
       <div v-if="!loading && items.length === 0" class="pv-empty">No people match this filter.</div>
@@ -329,8 +344,8 @@ onMounted(() => {
 
   .pv-thead { display: none; }
 
-  /* Line 1: person + stage badge. The person's flex-basis fills the row so the
-     meta values below it wrap onto their own line. */
+  /* Line 1: person + stage badge. Line 2: the meta values, pushed there by a
+     zero-height full-width break rather than a guessed flex-basis. */
   .pv-row {
     display: flex;
     flex-wrap: wrap;
@@ -339,15 +354,25 @@ onMounted(() => {
     padding: 14px 16px;
   }
 
-  .pv-person { flex: 1 1 calc(100% - 110px); }
-  .pv-stage { flex: 0 0 auto; margin-left: auto; }
+  .pv-person { flex: 1 1 auto; min-width: 0; order: 1; }
+  .pv-stage { flex: 0 0 auto; margin-left: auto; order: 2; }
+
+  .pv-row::after {
+    content: '';
+    order: 3;
+    flex: 1 0 100%;
+    height: 0;
+  }
+
   .pv-name { font-size: 15px; }
   .pv-avatar { width: 38px; height: 38px; font-size: 13px; }
 
   .pv-source,
   .pv-captured,
   .pv-activity {
-    flex: 0 0 auto;
+    order: 4;
+    flex: 0 1 auto;
+    min-width: 0;
     display: inline-flex;
     align-items: baseline;
     gap: 4px;
@@ -356,14 +381,20 @@ onMounted(() => {
     max-width: 100%;
   }
 
-  .pv-source { min-width: 0; }
+  /* text-overflow needs its own block box — it does nothing on a flex item */
+  .pv-cell-value {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
   .pv-cell-label {
     display: inline;
     font-size: 10.5px;
     letter-spacing: .04em;
     text-transform: uppercase;
-    color: var(--faint, var(--muted));
+    color: var(--faint);
   }
 
   /* Sync is CRM plumbing — not worth a phone row */
