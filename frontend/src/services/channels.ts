@@ -181,27 +181,29 @@ const channelsService = {
     return response.data
   },
 
-  /** Step 1 of Facebook Login for Business: trade the code for the accounts the
-   * customer can connect. Their Page tokens stay sealed in signup_token.
-   * Messenger offers Pages; Instagram offers the account linked to each Page. */
-  async listSignupPages(
-    channel: 'messenger' | 'instagram',
-    code: string,
-    redirectUri: string,
-  ): Promise<MessengerSignupPages> {
-    const response = await api.post(`/channels/meta/${channel}/signup/pages`, {
+  /** Step 1 of Facebook Login for Business: trade the code for the Pages the
+   * customer can connect. Their tokens stay sealed in signup_token. */
+  async listMessengerSignupPages(code: string, redirectUri: string): Promise<MessengerSignupPages> {
+    const response = await api.post('/channels/meta/messenger/signup/pages', {
       code,
       redirect_uri: redirectUri,
     })
     return response.data
   },
 
-  /** Step 2: connect the picked account; the backend uses the token it sealed, not ours */
-  async connectSignupPage(
-    channel: 'messenger' | 'instagram',
-    payload: { signup_token: string; page_id: string },
-  ): Promise<ChannelAccount> {
-    const response = await api.post(`/channels/meta/${channel}/signup/connect`, payload)
+  /** Step 2: connect the picked Page; the backend uses the token it sealed, not ours */
+  async connectMessengerSignup(payload: { signup_token: string; page_id: string }): Promise<ChannelAccount> {
+    const response = await api.post('/channels/meta/messenger/signup/connect', payload)
+    return response.data
+  },
+
+  /** Connect an Instagram account via Instagram Login. One account per login,
+   * so unlike Messenger this is a single step with nothing to pick. */
+  async connectInstagramLogin(code: string, redirectUri: string): Promise<ChannelAccount> {
+    const response = await api.post('/channels/meta/instagram/login/connect', {
+      code,
+      redirect_uri: redirectUri,
+    })
     return response.data
   },
 

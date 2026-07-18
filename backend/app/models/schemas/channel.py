@@ -113,6 +113,18 @@ class MessengerSignupRequest(BaseModel):
     redirect_uri: str
 
 
+class InstagramLoginRequest(BaseModel):
+    """What Instagram Business Login hands back. No Page and no asset ids — the
+    token itself identifies the single account that signed in, so unlike the
+    Messenger flow there is nothing to list or pick.
+
+    redirect_uri is the OAuth callback the popup used; the code is bound to it,
+    so the token exchange must send the exact same value back."""
+    code: str
+    redirect_uri: str
+    display_name: Optional[str] = None
+
+
 class MessengerPageOut(BaseModel):
     """A Page offered in the picker. Its access token is deliberately absent:
     it travels back inside the opaque signup_token instead."""

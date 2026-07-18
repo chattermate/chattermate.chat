@@ -17,18 +17,27 @@ limitations under the License.
 from typing import ClassVar
 
 from app.channels.messenger import MessengerAdapter
+from app.channels.meta_base import GRAPH_INSTAGRAM_BASE
 from app.channels.registry import register_adapter
 from app.models.channels import ChannelType
 
 # Instagram DM uses the same Messenger Platform envelope (entry[].messaging[],
-# sender.id = IGSID) and the same `me/messages` Graph send with the linked
-# page token, so the only difference from Messenger is the channel identity.
+# sender.id = IGSID) and the same `me/messages` send shape, so it subclasses
+# Messenger. What differs is the host and the credential: accounts connect
+# through Instagram Login, which yields an Instagram user token rather than a
+# Facebook Page token.
 
 
 class InstagramAdapter(MessengerAdapter):
     channel_type: ClassVar[str] = ChannelType.INSTAGRAM.value
+    # An Instagram user token is only accepted by graph.instagram.com; the
+    # Facebook graph rejects it, so sends and profile lookups go here instead.
+    graph_base: ClassVar[str] = GRAPH_INSTAGRAM_BASE
     # An IG user node exposes name/username, not the Messenger first/last name.
     profile_fields: ClassVar[str] = "name,username"
+    # Instagram's send body is just {recipient, message} — messaging_type is a
+    # Messenger-only parameter and has no meaning here.
+    send_extras: ClassVar[dict] = {}
 
     @staticmethod
     def _display_name(data: dict) -> str:

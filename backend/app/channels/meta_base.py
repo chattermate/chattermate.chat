@@ -32,6 +32,11 @@ from app.core.logger import get_logger
 logger = get_logger(__name__)
 
 GRAPH_BASE = "https://graph.facebook.com"
+# Instagram API with Instagram Login speaks to its own host with an Instagram
+# user token; the Facebook graph rejects those. Page-based channels keep using
+# GRAPH_BASE, so every helper below takes the base rather than assuming one.
+GRAPH_INSTAGRAM_BASE = "https://graph.instagram.com"
+INSTAGRAM_OAUTH_BASE = "https://api.instagram.com"
 REQUEST_TIMEOUT_SECONDS = 15.0
 SEND_RETRIES = 2
 # Meta customer-service window: free-form replies allowed for 24h after the
@@ -50,26 +55,32 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
-def graph_url(path: str) -> str:
-    return f"{GRAPH_BASE}/{settings.META_GRAPH_VERSION}/{path}"
+def graph_url(path: str, base: str = GRAPH_BASE) -> str:
+    return f"{base}/{settings.META_GRAPH_VERSION}/{path}"
 
 
 def verify_meta_signature(raw_body: bytes, signature_header: str) -> bool:
-    """Validate the X-Hub-Signature-256 header against META_APP_SECRET.
+    """Validate the X-Hub-Signature-256 header against our app secrets.
 
     The signature covers the raw request body; it must be checked before the
     body is parsed. Uses a constant-time comparison.
+
+    Instagram Login webhooks are signed with the Instagram app secret rather
+    than the Meta one, and the only thing that would say which product sent this
+    is inside the body we have not authenticated yet. So this tries each secret
+    we own instead of trusting unverified content to choose one; an attacker
+    still has to forge one of them.
     """
-    app_secret = settings.META_APP_SECRET
-    if not app_secret or not signature_header:
+    if not signature_header or not signature_header.startswith("sha256="):
         return False
-    if not signature_header.startswith("sha256="):
-        return False
-    expected = hmac.new(
-        app_secret.encode(), raw_body, hashlib.sha256
-    ).hexdigest()
     provided = signature_header[len("sha256="):]
-    return hmac.compare_digest(expected, provided)
+    for app_secret in (settings.META_APP_SECRET, settings.INSTAGRAM_APP_SECRET):
+        if not app_secret:
+            continue
+        expected = hmac.new(app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected, provided):
+            return True
+    return False
 
 
 def verify_challenge(mode: Optional[str], token: Optional[str], challenge: Optional[str]) -> Optional[str]:
@@ -83,13 +94,15 @@ def verify_challenge(mode: Optional[str], token: Optional[str], challenge: Optio
     return None
 
 
-async def graph_post(path: str, access_token: str, payload: dict) -> SendResult:
+async def graph_post(path: str, access_token: str, payload: dict,
+                     base: str = GRAPH_BASE) -> SendResult:
     """POST to the Graph API with small exponential backoff on transient errors.
 
     Returns a SendResult; 4xx errors are terminal (no retry), network/5xx are
-    retried up to SEND_RETRIES times.
+    retried up to SEND_RETRIES times. `base` selects the host — Instagram Login
+    accounts send via graph.instagram.com, everything else via graph.facebook.com.
     """
-    url = graph_url(path)
+    url = graph_url(path, base)
     headers = {"Authorization": f"Bearer {access_token}"}
     last_error = "unknown error"
     for attempt in range(SEND_RETRIES + 1):
@@ -112,7 +125,8 @@ async def graph_post(path: str, access_token: str, payload: dict) -> SendResult:
 
 async def _graph_request(method: str, path: str, access_token: Optional[str],
                          params: Optional[dict] = None,
-                         json_body: Optional[dict] = None) -> tuple[bool, dict]:
+                         json_body: Optional[dict] = None,
+                         base: str = GRAPH_BASE) -> tuple[bool, dict]:
     """Issue a Graph call and return (ok, decoded-json).
 
     Unlike graph_post this keeps the whole response body, for calls where the
@@ -125,7 +139,7 @@ async def _graph_request(method: str, path: str, access_token: Optional[str],
     try:
         response = await _get_http_client().request(
             method,
-            graph_url(path),
+            graph_url(path, base),
             params=params or None,
             json=json_body,
             headers={"Authorization": f"Bearer {access_token}"} if access_token else {},
@@ -136,9 +150,10 @@ async def _graph_request(method: str, path: str, access_token: Optional[str],
         return (False, {"error": {"message": str(e)}})
 
 
-async def graph_get(path: str, access_token: str, params: Optional[dict] = None) -> tuple[bool, dict]:
+async def graph_get(path: str, access_token: str, params: Optional[dict] = None,
+                    base: str = GRAPH_BASE) -> tuple[bool, dict]:
     """GET a Graph node (validating tokens during onboarding, listing templates)."""
-    return await _graph_request("GET", path, access_token, params=params)
+    return await _graph_request("GET", path, access_token, params=params, base=base)
 
 
 async def graph_post_json(path: str, access_token: str, payload: dict) -> tuple[bool, dict]:
@@ -207,6 +222,79 @@ async def exchange_for_long_lived_token(short_lived_token: str) -> tuple[bool, d
         "client_secret": settings.META_APP_SECRET,
         "fb_exchange_token": short_lived_token,
     })
+
+
+def instagram_token_payload(data: dict) -> dict:
+    """The token object out of an Instagram Login exchange response.
+
+    Instagram has returned this both flat and wrapped in a single-element `data`
+    list depending on the API version, and the difference is invisible until it
+    silently yields no token — so accept either shape.
+    """
+    entries = data.get("data")
+    if isinstance(entries, list) and entries and isinstance(entries[0], dict):
+        return entries[0]
+    return data
+
+
+async def exchange_instagram_code(code: str, redirect_uri: str) -> tuple[bool, dict]:
+    """Trade an Instagram Business Login code for a short-lived user token.
+
+    Instagram Login is a separate OAuth from the Facebook graph: its own host,
+    its own app credentials, form-encoded rather than query params, and it
+    returns an Instagram user token plus the account's user_id — no Page and no
+    Page token anywhere in the flow.
+    """
+    try:
+        response = await _get_http_client().request(
+            "POST",
+            f"{INSTAGRAM_OAUTH_BASE}/oauth/access_token",
+            data={
+                "client_id": settings.INSTAGRAM_APP_ID,
+                "client_secret": settings.INSTAGRAM_APP_SECRET,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+                "code": code,
+            },
+        )
+        return (response.status_code < 300, response.json())
+    except Exception as e:
+        logger.error(f"Instagram code exchange failed: {e}")
+        return (False, {"error": {"message": str(e)}})
+
+
+async def exchange_instagram_long_lived(short_lived_token: str) -> tuple[bool, dict]:
+    """Trade a short-lived Instagram token (~1 hour) for a 60-day one.
+
+    Without this the connection dies about an hour after onboarding, with no
+    signal beyond messages quietly failing.
+    """
+    try:
+        response = await _get_http_client().request(
+            "GET",
+            f"{GRAPH_INSTAGRAM_BASE}/access_token",
+            params={
+                "grant_type": "ig_exchange_token",
+                "client_secret": settings.INSTAGRAM_APP_SECRET,
+                "access_token": short_lived_token,
+            },
+        )
+        return (response.status_code < 300, response.json())
+    except Exception as e:
+        logger.error(f"Instagram long-lived exchange failed: {e}")
+        return (False, {"error": {"message": str(e)}})
+
+
+async def subscribe_instagram_app(access_token: str) -> bool:
+    """Subscribe our app to this Instagram account's message webhooks.
+
+    Best-effort, like subscribe_app: onboarding still succeeds if it fails, and
+    it can be retried by reconnecting.
+    """
+    ok, _ = await _graph_request("POST", "me/subscribed_apps", access_token,
+                                 params={"subscribed_fields": "messages"},
+                                 base=GRAPH_INSTAGRAM_BASE)
+    return ok
 
 
 async def register_phone_number(phone_number_id: str, access_token: str, pin: str) -> tuple[bool, dict]:

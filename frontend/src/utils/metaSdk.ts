@@ -155,36 +155,33 @@ export interface BusinessLoginConfig {
   redirectUri: string
 }
 
-/**
- * Run Facebook Login for Business as a first-party OAuth popup and resolve the
- * returned code.
- *
- * Why not FB.login: the JS SDK binds the code to an internal xd_arbiter
- * redirect that regenerates every login, so it can never be a registered Valid
- * OAuth Redirect URI — fatal once the app enforces Strict Mode (which it does,
- * non-negotiably). Driving the dialog ourselves with our own callback URL means
- * the code is bound to a value we control and the server can reproduce.
- *
- * The same redirectUri must go to the token exchange, so the caller passes it
- * on to the server. Resolves with the code, rejects on error, popup-block, or
- * the user closing the window ('cancelled').
- */
-export const runBusinessLogin = (config: BusinessLoginConfig): Promise<string> =>
-  new Promise((resolve, reject) => {
-    // CSRF: Meta echoes state back on the redirect; we only accept a match.
-    const state = crypto.randomUUID()
-    const url = `https://www.facebook.com/${config.graphVersion}/dialog/oauth?` +
-      new URLSearchParams({
-        client_id: config.appId,
-        config_id: config.configId,
-        response_type: 'code',
-        override_default_response_type: 'true',
-        redirect_uri: config.redirectUri,
-        state,
-        display: 'popup',
-      }).toString()
+export interface InstagramLoginConfig {
+  /** The Instagram app id — not the Meta one; Instagram Login is its own app. */
+  appId: string
+  /** window.location.origin + META_OAUTH_CALLBACK_PATH */
+  redirectUri: string
+}
 
-    const popup = window.open(url, 'meta-login', 'width=600,height=720')
+/** What Instagram Login must grant us: read the account, and handle its DMs. */
+const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_manage_messages'
+
+/**
+ * Run an OAuth authorization in a popup and resolve the code it returns.
+ *
+ * Why we drive the dialog ourselves rather than use FB.login: the JS SDK binds
+ * the code to an internal xd_arbiter redirect that regenerates every login, so
+ * it can never be a registered Valid OAuth Redirect URI — fatal once the app
+ * enforces Strict Mode (which it does, non-negotiably). Owning the callback URL
+ * means the code is bound to a value the server can reproduce at exchange time.
+ *
+ * `buildUrl` receives the CSRF state to embed; the provider echoes it back on
+ * the redirect and we accept only a match. Resolves with the code, rejects on
+ * error, popup-block, or the user closing the window ('cancelled').
+ */
+const runOAuthPopup = (buildUrl: (state: string) => string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const state = crypto.randomUUID()
+    const popup = window.open(buildUrl(state), 'meta-login', 'width=600,height=720')
     if (!popup) {
       reject(new Error('Popup blocked — allow pop-ups for this site and try again'))
       return
@@ -211,3 +208,41 @@ export const runBusinessLogin = (config: BusinessLoginConfig): Promise<string> =
     }, 500)
     window.addEventListener('message', onMessage)
   })
+
+/**
+ * Facebook Login for Business — used by Messenger, which connects a Page.
+ *
+ * The same redirectUri must go to the token exchange, so the caller passes it
+ * on to the server.
+ */
+export const runBusinessLogin = (config: BusinessLoginConfig): Promise<string> =>
+  runOAuthPopup((state) =>
+    `https://www.facebook.com/${config.graphVersion}/dialog/oauth?` +
+    new URLSearchParams({
+      client_id: config.appId,
+      config_id: config.configId,
+      response_type: 'code',
+      override_default_response_type: 'true',
+      redirect_uri: config.redirectUri,
+      state,
+      display: 'popup',
+    }).toString())
+
+/**
+ * Instagram Business Login — a different provider entirely, not a Facebook
+ * dialog: the business signs in with Instagram, so no Facebook Page is involved
+ * and the resulting token is an Instagram user token.
+ */
+export const runInstagramLogin = (config: InstagramLoginConfig): Promise<string> =>
+  runOAuthPopup((state) =>
+    'https://www.instagram.com/oauth/authorize?' +
+    new URLSearchParams({
+      client_id: config.appId,
+      redirect_uri: config.redirectUri,
+      response_type: 'code',
+      scope: INSTAGRAM_SCOPES,
+      state,
+      // Keep it an Instagram sign-in rather than falling through to Facebook.
+      enable_fb_login: '0',
+      force_authentication: '1',
+    }).toString())

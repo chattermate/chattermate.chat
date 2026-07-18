@@ -657,64 +657,104 @@ class TestMessengerSignup:
         exchange.assert_not_awaited()
 
 
-class TestInstagramSignup:
-    """Same Login-for-Business popup as Messenger, but the picker offers the
-    Instagram account linked to each Page and connects it by its own id."""
+class TestInstagramLogin:
+    """Instagram Login needs no Facebook Page: the business signs in with
+    Instagram, so one account comes back and there is nothing to pick."""
 
-    PAGES = f"{BASE}/instagram/signup/pages"
-    CONNECT = f"{BASE}/instagram/signup/connect"
-
-    # /me/accounts with the IG fields: one Page has a linked account, one doesn't.
-    PAGES_WITH_IG = [
-        {"id": "PAGE1", "name": "Acme", "access_token": "EAAG-page1",
-         "instagram_business_account": {"id": "IG100", "username": "acme"}},
-        {"id": "PAGE2", "name": "No IG", "access_token": "EAAG-page2"},
-    ]
+    CONNECT = f"{BASE}/instagram/login/connect"
+    PAYLOAD = {"code": "IG-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"}
 
     @pytest.fixture(autouse=True)
     def enabled(self, monkeypatch):
-        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_ID", "IGAPP")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "IGSECRET")
 
-    def _list_pages(self, client, pages=None):
-        lister = AsyncMock(return_value=(True, self.PAGES_WITH_IG if pages is None else pages))
-        with patch("app.api.channels.meta.exchange_signup_code",
-                   AsyncMock(return_value=(True, {"access_token": "USERTOKEN"}))), \
-             patch("app.api.channels.meta.exchange_for_long_lived_token",
-                   AsyncMock(return_value=(True, {"access_token": "LONGLIVED"}))), \
-             patch("app.api.channels.meta.graph_list_all", lister):
-            r = client.post(self.PAGES, json={
-                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
-        return r, lister
+    def _connect(self, client, exchange=None, long_lived=(True, {"access_token": "IGLong"})):
+        exchange = exchange or AsyncMock(
+            return_value=(True, {"access_token": "IGShort", "user_id": "17841400"}))
+        with patch("app.api.channels.meta.exchange_instagram_code", exchange), \
+             patch("app.api.channels.meta.exchange_instagram_long_lived",
+                   AsyncMock(return_value=long_lived)), \
+             patch("app.api.channels.meta.graph_get",
+                   AsyncMock(return_value=(True, {"username": "acme"}))), \
+             patch("app.api.channels.meta.subscribe_instagram_app",
+                   AsyncMock(return_value=True)):
+            return client.post(self.CONNECT, json=self.PAYLOAD), exchange
 
-    def test_only_offers_pages_with_a_linked_ig_account(self, client):
-        r, _ = self._list_pages(client)
+    def test_connects_the_account_that_logged_in(self, client, db):
+        r, exchange = self._connect(client)
+
         assert r.status_code == 200
-        pages = r.json()["pages"]
-        # PAGE2 has no linked IG account, so it must not be offered.
-        assert [p["id"] for p in pages] == ["PAGE1"]
-        assert pages[0]["name"] == "@acme"
-        assert "EAAG-page1" not in r.text  # token stays sealed
+        assert r.json()["display_name"] == "@acme"
+        repo = ChannelAccountRepository(db)
+        account = repo.get_by_external_id("instagram", "17841400")
+        assert account is not None
+        # The long-lived token is what gets stored, not the ~1h login token.
+        assert repo.get_credentials(account)["access_token"] == "IGLong"
+        exchange.assert_awaited_once_with("IG-code", "https://app.test/meta-oauth-callback.html")
 
-    def test_connect_stores_the_ig_account_id_not_the_page_id(self, client, db):
-        token = self._list_pages(client)[0].json()["signup_token"]
-        subscribe = AsyncMock(return_value=True)
-        with patch("app.api.channels.meta.subscribe_app", subscribe):
-            r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE1"})
+    def test_keys_the_account_on_the_id_webhooks_route_by(self, client, db):
+        """/me's user_id is the professional account id that arrives as the
+        webhook's entry.id; the login response's can be app-scoped. Keying on
+        the wrong one drops every inbound DM silently."""
+        with patch("app.api.channels.meta.exchange_instagram_code",
+                   AsyncMock(return_value=(True, {"access_token": "IGShort", "user_id": "APPSCOPED"}))), \
+             patch("app.api.channels.meta.exchange_instagram_long_lived",
+                   AsyncMock(return_value=(True, {"access_token": "IGLong"}))), \
+             patch("app.api.channels.meta.graph_get",
+                   AsyncMock(return_value=(True, {"user_id": "17841400", "username": "acme"}))), \
+             patch("app.api.channels.meta.subscribe_instagram_app", AsyncMock(return_value=True)):
+            r = client.post(self.CONNECT, json=self.PAYLOAD)
 
         assert r.status_code == 200
         repo = ChannelAccountRepository(db)
-        # Keyed by the IG account id (webhooks route on it), with the Page token.
-        account = repo.get_by_external_id("instagram", "IG100")
-        assert account is not None
-        assert repo.get_credentials(account)["access_token"] == "EAAG-page1"
-        assert account.display_name == "@acme"
-        subscribe.assert_awaited_once_with(
-            "PAGE1", "EAAG-page1", subscribed_fields="messages,messaging_postbacks")
+        assert repo.get_by_external_id("instagram", "17841400") is not None
+        assert repo.get_by_external_id("instagram", "APPSCOPED") is None
 
-    def test_no_linked_ig_account_is_a_clear_400(self, client):
-        r, _ = self._list_pages(client, pages=[self.PAGES_WITH_IG[1]])
+    def test_accepts_the_wrapped_token_response_shape(self, client, db):
+        """Instagram also returns the token inside a `data` list."""
+        wrapped = AsyncMock(return_value=(True, {
+            "data": [{"access_token": "IGShort", "user_id": "17841400"}]}))
+        r, _ = self._connect(client, exchange=wrapped)
+
+        assert r.status_code == 200
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "17841400") is not None
+
+    def test_falls_back_to_the_short_token_when_extension_fails(self, client, db):
+        r, _ = self._connect(client, long_lived=(False, {"error": {"message": "nope"}}))
+
+        assert r.status_code == 200
+        repo = ChannelAccountRepository(db)
+        account = repo.get_by_external_id("instagram", "17841400")
+        assert repo.get_credentials(account)["access_token"] == "IGShort"
+
+    def test_stale_code_is_400(self, client, db):
+        stale = AsyncMock(return_value=(False, {"error": {"message": "Code expired"}}))
+        r, _ = self._connect(client, exchange=stale)
+
         assert r.status_code == 400
-        assert "Instagram professional account" in r.json()["detail"]
+        assert r.json()["detail"] == "Code expired"
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "17841400") is None
+
+    def test_a_response_without_a_token_is_400(self, client):
+        empty = AsyncMock(return_value=(True, {}))
+        r, _ = self._connect(client, exchange=empty)
+        assert r.status_code == 400
+
+    def test_rejected_without_instagram_app_credentials(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_ID", "")
+        exchange = AsyncMock()
+        with patch("app.api.channels.meta.exchange_instagram_code", exchange):
+            r = client.post(self.CONNECT, json=self.PAYLOAD)
+        assert r.status_code == 403
+        exchange.assert_not_awaited()
+
+    def test_config_serves_the_instagram_app_id_and_no_config_id(self, client, monkeypatch):
+        """The frontend builds the Instagram authorize URL from the Instagram
+        app id; the Facebook config id is meaningless here."""
+        monkeypatch.setattr(settings, "META_APP_ID", "FBAPP")
+        body = client.get(f"{BASE}/embedded-signup-config?channel=instagram").json()
+        assert (body["enabled"], body["app_id"], body["config_id"]) == (True, "IGAPP", None)
 
 
 class TestGraphErrorDetail:

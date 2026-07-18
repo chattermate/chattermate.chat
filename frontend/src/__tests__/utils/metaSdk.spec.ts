@@ -14,8 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, it, expect } from 'vitest'
-import { parseSignupMessage, signupLoginOptions } from '../../utils/metaSdk'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import {
+  parseSignupMessage,
+  signupLoginOptions,
+  runInstagramLogin,
+  runBusinessLogin,
+} from '../../utils/metaSdk'
 
 const message = (data: unknown, origin = 'https://www.facebook.com') =>
   ({ origin, data: typeof data === 'string' ? data : JSON.stringify(data) }) as MessageEvent
@@ -84,5 +89,54 @@ describe('signupLoginOptions', () => {
     // extras.setup opens Embedded Signup; Messenger/Instagram must not send it.
     expect(signupLoginOptions('CFG1', 'messenger')).not.toHaveProperty('extras')
     expect(signupLoginOptions('CFG1', 'instagram')).not.toHaveProperty('extras')
+  })
+})
+
+describe('OAuth login popups', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  /** Capture the URL the popup is opened with, without completing the login. */
+  const capturePopupUrl = (run: () => Promise<unknown>) => {
+    let opened = ''
+    vi.stubGlobal('open', (url: string) => {
+      opened = url
+      return { closed: false, close: () => {} }
+    })
+    // The promise stays pending (no callback message); we only want the URL.
+    void run().catch(() => {})
+    return new URL(opened)
+  }
+
+  it('sends Instagram to its own authorize endpoint, not a Facebook dialog', () => {
+    const url = capturePopupUrl(() =>
+      runInstagramLogin({ appId: 'IGAPP', redirectUri: 'https://app.test/cb.html' }))
+
+    expect(url.origin + url.pathname).toBe('https://www.instagram.com/oauth/authorize')
+    expect(url.searchParams.get('client_id')).toBe('IGAPP')
+    expect(url.searchParams.get('response_type')).toBe('code')
+    expect(url.searchParams.get('redirect_uri')).toBe('https://app.test/cb.html')
+    // Must stay an Instagram sign-in — no Page, no Facebook fallback.
+    expect(url.searchParams.get('enable_fb_login')).toBe('0')
+    expect(url.searchParams.get('scope')).toContain('instagram_business_manage_messages')
+    expect(url.searchParams.get('state')).toBeTruthy()
+  })
+
+  it('sends Messenger to the Facebook dialog with its configuration', () => {
+    const url = capturePopupUrl(() =>
+      runBusinessLogin({
+        appId: 'FBAPP', configId: 'CFG1', graphVersion: 'v21.0',
+        redirectUri: 'https://app.test/cb.html',
+      }))
+
+    expect(url.hostname).toBe('www.facebook.com')
+    expect(url.searchParams.get('config_id')).toBe('CFG1')
+    expect(url.searchParams.get('client_id')).toBe('FBAPP')
+  })
+
+  it('rejects when the browser blocks the popup', async () => {
+    vi.stubGlobal('open', () => null)
+    await expect(
+      runInstagramLogin({ appId: 'IGAPP', redirectUri: 'https://app.test/cb.html' }),
+    ).rejects.toThrow(/Popup blocked/)
   })
 })

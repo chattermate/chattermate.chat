@@ -17,7 +17,7 @@ limitations under the License.
 from typing import ClassVar, List
 
 from app.channels.base import InboundMessage, SendResult
-from app.channels.meta_base import MetaBaseAdapter, graph_get, graph_post
+from app.channels.meta_base import GRAPH_BASE, MetaBaseAdapter, graph_get, graph_post
 from app.channels.registry import register_adapter
 from app.models.channels import ChannelAccount, ChannelConversation, ChannelType
 from app.core.logger import get_logger
@@ -30,12 +30,19 @@ MAX_MESSAGE_LENGTH = 2000
 
 class MessengerAdapter(MetaBaseAdapter):
     """Facebook Messenger. Instagram DM shares the same entry[].messaging[]
-    envelope and Graph send, so InstagramAdapter subclasses this."""
+    envelope and send shape, so InstagramAdapter subclasses this — overriding
+    only the host it talks to and the fields that name a sender."""
 
     channel_type: ClassVar[str] = ChannelType.MESSENGER.value
+    # Instagram Login accounts hold an Instagram user token, which only
+    # graph.instagram.com accepts; Page tokens only work on the Facebook graph.
+    graph_base: ClassVar[str] = GRAPH_BASE
     # Graph fields on the sender node that carry a display name. Instagram user
     # nodes expose different ones, so it overrides this and _display_name.
     profile_fields: ClassVar[str] = "first_name,last_name"
+    # Extra keys on a send. messaging_type is a Messenger Platform parameter and
+    # is not part of Instagram's documented send body, so Instagram sends none.
+    send_extras: ClassVar[dict] = {"messaging_type": "RESPONSE"}
 
     def parse_inbound(self, payload: dict) -> List[InboundMessage]:
         """Normalize entry[].messaging[] events. Echoes, delivery/read receipts
@@ -71,9 +78,10 @@ class MessengerAdapter(MetaBaseAdapter):
             self.access_token(account),
             {
                 "recipient": {"id": conversation.external_conversation_id},
-                "messaging_type": "RESPONSE",
+                **self.send_extras,
                 "message": {"text": text},
             },
+            base=self.graph_base,
         )
 
     async def send_typing(self, account: ChannelAccount, conversation: ChannelConversation) -> None:
@@ -86,6 +94,7 @@ class MessengerAdapter(MetaBaseAdapter):
                     "recipient": {"id": conversation.external_conversation_id},
                     "sender_action": "typing_on",
                 },
+                base=self.graph_base,
             )
             if not result.ok:
                 logger.debug(f"{self.channel_type} typing_on failed (non-critical): {result.error}")
@@ -105,7 +114,8 @@ class MessengerAdapter(MetaBaseAdapter):
         sender's name needs no permission beyond messaging them.
         """
         ok, data = await graph_get(external_user_id, self.access_token(account),
-                                   params={"fields": self.profile_fields})
+                                   params={"fields": self.profile_fields},
+                                   base=self.graph_base)
         if not ok:
             return {}
         name = self._display_name(data)

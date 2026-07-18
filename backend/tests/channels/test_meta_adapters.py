@@ -27,9 +27,13 @@ from app.channels.meta_base import (
     verify_meta_signature,
     verify_challenge,
     exchange_for_long_lived_token,
+    exchange_instagram_code,
+    exchange_instagram_long_lived,
     graph_get,
     graph_list_all,
     graph_post_json,
+    instagram_token_payload,
+    GRAPH_INSTAGRAM_BASE,
     WINDOW_HOURS,
 )
 from app.core.config import settings
@@ -112,7 +116,24 @@ class TestSignatureAndChallenge:
 
     def test_signature_rejected_without_configured_secret(self, monkeypatch):
         monkeypatch.setattr(settings, "META_APP_SECRET", "")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "")
         assert verify_meta_signature(b"{}", "sha256=anything") is False
+
+    def test_accepts_a_payload_signed_with_the_instagram_secret(self, monkeypatch):
+        """Instagram Login webhooks are signed with the Instagram app secret;
+        rejecting those would drop every Instagram DM at the door."""
+        monkeypatch.setattr(settings, "META_APP_SECRET", "fb-secret")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "ig-secret")
+        body = b'{"object":"instagram"}'
+        sig = "sha256=" + hmac.new(b"ig-secret", body, hashlib.sha256).hexdigest()
+        assert verify_meta_signature(body, sig) is True
+
+    def test_a_signature_from_neither_secret_is_rejected(self, monkeypatch):
+        monkeypatch.setattr(settings, "META_APP_SECRET", "fb-secret")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "ig-secret")
+        body = b'{"object":"instagram"}'
+        sig = "sha256=" + hmac.new(b"attacker", body, hashlib.sha256).hexdigest()
+        assert verify_meta_signature(body, sig) is False
 
     def test_challenge(self, monkeypatch):
         monkeypatch.setattr(settings, "META_WEBHOOK_VERIFY_TOKEN", "vtok")
@@ -179,6 +200,40 @@ class TestMessengerInstagramParse:
         assert messages[0].external_conversation_id == "IGSID2"
 
 
+class TestInstagramTransport:
+    """Instagram Login accounts hold an Instagram user token, which the Facebook
+    graph rejects — every call for them must go to graph.instagram.com."""
+
+    @pytest.mark.asyncio
+    async def test_instagram_sends_via_graph_instagram(self, graph_client, monkeypatch):
+        adapter = get_adapter("instagram")
+        monkeypatch.setattr(adapter, "access_token", lambda account: "IGTOKEN")
+        graph_client.response = _FakeResponse(200, {"message_id": "m1"})
+        conversation = MagicMock()
+        conversation.external_conversation_id = "IGSID1"
+
+        await adapter.send_text(MagicMock(), conversation, "hi")
+
+        call = graph_client.calls[0]
+        assert call["url"].startswith(GRAPH_INSTAGRAM_BASE)
+        # messaging_type is Messenger-only; Instagram's send body omits it.
+        assert "messaging_type" not in call["json"]
+
+    @pytest.mark.asyncio
+    async def test_messenger_still_sends_via_graph_facebook(self, graph_client, monkeypatch):
+        adapter = get_adapter("messenger")
+        monkeypatch.setattr(adapter, "access_token", lambda account: "PAGETOKEN")
+        graph_client.response = _FakeResponse(200, {"message_id": "m1"})
+        conversation = MagicMock()
+        conversation.external_conversation_id = "PSID1"
+
+        await adapter.send_text(MagicMock(), conversation, "hi")
+
+        call = graph_client.calls[0]
+        assert call["url"].startswith("https://graph.facebook.com")
+        assert call["json"]["messaging_type"] == "RESPONSE"
+
+
 class TestProfileEnrichment:
     """The inbound payload carries only a sender id, so the customer's real name
     is looked up on demand — otherwise everyone shows as 'Messenger user 2742…'."""
@@ -196,7 +251,8 @@ class TestProfileEnrichment:
             "messenger", monkeypatch, (True, {"first_name": "Ada", "last_name": "Lovelace"}))
         assert await adapter.fetch_profile(MagicMock(), "PSID1") == {"name": "Ada Lovelace"}
         graph.assert_awaited_once_with(
-            "PSID1", "PAGE_TOKEN", params={"fields": "first_name,last_name"})
+            "PSID1", "PAGE_TOKEN", params={"fields": "first_name,last_name"},
+            base="https://graph.facebook.com")
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_degrades_to_no_name(self, monkeypatch):
@@ -211,7 +267,8 @@ class TestProfileEnrichment:
             "instagram", monkeypatch, (True, {"name": "Ada", "username": "ada_l"}))
         assert await adapter.fetch_profile(MagicMock(), "IGSID1") == {"name": "Ada"}
         graph.assert_awaited_once_with(
-            "IGSID1", "PAGE_TOKEN", params={"fields": "name,username"})
+            "IGSID1", "PAGE_TOKEN", params={"fields": "name,username"},
+            base="https://graph.instagram.com")
 
     @pytest.mark.asyncio
     async def test_instagram_falls_back_to_username(self, monkeypatch):
@@ -267,12 +324,16 @@ class _RecordingClient:
         self.error = None
         self.calls = []
 
-    async def request(self, method, url, params=None, json=None, headers=None):
+    async def request(self, method, url, params=None, json=None, headers=None, data=None):
         self.calls.append({"method": method, "url": url, "params": params,
-                           "json": json, "headers": headers})
+                           "json": json, "headers": headers, "data": data})
         if self.error:
             raise self.error
         return self.response
+
+    async def post(self, url, json=None, headers=None):
+        """graph_post sends through .post rather than .request."""
+        return await self.request("POST", url, json=json, headers=headers)
 
 
 @pytest.fixture
@@ -341,6 +402,47 @@ class TestGraphHelpers:
         assert call["params"]["grant_type"] == "fb_exchange_token"
         assert call["params"]["fb_exchange_token"] == "short-token"
         assert "SEKRET" not in call["url"]
+
+    @pytest.mark.asyncio
+    async def test_instagram_code_exchange_uses_the_instagram_app_and_host(
+            self, graph_client, monkeypatch):
+        """Instagram Login is its own OAuth: Instagram app credentials, its own
+        host, form-encoded — the Facebook app id here would be rejected."""
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_ID", "IGAPP")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "IGSECRET")
+        monkeypatch.setattr(settings, "META_APP_ID", "FBAPP")
+        graph_client.response = _FakeResponse(200, {"access_token": "IGShort", "user_id": 178})
+
+        ok, body = await exchange_instagram_code("CODE", "https://app.test/cb.html")
+
+        assert (ok, body["access_token"]) == (True, "IGShort")
+        call = graph_client.calls[0]
+        assert call["url"] == "https://api.instagram.com/oauth/access_token"
+        assert call["data"]["client_id"] == "IGAPP"
+        assert call["data"]["grant_type"] == "authorization_code"
+        assert call["data"]["redirect_uri"] == "https://app.test/cb.html"
+
+    @pytest.mark.asyncio
+    async def test_instagram_long_lived_exchange_hits_graph_instagram(self, graph_client, monkeypatch):
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "IGSECRET")
+        graph_client.response = _FakeResponse(200, {"access_token": "IGLong", "expires_in": 5183944})
+
+        ok, body = await exchange_instagram_long_lived("IGShort")
+
+        assert (ok, body["access_token"]) == (True, "IGLong")
+        call = graph_client.calls[0]
+        assert call["url"] == f"{GRAPH_INSTAGRAM_BASE}/access_token"
+        assert call["params"]["grant_type"] == "ig_exchange_token"
+
+    def test_token_payload_accepts_both_response_shapes(self):
+        """Instagram has returned the token flat and wrapped in `data`; reading
+        only one shape yields no token and looks like a login failure."""
+        flat = {"access_token": "A", "user_id": 1}
+        wrapped = {"data": [{"access_token": "A", "user_id": 1}]}
+        assert instagram_token_payload(flat)["access_token"] == "A"
+        assert instagram_token_payload(wrapped)["access_token"] == "A"
+        # An empty/malformed `data` falls back rather than raising
+        assert instagram_token_payload({"data": []}) == {"data": []}
 
     @pytest.mark.asyncio
     async def test_graph_list_all_follows_the_cursor(self, graph_client):

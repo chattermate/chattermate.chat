@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     # META_CONFIG_ID: it requests pages_messaging + pages_show_list and returns a
     # user token, not a WhatsApp signup.
     META_MESSENGER_CONFIG_ID: str = os.getenv("META_MESSENGER_CONFIG_ID", "")
+    # Instagram API with Instagram Login: its own app id/secret, separate from
+    # the Facebook ones above. This flow needs no Facebook Page — the business
+    # signs in with Instagram and we get an Instagram user token.
+    INSTAGRAM_APP_ID: str = os.getenv("INSTAGRAM_APP_ID", "")
+    INSTAGRAM_APP_SECRET: str = os.getenv("INSTAGRAM_APP_SECRET", "")
 
     VERIFY_SSL_CERTIFICATES: bool = os.getenv("VERIFY_SSL_CERTIFICATES", "true").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")

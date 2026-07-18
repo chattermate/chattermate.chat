@@ -28,22 +28,19 @@ import {
   loadMetaSdk,
   parseSignupMessage,
   runBusinessLogin,
+  runInstagramLogin,
   signupLoginOptions,
   META_OAUTH_CALLBACK_PATH,
   type SignupChannel,
   type SignupSession,
 } from '@/utils/metaSdk'
 
-// Channels this modal offers one-click connect for. WhatsApp uses Embedded
-// Signup (the JS SDK); Messenger and Instagram use Facebook Login for Business
-// (our own OAuth popup).
+// Channels this modal offers one-click connect for. Each uses a different Meta
+// login: WhatsApp its Embedded Signup SDK, Messenger Facebook Login for
+// Business (a Page), Instagram its own Instagram Login (no Page at all).
 const SIGNUP_CHANNELS: SignupChannel[] = ['whatsapp', 'messenger', 'instagram']
 const isSignupChannel = (c: string): c is SignupChannel =>
   (SIGNUP_CHANNELS as string[]).includes(c)
-// The two channels that go through the Login-for-Business popup rather than the
-// WhatsApp SDK.
-const isBusinessLoginChannel = (c: string): c is 'messenger' | 'instagram' =>
-  c === 'messenger' || c === 'instagram'
 
 // Copy for the one-click pane, per channel.
 const SIGNUP_COPY: Record<SignupChannel, { intro: string; cta: string }> = {
@@ -56,8 +53,10 @@ const SIGNUP_COPY: Record<SignupChannel, { intro: string; cta: string }> = {
     cta: 'Continue with Facebook',
   },
   instagram: {
-    intro: 'Connect your Instagram professional account with Meta — no API credentials to copy.',
-    cta: 'Continue with Facebook',
+    // Instagram Login involves no Facebook Page or account at all, so the copy
+    // must not imply one — that is the whole reason this flow exists.
+    intro: 'Connect your Instagram professional account — no Facebook Page, and no API credentials to copy.',
+    cta: 'Continue with Instagram',
   },
 }
 
@@ -153,8 +152,12 @@ onMounted(async () => {
   if (!isSignupChannel(props.channel) || props.existingAccount) return
   try {
     const config = await channelsService.getEmbeddedSignupConfig(props.channel)
-    if (!config.enabled || !config.config_id || !config.app_id) return
-    signupConfigId.value = config.config_id
+    if (!config.enabled || !config.app_id) return
+    // The Facebook logins are driven by a Login-for-Business configuration;
+    // Instagram Login has none, so requiring one here would hide its button.
+    if (props.channel !== 'instagram' && !config.config_id) return
+    // Empty for Instagram Login, which authorizes with the app id alone.
+    signupConfigId.value = config.config_id ?? ''
     signupAppId.value = config.app_id
     signupGraphVersion.value = config.graph_version
     signupEnabled.value = true
@@ -192,31 +195,30 @@ const finishWhatsAppSignup = async (code: string) => {
   toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
 }
 
-const finishBusinessSignup = async (channel: 'messenger' | 'instagram', code: string, redirectUri: string) => {
-  const { pages, signup_token } = await channelsService.listSignupPages(channel, code, redirectUri)
+const finishMessengerSignup = async (code: string, redirectUri: string) => {
+  const { pages, signup_token } = await channelsService.listMessengerSignupPages(code, redirectUri)
   signupToken.value = signup_token
-  // One account needs no picker — connect it and go straight to agent assignment.
+  // One Page needs no picker — connect it and go straight to agent assignment.
   if (pages.length === 1) {
-    await connectSignupPage(pages[0].id)
+    await connectPickedPage(pages[0].id)
   } else {
     signupPages.value = pages
   }
 }
 
-const connectSignupPage = async (pageId: string) => {
-  const channel = props.channel as 'messenger' | 'instagram'
-  account.value = await channelsService.connectSignupPage(channel, {
+const connectPickedPage = async (pageId: string) => {
+  account.value = await channelsService.connectMessengerSignup({
     signup_token: signupToken.value,
     page_id: pageId,
   })
-  toast.success(`Connected ${account.value.display_name || form.value.title.replace('Connect ', '')}`)
+  toast.success(`Connected ${account.value.display_name || 'Messenger'}`)
 }
 
 /** The picker's choice — its own loading state, since the login popup is long gone. */
 const onPageSelected = async (pageId: string) => {
   try {
     connectingPage.value = true
-    await connectSignupPage(pageId)
+    await connectPickedPage(pageId)
   } catch (error: any) {
     toast.error(error?.response?.data?.detail || 'Could not connect that account')
   } finally {
@@ -241,18 +243,12 @@ const completeWhatsAppSignup = async (response: { authResponse?: { code?: string
   }
 }
 
-// Messenger + Instagram: our own OAuth popup (not FB.login — see runBusinessLogin).
-const startBusinessLogin = async (channel: 'messenger' | 'instagram') => {
+/** Shared shape of the two popup logins: run it, connect, surface failures. */
+const runPopupConnect = async (connect: (redirectUri: string) => Promise<void>) => {
   signingUp.value = true
   const redirectUri = window.location.origin + META_OAUTH_CALLBACK_PATH
   try {
-    const code = await runBusinessLogin({
-      appId: signupAppId.value,
-      configId: signupConfigId.value,
-      graphVersion: signupGraphVersion.value,
-      redirectUri,
-    })
-    await finishBusinessSignup(channel, code, redirectUri)
+    await connect(redirectUri)
   } catch (error: any) {
     // The user closing the popup is not an error worth a toast.
     if (error?.message !== 'cancelled') {
@@ -263,14 +259,31 @@ const startBusinessLogin = async (channel: 'messenger' | 'instagram') => {
   }
 }
 
+// Messenger: Facebook Login for Business, then pick a Page.
+const startMessengerLogin = () => runPopupConnect(async (redirectUri) => {
+  const code = await runBusinessLogin({
+    appId: signupAppId.value,
+    configId: signupConfigId.value,
+    graphVersion: signupGraphVersion.value,
+    redirectUri,
+  })
+  await finishMessengerSignup(code, redirectUri)
+})
+
+// Instagram: Instagram Login — one account, so it connects in a single step.
+const startInstagramLogin = () => runPopupConnect(async (redirectUri) => {
+  const code = await runInstagramLogin({ appId: signupAppId.value, redirectUri })
+  account.value = await channelsService.connectInstagramLogin(code, redirectUri)
+  toast.success(`Connected ${account.value.display_name || 'Instagram'}`)
+})
+
 const startSignup = () => {
   if (signingUp.value) return
 
-  if (isBusinessLoginChannel(props.channel)) {
-    // Must open synchronously in the click handler or the browser blocks it.
-    void startBusinessLogin(props.channel)
-    return
-  }
+  // Both popups must open synchronously in the click handler or the browser
+  // blocks them.
+  if (props.channel === 'messenger') { void startMessengerLogin(); return }
+  if (props.channel === 'instagram') { void startInstagramLogin(); return }
 
   if (!window.FB) return
   signupSession.value = null

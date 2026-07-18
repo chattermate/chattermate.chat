@@ -28,12 +28,17 @@ from app.channels import get_adapter
 from app.channels.meta_base import (
     debug_token,
     exchange_for_long_lived_token,
+    exchange_instagram_code,
+    exchange_instagram_long_lived,
     exchange_signup_code,
     fetch_message_templates,
     graph_get,
     graph_list_all,
+    instagram_token_payload,
     register_phone_number,
     subscribe_app,
+    subscribe_instagram_app,
+    GRAPH_INSTAGRAM_BASE,
 )
 from app.core.security import decrypt_api_key, encrypt_api_key
 from app.core.auth import (
@@ -58,6 +63,7 @@ from app.models.schemas.channel import (
     MessengerSignupRequest,
     MessengerPageOut,
     InstagramConnectRequest,
+    InstagramLoginRequest,
     OutboundConversationOut,
     OutboundConversationRequest,
     TemplateLibraryOut,
@@ -136,8 +142,8 @@ def _generate_verification_pin() -> str:
 
 
 # Channels that can be onboarded through a Meta login popup, each with the Meta
-# configuration that drives it. Messenger and Instagram DM both ride on a Page's
-# token, so one Facebook Login for Business configuration serves both.
+# configuration that drives it. WhatsApp and Messenger run Facebook logins;
+# Instagram runs Instagram Login, which needs no Facebook Page at all.
 SIGNUP_CHANNELS = (
     ChannelType.WHATSAPP.value,
     ChannelType.MESSENGER.value,
@@ -149,23 +155,35 @@ MESSENGER_SUBSCRIBED_FIELDS = "messages,messaging_postbacks"
 
 
 def _signup_config_id(channel: str) -> str:
-    """The Meta configuration id that onboards this channel, read at call time so
-    a settings override (tests, reloads) is always seen."""
+    """The Facebook Login-for-Business configuration that onboards this channel,
+    read at call time so a settings override (tests, reloads) is always seen.
+
+    Instagram Login has no configuration — it is gated on its own app id.
+    """
     return {
         ChannelType.WHATSAPP.value: settings.META_CONFIG_ID,
         ChannelType.MESSENGER.value: settings.META_MESSENGER_CONFIG_ID,
-        ChannelType.INSTAGRAM.value: settings.META_MESSENGER_CONFIG_ID,
     }.get(channel, "")
+
+
+def _signup_app_id(channel: str) -> str:
+    """The app the login popup authenticates against. Instagram Login uses the
+    Instagram app; the Facebook flows use the Meta app."""
+    if channel == ChannelType.INSTAGRAM.value:
+        return settings.INSTAGRAM_APP_ID
+    return settings.META_APP_ID
 
 
 def _signup_available(channel: str) -> bool:
     """Whether this deployment can offer the login flow for this channel.
 
-    Onboarding happens under *our* approved Meta app, so without a config id it
-    structurally cannot work — a self-hoster has no such app and gets the manual
+    Onboarding happens under *our* app, so without its credentials it
+    structurally cannot work — a self-hoster has none and gets the manual
     credentials form instead. That is the whole gate: like every other
     integration, signup is not restricted by plan.
     """
+    if channel == ChannelType.INSTAGRAM.value:
+        return bool(settings.INSTAGRAM_APP_ID and settings.INSTAGRAM_APP_SECRET)
     return bool(_signup_config_id(channel))
 
 
@@ -240,11 +258,11 @@ async def _list_manageable_pages(user_token: str, fields: str) -> list[dict]:
 
 
 async def _signup_user_token(request: MessengerSignupRequest) -> str:
-    """Trade a Login-for-Business code for a long-lived user token.
+    """Trade a Facebook Login-for-Business code for a long-lived user token.
 
-    Shared by the Messenger and Instagram flows — everything up to listing the
-    customer's Pages is identical. Page tokens inherit the user token's lifetime,
-    so it is extended first (best-effort; a failure only risks earlier expiry).
+    Page tokens inherit the user token's lifetime, so it is extended first
+    (best-effort; a failure only risks earlier expiry). Instagram does not come
+    through here — Instagram Login is its own OAuth against its own host.
     """
     ok, data = await exchange_signup_code(request.code, redirect_uri=request.redirect_uri)
     user_token = data.get("access_token") if ok else None
@@ -358,8 +376,9 @@ async def get_embedded_signup_config(
     enabled = _signup_available(channel)
     return EmbeddedSignupConfigOut(
         enabled=enabled,
-        config_id=_signup_config_id(channel) if enabled else None,
-        app_id=settings.META_APP_ID if enabled else None,
+        # Instagram Login has no configuration id, only an app id.
+        config_id=(_signup_config_id(channel) or None) if enabled else None,
+        app_id=_signup_app_id(channel) if enabled else None,
         graph_version=settings.META_GRAPH_VERSION,
     )
 
@@ -550,74 +569,58 @@ async def connect_messenger_signup(
     return to_account_out(db, account)
 
 
-# A Page carries its linked Instagram professional account inline, so one
-# /me/accounts call lists both the Page tokens and the IG ids to connect.
-INSTAGRAM_PAGE_FIELDS = "id,name,access_token,instagram_business_account{id,username}"
-
-
-@router.post("/instagram/signup/pages", response_model=MessengerSignupPagesOut)
-async def list_instagram_signup_pages(
-    request: MessengerSignupRequest,
-    current_user: User = Depends(require_permissions("manage_organization")),
-    organization: Organization = Depends(get_current_organization),
-):
-    """Step 1 for Instagram: same Login-for-Business popup as Messenger, but the
-    picker offers the Instagram account linked to each Page, not the Page."""
-    check_signup_access(ChannelType.INSTAGRAM.value)
-    user_token = await _signup_user_token(request)
-
-    pages = await _list_manageable_pages(user_token, INSTAGRAM_PAGE_FIELDS)
-    # Only Pages with a linked professional account can receive Instagram DMs.
-    ig_pages = [p for p in pages if p.get("instagram_business_account")]
-    if not ig_pages:
-        raise HTTPException(status_code=400, detail=(
-            "None of your Facebook Pages has an Instagram professional account "
-            "linked. Link one in the Page's settings, then connect again."))
-
-    return MessengerSignupPagesOut(
-        signup_token=_seal_signup_pages(organization.id, ig_pages),
-        pages=[MessengerPageOut(
-            id=p["id"],
-            name="@" + (p["instagram_business_account"].get("username") or p["id"]),
-        ) for p in ig_pages],
-    )
-
-
-@router.post("/instagram/signup/connect", response_model=ChannelAccountOut)
-async def connect_instagram_signup(
-    request: MessengerSignupConnectRequest,
+@router.post("/instagram/login/connect", response_model=ChannelAccountOut)
+async def connect_instagram_login(
+    request: InstagramLoginRequest,
     current_user: User = Depends(require_permissions("manage_organization")),
     organization: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db),
 ):
-    """Step 2 for Instagram: connect the account the customer picked.
+    """Connect an Instagram professional account through Instagram Login.
 
-    page_id selects a Page out of the list we fetched; the account stored is its
-    linked Instagram business account, keyed by that account's own id (webhooks
-    route Instagram events by it), with the Page token that sends its DMs.
+    Unlike Messenger this needs no Facebook Page: the business signs in with
+    Instagram itself, so the login returns exactly one account and there is
+    nothing to pick. The token is an Instagram user token, used against
+    graph.instagram.com rather than the Facebook graph.
     """
     check_signup_access(ChannelType.INSTAGRAM.value)
-    pages = _open_signup_pages(request.signup_token, organization)
 
-    page = next((p for p in pages if p.get("id") == request.page_id), None)
-    if page is None or not page.get("access_token"):
-        raise HTTPException(status_code=400, detail="That account was not part of this signup")
+    ok, data = await exchange_instagram_code(request.code, request.redirect_uri)
+    token_data = instagram_token_payload(data) if ok else {}
+    access_token = token_data.get("access_token")
+    user_id = token_data.get("user_id")
+    if not access_token or not user_id:
+        # The code is single-use and short-lived, so a stale or replayed one
+        # lands here rather than on a Graph error later.
+        raise HTTPException(status_code=400, detail=_graph_detail(
+            data, "Could not complete Instagram login — please try connecting again"))
 
-    ig = page.get("instagram_business_account") or {}
-    ig_id = ig.get("id")
-    if not ig_id:
-        raise HTTPException(status_code=400, detail="That Page has no linked Instagram account")
+    # The login token lasts about an hour; without extending it the connection
+    # dies silently mid-conversation. Best-effort, like the Page flow.
+    ok, extended = await exchange_instagram_long_lived(access_token)
+    if ok and extended.get("access_token"):
+        access_token = extended["access_token"]
+    else:
+        logger.warning("Could not extend the Instagram token; it may expire within the hour")
+
+    ok, profile = await graph_get("me", access_token,
+                                  params={"fields": "user_id,username"},
+                                  base=GRAPH_INSTAGRAM_BASE)
+    username = profile.get("username") if ok else None
+    # Webhooks route Instagram events by the professional account id, which /me
+    # reports as user_id. The login response also carries a user_id but it can
+    # be app-scoped, and keying on the wrong one means inbound DMs never match
+    # any account — silently, with no error. Prefer the authoritative one.
+    account_id = str((profile.get("user_id") if ok else None) or user_id)
 
     account = _upsert_account(
         db, organization, ChannelType.INSTAGRAM.value,
-        external_account_id=str(ig_id),
-        credentials={"access_token": page["access_token"]},
-        display_name=request.display_name or ("@" + (ig.get("username") or str(ig_id))),
+        external_account_id=account_id,
+        credentials={"access_token": access_token},
+        display_name=request.display_name or ("@" + (username or account_id)),
     )
-    # Instagram DMs are delivered through the linked Page's app subscription.
-    if not await subscribe_app(page["id"], page["access_token"],
-                               subscribed_fields=MESSENGER_SUBSCRIBED_FIELDS):
-        logger.warning(f"Page subscribe failed for {page['id']} after Instagram signup")
+    if not await subscribe_instagram_app(access_token):
+        logger.warning(f"Instagram webhook subscribe failed for {account_id}; DMs may not arrive")
     return to_account_out(db, account)
 
 
