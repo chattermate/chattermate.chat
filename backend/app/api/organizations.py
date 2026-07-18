@@ -93,10 +93,11 @@ async def create_organization(
                 db.flush()
             permissions[name] = perm
 
-        # Create default roles. Exactly one may be is_default — the roles API
-        # rejects a second one — and it is Agent, since that is what a newly
-        # invited user should get; the org creator is given Admin explicitly
-        # below.
+        # Create default roles. Exactly one must be is_default: nothing enforces
+        # that, and get_default_role() just takes .first() with no ordering, so
+        # two defaults means a newly invited user lands on whichever row the
+        # database happens to yield. It has to be Agent — the org creator is
+        # given Admin explicitly below.
         admin_role = Role(
             name="Admin",
             description="Full access to all features",

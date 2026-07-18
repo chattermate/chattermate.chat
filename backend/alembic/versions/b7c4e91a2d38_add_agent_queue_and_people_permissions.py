@@ -43,7 +43,13 @@ every insert is guarded by NOT EXISTS.
 
 Also repairs the seeding bug where BOTH "Admin" and "Agent" were created with
 is_default=true, which made RoleRepository.get_default_role() return whichever
-row the database happened to yield first (the roles API allows only one).
+row the database happened to yield first — an invited user could land on Admin.
+Nothing in the API enforces a single default, so the repair is data-only.
+
+The repair CLEARS Admin, which is what leaves Agent as the default. Setting
+is_default=false on Agent instead would do the opposite of what is wanted: it
+would leave Admin as the sole default and hand every newly invited user full
+permissions.
 """
 
 from alembic import op
@@ -102,9 +108,14 @@ def upgrade() -> None:
             """
         )
 
-    # One default role per organization. Only touch orgs that actually have the
-    # duplicate, and clear Admin rather than Agent: a newly invited user should
-    # land on Agent, which is what the fixed seeding now creates.
+    # One default role per organization. Clearing Admin is what PROMOTES Agent
+    # to sole default — the opposite spelling (clearing Agent) would leave
+    # Admin default and make every invited user an admin.
+    #
+    # The COUNT(*) > 1 guard is load-bearing: it means an org whose only
+    # default is Admin keeps it, rather than being left with no default role
+    # at all. An org that renamed its Admin role keeps both defaults — the
+    # pre-existing ambiguity, not a regression.
     op.execute(
         """
         UPDATE roles SET is_default = false
