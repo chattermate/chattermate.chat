@@ -24,6 +24,8 @@ import { toast } from 'vue-sonner'
 import api from '@/services/api'
 import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/endChat'
 import { getInitials } from '@/utils/text'
+import { canTakeOverChat } from '@/utils/chatState'
+import { permissionChecks } from '@/utils/permissions'
 
 interface Props {
   chatInfo: ChatDetail | null
@@ -52,14 +54,10 @@ const loadingUsers = ref(false)
 // Chat action functions
 const currentUserId = userService.getUserId()
 
-const canTakeOver = computed(() => {
-  if (!props.chatInfo) return false
-  return (
-    (props.chatInfo.status === 'transferred' && 
-     (!props.chatInfo.user_id || props.chatInfo.user_id !== currentUserId)) ||
-    (props.chatInfo.status === 'open' && !props.chatInfo.user_id)
-  )
-})
+// Shared with the chat pane so both surfaces offer takeover on the same rule
+const canTakeOver = computed(
+  () => canTakeOverChat(props.chatInfo) && permissionChecks.canTakeOverChats()
+)
 
 const canEndChat = computed(() => {
   if (!props.chatInfo) return false

@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from app.core.logger import get_logger
 from app.models.user import User
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, has_any_permission
 from app.database import get_db
 from app.services.message_delivery import deliver_to_customer
 
@@ -30,6 +30,10 @@ from app.services.message_delivery import deliver_to_customer
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# Claiming a chat is a "manage" action: either the org-wide grant or the
+# assigned-chats one an agent holds.
+TAKEOVER_PERMISSIONS = ("manage_all_chats", "manage_assigned_chats")
 
 # Shown to the customer when a human takes over an external-channel chat. The
 # widget surfaces the handover in its own UI, so only channels need a message.
@@ -71,9 +75,10 @@ async def takeover_chat(
 ):
     """Take over a chat session"""
     try:
-        # Check permissions
-        user_permissions = {p.name for p in current_user.role.permissions}
-        if not ("manage_chats" in user_permissions or "manage_assigned_chats" in user_permissions):
+        # manage_all_chats, not "manage_chats" — the latter is not a real
+        # permission and never matched. has_any_permission also honours the
+        # super_admin bypass the previous hand-rolled set check ignored.
+        if not has_any_permission(current_user, TAKEOVER_PERMISSIONS):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
@@ -82,12 +87,45 @@ async def takeover_chat(
         # Get session
         session_repo = SessionToAgentRepository(db)
         session = session_repo.get_session(session_id)
-        
+
         if not session:
             raise HTTPException(
                 status_code=404,
                 detail="Chat session not found"
             )
+
+        # A session id is guessable and was never scoped here: without this an
+        # agent could claim a conversation belonging to another organization.
+        if session.organization_id != current_user.organization_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Chat session not found"
+            )
+
+        # Claiming is limited to what the caller may actually see, so widening
+        # the inbox to the unclaimed queue can't be used to reach past it.
+        chat_repo = ChatRepository(db)
+        user_permissions = {p.name for p in current_user.role.permissions}
+        is_super_admin = "super_admin" in user_permissions
+        # manage_all_chats implies seeing them all — a role that may manage
+        # every chat should not need a separate view grant to claim one.
+        can_view_all = is_super_admin or bool(
+            {"view_all_chats", "manage_all_chats"} & user_permissions
+        )
+
+        if not can_view_all:
+            can_view_assigned = is_super_admin or "view_assigned_chats" in user_permissions
+            has_access = await chat_repo.check_session_access(
+                session_id=session_id,
+                user_id=current_user.id if can_view_assigned else None,
+                user_groups=[str(group.id) for group in current_user.groups] if can_view_assigned else [],
+                include_unassigned=is_super_admin or "view_unassigned_chats" in user_permissions
+            )
+            if not has_access:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Chat session not found"
+                )
 
         # Update session
         success = session_repo.takeover_session(
@@ -106,7 +144,6 @@ async def takeover_chat(
         await _notify_customer_of_handover(db, session, current_user)
 
         # Get updated chat details
-        chat_repo = ChatRepository(db)
         chat = await chat_repo.get_chat_detail(
             session_id=session_id,
             org_id=current_user.organization_id

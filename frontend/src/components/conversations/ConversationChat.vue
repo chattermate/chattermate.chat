@@ -356,11 +356,13 @@ onMounted(async () => {
       @ticket-created="handleTicketCreated"
     />
 
-    <!-- Transferred and not yet claimed: the composer is replaced by the
-         primary "Take over chat" action (per the mobile-app design; applies on
-         desktop too — previously this was a disabled input). -->
+    <!-- Unclaimed: the composer is replaced by the primary "Take over chat"
+         action. Covers both an AI-handled chat and one the AI has queued for a
+         human, so claiming never requires opening the details panel. -->
     <footer v-if="showTakeoverButton" class="chat-input takeover-footer">
-      <div class="takeover-caption">The AI has handed this chat to a human</div>
+      <div class="takeover-caption">
+        {{ handledByAI ? 'This chat is being handled by AI' : 'The AI has handed this chat to a human' }}
+      </div>
       <button class="takeover-button" :disabled="isLoading" @click="handleTakeover">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12h11m0 0l-4-4m4 4l-4 4"/><path d="M5 5v14"/></svg>
         Take over chat

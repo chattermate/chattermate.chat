@@ -146,4 +146,28 @@ const allSelected = () => props.selectedCount === props.count && props.count > 0
   flex-direction: column;
   gap: 10px;
 }
+
+/* ── Mobile ─────────────────────────────────────────────────────────────
+   The decorative rule took flex:1 of the header, squeezing the toggle until
+   the name broke mid-phrase ("ACCOUNT &" / "SECURITY"). Dropping the rule
+   gives name and count the whole row. */
+@media (max-width: 768px) {
+  .category-group__rule {
+    display: none;
+  }
+
+  .category-group__toggle {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+    row-gap: 2px;
+    text-align: left;
+    /* 44px minimum touch target (Apple HIG / WCAG 2.5.8) */
+    min-height: 44px;
+  }
+
+  .category-group__name {
+    white-space: nowrap;
+  }
+}
 </style>

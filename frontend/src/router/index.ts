@@ -99,19 +99,28 @@ const baseRoutes = [
     path: '/conversations',
     name: 'conversations',
     component: () => import('../views/ConversationsView.vue'),
-    meta: { requiresAuth: true },
+    // Any inbox grant — own/group chats, the unclaimed queue, or everything
+    meta: {
+      requiresAuth: true,
+      permissions: ['view_all_chats', 'view_assigned_chats', 'view_unassigned_chats'],
+    },
   },
   {
     path: '/people',
     name: 'people',
+    // Without meta the page rendered and then 403'd on every request; the
+    // guard sends users who can't read the directory to /403 instead.
     component: () => import('../views/PeopleView.vue'),
-    meta: { requiresAuth: true },
+    meta: {
+      requiresAuth: true,
+      permissions: ['view_people', 'view_all_chats', 'manage_all_chats'],
+    },
   },
   {
     path: '/human-agents',
     name: 'human-agents',
     component: HumanAgentView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permissions: ['manage_users'] },
   },
   {
     path: '/settings/organization',
