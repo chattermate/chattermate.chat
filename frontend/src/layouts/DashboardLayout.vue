@@ -1144,8 +1144,20 @@ const openNotificationsFromSheet = () => {
 
 /* Mobile responsive */
 @media (max-width: 768px) {
+    /* Breathing room above/below the 38px controls so they don't crowd the
+       bottom border of the bar */
     .header-content {
-        padding: var(--space-sm);
+        padding: 10px 12px;
+    }
+
+    /* The divider reads as a line touching the avatar at this size; the gap
+       between the controls is enough separation on its own */
+    .topbar-divider {
+        display: none;
+    }
+
+    .user-menu {
+        gap: 10px;
     }
 
     .content {
@@ -1233,8 +1245,9 @@ const openNotificationsFromSheet = () => {
 
 /* Very small mobile devices */
 @media (max-width: 480px) {
+    /* Keeps the 38px controls off the bar's bottom border */
     .header-content {
-        padding: var(--space-xs) var(--space-sm);
+        padding: 9px 10px;
     }
     
     .content {

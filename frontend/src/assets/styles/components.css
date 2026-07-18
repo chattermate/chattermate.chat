@@ -293,3 +293,82 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
+
+/* ── Responsive table → cards ────────────────────────────────────────────
+   Desktop keeps its own grid template; below 768px each row becomes a card:
+   the primary cell and a trailing badge share line 1, and the remaining
+   values wrap onto line 2 carrying their own labels (the table header is
+   hidden, so each value has to name itself).
+
+   Markup: .rcards-head on the header row, .rcards-row on each row,
+   .rcards-primary / .rcards-badge on the line-1 cells, and .rcards-meta
+   wrapping a .rcards-label + .rcards-value pair on every other cell.
+
+   The consuming component must scope its desktop grid to
+   @media (min-width: 769px) — a scoped SFC rule carries a [data-v-*]
+   attribute and would otherwise outrank these global classes. */
+.rcards-label {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .rcards-head {
+    display: none;
+  }
+
+  .rcards-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+  }
+
+  /* Zero-height full-width break: pushes the meta cells to their own line
+     without assuming how wide the badge renders */
+  .rcards-row::after {
+    content: '';
+    order: 3;
+    flex: 1 0 100%;
+    height: 0;
+  }
+
+  .rcards-primary {
+    flex: 1 1 auto;
+    min-width: 0;
+    order: 1;
+  }
+
+  .rcards-badge {
+    flex: 0 0 auto;
+    margin-left: auto;
+    order: 2;
+  }
+
+  .rcards-meta {
+    order: 4;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .rcards-label {
+    display: inline;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* text-overflow needs its own block box — it does nothing on a flex item */
+  .rcards-value {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

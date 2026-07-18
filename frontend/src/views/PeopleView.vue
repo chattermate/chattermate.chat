@@ -199,11 +199,11 @@ onMounted(() => {
 
     <!-- table -->
     <div class="pv-table">
-      <div class="pv-thead">
+      <div class="pv-thead rcards-head">
         <span>{{ COLUMNS.person.label }}</span><span>{{ COLUMNS.stage.label }}</span><span>{{ COLUMNS.source.label }}</span><span>{{ COLUMNS.captured.label }}</span><span>{{ COLUMNS.activity.label }}</span><span>{{ COLUMNS.sync.label }}</span>
       </div>
-      <button v-for="p in items" :key="p.id" class="pv-row" @click="selectedId = p.id">
-        <span class="pv-person">
+      <button v-for="p in items" :key="p.id" class="pv-row rcards-row" @click="selectedId = p.id">
+        <span class="pv-person rcards-primary">
           <span class="pv-avatar" :class="{ anon: p.is_anonymous }">{{ initials(p) }}</span>
           <span class="pv-person-text">
             <span class="pv-name">{{ p.name || (p.is_anonymous ? 'Anonymous visitor' : (p.email || '—')) }}</span>
@@ -214,27 +214,25 @@ onMounted(() => {
             </span>
           </span>
         </span>
-        <span class="pv-stage">
+        <span class="pv-stage rcards-badge">
           <span class="pv-badge" :class="p.lead_stage">{{ stageLabel(p.lead_stage) }}</span>
           <span v-if="p.qualified" class="pv-star" title="Qualified">★</span>
         </span>
-        <!-- .pv-cell-label is desktop-hidden: the mobile card layout drops the
-             table header, so each meta value needs to name itself. -->
-        <span class="pv-source" :title="sourceTitle(p)">
-          <span class="pv-cell-label">{{ COLUMNS.source.short }}</span>
-          <span class="pv-cell-value">{{ sourceLabel(p) }}</span>
+        <span class="pv-source rcards-meta" :title="sourceTitle(p)">
+          <span class="rcards-label">{{ COLUMNS.source.short }}</span>
+          <span class="rcards-value">{{ sourceLabel(p) }}</span>
         </span>
-        <span class="pv-captured">
-          <span class="pv-cell-label">{{ COLUMNS.captured.short }}</span>
-          <span class="pv-cell-value">{{ fmtDate(p.captured_at) }}</span>
+        <span class="pv-captured rcards-meta">
+          <span class="rcards-label">{{ COLUMNS.captured.short }}</span>
+          <span class="rcards-value">{{ fmtDate(p.captured_at) }}</span>
         </span>
-        <span class="pv-activity">
-          <span class="pv-cell-label">{{ COLUMNS.activity.short }}</span>
-          <span class="pv-cell-value">{{ fmtDate(p.last_activity) }}</span>
+        <span class="pv-activity rcards-meta">
+          <span class="rcards-label">{{ COLUMNS.activity.short }}</span>
+          <span class="rcards-value">{{ fmtDate(p.last_activity) }}</span>
         </span>
-        <span class="pv-sync">
-          <span class="pv-cell-label">{{ COLUMNS.sync.short }}</span>
-          <span class="pv-cell-value">{{ p.synced ? 'Synced' : '—' }}</span>
+        <span class="pv-sync rcards-meta">
+          <span class="rcards-label">{{ COLUMNS.sync.short }}</span>
+          <span class="rcards-value">{{ p.synced ? 'Synced' : '—' }}</span>
         </span>
       </button>
       <div v-if="!loading && items.length === 0" class="pv-empty">No people match this filter.</div>
@@ -292,7 +290,12 @@ onMounted(() => {
 .pv-phone { color: var(--muted); font-variant-numeric: tabular-nums; }
 .pv-search { flex: 1; min-width: 240px; max-width: 340px; padding: 9px 13px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 13.5px; background: var(--bg); color: var(--text); }
 .pv-table { background: var(--surface); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden; }
-.pv-thead, .pv-row { display: grid; grid-template-columns: minmax(0,2.4fr) 1fr 1.2fr .9fr .9fr .7fr; gap: 14px; align-items: center; padding: 12px 20px; }
+.pv-thead, .pv-row { padding: 12px 20px; }
+/* Desktop-only grid: below 769px the shared .rcards-* card layout takes over,
+   and a scoped rule here would outrank that global utility. */
+@media (min-width: 769px) {
+  .pv-thead, .pv-row { display: grid; grid-template-columns: minmax(0,2.4fr) 1fr 1.2fr .9fr .9fr .7fr; gap: 14px; align-items: center; }
+}
 .pv-thead { font-size: 10.5px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color); background: var(--o05); }
 .pv-row { width: 100%; border: none; background: transparent; border-bottom: 1px solid var(--border-color); cursor: pointer; text-align: left; font-size: 13.5px; color: var(--text); }
 .pv-row:hover { background: var(--o05); }
@@ -317,10 +320,9 @@ onMounted(() => {
 .pv-pager button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; cursor: pointer; }
 .pv-pager button:disabled { opacity: .4; cursor: default; }
 
-/* Inline labels only exist for the mobile card layout */
-.pv-cell-label { display: none; }
-
-/* ── Mobile: the 6-column table becomes stacked cards ───────────────────── */
+/* ── Mobile ──────────────────────────────────────────────────────────────
+   The row/card switch itself comes from the shared .rcards-* utility in
+   components.css; only People-specific sizing lives here. */
 @media (max-width: 768px) {
   .people-view { padding: 16px 12px; }
   .pv-header { margin-bottom: 18px; }
@@ -340,62 +342,12 @@ onMounted(() => {
   .pv-tabs::-webkit-scrollbar { display: none; }
   .pv-tab { flex-shrink: 0; padding: 8px 12px; }
 
-  .pv-search { max-width: none; min-width: 0; width: 100%; padding: 11px 13px; font-size: 15px; }
+  /* 16px keeps iOS from zooming the field on focus */
+  .pv-search { max-width: none; min-width: 0; width: 100%; padding: 11px 13px; font-size: 16px; }
 
-  .pv-thead { display: none; }
-
-  /* Line 1: person + stage badge. Line 2: the meta values, pushed there by a
-     zero-height full-width break rather than a guessed flex-basis. */
-  .pv-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 12px;
-    padding: 14px 16px;
-  }
-
-  .pv-person { flex: 1 1 auto; min-width: 0; order: 1; }
-  .pv-stage { flex: 0 0 auto; margin-left: auto; order: 2; }
-
-  .pv-row::after {
-    content: '';
-    order: 3;
-    flex: 1 0 100%;
-    height: 0;
-  }
-
+  .pv-row { padding: 14px 16px; }
   .pv-name { font-size: 15px; }
   .pv-avatar { width: 38px; height: 38px; font-size: 13px; }
-
-  .pv-source,
-  .pv-captured,
-  .pv-activity {
-    order: 4;
-    flex: 0 1 auto;
-    min-width: 0;
-    display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--muted);
-    max-width: 100%;
-  }
-
-  /* text-overflow needs its own block box — it does nothing on a flex item */
-  .pv-cell-value {
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .pv-cell-label {
-    display: inline;
-    font-size: 10.5px;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    color: var(--faint);
-  }
 
   /* Sync is CRM plumbing — not worth a phone row */
   .pv-sync { display: none; }
