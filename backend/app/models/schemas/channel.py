@@ -102,6 +102,51 @@ class EmbeddedSignupRequest(BaseModel):
     display_name: Optional[str] = None
 
 
+class MessengerSignupRequest(BaseModel):
+    """The code Facebook Login for Business hands back. Unlike WhatsApp's
+    Embedded Signup it names no assets — the Pages are ours to look up.
+
+    redirect_uri is the OAuth callback URL the login popup used; the code is
+    bound to it, so the token exchange must send the exact same value back. The
+    client owns it (it must also be a registered Valid OAuth Redirect URI)."""
+    code: str
+    redirect_uri: str
+
+
+class InstagramLoginRequest(BaseModel):
+    """What Instagram Business Login hands back. No Page and no asset ids — the
+    token itself identifies the single account that signed in, so unlike the
+    Messenger flow there is nothing to list or pick.
+
+    redirect_uri is the OAuth callback the popup used; the code is bound to it,
+    so the token exchange must send the exact same value back."""
+    code: str
+    redirect_uri: str
+    display_name: Optional[str] = None
+
+
+class MessengerPageOut(BaseModel):
+    """A Page offered in the picker. Its access token is deliberately absent:
+    it travels back inside the opaque signup_token instead."""
+    id: str
+    name: str
+
+
+class MessengerSignupPagesOut(BaseModel):
+    """Step 1's result: the Pages to choose from, plus an opaque token that
+    carries their access tokens (encrypted) into step 2."""
+    pages: list[MessengerPageOut]
+    signup_token: str
+
+
+class MessengerSignupConnectRequest(BaseModel):
+    """Step 2: the Page picked out of step 1's list. page_id is a selector into
+    that list, not a credential — the token is the one we sealed."""
+    signup_token: str
+    page_id: str
+    display_name: Optional[str] = None
+
+
 class EmbeddedSignupConfigOut(BaseModel):
     """Tells the connect UI whether to offer Embedded Signup. Everything but
     `enabled` is None when it isn't, so nothing leaks to orgs without it."""

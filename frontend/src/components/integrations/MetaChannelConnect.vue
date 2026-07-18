@@ -15,17 +15,13 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import { agentService } from '@/services/agent'
 import type { Agent } from '@/types/agent'
-import {
-  loadMetaSdk,
-  parseSignupMessage,
-  signupLoginOptions,
-  type SignupSession,
-} from '@/utils/metaSdk'
+import MessengerPagePicker from './MessengerPagePicker.vue'
+import { useMetaSignup } from '@/composables/useMetaSignup'
 
 const props = defineProps<{
   channel: 'whatsapp' | 'messenger' | 'instagram'
@@ -83,20 +79,22 @@ const agents = ref<Agent[]>([])
 const selectedAgentId = ref('')
 const savingAgent = ref(false)
 
-// Embedded Signup: only offered for WhatsApp, and only when the server says
-// this deployment has a Meta app to onboard under and a plan that allows it.
-// Everyone else keeps the manual credentials form.
-const signupEnabled = ref(false)
-const signupConfigId = ref('')
-const signingUp = ref(false)
-/** The signup's two halves arrive separately and are joined once both land. */
-const signupSession = ref<SignupSession | null>(null)
-const showManualForm = ref(false)
-
-const handleSignupMessage = (event: MessageEvent) => {
-  const session = parseSignupMessage(event)
-  if (session) signupSession.value = session
-}
+// The three one-click logins live in their own composable; this component owns
+// the manual credentials form and agent assignment.
+const {
+  signupEnabled,
+  signingUp,
+  showManualForm,
+  signupPages,
+  connectingPage,
+  copy: signupCopy,
+  startSignup,
+  onPageSelected,
+} = useMetaSignup({
+  channel: props.channel,
+  existingAccount: props.existingAccount,
+  onConnected: (connected) => { account.value = connected },
+})
 
 onMounted(async () => {
   try {
@@ -106,68 +104,7 @@ onMounted(async () => {
   } catch (error) {
     console.error('Error loading agents:', error)
   }
-
-  if (props.channel !== 'whatsapp' || props.existingAccount) return
-  try {
-    const config = await channelsService.getEmbeddedSignupConfig()
-    if (!config.enabled || !config.config_id || !config.app_id) return
-    await loadMetaSdk(config.app_id, config.graph_version)
-    signupConfigId.value = config.config_id
-    signupEnabled.value = true
-    window.addEventListener('message', handleSignupMessage)
-  } catch (error) {
-    // Falling back to the manual form is a working path, not an error worth
-    // interrupting the user for.
-    console.error('Embedded Signup unavailable:', error)
-  }
 })
-
-onBeforeUnmount(() => window.removeEventListener('message', handleSignupMessage))
-
-const completeEmbeddedSignup = async (response: { authResponse?: { code?: string } }) => {
-  const code = response.authResponse?.code
-  const session = signupSession.value
-  if (!code) {
-    // The popup was dismissed — not an error worth a toast.
-    signingUp.value = false
-    return
-  }
-  if (!session) {
-    // Signed in, but Meta never reported which number was set up, so there
-    // is nothing to connect. Say so rather than appearing to do nothing.
-    toast.error('WhatsApp signup did not complete', {
-      description: 'No number was set up. Try again, or enter credentials manually.',
-    })
-    signingUp.value = false
-    return
-  }
-  try {
-    account.value = await channelsService.connectWhatsAppEmbeddedSignup({
-      code,
-      waba_id: session.waba_id,
-      phone_number_id: session.phone_number_id,
-    })
-    toast.success(`Connected ${account.value.display_name || 'WhatsApp'}`)
-  } catch (error: any) {
-    toast.error(error?.response?.data?.detail || 'Could not finish WhatsApp signup')
-  } finally {
-    signingUp.value = false
-  }
-}
-
-const startEmbeddedSignup = () => {
-  if (!window.FB || signingUp.value) return
-  signupSession.value = null
-  signingUp.value = true
-
-  // The SDK type-checks its callback and rejects an AsyncFunction outright
-  // ("Expression is of type asyncfunction, not function"), so hand the async
-  // work off from a plain function rather than passing `async` here.
-  window.FB.login(
-    (response) => { void completeEmbeddedSignup(response) },
-    signupLoginOptions(signupConfigId.value),
-  )
-}
 
 const connect = async () => {
   const missing = form.value.fields.filter(f => !f.label.includes('optional') && !values.value[f.key]?.trim())
@@ -222,15 +159,22 @@ const saveAgent = async () => {
 
       <!-- Step 1: credentials -->
       <div v-if="!account" class="meta-modal-body">
+        <!-- Login for Business can grant several accounts at once; the customer
+             picks which one this channel answers. -->
+        <MessengerPagePicker
+          v-if="signupPages.length"
+          :pages="signupPages"
+          :connecting="connectingPage"
+          @select="onPageSelected"
+        />
+
         <!-- One-click signup under ChatterMate's Meta app; the manual form
              stays available for anyone who already has their own credentials. -->
-        <div v-if="signupEnabled && !showManualForm" class="meta-signup">
-          <p class="meta-intro">
-            Connect your WhatsApp Business number with Meta — no API credentials to copy.
-          </p>
-          <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startEmbeddedSignup">
+        <div v-else-if="signupEnabled && !showManualForm" class="meta-signup">
+          <p class="meta-intro">{{ signupCopy.intro }}</p>
+          <button class="meta-btn meta-btn-primary meta-signup-btn" :disabled="signingUp" @click="startSignup">
             <font-awesome-icon v-if="signingUp" icon="fa-solid fa-spinner" spin />
-            {{ signingUp ? 'Waiting for Meta…' : 'Continue with Facebook' }}
+            {{ signingUp ? 'Waiting for Meta…' : signupCopy.cta }}
           </button>
           <button class="meta-link-btn" @click="showManualForm = true">
             Enter credentials manually instead
@@ -337,7 +281,9 @@ const saveAgent = async () => {
 }
 
 .meta-intro-link {
-  color: var(--accent-solid);
+  /* --accent-ink, not --accent-solid: the latter is the lime fill and stays
+     lime in both themes, which is unreadable as text on a light background. */
+  color: var(--accent-ink);
   text-decoration: underline;
   font-weight: 600;
 }
