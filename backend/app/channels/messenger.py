@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import ClassVar, List
+from typing import ClassVar, List, Optional
 
 from app.channels.base import InboundMessage, SendResult
 from app.channels.meta_base import GRAPH_BASE, MetaBaseAdapter, graph_get, graph_post
@@ -44,13 +44,34 @@ class MessengerAdapter(MetaBaseAdapter):
     # is not part of Instagram's documented send body, so Instagram sends none.
     send_extras: ClassVar[dict] = {"messaging_type": "RESPONSE"}
 
+    @staticmethod
+    def _event_seconds(raw) -> Optional[int]:
+        """Event time in seconds, or None if absent/unparseable.
+
+        Messenger sends milliseconds as a number; Instagram's changes payload
+        sends seconds as a string, which the old `// 1000` raised a TypeError on
+        — crashing the whole webhook rather than dropping one timestamp.
+        """
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return None
+        # 13-digit values are milliseconds; 10-digit ones are already seconds.
+        return value // 1000 if value > 10_000_000_000 else value
+
+    def _events(self, entry: dict) -> List[dict]:
+        """The messaging events on one entry. Messenger always uses messaging[];
+        Instagram overrides this because it can deliver the same event under
+        changes[] instead."""
+        return entry.get("messaging") or []
+
     def parse_inbound(self, payload: dict) -> List[InboundMessage]:
-        """Normalize entry[].messaging[] events. Echoes, delivery/read receipts
+        """Normalize per-entry messaging events. Echoes, delivery/read receipts
         and attachment-only messages yield nothing."""
         messages: List[InboundMessage] = []
         for entry in payload.get("entry", []):
             account_id = str(entry.get("id", ""))
-            for event in entry.get("messaging", []):
+            for event in self._events(entry):
                 message = event.get("message")
                 if not message or message.get("is_echo"):
                     continue
@@ -67,7 +88,7 @@ class MessengerAdapter(MetaBaseAdapter):
                     external_message_id=str(message.get("mid", "")),
                     text=text,
                     profile={},
-                    timestamp=self._timestamp(event.get("timestamp") and event["timestamp"] // 1000),
+                    timestamp=self._timestamp(self._event_seconds(event.get("timestamp"))),
                 ))
         return messages
 

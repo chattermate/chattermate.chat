@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import ClassVar
+from typing import ClassVar, List
 
 from app.channels.messenger import MessengerAdapter
 from app.channels.meta_base import GRAPH_INSTAGRAM_BASE
@@ -38,6 +38,19 @@ class InstagramAdapter(MessengerAdapter):
     # Instagram's send body is just {recipient, message} — messaging_type is a
     # Messenger-only parameter and has no meaning here.
     send_extras: ClassVar[dict] = {}
+
+    def _events(self, entry: dict) -> List[dict]:
+        """Instagram delivers a DM either as messaging[] or, depending on the
+        API version, as changes[] with field=messages and the same event under
+        `value`. Reading only one shape drops every message on the other, and
+        silently — the payload parses to nothing and the webhook still acks.
+        """
+        events = super()._events(entry)
+        if events:
+            return events
+        return [change.get("value") or {}
+                for change in entry.get("changes") or []
+                if change.get("field") == "messages"]
 
     @staticmethod
     def _display_name(data: dict) -> str:

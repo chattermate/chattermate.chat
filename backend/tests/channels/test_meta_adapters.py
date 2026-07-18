@@ -199,6 +199,38 @@ class TestMessengerInstagramParse:
         assert messages[0].external_account_id == "IG7"
         assert messages[0].external_conversation_id == "IGSID2"
 
+    def test_parse_instagram_changes_shape(self):
+        """Instagram also delivers a DM under changes[] with field=messages
+        (this is the shape Meta's own webhook sample sends). Reading only
+        messaging[] drops the message silently — the webhook still acks."""
+        payload = {
+            "object": "instagram",
+            "entry": [{
+                "id": "IG7",
+                "changes": [{
+                    "field": "messages",
+                    "value": {
+                        "sender": {"id": "IGSID2"},
+                        "recipient": {"id": "IG7"},
+                        "timestamp": "1527459824",
+                        "message": {"mid": "mid.9", "text": "hello from changes"},
+                    },
+                }],
+            }],
+        }
+        messages = get_adapter("instagram").parse_inbound(payload)
+        assert len(messages) == 1
+        assert messages[0].external_account_id == "IG7"
+        assert messages[0].external_conversation_id == "IGSID2"
+        assert messages[0].text == "hello from changes"
+
+    def test_messenger_ignores_the_changes_shape(self):
+        """Only Instagram delivers messaging events that way."""
+        payload = {"object": "page", "entry": [{"id": "PAGE9", "changes": [
+            {"field": "messages", "value": {"sender": {"id": "PSID5"},
+                                            "message": {"mid": "m", "text": "x"}}}]}]}
+        assert get_adapter("messenger").parse_inbound(payload) == []
+
 
 class TestInstagramTransport:
     """Instagram Login accounts hold an Instagram user token, which the Facebook

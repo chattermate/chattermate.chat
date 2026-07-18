@@ -65,7 +65,12 @@ async def meta_webhook(
     background.
     """
     raw_body = await request.body()
-    if not verify_meta_signature(raw_body, request.headers.get("x-hub-signature-256", "")):
+    signature_ok = verify_meta_signature(raw_body, request.headers.get("x-hub-signature-256", ""))
+    # TODO(debug): remove once Instagram delivery is confirmed. Logs before the
+    # signature gate so a rejected payload is distinguishable from one that
+    # never arrived at all.
+    logger.info(f"Meta webhook in: signature_ok={signature_ok} body={raw_body[:500]!r}")
+    if not signature_ok:
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()
