@@ -18,6 +18,7 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import urlparse
 
 import pytest
 
@@ -33,10 +34,21 @@ from app.channels.meta_base import (
     graph_list_all,
     graph_post_json,
     instagram_token_payload,
+    GRAPH_BASE,
     GRAPH_INSTAGRAM_BASE,
     WINDOW_HOURS,
 )
 from app.core.config import settings
+
+
+def _host(url: str) -> str:
+    """The host a request actually went to.
+
+    Compared rather than prefix-matched: `startswith(GRAPH_BASE)` is also
+    satisfied by `https://graph.facebook.com.evil.example/...`, so it does not
+    really pin down where a token was sent.
+    """
+    return urlparse(url).hostname or ""
 
 
 WHATSAPP_PAYLOAD = {
@@ -247,7 +259,7 @@ class TestInstagramTransport:
         await adapter.send_text(MagicMock(), conversation, "hi")
 
         call = graph_client.calls[0]
-        assert call["url"].startswith(GRAPH_INSTAGRAM_BASE)
+        assert _host(call["url"]) == _host(GRAPH_INSTAGRAM_BASE)
         # messaging_type is Messenger-only; Instagram's send body omits it.
         assert "messaging_type" not in call["json"]
 
@@ -262,7 +274,7 @@ class TestInstagramTransport:
         await adapter.send_text(MagicMock(), conversation, "hi")
 
         call = graph_client.calls[0]
-        assert call["url"].startswith("https://graph.facebook.com")
+        assert _host(call["url"]) == _host(GRAPH_BASE)
         assert call["json"]["messaging_type"] == "RESPONSE"
 
 
