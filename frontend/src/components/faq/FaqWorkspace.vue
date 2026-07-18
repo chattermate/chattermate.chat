@@ -791,4 +791,40 @@ onUnmounted(stopPolling)
   padding: 10px 12px;
   margin: -8px 0 20px;
 }
+
+/* ── Mobile ─────────────────────────────────────────────────────────────
+   The toolbar wrapped into a ragged column: the search box stretched but the
+   select and the status group sat at content width, so the select's arrow
+   landed mid-row instead of at the edge. Each control takes the full row. */
+@media (max-width: 768px) {
+  .faq-toolbar {
+    gap: 8px;
+  }
+
+  .faq-search,
+  .faq-select,
+  .faq-status-filter {
+    flex: 1 0 100%;
+    min-width: 0;
+    /* 44px minimum touch target (Apple HIG / WCAG 2.5.8) */
+    min-height: 44px;
+  }
+
+  /* 16px keeps iOS from zooming the page when either field takes focus */
+  .faq-search input,
+  .faq-select {
+    font-size: 16px;
+  }
+
+  .faq-select {
+    width: 100%;
+    padding-right: 12px;
+  }
+
+  .faq-status-filter__btn {
+    flex: 1;
+    min-height: 38px;
+    font-size: 14px;
+  }
+}
 </style>
