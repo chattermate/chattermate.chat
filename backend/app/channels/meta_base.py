@@ -156,6 +156,22 @@ async def graph_get(path: str, access_token: str, params: Optional[dict] = None,
     return await _graph_request("GET", path, access_token, params=params, base=base)
 
 
+def graph_detail(data: dict, fallback: str) -> str:
+    """Meta's own error text where it has one, so the UI can show the real
+    reason (e.g. a template that cannot be deleted) rather than a generic
+    failure.
+
+    error_user_msg first: `message` is often a generic OAuth string that says
+    nothing actionable — Graph will pair a `message` of "Application does not
+    have permission for this action" with an error_user_msg that names the
+    actual asset and rule. Only one of those is a clue.
+    """
+    error = data.get("error", {})
+    if not isinstance(error, dict):
+        return fallback
+    return error.get("error_user_msg") or error.get("message") or fallback
+
+
 async def graph_post_json(path: str, access_token: str, payload: dict) -> tuple[bool, dict]:
     """POST to a Graph node, keeping the response body (e.g. creating a message
     template returns its id, status and category)."""

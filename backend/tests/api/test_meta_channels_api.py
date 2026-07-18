@@ -779,28 +779,28 @@ class TestGraphErrorDetail:
     }}
 
     def test_prefers_metas_human_readable_reason(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
         # Not the useless "Application does not have permission for this action"
-        assert _graph_detail(self.UNVERIFIED, "fallback") == (
+        assert graph_detail(self.UNVERIFIED, "fallback") == (
             "This WhatsApp Business account does not have permission to create message template"
         )
 
     def test_falls_back_to_message_when_there_is_no_user_msg(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
-        assert _graph_detail({"error": {"message": "Invalid parameter"}}, "fallback") == (
+        assert graph_detail({"error": {"message": "Invalid parameter"}}, "fallback") == (
             "Invalid parameter")
 
     def test_falls_back_to_our_own_text_when_graph_says_nothing(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
-        assert _graph_detail({}, "Could not read templates") == "Could not read templates"
+        assert graph_detail({}, "Could not read templates") == "Could not read templates"
 
     def test_survives_an_error_that_is_not_an_object(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
-        assert _graph_detail({"error": "boom"}, "fallback") == "fallback"
+        assert graph_detail({"error": "boom"}, "fallback") == "fallback"
 
 
 class TestTemplateLibraryLink:
@@ -813,7 +813,7 @@ class TestTemplateLibraryLink:
     OWNER = (True, {"owner_business_info": {"id": "BIZ1", "name": "Acme"}})
 
     def test_links_to_the_library_for_this_waba_and_business(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=self.OWNER)):
+        with patch("app.api.channels.whatsapp_messaging.graph_get", AsyncMock(return_value=self.OWNER)):
             r = self._url(client, waba_account)
 
         assert r.status_code == 200
@@ -824,7 +824,7 @@ class TestTemplateLibraryLink:
 
     def test_still_links_when_the_business_cannot_be_read(self, client, waba_account):
         # A worse link, not a dead button: Meta resolves the page from asset_id.
-        with patch("app.api.channels.meta.graph_get",
+        with patch("app.api.channels.whatsapp_messaging.graph_get",
                    AsyncMock(return_value=(False, {"error": {"message": "nope"}}))):
             r = self._url(client, waba_account)
 
@@ -833,7 +833,7 @@ class TestTemplateLibraryLink:
         assert "business_id" not in r.json()["url"]
 
     def test_omits_business_id_when_graph_returns_none(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {}))):
+        with patch("app.api.channels.whatsapp_messaging.graph_get", AsyncMock(return_value=(True, {}))):
             r = self._url(client, waba_account)
 
         assert "business_id" not in r.json()["url"]
@@ -1092,7 +1092,7 @@ class TestInboxAgentCanActuallyReachTheFeature:
         templates = [{"name": "order_update", "language": "en_US",
                       "status": "APPROVED", "category": "UTILITY",
                       "components": [{"type": "BODY", "text": "Hi {{1}}"}]}]
-        with patch("app.api.channels.meta.fetch_message_templates",
+        with patch("app.api.channels.whatsapp_messaging.fetch_message_templates",
                    AsyncMock(return_value=(True, templates))):
             r = inbox_client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
         assert r.status_code == 200

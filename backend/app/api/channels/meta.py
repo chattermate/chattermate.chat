@@ -17,22 +17,20 @@ limitations under the License.
 import json
 import secrets
 import time
-from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.channels.accounts import get_org_account_or_404, to_account_out
-from app.channels import get_adapter
 from app.channels.meta_base import (
     debug_token,
     exchange_for_long_lived_token,
     exchange_instagram_code,
     exchange_instagram_long_lived,
     exchange_signup_code,
-    fetch_message_templates,
     graph_get,
+    graph_detail,
     graph_list_all,
     instagram_token_payload,
     register_phone_number,
@@ -42,9 +40,7 @@ from app.channels.meta_base import (
 )
 from app.core.security import decrypt_api_key, encrypt_api_key
 from app.core.auth import (
-    INBOX_PERMISSIONS,
     get_current_organization,
-    require_any_permission,
     require_permissions,
 )
 from app.core.config import settings
@@ -63,23 +59,13 @@ from app.models.schemas.channel import (
     MessengerPageOut,
     InstagramConnectRequest,
     InstagramLoginRequest,
-    OutboundConversationOut,
-    OutboundConversationRequest,
-    TemplateLibraryOut,
-    TemplateOut,
-    TemplateSendRequest,
 )
 from app.models.user import User
-from app.repositories.channels import ChannelAccountRepository, ChannelConversationRepository
-from app.services.whatsapp_outbound import OutboundError, start_outbound_conversation
+from app.repositories.channels import ChannelAccountRepository
 from app.core.logger import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)
-
-# Meta's own template authoring UI, which is where we send people to write one.
-TEMPLATE_LIBRARY_URL = "https://business.facebook.com/latest/whatsapp_manager/template_library"
-
 
 def _whatsapp_display_name(profile: dict, phone_number_id: str) -> str:
     """How a connected number is labelled in the UI, from its Graph profile."""
@@ -118,7 +104,7 @@ async def _verify_signup_assets(waba_id: str, phone_number_id: str, access_token
     if not ok:
         raise HTTPException(
             status_code=400,
-            detail=_graph_detail(data, "Could not read that WhatsApp Business Account"))
+            detail=graph_detail(data, "Could not read that WhatsApp Business Account"))
 
     numbers = data.get("data")
     if not isinstance(numbers, list):
@@ -252,7 +238,7 @@ async def _list_manageable_pages(user_token: str, fields: str) -> list[dict]:
     if not ok:
         raise HTTPException(
             status_code=400,
-            detail=_graph_detail(data, "Could not list your Facebook Pages"))
+            detail=graph_detail(data, "Could not list your Facebook Pages"))
     return data
 
 
@@ -268,7 +254,7 @@ async def _signup_user_token(request: MessengerSignupRequest) -> str:
     if not user_token:
         # The code is short-lived (~10 minutes) and single-use, so a stale or
         # replayed one lands here rather than on a Graph error later.
-        raise HTTPException(status_code=400, detail=_graph_detail(
+        raise HTTPException(status_code=400, detail=graph_detail(
             data, "Could not complete signup — please try connecting again"))
 
     ok, extended = await exchange_for_long_lived_token(user_token)
@@ -276,62 +262,6 @@ async def _signup_user_token(request: MessengerSignupRequest) -> str:
         return extended["access_token"]
     logger.warning("Could not extend the signup token; page tokens may expire early")
     return user_token
-
-
-def _graph_detail(data: dict, fallback: str) -> str:
-    """Meta's own error text where it has one, so the UI can show the real
-    reason (e.g. a template that cannot be deleted) rather than a generic
-    failure.
-
-    error_user_msg first: `message` is often a generic OAuth string that says
-    nothing actionable — Graph will pair a `message` of "Application does not
-    have permission for this action" with an error_user_msg that names the
-    actual asset and rule. Only one of those is a clue.
-    """
-    error = data.get("error", {})
-    if not isinstance(error, dict):
-        return fallback
-    return error.get("error_user_msg") or error.get("message") or fallback
-
-
-def _whatsapp_account_or_404(db: Session, account_id: UUID, organization: Organization):
-    account = get_org_account_or_404(db, account_id, organization)
-    if account.channel_type != ChannelType.WHATSAPP.value:
-        raise HTTPException(status_code=404, detail="Channel account not found")
-    return account
-
-
-# Template sending is inbox work — reopening a window, starting a conversation
-# — done by support agents, not org admins. INBOX_PERMISSIONS is shared with
-# the People page so the two surfaces can't disagree about who works the inbox.
-require_inbox_agent = require_any_permission(*INBOX_PERMISSIONS)
-
-
-async def _fetch_all_templates(waba_id: str, access_token: str) -> list[TemplateOut]:
-    """Every template on the WABA (transport lives in meta_base; this wrapper
-    owns the HTTP error surface)."""
-    ok, data = await fetch_message_templates(waba_id, access_token)
-    if not ok:
-        raise HTTPException(status_code=502,
-                            detail=_graph_detail(data, "Could not list templates"))
-    return [TemplateOut(**template) for template in data]
-
-
-def _waba_credentials(db: Session, account) -> tuple[str, str]:
-    """(waba_id, access_token) for a WhatsApp account.
-
-    Templates live on the WhatsApp Business Account, not the phone number, and
-    the WABA id is optional in the credential blob — accounts connected without
-    it can send and receive but cannot manage templates.
-    """
-    credentials = ChannelAccountRepository(db).get_credentials(account)
-    waba_id = credentials.get("waba_id")
-    if not waba_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Reconnect this number with its WhatsApp Business Account ID to manage templates",
-        )
-    return waba_id, credentials["access_token"]
 
 
 def _upsert_account(db: Session, organization: Organization, channel_type: str,
@@ -433,7 +363,7 @@ async def connect_whatsapp_embedded_signup(
         # replayed one lands here rather than on a Graph error later.
         raise HTTPException(
             status_code=400,
-            detail=_graph_detail(data, "Could not complete signup — please try connecting again"),
+            detail=graph_detail(data, "Could not complete signup — please try connecting again"),
         )
 
     profile = await _verify_signup_assets(
@@ -447,7 +377,7 @@ async def connect_whatsapp_embedded_signup(
     if not registered:
         logger.warning(
             f"Phone {request.phone_number_id} not registered after signup: "
-            f"{_graph_detail(register_data, 'unknown error')}")
+            f"{graph_detail(register_data, 'unknown error')}")
 
     credentials = {"access_token": access_token, "waba_id": request.waba_id}
     # Only keep the PIN we actually set on the number. Storing one from a failed
@@ -481,7 +411,7 @@ async def connect_messenger(
     # carry — it would reject a token that sends perfectly well.
     ok, info = await debug_token(request.page_access_token)
     if not ok or not info.get("is_valid"):
-        raise HTTPException(status_code=400, detail=_graph_detail(
+        raise HTTPException(status_code=400, detail=graph_detail(
             info, "That token is not valid — generate a fresh Page access token"))
     if info.get("type") != "PAGE":
         raise HTTPException(status_code=400, detail=(
@@ -591,7 +521,7 @@ async def connect_instagram_login(
     if not access_token or not user_id:
         # The code is single-use and short-lived, so a stale or replayed one
         # lands here rather than on a Graph error later.
-        raise HTTPException(status_code=400, detail=_graph_detail(
+        raise HTTPException(status_code=400, detail=graph_detail(
             data, "Could not complete Instagram login — please try connecting again"))
 
     # The login token lasts about an hour; without extending it the connection
@@ -667,107 +597,3 @@ async def disconnect_meta_account(
         raise HTTPException(status_code=404, detail="Channel account not found")
     ChannelAccountRepository(db).delete(account)
     return {"status": "disconnected"}
-
-
-@router.post("/whatsapp/{account_id}/conversations", response_model=OutboundConversationOut)
-async def start_whatsapp_conversation(
-    account_id: UUID,
-    request: OutboundConversationRequest,
-    current_user: User = Depends(require_inbox_agent),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Start a WhatsApp conversation with a phone number via an approved
-    Utility/Authentication template. The thin route: policy lives in the
-    service so the Phase-2 scheduler can call the same function."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    try:
-        session_id = await start_outbound_conversation(
-            db, account,
-            to=request.to,
-            template_name=request.template_name,
-            language=request.language,
-            components=request.components,
-            customer_id=request.customer_id,
-            customer_name=request.customer_name,
-        )
-    except OutboundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.detail)
-    return OutboundConversationOut(session_id=session_id)
-
-
-@router.post("/whatsapp/{account_id}/send-template")
-async def send_whatsapp_template(
-    account_id: UUID,
-    request: TemplateSendRequest,
-    current_user: User = Depends(require_inbox_agent),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Send an approved template message to reopen an expired 24h window."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-
-    conversation = ChannelConversationRepository(db).get_by_session(request.session_id)
-    if conversation is None or conversation.channel_account_id != account.id:
-        raise HTTPException(status_code=404, detail="Conversation not found for this account")
-
-    adapter = get_adapter(ChannelType.WHATSAPP.value)
-    result = await adapter.send_template(
-        account, conversation,
-        template_name=request.template_name,
-        language=request.language,
-        components=request.components,
-    )
-    if not result.ok:
-        raise HTTPException(status_code=502, detail=result.error or "Template send failed")
-    return {"status": "sent", "external_message_id": result.external_message_id}
-
-
-@router.get("/whatsapp/{account_id}/templates", response_model=list[TemplateOut])
-async def list_whatsapp_templates(
-    account_id: UUID,
-    # Inbox-agent, not org-admin: this is what the send-template picker and the
-    # New-conversation modal read. Gating it tighter than the send it feeds made
-    # the loosening of those endpoints a no-op — the agent could send a template
-    # but never see one to pick.
-    current_user: User = Depends(require_inbox_agent),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """List the message templates on this number's WhatsApp Business Account."""
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    waba_id, access_token = _waba_credentials(db, account)
-    return await _fetch_all_templates(waba_id, access_token)
-
-
-@router.get("/whatsapp/{account_id}/template-library", response_model=TemplateLibraryOut)
-async def get_whatsapp_template_library(
-    account_id: UUID,
-    current_user: User = Depends(require_permissions("manage_organization")),
-    organization: Organization = Depends(get_current_organization),
-    db: Session = Depends(get_db),
-):
-    """Where to go to write a template: Meta's own Template Library, opened on
-    this number's WhatsApp Business Account.
-
-    Templates are not authored here. Meta's library holds ~150 pre-written,
-    pre-localised utility templates plus its authentication ones, all shaped to
-    pass its own review — a form of ours could only ever be a worse version of
-    that, and every rule it encodes (categories, variable numbering, which
-    buttons may be mixed) is Meta's to change without telling us.
-
-    The link is built per account rather than hardcoded: business_id scopes the
-    page to the right portfolio. It is best-effort — a business we cannot read
-    gives a link that lands less precisely, not a dead button.
-    """
-    account = _whatsapp_account_or_404(db, account_id, organization)
-    waba_id, access_token = _waba_credentials(db, account)
-
-    params = {"asset_id": waba_id}
-    ok, data = await graph_get(waba_id, access_token, params={"fields": "owner_business_info"})
-    if ok:
-        business_id = (data.get("owner_business_info") or {}).get("id")
-        if business_id:
-            params["business_id"] = business_id
-
-    return TemplateLibraryOut(url=f"{TEMPLATE_LIBRARY_URL}?{urlencode(params)}")

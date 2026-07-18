@@ -19,6 +19,7 @@ from fastapi import APIRouter
 from app.api.channels.accounts import router as accounts_router
 from app.api.channels.telegram import router as telegram_router
 from app.api.channels.meta import router as meta_router
+from app.api.channels.whatsapp_messaging import router as whatsapp_messaging_router
 from app.api.channels.slack import router as slack_router
 from app.api.channels.email import router as email_router
 from app.api.channels.sms import router as sms_router
@@ -30,6 +31,8 @@ router = APIRouter()
 router.include_router(accounts_router, tags=["channels"])
 router.include_router(telegram_router, prefix="/telegram", tags=["channels"])
 router.include_router(meta_router, prefix="/meta", tags=["channels"])
+# Same prefix: onboarding and messaging are separate modules, one URL space.
+router.include_router(whatsapp_messaging_router, prefix="/meta", tags=["channels"])
 router.include_router(slack_router, prefix="/slack", tags=["channels"])
 router.include_router(email_router, prefix="/email", tags=["channels"])
 router.include_router(sms_router, prefix="/sms", tags=["channels"])
