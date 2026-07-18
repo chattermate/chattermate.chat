@@ -189,8 +189,10 @@ onMounted(async () => {
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
       <div class="user-info">
-        <h2>{{ chat.customer.full_name || chat.customer.email }}</h2>
-        <ChannelBadge :channel="chat.channel" />
+        <div class="user-info-top">
+          <h2>{{ chat.customer.full_name || chat.customer.email }}</h2>
+          <ChannelBadge :channel="chat.channel" />
+        </div>
         <div v-if="handledByAI" class="chat-closed-status">
           <font-awesome-icon icon="fa-solid fa-lock" />
           Handled by AI
@@ -215,19 +217,23 @@ onMounted(async () => {
         <button
           v-if="canUseTemplates && !isChatClosed"
           class="create-ticket-btn"
+          title="Send template"
+          aria-label="Send template"
           @click="showTemplatePicker = true"
         >
           <font-awesome-icon icon="fa-solid fa-comment-dots" />
-          Send template
+          <span class="btn-label">Send template</span>
         </button>
         <!-- Add Create Ticket button -->
         <button
           v-if="canCreateTicket && jiraConnected"
           class="create-ticket-btn"
+          title="Create Ticket"
+          aria-label="Create Ticket"
           @click="handleCreateTicket"
         >
           <font-awesome-icon icon="fa-solid fa-ticket-alt" />
-          Create Ticket
+          <span class="btn-label">Create Ticket</span>
         </button>
         <button class="info-btn" aria-label="Conversation details" @click="emit('info')">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="1.1" fill="currentColor" stroke="none"/></svg>
@@ -543,12 +549,34 @@ onMounted(async () => {
   width: 100%;
 }
 
+/* Name + channel badge on one row, status line beneath — without this the
+   block-level h2, the badge and the status each claim their own line and the
+   status text wraps, making the header several rows tall. */
+.user-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-info-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .user-info h2 {
   font-size: 15px;
   font-family: var(--font-display);
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 3px;
+  margin: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status {
@@ -558,7 +586,9 @@ onMounted(async () => {
 
 .header-actions {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .action-btn {
@@ -792,7 +822,9 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .taken-over-status svg {
@@ -816,7 +848,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  white-space: nowrap;
 }
 
 .chat-closed-status svg {
@@ -1140,47 +1172,42 @@ onMounted(async () => {
     min-height: 0;
   }
 
-  .back-btn {
-    display: flex;
-    width: 44px;
-    height: 44px;
-    margin-left: -10px;
-  }
-
+  .back-btn,
   .info-btn {
     display: flex;
-    width: 44px;
-    height: 44px;
+  }
+
+  .back-btn {
+    margin-left: -8px;
   }
 
   .chat-header {
-    padding: calc(8px + var(--safe-top)) 12px 8px;
-  }
-
-  .user-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .user-info h2 {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    padding: calc(6px + var(--safe-top)) 10px 6px;
+    gap: 6px;
   }
 
   .header-actions {
-    gap: 8px;
+    gap: 6px;
+  }
+
+  /* Icon-only actions on phones — labels would squeeze the customer name */
+  .btn-label {
+    display: none;
   }
 
   .create-ticket-btn {
     margin-right: 0;
-    padding: 8px 10px;
-    font-size: 13px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
   }
 
-  .refresh-chat-btn {
-    width: 44px;
-    height: 44px;
+  .refresh-chat-btn,
+  .info-btn,
+  .back-btn {
+    width: 40px;
+    height: 40px;
   }
 
   .message {
