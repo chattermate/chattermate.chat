@@ -72,10 +72,6 @@ async def meta_webhook(
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()
-    # TODO(debug): remove once Instagram delivery is confirmed in production.
-    # Ids only — the body carries customer message text.
-    logger.info(f"Meta webhook: object={payload.get('object')} "
-                f"entries={[e.get('id') for e in payload.get('entry', []) if isinstance(e, dict)]}")
     channel_type = _OBJECT_TO_CHANNEL.get(payload.get("object"))
     if channel_type is None:
         # Unknown product subscription — ack so Meta doesn't retry forever

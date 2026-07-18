@@ -44,7 +44,6 @@ from app.core.security import decrypt_api_key, encrypt_api_key
 from app.core.auth import (
     INBOX_PERMISSIONS,
     get_current_organization,
-    get_current_user,
     require_any_permission,
     require_permissions,
 )

@@ -17,6 +17,11 @@ limitations under the License.
 const SDK_SRC = 'https://connect.facebook.net/en_US/sdk.js'
 const SDK_SCRIPT_ID = 'facebook-jssdk'
 
+/** Where each provider's OAuth dialog lives. Instagram Login is a different
+ * provider, not a Facebook dialog, so it has its own endpoint. */
+const FACEBOOK_DIALOG_BASE = 'https://www.facebook.com'
+const INSTAGRAM_AUTHORIZE_URL = 'https://www.instagram.com/oauth/authorize'
+
 /**
  * Static page Meta redirects the Login-for-Business popup to (see
  * public/meta-oauth-callback.html). Its full URL — origin + this path — is the
@@ -217,7 +222,7 @@ const runOAuthPopup = (buildUrl: (state: string) => string): Promise<string> =>
  */
 export const runBusinessLogin = (config: BusinessLoginConfig): Promise<string> =>
   runOAuthPopup((state) =>
-    `https://www.facebook.com/${config.graphVersion}/dialog/oauth?` +
+    `${FACEBOOK_DIALOG_BASE}/${config.graphVersion}/dialog/oauth?` +
     new URLSearchParams({
       client_id: config.appId,
       config_id: config.configId,
@@ -235,7 +240,7 @@ export const runBusinessLogin = (config: BusinessLoginConfig): Promise<string> =
  */
 export const runInstagramLogin = (config: InstagramLoginConfig): Promise<string> =>
   runOAuthPopup((state) =>
-    'https://www.instagram.com/oauth/authorize?' +
+    `${INSTAGRAM_AUTHORIZE_URL}?` +
     new URLSearchParams({
       client_id: config.appId,
       redirect_uri: config.redirectUri,
