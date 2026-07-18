@@ -45,11 +45,11 @@ const isSignupChannel = (c: string): c is SignupChannel =>
 // Copy for the one-click pane, per channel.
 const SIGNUP_COPY: Record<SignupChannel, { intro: string; cta: string }> = {
   whatsapp: {
-    intro: 'Connect your WhatsApp Business number with Meta — no API credentials to copy.',
+    intro: 'Sign in with Facebook to connect your WhatsApp Business number.',
     cta: 'Continue with Facebook',
   },
   messenger: {
-    intro: 'Connect your Facebook Page with Meta — no API credentials to copy.',
+    intro: 'Sign in with Facebook to connect your Page.',
     cta: 'Continue with Facebook',
   },
   instagram: {
