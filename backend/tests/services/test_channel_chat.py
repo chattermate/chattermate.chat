@@ -424,13 +424,13 @@ async def test_whatsapp_inbound_stores_the_phone(db, test_organization):
     account = MagicMock(spec=ChannelAccount)
     account.channel_type = "whatsapp"
     inbound = InboundMessage(
-        external_account_id="PN1", external_conversation_id="916366602824",
-        external_user_id="916366602824", external_message_id="m1", text="hi",
-        profile={"name": "Priya", "phone": "+916366602824"})
+        external_account_id="PN1", external_conversation_id="911234567890",
+        external_user_id="911234567890", external_message_id="m1", text="hi",
+        profile={"name": "Priya", "phone": "+911234567890"})
     cid = _get_or_create_customer(db, account, inbound, str(test_organization.id))
     customer = db.query(Customer).filter(Customer.id == _uuid.UUID(cid)).one()
-    assert customer.phone == "+916366602824"
-    assert customer.email == "916366602824@whatsapp.channel"
+    assert customer.phone == "+911234567890"
+    assert customer.email == "911234567890@whatsapp.channel"
 
 
 @pytest.mark.asyncio
@@ -444,14 +444,14 @@ async def test_phone_unifies_one_human_across_channels(db, test_organization):
 
     widget_person = CustomerRepository(db).create_customer(
         email="priya@example.com", organization_id=test_organization.id,
-        full_name="Priya", phone="+916366602824")
+        full_name="Priya", phone="+911234567890")
 
     account = MagicMock(spec=ChannelAccount)
     account.channel_type = "whatsapp"
     inbound = InboundMessage(
-        external_account_id="PN1", external_conversation_id="916366602824",
-        external_user_id="916366602824", external_message_id="m2", text="hello",
-        profile={"phone": "+916366602824"})
+        external_account_id="PN1", external_conversation_id="911234567890",
+        external_user_id="911234567890", external_message_id="m2", text="hello",
+        profile={"phone": "+911234567890"})
     cid = _get_or_create_customer(db, account, inbound, str(test_organization.id))
     assert cid == str(widget_person.id)
 

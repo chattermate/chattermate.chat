@@ -172,14 +172,14 @@ def test_phone_identifies_and_is_searchable(repo, db, test_organization_id):
     """A phone alone identifies a person (WhatsApp/SMS contacts have no real
     email), and decorated search terms match on digits."""
     person = _customer(db, test_organization_id,
-                       email="916366602824@whatsapp.channel",
-                       full_name="Whatsapp user 91636660", phone="+916366602824")
+                       email="911234567890@whatsapp.channel",
+                       full_name="Whatsapp user 91123456", phone="+911234567890")
 
     items, total = repo.list_people(test_organization_id)
     assert total == 1 and items[0]["id"] == person.id
-    assert items[0]["phone"] == "+916366602824"
+    assert items[0]["phone"] == "+911234567890"
 
-    for term in ["+91 63666 02824", "9163666", "63666 02824"]:
+    for term in ["+91 12345 67890", "9112345", "12345 67890"]:
         _, found = repo.list_people(test_organization_id, search=term)
         assert found == 1, term
 
@@ -194,9 +194,9 @@ def test_update_person_edits_and_guards(repo, db, test_organization_id):
 
     # Set + correct (overwrite is allowed here — it's the explicit human path)
     updated, error = repo.update_person(test_organization_id, person.id,
-                                        full_name="Priya", phone="+91 63666 02824")
+                                        full_name="Priya", phone="+91 12345 67890")
     assert error is None
-    assert updated.full_name == "Priya" and updated.phone == "+916366602824"
+    assert updated.full_name == "Priya" and updated.phone == "+911234567890"
 
     updated, error = repo.update_person(test_organization_id, person.id, phone="+919999999999")
     assert error is None and updated.phone == "+919999999999"
@@ -208,7 +208,7 @@ def test_update_person_edits_and_guards(repo, db, test_organization_id):
     assert person.phone == "+919999999999"
 
     # National-format digits are refused, not guessed at
-    _, error = repo.update_person(test_organization_id, person.id, phone="6366602824")
+    _, error = repo.update_person(test_organization_id, person.id, phone="1234567890")
     assert "international format" in error
 
     # Clearing via empty string
@@ -223,7 +223,7 @@ def test_mark_customer_is_gated_on_identity(repo, db, test_organization_id):
     anon = _customer(db, test_organization_id)
     assert repo.is_identified(anon) is False
     # Identify via phone → the gate opens
-    repo.update_person(test_organization_id, anon.id, phone="+916366602824")
+    repo.update_person(test_organization_id, anon.id, phone="+911234567890")
     db.refresh(anon)
     assert repo.is_identified(anon) is True
 

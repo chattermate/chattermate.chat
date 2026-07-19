@@ -234,14 +234,14 @@ class TestPhoneIdentity:
     def test_phone_lookup_beats_email_creation(self, customer_repo, test_organization_id):
         existing = customer_repo.create_customer(
             email="priya@example.com", organization_id=test_organization_id,
-            full_name="Priya", phone="+916366602824")
+            full_name="Priya", phone="+911234567890")
 
         # Same human arrives via WhatsApp: synthesized email, same phone.
         resolved = customer_repo.get_or_create_customer(
-            email="916366602824@whatsapp.channel",
+            email="911234567890@whatsapp.channel",
             organization_id=test_organization_id,
-            full_name="Whatsapp user 91636660",
-            phone="+916366602824")
+            full_name="Whatsapp user 91123456",
+            phone="+911234567890")
 
         assert resolved.id == existing.id
         assert resolved.full_name == "Priya"          # nothing overwritten
@@ -249,16 +249,16 @@ class TestPhoneIdentity:
 
     def test_backfills_phone_when_found_by_email(self, customer_repo, test_organization_id):
         existing = customer_repo.create_customer(
-            email="916366602824@whatsapp.channel", organization_id=test_organization_id)
+            email="911234567890@whatsapp.channel", organization_id=test_organization_id)
         assert existing.phone is None
 
         resolved = customer_repo.get_or_create_customer(
-            email="916366602824@whatsapp.channel",
+            email="911234567890@whatsapp.channel",
             organization_id=test_organization_id,
-            phone="+916366602824")
+            phone="+911234567890")
 
         assert resolved.id == existing.id
-        assert resolved.phone == "+916366602824"
+        assert resolved.phone == "+911234567890"
 
     def test_creates_with_phone_when_nobody_matches(self, customer_repo, test_organization_id):
         customer = customer_repo.get_or_create_customer(
@@ -272,14 +272,14 @@ class TestPhoneIdentity:
         conversation, nobody gets merged or overwritten."""
         by_phone = customer_repo.create_customer(
             email="a@example.com", organization_id=test_organization_id,
-            phone="+916366602824")
+            phone="+911234567890")
         by_email = customer_repo.create_customer(
-            email="916366602824@whatsapp.channel", organization_id=test_organization_id)
+            email="911234567890@whatsapp.channel", organization_id=test_organization_id)
 
         resolved = customer_repo.get_or_create_customer(
-            email="916366602824@whatsapp.channel",
+            email="911234567890@whatsapp.channel",
             organization_id=test_organization_id,
-            phone="+916366602824")
+            phone="+911234567890")
 
         assert resolved.id == by_phone.id
         db.refresh(by_email)
@@ -303,26 +303,26 @@ class TestUpdateContactPhone:
     def test_sets_phone_when_absent(self, customer_repo, test_organization_id):
         customer = customer_repo.create_customer(
             email="lead@example.com", organization_id=test_organization_id)
-        result = customer_repo.update_contact(customer.id, phone="+91 63666 02824")
+        result = customer_repo.update_contact(customer.id, phone="+91 12345 67890")
         assert result['phone_updated'] is True
-        assert customer_repo.get_by_id(customer.id).phone == "+916366602824"
+        assert customer_repo.get_by_id(customer.id).phone == "+911234567890"
 
     def test_never_overwrites_an_existing_phone(self, customer_repo, test_organization_id):
         customer = customer_repo.create_customer(
             email="lead@example.com", organization_id=test_organization_id,
-            phone="+916366602824")
+            phone="+911234567890")
         result = customer_repo.update_contact(customer.id, phone="+15550001111")
         assert result['phone_updated'] is False
-        assert customer_repo.get_by_id(customer.id).phone == "+916366602824"
+        assert customer_repo.get_by_id(customer.id).phone == "+911234567890"
 
     def test_skips_a_phone_owned_by_someone_else(self, customer_repo, test_organization_id):
         customer_repo.create_customer(
             email="owner@example.com", organization_id=test_organization_id,
-            phone="+916366602824")
+            phone="+911234567890")
         other = customer_repo.create_customer(
             email="other@example.com", organization_id=test_organization_id)
 
-        result = customer_repo.update_contact(other.id, phone="+916366602824")
+        result = customer_repo.update_contact(other.id, phone="+911234567890")
 
         assert result['phone_updated'] is False
         assert customer_repo.get_by_id(other.id).phone is None
@@ -331,7 +331,7 @@ class TestUpdateContactPhone:
         customer = customer_repo.create_customer(
             email="lead@example.com", organization_id=test_organization_id)
         # Bare national digits: normalize_phone (strict) rejects them.
-        result = customer_repo.update_contact(customer.id, phone="6366602824")
+        result = customer_repo.update_contact(customer.id, phone="1234567890")
         assert result['phone_updated'] is False
         assert customer_repo.get_by_id(customer.id).phone is None
 
@@ -340,7 +340,7 @@ class TestUpdateContactPhone:
             email="1712345@noemail.com", organization_id=test_organization_id)
         result = customer_repo.update_contact(
             customer.id, email="real@example.com", full_name="Priya",
-            phone="+916366602824")
+            phone="+911234567890")
         assert result == {'email_updated': True, 'name_updated': True,
                           'phone_updated': True, 'email': 'real@example.com'}
 
@@ -350,22 +350,22 @@ class TestPlaceholderEmails:
     address — but it is still the ONLY key a phone-less channel has."""
 
     def test_channel_addresses_are_placeholders(self, customer_repo):
-        assert CustomerRepository.is_placeholder_email("916366602824@whatsapp.channel") is True
+        assert CustomerRepository.is_placeholder_email("911234567890@whatsapp.channel") is True
         assert CustomerRepository.is_placeholder_email("555@telegram.channel") is True
         assert CustomerRepository.is_placeholder_email("1712345@noemail.com") is True
         assert CustomerRepository.is_placeholder_email(None) is True
         assert CustomerRepository.is_placeholder_email("priya@example.com") is False
 
     def test_display_email_hides_stand_ins(self, customer_repo):
-        assert CustomerRepository.display_email("916366602824@whatsapp.channel") is None
+        assert CustomerRepository.display_email("911234567890@whatsapp.channel") is None
         assert CustomerRepository.display_email("1712345@noemail.com") is None
         assert CustomerRepository.display_email("priya@example.com") == "priya@example.com"
 
     def test_captured_email_lands_when_a_phone_holds_the_identity(self, customer_repo, test_organization_id):
         """WhatsApp/SMS: the phone is the key, so the email is free to become real."""
         customer = customer_repo.create_customer(
-            email="916366602824@whatsapp.channel", organization_id=test_organization_id,
-            phone="+916366602824")
+            email="911234567890@whatsapp.channel", organization_id=test_organization_id,
+            phone="+911234567890")
 
         result = customer_repo.update_contact(customer.id, email="priya@example.com")
 

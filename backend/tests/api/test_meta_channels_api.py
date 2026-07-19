@@ -931,7 +931,7 @@ class TestOutboundConversation:
 
     def _send(self, client, account, templates=None, send_ok=True, **overrides):
         from unittest.mock import MagicMock
-        payload = {"to": "+91 63666 02824", "template_name": "order_update",
+        payload = {"to": "+91 12345 67890", "template_name": "order_update",
                    "language": "en_US", "components": self.BODY_PARAMS, **overrides}
         adapter = MagicMock()
         adapter.send_template = AsyncMock(return_value=SendResult(
@@ -952,9 +952,9 @@ class TestOutboundConversation:
         assert r.status_code == 200
         session_id = r.json()["session_id"]
 
-        customer = db.query(Customer).filter(Customer.phone == "+916366602824").one()
+        customer = db.query(Customer).filter(Customer.phone == "+911234567890").one()
         assert customer.full_name == "Priya"
-        assert customer.email == "916366602824@whatsapp.channel"
+        assert customer.email == "911234567890@whatsapp.channel"
         assert customer.lead_source == {"channel": "whatsapp", "via": "outbound"}
 
         conversation = ChannelConversationRepository(db).get_by_session(session_id)
@@ -982,7 +982,7 @@ class TestOutboundConversation:
                                      full_name="Alice")
         repo.create_customer(email="bob@example.com",
                              organization_id=routed.organization_id,
-                             full_name="Bob", phone="+916366602824")
+                             full_name="Bob", phone="+911234567890")
 
         r, adapter = self._send(client, routed, customer_id=str(alice.id))
 
@@ -1017,10 +1017,10 @@ class TestOutboundConversation:
 
         assert r.status_code == 200
         db.refresh(alice)
-        assert alice.phone == "+916366602824"
+        assert alice.phone == "+911234567890"
         # And no second person was minted for the number.
         assert db.query(Customer).filter(
-            Customer.phone == "+916366602824").count() == 1
+            Customer.phone == "+911234567890").count() == 1
 
     def test_window_reports_expired_until_they_reply(self, client, db, routed):
         from app.channels import get_adapter
@@ -1042,13 +1042,13 @@ class TestOutboundConversation:
         from app.repositories.customer import CustomerRepository
         existing = CustomerRepository(db).create_customer(
             email="priya@example.com", organization_id=test_organization.id,
-            full_name="Priya", phone="+916366602824")
+            full_name="Priya", phone="+911234567890")
 
         r, _ = self._send(client, routed)
 
         assert r.status_code == 200
         # No junk row: the conversation belongs to the person who owns the phone.
-        assert db.query(Customer).filter(Customer.phone == "+916366602824").count() == 1
+        assert db.query(Customer).filter(Customer.phone == "+911234567890").count() == 1
         from app.repositories.channels import ChannelConversationRepository
         conversation = ChannelConversationRepository(db).get_by_session(r.json()["session_id"])
         assert conversation.customer_id == existing.id
@@ -1062,7 +1062,7 @@ class TestOutboundConversation:
         assert r.status_code == 502
         assert "Recipient not on WhatsApp" in r.json()["detail"]
         assert db.query(ChannelConversation).filter(
-            ChannelConversation.external_conversation_id == "916366602824").count() == 0
+            ChannelConversation.external_conversation_id == "911234567890").count() == 0
         assert db.query(SessionToAgent).count() == 0
 
     def test_marketing_templates_cannot_start_conversations(self, client, routed):
@@ -1100,7 +1100,7 @@ class TestOutboundConversation:
         assert "Route an agent" in r.json()["detail"]
 
     def test_rejects_a_number_without_country_code(self, client, routed):
-        r, _ = self._send(client, routed, to="6366602824")
+        r, _ = self._send(client, routed, to="1234567890")
         assert r.status_code == 400
         assert "international format" in r.json()["detail"]
 

@@ -195,7 +195,7 @@ async def start_outbound_conversation(
     """
     phone = normalize_phone(to)
     if phone is None:
-        raise OutboundError(400, "Enter the number in international format, e.g. +91 63666 02824")
+        raise OutboundError(400, "Enter the number in international format, e.g. +91 12345 67890")
     wa_id = to_wa_id(phone)
 
     agent_id = AgentChannelConfigRepository(db).get_active_agent_id(account.id)

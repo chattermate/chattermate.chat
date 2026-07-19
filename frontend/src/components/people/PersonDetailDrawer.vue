@@ -179,7 +179,7 @@ onMounted(() => { load(); loadWhatsAppAccounts() })
           </label>
           <label class="pdd-edit-field">
             <span>Phone</span>
-            <input v-model="editPhone" placeholder="+91 63666 02824" autocomplete="off" />
+            <input v-model="editPhone" placeholder="+91 12345 67890" autocomplete="off" />
           </label>
           <div class="pdd-edit-actions">
             <button type="button" class="pdd-edit-btn" @click="editing = false">Cancel</button>
