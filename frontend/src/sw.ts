@@ -31,6 +31,7 @@ import { clientsClaim } from 'workbox-core'
 import { initializeApp } from 'firebase/app'
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw'
 import { SW_MESSAGE, conversationSessionUrl } from './pwa/pushContract'
+import { NAVIGATION_DENYLIST } from './pwa/navigationDenylist'
 
 declare let self: ServiceWorkerGlobalScope
 
@@ -49,10 +50,11 @@ clientsClaim()
 precacheAndRoute(self.__WB_MANIFEST)
 cleanupOutdatedCaches()
 
-// SPA navigation fallback — never for API/widget/Shopify-embedded routes
+// SPA navigation fallback. What it must not swallow lives in
+// ./pwa/navigationDenylist, which is testable without ServiceWorker globals.
 registerRoute(
   new NavigationRoute(createHandlerBoundToURL('index.html'), {
-    denylist: [/^\/api\//, /^\/widget/, /^\/webclient/, /^\/shopify/],
+    denylist: NAVIGATION_DENYLIST,
   }),
 )
 
