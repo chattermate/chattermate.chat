@@ -104,7 +104,7 @@ class PeopleRepository:
     @staticmethod
     def _search_clauses(search: str):
         """Name/email substring match, plus phone when the term looks like a
-        number — matching on digits so "+91 63666" and "9163666" both hit."""
+        number — matching on digits so "+91 12345" and "9112345" both hit."""
         term = search.strip()
         like = f"%{term}%"
         clauses = [Customer.full_name.ilike(like), Customer.email.ilike(like)]
@@ -385,7 +385,7 @@ class PeopleRepository:
         if phone is not None:
             normalized = None if phone.strip() == "" else normalize_phone(phone)
             if phone.strip() != "" and not normalized:
-                return customer, "Enter the number in international format, e.g. +91 63666 02824"
+                return customer, "Enter the number in international format, e.g. +91 12345 67890"
             if normalized != customer.phone and self._phone_is_sole_identity_key(customer):
                 return customer, (
                     "This number is how their WhatsApp messages find them — changing "

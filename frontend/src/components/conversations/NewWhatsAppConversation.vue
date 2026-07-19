@@ -192,7 +192,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
       <input
         v-model="to"
         class="nwc-input"
-        placeholder="+91 63666 02824"
+        placeholder="+91 12345 67890"
         autocomplete="off"
         :aria-label="peopleAvailable ? 'Phone number or search People' : 'Phone number'"
       />

@@ -35,7 +35,7 @@ def normalize_phone(value: str | None) -> str | None:
 
     Strict: the '+' country prefix is required (decoration — spaces, dashes,
     dots, parentheses — is tolerated). Bare digits are rejected here because a
-    person typing "6366602824" means a national number, and prepending '+'
+    person typing "1234567890" means a national number, and prepending '+'
     would silently reassign it to whatever country owns that prefix. An
     identity key corrupted by a guess is worse than a rejected form field.
 
