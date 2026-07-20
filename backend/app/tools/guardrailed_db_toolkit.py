@@ -231,6 +231,9 @@ class GuardrailedDBTools(Toolkit):
             masked_columns=config.masked_columns,
             row_scope=config.row_scope,
             scope_value=self._scope_value(config),
+            # Only emails: a phone is digits, so folding case buys nothing and
+            # would cost the index on the column.
+            scope_case_insensitive=(config.row_scope_key or "email").lower() == "email",
         )
         if not verdict.ok:
             self._audit(

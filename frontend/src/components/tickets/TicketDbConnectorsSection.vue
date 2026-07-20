@@ -425,8 +425,14 @@ onMounted(fetchConnectors)
             </select>
           </label>
           <span class="scope-key-hint">
-            The ticket customer's {{ rowScopeKey }} is matched exactly against the column
-            you pick per table, so store it the same way on both sides.
+            <template v-if="rowScopeKey === 'email'">
+              The ticket customer's email is matched against the column you pick per
+              table, ignoring case.
+            </template>
+            <template v-else>
+              The ticket customer's phone is matched exactly against the column you pick
+              per table, so store it in the same format on both sides.
+            </template>
           </span>
         </div>
 

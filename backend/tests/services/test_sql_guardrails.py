@@ -346,3 +346,34 @@ class TestRowScoping:
         result = scoped("SELECT id FROM orders")
         assert result.ok
         assert result.sql.rstrip().endswith("LIMIT 100")
+
+
+class TestRowScopeCaseInsensitivity:
+    """Emails fold case; the same person may be Bob@x.com in one system and
+    bob@x.com in the other, and an exact match would return nothing."""
+
+    def _ci(self, value=OWNER):
+        return validate_sql(
+            "SELECT id FROM orders", ALLOWED, 100, "postgresql",
+            row_scope=ROW_SCOPE, scope_value=value, scope_case_insensitive=True,
+        )
+
+    def test_predicate_folds_both_sides(self):
+        result = self._ci("Arun@ChatterMate.Chat")
+        assert result.ok
+        assert "LOWER(customer_email) = '%s'" % OWNER in result.sql
+
+    def test_value_is_still_escaped(self):
+        result = self._ci("x' OR '1'='1")
+        assert result.ok
+        assert "'x'' or ''1''=''1'" in result.sql.lower()
+
+    def test_exact_match_when_disabled(self):
+        result = scoped("SELECT id FROM orders", value="Arun@ChatterMate.Chat")
+        assert result.ok
+        assert "LOWER(" not in result.sql
+        assert "customer_email = 'Arun@ChatterMate.Chat'" in result.sql
+
+    def test_still_fails_closed(self):
+        result = self._ci(value=None)
+        assert not result.ok

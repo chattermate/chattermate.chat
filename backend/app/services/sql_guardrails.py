@@ -141,6 +141,7 @@ def _apply_row_scope(
     scoped: dict,
     scope_value: Optional[str],
     cte_names: set,
+    case_insensitive: bool = False,
 ) -> tuple:
     """Rewrite every scoped base table into a pre-filtered subquery:
 
@@ -179,22 +180,24 @@ def _apply_row_scope(
             "ticket's customer, or query a table that is not customer-scoped."
         )
 
+    value = scope_value.strip()
     for table, column in targets:
         alias_name = table.alias or table.name
         inner_table = table.copy()
         inner_table.set("alias", None)
+        column_ref = exp.Column(this=exp.to_identifier(column))
+        # Emails are compared case-insensitively — the same person may be
+        # stored as Bob@x.com here and bob@x.com there, and an exact match
+        # would silently return nothing rather than their rows. Costs an index
+        # on the raw column unless one exists on LOWER(col).
+        predicate = exp.EQ(
+            this=exp.Lower(this=column_ref) if case_insensitive else column_ref,
+            # Literal.string escapes on render — never string-format a value
+            # into SQL.
+            expression=exp.Literal.string(value.lower() if case_insensitive else value),
+        )
         inner = (
-            exp.Select()
-            .select(exp.Star())
-            .from_(inner_table)
-            .where(
-                exp.EQ(
-                    this=exp.Column(this=exp.to_identifier(column)),
-                    # Literal.string escapes on render — never string-format a
-                    # value into SQL.
-                    expression=exp.Literal.string(scope_value),
-                )
-            )
+            exp.Select().select(exp.Star()).from_(inner_table).where(predicate)
         )
         table.replace(
             exp.Subquery(this=inner, alias=exp.TableAlias(this=exp.to_identifier(alias_name)))
@@ -221,6 +224,7 @@ def validate_sql(
     masked_columns: Optional[Iterable[str]] = None,
     row_scope: Optional[dict] = None,
     scope_value: Optional[str] = None,
+    scope_case_insensitive: bool = False,
 ) -> SqlValidationResult:
     """Validate untrusted SQL against the connector policy. Returns canonical
     SQL to execute, or the reason it was blocked.
@@ -334,7 +338,8 @@ def validate_sql(
     scoped = normalize_scope_map(row_scope)
     if scoped:
         statement, scope_error = _apply_row_scope(
-            statement, scoped, scope_value, cte_names
+            statement, scoped, scope_value, cte_names,
+            case_insensitive=scope_case_insensitive,
         )
         if scope_error is not None:
             return SqlValidationResult(ok=False, reason=scope_error)
