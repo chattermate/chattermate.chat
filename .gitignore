@@ -5,7 +5,12 @@ static/
 logs/
 __pycache__/
 .DS_Store
+# Python virtualenvs. Only .venv/ was listed, so backend/venv — 2GB of
+# site-packages — was one `git add -A` away from being committed. The glob
+# covers the "-old"/"-py313" copies that pile up around a version bump.
 .venv/
+venv/
+venv-*/
 .idea/
 .vscode/
 .pytest_cache/
