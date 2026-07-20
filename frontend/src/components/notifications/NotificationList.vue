@@ -183,7 +183,6 @@ onMounted(fetchNotifications)
     height: 100vh;
     background: var(--bg2);
     border-left: 1px solid var(--o08);
-    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.4);
     transition: right 0.3s ease;
     z-index: var(--z-drawer);
     display: flex;
@@ -192,6 +191,12 @@ onMounted(fetchNotifications)
 
 .notification-drawer.open {
     right: 0;
+    /* Only while open. Parked at right:-380px the panel is off-screen, but a
+       shadow cast 20px leftward with a 50px blur still reaches ~45px back onto
+       the page, above the content — and this drawer is mounted by
+       DashboardLayout on every screen, so the band followed you everywhere.
+       Invisible on the dark theme, a grey edge on the light one. */
+    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.4);
 }
 
 .drawer-header {
