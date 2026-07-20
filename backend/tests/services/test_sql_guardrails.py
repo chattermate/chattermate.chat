@@ -245,3 +245,104 @@ class TestEdgeCases:
         result = check("select  id \n from orders /* comment */ where id=1")
         assert result.ok
         assert "/*" not in result.sql
+
+
+ROW_SCOPE = {"public.orders": "customer_email", "public.customers": "email"}
+OWNER = "arun@chattermate.chat"
+
+
+def scoped(sql, scope=None, value=OWNER, allowed=ALLOWED, masked=None):
+    return validate_sql(
+        sql, allowed, 100, "postgresql",
+        masked_columns=masked,
+        row_scope=ROW_SCOPE if scope is None else scope,
+        scope_value=value,
+    )
+
+
+class TestRowScoping:
+    """Scoped tables are rewritten into a pre-filtered subquery, so the rows
+    the agent can see are constrained by the relation, not by its own WHERE."""
+
+    def test_scoped_table_is_wrapped(self):
+        result = scoped("SELECT id, total FROM orders")
+        assert result.ok
+        assert "customer_email = '%s'" % OWNER in result.sql
+        assert "FROM (SELECT * FROM orders WHERE" in result.sql
+
+    def test_alias_is_preserved(self):
+        result = scoped("SELECT o.id FROM orders o WHERE o.total > 10")
+        assert result.ok
+        assert ") AS o" in result.sql
+        assert "o.total > 10" in result.sql
+
+    def test_unscoped_table_untouched(self):
+        result = validate_sql(
+            "SELECT id FROM billing.invoices", ALLOWED, 100, "postgresql",
+            row_scope=ROW_SCOPE, scope_value=OWNER,
+        )
+        assert result.ok
+        assert "WHERE" not in result.sql.upper().replace("LIMIT", "")
+
+    def test_or_true_cannot_widen_the_scope(self):
+        # The classic bypass: the outer predicate is irrelevant because the
+        # relation it selects from was already filtered.
+        result = scoped("SELECT id FROM orders WHERE 1=1 OR customer_email = 'victim@x.com'")
+        assert result.ok
+        assert "FROM (SELECT * FROM orders WHERE customer_email = '%s')" % OWNER in result.sql
+
+    def test_join_scopes_every_scoped_table(self):
+        result = scoped(
+            "SELECT o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id"
+        )
+        assert result.ok
+        assert result.sql.count("customer_email = '%s'" % OWNER) == 1
+        assert "email = '%s'" % OWNER in result.sql
+
+    def test_cte_body_is_scoped(self):
+        result = scoped("WITH recent AS (SELECT * FROM orders) SELECT id FROM recent")
+        assert result.ok
+        assert "customer_email = '%s'" % OWNER in result.sql
+
+    def test_subquery_is_scoped(self):
+        result = scoped("SELECT id FROM orders WHERE id IN (SELECT id FROM orders)")
+        assert result.ok
+        assert result.sql.count("customer_email = '%s'" % OWNER) == 2
+
+    def test_fails_closed_without_a_scope_value(self):
+        # Never silently unscoped — that would read every customer's rows.
+        for value in (None, "", "   "):
+            result = scoped("SELECT id FROM orders", value=value)
+            assert not result.ok
+            assert "no customer identity" in result.reason
+
+    def test_unscoped_table_still_queryable_without_a_value(self):
+        result = scoped("SELECT id FROM billing.invoices", value=None)
+        assert result.ok
+
+    def test_scope_value_is_escaped_not_interpolated(self):
+        result = scoped("SELECT id FROM orders", value="x' OR '1'='1")
+        assert result.ok
+        # Doubled quotes — the value stays one string literal.
+        assert "'x'' OR ''1''=''1'" in result.sql
+
+    def test_no_scope_config_is_a_no_op(self):
+        result = scoped("SELECT id FROM orders", scope={}, value=None)
+        assert result.ok
+        assert "SELECT id FROM orders" in result.sql
+
+    def test_bare_reference_matches_qualified_rule(self):
+        # Rule is on "public.orders"; the query says "orders".
+        result = scoped("SELECT id FROM public.orders")
+        assert result.ok
+        assert "customer_email = '%s'" % OWNER in result.sql
+
+    def test_masked_columns_still_enforced_under_scoping(self):
+        result = scoped("SELECT email FROM orders", masked=["email"])
+        assert not result.ok
+        assert "masked" in result.reason.lower()
+
+    def test_limit_applies_to_the_outer_query(self):
+        result = scoped("SELECT id FROM orders")
+        assert result.ok
+        assert result.sql.rstrip().endswith("LIMIT 100")

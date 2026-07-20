@@ -144,6 +144,8 @@ async def create_connector(
         enabled=payload.enabled,
         allowed_tables=payload.allowed_tables,
         masked_columns=payload.masked_columns,
+        row_scope=payload.row_scope,
+        row_scope_key=payload.row_scope_key,
         max_rows=payload.max_rows,
         statement_timeout_ms=payload.statement_timeout_ms,
         ssh_enabled=payload.ssh_enabled,

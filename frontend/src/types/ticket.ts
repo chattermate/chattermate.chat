@@ -231,6 +231,10 @@ export interface DbConnector {
   enabled: boolean
   allowed_tables?: string[] | null
   masked_columns?: string[] | null
+  // { "schema.table": "customer_column" } — listed tables return only the
+  // ticket customer's own rows.
+  row_scope?: Record<string, string> | null
+  row_scope_key?: 'email' | 'phone'
   max_rows: number
   statement_timeout_ms: number
   ssh_enabled: boolean
@@ -253,6 +257,8 @@ export interface DbConnectorPayload {
   enabled?: boolean
   allowed_tables?: string[]
   masked_columns?: string[]
+  row_scope?: Record<string, string>
+  row_scope_key?: 'email' | 'phone'
   max_rows?: number
   statement_timeout_ms?: number
   // SSH tunnel (bastion/jump host) — secrets are write-only.

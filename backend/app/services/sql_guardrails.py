@@ -23,6 +23,8 @@ the model, on the parsed AST (sqlglot):
   unions — must be on the connector's explicit allowlist
 - dangerous functions (sleep/file/network/admin) are denied
 - a LIMIT is always enforced (added or clamped to the connector's max_rows)
+- row-scoped tables are rewritten into a subquery pre-filtered to the ticket
+  customer's own rows, so the agent cannot read across customers
 - the statement is re-rendered from the AST, so only canonical SQL executes
 
 The executor adds the second, independent barrier: a read-only transaction
@@ -117,6 +119,89 @@ def _blocked_function(statement: exp.Expression) -> Optional[str]:
     return None
 
 
+def normalize_scope_map(row_scope: Optional[dict]) -> dict:
+    """Expand row-scope entries the same way as the allowlist, so a rule on
+    "public.orders" also binds a bare "orders" reference."""
+    scoped = {}
+    for raw_table, raw_column in (row_scope or {}).items():
+        table = (raw_table or "").strip().lower()
+        column = (raw_column or "").strip()
+        if not table or not column:
+            continue
+        scoped[table] = column
+        if "." in table:
+            schema, _, name = table.rpartition(".")
+            if schema in DEFAULT_SCHEMAS:
+                scoped.setdefault(name, column)
+    return scoped
+
+
+def _apply_row_scope(
+    statement: exp.Select,
+    scoped: dict,
+    scope_value: Optional[str],
+    cte_names: set,
+) -> tuple:
+    """Rewrite every scoped base table into a pre-filtered subquery:
+
+        FROM orders o  ->  FROM (SELECT * FROM orders WHERE email = 'x') AS o
+
+    Filtering the *relation* rather than checking the model's WHERE clause is
+    what makes this unbypassable. Whatever the model writes outside — OR 1=1,
+    a UNION arm, a correlated subquery — it can only ever see rows the wrapper
+    already returned. Validating a model-supplied predicate instead would mean
+    proving that no OR, no join and no outer reference widens it, which is not
+    a thing you can check reliably.
+
+    Returns (statement, error). Fails closed: a scoped table with no value to
+    scope by is refused, never silently unscoped.
+    """
+    targets = []
+    for table in statement.find_all(exp.Table):
+        reference = _table_reference(table)
+        if not reference:
+            continue
+        if not table.db and reference in cte_names:
+            continue
+        column = scoped.get(reference)
+        if column is None and table.name:
+            column = scoped.get(table.name.lower())
+        if column:
+            targets.append((table, column))
+
+    if not targets:
+        return statement, None
+
+    if not (scope_value or "").strip():
+        return None, (
+            "This table is restricted to the rows of the ticket's own customer, "
+            "and this ticket has no customer identity to scope by. Set the "
+            "ticket's customer, or query a table that is not customer-scoped."
+        )
+
+    for table, column in targets:
+        alias_name = table.alias or table.name
+        inner_table = table.copy()
+        inner_table.set("alias", None)
+        inner = (
+            exp.Select()
+            .select(exp.Star())
+            .from_(inner_table)
+            .where(
+                exp.EQ(
+                    this=exp.Column(this=exp.to_identifier(column)),
+                    # Literal.string escapes on render — never string-format a
+                    # value into SQL.
+                    expression=exp.Literal.string(scope_value),
+                )
+            )
+        )
+        table.replace(
+            exp.Subquery(this=inner, alias=exp.TableAlias(this=exp.to_identifier(alias_name)))
+        )
+    return statement, None
+
+
 def _force_limit(statement: exp.Select, max_rows: int) -> exp.Select:
     """Add a LIMIT, or clamp an existing numeric one, to max_rows."""
     limit_node = statement.args.get("limit")
@@ -134,9 +219,16 @@ def validate_sql(
     max_rows: int,
     engine: str = "postgresql",
     masked_columns: Optional[Iterable[str]] = None,
+    row_scope: Optional[dict] = None,
+    scope_value: Optional[str] = None,
 ) -> SqlValidationResult:
     """Validate untrusted SQL against the connector policy. Returns canonical
-    SQL to execute, or the reason it was blocked."""
+    SQL to execute, or the reason it was blocked.
+
+    row_scope maps a table to the column identifying the customer who owns the
+    row ({"orders": "customer_email"}); scope_value is that customer's value
+    for the ticket being investigated. Listed tables are rewritten so only
+    their rows are visible."""
     dialect = _DIALECTS.get((engine or "").lower(), "postgres")
     if not (raw_sql or "").strip():
         return SqlValidationResult(ok=False, reason="Empty query")
@@ -236,6 +328,16 @@ def validate_sql(
                     ok=False,
                     reason="Row expansion (*) inside an expression is not allowed with masked columns",
                 )
+
+    # Last, so the rewrite can't perturb the checks above: they inspect what
+    # the model actually wrote, not the wrappers added on its behalf.
+    scoped = normalize_scope_map(row_scope)
+    if scoped:
+        statement, scope_error = _apply_row_scope(
+            statement, scoped, scope_value, cte_names
+        )
+        if scope_error is not None:
+            return SqlValidationResult(ok=False, reason=scope_error)
 
     statement = _force_limit(statement, max_rows)
     # comments=False: comments are dropped from the canonical SQL — MySQL

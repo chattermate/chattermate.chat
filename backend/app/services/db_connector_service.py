@@ -56,6 +56,10 @@ class DBConnectorConfig:
     password: str
     allowed_tables: List[str] = field(default_factory=list)
     masked_columns: List[str] = field(default_factory=list)
+    # {"table": "customer_column"} — tables restricted to the ticket
+    # customer's own rows. See sql_guardrails._apply_row_scope.
+    row_scope: dict = field(default_factory=dict)
+    row_scope_key: str = "email"
     max_rows: int = 100
     statement_timeout_ms: int = 5000
     # SSH tunnel (bastion/jump host) — the common production topology where
@@ -82,6 +86,8 @@ class DBConnectorConfig:
             password=decrypt_api_key(connector.encrypted_password),
             allowed_tables=list(connector.allowed_tables or []),
             masked_columns=list(connector.masked_columns or []),
+            row_scope=dict(connector.row_scope or {}),
+            row_scope_key=connector.row_scope_key or "email",
             max_rows=connector.max_rows or 100,
             statement_timeout_ms=connector.statement_timeout_ms or 5000,
             ssh_enabled=bool(connector.ssh_enabled),

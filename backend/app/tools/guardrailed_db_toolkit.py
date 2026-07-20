@@ -38,7 +38,7 @@ from app.database import SessionLocal
 from app.models.ticket_db_connector import DBConnectorAuditLog, DBConnectorAuditOutcome
 from app.services import db_connector_service
 from app.services.db_connector_service import DBConnectorConfig
-from app.services.sql_guardrails import mask_rows, validate_sql
+from app.services.sql_guardrails import mask_rows, normalize_scope_map, validate_sql
 
 logger = get_logger(__name__)
 
@@ -58,6 +58,8 @@ class GuardrailedDBTools(Toolkit):
         self.configs = {c.name: c for c in configs}
         self.ticket_id = ticket_id
         self.run_id = run_id
+        # Resolved once per run — the customer can't change mid-investigation.
+        self._scope_cache: dict = {}
         # Evidence attribution for the investigation glass box.
         self._connector_name = "Database"
         self.register(self.list_database_tables)
@@ -73,6 +75,39 @@ class GuardrailedDBTools(Toolkit):
             if name.strip().lower() == wanted:
                 return config
         return None
+
+    def _scope_value(self, config: DBConnectorConfig) -> Optional[str]:
+        """The ticket customer's identifier that row-scoped tables filter by.
+
+        None when the ticket has no usable identity — an anonymous widget
+        visitor's …@noemail.com placeholder is deliberately not accepted, since
+        scoping by it would look like it worked while matching nothing. The
+        validator fails closed on None rather than dropping the filter.
+        """
+        if not config.row_scope or self.ticket_id is None:
+            return None
+        key = (config.row_scope_key or "email").lower()
+        if key in self._scope_cache:
+            return self._scope_cache[key]
+
+        value = None
+        try:
+            from app.models.ticket import Ticket
+            from app.repositories.customer import CustomerRepository
+
+            with SessionLocal() as db:
+                ticket = db.query(Ticket).filter(Ticket.id == self.ticket_id).first()
+                customer = ticket.customer if ticket else None
+                if customer is not None:
+                    if key == "phone":
+                        value = (customer.phone or "").strip() or None
+                    else:
+                        value = CustomerRepository.display_email(customer.email)
+        except Exception as e:
+            logger.error(f"Row-scope lookup failed for ticket {self.ticket_id}: {e}")
+
+        self._scope_cache[key] = value
+        return value
 
     def _unknown(self, connector: str) -> str:
         return (
@@ -117,8 +152,19 @@ class GuardrailedDBTools(Toolkit):
             return "No database connectors are configured."
         lines = []
         for config in self.configs.values():
-            tables = ", ".join(config.allowed_tables or []) or "(no tables allowlisted)"
-            lines.append(f"{config.name} [{config.engine}]: {tables}")
+            scoped = normalize_scope_map(config.row_scope)
+            tables = []
+            for table in config.allowed_tables or []:
+                key = (table or "").strip().lower()
+                column = scoped.get(key) or scoped.get(key.rpartition(".")[2])
+                # Say so up front: the agent should not waste a tool call
+                # trying to widen a scoped table, or read across customers.
+                tables.append(
+                    f"{table} (auto-scoped to this ticket's customer by {column})"
+                    if column else table
+                )
+            listed = ", ".join(tables) or "(no tables allowlisted)"
+            lines.append(f"{config.name} [{config.engine}]: {listed}")
         return "\n".join(lines)
 
     async def describe_database_table(self, connector: str, table: str) -> str:
@@ -152,7 +198,15 @@ class GuardrailedDBTools(Toolkit):
             + (" [MASKED — cannot be queried]" if col["name"].lower() in masked else "")
             for col in columns
         ]
-        return f"Columns of {match}:\n" + "\n".join(lines)
+        scoped = normalize_scope_map(config.row_scope)
+        scope_column = scoped.get(match) or scoped.get(name)
+        note = (
+            f"\nThis table is automatically restricted to rows where "
+            f"{scope_column} is this ticket's customer — you will only ever see "
+            f"their own rows, so no customer filter is needed in your query."
+            if scope_column else ""
+        )
+        return f"Columns of {match}:\n" + "\n".join(lines) + note
 
     async def query_database(self, connector: str, sql: str) -> str:
         """Run a read-only SQL SELECT against an allowlisted database.
@@ -175,6 +229,8 @@ class GuardrailedDBTools(Toolkit):
             config.max_rows,
             engine=config.engine,
             masked_columns=config.masked_columns,
+            row_scope=config.row_scope,
+            scope_value=self._scope_value(config),
         )
         if not verdict.ok:
             self._audit(

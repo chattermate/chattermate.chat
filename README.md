@@ -109,20 +109,26 @@ access, so the limits are enforced in code, not by prompting:
   `to_json(t.*)`) are blocked too, and results are masked again on the way back.
 - **Nothing is written to your database, ever.** Approving an AI proposal records
   the decision — any change to your systems is made by your team.
-- **Cross-customer isolation on outbound messages.** The AI reasons over similar
-  past tickets and query results that may involve other people. Identifiers
-  belonging to anyone other than the recipient are stripped from every message
-  sent to a customer, and other customers' tickets are redacted before they ever
-  reach the model.
+- **Row-level scoping keeps one customer's data out of another's ticket.** Mark
+  the column that identifies the customer on any table holding per-customer rows
+  (`orders → customer_email`). Queries against it are rewritten to read only the
+  ticket customer's own rows — the AI cannot widen that, because the filter is
+  applied to the table it selects *from*, not to a condition it could write
+  around. A ticket with no known customer cannot query a scoped table at all,
+  rather than falling back to reading everything. Tables you leave unscoped
+  (products, error codes) stay fully readable.
+- **Cross-customer isolation on outbound messages.** Identifiers belonging to
+  anyone other than the recipient are stripped from every message sent to a
+  customer, and other customers' tickets are redacted before they reach the
+  model — a second line behind row scoping.
 - **Every query is audited.** Each attempt is logged with the SQL and outcome;
   returned rows are deliberately never stored.
 
-> **Before you connect a database:** the allowlist is table- and column-level,
-> not row-level. If an allowlisted table holds many customers' rows, the agent
-> can read across them — the outbound scrubbing above limits what can reach a
-> customer, but the agent still sees the rows and they appear in the internal
-> evidence log. Point the connector at a service account restricted to what
-> support genuinely needs, and prefer views that are already scoped.
+> **When you connect a database:** set a row-scope column for every table that
+> holds per-customer rows — it's the control that stops the agent reading across
+> customers, and it's off until you set it. Point the connector at a service
+> account restricted to what support genuinely needs, and prefer views that are
+> already scoped.
 
 ### Platform Features
 

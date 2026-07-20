@@ -30,6 +30,12 @@ class DBConnectorEngine(_ValueStrEnum):
     MYSQL = "mysql"
 
 
+# Which value of the ticket's customer is matched against the scope column.
+# Email is the default because it is the identifier a support database is most
+# likely to share with ChatterMate; phone suits channel-first businesses.
+ROW_SCOPE_KEYS = ("email", "phone")
+
+
 class TicketDBConnector(Base):
     """A guardrailed, read-only database connection the ticket investigation
     agent may query. Guardrails are structural, enforced outside the model:
@@ -74,6 +80,16 @@ class TicketDBConnector(Base):
     # ["email", "phone", ...] — masked before the AI ever sees them; the AST
     # validator also rejects any query referencing them.
     masked_columns = Column(JSON, nullable=True)
+    # {"schema.table": "customer_email", ...} — row-level scoping. A listed
+    # table is rewritten into a subquery pre-filtered to the ticket customer's
+    # own rows, so the agent cannot read across customers even with a query
+    # that tries to. Tables left out are unscoped: reference data (products,
+    # error codes) that belongs to nobody in particular.
+    row_scope = Column(JSON, nullable=True)
+    # Which customer value fills the predicate — see ROW_SCOPE_KEYS.
+    row_scope_key = Column(
+        String(20), nullable=False, default="email", server_default="email"
+    )
     max_rows = Column(Integer, nullable=False, default=100, server_default="100")
     statement_timeout_ms = Column(Integer, nullable=False, default=5000, server_default="5000")
 

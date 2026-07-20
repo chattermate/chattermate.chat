@@ -71,8 +71,21 @@ const discoveredTables = ref<DbConnectorTable[] | null>(null)
 const discoverError = ref<string | null>(null)
 const selectedTables = ref<Set<string>>(new Set())
 const maskedColumns = ref<Set<string>>(new Set())
+// { "schema.table": "customer_column" } — a scoped table only ever returns the
+// ticket customer's own rows. Absent = readable in full.
+const rowScope = ref<Record<string, string>>({})
+const rowScopeKey = ref<'email' | 'phone'>('email')
 const expandedTable = ref<string | null>(null)
 const isSaving = ref(false)
+
+const scopedTableCount = computed(() => Object.keys(rowScope.value).length)
+
+function setRowScope(table: DbConnectorTable, column: string) {
+  const next = { ...rowScope.value }
+  if (column) next[tableKey(table)] = column
+  else delete next[tableKey(table)]
+  rowScope.value = next
+}
 
 const tablesBySchema = computed(() => {
   const groups: Record<string, DbConnectorTable[]> = {}
@@ -91,6 +104,8 @@ function resetPicker() {
   discoverError.value = null
   selectedTables.value = new Set()
   maskedColumns.value = new Set()
+  rowScope.value = {}
+  rowScopeKey.value = 'email'
   expandedTable.value = null
 }
 
@@ -145,8 +160,14 @@ async function discover() {
 
 function toggleTable(table: DbConnectorTable, checked: boolean) {
   const next = new Set(selectedTables.value)
-  if (checked) next.add(tableKey(table))
-  else next.delete(tableKey(table))
+  if (checked) {
+    next.add(tableKey(table))
+  } else {
+    next.delete(tableKey(table))
+    // Don't leave a scope rule behind on a table that is no longer allowed —
+    // re-adding it later would silently restore a filter nobody chose.
+    setRowScope(table, '')
+  }
   selectedTables.value = next
 }
 
@@ -167,6 +188,8 @@ async function saveConnector() {
     const policy = {
       allowed_tables: [...selectedTables.value],
       masked_columns: [...maskedColumns.value],
+      row_scope: rowScope.value,
+      row_scope_key: rowScopeKey.value,
       max_rows: form.max_rows,
     }
     if (editingConnector.value) {
@@ -197,6 +220,8 @@ async function editTables(connector: DbConnector) {
   resetPicker()
   selectedTables.value = new Set((connector.allowed_tables || []).map((t) => t.toLowerCase()))
   maskedColumns.value = new Set((connector.masked_columns || []).map((c) => c.toLowerCase()))
+  rowScope.value = { ...(connector.row_scope || {}) }
+  rowScopeKey.value = connector.row_scope_key || 'email'
   showForm.value = true
   await discover()
 }
@@ -248,6 +273,7 @@ onMounted(fetchConnectors)
               {{ connector.username }}@{{ connector.host }}:{{ connector.port }}/{{ connector.database }}
               · {{ (connector.allowed_tables || []).length }} tables allowed
               · {{ (connector.masked_columns || []).length }} masked columns
+              · {{ Object.keys(connector.row_scope || {}).length }} customer-scoped
             </div>
           </div>
           <label class="enable-toggle">
@@ -390,6 +416,20 @@ onMounted(fetchConnectors)
           <span v-else-if="discoverError" class="discover-error">{{ discoverError }}</span>
         </div>
 
+        <div v-if="discoveredTables && scopedTableCount" class="scope-key-row">
+          <label class="scope-label">
+            Match the customer by
+            <select v-model="rowScopeKey" class="scope-select">
+              <option value="email">Email address</option>
+              <option value="phone">Phone number</option>
+            </select>
+          </label>
+          <span class="scope-key-hint">
+            The ticket customer's {{ rowScopeKey }} is matched exactly against the column
+            you pick per table, so store it the same way on both sides.
+          </span>
+        </div>
+
         <!-- ALLOWLIST TREE -->
         <div v-if="discoveredTables" class="table-tree">
           <div v-for="(tables, schema) in tablesBySchema" :key="schema" class="schema-group">
@@ -404,6 +444,10 @@ onMounted(fetchConnectors)
                   />
                   <span class="table-name mono">{{ table.table }}</span>
                   <span class="col-count">{{ table.columns.length }} cols</span>
+                  <span v-if="rowScope[tableKey(table)]" class="scope-chip mono">
+                    <font-awesome-icon :icon="['fas', 'user-shield']" />
+                    {{ rowScope[tableKey(table)] }}
+                  </span>
                 </label>
                 <button
                   v-if="selectedTables.has(tableKey(table))"
@@ -429,6 +473,28 @@ onMounted(fetchConnectors)
                   Masked columns are hidden before the AI ever sees them — queries referencing
                   them are rejected outright. Masking applies by column name across this connector.
                 </p>
+
+                <div class="scope-row">
+                  <label class="scope-label">
+                    Restrict to the ticket's customer
+                    <select
+                      class="scope-select mono"
+                      :value="rowScope[tableKey(table)] || ''"
+                      @change="setRowScope(table, ($event.target as HTMLSelectElement).value)"
+                    >
+                      <option value="">Not restricted — all rows readable</option>
+                      <option v-for="column in table.columns" :key="column.name" :value="column.name">
+                        {{ column.name }}
+                      </option>
+                    </select>
+                  </label>
+                  <p class="mask-hint">
+                    Pick the column holding the customer's identity. The AI's queries are
+                    rewritten to read only that customer's rows — it cannot widen them, and
+                    a ticket with no known customer can't query this table at all. Leave
+                    unrestricted for reference data that belongs to nobody in particular.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -734,6 +800,53 @@ onMounted(fetchConnectors)
 }
 .mask-hint {
   margin: 8px 0 0;
+  font-size: 10.5px;
+  color: var(--faint);
+  line-height: 1.5;
+}
+.scope-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--o08);
+}
+.scope-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11.5px;
+  color: var(--muted2);
+}
+.scope-select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  background: var(--surface);
+  border: 1px solid var(--o10);
+  color: var(--text);
+  border-radius: 8px;
+  font-size: 11.5px;
+}
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-size: 10px;
+  color: var(--c-teal);
+  background: color-mix(in srgb, var(--c-teal) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-teal) 30%, transparent);
+}
+.scope-key-row {
+  margin: 14px 0 4px;
+  padding: 11px 13px;
+  background: var(--o05);
+  border: 1px solid var(--o08);
+  border-radius: 10px;
+}
+.scope-key-hint {
+  display: block;
+  margin-top: 7px;
   font-size: 10.5px;
   color: var(--faint);
   line-height: 1.5;
