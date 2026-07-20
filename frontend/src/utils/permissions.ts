@@ -50,6 +50,9 @@ export const permissionChecks = {
   canManageKnowledge: () => hasPermission('manage_knowledge'),
   canViewAnalytics: () => hasPermission('view_analytics'),
   canViewTickets: () => hasAnyPermission(['view_tickets', 'manage_tickets']),
-  canManageTickets: () => hasPermission('manage_tickets'),
-  canApproveTicketActions: () => hasPermission('approve_ticket_actions')
+  // hasAnyPermission, not hasPermission: the backend's approve check bypasses
+  // on super_admin, so the frontend must too or the banner hides Approve/Reject
+  // for an admin the API would happily let approve (two layers disagreeing).
+  canManageTickets: () => hasAnyPermission(['manage_tickets']),
+  canApproveTicketActions: () => hasAnyPermission(['approve_ticket_actions']),
 }
