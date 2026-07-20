@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import json
+import re
 from typing import Optional
 from uuid import UUID
 
@@ -28,6 +29,22 @@ from app.models.ticket_activity import TicketActivityType, TicketActorType
 logger = get_logger(__name__)
 
 VALID_PRIORITIES = {p.value for p in TicketPriority}
+
+# Loose sanity check only — a real inbox is not verified here, we just refuse
+# to store obviously-not-an-email junk the model might pass.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _clean_email(email: Optional[str]) -> Optional[str]:
+    if not email:
+        return None
+    email = email.strip().lower()
+    return email if _EMAIL_RE.match(email) else None
+
+
+def _clean_name(name: Optional[str]) -> Optional[str]:
+    name = (name or "").strip()
+    return name or None
 
 
 class TicketTools(Toolkit):
@@ -52,6 +69,8 @@ class TicketTools(Toolkit):
         summary: str,
         description: str,
         priority: Optional[str] = "medium",
+        customer_email: Optional[str] = None,
+        customer_name: Optional[str] = None,
     ) -> str:
         """
         Create a support ticket for the current conversation, or add the new
@@ -59,12 +78,20 @@ class TicketTools(Toolkit):
         reports a technical issue you cannot resolve from the knowledge base —
         the ticket is investigated by the support team's AI and humans.
 
+        Always pass the customer's account email and registered name when you
+        know them (ask the customer first if they haven't been shared) — the
+        support AI uses them to look the customer up in the connected systems,
+        and without a real email it cannot analyse the customer's own records.
+
         Args:
             summary (str): Short title of the issue.
             description (str): Detailed description: what happens, error
                 messages, customer impact, and anything needed to reproduce.
             priority (str, optional): urgent, high, medium or low. Defaults to
                 "medium".
+            customer_email (str, optional): The customer's account email, as
+                they gave it. Used to correlate them in the support systems.
+            customer_name (str, optional): The customer's registered name.
 
         Returns:
             str: JSON string with the ticket number and status.
@@ -76,9 +103,17 @@ class TicketTools(Toolkit):
             if priority_value not in VALID_PRIORITIES:
                 priority_value = TicketPriority.MEDIUM.value
 
+            email = _clean_email(customer_email)
+            name = _clean_name(customer_name)
+
             with SessionLocal() as db:
                 service = TicketService(db)
                 session_uuid = UUID(str(self.session_id))
+                # Enrich the (usually anonymous) widget customer with the
+                # identity the customer stated in chat, so the ticket — and the
+                # investigator's DB correlation — carry a real email + name
+                # instead of the …@noemail.com placeholder.
+                self._capture_customer_identity(db, session_uuid, email, name)
                 existing = service.repo.get_by_session(session_uuid)
                 if existing is not None:
                     service._add_activity(
@@ -107,6 +142,8 @@ class TicketTools(Toolkit):
                     source=TicketSource.CHAT_AI,
                     session_id=session_uuid,
                     agent_id=UUID(str(self.agent_id)),
+                    customer_email=email,
+                    customer_name=name,
                 )
                 db.commit()
                 db.refresh(ticket)
@@ -125,6 +162,35 @@ class TicketTools(Toolkit):
         except Exception as e:
             logger.error(f"create_ticket failed for session {self.session_id}: {e}")
             return json.dumps({"success": False, "message": "Failed to create the ticket."})
+
+    def _capture_customer_identity(
+        self, db, session_id: UUID, email: Optional[str], name: Optional[str]
+    ) -> None:
+        """Fold a stated email/name onto the session's customer record in place.
+
+        Widget visitors are anonymous (`…@noemail.com`, no name); the customer
+        naming their real account in chat is the only identity the investigator
+        gets. update_contact only overwrites a placeholder email and never
+        clobbers a real one or a channel identity key.
+        """
+        if not email and not name:
+            return
+        try:
+            from app.repositories.customer import CustomerRepository
+            from app.repositories.session_to_agent import SessionToAgentRepository
+
+            session = SessionToAgentRepository(db).get_session(session_id)
+            if session is None or session.customer_id is None:
+                return
+            CustomerRepository(db).update_contact(
+                session.customer_id, email=email, full_name=name
+            )
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"Failed to capture customer identity for session {session_id}: {e}"
+            )
 
     def get_ticket_status(self, ticket_number: Optional[str] = None) -> str:
         """

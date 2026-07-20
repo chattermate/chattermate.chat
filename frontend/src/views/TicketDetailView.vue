@@ -39,7 +39,7 @@ const {
   detail, investigation, ticket, activities, hasActiveRun, isLoading, isSavingComment,
   error, setStatus, setPriority, setSeverity, setTitle, setDescription,
   setAssignee, setCustomer, addComment, resolve, reopen, investigate,
-  saveRcaDraft, sendRcaToCustomer, approveProposal, rejectProposal,
+  saveRcaDraft, sendRcaToCustomer, isRcaBusy, approveProposal, rejectProposal,
 } = useTicketDetail(ticketId)
 
 const canManage = permissionChecks.canManageTickets()
@@ -198,10 +198,16 @@ async function submitResolve() {
               <button
                 v-if="canManage && !hasActiveRun"
                 class="action-btn"
-                title="Run an AI investigation (hypotheses + evidence + RCA)"
+                :disabled="isReopenable"
+                :title="
+                  isReopenable
+                    ? 'This ticket is resolved — reopen it to investigate again'
+                    : 'Run an AI investigation (hypotheses + evidence + RCA)'
+                "
                 @click="investigate()"
               >
-                ⚡ Investigate
+                <font-awesome-icon :icon="['fas', 'bolt']" />
+                Investigate
               </button>
               <button
                 v-if="canManage && isReopenable"
@@ -311,6 +317,7 @@ async function submitResolve() {
           :rca="investigation.rca"
           :can-manage="canManage"
           :can-notify="canNotifyCustomer"
+          :is-busy="isRcaBusy"
           @save-draft="saveRcaDraft"
           @send-customer="sendRcaToCustomer"
         />
@@ -463,6 +470,9 @@ async function submitResolve() {
   gap: 8px;
 }
 .action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 7px 13px;
   background: var(--o05);
   border: 1px solid var(--o10);
@@ -470,6 +480,10 @@ async function submitResolve() {
   border-radius: 9px;
   font-size: 12.5px;
   cursor: pointer;
+}
+.action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .action-btn.resolve {
   border-color: var(--c-positive);

@@ -384,7 +384,8 @@ onMounted(fetchConnectors)
             {{ isDiscovering ? 'Connecting…' : discoveredTables ? 'Re-test connection' : 'Test connection' }}
           </button>
           <span v-if="discoveredTables" class="discover-result">
-            ✓ {{ discoveredTables.length }} tables discovered — select what the AI may query
+            <font-awesome-icon :icon="['fas', 'check']" />
+            {{ discoveredTables.length }} tables discovered — select what the AI may query
           </span>
           <span v-else-if="discoverError" class="discover-error">{{ discoverError }}</span>
         </div>

@@ -268,7 +268,8 @@ onMounted(fetchConnectors)
     </div>
 
     <div class="lock-note">
-      🔒 Read-only — connectors attach to the <strong>investigation agent only</strong>, never the
+      <font-awesome-icon :icon="['fas', 'lock']" />
+      Read-only — connectors attach to the <strong>investigation agent only</strong>, never the
       customer-facing chat agent.
     </div>
   </div>

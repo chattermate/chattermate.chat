@@ -63,7 +63,7 @@ function submitReject() {
     <!-- PENDING -->
     <template v-if="proposal.status === 'pending'">
       <div class="banner-head">
-        <span class="banner-icon">⏳</span>
+        <font-awesome-icon :icon="['fas', 'hourglass-half']" class="banner-icon pending" />
         <div>
           <div class="banner-title">AI proposes a resolution — awaiting your approval</div>
           <div class="banner-sub">
@@ -88,7 +88,7 @@ function submitReject() {
           <template v-if="bestHypothesis.confidence != null">
             · confidence {{ bestHypothesis.confidence.toFixed(2) }}
           </template>
-          ↓
+          <font-awesome-icon :icon="['fas', 'arrow-down']" />
         </button>
       </div>
 
@@ -98,7 +98,8 @@ function submitReject() {
             Reject…
           </button>
           <button class="approve-btn" :disabled="isSubmitting" @click="approve">
-            ✓ Approve & resolve
+            <font-awesome-icon :icon="['fas', 'check']" />
+            Approve &amp; resolve
           </button>
         </template>
         <div v-else class="reject-form">
@@ -127,7 +128,7 @@ function submitReject() {
     <!-- DECIDED -->
     <template v-else-if="proposal.status === 'approved'">
       <div class="banner-head">
-        <span class="banner-icon">✅</span>
+        <font-awesome-icon :icon="['fas', 'circle-check']" class="banner-icon approved" />
         <div>
           <div class="banner-title">Proposal approved</div>
           <div class="banner-sub">
@@ -141,7 +142,7 @@ function submitReject() {
 
     <template v-else-if="proposal.status === 'rejected'">
       <div class="banner-head">
-        <span class="banner-icon">✕</span>
+        <font-awesome-icon :icon="['fas', 'circle-xmark']" class="banner-icon rejected" />
         <div>
           <div class="banner-title">Proposal rejected</div>
           <div class="banner-sub">
@@ -177,6 +178,19 @@ function submitReject() {
 .banner-icon {
   font-size: 17px;
   line-height: 1.3;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+/* Status colour comes from the design tokens so both themes stay in step —
+   an emoji glyph can't follow the palette. */
+.banner-icon.pending {
+  color: var(--c-warn);
+}
+.banner-icon.approved {
+  color: var(--c-positive);
+}
+.banner-icon.rejected {
+  color: var(--c-danger);
 }
 .banner-title {
   font-family: var(--font-display);
@@ -248,6 +262,9 @@ function submitReject() {
   margin-right: 0;
 }
 .approve-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 9px 17px;
   background: var(--c-positive);
   color: var(--on-light, #04140d);

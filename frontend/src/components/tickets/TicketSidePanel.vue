@@ -164,7 +164,10 @@ function pickAssignee(userId: string | null) {
       <div class="sla-row">
         <span class="sla-label">First response</span>
         <span class="sla-value" :style="{ color: firstResponseMet ? 'var(--c-positive)' : 'var(--muted2)' }">
-          {{ firstResponseMet ? '✓ Met' : 'Pending' }}
+          <template v-if="firstResponseMet">
+            <font-awesome-icon :icon="['fas', 'check']" /> Met
+          </template>
+          <template v-else>Pending</template>
         </span>
       </div>
       <div class="sla-row">

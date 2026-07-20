@@ -38,6 +38,9 @@ export function useTicketDetail(ticketId: Ref<string>) {
   const isLoading = ref(true)
   const error = ref<string | null>(null)
   const isSavingComment = ref(false)
+  // Covers both customer-summary actions: they write the same field, and
+  // sending twice delivers the message to the customer twice.
+  const isRcaBusy = ref(false)
 
   const ticket = computed<Ticket | null>(() => detail.value?.ticket ?? null)
   const activities = computed<TicketActivity[]>(() => detail.value?.activities ?? [])
@@ -150,7 +153,8 @@ export function useTicketDetail(ticketId: Ref<string>) {
   }
 
   async function saveRcaDraft(customerSummary: string) {
-    if (!detail.value) return
+    if (!detail.value || isRcaBusy.value) return
+    isRcaBusy.value = true
     try {
       await ticketService.updateRca(detail.value.ticket.id, {
         customer_summary: customerSummary,
@@ -160,11 +164,16 @@ export function useTicketDetail(ticketId: Ref<string>) {
       toast.success('Draft saved')
     } catch (e: any) {
       toast.error(e?.message || 'Failed to save the draft')
+    } finally {
+      isRcaBusy.value = false
     }
   }
 
   async function sendRcaToCustomer(customerSummary?: string) {
-    if (!detail.value) return
+    // Re-entry guard, not just a disabled button: this delivers a message to
+    // a real customer, so a double-click must not send it twice.
+    if (!detail.value || isRcaBusy.value) return
+    isRcaBusy.value = true
     try {
       // Persist any unsaved edit first so what's sent is what's shown.
       if (customerSummary !== undefined) {
@@ -178,6 +187,8 @@ export function useTicketDetail(ticketId: Ref<string>) {
       toast.success('Summary sent to the customer')
     } catch (e: any) {
       toast.error(e?.message || 'Failed to send the summary')
+    } finally {
+      isRcaBusy.value = false
     }
   }
 
@@ -232,6 +243,7 @@ export function useTicketDetail(ticketId: Ref<string>) {
     hasActiveRun,
     isLoading,
     isSavingComment,
+    isRcaBusy,
     error,
     refresh,
     setStatus,

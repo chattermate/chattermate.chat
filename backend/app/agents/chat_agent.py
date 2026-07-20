@@ -582,6 +582,16 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 - You've tried to resolve the issue but were unable to do so
                 - No ticket already exists for this conversation
 
+                BEFORE creating a ticket, collect the customer's identity so the support
+                AI can look them up in the connected systems:
+                - their account email, and
+                - their registered name.
+                If they've already given the email or name in this conversation, use those
+                values. If not, ask for them in one short message and wait for the reply
+                before calling create_ticket. Then pass them as customer_email and
+                customer_name. Never invent an email or name; if the customer declines,
+                create the ticket without them.
+
                 After creating a ticket, tell the customer their ticket number and that the team is investigating.
                 Priorities are: urgent, high, medium, low.
                 """

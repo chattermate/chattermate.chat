@@ -18,11 +18,16 @@ limitations under the License.
 import { computed, ref, watch } from 'vue'
 import type { RcaDocument } from '@/types/ticket'
 
-const props = defineProps<{
-  rca: RcaDocument
-  canManage: boolean
-  canNotify: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    rca: RcaDocument
+    canManage: boolean
+    canNotify: boolean
+    /** A save/send is in flight — both actions lock so nothing sends twice. */
+    isBusy?: boolean
+  }>(),
+  { isBusy: false },
+)
 
 const emit = defineEmits<{
   (e: 'save-draft', customerSummary: string): void
@@ -152,13 +157,19 @@ function jumpTo(id: string) {
               <span v-if="!canNotify" class="no-channel-note">
                 No customer channel — link a conversation or add a customer email to send.
               </span>
-              <button class="draft-btn" @click="emit('save-draft', customerDraft)">Save draft</button>
+              <button
+                class="draft-btn"
+                :disabled="props.isBusy"
+                @click="emit('save-draft', customerDraft)"
+              >
+                Save draft
+              </button>
               <button
                 class="send-btn"
-                :disabled="!canNotify || !customerDraft.trim()"
+                :disabled="props.isBusy || !canNotify || !customerDraft.trim()"
                 @click="emit('send-customer', customerDraft)"
               >
-                Send to customer
+                {{ props.isBusy ? 'Sending…' : 'Send to customer' }}
               </button>
             </div>
           </div>
@@ -352,7 +363,8 @@ function jumpTo(id: string) {
   font-weight: var(--font-weight-bold);
   cursor: pointer;
 }
-.send-btn:disabled {
+.send-btn:disabled,
+.draft-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

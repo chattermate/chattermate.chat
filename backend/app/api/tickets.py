@@ -64,6 +64,16 @@ router = APIRouter()
 
 MAX_PAGE_SIZE = 100
 
+# A ticket the team has already settled. It can be reopened, but nothing may
+# push it forward — notably no new AI run, which would otherwise churn a closed
+# ticket and re-notify the customer. Mirrored by isReopenable in
+# TicketDetailView.vue, which disables the Investigate button on these.
+SETTLED_STATUSES = (
+    TicketStatus.RESOLVED.value,
+    TicketStatus.CLOSED.value,
+    TicketStatus.RESOLVED_PENDING_CONFIRMATION.value,
+)
+
 
 def require_any_permission(*permissions: str):
     """Any-of permission dependency (require_permissions is all-of)."""
@@ -475,11 +485,7 @@ async def reopen_ticket(
     check_ticketing_access(db, current_user.organization_id)
     service = _service(db)
     ticket = _get_ticket_or_404(db, ticket_id, current_user)
-    if str(ticket.status) not in (
-        TicketStatus.RESOLVED.value,
-        TicketStatus.CLOSED.value,
-        TicketStatus.RESOLVED_PENDING_CONFIRMATION.value,
-    ):
+    if str(ticket.status) not in SETTLED_STATUSES:
         raise HTTPException(status_code=400, detail="Only resolved or closed tickets can be reopened")
     service.reopen(
         ticket, reason=payload.reason,
@@ -504,6 +510,11 @@ async def investigate_ticket(
     check_ticketing_access(db, current_user.organization_id)
     service = _service(db)
     ticket = _get_ticket_or_404(db, ticket_id, current_user)
+    if str(ticket.status) in SETTLED_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail="This ticket is resolved — reopen it before running another investigation",
+        )
     payload = payload or InvestigateRequest()
     run = service.enqueue_run(
         ticket,

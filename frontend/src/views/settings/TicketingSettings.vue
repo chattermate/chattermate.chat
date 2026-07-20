@@ -183,7 +183,9 @@ function saveAll() {
             <div class="card-title">{{ card.title }}</div>
             <div class="caps">
               <div v-for="cap in card.caps" :key="cap.label" class="cap" :class="{ off: !cap.ok }">
-                <span class="cap-icon" :class="cap.ok ? 'yes' : 'no'">{{ cap.ok ? '✓' : '✕' }}</span>
+                <span class="cap-icon" :class="cap.ok ? 'yes' : 'no'">
+                  <font-awesome-icon :icon="['fas', cap.ok ? 'check' : 'xmark']" />
+                </span>
                 {{ cap.label }}
               </div>
             </div>
@@ -285,7 +287,10 @@ function saveAll() {
       <section class="section">
         <div class="section-head-row">
           <h2 class="section-title">Database connector</h2>
-          <span class="lock-chip">🔒 Read-only — the AI can never write</span>
+          <span class="lock-chip">
+            <font-awesome-icon :icon="['fas', 'lock']" />
+            Read-only — the AI can never write
+          </span>
         </div>
         <p class="section-hint">
           Let the investigator verify facts directly in your database. Only SELECTs over tables
@@ -668,6 +673,9 @@ function saveAll() {
   border-radius: 20px;
 }
 .lock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   color: var(--muted2);
   background: var(--o05);

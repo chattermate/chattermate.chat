@@ -669,6 +669,20 @@ class TicketService:
             return True
         return bool(ticket.customer and ticket.customer.email)
 
+    def _scrub_for_customer(self, ticket: Ticket, message: str) -> str:
+        """Redact identifiers that aren't the recipient's own before delivery."""
+        from app.services.ticket_privacy import scrub_outbound
+
+        customer = ticket.customer
+        owned = (customer.email, customer.phone) if customer else ()
+        scrubbed = scrub_outbound(message, owned)
+        if scrubbed != message:
+            logger.warning(
+                f"Third-party identifiers redacted from an outbound message on "
+                f"{ticket.display_number}"
+            )
+        return scrubbed or message
+
     async def send_customer_message(
         self, ticket: Ticket, message: str, record_activity: bool = True
     ) -> None:
@@ -676,7 +690,13 @@ class TicketService:
         conversation's channel (widget socket or email/WhatsApp/... adapter)
         when one exists, by direct email otherwise (manual tickets).
         record_activity=False when the caller already wrote its own activity
-        row (customer-visible comments)."""
+        row (customer-visible comments).
+
+        Every outbound path passes through here, so this is where third-party
+        identifiers are stripped: the investigator reads other customers'
+        tickets and unscoped database rows, and at autonomy L3 its summary
+        reaches the customer with no human in between."""
+        message = self._scrub_for_customer(ticket, message)
         session_record = self._primary_session(ticket)
         if session_record is None:
             await self._send_direct_email(ticket, message, record_activity)
