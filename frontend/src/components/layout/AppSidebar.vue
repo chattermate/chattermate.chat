@@ -293,6 +293,13 @@ const handleNavigation = () => {
     .sidebar.collapsed {
         transform: translateX(-100%);
         width: 252px;
+        /* An off-canvas panel must not keep painting its shadow over the page.
+           Sliding it out moves the box, not the shadow's reach: with an 8px
+           offset and 32px blur, roughly 24px of it still lands on the page's
+           left edge, above the content at z-index 1000. On the dark theme that
+           is black on near-black and invisible, which is why it went unnoticed;
+           on the light theme it reads as a grey band down the side. */
+        box-shadow: none;
     }
 
     /* In overlay mode the panel is full-width — restore expanded layout */
