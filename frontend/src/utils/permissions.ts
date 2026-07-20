@@ -22,7 +22,9 @@ export function hasPermission(permission: string): boolean {
 }
 
 export function hasAnyPermission(permissions: string[]): boolean {
-  return permissions.some(permission => hasPermission(permission))
+  // super_admin holds everything — the backend's has_any_permission bypasses
+  // on it, and the two layers disagreeing means a page renders then 403s.
+  return hasPermission('super_admin') || permissions.some(permission => hasPermission(permission))
 }
 
 // Common permission checks
@@ -34,7 +36,17 @@ export const permissionChecks = {
   canManageUsers: () => hasPermission('manage_users'),
   canViewAgents: () => hasAnyPermission(['manage_agents', 'view_agents']),
   canManageAgents: () => hasPermission('manage_agents'),
-  canViewChats: () => hasAnyPermission(['view_all_chats', 'view_assigned_chats']),
+  // Any inbox grant opens the Inbox: own/group chats, the unclaimed AI queue,
+  // or everything. Keep in sync with get_unified_chat_auth in core/auth.py.
+  canViewChats: () =>
+    hasAnyPermission(['view_all_chats', 'view_assigned_chats', 'view_unassigned_chats']),
+  // The people directory is its own read grant; the org-wide chat permissions
+  // imply it. Mirrors PEOPLE_READ_PERMISSIONS in core/auth.py.
+  canViewPeople: () => hasAnyPermission(['view_people', 'view_all_chats', 'manage_all_chats']),
+  // Editing a person (mark customer, correct a phone) needs the stronger grant
+  canManagePeople: () => hasAnyPermission(['view_all_chats', 'manage_all_chats']),
+  // Claiming a chat. Mirrors TAKEOVER_PERMISSIONS in api/session_to_agent.py
+  canTakeOverChats: () => hasAnyPermission(['manage_all_chats', 'manage_assigned_chats']),
   canManageKnowledge: () => hasPermission('manage_knowledge'),
   canViewAnalytics: () => hasPermission('view_analytics'),
   canViewTickets: () => hasAnyPermission(['view_tickets', 'manage_tickets']),

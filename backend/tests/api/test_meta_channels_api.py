@@ -28,6 +28,7 @@ from app.core.application import app
 from app.core.auth import get_current_user, get_current_organization
 from app.core.config import settings
 from app.database import get_db
+from app.api.channels.meta import _seal_signup_pages
 from app.channels.base import SendResult
 from app.repositories.channels import ChannelAccountRepository
 
@@ -156,12 +157,63 @@ class TestMetaConnect:
                 "phone_number_id": "PN9", "access_token": "bad"})
         assert r.status_code == 400
 
+    def test_connect_messenger_success(self, client, db):
+        # A real messaging token carries pages_messaging but not
+        # pages_read_engagement, so the page name is unreadable — that must not
+        # block the connect, only the label.
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "PAGE9", "is_valid": True,
+            "scopes": ["pages_messaging"]}))
+        name = AsyncMock(return_value=(False, {"error": {"message": "needs pages_read_engagement"}}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", name), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "PAGE9"
+        account = ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9")
+        assert ChannelAccountRepository(db).get_credentials(account)["access_token"] == "EAAG-x"
+
+    def test_connect_messenger_uses_page_name_when_readable(self, client):
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "PAGE9", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect), \
+             patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {"name": "Acme Support"}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "Acme Support"
+
     def test_connect_messenger_token_page_mismatch(self, client):
-        graph = AsyncMock(return_value=(True, {"id": "OTHER_PAGE", "name": "Nope"}))
-        with patch("app.api.channels.meta.graph_get", graph):
+        # Webhooks route on page id; a token for a different page would leave
+        # every inbound message unmatched.
+        inspect = AsyncMock(return_value=(True, {
+            "type": "PAGE", "profile_id": "OTHER_PAGE", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect):
             r = client.post(f"{BASE}/messenger", json={
                 "page_id": "PAGE9", "page_access_token": "EAAG-x"})
         assert r.status_code == 400
+        assert "OTHER_PAGE" in r.json()["detail"]
+
+    def test_connect_messenger_rejects_a_user_token(self, client):
+        inspect = AsyncMock(return_value=(True, {
+            "type": "USER", "profile_id": "PAGE9", "is_valid": True}))
+        with patch("app.api.channels.meta.debug_token", inspect):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 400
+        assert "Page access token" in r.json()["detail"]
+
+    def test_connect_messenger_rejects_an_expired_token(self, client):
+        inspect = AsyncMock(return_value=(True, {
+            "is_valid": False, "error": {"message": "Session has expired"}}))
+        with patch("app.api.channels.meta.debug_token", inspect):
+            r = client.post(f"{BASE}/messenger", json={
+                "page_id": "PAGE9", "page_access_token": "EAAG-x"})
+        assert r.status_code == 400
+        assert "Session has expired" in r.json()["detail"]
 
     def test_connect_instagram_success(self, client, db):
         graph = AsyncMock(return_value=(True, {"id": "IG7", "username": "acme"}))
@@ -328,6 +380,84 @@ class TestEmbeddedSignupConfig:
         monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
         assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
 
+    def test_messenger_config_id_returned_for_messenger(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        body = client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()
+        assert (body["enabled"], body["config_id"], body["app_id"]) == (True, "MCFG", "APP1")
+
+    def test_whatsapp_config_id_not_served_to_messenger(self, client, monkeypatch):
+        """The WhatsApp config id must not leak on a Messenger request: Messenger
+        has its own config, and an unset one means the manual form, not WhatsApp's."""
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "")
+        body = client.get(f"{BASE}/embedded-signup-config?channel=messenger").json()
+        assert body["enabled"] is False
+        assert body["config_id"] is None
+
+    def test_unknown_channel_404(self, client):
+        assert client.get(f"{BASE}/embedded-signup-config?channel=carrier-pigeon").status_code == 404
+
+
+class TestSignupAllowlist:
+    """While the Meta app is in App Review its login only works for people with
+    a role on the app, so SIGNUP_ALLOWED_EMAILS keeps the button off every
+    account it would only fail for. Empty means everyone — the end state, and
+    what every other test in this file relies on."""
+
+    def test_open_to_everyone_when_unset(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "")
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
+
+    def test_disabled_for_an_account_not_on_the_list(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "META_APP_ID", "APP1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "someone.else@example.com")
+        body = client.get(f"{BASE}/embedded-signup-config").json()
+
+        assert body["enabled"] is False
+        # The ids are what make the popup possible, so a gated-out account must
+        # not receive them either.
+        assert body["config_id"] is None
+        assert body["app_id"] is None
+
+    def test_enabled_for_an_account_on_the_list(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS",
+                            "first@example.com, test.user@example.com")
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
+
+    def test_matching_ignores_case_and_padding(self, client, monkeypatch):
+        """The list is hand-edited in an env var, so stray spacing or a
+        capitalised address must not silently lock the account out."""
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "  Test.User@Example.COM  ,")
+        assert client.get(f"{BASE}/embedded-signup-config").json()["enabled"] is True
+
+    def test_connect_is_refused_for_an_account_not_on_the_list(self, client, monkeypatch):
+        """The gate is enforced server-side, not just hidden in the UI — the
+        config endpoint only decides which pane is shown."""
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "someone.else@example.com")
+        exchange = AsyncMock(return_value=(True, {"access_token": "T"}))
+        with patch("app.api.channels.meta.exchange_signup_code", exchange):
+            r = client.post(f"{BASE}/whatsapp/embedded-signup", json={
+                "code": "CODE", "waba_id": "W1", "phone_number_id": "P1"})
+
+        assert r.status_code == 403
+        # Refused before the code is spent, so a retry once allowed still works.
+        exchange.assert_not_awaited()
+
+    def test_messenger_signup_is_refused_for_an_account_not_on_the_list(
+            self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+        monkeypatch.setattr(settings, "SIGNUP_ALLOWED_EMAILS", "someone.else@example.com")
+        r = client.post(f"{BASE}/messenger/signup/pages",
+                        json={"code": "CODE", "redirect_uri": "https://x/cb"})
+
+        assert r.status_code == 403
+
 
 class TestEmbeddedSignupConnect:
     ES = f"{BASE}/whatsapp/embedded-signup"
@@ -464,6 +594,229 @@ class TestEmbeddedSignupConnect:
         assert credentials["waba_id"] == "WABA9"
 
 
+class TestMessengerSignup:
+    """Facebook Login for Business: the code exchanges to a user token, we list
+    the customer's Pages, and connect the one they pick. The Page tokens ride
+    back to step 2 sealed in signup_token, never through the browser."""
+
+    PAGES = f"{BASE}/messenger/signup/pages"
+    CONNECT = f"{BASE}/messenger/signup/connect"
+
+    # As /me/accounts lists them for the exchanged user token
+    TWO_PAGES = [
+        {"id": "PAGE1", "name": "Acme Support", "access_token": "EAAG-page1"},
+        {"id": "PAGE2", "name": "Acme Sales", "access_token": "EAAG-page2"},
+    ]
+
+    @pytest.fixture(autouse=True)
+    def enabled(self, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "MCFG")
+
+    def _list_pages(self, client, pages=None,
+                    long_lived=(True, {"access_token": "LONGLIVED"})):
+        """Drive step 1, returning (response, graph_list_all mock)."""
+        lister = AsyncMock(return_value=(True, self.TWO_PAGES if pages is None else pages))
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(True, {"access_token": "USERTOKEN"}))), \
+             patch("app.api.channels.meta.exchange_for_long_lived_token",
+                   AsyncMock(return_value=long_lived)), \
+             patch("app.api.channels.meta.graph_list_all", lister):
+            r = client.post(self.PAGES, json={
+                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
+        return r, lister
+
+    def _signup_token(self, client):
+        return self._list_pages(client)[0].json()["signup_token"]
+
+    def test_lists_pages_without_leaking_their_tokens(self, client):
+        r, _ = self._list_pages(client)
+        assert r.status_code == 200
+        body = r.json()
+        assert [p["id"] for p in body["pages"]] == ["PAGE1", "PAGE2"]
+        assert all(set(p.keys()) == {"id", "name"} for p in body["pages"])
+        # The whole point of the sealed token: no page token in the wire response
+        assert "EAAG-page1" not in r.text and "EAAG-page2" not in r.text
+
+    def test_connect_stores_the_token_meta_gave_us_for_that_page(self, client, db):
+        token = self._signup_token(client)
+        subscribe = AsyncMock(return_value=True)
+        with patch("app.api.channels.meta.subscribe_app", subscribe):
+            r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE2"})
+
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "Acme Sales"
+        repo = ChannelAccountRepository(db)
+        account = repo.get_by_external_id("messenger", "PAGE2")
+        assert repo.get_credentials(account)["access_token"] == "EAAG-page2"
+        subscribe.assert_awaited_once_with(
+            "PAGE2", "EAAG-page2", subscribed_fields="messages,messaging_postbacks")
+
+    def test_rejects_a_page_that_was_not_in_the_signup(self, client, db):
+        """page_id is a selector into a list we fetched, not a claim — a Page the
+        signup never offered cannot be connected, and its token is unknown to us."""
+        token = self._signup_token(client)
+        with patch("app.api.channels.meta.subscribe_app", AsyncMock()) as subscribe:
+            r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE_I_DO_NOT_OWN"})
+
+        assert r.status_code == 400
+        subscribe.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE_I_DO_NOT_OWN") is None
+
+    def test_rejects_another_orgs_signup_token(self, client, db):
+        """A blob sealed for one org must not connect under another — it is bound
+        to the org id inside the ciphertext, not just handed to the browser."""
+        foreign = _seal_signup_pages(uuid4(), self.TWO_PAGES)
+        r = client.post(self.CONNECT, json={"signup_token": foreign, "page_id": "PAGE1"})
+
+        assert r.status_code == 400
+        assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE1") is None
+
+    def test_rejects_an_expired_signup_token(self, client, monkeypatch):
+        monkeypatch.setattr("app.api.channels.meta.SIGNUP_TOKEN_TTL_SECONDS", -10)
+        token = self._signup_token(client)
+        r = client.post(self.CONNECT, json={"signup_token": token, "page_id": "PAGE1"})
+        assert r.status_code == 400
+
+    def test_rejects_a_forged_signup_token(self, client):
+        """A garbage token is a clean 400, not a 500 — decrypt's ValueError is caught."""
+        r = client.post(self.CONNECT, json={"signup_token": "not-a-real-token", "page_id": "PAGE1"})
+        assert r.status_code == 400
+
+    def test_no_pages_is_a_clear_400(self, client):
+        r, _ = self._list_pages(client, pages=[])
+        assert r.status_code == 400
+        assert "No Facebook Pages" in r.json()["detail"]
+
+    def test_stale_code_is_400(self, client):
+        with patch("app.api.channels.meta.exchange_signup_code",
+                   AsyncMock(return_value=(False, {"error": {"message": "Code expired"}}))):
+            r = client.post(self.PAGES, json={
+                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
+        assert r.status_code == 400
+        assert r.json()["detail"] == "Code expired"
+
+    def test_signup_uses_the_long_lived_token_for_page_lookup(self, client):
+        """Page tokens inherit the user token's life, so the lookup must use the
+        extended token — otherwise every Page dies about an hour after launch."""
+        _, lister = self._list_pages(client)
+        assert lister.await_args.args[0] == "me/accounts"
+        assert lister.await_args.args[1] == "LONGLIVED"
+
+    def test_pages_still_listed_when_extension_fails(self, client):
+        r, lister = self._list_pages(client, long_lived=(False, {"error": {"message": "nope"}}))
+        assert r.status_code == 200
+        assert lister.await_args.args[1] == "USERTOKEN"
+
+    def test_rejected_without_messenger_config_id(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "META_MESSENGER_CONFIG_ID", "")
+        exchange = AsyncMock()
+        with patch("app.api.channels.meta.exchange_signup_code", exchange):
+            r = client.post(self.PAGES, json={
+                "code": "FB-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"})
+        assert r.status_code == 403
+        exchange.assert_not_awaited()
+
+
+class TestInstagramLogin:
+    """Instagram Login needs no Facebook Page: the business signs in with
+    Instagram, so one account comes back and there is nothing to pick."""
+
+    CONNECT = f"{BASE}/instagram/login/connect"
+    PAYLOAD = {"code": "IG-code", "redirect_uri": "https://app.test/meta-oauth-callback.html"}
+
+    @pytest.fixture(autouse=True)
+    def enabled(self, monkeypatch):
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_ID", "IGAPP")
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_SECRET", "IGSECRET")
+
+    def _connect(self, client, exchange=None, long_lived=(True, {"access_token": "IGLong"})):
+        exchange = exchange or AsyncMock(
+            return_value=(True, {"access_token": "IGShort", "user_id": "17841400"}))
+        with patch("app.api.channels.meta.exchange_instagram_code", exchange), \
+             patch("app.api.channels.meta.exchange_instagram_long_lived",
+                   AsyncMock(return_value=long_lived)), \
+             patch("app.api.channels.meta.graph_get",
+                   AsyncMock(return_value=(True, {"username": "acme"}))), \
+             patch("app.api.channels.meta.subscribe_instagram_app",
+                   AsyncMock(return_value=True)):
+            return client.post(self.CONNECT, json=self.PAYLOAD), exchange
+
+    def test_connects_the_account_that_logged_in(self, client, db):
+        r, exchange = self._connect(client)
+
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "@acme"
+        repo = ChannelAccountRepository(db)
+        account = repo.get_by_external_id("instagram", "17841400")
+        assert account is not None
+        # The long-lived token is what gets stored, not the ~1h login token.
+        assert repo.get_credentials(account)["access_token"] == "IGLong"
+        exchange.assert_awaited_once_with("IG-code", "https://app.test/meta-oauth-callback.html")
+
+    def test_keys_the_account_on_the_id_webhooks_route_by(self, client, db):
+        """/me's user_id is the professional account id that arrives as the
+        webhook's entry.id; the login response's can be app-scoped. Keying on
+        the wrong one drops every inbound DM silently."""
+        with patch("app.api.channels.meta.exchange_instagram_code",
+                   AsyncMock(return_value=(True, {"access_token": "IGShort", "user_id": "APPSCOPED"}))), \
+             patch("app.api.channels.meta.exchange_instagram_long_lived",
+                   AsyncMock(return_value=(True, {"access_token": "IGLong"}))), \
+             patch("app.api.channels.meta.graph_get",
+                   AsyncMock(return_value=(True, {"user_id": "17841400", "username": "acme"}))), \
+             patch("app.api.channels.meta.subscribe_instagram_app", AsyncMock(return_value=True)):
+            r = client.post(self.CONNECT, json=self.PAYLOAD)
+
+        assert r.status_code == 200
+        repo = ChannelAccountRepository(db)
+        assert repo.get_by_external_id("instagram", "17841400") is not None
+        assert repo.get_by_external_id("instagram", "APPSCOPED") is None
+
+    def test_accepts_the_wrapped_token_response_shape(self, client, db):
+        """Instagram also returns the token inside a `data` list."""
+        wrapped = AsyncMock(return_value=(True, {
+            "data": [{"access_token": "IGShort", "user_id": "17841400"}]}))
+        r, _ = self._connect(client, exchange=wrapped)
+
+        assert r.status_code == 200
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "17841400") is not None
+
+    def test_falls_back_to_the_short_token_when_extension_fails(self, client, db):
+        r, _ = self._connect(client, long_lived=(False, {"error": {"message": "nope"}}))
+
+        assert r.status_code == 200
+        repo = ChannelAccountRepository(db)
+        account = repo.get_by_external_id("instagram", "17841400")
+        assert repo.get_credentials(account)["access_token"] == "IGShort"
+
+    def test_stale_code_is_400(self, client, db):
+        stale = AsyncMock(return_value=(False, {"error": {"message": "Code expired"}}))
+        r, _ = self._connect(client, exchange=stale)
+
+        assert r.status_code == 400
+        assert r.json()["detail"] == "Code expired"
+        assert ChannelAccountRepository(db).get_by_external_id("instagram", "17841400") is None
+
+    def test_a_response_without_a_token_is_400(self, client):
+        empty = AsyncMock(return_value=(True, {}))
+        r, _ = self._connect(client, exchange=empty)
+        assert r.status_code == 400
+
+    def test_rejected_without_instagram_app_credentials(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "INSTAGRAM_APP_ID", "")
+        exchange = AsyncMock()
+        with patch("app.api.channels.meta.exchange_instagram_code", exchange):
+            r = client.post(self.CONNECT, json=self.PAYLOAD)
+        assert r.status_code == 403
+        exchange.assert_not_awaited()
+
+    def test_config_serves_the_instagram_app_id_and_no_config_id(self, client, monkeypatch):
+        """The frontend builds the Instagram authorize URL from the Instagram
+        app id; the Facebook config id is meaningless here."""
+        monkeypatch.setattr(settings, "META_APP_ID", "FBAPP")
+        body = client.get(f"{BASE}/embedded-signup-config?channel=instagram").json()
+        assert (body["enabled"], body["app_id"], body["config_id"]) == (True, "IGAPP", None)
+
+
 class TestGraphErrorDetail:
     """Meta's `message` is often a generic OAuth string; error_user_msg is the
     one that names the actual asset and rule.
@@ -486,28 +839,28 @@ class TestGraphErrorDetail:
     }}
 
     def test_prefers_metas_human_readable_reason(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
         # Not the useless "Application does not have permission for this action"
-        assert _graph_detail(self.UNVERIFIED, "fallback") == (
+        assert graph_detail(self.UNVERIFIED, "fallback") == (
             "This WhatsApp Business account does not have permission to create message template"
         )
 
     def test_falls_back_to_message_when_there_is_no_user_msg(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
-        assert _graph_detail({"error": {"message": "Invalid parameter"}}, "fallback") == (
+        assert graph_detail({"error": {"message": "Invalid parameter"}}, "fallback") == (
             "Invalid parameter")
 
     def test_falls_back_to_our_own_text_when_graph_says_nothing(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
-        assert _graph_detail({}, "Could not read templates") == "Could not read templates"
+        assert graph_detail({}, "Could not read templates") == "Could not read templates"
 
     def test_survives_an_error_that_is_not_an_object(self):
-        from app.api.channels.meta import _graph_detail
+        from app.channels.meta_base import graph_detail
 
-        assert _graph_detail({"error": "boom"}, "fallback") == "fallback"
+        assert graph_detail({"error": "boom"}, "fallback") == "fallback"
 
 
 class TestTemplateLibraryLink:
@@ -520,7 +873,7 @@ class TestTemplateLibraryLink:
     OWNER = (True, {"owner_business_info": {"id": "BIZ1", "name": "Acme"}})
 
     def test_links_to_the_library_for_this_waba_and_business(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=self.OWNER)):
+        with patch("app.api.channels.whatsapp_messaging.graph_get", AsyncMock(return_value=self.OWNER)):
             r = self._url(client, waba_account)
 
         assert r.status_code == 200
@@ -531,7 +884,7 @@ class TestTemplateLibraryLink:
 
     def test_still_links_when_the_business_cannot_be_read(self, client, waba_account):
         # A worse link, not a dead button: Meta resolves the page from asset_id.
-        with patch("app.api.channels.meta.graph_get",
+        with patch("app.api.channels.whatsapp_messaging.graph_get",
                    AsyncMock(return_value=(False, {"error": {"message": "nope"}}))):
             r = self._url(client, waba_account)
 
@@ -540,7 +893,7 @@ class TestTemplateLibraryLink:
         assert "business_id" not in r.json()["url"]
 
     def test_omits_business_id_when_graph_returns_none(self, client, waba_account):
-        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {}))):
+        with patch("app.api.channels.whatsapp_messaging.graph_get", AsyncMock(return_value=(True, {}))):
             r = self._url(client, waba_account)
 
         assert "business_id" not in r.json()["url"]
@@ -578,7 +931,7 @@ class TestOutboundConversation:
 
     def _send(self, client, account, templates=None, send_ok=True, **overrides):
         from unittest.mock import MagicMock
-        payload = {"to": "+91 63666 02824", "template_name": "order_update",
+        payload = {"to": "+91 12345 67890", "template_name": "order_update",
                    "language": "en_US", "components": self.BODY_PARAMS, **overrides}
         adapter = MagicMock()
         adapter.send_template = AsyncMock(return_value=SendResult(
@@ -599,9 +952,9 @@ class TestOutboundConversation:
         assert r.status_code == 200
         session_id = r.json()["session_id"]
 
-        customer = db.query(Customer).filter(Customer.phone == "+916366602824").one()
+        customer = db.query(Customer).filter(Customer.phone == "+911234567890").one()
         assert customer.full_name == "Priya"
-        assert customer.email == "916366602824@whatsapp.channel"
+        assert customer.email == "911234567890@whatsapp.channel"
         assert customer.lead_source == {"channel": "whatsapp", "via": "outbound"}
 
         conversation = ChannelConversationRepository(db).get_by_session(session_id)
@@ -629,7 +982,7 @@ class TestOutboundConversation:
                                      full_name="Alice")
         repo.create_customer(email="bob@example.com",
                              organization_id=routed.organization_id,
-                             full_name="Bob", phone="+916366602824")
+                             full_name="Bob", phone="+911234567890")
 
         r, adapter = self._send(client, routed, customer_id=str(alice.id))
 
@@ -664,10 +1017,10 @@ class TestOutboundConversation:
 
         assert r.status_code == 200
         db.refresh(alice)
-        assert alice.phone == "+916366602824"
+        assert alice.phone == "+911234567890"
         # And no second person was minted for the number.
         assert db.query(Customer).filter(
-            Customer.phone == "+916366602824").count() == 1
+            Customer.phone == "+911234567890").count() == 1
 
     def test_window_reports_expired_until_they_reply(self, client, db, routed):
         from app.channels import get_adapter
@@ -689,13 +1042,13 @@ class TestOutboundConversation:
         from app.repositories.customer import CustomerRepository
         existing = CustomerRepository(db).create_customer(
             email="priya@example.com", organization_id=test_organization.id,
-            full_name="Priya", phone="+916366602824")
+            full_name="Priya", phone="+911234567890")
 
         r, _ = self._send(client, routed)
 
         assert r.status_code == 200
         # No junk row: the conversation belongs to the person who owns the phone.
-        assert db.query(Customer).filter(Customer.phone == "+916366602824").count() == 1
+        assert db.query(Customer).filter(Customer.phone == "+911234567890").count() == 1
         from app.repositories.channels import ChannelConversationRepository
         conversation = ChannelConversationRepository(db).get_by_session(r.json()["session_id"])
         assert conversation.customer_id == existing.id
@@ -709,7 +1062,7 @@ class TestOutboundConversation:
         assert r.status_code == 502
         assert "Recipient not on WhatsApp" in r.json()["detail"]
         assert db.query(ChannelConversation).filter(
-            ChannelConversation.external_conversation_id == "916366602824").count() == 0
+            ChannelConversation.external_conversation_id == "911234567890").count() == 0
         assert db.query(SessionToAgent).count() == 0
 
     def test_marketing_templates_cannot_start_conversations(self, client, routed):
@@ -747,7 +1100,7 @@ class TestOutboundConversation:
         assert "Route an agent" in r.json()["detail"]
 
     def test_rejects_a_number_without_country_code(self, client, routed):
-        r, _ = self._send(client, routed, to="6366602824")
+        r, _ = self._send(client, routed, to="1234567890")
         assert r.status_code == 400
         assert "international format" in r.json()["detail"]
 
@@ -799,7 +1152,7 @@ class TestInboxAgentCanActuallyReachTheFeature:
         templates = [{"name": "order_update", "language": "en_US",
                       "status": "APPROVED", "category": "UTILITY",
                       "components": [{"type": "BODY", "text": "Hi {{1}}"}]}]
-        with patch("app.api.channels.meta.fetch_message_templates",
+        with patch("app.api.channels.whatsapp_messaging.fetch_message_templates",
                    AsyncMock(return_value=(True, templates))):
             r = inbox_client.get(f"{BASE}/whatsapp/{waba_account.id}/templates")
         assert r.status_code == 200

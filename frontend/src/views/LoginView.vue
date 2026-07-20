@@ -21,6 +21,7 @@ import { authService } from '@/services/auth'
 import { permissionChecks } from '@/utils/permissions'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useForgotPassword } from '@/composables/useForgotPassword'
+import InstallPrompt from '@/components/pwa/InstallPrompt.vue'
 import api from '@/services/api'
 import type { AxiosError } from 'axios'
 interface ErrorResponse {
@@ -362,6 +363,10 @@ const handleVerifyAndResetPassword = async () => {
                     <a href="#" @click.prevent="navigateToSignup" class="signup-link">Sign up</a>
                 </p>
             </form>
+
+            <div class="install-hint-slot">
+                <InstallPrompt />
+            </div>
         </div>
 
         <!-- Right: brand panel with aurora -->
@@ -546,6 +551,20 @@ const handleVerifyAndResetPassword = async () => {
     padding: 60px 56px;
     background: var(--bg);
     min-height: 100vh;
+    min-height: 100dvh;
+}
+
+/* Install hint (design: dashed card under the form) — mobile only */
+.install-hint-slot {
+    display: none;
+    margin-top: var(--space-lg);
+    padding-bottom: var(--safe-bottom);
+}
+
+@media (max-width: 768px) {
+    .install-hint-slot {
+        display: block;
+    }
 }
 
 .auth-logo {

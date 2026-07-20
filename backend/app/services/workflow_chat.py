@@ -231,53 +231,63 @@ class WorkflowChatService:
         """Handle transfer to human requested by workflow"""
         
         logger.info(f"Workflow LLM requested transfer to human for session {session_id}")
-        
-        if workflow_result.transfer_group_id:
-            # Transfer to specific group using workflow transfer method
-            chat_agent = await ChatAgent.create_async(
-                api_key=decrypt_api_key(session['ai_config'].encrypted_api_key),
-                model_name=session['ai_config'].model_name,
-                model_type=session['ai_config'].model_type,
+
+        if not workflow_result.transfer_group_id:
+            logger.warning(
+                f"No transfer_group_id provided for workflow transfer in session {session_id}; "
+                "falling back to the agent's default group")
+
+        chat_agent = await ChatAgent.create_async(
+            api_key=decrypt_api_key(session['ai_config'].encrypted_api_key),
+            model_name=session['ai_config'].model_name,
+            model_type=session['ai_config'].model_type,
+            org_id=org_id,
+            agent_id=session['agent_id'],
+            customer_id=customer_id,
+            session_id=session_id
+        )
+
+        try:
+            # Create ChatResponse object with transfer details from workflow
+            llm_response = ChatResponse(
+                message=workflow_result.message,
+                transfer_to_human=True,
+                transfer_reason=TransferReasonType(workflow_result.transfer_reason) if workflow_result.transfer_reason else None,
+                transfer_description=workflow_result.transfer_description,
+                end_chat=False,
+                request_rating=False,
+                create_ticket=False
+            )
+
+            # A missing group id is passed through rather than short-circuited:
+            # the transfer path then falls back to the agent's own default
+            # group, as a plain agent transfer does. Setting the status alone
+            # left group_id NULL, and an inbox matches on user_id or group_id —
+            # so the handover was invisible to every agent it was meant for.
+            transfer_response = await chat_agent.handle_workflow_transfer(
+                session_id=session_id,
                 org_id=org_id,
                 agent_id=session['agent_id'],
                 customer_id=customer_id,
-                session_id=session_id
+                transfer_group_id=workflow_result.transfer_group_id,
+                db=self.db,
+                chat_repo=self.chat_repo,
+                llm_response=llm_response
             )
-            
-            try:
-                # Create ChatResponse object with transfer details from workflow
-                llm_response = ChatResponse(
-                    message=workflow_result.message,
-                    transfer_to_human=True,
-                    transfer_reason=TransferReasonType(workflow_result.transfer_reason) if workflow_result.transfer_reason else None,
-                    transfer_description=workflow_result.transfer_description,
-                    end_chat=False,
-                    request_rating=False,
-                    create_ticket=False
-                )
-                
-                transfer_response = await chat_agent.handle_workflow_transfer(
-                    session_id=session_id,
-                    org_id=org_id,
-                    agent_id=session['agent_id'],
-                    customer_id=customer_id,
-                    transfer_group_id=workflow_result.transfer_group_id,
-                    db=self.db,
-                    chat_repo=self.chat_repo,
-                    llm_response=llm_response
-                )
-                
-                logger.info(f"Transfer completed for session {session_id} to group {workflow_result.transfer_group_id}")
-                # Mark this as a transfer response so widget_chat.py can handle it properly
-                transfer_response._is_transfer_response = True
-                return transfer_response
-            finally:
-                await chat_agent.safe_cleanup_mcp_tools()
-        else:
-            # Fallback: just update session status without specific group
-            logger.warning(f"No transfer_group_id provided for workflow transfer in session {session_id}")
+
+            logger.info(f"Transfer completed for session {session_id} to group {workflow_result.transfer_group_id}")
+            # Mark this as a transfer response so widget_chat.py can handle it properly
+            transfer_response._is_transfer_response = True
+            return transfer_response
+        except ValueError as e:
+            # The agent has no groups at all, so there is nobody to route to.
+            # Mark it transferred anyway — an admin can still see and claim it.
+            logger.error(
+                f"Workflow transfer for session {session_id} could not be routed to a group: {e}")
             self.session_repo.update_session_status(session_id, "TRANSFERRED")
             return response
+        finally:
+            await chat_agent.safe_cleanup_mcp_tools()
     
     async def _handle_workflow_end_chat(
         self, 

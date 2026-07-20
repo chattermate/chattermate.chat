@@ -19,6 +19,7 @@ import type { Conversation, ChatDetail } from '@/types/chat'
 import ConversationChat from '@/components/conversations/ConversationChat.vue'
 import ChannelBadge from '@/components/common/ChannelBadge.vue'
 import { useConversationsList } from '@/composables/useConversationsList'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 
 const props = defineProps<{
@@ -30,6 +31,7 @@ const props = defineProps<{
   loadingMore: boolean
   showChatInfo?: boolean
   initialSessionId?: string | null
+  mobilePane?: 'list' | 'chat'
 }>()
 
 const emit = defineEmits<{
@@ -39,7 +41,12 @@ const emit = defineEmits<{
   (e: 'clearUnread', sessionId: string): void
   (e: 'updateFilter', status: 'open' | 'closed'): void
   (e: 'loadMore'): void
+  (e: 'select', sessionId: string): void
+  (e: 'back'): void
+  (e: 'info'): void
 }>()
+
+const { isMobile } = useBreakpoint()
 
 const {
   selectedChat,
@@ -57,6 +64,16 @@ const loadChatDetailWithSelection = async (sessionId: string) => {
   // Emit the chat-selected event with the loaded chat detail
   if (selectedChat.value) {
     emit('chatSelected', selectedChat.value)
+  }
+}
+
+// On mobile a tap routes through the URL (?session=) so back navigation works;
+// the parent pushes the query, which flows back in via initialSessionId.
+const handleConversationClick = (sessionId: string) => {
+  if (isMobile.value) {
+    emit('select', sessionId)
+  } else {
+    loadChatDetailWithSelection(sessionId)
   }
 }
 
@@ -120,9 +137,10 @@ watch(() => props.loading, (isLoading, prevLoading) => {
   if (prevLoading === true && isLoading === false && filterChanged.value) {
     // Reset the flag
     filterChanged.value = false
-    
-    // When loading completes after filter change, select the first conversation if available
-    if (props.conversations.length > 0) {
+
+    // When loading completes after filter change, select the first conversation if
+    // available (desktop only — on mobile the list pane stays put until a tap)
+    if (props.conversations.length > 0 && !isMobile.value) {
       loadChatDetailWithSelection(props.conversations[0].session_id)
     } else {
       // If no conversations available, clear the selected chat
@@ -132,15 +150,14 @@ watch(() => props.loading, (isLoading, prevLoading) => {
   }
 })
 
-// Deep-link: open a specific session directly (e.g. from analytics "Sessions Needing
-// Attention"). Fetches the chat detail by id, so it works even if the session isn't
-// in the currently loaded/filtered list.
-const initialSessionHandled = ref(false)
+// Deep-link: open a specific session directly (from analytics "Sessions Needing
+// Attention", mobile ?session= navigation, or a push notification). Fetches the
+// chat detail by id, so it works even if the session isn't in the currently
+// loaded/filtered list. Reacts to every change so in-app deep-links keep working.
 watch(
   () => props.initialSessionId,
   (sessionId) => {
-    if (sessionId && !initialSessionHandled.value) {
-      initialSessionHandled.value = true
+    if (sessionId && sessionId !== selectedId.value) {
       loadChatDetailWithSelection(sessionId)
     }
   },
@@ -207,7 +224,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="conversations-container" :class="{ 'with-chat-info': showChatInfo }">
+  <div class="conversations-container"
+    :class="{ 'with-chat-info': showChatInfo, 'mobile-show-chat': mobilePane === 'chat' }">
     <!-- Sidebar with conversation list -->
     <div class="conversations-sidebar">
       <!-- Filter controls -->
@@ -247,7 +265,7 @@ onBeforeUnmount(() => {
           :key="conv.session_id"
           class="conversation-item"
           :class="{ active: selectedId === conv.session_id }"
-          @click="loadChatDetailWithSelection(conv.session_id)"
+          @click="handleConversationClick(conv.session_id)"
         >
           <div class="conversation-item-header">
             <h3>{{ conv.customer.full_name || conv.customer.email }}</h3>
@@ -318,7 +336,7 @@ onBeforeUnmount(() => {
       <div v-if="chatLoading" class="loading-state">
         Loading chat...
       </div>
-      <ConversationChat 
+      <ConversationChat
         v-else-if="selectedChat"
         :chat="selectedChat"
         @refresh="() => {
@@ -329,6 +347,8 @@ onBeforeUnmount(() => {
         }"
         @chatUpdated="selectedChat = $event"
         @clearUnread="clearUnread"
+        @back="emit('back')"
+        @info="emit('info')"
       />
     </div>
   </div>
@@ -396,10 +416,9 @@ onBeforeUnmount(() => {
 .conversations-list {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
   padding: 0;
   margin: 0;
-  height: calc(100vh - 120px); /* Fixed height calculation: viewport height minus header and filter controls */
-  max-height: calc(100vh - 120px); /* Fixed height calculation: viewport height minus header and filter controls */
   scrollbar-width: thin; /* For Firefox */
   scrollbar-color: var(--border-color) transparent; /* For Firefox */
 }
@@ -451,7 +470,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   position: relative;
   min-width: 0;
-  max-height: 100vh; /* Fixed height to viewport height */
   display: flex;
   flex-direction: column;
 }
@@ -565,7 +583,8 @@ onBeforeUnmount(() => {
   text-align: center;
   color: var(--muted);
   font-size: 12px;
-  max-height: calc(100vh - 120px);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -694,5 +713,49 @@ onBeforeUnmount(() => {
 .last-message.product-preview {
   color: var(--primary-color);
   max-width: 160px;
+}
+
+/* Mobile: single stacked pane — the list by default, the chat when a session
+   is selected (?session= in the URL, via the mobilePane prop) */
+@media (max-width: 768px) {
+  .conversations-container,
+  .conversations-container.with-chat-info {
+    grid-template-columns: 1fr;
+  }
+
+  .conversations-container .chat-view {
+    display: none;
+  }
+
+  .conversations-container.mobile-show-chat .conversations-sidebar {
+    display: none;
+  }
+
+  .conversations-container.mobile-show-chat .chat-view {
+    display: flex;
+  }
+
+  .conversations-sidebar {
+    border-right: none;
+  }
+
+  .conversation-item {
+    padding: 14px 16px;
+  }
+
+  .conversation-item.active {
+    background: transparent;
+    border-left: none;
+  }
+
+  .conversation-item-header h3 {
+    max-width: none;
+    font-size: 15px;
+  }
+
+  .last-message {
+    max-width: none;
+    flex: 1;
+  }
 }
 </style> 

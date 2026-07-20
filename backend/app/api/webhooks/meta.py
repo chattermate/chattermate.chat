@@ -66,6 +66,9 @@ async def meta_webhook(
     """
     raw_body = await request.body()
     if not verify_meta_signature(raw_body, request.headers.get("x-hub-signature-256", "")):
+        # Logged so a rejected delivery is distinguishable from one that never
+        # arrived; the body is untrusted and unlogged.
+        logger.warning(f"Meta webhook rejected: bad signature ({len(raw_body)} bytes)")
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()

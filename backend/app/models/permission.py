@@ -45,12 +45,20 @@ class Permission(Base):
             ("view_analytics", "Can view analytics"),
             ("view_assigned_chats", "Can view assigned chats only"),
             ("manage_assigned_chats", "Can manage assigned chats"),
+            # The unclaimed queue: AI-handled sessions nobody has taken yet.
+            # Separate from view_assigned_chats so widening an agent's inbox to
+            # the queue never silently exposes another agent's conversations.
+            ("view_unassigned_chats", "Can view unassigned AI chats"),
             ("manage_knowledge", "Can manage knowledge base"),
             ("view_knowledge", "Can view knowledge base"),
             ("manage_ai_config", "Can manage AI configuration"),
             ("view_ai_config", "Can view AI configuration"),
             ("view_all_chats", "Can view all chat history"),
             ("manage_all_chats", "Can manage all chat sessions"),
+            # The people directory, decoupled from chat visibility: an agent can
+            # look up who they are talking to without being able to read every
+            # other agent's conversations.
+            ("view_people", "Can view the people directory"),
             ("manage_organization", "Can manage organization settings"),
             ("view_organization", "Can view organization details"),
             ("manage_subscription", "Can manage subscription plans and billing"),

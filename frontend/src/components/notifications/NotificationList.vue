@@ -185,7 +185,7 @@ onMounted(fetchNotifications)
     border-left: 1px solid var(--o08);
     box-shadow: -20px 0 50px rgba(0, 0, 0, 0.4);
     transition: right 0.3s ease;
-    z-index: 1000;
+    z-index: var(--z-drawer);
     display: flex;
     flex-direction: column;
 }
@@ -435,5 +435,29 @@ onMounted(fetchNotifications)
 .empty-sub {
     font-size: 12.5px;
     color: var(--faint);
+}
+
+/* Mobile: full-screen panel per design */
+@media (max-width: 768px) {
+    .notification-drawer {
+        width: 100%;
+        max-width: 100vw;
+        right: -100vw;
+        height: 100vh;
+        height: 100dvh;
+        border-left: none;
+    }
+
+    .notification-drawer.open {
+        right: 0;
+    }
+
+    .drawer-header {
+        padding-top: calc(20px + var(--safe-top));
+    }
+
+    .drawer-content {
+        padding-bottom: var(--safe-bottom);
+    }
 }
 </style>

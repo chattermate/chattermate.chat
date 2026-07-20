@@ -517,6 +517,7 @@ function removeLink(index: number) {
 
 .switch__track {
   position: relative;
+  flex-shrink: 0;
   width: 38px;
   height: 22px;
   border-radius: var(--radius-pill);

@@ -5,7 +5,38 @@
   <meta charset="UTF-8">
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0B0C10">
+  <script>
+    /* Applies the saved theme before first paint.
+       useTheme.ts sets data-theme and theme-color too, but only once the bundle
+       has parsed and run — so a light-theme user saw the dark shell, and dark
+       browser chrome, flash on every launch. That is most obvious in the
+       installed PWA, where the launch goes straight from a dark splash into the
+       app. The manifest's own background_color cannot help: it is static and
+       already matches the default (dark) theme.
+       Keep the key and the two colours in step with src/composables/useTheme.ts
+       and src/config/themeColors.ts — a static document cannot import them. */
+    (function () {
+      try {
+        var stored = localStorage.getItem('cm-theme') || 'dark';
+        var resolved = stored === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : (stored === 'light' ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', resolved);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0B0C10' : '#EEF0F4');
+      } catch (e) {
+        /* Private mode can throw on localStorage; the dark default already applies. */
+      }
+    })();
+  </script>
+  <!-- iOS installed-PWA (Add to Home Screen) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ChatterMate">
+  <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">

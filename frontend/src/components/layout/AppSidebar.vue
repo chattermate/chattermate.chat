@@ -17,33 +17,9 @@ limitations under the License.
 <script setup lang="ts" name="AppSidebar">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { permissionChecks } from '@/utils/permissions'
-import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useNavItems, navIconSvg } from './navItems'
 
 import SidebarToggle from './SidebarToggle.vue'
-
-// Inline stroke icons matching the design (stroke="currentColor" so they
-// inherit the nav color — muted by default, lime when active)
-const NAV_ICONS: Record<string, string> = {
-    agents: '<rect x="5" y="8" width="14" height="11" rx="3"/><line x1="12" y1="4" x2="12" y2="8"/><circle cx="9" cy="13" r="1" fill="currentColor"/><circle cx="15" cy="13" r="1" fill="currentColor"/>',
-    humans: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5 0 0 1 11 0"/><circle cx="16.5" cy="9" r="2.3"/><path d="M15 19a4.5 4 0 0 1 5.5-3.6"/>',
-    inbox: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 13h5l1.5 2.5h4L19 13h2"/>',
-    people: '<circle cx="9" cy="8" r="2.6"/><path d="M4 18a5 4.5 0 0 1 10 0"/><path d="M15.5 6.2a2.6 2.6 0 0 1 0 4.6"/><path d="M16 13.6A5 4.5 0 0 1 20 18"/>',
-    analytics: '<line x1="5" y1="17" x2="5" y2="13"/><line x1="10" y1="17" x2="10" y2="9"/><line x1="15" y1="17" x2="15" y2="6"/><line x1="20" y1="17" x2="20" y2="11"/>',
-    knowledge: '<path d="M4 5.5A2 2 0 0 1 6 4h5v16H6a2 2 0 0 0-2 1.5z"/><path d="M20 5.5A2 2 0 0 0 18 4h-5v16h5a2 2 0 0 1 2 1.5z"/>',
-    faq: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.3a2.7 2.7 0 0 1 5.2 1c0 1.8-2.5 2-2.5 3.3"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>',
-    tickets: '<path d="M4 9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2 2 2 0 0 0 0 4 2 2 0 0 1-2 2H6a2 2 0 0 1-2-2 2 2 0 0 0 0-4z"/><line x1="14" y1="8" x2="14" y2="16" stroke-dasharray="2 2.4"/>',
-    ticketing: '<circle cx="12" cy="12" r="3"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/>',
-    org: '<rect x="4" y="4" width="14" height="16" rx="2"/><line x1="20" y1="20" x2="20" y2="11"/><line x1="18" y1="11" x2="22" y2="11"/><circle cx="8" cy="9" r=".6" fill="currentColor"/><circle cx="12" cy="9" r=".6" fill="currentColor"/><circle cx="8" cy="13" r=".6" fill="currentColor"/><circle cx="12" cy="13" r=".6" fill="currentColor"/>',
-    subscription: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="7" y1="14" x2="11" y2="14"/>',
-    integrations: '<line x1="12" y1="12" x2="6" y2="6"/><line x1="12" y1="12" x2="18" y2="6"/><line x1="12" y1="12" x2="12" y2="19"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="19" r="2"/>',
-    widgets: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><circle cx="16.5" cy="16.5" r="3.5"/>',
-    aiconfig: '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="9" cy="8" r="2.4"/><circle cx="15" cy="16" r="2.4"/>',
-    usersettings: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 5.5 0 0 1 13 0"/>',
-}
-
-const navIconSvg = (name?: string) =>
-    `<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="${name === 'analytics' ? 2 : 1.7}" stroke-linecap="round" stroke-linejoin="round">${name ? (NAV_ICONS[name] || '') : ''}</svg>`
 
 defineProps<{
     isCollapsed: boolean
@@ -56,116 +32,7 @@ const emit = defineEmits<{
 
 const route = useRoute()
 
-// Get enterprise features availability
-const { hasEnterpriseModule } = useEnterpriseFeatures()
-
-interface NavItem {
-    to?: string;
-    icon?: string;
-    label?: string;
-    section?: string;
-    show?: boolean;
-}
-
-const navItems = computed(() => [
-    {
-        section: 'Main Menu'
-    },
-    {
-        to: '/ai-agents',
-        icon: 'agents',
-        label: 'AI Agents',
-        show: permissionChecks.canViewAgents()
-    },
-    {
-        to: '/human-agents',
-        icon: 'humans',
-        label: 'Human Agents',
-        show: permissionChecks.canManageUsers()
-    },
-    {
-        to: '/conversations',
-        icon: 'inbox',
-        label: 'Inbox',
-        show: permissionChecks.canViewChats()
-    },
-    {
-        to: '/tickets',
-        icon: 'tickets',
-        label: 'Tickets',
-        show: permissionChecks.canViewTickets()
-    },
-    {
-        to: '/people',
-        icon: 'people',
-        label: 'People',
-        show: permissionChecks.canViewChats()
-    },
-    {
-        to: '/knowledge',
-        icon: 'knowledge',
-        label: 'Knowledge',
-        show: permissionChecks.canManageKnowledge()
-    },
-    {
-        to: '/faq',
-        icon: 'faq',
-        label: 'Help center',
-        show: permissionChecks.canManageKnowledge()
-    },
-    {
-        to: '/analytics',
-        icon: 'analytics',
-        label: 'Analytics',
-        show: permissionChecks.canViewAnalytics()
-    },
-    {
-        section: 'Settings',
-        show: permissionChecks.canViewOrganization() || permissionChecks.canViewAIConfig()
-    },
-    {
-        to: '/settings/organization',
-        icon: 'org',
-        label: 'Organization',
-        show: permissionChecks.canViewOrganization()
-    },
-    {
-        to: '/settings/subscription',
-        icon: 'subscription',
-        label: 'Subscription',
-        show: hasEnterpriseModule && permissionChecks.canViewOrganization()
-    },
-    {
-        to: '/settings/ticketing',
-        icon: 'ticketing',
-        label: 'Ticketing',
-        show: permissionChecks.canManageOrganization()
-    },
-    {
-        to: '/settings/integrations',
-        icon: 'integrations',
-        label: 'Integrations',
-        show: permissionChecks.canViewOrganization()
-    },
-    {
-        to: '/settings/widget-apps',
-        icon: 'widgets',
-        label: 'Widget Apps',
-        show: permissionChecks.canManageOrganization()
-    },
-    {
-        to: '/settings/ai-config',
-        icon: 'aiconfig',
-        label: 'AI Configuration',
-        show: permissionChecks.canViewAIConfig()
-    },
-    {
-        to: '/settings/user',
-        icon: 'usersettings',
-        label: 'User Settings',
-        show: true
-    }
-].filter(item => item.show !== false))
+const { navItems } = useNavItems()
 
 const isActiveRoute = computed(() => (path?: string) => path ? route.path === path : false)
 
@@ -193,7 +60,7 @@ const handleNavigation = () => {
         <nav class="sidebar-nav">
             <div v-for="(item, index) in navItems" :key="index">
                 <!-- Section Header -->
-                <div v-if="item.section" class="nav-section" :class="{ 'collapsed': isCollapsed }">
+                <div v-if="item.section" class="nav-section nav-section-heading" :class="{ 'collapsed': isCollapsed }">
                     <span v-if="!isCollapsed">{{ item.section }}</span>
                 </div>
 
@@ -304,15 +171,10 @@ const handleNavigation = () => {
     padding: 18px 8px;
 }
 
+/* Typography comes from the shared .nav-section-heading (components.css) */
 .nav-section {
     padding: 0 13px;
     margin: 4px 0 12px;
-    color: var(--faint);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: var(--font-weight-medium);
-    text-transform: uppercase;
-    letter-spacing: .1em;
 }
 
 /* Collapsed: section label becomes an invisible spacer, no divider line */
@@ -431,6 +293,13 @@ const handleNavigation = () => {
     .sidebar.collapsed {
         transform: translateX(-100%);
         width: 252px;
+        /* An off-canvas panel must not keep painting its shadow over the page.
+           Sliding it out moves the box, not the shadow's reach: with an 8px
+           offset and 32px blur, roughly 24px of it still lands on the page's
+           left edge, above the content at z-index 1000. On the dark theme that
+           is black on near-black and invisible, which is why it went unnoticed;
+           on the light theme it reads as a grey band down the side. */
+        box-shadow: none;
     }
 
     /* In overlay mode the panel is full-width — restore expanded layout */

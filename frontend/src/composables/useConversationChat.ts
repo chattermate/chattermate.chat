@@ -22,6 +22,8 @@ import { userService } from '@/services/user'
 import { socketService } from '@/services/socket'
 import { toast } from 'vue-sonner'
 import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/endChat'
+import { canTakeOverChat } from '@/utils/chatState'
+import { permissionChecks } from '@/utils/permissions'
 
 // Define valid chat statuses
 type ChatStatus = 'open' | 'closed' | 'transferred'
@@ -53,17 +55,13 @@ export function useConversationChat(
   // known after the backend refuses a send.
   const templateCanReopen = ref(false)
 
-  const showTakeoverButton = computed(() => {
-    // Show takeover button if:
-    // 1. Chat is transferred
-    // 2. No user has taken over yet OR the current user is not the one who took over
-    // 3. Chat is not closed
-    return (
-      chat.value.status === 'transferred' && 
-      (!chat.value.user_id || chat.value.user_id !== currentUserId) &&
-      !isChatClosed.value
-    )
-  })
+  // Claimable and allowed to claim. Shared with ChatInfoPanel via
+  // canTakeOverChat so the chat screen and the info panel can't disagree —
+  // this pane used to require status 'transferred', which left an AI-handled
+  // chat claimable only from the info panel.
+  const showTakeoverButton = computed(
+    () => canTakeOverChat(chat.value) && permissionChecks.canTakeOverChats()
+  )
 
   const showTakenOverStatus = computed(() => {
     // Show taken over status if:

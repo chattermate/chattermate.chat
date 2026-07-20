@@ -21,7 +21,12 @@ from uuid import UUID
 
 from app.core.logger import get_logger
 from app.database import get_db
-from app.core.auth import INBOX_PERMISSIONS, get_current_user, has_any_permission
+from app.core.auth import (
+    PEOPLE_READ_PERMISSIONS,
+    PEOPLE_WRITE_PERMISSIONS,
+    get_current_user,
+    has_any_permission,
+)
 from app.models.user import User
 from app.repositories.people import PeopleRepository
 from app.models.schemas.people import (
@@ -40,14 +45,19 @@ except ImportError:
 router = APIRouter()
 logger = get_logger(__name__)
 
-def _require_people_access(current_user: User, db: Session) -> None:
-    # People is an org-wide view of every lead/customer, so it needs a broad
-    # chat capability — not the limited "assigned chats only" permission.
-    # INBOX_PERMISSIONS is shared with the WhatsApp template/outbound endpoints
-    # so the two surfaces agree on who works the inbox, and has_any_permission
-    # honours the super_admin bypass this check used to miss (a super_admin
-    # could send templates but got 403 here).
-    if not has_any_permission(current_user, INBOX_PERMISSIONS):
+def _require_people_access(
+    current_user: User,
+    db: Session,
+    permissions: tuple = PEOPLE_READ_PERMISSIONS
+) -> None:
+    # Reading the directory is its own grant (view_people): an agent handling a
+    # conversation should be able to look up who they are talking to without
+    # also gaining the right to read every other agent's chats. The org-wide
+    # inbox permissions imply it, so admins are unaffected. Writes pass
+    # PEOPLE_WRITE_PERMISSIONS instead. has_any_permission honours the
+    # super_admin bypass this check used to miss (a super_admin could send
+    # templates but got 403 here).
+    if not has_any_permission(current_user, permissions):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
     # Pro-plan gate (Lead Management) where the enterprise module is present.
     if HAS_ENTERPRISE:
@@ -116,7 +126,7 @@ async def mark_as_customer(
     db: Session = Depends(get_db),
 ):
     """Manually promote a person to the Customer stage (phase 1: no automated signal)."""
-    _require_people_access(current_user, db)
+    _require_people_access(current_user, db, PEOPLE_WRITE_PERMISSIONS)
     repo = PeopleRepository(db)
     customer = repo.get_customer(current_user.organization_id, customer_id)
     if not customer:
@@ -142,7 +152,7 @@ async def update_person(
 
     This is the one path allowed to CORRECT a phone (the automatic capture
     paths are set-if-absent): a mistyped outbound number must be fixable."""
-    _require_people_access(current_user, db)
+    _require_people_access(current_user, db, PEOPLE_WRITE_PERMISSIONS)
     repo = PeopleRepository(db)
     customer, error = repo.update_person(
         current_user.organization_id, customer_id,

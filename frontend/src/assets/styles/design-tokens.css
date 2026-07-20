@@ -178,7 +178,22 @@
   --icon-opacity: 0.5;
   --icon-active-opacity: 0.9;
 
-  /* Breakpoints */
+  /* Mobile app shell */
+  --bottom-nav-height: 56px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Overlay stacking order — every fixed overlay must use one of these */
+  --z-topbar: 50;
+  --z-bottom-nav: 900;
+  --z-drawer: 1000;          /* notification drawer, sidebar overlay */
+  --z-fullscreen-page: 1050; /* mobile chat-info "Details" page */
+  --z-prompt: 1090;          /* push/install prompts */
+  --z-sheet: 1100;           /* More bottom sheet */
+  --z-modal: 2000;
+
+  /* Breakpoints — keep in sync with useBreakpoint.ts (JS can't read these
+     at media-query time: --breakpoint-sm = MOBILE, --breakpoint-md = TABLET) */
   --breakpoint-xs: 480px;
   --breakpoint-sm: 768px;
   --breakpoint-md: 1024px;

@@ -7,6 +7,8 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
+import { VitePWA } from 'vite-plugin-pwa'
+import { THEME_COLORS } from './src/config/themeColors'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -15,8 +17,11 @@ export default defineConfig(({ command, mode }) => {
   let envDir = process.cwd()
   let envFile = '.env'
   
-  if (mode === 'prod') {
-    // Manually load .env.prod for production builds
+  if (mode === 'prod' || mode === 'production') {
+    // Manually load .env.prod for production builds. Plain `vite build`
+    // (mode 'production', used by Dockerfile.frontend.prod) must see the
+    // VITE_FIREBASE_* values too: src/sw.ts inlines them at build time, and
+    // without them the service worker ships with push silently disabled.
     const envPath = path.resolve(envDir, '.env.prod')
     if (fs.existsSync(envPath)) {
       const envConfig = dotenv.parse(fs.readFileSync(envPath))
@@ -44,6 +49,14 @@ export default defineConfig(({ command, mode }) => {
   // Also load standard Vite env files
   const env = loadEnv(mode, process.cwd(), '')
 
+  if (command === 'build' && !(process.env.VITE_FIREBASE_API_KEY || env.VITE_FIREBASE_API_KEY)) {
+    console.warn(
+      '\n[pwa] VITE_FIREBASE_API_KEY is not set for this build — the service worker ' +
+      'will ship WITHOUT background push support (foreground notifications still work ' +
+      'via runtime config.js). Provide .env/.env.prod with VITE_FIREBASE_* to enable it.\n'
+    )
+  }
+
   return {
   plugins: [
     vue({
@@ -65,7 +78,39 @@ export default defineConfig(({ command, mode }) => {
           process.env.VITE_SHOPIFY_API_KEY || env.VITE_SHOPIFY_API_KEY || ''
         )
       }
-    }
+    },
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      // Registration is manual (src/pwa/register.ts) so the Shopify App Bridge
+      // script stays the first script tag and embedded contexts never register.
+      injectRegister: false,
+      manifest: {
+        name: 'ChatterMate',
+        short_name: 'ChatterMate',
+        description: 'Agent console for ChatterMate — handle customer chats anywhere.',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: THEME_COLORS.dark,
+        theme_color: THEME_COLORS.dark,
+        icons: [
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // config.js is runtime-substituted per environment (docker-entrypoint)
+        // and must never be precached; webclient/avatars aren't the agent app.
+        globIgnores: ['config.js', 'config.dev.js', 'webclient/**', 'avatars/**'],
+      },
+      devOptions: {
+        enabled: false,
+      },
+    })
   ],
   resolve: {
     alias: {
@@ -93,7 +138,6 @@ export default defineConfig(({ command, mode }) => {
     rollupOptions: {
       input: {
         main: './index.html',
-        'firebase-messaging-sw': './public/firebase-messaging-sw.js',
       },
       output: {
         manualChunks: {

@@ -182,6 +182,7 @@ function onAgentChange(event: Event) {
 }
 
 .switch__track {
+  flex-shrink: 0;
   width: 38px;
   height: 22px;
   border-radius: var(--radius-pill);
@@ -212,6 +213,7 @@ function onAgentChange(event: Event) {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
   font-size: 13.5px;
   font-weight: 500;
   color: var(--text2);

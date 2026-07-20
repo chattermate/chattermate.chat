@@ -23,11 +23,11 @@ class TestNormalizePhone:
     """Human-typed input: '+' is required, decoration is forgiven."""
 
     @pytest.mark.parametrize("raw,expected", [
-        ("+916366602824", "+916366602824"),
-        ("+91 63666 02824", "+916366602824"),
+        ("+911234567890", "+911234567890"),
+        ("+91 12345 67890", "+911234567890"),
         ("+1 (555) 000-1111", "+15550001111"),
         ("+44.7700.900123", "+447700900123"),
-        ("  +916366602824  ", "+916366602824"),
+        ("  +911234567890  ", "+911234567890"),
     ])
     def test_canonicalizes_decorated_e164(self, raw, expected):
         assert normalize_phone(raw) == expected
@@ -46,18 +46,18 @@ class TestNormalizePhone:
         assert normalize_phone(raw) is None
 
     def test_bare_digits_are_rejected_not_guessed_at(self):
-        # "6366602824" typed by a person is a national number; prepending '+'
+        # "1234567890" typed by a person is a national number; prepending '+'
         # would silently hand it to whatever country owns prefix 63 (the
         # Philippines). An identity key must never be a guess.
-        assert normalize_phone("6366602824") is None
-        assert normalize_phone("916366602824") is None
+        assert normalize_phone("1234567890") is None
+        assert normalize_phone("911234567890") is None
 
 
 class TestNormalizeMsisdn:
     """Platform-supplied ids (wa_id, SMS sender): bare digits ARE E.164-minus-plus."""
 
     @pytest.mark.parametrize("raw,expected", [
-        ("916366602824", "+916366602824"),   # WhatsApp wa_id
+        ("911234567890", "+911234567890"),   # WhatsApp wa_id
         ("447700900123", "+447700900123"),   # Vonage-style msisdn, no '+'
         ("+15550001111", "+15550001111"),    # Twilio-style, '+' included
     ])
@@ -67,7 +67,7 @@ class TestNormalizeMsisdn:
     def test_same_canonical_form_as_the_strict_path(self):
         # Both normalizers must land in one column shape, or one person
         # becomes two.
-        assert normalize_msisdn("916366602824") == normalize_phone("+91 63666 02824")
+        assert normalize_msisdn("911234567890") == normalize_phone("+91 12345 67890")
 
     def test_accepts_the_itu_00_international_form(self):
         # Some SMS gateways deliver '00'-prefixed international numbers.
@@ -86,10 +86,10 @@ class TestNormalizeMsisdn:
     def test_tolerates_non_string_input(self):
         # AI-extracted field_values can hand over lists or numbers; a crash
         # here would roll back the whole contact update.
-        assert normalize_phone(["+916366602824"]) is None
-        assert normalize_msisdn(916366602824) is None
+        assert normalize_phone(["+911234567890"]) is None
+        assert normalize_msisdn(911234567890) is None
 
 
 class TestToWaId:
     def test_strips_the_plus(self):
-        assert to_wa_id("+916366602824") == "916366602824"
+        assert to_wa_id("+911234567890") == "911234567890"

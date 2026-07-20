@@ -208,8 +208,8 @@ def test_merge_moves_phone_to_the_survivor(db, test_agent, test_organization_id,
         email="priya@example.com", organization_id=test_organization_id,
         full_name="Priya")
     anonymous = repo.create_customer(
-        email="916366602824@whatsapp.channel", organization_id=test_organization_id,
-        phone="+916366602824")
+        email="911234567890@whatsapp.channel", organization_id=test_organization_id,
+        phone="+911234567890")
 
     # The WhatsApp person tells the AI an email that already belongs to Priya.
     record_lead_capture(
@@ -220,7 +220,7 @@ def test_merge_moves_phone_to_the_survivor(db, test_agent, test_organization_id,
     db.refresh(identified)
     db.refresh(anonymous)
     assert anonymous.merged_into_customer_id == identified.id
-    assert identified.phone == "+916366602824"   # carried to the survivor
+    assert identified.phone == "+911234567890"   # carried to the survivor
     assert anonymous.phone is None               # moved, not copied
 
 
@@ -239,8 +239,8 @@ def test_merge_never_leaves_a_live_number_on_the_tombstone(
         email="priya@example.com", organization_id=test_organization_id,
         full_name="Priya", phone="+447700900111")     # work mobile
     anonymous = repo.create_customer(
-        email="916366602824@whatsapp.channel", organization_id=test_organization_id,
-        phone="+916366602824")                        # personal mobile
+        email="911234567890@whatsapp.channel", organization_id=test_organization_id,
+        phone="+911234567890")                        # personal mobile
 
     record_lead_capture(
         db, config, organization_id=test_organization_id, agent_id=test_agent.id,
@@ -253,4 +253,4 @@ def test_merge_never_leaves_a_live_number_on_the_tombstone(
     assert identified.phone == "+447700900111"   # survivor keeps theirs
     assert anonymous.phone is None               # dropped, not left live
     # And the dropped number resolves to nobody, rather than to a tombstone.
-    assert repo.get_customer_by_phone("+916366602824", test_organization_id) is None
+    assert repo.get_customer_by_phone("+911234567890", test_organization_id) is None

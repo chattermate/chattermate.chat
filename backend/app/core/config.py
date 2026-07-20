@@ -90,8 +90,23 @@ class Settings(BaseSettings):
     # Our own random token echoed back during webhook GET verification
     META_WEBHOOK_VERIFY_TOKEN: str = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "")
     META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v21.0")
-    # Embedded Signup config id (cloud onboarding convenience; enterprise)
+    # WhatsApp Embedded Signup config id (cloud onboarding convenience)
     META_CONFIG_ID: str = os.getenv("META_CONFIG_ID", "")
+    # Facebook Login for Business config id, for connecting a Page (Messenger and
+    # Instagram DM both ride on the Page's token). A separate configuration from
+    # META_CONFIG_ID: it requests pages_messaging + pages_show_list and returns a
+    # user token, not a WhatsApp signup.
+    META_MESSENGER_CONFIG_ID: str = os.getenv("META_MESSENGER_CONFIG_ID", "")
+    # Instagram API with Instagram Login: its own app id/secret, separate from
+    # the Facebook ones above. This flow needs no Facebook Page — the business
+    # signs in with Instagram and we get an Instagram user token.
+    INSTAGRAM_APP_ID: str = os.getenv("INSTAGRAM_APP_ID", "")
+    INSTAGRAM_APP_SECRET: str = os.getenv("INSTAGRAM_APP_SECRET", "")
+    # Comma-separated emails allowed to use one-click Meta signup. Empty means
+    # everyone, which is the end state — this exists so the flow can be exercised
+    # in production while the Meta app is still in App Review, since until it is
+    # approved the login only works for people with a role on the app anyway.
+    SIGNUP_ALLOWED_EMAILS: str = os.getenv("SIGNUP_ALLOWED_EMAILS", "")
 
     VERIFY_SSL_CERTIFICATES: bool = os.getenv("VERIFY_SSL_CERTIFICATES", "true").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")

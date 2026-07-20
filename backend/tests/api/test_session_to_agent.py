@@ -63,7 +63,11 @@ def db() -> Generator:
 def test_permissions(db) -> list[Permission]:
     """Create test permissions"""
     permissions = []
-    for name in ["manage_chats", "manage_assigned_chats"]:
+    # manage_all_chats, not "manage_chats": the latter was never in
+    # Permission.default_permissions(), so the endpoint check it fed never
+    # matched anyone. view_unassigned_chats is what lets an agent see (and
+    # therefore claim) a chat the AI is still handling.
+    for name in ["manage_all_chats", "manage_assigned_chats", "view_unassigned_chats"]:
         perm = Permission(
             name=name,
             description=f"Test permission for {name}"
@@ -77,18 +81,18 @@ def test_permissions(db) -> list[Permission]:
 
 @pytest.fixture
 def test_role_with_manage_chats(db, test_permissions) -> Role:
-    """Create a test role with manage_chats permission"""
+    """Create a test role with manage_all_chats permission"""
     role = Role(
         id=1,
         name="Manage Chats Role",
-        description="Role with manage_chats permission",
+        description="Role with manage_all_chats permission",
         is_default=False
     )
     db.add(role)
     db.commit()
 
-    # Add manage_chats permission
-    manage_chats_perm = next(p for p in test_permissions if p.name == "manage_chats")
+    # Add manage_all_chats permission
+    manage_chats_perm = next(p for p in test_permissions if p.name == "manage_all_chats")
     db.execute(
         role_permissions.insert().values(
             role_id=role.id,
@@ -111,14 +115,16 @@ def test_role_with_manage_assigned_chats(db, test_permissions) -> Role:
     db.add(role)
     db.commit()
 
-    # Add manage_assigned_chats permission
-    manage_assigned_perm = next(p for p in test_permissions if p.name == "manage_assigned_chats")
-    db.execute(
-        role_permissions.insert().values(
-            role_id=role.id,
-            permission_id=manage_assigned_perm.id
+    # Add manage_assigned_chats + view_unassigned_chats, mirroring the seeded
+    # Agent role: claiming an unclaimed chat requires being able to see it.
+    for perm_name in ("manage_assigned_chats", "view_unassigned_chats"):
+        perm = next(p for p in test_permissions if p.name == perm_name)
+        db.execute(
+            role_permissions.insert().values(
+                role_id=role.id,
+                permission_id=perm.id
+            )
         )
-    )
     db.commit()
     db.refresh(role)
     return role
