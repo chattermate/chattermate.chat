@@ -32,17 +32,20 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.knowledge.page_editor import PAGE_ID_EXPR
 from app.models.knowledge import Knowledge
-from app.repositories.ai_config import AIConfigRepository
 from app.repositories.faq import FAQRepository
+# Shared hosted-model metering helpers; re-exported here so existing FAQ
+# callers keep importing them from faq_usage.
+from app.services.usage_metering import (  # noqa: F401
+    HOSTED_MODEL_TYPE,
+    is_hosted_model,
+    remaining_message_credits,
+)
 
 logger = get_logger(__name__)
 
 # Rough pages-per-LLM-call heuristic for the confirm-dialog estimate (matches
 # today's floor batch of ~3 average pages). An estimate, not billing.
 PAGES_PER_CALL = 3
-
-# Model type whose provider costs land on the platform, hence metered.
-HOSTED_MODEL_TYPE = "CHATTERMATE"
 
 OVER_BUDGET_MESSAGE = (
     "Not enough message credits left in your plan for this generation "
@@ -73,13 +76,7 @@ class GenerationEstimate:
 def generation_is_metered(db: Session, organization_id: UUID) -> bool:
     """Generation costs credits only on the hosted model — own-key orgs pay
     their provider directly. FAQ_METER_OWN_KEY flips to always-meter."""
-    if settings.FAQ_METER_OWN_KEY:
-        return True
-    config = AIConfigRepository(db).get_active_config(organization_id)
-    if not config:
-        return False
-    model_type = config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type)
-    return model_type.upper() == HOSTED_MODEL_TYPE
+    return settings.FAQ_METER_OWN_KEY or is_hosted_model(db, organization_id)
 
 
 def count_source_pages(db: Session, knowledge: Knowledge) -> Optional[int]:
@@ -167,21 +164,6 @@ def estimate_generation_calls(
         estimated_calls=agg_calls,
         sources=source_list,
     )
-
-
-def remaining_message_credits(db: Session, organization_id: UUID) -> Optional[int]:
-    """Credits left in the billing period, or None when unlimited (no
-    enterprise module, no subscription cap, or the check errored — fail open,
-    matching check_message_limit's posture)."""
-    try:
-        from app.enterprise.services.message_limit import get_remaining_messages
-    except ImportError:
-        return None
-    try:
-        return get_remaining_messages(db, organization_id)
-    except Exception as e:
-        logger.error(f"Remaining-credit check failed for org {organization_id}: {e}")
-        return None
 
 
 def ensure_generation_budget(db: Session, organization_id: UUID, estimated_calls: int) -> None:

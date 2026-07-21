@@ -121,6 +121,10 @@ export interface InvestigationRun {
   error?: string | null
   tool_calls_used: number
   max_tool_calls?: number
+  llm_calls?: number
+  input_tokens?: number
+  output_tokens?: number
+  metered?: boolean
   model_name?: string | null
   started_at?: string | null
   finished_at?: string | null

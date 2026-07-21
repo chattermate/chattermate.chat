@@ -162,10 +162,34 @@ class TicketInvestigatorAgent:
         self._use_groq_json_tool = model_type.upper() == "GROQ"
         # Metering hook, fired once per provider call — set by the worker.
         self.on_llm_call: Optional[Callable[[], None]] = None
+        # Token usage accumulated across every phase of this run; the worker
+        # folds these onto the InvestigationRun at finalize time.
+        self.input_tokens = 0
+        self.output_tokens = 0
 
     def _count_call(self) -> None:
         if self.on_llm_call:
             self.on_llm_call()
+
+    def _capture_usage(self, agent, response) -> None:
+        """Accumulate one call's token usage. agno exposes per-phase scalar
+        totals on agent.session_metrics (a fresh Agent is built per phase, so
+        these are this call's totals); fall back to summing the per-message
+        lists on response.metrics. Best-effort — metering must never break a
+        run."""
+        try:
+            metrics = getattr(agent, "session_metrics", None)
+            if metrics is not None and (
+                getattr(metrics, "input_tokens", 0) or getattr(metrics, "output_tokens", 0)
+            ):
+                self.input_tokens += int(metrics.input_tokens or 0)
+                self.output_tokens += int(metrics.output_tokens or 0)
+                return
+            resp_metrics = getattr(response, "metrics", None) or {}
+            self.input_tokens += int(sum(resp_metrics.get("input_tokens", []) or []))
+            self.output_tokens += int(sum(resp_metrics.get("output_tokens", []) or []))
+        except Exception as e:
+            logger.warning(f"Token usage capture failed: {e}")
 
     async def _run_structured(
         self,
@@ -223,6 +247,7 @@ class TicketInvestigatorAgent:
         try:
             self._count_call()
             response = await agent.arun(message)
+            self._capture_usage(agent, response)
         except Exception as e:
             logger.error(f"{name} LLM call failed: {e}")
             return None

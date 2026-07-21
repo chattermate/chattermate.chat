@@ -40,8 +40,9 @@ from app.models.ticket_activity import TicketActivityType, TicketActorType
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.ticket import InvestigationRepository, TicketRepository
 from app.services.ticket import TicketService, embed_ticket_text
-from app.services.ticket_privacy import redact_reference_text
 from app.services.ticket_events import emit_ticket_update
+from app.services.ticket_privacy import redact_reference_text
+from app.services.usage_metering import HOSTED_MODEL_TYPE
 
 logger = get_logger(__name__)
 
@@ -161,18 +162,23 @@ async def process_run(run_id: UUID) -> None:
             {"status": "running", "run_type": str(run.run_type)},
         )
 
+        agent = None
         try:
             config = AIConfigRepository(db).get_active_config(ticket.organization_id)
             if config is None:
                 raise RuntimeError("Organization has no active AI configuration")
 
+            model_type = config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type)
             from app.agents.ticket_investigator import TicketInvestigatorAgent
             agent = TicketInvestigatorAgent(
                 api_key=decrypt_api_key(config.encrypted_api_key),
                 model_name=config.model_name,
-                model_type=config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type),
+                model_type=model_type,
             )
             run.model_name = config.model_name
+            # Metered only on the hosted model — own-key orgs pay their provider
+            # directly. This is what the message-limit check sums.
+            run.metered = model_type.upper() == HOSTED_MODEL_TYPE
 
             def count_call():
                 run.llm_calls = (run.llm_calls or 0) + 1
@@ -191,6 +197,17 @@ async def process_run(run_id: UUID) -> None:
             except Exception:
                 pass
             _fail_run(db, run, ticket, previous_status, str(e))
+        finally:
+            # Record token usage on every path — success, budget-exceeded,
+            # failure or timeout — so partial spend is still metered.
+            if agent is not None and (agent.input_tokens or agent.output_tokens):
+                try:
+                    run.input_tokens = agent.input_tokens
+                    run.output_tokens = agent.output_tokens
+                    db.commit()
+                except Exception as e:
+                    logger.warning(f"Recording token usage failed for run {run_id}: {e}")
+                    db.rollback()
 
 
 async def _process_triage(db, run, service: TicketService, ticket: Ticket, agent, previous_status: str) -> None:

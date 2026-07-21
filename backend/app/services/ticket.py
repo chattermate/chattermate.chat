@@ -423,6 +423,19 @@ class TicketService:
 
     # ---------- AI runs ----------
 
+    def _investigation_over_budget(self, ticket: Ticket) -> bool:
+        """True when a metered (hosted-model) org has no message credits left.
+        Fails open (never blocks) for own-key orgs, unlimited plans, self-host
+        without the enterprise module, or on any metering error."""
+        from app.services.usage_metering import (
+            is_hosted_model,
+            remaining_message_credits,
+        )
+        if not is_hosted_model(self.db, ticket.organization_id):
+            return False
+        remaining = remaining_message_credits(self.db, ticket.organization_id)
+        return remaining is not None and remaining <= 0
+
     def enqueue_run(
         self,
         ticket: Ticket,
@@ -437,6 +450,22 @@ class TicketService:
             done = self.run_repo.count_for_ticket(ticket.id, InvestigationRunType.INVESTIGATION)
             if done >= settings.max_runs_per_ticket:
                 logger.info(f"Ticket {ticket.display_number}: max investigation runs reached")
+                return None
+            # An investigation makes many metered LLM calls, so a hosted-model
+            # org that's out of message credits can't start one. Triage (cheap,
+            # one call) is never gated, so tickets still get classified.
+            if self._investigation_over_budget(ticket):
+                self._add_activity(
+                    ticket,
+                    TicketActivityType.STATUS_CHANGE,
+                    actor_type=TicketActorType.SYSTEM,
+                    body=(
+                        "AI investigation paused — the organization is out of "
+                        "message credits for this billing period."
+                    ),
+                    metadata={"reason": "message_limit_reached"},
+                )
+                logger.info(f"Ticket {ticket.display_number}: investigation blocked, out of credits")
                 return None
         run = self.run_repo.enqueue(
             InvestigationRun(
