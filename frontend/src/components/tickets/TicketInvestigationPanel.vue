@@ -49,6 +49,14 @@ const tickerLine = computed(() => {
 const toolCallCount = computed(
   () => props.investigation.events.filter((e) => e.event_type === 'tool_call').length,
 )
+
+// Compact token total for the run header, e.g. "1.2k tokens". Only shown once
+// the run has recorded usage.
+const tokenLabel = computed(() => {
+  const total = (run.value?.input_tokens || 0) + (run.value?.output_tokens || 0)
+  if (!total) return ''
+  return total >= 1000 ? `${(total / 1000).toFixed(1)}k tokens` : `${total} tokens`
+})
 </script>
 
 <template>
@@ -65,6 +73,8 @@ const toolCallCount = computed(
         <span>{{ investigation.hypotheses.length }} hypotheses</span>
         <span>·</span>
         <span>{{ toolCallCount }}/{{ run.max_tool_calls || '—' }} tool calls</span>
+        <span v-if="run.llm_calls">· {{ run.llm_calls }} LLM calls</span>
+        <span v-if="tokenLabel">· {{ tokenLabel }}</span>
         <span v-if="run.model_name">· {{ run.model_name }}</span>
       </div>
     </div>

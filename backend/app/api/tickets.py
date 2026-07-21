@@ -516,6 +516,16 @@ async def investigate_ticket(
             detail="This ticket is resolved — reopen it before running another investigation",
         )
     payload = payload or InvestigateRequest()
+    # Distinguish "out of credits" (402, actionable — upgrade) from the generic
+    # 409 below, for a human clicking Investigate.
+    if payload.run_type == InvestigationRunType.INVESTIGATION and service._investigation_over_budget(ticket):
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "Not enough message credits left in your plan to run an AI "
+                "investigation. Upgrade your plan or switch to your own AI model key."
+            ),
+        )
     run = service.enqueue_run(
         ticket,
         run_type=payload.run_type,

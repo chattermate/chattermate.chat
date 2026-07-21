@@ -108,6 +108,11 @@ class InvestigationRun(Base):
     input_tokens = Column(BigInteger, nullable=False, default=0, server_default="0")
     output_tokens = Column(BigInteger, nullable=False, default=0, server_default="0")
     model_name = Column(String, nullable=True)
+    # True when this run's LLM usage counts against the org's message budget —
+    # set only for the platform-hosted model (own-key orgs pay their provider
+    # directly). Mirrors FAQGenerationJob.metered; summed by the enterprise
+    # message-limit check.
+    metered = Column(Boolean, nullable=False, default=False, server_default="false")
 
     error = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=True)

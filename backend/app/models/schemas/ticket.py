@@ -134,6 +134,10 @@ class InvestigationRunOut(BaseModel):
     error: Optional[str] = None
     tool_calls_used: int = 0
     max_tool_calls: int = 25
+    llm_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    metered: bool = False
     model_name: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

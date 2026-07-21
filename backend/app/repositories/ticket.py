@@ -438,6 +438,24 @@ class InvestigationRepository:
         )
         return [r[0] for r in rows]
 
+    def count_llm_calls_for_period(
+        self, organization_id: UUID, start_date: datetime, end_date: datetime
+    ) -> int:
+        """Metered investigation LLM calls in a billing period — the hosted-
+        model usage the enterprise message-limit check adds to the bot-message
+        count. Mirrors FAQGenerationJobRepository.count_llm_calls_for_period."""
+        total = (
+            self.db.query(func.coalesce(func.sum(InvestigationRun.llm_calls), 0))
+            .filter(
+                InvestigationRun.organization_id == organization_id,
+                InvestigationRun.metered.is_(True),
+                InvestigationRun.created_at >= start_date,
+                InvestigationRun.created_at <= end_date,
+            )
+            .scalar()
+        )
+        return int(total or 0)
+
     def latest_run_of_type(self, ticket_id: UUID, run_type: str) -> Optional[InvestigationRun]:
         return (
             self.db.query(InvestigationRun)
