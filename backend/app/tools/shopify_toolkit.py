@@ -56,7 +56,11 @@ class ShopifyTools(Toolkit):
         self.agent_id = agent_id
         self.org_id = org_id
         self.session_id = session_id
-        
+        # Set to the Redis cache key whenever a product tool returns+caches products
+        # this turn. Lets the backend attach products deterministically even if the LLM
+        # forgets to echo the key in its structured shopify_output. Per-request instance.
+        self.products_cache_key: Optional[str] = None
+
         # Register the functions
         self.register(self.list_products)
         self.register(self.get_product)
@@ -154,6 +158,7 @@ class ShopifyTools(Toolkit):
                                 })
                             )
                             logger.debug(f"Cached {len(products)} listed products with key: {product_cache_key}")
+                            self.products_cache_key = product_cache_key
                         except Exception as e:
                             logger.error(f"Failed to cache listed products in Redis: {str(e)}")
                             product_cache_key = None
@@ -441,6 +446,7 @@ class ShopifyTools(Toolkit):
                             })
                         )
                         logger.debug(f"Cached {len(products)} products with key: {product_cache_key}")
+                        self.products_cache_key = product_cache_key
                     except Exception as e:
                         logger.error(f"Failed to cache products in Redis: {str(e)}")
                         product_cache_key = None
@@ -1265,6 +1271,7 @@ class ShopifyTools(Toolkit):
                             })
                         )
                         logger.debug(f"Cached {len(products)} recommended products with key: {product_cache_key}")
+                        self.products_cache_key = product_cache_key
                     except Exception as e:
                         logger.error(f"Failed to cache recommended products in Redis: {str(e)}")
                         product_cache_key = None
