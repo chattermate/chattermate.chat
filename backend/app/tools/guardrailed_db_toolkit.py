@@ -90,21 +90,34 @@ class GuardrailedDBTools(Toolkit):
         if key in self._scope_cache:
             return self._scope_cache[key]
 
-        value = None
         try:
             from app.models.ticket import Ticket
             from app.repositories.customer import CustomerRepository
 
             with SessionLocal() as db:
-                ticket = db.query(Ticket).filter(Ticket.id == self.ticket_id).first()
+                # Pin the ticket to the connector's org. On every real path they
+                # already match (the worker builds tools from the ticket's own
+                # org connectors), but this fails closed if a future caller ever
+                # pairs a ticket with another org's connector.
+                query = db.query(Ticket).filter(Ticket.id == self.ticket_id)
+                if config.organization_id is not None:
+                    query = query.filter(
+                        Ticket.organization_id == config.organization_id
+                    )
+                ticket = query.first()
                 customer = ticket.customer if ticket else None
+                value = None
                 if customer is not None:
                     if key == "phone":
                         value = (customer.phone or "").strip() or None
                     else:
                         value = CustomerRepository.display_email(customer.email)
         except Exception as e:
+            # Don't cache a transient failure — a later query in the same run
+            # should retry, not stay permanently blocked. validate_sql fails
+            # closed on the None returned here, so this never opens a table up.
             logger.error(f"Row-scope lookup failed for ticket {self.ticket_id}: {e}")
+            return None
 
         self._scope_cache[key] = value
         return value
