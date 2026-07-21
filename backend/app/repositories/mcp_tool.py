@@ -53,6 +53,19 @@ class MCPToolRepository:
             MCPTool.id == mcp_tool_id
         ).first()
 
+    def get_by_ids(self, org_id: UUID, tool_ids: List[int], enabled_only: bool = True) -> List[MCPTool]:
+        """Get specific MCP tools by id, scoped to the organization — ids
+        from another org are silently dropped."""
+        if not tool_ids:
+            return []
+        query = self.db.query(MCPTool).filter(
+            MCPTool.organization_id == org_id,
+            MCPTool.id.in_(tool_ids),
+        )
+        if enabled_only:
+            query = query.filter(MCPTool.enabled == True)
+        return query.all()
+
     def get_org_mcp_tools(self, org_id: UUID, enabled_only: bool = True) -> List[MCPTool]:
         """Get all MCP tools for an organization"""
         query = self.db.query(MCPTool).filter(

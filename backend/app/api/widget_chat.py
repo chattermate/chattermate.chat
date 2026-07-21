@@ -1254,6 +1254,15 @@ async def handle_join_room(sid, data):
             logger.info(f"Agent {user_id} joined their user room")
             return
 
+        # Handle per-org ticket rooms (live ticket_update events)
+        if session_id.startswith('org_tickets_'):
+            org_id = session_id.removeprefix('org_tickets_')
+            if str(session.get('organization_id')) != org_id:
+                raise ValueError("Unauthorized to join org ticket room")
+            await sio.enter_room(sid, session_id, namespace='/agent')
+            logger.info(f"Agent {session.get('user_id')} joined ticket room for org {org_id}")
+            return
+
         # Verify this agent has permission to join this room
         db = next(get_db())
         session_repo = SessionToAgentRepository(db)
@@ -1276,10 +1285,10 @@ async def handle_join_room(sid, data):
             'user_id': str(session.get('user_id')),
         }, room=session_id, namespace='/agent')
 
-        session_data = {
-            'session_id': session_id,
-            'user_id': session.get('user_id'),
-        }
+        # Merge into the existing socket session — replacing it would drop
+        # keys set at connect (organization_id, used by the org ticket room
+        # authorization) and silently break later joins.
+        session_data = {**session, 'session_id': session_id}
         await sio.save_session(sid, session_data, namespace='/agent')
 
     except Exception as e:

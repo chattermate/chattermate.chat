@@ -443,6 +443,19 @@ const isAdvancedLocked = computed(() => {
     return !hasAdvancedFeature.value || !isSubscriptionActive.value
 })
 
+// AI Ticketing is a Pro-plan feature (the 'ai_ticketing' flag is true only for
+// Pro/Enterprise). Lock the per-agent toggle when the plan lacks it; OSS is
+// never locked.
+const hasTicketingFeature = computed(() => {
+    return subscriptionStorage.hasFeature('ai_ticketing')
+})
+const isTicketingLocked = computed(() => {
+    if (!hasEnterpriseModule) {
+        return false
+    }
+    return !hasTicketingFeature.value || !isSubscriptionActive.value
+})
+
 // Check if lead capture feature is available in current plan (Pro+ only)
 const hasLeadCaptureFeature = computed(() => {
     return subscriptionStorage.hasFeature('lead_capture')
@@ -575,6 +588,28 @@ const handleToggleUseWorkflow = async () => {
     } catch (error) {
         console.error('Error toggling workflow mode:', error)
         toast.error('Failed to update workflow mode', {
+            duration: 4000,
+            closeButton: true
+        })
+    }
+}
+
+// Toggle native AI ticketing for this agent (per-agent switch; the org plan
+// gate still applies on top in the backend).
+const toggleTicketing = async () => {
+    if (isTicketingLocked.value) return
+    try {
+        const newValue = !agentData.value.ticketing_enabled
+        const updatedAgent = await agentService.updateAgent(agentData.value.id, { ticketing_enabled: newValue })
+        Object.assign(agentData.value, updatedAgent)
+        agentStorage.updateAgent(updatedAgent)
+        toast.success(`AI ticketing ${newValue ? 'enabled' : 'disabled'} for this agent`, {
+            duration: 4000,
+            closeButton: true
+        })
+    } catch (error) {
+        console.error('Error toggling AI ticketing:', error)
+        toast.error('Failed to update AI ticketing', {
             duration: 4000,
             closeButton: true
         })
@@ -1112,6 +1147,8 @@ onMounted(async () => {
                         <div v-if="activeTab === 'integrations'" class="tab-content">
                             <AgentIntegrationsTab
                                 :agent-id="agentData.id"
+                                :ticketing-enabled="agentData.ticketing_enabled"
+                                :ticketing-locked="isTicketingLocked"
                                 :jira-connected="jiraConnected"
                                 :jira-loading="jiraLoading"
                                 :create-ticket-enabled="createTicketEnabled"
@@ -1123,6 +1160,7 @@ onMounted(async () => {
                                 :loading-issue-types="loadingIssueTypes"
                                 :shopify-integration-enabled="shopifyIntegrationEnabled"
                                 :shopify-shop-domain="shopifyShopDomain"
+                                @toggle-ticketing="toggleTicketing"
                                 @toggle-create-ticket="toggleCreateTicket"
                                 @handle-project-change="handleProjectChange"
                                 @handle-issue-type-change="handleIssueTypeChange"

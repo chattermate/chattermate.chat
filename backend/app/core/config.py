@@ -176,6 +176,9 @@ class Settings(BaseSettings):
     # 1 = strictly one business at a time (each job does LLM calls + vector-DB
     # reads); raise for more throughput on a bigger host.
     MAX_CONCURRENT_FAQ_JOBS: int = int(os.getenv("MAX_CONCURRENT_FAQ_JOBS", "1"))
+    # AI ticket triage/investigation runs processed concurrently across ALL
+    # orgs (each run does LLM calls; investigations later add MCP subprocesses).
+    MAX_CONCURRENT_INVESTIGATIONS: int = int(os.getenv("MAX_CONCURRENT_INVESTIGATIONS", "2"))
     # Subdomain labels reserved for infrastructure — must mirror the DNS/nginx
     # records that exist on the base domain, hence env-configurable.
     HELP_CENTER_RESERVED_SLUGS: frozenset = frozenset(

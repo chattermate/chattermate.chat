@@ -72,6 +72,12 @@ export function useNavItems() {
             show: permissionChecks.canViewChats(),
           },
           {
+            to: '/tickets',
+            icon: 'tickets',
+            label: 'Tickets',
+            show: permissionChecks.canViewTickets(),
+          },
+          {
             to: '/people',
             icon: 'people',
             label: 'People',
@@ -111,6 +117,12 @@ export function useNavItems() {
             icon: 'subscription',
             label: 'Subscription',
             show: hasEnterpriseModule && permissionChecks.canViewOrganization(),
+          },
+          {
+            to: '/settings/ticketing',
+            icon: 'ticketing',
+            label: 'Ticketing',
+            show: permissionChecks.canManageOrganization(),
           },
           {
             to: '/settings/integrations',

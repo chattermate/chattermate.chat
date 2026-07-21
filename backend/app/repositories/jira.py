@@ -92,6 +92,7 @@ class JiraRepository:
                 organization_id=agent.organization_id,
                 transfer_to_human=agent.transfer_to_human,
                 ask_for_rating=agent.ask_for_rating,
+                ticketing_enabled=agent.ticketing_enabled,
                 groups=agent.groups,
                 organization=agent.organization,
                 knowledge=[],  # Empty list as default

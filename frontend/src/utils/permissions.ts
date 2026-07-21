@@ -48,5 +48,11 @@ export const permissionChecks = {
   // Claiming a chat. Mirrors TAKEOVER_PERMISSIONS in api/session_to_agent.py
   canTakeOverChats: () => hasAnyPermission(['manage_all_chats', 'manage_assigned_chats']),
   canManageKnowledge: () => hasPermission('manage_knowledge'),
-  canViewAnalytics: () => hasPermission('view_analytics')
-} 
+  canViewAnalytics: () => hasPermission('view_analytics'),
+  canViewTickets: () => hasAnyPermission(['view_tickets', 'manage_tickets']),
+  // hasAnyPermission, not hasPermission: the backend's approve check bypasses
+  // on super_admin, so the frontend must too or the banner hides Approve/Reject
+  // for an admin the API would happily let approve (two layers disagreeing).
+  canManageTickets: () => hasAnyPermission(['manage_tickets']),
+  canApproveTicketActions: () => hasAnyPermission(['approve_ticket_actions']),
+}

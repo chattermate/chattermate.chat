@@ -49,6 +49,17 @@ from app.models.faq import FAQ, FAQStatus
 from app.models.help_center import (
     HelpCenterSettings, HelpCenterQuery, DomainStatus, SSLStatus,
 )
+from app.models.ticket import (
+    Ticket, TicketSequence, TicketSession,
+    TicketStatus, TicketPriority, TicketSource, ResolutionOutcome,
+)
+from app.models.ticket_activity import TicketActivity, TicketActivityType, TicketActorType
+from app.models.ticket_settings import OrganizationTicketSettings
+from app.models.investigation import (
+    InvestigationRun, InvestigationRunType, InvestigationRunStatus, InvestigationTrigger,
+    InvestigationHypothesis, InvestigationEvent, RCADocument, TicketProposal,
+)
+from app.models.ticket_db_connector import TicketDBConnector, DBConnectorAuditLog
 
 
 
@@ -97,4 +108,25 @@ __all__ = [
     "HelpCenterQuery",
     "DomainStatus",
     "SSLStatus",
+    "Ticket",
+    "TicketSequence",
+    "TicketSession",
+    "TicketStatus",
+    "TicketPriority",
+    "TicketSource",
+    "ResolutionOutcome",
+    "TicketActivity",
+    "TicketActivityType",
+    "TicketActorType",
+    "OrganizationTicketSettings",
+    "InvestigationRun",
+    "InvestigationRunType",
+    "InvestigationRunStatus",
+    "InvestigationTrigger",
+    "InvestigationHypothesis",
+    "InvestigationEvent",
+    "RCADocument",
+    "TicketProposal",
+    "TicketDBConnector",
+    "DBConnectorAuditLog",
 ]

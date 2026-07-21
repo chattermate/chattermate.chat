@@ -283,6 +283,13 @@
   cursor: not-allowed;
 }
 
+/* Native checkboxes/radios follow the design accent instead of the browser
+   default (blue), so form controls match the theme app-wide. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent-ink);
+}
+
 /* Nav section heading — shared by the desktop sidebar and the mobile More
    sheet so the two menus can't drift apart visually. */
 .nav-section-heading {

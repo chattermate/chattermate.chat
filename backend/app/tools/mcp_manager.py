@@ -15,8 +15,9 @@ limitations under the License.
 """
 
 import asyncio
+from datetime import timedelta
 from typing import List, Optional
-from agno.tools.mcp import MCPTools
+from agno.tools.mcp import MCPTools, SSEClientParams, StreamableHTTPClientParams
 from app.database import SessionLocal
 from app.repositories.mcp_tool import MCPToolRepository
 from app.models.mcp_tool import MCPTransportType
@@ -24,13 +25,34 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+CONNECT_TIMEOUT_SECONDS = 10.0
+
 
 class MCPToolsManager:
     """Manager class for handling MCP tools initialization and cleanup"""
-    
+
     def __init__(self):
         self.mcp_tools: List[MCPTools] = []
-    
+
+    async def initialize_mcp_tools_by_ids(
+        self, org_id: str, tool_ids: List[int]
+    ) -> List[MCPTools]:
+        """
+        Initialize a specific set of the organization's MCP tools by id —
+        used by the ticket investigation worker, whose connector selection
+        (organization_ticket_settings.investigation_mcp_tool_ids) is
+        deliberately separate from the chat-facing agent associations.
+        """
+        if not org_id or not tool_ids:
+            return []
+        try:
+            with SessionLocal() as db:
+                configs = MCPToolRepository(db).get_by_ids(org_id, tool_ids)
+        except Exception as e:
+            logger.error(f"Failed to load MCP tools {tool_ids} for org {org_id}: {e}")
+            return []
+        return await self._initialize_from_configs(configs)
+
     async def initialize_mcp_tools(self, agent_id: str, org_id: str) -> List[MCPTools]:
         """
         Initialize MCP tools for an agent asynchronously.
@@ -38,18 +60,26 @@ class MCPToolsManager:
         """
         if not agent_id or not org_id:
             return []
-            
+
         try:
             # Get MCP tools for this agent from database
             with SessionLocal() as db:
                 mcp_tool_repo = MCPToolRepository(db)
                 agent_mcp_tools = mcp_tool_repo.get_agent_mcp_tools(agent_id)
-                
+        except Exception as e:
+            logger.error(f"Failed to get MCP tools for agent {agent_id}: {e}")
+            return self.mcp_tools
+        return await self._initialize_from_configs(agent_mcp_tools)
+
+    async def _initialize_from_configs(self, configs) -> List[MCPTools]:
+        """Build + connect each configured tool, keeping only the ones that
+        come up with functions available."""
+        try:
             # Initialize each MCP tool asynchronously
-            for mcp_tool_config in agent_mcp_tools:
+            for mcp_tool_config in configs:
                 try:
                     logger.debug(f"Initializing MCP tool: {mcp_tool_config.name}")
-                    
+
                     if mcp_tool_config.transport_type == MCPTransportType.STDIO:
                         # Build command string for STDIO transport
                         if mcp_tool_config.command and mcp_tool_config.args:
@@ -103,68 +133,97 @@ class MCPToolsManager:
                                 
                             # Create MCPTools instance with environment variables
                             mcp_tool = MCPTools(command_str, env=env_vars_for_process)
-                            
-                            # Connect the tool asynchronously with timeout
-                            connected = False
-                            try:
-                                # Try to initialize the MCP tool using context manager
-                                await asyncio.wait_for(mcp_tool.__aenter__(), timeout=10.0)
-                                connected = True
-                                logger.debug(f"Entered MCP tool context: {mcp_tool_config.name}")
-                            except asyncio.TimeoutError:
-                                logger.error(f"Timeout connecting to MCP tool {mcp_tool_config.name}")
-                                # Try to cleanup the failed tool
-                                try:
-                                    await asyncio.wait_for(mcp_tool.__aexit__(None, None, None), timeout=2.0)
-                                except:
-                                    pass
-                                continue
-                            except Exception as e:
-                                logger.error(f"Failed to connect MCP tool {mcp_tool_config.name}: {e}")
-                                # For package not found errors (like Git server), skip silently after first error
-                                if "404" in str(e) or "not found" in str(e).lower() or "no such package" in str(e).lower():
-                                    logger.warning(f"MCP tool package not found, skipping: {mcp_tool_config.name}")
-                                # Try to cleanup the failed tool
-                                try:
-                                    await asyncio.wait_for(mcp_tool.__aexit__(None, None, None), timeout=2.0)
-                                except:
-                                    pass
-                                continue
-                            
-                            # Verify functions are loaded after connection
-                            if connected and hasattr(mcp_tool, 'functions') and mcp_tool.functions:
-                                logger.debug(f"MCP tool {mcp_tool_config.name} loaded functions: {list(mcp_tool.functions.keys())}")
-                                self.mcp_tools.append(mcp_tool)
-                            else:
-                                logger.warning(f"MCP tool {mcp_tool_config.name} has no functions available after connection")
-                                # Try to cleanup the failed tool
-                                try:
-                                    if hasattr(mcp_tool, 'disconnect'):
-                                        await mcp_tool.disconnect()
-                                    elif hasattr(mcp_tool, '__aexit__'):
-                                        await mcp_tool.__aexit__(None, None, None)
-                                except:
-                                    pass  # Ignore cleanup errors for failed tools
-                                
+                            await self._connect_and_register(mcp_tool, mcp_tool_config.name)
+
                         else:
                             logger.warning(f"STDIO MCP tool {mcp_tool_config.name} missing command or args")
-                            
+
                     elif mcp_tool_config.transport_type in [MCPTransportType.SSE, MCPTransportType.HTTP]:
-                        # For SSE/HTTP transports, we would need different initialization
-                        logger.warning(f"SSE/HTTP MCP tools not yet implemented for {mcp_tool_config.name}")
-                        
+                        mcp_tool = self._build_remote_tool(mcp_tool_config)
+                        await self._connect_and_register(mcp_tool, mcp_tool_config.name)
+
                 except Exception as e:
                     logger.error(f"Failed to initialize MCP tool {mcp_tool_config.name}: {e}")
                     import traceback
                     logger.error(f"MCP tool error traceback: {traceback.format_exc()}")
                     continue
-                    
+
         except Exception as e:
-            logger.error(f"Failed to get MCP tools for agent {agent_id}: {e}")
-            
-        logger.debug(f"Initialized {len(self.mcp_tools)} MCP tools for agent {agent_id}")
+            logger.error(f"Failed to initialize MCP tools: {e}")
+
+        logger.debug(f"Initialized {len(self.mcp_tools)} MCP tools")
         return self.mcp_tools
-    
+
+    @staticmethod
+    def _build_remote_tool(config) -> Optional[MCPTools]:
+        """MCPTools for a remote MCP server. HTTP uses the streamable-HTTP
+        transport; SSE is kept for servers that only speak the older
+        transport."""
+        if not config.url:
+            logger.warning(f"Remote MCP tool {config.name} missing URL, skipping")
+            return None
+        headers = config.headers or None
+        timeout = config.timeout or 30
+        sse_read_timeout = config.sse_read_timeout or 300
+        if config.transport_type == MCPTransportType.SSE:
+            server_params = SSEClientParams(
+                url=config.url,
+                headers=headers,
+                timeout=timeout,
+                sse_read_timeout=sse_read_timeout,
+            )
+            return MCPTools(url=config.url, transport="sse", server_params=server_params)
+        server_params = StreamableHTTPClientParams(
+            url=config.url,
+            headers=headers,
+            timeout=timedelta(seconds=timeout),
+            sse_read_timeout=timedelta(seconds=sse_read_timeout),
+            terminate_on_close=(
+                config.terminate_on_close if config.terminate_on_close is not None else True
+            ),
+        )
+        return MCPTools(url=config.url, transport="streamable-http", server_params=server_params)
+
+    async def _connect_and_register(self, mcp_tool: Optional[MCPTools], name: str) -> bool:
+        """Connect a built tool, verify it exposes functions, and register it
+        for use + cleanup. Failed tools are torn down, never registered."""
+        if mcp_tool is None:
+            return False
+        try:
+            await asyncio.wait_for(mcp_tool.__aenter__(), timeout=CONNECT_TIMEOUT_SECONDS)
+            logger.debug(f"Entered MCP tool context: {name}")
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout connecting to MCP tool {name}")
+            await self._abort_tool(mcp_tool)
+            return False
+        except Exception as e:
+            logger.error(f"Failed to connect MCP tool {name}: {e}")
+            # For package not found errors (like Git server), skip silently after first error
+            if "404" in str(e) or "not found" in str(e).lower() or "no such package" in str(e).lower():
+                logger.warning(f"MCP tool package not found, skipping: {name}")
+            await self._abort_tool(mcp_tool)
+            return False
+
+        # Verify functions are loaded after connection
+        if getattr(mcp_tool, "functions", None):
+            logger.debug(f"MCP tool {name} loaded functions: {list(mcp_tool.functions.keys())}")
+            # Configured display name — lets consumers (e.g. the investigation
+            # evidence log) attribute each tool call to its connector.
+            mcp_tool._connector_name = name
+            self.mcp_tools.append(mcp_tool)
+            return True
+        logger.warning(f"MCP tool {name} has no functions available after connection")
+        await self._abort_tool(mcp_tool)
+        return False
+
+    @staticmethod
+    async def _abort_tool(mcp_tool: MCPTools) -> None:
+        """Best-effort teardown of a tool that failed to come up."""
+        try:
+            await asyncio.wait_for(mcp_tool.__aexit__(None, None, None), timeout=2.0)
+        except Exception:
+            pass
+
     async def cleanup_mcp_tools(self):
         """
         Clean up MCP tools by properly disconnecting them.

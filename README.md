@@ -51,7 +51,8 @@ ChatterMate is a **no-code AI customer support platform** that enables businesse
 | 💬 **Ask Anything Mode** | Let visitors start conversations instantly — no signup or email required. Perfect for Q&A, documentation assistants, and exploratory chat experiences. |
 | 📎 **File Attachments** | Customers can share **images, PDFs, Word docs, spreadsheets**, and more directly in chat. Secure uploads with S3 storage and magic byte validation. |
 | 🌍 **Auto Translation** | Multilingual support with configurable **default language per workflow**. Serve customers globally in their preferred language. |
-| 🎫 **Jira Ticket Creation** | Create and manage **Jira tickets directly from chat** conversations. OAuth 2.0 secure integration with automatic ticket tracking. |
+| 🎫 **AI Ticketing** | Native tickets raised straight from chat, then **auto-triaged and investigated by AI** — it forms hypotheses, gathers evidence from your observability tools and databases, and writes a root-cause analysis you can read and audit. See [AI Ticketing](#ai-ticketing). |
+| 🔗 **Jira Ticket Creation** | Create and manage **Jira tickets directly from chat** conversations. OAuth 2.0 secure integration with automatic ticket tracking. Native tickets can also escalate to Jira one-way. |
 | 🔑 **Widget Authentication** | **Token-based security** for embedded widgets. Support both public Q&A and private authenticated conversations. |
 | 💼 **Slack Integration** | Connect your **Slack workspace** for internal product support. Teams get AI-powered assistance directly in Slack channels. |
 | 🧩 **Visual Workflow Builder** | Design conversation flows with a **drag-and-drop interface**. Branching logic, conditional responses, and multi-step workflows without coding. |
@@ -68,6 +69,66 @@ Build sophisticated conversation flows visually with our intuitive workflow buil
 - **Node types** - Start, AI Response, Human Transfer, Condition, End nodes
 - **Real-time preview** - Test workflows before deploying
 - **Version control** - Save and restore workflow versions
+
+### AI Ticketing
+
+Tickets are raised from a conversation (by the AI or an agent), or from an alert
+webhook. Each one is triaged, deduplicated against open tickets, and then
+investigated: the AI proposes hypotheses, tests each against your connected
+tools, and records every query it ran as evidence you can inspect. The result is
+a versioned root-cause analysis with citations back to that evidence.
+
+Connect read-only investigation sources under **Settings → Ticketing**:
+observability platforms via MCP (Grafana, Elasticsearch, Sentry, CloudWatch, or
+any MCP server), and optionally a **guardrailed SQL connector** (Postgres/MySQL,
+direct or over an SSH tunnel).
+
+**Autonomy is staged, and you choose the level:**
+
+| Level | The AI can |
+|-------|-----------|
+| **L1** | Investigate and document only |
+| **L2** | Also propose a resolution — a human approves or rejects it |
+| **L3** | Also message the customer and close the ticket, behind confidence guards |
+
+#### Guardrails
+
+The investigation agent reads untrusted customer text and holds live tool
+access, so the limits are enforced in code, not by prompting:
+
+- **The SQL connector is read-only, structurally.** Queries are parsed to an AST
+  and rejected unless they are a single plain `SELECT`. Writes, DDL, multiple
+  statements, and a denylist of dangerous functions cannot pass. Table access is
+  restricted to an allowlist you pick, enforced through CTEs, joins and
+  subqueries. A `LIMIT` is forced. Comments are stripped before execution, since
+  MySQL executes `/*! */`. The connection itself is a read-only transaction with
+  a statement timeout — a second, independent barrier.
+- **Columns you mask are never readable.** Masked columns are blocked from being
+  referenced anywhere, including in a `WHERE` clause, so their values can't be
+  probed; whole-row tricks that would smuggle them out (`to_jsonb(t)`, `t::text`,
+  `to_json(t.*)`) are blocked too, and results are masked again on the way back.
+- **Nothing is written to your database, ever.** Approving an AI proposal records
+  the decision — any change to your systems is made by your team.
+- **Row-level scoping keeps one customer's data out of another's ticket.** Mark
+  the column that identifies the customer on any table holding per-customer rows
+  (`orders → customer_email`). Queries against it are rewritten to read only the
+  ticket customer's own rows — the AI cannot widen that, because the filter is
+  applied to the table it selects *from*, not to a condition it could write
+  around. A ticket with no known customer cannot query a scoped table at all,
+  rather than falling back to reading everything. Tables you leave unscoped
+  (products, error codes) stay fully readable.
+- **Cross-customer isolation on outbound messages.** Identifiers belonging to
+  anyone other than the recipient are stripped from every message sent to a
+  customer, and other customers' tickets are redacted before they reach the
+  model — a second line behind row scoping.
+- **Every query is audited.** Each attempt is logged with the SQL and outcome;
+  returned rows are deliberately never stored.
+
+> **When you connect a database:** set a row-scope column for every table that
+> holds per-customer rows — it's the control that stops the agent reading across
+> customers, and it's off until you set it. Point the connector at a service
+> account restricted to what support genuinely needs, and prefer views that are
+> already scoped.
 
 ### Platform Features
 

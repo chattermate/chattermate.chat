@@ -22,10 +22,13 @@ import { userService } from '@/services/user'
 import { socketService } from '@/services/socket'
 import { toast } from 'vue-sonner'
 import api from '@/services/api'
+import LinkedTicketCard from '@/components/tickets/LinkedTicketCard.vue'
+import { permissionChecks } from '@/utils/permissions'
 import { canRequestRating, endChatMessage as endChatMessageFor } from '@/utils/endChat'
 import { getInitials } from '@/utils/text'
 import { canTakeOverChat } from '@/utils/chatState'
-import { permissionChecks } from '@/utils/permissions'
+
+const canViewTickets = permissionChecks.canViewTickets()
 
 interface Props {
   chatInfo: ChatDetail | null
@@ -296,6 +299,10 @@ const confirmReassign = async () => {
           <span class="label">{{ entry.label }}:</span>
           <span class="value">{{ entry.value }}</span>
         </div>
+      </div>
+
+      <div v-if="canViewTickets && chatInfo.session_id" class="info-section">
+        <LinkedTicketCard :session-id="chatInfo.session_id" />
       </div>
 
       <div class="info-section">

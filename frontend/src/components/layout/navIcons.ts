@@ -25,6 +25,8 @@ export const NAV_ICONS: Record<string, string> = {
     analytics: '<line x1="5" y1="17" x2="5" y2="13"/><line x1="10" y1="17" x2="10" y2="9"/><line x1="15" y1="17" x2="15" y2="6"/><line x1="20" y1="17" x2="20" y2="11"/>',
     knowledge: '<path d="M4 5.5A2 2 0 0 1 6 4h5v16H6a2 2 0 0 0-2 1.5z"/><path d="M20 5.5A2 2 0 0 0 18 4h-5v16h5a2 2 0 0 1 2 1.5z"/>',
     faq: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.3a2.7 2.7 0 0 1 5.2 1c0 1.8-2.5 2-2.5 3.3"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>',
+    tickets: '<path d="M4 9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2 2 2 0 0 0 0 4 2 2 0 0 1-2 2H6a2 2 0 0 1-2-2 2 2 0 0 0 0-4z"/><line x1="14" y1="8" x2="14" y2="16" stroke-dasharray="2 2.4"/>',
+    ticketing: '<circle cx="12" cy="12" r="3"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/>',
     org: '<rect x="4" y="4" width="14" height="16" rx="2"/><line x1="20" y1="20" x2="20" y2="11"/><line x1="18" y1="11" x2="22" y2="11"/><circle cx="8" cy="9" r=".6" fill="currentColor"/><circle cx="12" cy="9" r=".6" fill="currentColor"/><circle cx="8" cy="13" r=".6" fill="currentColor"/><circle cx="12" cy="13" r=".6" fill="currentColor"/>',
     subscription: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="7" y1="14" x2="11" y2="14"/>',
     integrations: '<line x1="12" y1="12" x2="6" y2="6"/><line x1="12" y1="12" x2="18" y2="6"/><line x1="12" y1="12" x2="12" y2="19"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="19" r="2"/>',
