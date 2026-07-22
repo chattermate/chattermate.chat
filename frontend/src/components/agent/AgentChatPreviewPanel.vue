@@ -17,8 +17,8 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
-import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
-import { resolveOrbStyle } from '@/utils/orb'
+import { isAbsoluteUrl } from '@/utils/avatars'
+import { orbSvgDataUri, resolveOrbStyle } from '@/utils/orb'
 import { themeCssVars } from '@/webclient/widget-theme'
 import '@/webclient/widget-surface.css'
 import { useAgentChat } from '@/composables/useAgentChat'
@@ -32,6 +32,9 @@ const props = defineProps<{
     agentType: string
     agentName: string
     agentId: string
+    // Seed for the fallback orb; pass the agent slug so it matches the list and
+    // detail header. Falls back to agentName when not given.
+    orbSeed?: string
 }>()
 console.log('AgentChatPreviewPanel props:', props.customization)
 const isExpanded = ref(true)
@@ -324,8 +327,15 @@ const messageNameStyles = computed(() => ({
 }))
 
 const photoUrl = computed(() => {
+    // These are <img> slots in chat bubbles, so the fallback has to be an image:
+    // the orb as an SVG data URI. Previously the retired /avatars/*.svg artwork.
+    // Seeded off orbSeed (the agent slug) so it matches the orb on the detail
+    // header and in the list, which use the same seed.
     if (!props.customization.photo_url) {
-        return getAvatarUrl(props.agentType.toLowerCase())
+        return orbSvgDataUri(
+            props.orbSeed || props.agentName,
+            props.customization.customization_metadata?.orb_variant,
+        )
     }
     
     // Use signed URL if available (for S3)

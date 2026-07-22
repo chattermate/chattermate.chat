@@ -17,7 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
-import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
+import { isAbsoluteUrl } from '@/utils/avatars'
 import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri, terminalMarkSvgDataUri } from '@/utils/orb'
 
 import KnowledgeExplorer from '@/components/knowledge/KnowledgeExplorer.vue'
@@ -72,6 +72,11 @@ const useOrbAvatar = computed(() => orbMeta.value?.avatar_style === 'orb')
 const useTerminalMark = computed(() => orbMeta.value?.avatar_style === 'terminal')
 const currentOrbVariant = computed(() => orbMeta.value?.orb_variant)
 const orbStyle = computed(() => resolveOrbStyle(agentData.value.name || '', currentOrbVariant.value))
+// Orb whenever it was chosen explicitly, and whenever there is no picture at all
+// — the same rule the agent list uses, so the two views agree.
+const showOrbAvatar = computed(
+  () => !optimisticPhoto.value && (useOrbAvatar.value || !agentData.value.customization?.photo_url),
+)
 
 const persistAvatarMeta = async (patch: Record<string, unknown>, photoUrl?: string) => {
   const cust = agentData.value.customization
@@ -304,8 +309,12 @@ const photoUrl = computed(() => {
         return optimisticPhoto.value
     }
 
+    // No photo is handled by showOrbAvatar below, which renders the same orb the
+    // agent list shows. It used to fall back to getAvatarUrl() — the retired
+    // /avatars/*.svg artwork — so any agent created without a picture (the CLI
+    // never sets one) showed the old illustration here while the list looked right.
     if (!agentData.value.customization?.photo_url) {
-        return getAvatarUrl(agentData.value.agent_type.toLowerCase())
+        return ''
     }
 
     // Absolute S3/CDN URL — use it directly
@@ -816,7 +825,7 @@ onMounted(async () => {
                         <input type="file" ref="fileInput" accept="image/jpeg,image/png,image/webp" class="hidden"
                             @change="handleFileUpload">
                         <div class="agent-avatar-ring">
-                            <div v-if="useOrbAvatar && !optimisticPhoto" class="agent-orb-avatar" :class="{ 'opacity-50': isUploading }" :style="orbStyle"></div>
+                            <div v-if="showOrbAvatar" class="agent-orb-avatar" :class="{ 'opacity-50': isUploading }" :style="orbStyle"></div>
                             <img v-else :src="photoUrl" :alt="agentData.name" :class="{ 'opacity-50': isUploading }">
                             <div class="upload-overlay" v-if="!isUploading">
                                 <span>Change</span>
@@ -1232,6 +1241,7 @@ onMounted(async () => {
                                         :customization="previewCustomization"
                                         :agent-type="agentData.agent_type"
                                         :agent-name="agentData.display_name || agentData.name"
+                                        :orb-seed="agentData.name"
                                         :agent-id="agentData.id"
                                     />
                                 </div>

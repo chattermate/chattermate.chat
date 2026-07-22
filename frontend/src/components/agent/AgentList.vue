@@ -18,7 +18,8 @@ limitations under the License.
 
 import type { Agent } from '@/types/agent';
 import type { Widget } from '@/types/widget';
-import { getAvatarUrl, isAbsoluteUrl } from '@/utils/avatars'
+import { isAbsoluteUrl } from '@/utils/avatars'
+import { resolveOrbStyle } from '@/utils/orb'
 import { useAgentStorage, useSubscriptionStorage } from '@/utils/storage'
 import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { agentService } from '@/services/agent'
@@ -252,8 +253,9 @@ const handleAgentClick = (agent: Agent) => {
     }
 }
 
+// Only called when a photo exists — the orb covers the no-photo case.
 const getAgentPhotoUrl = (agent: Agent) => {
-    if (!agent.customization?.photo_url) return getAvatarUrl(agent.agent_type.toLowerCase())
+    if (!agent.customization?.photo_url) return ''
     if (isAbsoluteUrl(agent.customization.photo_url)) return agent.customization.photo_url
     return import.meta.env.VITE_API_URL + agent.customization.photo_url
 }
@@ -262,28 +264,11 @@ const handleFullscreenToggle = (isFullscreen: boolean) => {
     emit('toggle-fullscreen', isFullscreen)
 }
 
-// Colorful gradient orb per agent (matches design aesthetic)
-const ORB_PALETTES = [
-    { stops: 'var(--c-purple), var(--c-teal), var(--accent-ink)', glow: 'rgba(157,140,255,0.45)' },
-    { stops: 'var(--c-coral), var(--c-purple), var(--c-teal)', glow: 'rgba(255,138,115,0.4)' },
-    { stops: 'var(--c-teal), var(--accent-ink), var(--c-purple)', glow: 'rgba(95,227,214,0.4)' },
-    { stops: 'var(--accent-ink), var(--c-teal), var(--c-coral)', glow: 'rgba(201,242,78,0.35)' },
-    { stops: 'var(--c-purple), var(--c-coral), var(--c-teal)', glow: 'rgba(157,140,255,0.4)' },
-]
-
+// Colorful gradient orb per agent. Uses the shared palettes rather than a local
+// copy, so the orb here matches the one on the agent's detail page.
 const getOrbStyle = (agent: Agent): Record<string, string> => {
     if (agent.customization?.photo_url) return {}
-    const idx = agent.name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % ORB_PALETTES.length
-    const p = ORB_PALETTES[idx]
-    return {
-        background: `
-            radial-gradient(circle at 32% 28%, rgba(255,255,255,0.22) 0%, transparent 42%),
-            radial-gradient(circle at 68% 72%, rgba(0,0,0,0.25) 0%, transparent 38%),
-            radial-gradient(ellipse at 50% 50%, ${p.stops})
-        `.trim(),
-        boxShadow: `0 4px 28px ${p.glow}, inset 0 1px 0 rgba(255,255,255,0.15)`,
-        borderRadius: '50%',
-    }
+    return resolveOrbStyle(agent.name, agent.customization?.customization_metadata?.orb_variant)
 }
 </script>
 
