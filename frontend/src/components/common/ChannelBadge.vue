@@ -22,6 +22,7 @@ const props = defineProps<{
 }>()
 
 const CHANNEL_LABELS: Record<string, string> = {
+  shopify: 'Shopify',
   telegram: 'Telegram',
   whatsapp: 'WhatsApp',
   messenger: 'Messenger',

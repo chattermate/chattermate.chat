@@ -15,13 +15,21 @@ limitations under the License.
 */
 
 /**
- * Rating is a web-widget-only feature. External channels (WhatsApp, Messenger,
+ * Channels served by our own widget rather than an external messaging platform.
+ * Mirrors WIDGET_CHANNELS in backend/app/channels/constants.py — keep the two
+ * in step. 'shopify' is the widget embedded in a storefront: a separate label
+ * in the inbox, the same chat surface.
+ */
+const WIDGET_CHANNELS = ['web', 'shopify']
+
+/**
+ * Rating is a widget-only feature. External channels (WhatsApp, Messenger,
  * Instagram, Telegram, ...) render plain text and have no rating UI, so asking
  * there leaves the customer a question they cannot answer. The backend applies
  * the same rule to AI-ended chats.
  */
 export const canRequestRating = (channel?: string | null): boolean =>
-  !channel || channel === 'web'
+  !channel || WIDGET_CHANNELS.includes(channel)
 
 /** Closing message shown to the customer when an agent ends the chat. */
 export const endChatMessage = (channel?: string | null): string =>

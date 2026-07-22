@@ -18,6 +18,7 @@ import traceback
 from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
+from app.channels.constants import is_widget_channel
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
 from app.database import get_db, SessionLocal, engine
@@ -868,9 +869,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
         session_repo = SessionToAgentRepository(db)
         
         # Determine if rating should be requested
-        if self.channel != 'web':
-            # Rating is a web-widget-only feature: external channels have no
+        if not is_widget_channel(self.channel):
+            # Rating is a widget-only feature: external channels have no
             # rating UI, so asking there leaves the customer a dead-end prompt.
+            # Shopify counts as the widget — see WIDGET_CHANNELS.
             should_request_rating = False
         elif force_rating is not None:
             # Use the forced setting from workflow configuration
