@@ -52,6 +52,16 @@ try:
 except ImportError:
     HAS_ENTERPRISE = False
 
+# Disposable-address rejection lives in the enterprise module: the hosted signup
+# flow is what attracts throwaway signups, and the community edition has no
+# reason to carry an 8k-domain blocklist. Absent, every address is accepted.
+try:
+    from app.enterprise.services.email_validation import ensure_not_disposable
+
+    HAS_EMAIL_VALIDATION = True
+except ImportError:
+    HAS_EMAIL_VALIDATION = False
+
 logger = get_logger(__name__)
 router = APIRouter(
     tags=["users"]
@@ -99,8 +109,11 @@ async def create_user(
 ):
     """Create a new user"""
     try:
+        if HAS_EMAIL_VALIDATION:
+            ensure_not_disposable(user_data.email)
+
         user_repo = UserRepository(db)
-        
+
         # Check if email already exists
         if user_repo.get_user_by_email(user_data.email):
             raise HTTPException(
@@ -755,8 +768,11 @@ async def update_profile(
         if hasattr(data, 'role_id'):
             delattr(data, 'role_id')
         
-        # If updating email, check if it's already taken
+        # If updating email, check it's a real mailbox and not already taken.
+        # Same bounce risk as signup, and otherwise a trivial way around that gate.
         if data.email and data.email != current_user.email:
+            if HAS_EMAIL_VALIDATION:
+                ensure_not_disposable(data.email)
             existing_user = user_repo.get_user_by_email(data.email)
             if existing_user:
                 raise HTTPException(
@@ -824,6 +840,8 @@ async def update_user(
     
     # Check if updating email and if it's already taken
     if user_data.email and user_data.email != user.email:
+        if HAS_EMAIL_VALIDATION:
+            ensure_not_disposable(user_data.email)
         existing_user = user_repo.get_user_by_email(user_data.email)
         if existing_user:
             raise HTTPException(
