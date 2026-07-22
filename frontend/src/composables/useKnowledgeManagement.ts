@@ -88,13 +88,14 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
         fetchQueueItems(),
       ])
 
-      // Update agent knowledge
-      knowledgeItems.value = agentResponse.knowledge
-      totalPages.value = agentResponse.pagination.total_pages
+      // Default to empty: a partial response used to leave these undefined,
+      // and every later .some()/.length on them threw.
+      knowledgeItems.value = agentResponse?.knowledge || []
+      totalPages.value = agentResponse?.pagination?.total_pages || 0
 
       // Update org knowledge
-      orgKnowledgeItems.value = orgResponse.knowledge
-      orgTotalPages.value = orgResponse.pagination.total_pages
+      orgKnowledgeItems.value = orgResponse?.knowledge || []
+      orgTotalPages.value = orgResponse?.pagination?.total_pages || 0
     } catch (err) {
       error.value = 'Failed to load knowledge sources'
       console.error(err)
@@ -160,11 +161,24 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
     )
   }
 
+  // People type "docs.company.com", not "https://docs.company.com". Without a
+  // scheme new URL() throws and they get "Please enter a valid URL" for an
+  // address that is perfectly fine, so default the scheme before validating.
+  const withScheme = (url: string): string => {
+    const trimmed = url.trim()
+    if (!trimmed) return trimmed
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed
+    // Leading slashes would produce https:////host — drop them first.
+    return `https://${trimmed.replace(/^\/+/, '')}`
+  }
+
   // URL validation
   const isValidUrl = (url: string): boolean => {
     try {
-      new URL(url)
-      return true
+      const parsed = new URL(url)
+      // new URL() accepts things like "mailto:x" and "foo:bar"; a crawlable
+      // source has to be http(s) with an actual host.
+      return /^https?:$/.test(parsed.protocol) && parsed.hostname.includes('.')
     } catch {
       return false
     }
@@ -216,8 +230,12 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
   const handleUrlAdd = () => {
     if (!newUrl.value) return
 
-    // Clean the URL
-    const cleanUrl = newUrl.value.trim()
+    // Start clean so the outcome of this attempt is the only thing on screen,
+    // and so callers can read urlFormError to tell whether it succeeded.
+    urlFormError.value = null
+
+    // Clean the URL, defaulting the scheme when the user left it off
+    const cleanUrl = withScheme(newUrl.value)
 
     // Basic URL validation
     if (!isValidUrl(cleanUrl)) {
@@ -446,6 +464,7 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
 
     getFirstCreated,
     isValidUrl,
+    withScheme,
     triggerFileInput,
     handleFileSelect,
     handleFileUpload,

@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
+import { organizationService } from '@/services/organization'
 
 const props = defineProps<{
   agentId: string
@@ -46,17 +47,40 @@ const {
   handleUrlUpload,
   handleFileUpload,
   fetchKnowledge,
+  withScheme,
 } = useKnowledgeManagement(props.agentId, props.organizationId)
 
 const advancing = ref(false)
 
+// The site they gave us at signup is almost always what they want indexed
+// first, so offer it rather than making them retype it. Only a suggestion —
+// it stays editable, and we never overwrite something already typed.
+const prefillFromOrgDomain = async () => {
+  try {
+    const org = await organizationService.getOrganization(props.organizationId)
+    if (org?.domain && !newUrl.value) {
+      newUrl.value = withScheme(org.domain)
+    }
+  } catch {
+    // A missing prefill is not worth blocking or alarming the user over.
+  }
+}
+
 onMounted(() => {
   fetchKnowledge()
+  prefillFromOrgDomain()
 })
 
 // Flush any staged URLs/files, then advance. Ingestion runs async in the
 // background — we don't block the wizard on it.
 const handleContinue = async () => {
+  // A URL sitting in the box (the prefill, or one they typed without pressing
+  // "+ Website") reads as accepted. Stage it rather than silently dropping it.
+  if (newUrl.value.trim()) {
+    handleUrlAdd()
+    if (urlFormError.value) return
+  }
+
   advancing.value = true
   try {
     if (urls.value.length) await handleUrlUpload()
