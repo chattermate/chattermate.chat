@@ -35,6 +35,21 @@ import json
 from urllib.parse import unquote
 from tests.conftest import engine, TestingSessionLocal, create_tables, test_organization
 
+# The disposable-address gate is enterprise-only; a community checkout has no
+# blocklist and accepts everything.
+try:
+    from app.enterprise.services.email_validation import DISPOSABLE_EMAIL_MESSAGE
+
+    HAS_EMAIL_VALIDATION = True
+except ImportError:
+    DISPOSABLE_EMAIL_MESSAGE = ""
+    HAS_EMAIL_VALIDATION = False
+
+requires_email_validation = pytest.mark.skipif(
+    not HAS_EMAIL_VALIDATION, reason="enterprise email validation not installed"
+)
+
+
 # Create a test FastAPI app
 app = FastAPI()
 app.include_router(
@@ -198,6 +213,31 @@ def test_create_user_duplicate_email(client: TestClient, test_user: User, test_r
     response = client.post("/api/v1/users", json=user_data)
     assert response.status_code == 400  # Bad request for duplicate email
     assert "Email already registered" in response.json()["detail"]
+
+@requires_email_validation
+def test_create_user_rejects_disposable_email(admin_client: TestClient, test_role: Role, test_organization):
+    """Test that an invited teammate cannot be created on a throwaway domain"""
+    user_data = {
+        "email": "someone@yopmail.com",
+        "full_name": "Throwaway User",
+        "password": "testpassword123",
+        "is_active": True,
+        "role_id": test_role.id,
+        "organization_id": str(test_organization.id)
+    }
+    response = admin_client.post("/api/v1/users", json=user_data)
+    assert response.status_code == 400
+    assert response.json()["detail"] == DISPOSABLE_EMAIL_MESSAGE
+
+@requires_email_validation
+def test_update_user_rejects_disposable_email(client: TestClient, test_user: User):
+    """Test that an existing account cannot be moved onto a throwaway domain"""
+    response = client.put(
+        f"/api/v1/users/{test_user.id}",
+        json={"email": "someone@dropmail.me"}
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == DISPOSABLE_EMAIL_MESSAGE
 
 def test_list_users(client: TestClient, test_user: User):
     """Test listing all users in the organization"""

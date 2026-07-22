@@ -28,6 +28,21 @@ from app.api import organizations as organizations_router
 from app.core.auth import get_current_user, require_permissions
 from tests.conftest import engine, TestingSessionLocal, create_tables, Base
 
+# The disposable-address gate is enterprise-only; a community checkout has no
+# blocklist and accepts everything.
+try:
+    from app.enterprise.services.email_validation import DISPOSABLE_EMAIL_MESSAGE
+
+    HAS_EMAIL_VALIDATION = True
+except ImportError:
+    DISPOSABLE_EMAIL_MESSAGE = ""
+    HAS_EMAIL_VALIDATION = False
+
+requires_email_validation = pytest.mark.skipif(
+    not HAS_EMAIL_VALIDATION, reason="enterprise email validation not installed"
+)
+
+
 # Create a test FastAPI app
 app = FastAPI()
 app.include_router(
@@ -303,6 +318,41 @@ def test_create_organization_duplicate(client, test_organization):
     response = client.post("/api/v1/organizations", json=org_data)
     assert response.status_code == 403
     assert "Organization already exists" in response.json()["detail"]
+
+@requires_email_validation
+def test_create_organization_rejects_disposable_admin_email(client, db):
+    """Signup with a throwaway admin address is refused and creates nothing"""
+    app.dependency_overrides[get_db] = lambda: db
+
+    db.query(User).delete()
+    db.commit()
+    db.query(Organization).delete()
+    db.commit()
+
+    org_data = {
+        "name": "Throwaway Org",
+        "domain": "throwaway.com",
+        "timezone": "UTC",
+        "business_hours": {
+            "monday": {"start": "09:00", "end": "17:00", "enabled": True},
+            "tuesday": {"start": "09:00", "end": "17:00", "enabled": True},
+            "wednesday": {"start": "09:00", "end": "17:00", "enabled": True},
+            "thursday": {"start": "09:00", "end": "17:00", "enabled": True},
+            "friday": {"start": "09:00", "end": "17:00", "enabled": True},
+            "saturday": {"start": "09:00", "end": "17:00", "enabled": False},
+            "sunday": {"start": "09:00", "end": "17:00", "enabled": False}
+        },
+        "admin_email": "someone@yopmail.com",
+        "admin_name": "Throwaway Admin",
+        "admin_password": "adminpass123"
+    }
+
+    response = client.post("/api/v1/organizations", json=org_data)
+    assert response.status_code == 400
+    assert response.json()["detail"] == DISPOSABLE_EMAIL_MESSAGE
+    assert db.query(Organization).count() == 0
+    assert db.query(User).count() == 0
+
 
 def test_update_organization_invalid_hours(client, test_organization):
     """Test updating organization with invalid business hours"""

@@ -43,6 +43,16 @@ from uuid import UUID
 from app.core.cors import update_cors_middleware
 from app.core.application import app  # Import the FastAPI app instance from the new location
 
+# Disposable-address rejection lives in the enterprise module: the hosted signup
+# flow is what attracts throwaway signups, and the community edition has no
+# reason to carry an 8k-domain blocklist. Absent, every address is accepted.
+try:
+    from app.enterprise.services.email_validation import ensure_not_disposable
+
+    HAS_EMAIL_VALIDATION = True
+except ImportError:
+    HAS_EMAIL_VALIDATION = False
+
 logger = get_logger(__name__)
 router = APIRouter(
     tags=["organizations"]
@@ -57,6 +67,9 @@ async def create_organization(
 ):
     """Create a new organization with an admin user and default roles"""
     try:
+        if HAS_EMAIL_VALIDATION:
+            ensure_not_disposable(org_data.admin_email)
+
         # Check if any organization exists
         existing_orgs = db.query(Organization).first()
         
