@@ -104,8 +104,8 @@ export default defineConfig(({ command, mode }) => {
       injectManifest: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // config.js is runtime-substituted per environment (docker-entrypoint)
-        // and must never be precached; webclient/avatars aren't the agent app.
-        globIgnores: ['config.js', 'config.dev.js', 'webclient/**', 'avatars/**'],
+        // and must never be precached; webclient isn't the agent app.
+        globIgnores: ['config.js', 'config.dev.js', 'webclient/**'],
       },
       devOptions: {
         enabled: false,
