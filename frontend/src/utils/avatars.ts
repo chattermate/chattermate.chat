@@ -14,17 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-export const getAvatarUrl = (agentType: string): string => {
-  const avatars = {
-    customer_support: '/avatars/support-agent.svg',
-    sales: '/avatars/sales-agent.svg',
-    tech_support: '/avatars/tech-agent.svg',
-    general: '/avatars/general-agent.svg',
-    custom: '/avatars/custom-agent.svg',
-  }
-  return avatars[agentType as keyof typeof avatars] || avatars.general
-}
-
 /**
  * True when `path` is already an absolute URL (e.g. a signed S3/CDN link) and
  * should be used as-is instead of being prefixed with the API base URL.
