@@ -53,22 +53,30 @@ const {
 const advancing = ref(false)
 
 // The site they gave us at signup is almost always what they want indexed
-// first, so offer it rather than making them retype it. Only a suggestion —
-// it stays editable, and we never overwrite something already typed.
+// first. Stage it as a source rather than dropping it in the input: sitting in
+// the box it looks like a placeholder, and nothing says you must press
+// "+ Website" for it to count. In the list it reads as added, with an × to
+// drop it.
 const prefillFromOrgDomain = async () => {
   try {
     const org = await organizationService.getOrganization(props.organizationId)
-    if (org?.domain && !newUrl.value) {
-      newUrl.value = withScheme(org.domain)
-    }
+    if (!org?.domain || newUrl.value || urls.value.length) return
+
+    newUrl.value = withScheme(org.domain)
+    handleUrlAdd()
+    // handleUrlAdd flags an already-indexed URL. That is worth saying when a
+    // person typed it, but not for a suggestion they never asked for — it just
+    // ends up not staged.
+    urlFormError.value = null
   } catch {
     // A missing prefill is not worth blocking or alarming the user over.
   }
 }
 
-onMounted(() => {
-  fetchKnowledge()
-  prefillFromOrgDomain()
+onMounted(async () => {
+  // Prefill after the fetch so the dedupe check can see what is already indexed.
+  await fetchKnowledge()
+  await prefillFromOrgDomain()
 })
 
 // Flush any staged URLs/files, then advance. Ingestion runs async in the
