@@ -815,7 +815,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             logger.debug(f"Response content: {response_content}")
 
             # Enrich Shopify response with full product data from Redis
-            response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=(self.shopify_tools.products_cache_key if getattr(self, 'shopify_tools', None) else None))
+            response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
 
             # If shopify_output has products, remove URLs from message
             # (URLs should only be removed when products are being displayed separately)
@@ -1039,6 +1039,18 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
         return updated_response
 
+    def _shopify_fallback_cache_key(self):
+        """Redis key for products a Shopify tool fetched during THIS turn, else None.
+
+        Used to attach products when the model omits shopify_output. Gated on the
+        toolkit having actually cached this turn so a previous turn's still-live
+        cache can never be pinned onto an unrelated reply.
+        """
+        tools = getattr(self, 'shopify_tools', None)
+        if tools and getattr(tools, 'has_cached_products', False):
+            return tools.product_cache_key
+        return None
+
     async def handle_workflow_transfer(self, session_id: str, org_id: str, agent_id: str, customer_id: str, transfer_group_id: str, db, chat_repo: ChatRepository, llm_response: ChatResponse = None) -> ChatResponse:
         """
         Handle transfer to human from workflow with specific group ID.
@@ -1150,7 +1162,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 logger.debug(f"Response content: {response_content}")
 
                 # Enrich Shopify response with full product data from Redis
-                response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=(self.shopify_tools.products_cache_key if getattr(self, 'shopify_tools', None) else None))
+                response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
 
                 # If shopify_output has products, remove URLs from message
                 # (URLs should only be removed when products are being displayed separately)

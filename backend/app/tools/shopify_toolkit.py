@@ -56,10 +56,11 @@ class ShopifyTools(Toolkit):
         self.agent_id = agent_id
         self.org_id = org_id
         self.session_id = session_id
-        # Set to the Redis cache key whenever a product tool returns+caches products
-        # this turn. Lets the backend attach products deterministically even if the LLM
-        # forgets to echo the key in its structured shopify_output. Per-request instance.
-        self.products_cache_key: Optional[str] = None
+        # True once a product tool has fetched+cached products during this turn.
+        # Lets the backend attach products deterministically (via product_cache_key)
+        # even if the LLM forgets to echo the key in its structured shopify_output.
+        # Per-request instance, so this cannot leak across turns.
+        self.has_cached_products: bool = False
 
         # Register the functions
         self.register(self.list_products)
@@ -68,7 +69,18 @@ class ShopifyTools(Toolkit):
         self.register(self.search_orders)
         self.register(self.get_order_status)
         self.register(self.recommend_products)
-    
+
+    @property
+    def product_cache_key(self) -> str:
+        """Redis key holding this session's most recent product result.
+
+        Org-scoped for multi-tenant isolation. Single source of truth: the
+        backend re-hydrates products from this exact key, so every producer must
+        build it here rather than repeating the format.
+        """
+        return f"{self.org_id}:shopify_products:{self.session_id}"
+
+
     def _get_shop_for_agent(self) -> Optional[ShopifyShop]:
         """
         Helper method to get the Shopify shop associated with the agent.
@@ -145,7 +157,7 @@ class ShopifyTools(Toolkit):
                         try:
                             # Use fixed cache key per session with org_id for multi-tenant isolation
                             # Format: {org_id}:shopify_products:{session_id}
-                            product_cache_key = f"{self.org_id}:shopify_products:{self.session_id}"
+                            product_cache_key = self.product_cache_key
 
                             # Store full products in Redis with 5-minute TTL
                             # setex will overwrite any previous value automatically
@@ -158,7 +170,7 @@ class ShopifyTools(Toolkit):
                                 })
                             )
                             logger.debug(f"Cached {len(products)} listed products with key: {product_cache_key}")
-                            self.products_cache_key = product_cache_key
+                            self.has_cached_products = True
                         except Exception as e:
                             logger.error(f"Failed to cache listed products in Redis: {str(e)}")
                             product_cache_key = None
@@ -430,7 +442,7 @@ class ShopifyTools(Toolkit):
                     try:
                         # Use fixed cache key per session with org_id for multi-tenant isolation
                         # Format: {org_id}:shopify_products:{session_id}
-                        product_cache_key = f"{self.org_id}:shopify_products:{self.session_id}"
+                        product_cache_key = self.product_cache_key
 
                         # Store full products in Redis with 5-minute TTL
                         # setex will overwrite any previous value automatically
@@ -446,7 +458,7 @@ class ShopifyTools(Toolkit):
                             })
                         )
                         logger.debug(f"Cached {len(products)} products with key: {product_cache_key}")
-                        self.products_cache_key = product_cache_key
+                        self.has_cached_products = True
                     except Exception as e:
                         logger.error(f"Failed to cache products in Redis: {str(e)}")
                         product_cache_key = None
@@ -1255,7 +1267,7 @@ class ShopifyTools(Toolkit):
                     try:
                         # Use fixed cache key per session with org_id for multi-tenant isolation
                         # Format: {org_id}:shopify_products:{session_id}
-                        product_cache_key = f"{self.org_id}:shopify_products:{self.session_id}"
+                        product_cache_key = self.product_cache_key
 
                         # Store full products in Redis with 5-minute TTL
                         # setex will overwrite any previous value automatically
@@ -1271,7 +1283,7 @@ class ShopifyTools(Toolkit):
                             })
                         )
                         logger.debug(f"Cached {len(products)} recommended products with key: {product_cache_key}")
-                        self.products_cache_key = product_cache_key
+                        self.has_cached_products = True
                     except Exception as e:
                         logger.error(f"Failed to cache recommended products in Redis: {str(e)}")
                         product_cache_key = None
