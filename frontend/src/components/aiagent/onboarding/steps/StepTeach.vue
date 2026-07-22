@@ -55,7 +55,7 @@ const advancing = ref(false)
 // The site they gave us at signup is almost always what they want indexed
 // first. Stage it as a source rather than dropping it in the input: sitting in
 // the box it looks like a placeholder, and nothing says you must press
-// "+ Website" for it to count. In the list it reads as added, with an × to
+// "Add" for it to count. In the list it reads as added, with an × to
 // drop it.
 const prefillFromOrgDomain = async () => {
   try {
@@ -83,7 +83,7 @@ onMounted(async () => {
 // background — we don't block the wizard on it.
 const handleContinue = async () => {
   // A URL sitting in the box (the prefill, or one they typed without pressing
-  // "+ Website") reads as accepted. Stage it rather than silently dropping it.
+  // "Add") reads as accepted. Stage it rather than silently dropping it.
   if (newUrl.value.trim()) {
     handleUrlAdd()
     if (urlFormError.value) return
@@ -120,8 +120,11 @@ const removeFile = (index: number) => {
         :disabled="isUploading"
         @keydown.enter.prevent="handleUrlAdd"
       />
-      <button type="button" class="btn-soft" :disabled="isUploading" @click="handleUrlAdd">+ Website</button>
-      <button type="button" class="btn-soft" :disabled="isUploading" @click="triggerFileInput">+ PDF</button>
+      <!-- "Add" acts on the URL beside it, so the object is implicit. The PDF
+           button opens a file picker, a different action — it keeps its own
+           label rather than reading as a second way to add the same thing. -->
+      <button type="button" class="btn-soft" :disabled="isUploading" @click="handleUrlAdd">Add</button>
+      <button type="button" class="btn-soft" :disabled="isUploading" @click="triggerFileInput">Upload PDF</button>
       <input
         ref="fileInput"
         type="file"

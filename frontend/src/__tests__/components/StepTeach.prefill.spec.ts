@@ -48,7 +48,7 @@ describe('StepTeach - signup domain prefill', () => {
     const wrapper = await mountStep()
 
     // Visible as an added source, not parked in the input where it reads as a
-    // placeholder the user must still press "+ Website" to accept.
+    // placeholder the user must still press "Add" to accept.
     expect(wrapper.find('.source-list').text()).toContain('https://testypo.com')
     expect(urlInput(wrapper).value).toBe('')
   })
@@ -94,7 +94,7 @@ describe('StepTeach - signup domain prefill', () => {
     expect(wrapper.text()).toContain('Teach it your business')
   })
 
-  it('stages a typed URL on Continue without needing "+ Website"', async () => {
+  it('stages a typed URL on Continue without needing "Add"', async () => {
     getOrganization.mockResolvedValue({ id: 'org-1', domain: '' })
 
     const wrapper = await mountStep()
