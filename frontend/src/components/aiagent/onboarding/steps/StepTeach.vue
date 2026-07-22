@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
+import { organizationService } from '@/services/organization'
 
 const props = defineProps<{
   agentId: string
@@ -46,17 +47,48 @@ const {
   handleUrlUpload,
   handleFileUpload,
   fetchKnowledge,
+  withScheme,
 } = useKnowledgeManagement(props.agentId, props.organizationId)
 
 const advancing = ref(false)
 
-onMounted(() => {
-  fetchKnowledge()
+// The site they gave us at signup is almost always what they want indexed
+// first. Stage it as a source rather than dropping it in the input: sitting in
+// the box it looks like a placeholder, and nothing says you must press
+// "Add" for it to count. In the list it reads as added, with an × to
+// drop it.
+const prefillFromOrgDomain = async () => {
+  try {
+    const org = await organizationService.getOrganization(props.organizationId)
+    if (!org?.domain || newUrl.value || urls.value.length) return
+
+    newUrl.value = withScheme(org.domain)
+    handleUrlAdd()
+    // handleUrlAdd flags an already-indexed URL. That is worth saying when a
+    // person typed it, but not for a suggestion they never asked for — it just
+    // ends up not staged.
+    urlFormError.value = null
+  } catch {
+    // A missing prefill is not worth blocking or alarming the user over.
+  }
+}
+
+onMounted(async () => {
+  // Prefill after the fetch so the dedupe check can see what is already indexed.
+  await fetchKnowledge()
+  await prefillFromOrgDomain()
 })
 
 // Flush any staged URLs/files, then advance. Ingestion runs async in the
 // background — we don't block the wizard on it.
 const handleContinue = async () => {
+  // A URL sitting in the box (the prefill, or one they typed without pressing
+  // "Add") reads as accepted. Stage it rather than silently dropping it.
+  if (newUrl.value.trim()) {
+    handleUrlAdd()
+    if (urlFormError.value) return
+  }
+
   advancing.value = true
   try {
     if (urls.value.length) await handleUrlUpload()
@@ -88,8 +120,11 @@ const removeFile = (index: number) => {
         :disabled="isUploading"
         @keydown.enter.prevent="handleUrlAdd"
       />
-      <button type="button" class="btn-soft" :disabled="isUploading" @click="handleUrlAdd">+ Website</button>
-      <button type="button" class="btn-soft" :disabled="isUploading" @click="triggerFileInput">+ PDF</button>
+      <!-- "Add" acts on the URL beside it, so the object is implicit. The PDF
+           button opens a file picker, a different action — it keeps its own
+           label rather than reading as a second way to add the same thing. -->
+      <button type="button" class="btn-soft" :disabled="isUploading" @click="handleUrlAdd">Add</button>
+      <button type="button" class="btn-soft" :disabled="isUploading" @click="triggerFileInput">Upload PDF</button>
       <input
         ref="fileInput"
         type="file"
