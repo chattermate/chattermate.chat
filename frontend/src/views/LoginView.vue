@@ -15,14 +15,13 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '@/services/auth'
 import { permissionChecks } from '@/utils/permissions'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useForgotPassword } from '@/composables/useForgotPassword'
 import InstallPrompt from '@/components/pwa/InstallPrompt.vue'
-import api from '@/services/api'
 import type { AxiosError } from 'axios'
 interface ErrorResponse {
     detail: string
@@ -46,10 +45,6 @@ const { hasEnterpriseModule } = useEnterpriseFeatures()
 // Forgot password composable - only initialize if enterprise module is available
 const showForgotPasswordModal = ref(false)
 const forgotPassword = hasEnterpriseModule ? useForgotPassword() : null
-
-// Check for pending Slack installation from marketplace
-const pendingSlackTeam = computed(() => router.currentRoute.value.query.slack_team as string || null)
-const hasPendingSlackInstall = computed(() => !!router.currentRoute.value.query.slack_install)
 
 // Destructure with fallbacks for when enterprise module is not available
 const isForgotPasswordLoading = forgotPassword?.isLoading ?? ref(false)
@@ -206,24 +201,6 @@ const handleLogin = async () => {
             }
         }
 
-        // Check for Slack marketplace installation pending
-        const slackInstallKey = router.currentRoute.value.query.slack_install as string
-        if (slackInstallKey) {
-            console.log('🔗 Slack marketplace installation detected, completing install...')
-            try {
-                const response = await api.post(`/slack/complete-install?install_key=${slackInstallKey}`)
-                console.log('✅ Slack installation completed:', response.data)
-                // Redirect to integrations with success
-                router.push('/settings/integrations?status=success&integration=slack')
-                return
-            } catch (slackError: any) {
-                console.error('❌ Failed to complete Slack installation:', slackError)
-                const errorMsg = slackError.response?.data?.detail || 'Failed to complete Slack installation'
-                router.push(`/settings/integrations?status=failure&reason=${encodeURIComponent(errorMsg)}`)
-                return
-            }
-        }
-
         // Check for redirect query parameter (internal frontend route)
         const redirectPath = router.currentRoute.value.query.redirect as string
         if (redirectPath) {
@@ -252,14 +229,12 @@ const handleLogin = async () => {
 }
 
 const navigateToSignup = () => {
-    // Preserve embedded, shop_id, return_to, redirect, slack_install query params if present
+    // Preserve embedded, shop_id, return_to, redirect query params if present
     const isEmbedded = router.currentRoute.value.query.embedded
     const shopId = router.currentRoute.value.query.shop_id
     const returnTo = router.currentRoute.value.query.return_to
     const shopifyFlow = router.currentRoute.value.query.shopify_flow
     const redirect = router.currentRoute.value.query.redirect
-    const slackInstall = router.currentRoute.value.query.slack_install
-    const slackTeam = router.currentRoute.value.query.slack_team
 
     const query: any = {}
 
@@ -268,8 +243,6 @@ const navigateToSignup = () => {
     if (returnTo) query.return_to = returnTo
     if (shopifyFlow) query.shopify_flow = shopifyFlow
     if (redirect) query.redirect = redirect
-    if (slackInstall) query.slack_install = slackInstall
-    if (slackTeam) query.slack_team = slackTeam
 
     if (Object.keys(query).length > 0) {
         console.log('Navigating to signup with params:', query)
@@ -326,18 +299,6 @@ const handleVerifyAndResetPassword = async () => {
 
             <h1 class="auth-title">Welcome back</h1>
             <p class="auth-sub">Sign in to continue to your dashboard</p>
-
-            <!-- Slack Installation Banner -->
-            <div v-if="hasPendingSlackInstall" class="slack-banner">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--accent-ink)">
-                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
-                </svg>
-                <div>
-                    <strong>Connect Slack Workspace</strong>
-                    <span v-if="pendingSlackTeam"> — connect <em>{{ pendingSlackTeam }}</em></span>
-                    <span v-else> — complete your Slack installation</span>
-                </div>
-            </div>
 
             <form @submit.prevent="handleLogin" class="auth-form">
                 <div class="field">
@@ -616,23 +577,6 @@ const handleVerifyAndResetPassword = async () => {
     font-size: 15px;
     margin-bottom: 36px;
 }
-
-/* Slack banner */
-.slack-banner {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    background: color-mix(in srgb, var(--accent-solid) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent-ink) 20%, transparent);
-    border-radius: 10px;
-    margin-bottom: 24px;
-    font-size: 13.5px;
-    color: var(--text3);
-}
-
-.slack-banner strong { color: var(--text); }
-.slack-banner em { color: var(--accent-ink); font-style: normal; }
 
 /* Form */
 .auth-form {

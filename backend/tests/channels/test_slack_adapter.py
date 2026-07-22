@@ -17,9 +17,11 @@ limitations under the License.
 import hashlib
 import hmac
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
+from app.api.webhooks.slack import _handle_lifecycle_event
 from app.channels import get_adapter
 from app.channels.slack import SlackAdapter, verify_slack_signature
 from app.core.config import settings
@@ -91,6 +93,58 @@ def test_split_conversation():
 
 def test_format_outbound_mrkdwn(adapter):
     assert adapter.format_outbound("**bold** text") == "*bold* text"
+
+
+class TestLifecycleEvents:
+    """app_uninstalled / tokens_revoked must drop the workspace's credentials,
+    but only when it's really our bot token that died."""
+
+    @pytest.fixture
+    def repo(self):
+        repo = MagicMock()
+        repo.get_by_external_id.return_value = MagicMock(name="account")
+        repo.delete.return_value = True
+        return repo
+
+    def test_uninstall_deletes_account(self, repo):
+        _handle_lifecycle_event(make_event({"type": "app_uninstalled"}), repo)
+        repo.get_by_external_id.assert_called_once_with("slack", "T111")
+        repo.delete.assert_called_once()
+
+    def test_bot_token_revoked_deletes_account(self, repo):
+        payload = make_event({"type": "tokens_revoked", "tokens": {"bot": ["B123"]}})
+        _handle_lifecycle_event(payload, repo)
+        repo.delete.assert_called_once()
+
+    def test_user_token_revoke_keeps_account(self, repo):
+        """We only ever store a bot token — a user-token revoke leaves the
+        workspace working, so deleting it would disconnect a healthy install."""
+        payload = make_event({"type": "tokens_revoked", "tokens": {"oauth": ["U123"]}})
+        _handle_lifecycle_event(payload, repo)
+        repo.delete.assert_not_called()
+
+    def test_unknown_team_is_noop(self, repo):
+        repo.get_by_external_id.return_value = None
+        _handle_lifecycle_event(make_event({"type": "app_uninstalled"}), repo)
+        repo.delete.assert_not_called()
+
+    def test_missing_team_id_is_noop(self, repo):
+        payload = make_event({"type": "app_uninstalled"}, team_id="")
+        _handle_lifecycle_event(payload, repo)
+        repo.get_by_external_id.assert_not_called()
+        repo.delete.assert_not_called()
+
+    def test_failed_delete_does_not_raise(self, repo):
+        """delete() reports failure by returning False; Slack still needs a 200."""
+        repo.delete.return_value = False
+        _handle_lifecycle_event(make_event({"type": "app_uninstalled"}), repo)
+        repo.delete.assert_called_once()
+
+    def test_lifecycle_events_are_not_messages(self, adapter):
+        """They must stay out of the message path — parse_inbound yields nothing,
+        which is why the route resolves the team off the envelope instead."""
+        assert adapter.parse_inbound(make_event({"type": "app_uninstalled"})) == []
+        assert adapter.parse_inbound(make_event({"type": "tokens_revoked"})) == []
 
 
 class TestSignature:

@@ -468,6 +468,14 @@ const intSummary = computed(() => {
   return `${connected}/${total} connected`
 })
 
+// Display name for an ?integration= id, taken from the card list so a new
+// integration never has to be named twice. Jira's callback predates the param,
+// so a missing id means Jira.
+const integrationName = (id?: string) => {
+  const integrationId = id || 'jira'
+  return availableIntegrations.value.find(it => it.id === integrationId)?.name || integrationId
+}
+
 onMounted(async () => {
   await Promise.all([
     fetchJiraStatus(),
@@ -491,7 +499,7 @@ onMounted(async () => {
         }
       }
       else {
-        toast.success('Jira connected successfully!')
+        toast.success(`${integrationName(route.query.integration as string)} connected successfully!`)
       }
       lastConnectionError.value = null
     } else if (route.query.status === 'failure') {

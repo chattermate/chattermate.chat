@@ -24,11 +24,12 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.channels.accounts import get_org_account_or_404
+from app.channels.slack import slack_api
 from app.core.auth import get_current_organization, require_permissions
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.database import get_db
-from app.models.channels import ChannelType
+from app.models.channels import ChannelAccount, ChannelType
 from app.models.organization import Organization
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
@@ -37,9 +38,14 @@ from app.core.logger import get_logger
 router = APIRouter()
 logger = get_logger(__name__)
 
-# Bot scopes for the customer-chat use case: receive mentions + DMs, reply,
-# and resolve the sender's real name (users:read) so customers aren't raw U0… ids
-OAUTH_SCOPES = "app_mentions:read,chat:write,im:history,im:read,im:write,users:read"
+# Bot scopes for the customer-chat use case. Keep this minimal — the
+# Marketplace review asks us to justify each one, and once listed the app can
+# only use approved scopes:
+#   app_mentions:read  receive app_mention, so the agent answers when @mentioned
+#   chat:write         post the reply and the "typing…" placeholder
+#   im:history         receive message.im, so the agent answers DMs
+#   users:read         users.info, so a customer shows as a name not a raw U0… id
+OAUTH_SCOPES = "app_mentions:read,chat:write,im:history,users:read"
 STATE_TTL_SECONDS = 60 * 10
 
 # In-process fallback when Redis is disabled (single-worker dev setups)
@@ -148,6 +154,22 @@ async def slack_oauth_callback(
     return _settings_redirect("success")
 
 
+async def _revoke_token(repo: ChannelAccountRepository, account: ChannelAccount) -> None:
+    """Best-effort: tell Slack to invalidate the bot token before we drop it.
+
+    Never blocks the disconnect — an already-revoked token, an undecryptable
+    blob, or an unreachable Slack must still leave the workspace disconnected
+    on our side.
+    """
+    try:
+        token = repo.get_credentials(account).get("access_token")
+        if not token:
+            return
+        await slack_api("auth.revoke", token, {}, form=True)
+    except Exception as e:
+        logger.warning(f"Slack auth.revoke failed, disconnecting anyway: {e}")
+
+
 @router.delete("/{account_id}")
 async def disconnect_slack(
     account_id: UUID,
@@ -158,5 +180,7 @@ async def disconnect_slack(
     account = get_org_account_or_404(db, account_id, organization)
     if account.channel_type != ChannelType.SLACK.value:
         raise HTTPException(status_code=404, detail="Channel account not found")
-    ChannelAccountRepository(db).delete(account)
+    repo = ChannelAccountRepository(db)
+    await _revoke_token(repo, account)
+    repo.delete(account)
     return {"status": "disconnected"}
