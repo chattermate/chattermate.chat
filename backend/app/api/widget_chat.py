@@ -65,6 +65,10 @@ from app.utils.sanitize import sanitize_message
 router = APIRouter()
 logger = get_logger(__name__)
 
+# Rating feedback comes from an anonymous widget visitor and is stored, shown
+# to agents and copied onto the linked ticket's activity feed — bound it.
+MAX_RATING_FEEDBACK_LENGTH = 2000
+
 
 def format_datetime(dt):
     """Convert datetime to ISO format string"""
@@ -1365,6 +1369,13 @@ async def handle_rating_submission(sid, data):
         if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
             raise ValueError("Invalid rating value")
 
+        if feedback is not None:
+            if not isinstance(feedback, str):
+                raise ValueError("Invalid feedback value")
+            # Same treatment as an inbound chat message: the text is untrusted
+            # and ends up in the agent UI and the ticket activity feed.
+            feedback = sanitize_message(feedback.strip()[:MAX_RATING_FEEDBACK_LENGTH]) or None
+
         db = next(get_db())
         
         # Get session details
@@ -1374,9 +1385,9 @@ async def handle_rating_submission(sid, data):
         if not session_data:
             raise ValueError("Session not found")
 
-        # Create rating using repository
+        # One rating per session — re-rating replaces the previous score.
         rating_repo = RatingRepository(db)
-        rating_obj = rating_repo.create_rating(
+        rating_obj = rating_repo.upsert_rating(
             session_id=session_id,
             customer_id=customer_id,
             user_id=session_data.user_id,

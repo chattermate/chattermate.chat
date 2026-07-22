@@ -24,6 +24,7 @@ from app.models.rating import Rating
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.models.ticket import Ticket, TicketPriority, TicketSource, TicketStatus
 from app.models.ticket_activity import TicketActivityType, TicketActorType
+from app.repositories.rating import RatingRepository
 from app.services.ticket import TicketService
 from app.services.ticket_csat import record_conversation_rating
 
@@ -174,20 +175,49 @@ class TestCsatCapture:
         ):
             assert record_conversation_rating(db, rating) is None
 
-    def test_second_rating_overwrites(
+    def test_re_rating_replaces_the_score_without_a_second_row(
         self, service, db, test_organization, test_session
     ):
+        """The widget can re-show the rating prompt, so a customer can rate
+        twice — one rating row per session, latest score wins."""
         ticket = make_ticket(
             service, db, test_organization,
             session_id=test_session.session_id, source=TicketSource.CHAT_AI,
         )
-        first = make_rating(db, test_session, test_organization, score=2)
+        repo = RatingRepository(db)
+        upsert = dict(
+            session_id=test_session.session_id, customer_id=test_session.customer_id,
+            user_id=None, agent_id=test_session.agent_id,
+            organization_id=test_organization.id,
+        )
+        first = repo.upsert_rating(rating=2, **upsert)
         record_conversation_rating(db, first)
-        second = make_rating(db, test_session, test_organization, score=5)
+        second = repo.upsert_rating(rating=5, **upsert)
         record_conversation_rating(db, second)
+
+        assert second.id == first.id
+        assert db.query(Rating).filter(Rating.session_id == test_session.session_id).count() == 1
         db.refresh(ticket)
         assert ticket.csat_score == 5
-        assert ticket.csat_rating_id == second.id
+
+    def test_resubmitting_the_same_score_adds_no_activity(
+        self, service, db, test_organization, test_session
+    ):
+        """Every write here appends to the audit feed, and the customer
+        controls how often it fires."""
+        ticket = make_ticket(
+            service, db, test_organization,
+            session_id=test_session.session_id, source=TicketSource.CHAT_AI,
+        )
+        rating = make_rating(db, test_session, test_organization, score=3)
+        record_conversation_rating(db, rating)
+        record_conversation_rating(db, rating)
+
+        received = [
+            a for a in service.activity_repo.list_for_ticket(ticket.id)
+            if a.activity_type == TicketActivityType.CSAT_RECEIVED.value
+        ]
+        assert len(received) == 1
 
 
 class TestCsatStats:
