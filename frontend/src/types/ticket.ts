@@ -75,6 +75,9 @@ export interface Ticket extends TicketListItem {
   closed_at?: string | null
   confirmation_requested_at?: string | null
   reopened_count: number
+  csat_requested_at?: string | null
+  csat_score?: number | null
+  csat_responded_at?: string | null
   external_ref_type?: string | null
   external_ref_id?: string | null
   external_ref_url?: string | null
@@ -98,6 +101,7 @@ export type TicketActivityType =
   | 'customer_replied'
   | 'customer_linked'
   | 'csat_requested'
+  | 'csat_received'
   | 'reopened'
   | 'jira_escalated'
 
@@ -302,6 +306,11 @@ export interface TicketStats {
   awaiting_approval: number
   sla_breaching: number
   ai_resolved_pct_7d?: number | null
+  csat_avg?: number | null
+  csat_ai_avg?: number | null
+  csat_human_avg?: number | null
+  csat_responses: number
+  csat_window_days: number
 }
 
 export interface TicketListFilters {

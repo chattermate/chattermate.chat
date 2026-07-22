@@ -20,6 +20,7 @@ from app.database import get_db
 from app.core.auth import get_current_user, require_permissions
 from app.repositories.rating import RatingRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services.ticket_csat import record_conversation_rating
 from app.models.user import User
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -82,6 +83,9 @@ async def create_rating(
             rating=rating_data.rating,
             feedback=rating_data.feedback
         )
+
+        # Close the CSAT loop if this conversation belongs to a ticket.
+        record_conversation_rating(db, rating)
 
         return rating
 

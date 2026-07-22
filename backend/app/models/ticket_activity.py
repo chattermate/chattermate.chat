@@ -43,6 +43,7 @@ class TicketActivityType(_ValueStrEnum):
     CUSTOMER_REPLIED = "customer_replied"
     CUSTOMER_LINKED = "customer_linked"
     CSAT_REQUESTED = "csat_requested"
+    CSAT_RECEIVED = "csat_received"
     REOPENED = "reopened"
     JIRA_ESCALATED = "jira_escalated"
 

@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, text
@@ -338,6 +338,27 @@ class TicketRepository:
         total = base.scalar() or 0
         ai = base.filter(Ticket.resolved_by_actor == "ai").scalar() or 0
         return ai, total
+
+    def csat_by_resolver(self, organization_id: UUID, days: int = 30) -> Dict[str, Tuple[int, float]]:
+        """{resolver: (responses, average)} over the trailing window, keyed by
+        resolved_by_actor ('ai' | 'user' | '' when the ticket was never
+        formally resolved). Powers the AI- vs human-resolved CSAT split."""
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        rows = (
+            self.db.query(
+                Ticket.resolved_by_actor,
+                func.count(Ticket.id),
+                func.avg(Ticket.csat_score),
+            )
+            .filter(
+                Ticket.organization_id == organization_id,
+                Ticket.csat_score.isnot(None),
+                Ticket.csat_responded_at >= since,
+            )
+            .group_by(Ticket.resolved_by_actor)
+            .all()
+        )
+        return {(actor or ""): (count, float(avg)) for actor, count, avg in rows}
 
 
 class TicketActivityRepository:

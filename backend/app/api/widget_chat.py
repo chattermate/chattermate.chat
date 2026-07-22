@@ -46,6 +46,7 @@ from app.repositories.agent import AgentRepository
 from app.services.lead_capture import record_lead_from_response
 from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
+from app.services.ticket_csat import record_conversation_rating
 from app.repositories.jira import JiraRepository
 from app.models.ai_config import AIModelType
 from app.services.workflow_execution import WorkflowExecutionService
@@ -1384,6 +1385,9 @@ async def handle_rating_submission(sid, data):
             rating=rating,
             feedback=feedback
         )
+
+        # Close the CSAT loop if this conversation belongs to a ticket.
+        record_conversation_rating(db, rating_obj)
 
         # Emit success response
         await sio.emit('rating_submitted', {

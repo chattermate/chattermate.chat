@@ -203,6 +203,15 @@ class Ticket(Base):
     confirmation_requested_at = Column(DateTime(timezone=True), nullable=True)
     reopened_count = Column(Integer, nullable=False, default=0, server_default="0")
 
+    # CSAT. The ask goes out on close (csat_requested_at); the score arrives
+    # later, when the customer rates the linked conversation — see
+    # app/services/ticket_csat.py for the capture path and why it is
+    # conversation-only.
+    csat_requested_at = Column(DateTime(timezone=True), nullable=True)
+    csat_score = Column(Integer, nullable=True)
+    csat_rating_id = Column(UUID(as_uuid=True), ForeignKey("ratings.id", ondelete="SET NULL"), nullable=True)
+    csat_responded_at = Column(DateTime(timezone=True), nullable=True)
+
     # Optional one-way escalation reference (e.g. 'JIRA' + issue key + URL).
     external_ref_type = Column(String, nullable=True)
     external_ref_id = Column(String, nullable=True)
@@ -232,6 +241,8 @@ class Ticket(Base):
         Index("ix_tickets_org_status", "organization_id", "status"),
         Index("ix_tickets_org_assignee", "organization_id", "assignee_user_id"),
         Index("ix_tickets_org_created", "organization_id", "created_at"),
+        # Drives the CSAT stat (AI- vs human-resolved averages over a window).
+        Index("ix_tickets_org_csat", "organization_id", "csat_responded_at"),
         # NOTE: production also has an HNSW cosine index on embedding — it
         # lives only in the migration (sqlite tests can't compile it).
     )
