@@ -52,7 +52,13 @@ const csatCard = (wrapper: ReturnType<typeof createWrapper>) =>
 
 describe('TicketSidePanel CSAT card', () => {
   it('shows the score once the customer has rated', () => {
-    const card = csatCard(createWrapper({ csat_requested_at: '2026-07-20T10:00:00Z', csat_score: 4 }))
+    const card = csatCard(
+      createWrapper({
+        csat_requested_at: '2026-07-20T10:00:00Z',
+        csat_responded_at: '2026-07-20T11:00:00Z',
+        csat_score: 4,
+      }),
+    )
     expect(card.text()).toContain('4/5')
     expect(card.findAll('.csat-stars font-awesome-icon-stub')).toHaveLength(5)
     expect(card.text()).toContain('Rated by the customer')
@@ -62,6 +68,18 @@ describe('TicketSidePanel CSAT card', () => {
     const card = csatCard(createWrapper({ csat_requested_at: '2026-07-20T10:00:00Z' }))
     expect(card.text()).toContain('Pending')
     expect(card.find('.csat-stars').exists()).toBe(false)
+  })
+
+  it('goes back to pending when a reopened ticket is asked again', () => {
+    const card = csatCard(
+      createWrapper({
+        csat_score: 2,
+        csat_responded_at: '2026-07-20T11:00:00Z',
+        csat_requested_at: '2026-07-21T09:00:00Z',
+      }),
+    )
+    expect(card.text()).toContain('Pending')
+    expect(card.text()).not.toContain('2/5')
   })
 
   it('shows not requested before close', () => {

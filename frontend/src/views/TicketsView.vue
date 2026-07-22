@@ -42,12 +42,13 @@ const canManage = permissionChecks.canManageTickets()
 // of the chip now that L3 auto-resolve is live.
 const csatSub = computed(() => {
   const s = stats.value
-  const days = s?.csat_window_days ?? 30
-  if (!s?.csat_responses) return `last ${days} days`
+  if (!s) return ''
+  const window = `last ${s.csat_window_days} days`
+  if (!s.csat_responses) return window
   const parts: string[] = []
   if (s.csat_ai_avg != null) parts.push(`AI ${s.csat_ai_avg.toFixed(1)}`)
   if (s.csat_human_avg != null) parts.push(`human ${s.csat_human_avg.toFixed(1)}`)
-  return parts.length ? parts.join(' · ') : `${s.csat_responses} in ${days} days`
+  return parts.length ? parts.join(' · ') : `${s.csat_responses} rated · ${window}`
 })
 
 const csatColor = computed(() => {

@@ -64,10 +64,14 @@ const assigneeName = computed(
 )
 
 // CSAT is asked on close, through the linked conversation's rating prompt, so
-// a ticket with no conversation is never asked at all.
+// a ticket with no conversation is never asked at all. A reopened-then-closed
+// ticket is asked again, hence the timestamp comparison rather than a plain
+// "has a score" check — the newest ask is the one being waited on.
 const csat = computed(() => {
-  const score = props.ticket.csat_score
-  if (score != null) {
+  const { csat_score: score, csat_requested_at: asked, csat_responded_at: answered } = props.ticket
+  const awaitingAnswer = !!asked && (!answered || new Date(asked) > new Date(answered))
+
+  if (score != null && !awaitingAnswer) {
     return {
       state: 'scored' as const,
       score,
@@ -75,7 +79,7 @@ const csat = computed(() => {
       color: score >= 4 ? 'var(--c-positive)' : score >= 3 ? 'var(--c-warn)' : 'var(--c-danger)',
     }
   }
-  if (props.ticket.csat_requested_at) {
+  if (awaitingAnswer) {
     return { state: 'pending' as const, score: 0, label: 'Pending', color: 'var(--muted2)' }
   }
   return { state: 'not-requested' as const, score: 0, label: 'Not requested', color: 'var(--faint)' }

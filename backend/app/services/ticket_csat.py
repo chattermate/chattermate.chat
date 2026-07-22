@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
 from app.models.rating import Rating
+from app.services.ticket import TicketService
 
 logger = get_logger(__name__)
 
@@ -48,8 +49,6 @@ def record_conversation_rating(db: Session, rating: Rating) -> Optional[UUID]:
     native ticket (the common case for plain chats) or the linkage failed.
     """
     try:
-        from app.services.ticket import TicketService
-
         service = TicketService(db)
         ticket = service.repo.get_by_session(rating.session_id)
         if ticket is None:
