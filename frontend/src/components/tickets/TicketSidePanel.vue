@@ -63,6 +63,24 @@ const assigneeName = computed(
   () => props.ticket.assignee?.full_name || props.ticket.assignee_name || null,
 )
 
+// CSAT is asked on close, through the linked conversation's rating prompt, so
+// a ticket with no conversation is never asked at all.
+const csat = computed(() => {
+  const score = props.ticket.csat_score
+  if (score != null) {
+    return {
+      state: 'scored' as const,
+      score,
+      label: `${score}/5`,
+      color: score >= 4 ? 'var(--c-positive)' : score >= 3 ? 'var(--c-warn)' : 'var(--c-danger)',
+    }
+  }
+  if (props.ticket.csat_requested_at) {
+    return { state: 'pending' as const, score: 0, label: 'Pending', color: 'var(--muted2)' }
+  }
+  return { state: 'not-requested' as const, score: 0, label: 'Not requested', color: 'var(--faint)' }
+})
+
 function openConversation() {
   if (props.linkedSessionIds.length) {
     router.push({ path: '/conversations', query: { session: props.linkedSessionIds[0] } })
@@ -174,6 +192,26 @@ function pickAssignee(userId: string | null) {
         <span class="sla-label">Resolution</span>
         <span class="sla-value mono" :style="{ color: sla.color }">{{ sla.label }}</span>
       </div>
+    </div>
+
+    <div class="panel-card">
+      <div class="card-label">CSAT</div>
+      <div class="csat-row">
+        <span v-if="csat.state === 'scored'" class="csat-stars" :style="{ color: csat.color }">
+          <font-awesome-icon
+            v-for="star in 5"
+            :key="star"
+            :icon="[star <= csat.score ? 'fas' : 'far', 'star']"
+          />
+        </span>
+        <span class="sla-value" :style="{ color: csat.color }">{{ csat.label }}</span>
+      </div>
+      <p class="csat-note">
+        <template v-if="csat.state === 'scored'">Rated by the customer on the linked conversation.</template>
+        <template v-else-if="csat.state === 'pending'">Asked on close — waiting for the customer to rate.</template>
+        <template v-else-if="linkedSessionIds.length">Asked automatically when the ticket is closed.</template>
+        <template v-else>No linked conversation to rate, so CSAT isn't collected for this ticket.</template>
+      </p>
     </div>
 
     <div v-if="ticket.intent || ticket.ai_summary" class="panel-card">
@@ -392,6 +430,22 @@ function pickAssignee(userId: string | null) {
 .mono {
   font-family: var(--font-mono);
   font-size: 12px;
+}
+.csat-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.csat-stars {
+  display: inline-flex;
+  gap: 3px;
+  font-size: 12px;
+}
+.csat-note {
+  margin: 9px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--faint);
 }
 .triage-summary {
   margin: 10px 0 0;

@@ -63,6 +63,10 @@ DUPLICATE_SIMILARITY_THRESHOLD = 0.90
 # tickets (Jira sessions keep 'JIRA').
 NATIVE_INTEGRATION_TYPE = "NATIVE"
 
+# Trailing window for the workspace CSAT stat. Wider than the 7-day resolution
+# stats because CSAT responses are sparse.
+CSAT_WINDOW_DAYS = 30
+
 _embedder = None
 
 
@@ -606,6 +610,16 @@ class TicketService:
         await self.send_customer_message(ticket, message)
 
     async def request_csat(self, ticket: Ticket) -> None:
+        """Ask the customer to rate the ticket, reusing the widget's existing
+        conversation rating prompt.
+
+        Conversation-only by design: a rating row is keyed to a session
+        (ratings.session_id is NOT NULL), so a ticket with no linked
+        conversation — manual or email-only — has nothing to rate and no
+        capture path short of a public tokenised rating page. Those tickets
+        are simply never asked; csat_requested_at stays NULL and the UI shows
+        "not requested" rather than a CSAT that will never arrive.
+        """
         session_record = self._primary_session(ticket)
         if session_record is None:
             return
@@ -619,6 +633,7 @@ class TicketService:
                 "type": "chat_response",
                 "request_rating": True,
             })
+            ticket.csat_requested_at = datetime.now(timezone.utc)
             self._add_activity(
                 ticket, TicketActivityType.CSAT_REQUESTED,
                 actor_type=TicketActorType.SYSTEM,
@@ -626,6 +641,26 @@ class TicketService:
             )
         except Exception as e:
             logger.error(f"CSAT request failed for {ticket.display_number}: {e}")
+
+    def record_csat(
+        self, ticket: Ticket, rating_id: UUID, score: int, feedback: Optional[str] = None
+    ) -> Ticket:
+        """Attach a submitted conversation rating to the ticket. The most
+        recent rating wins if a customer rates the same conversation twice."""
+        ticket.csat_score = score
+        ticket.csat_rating_id = rating_id
+        ticket.csat_responded_at = datetime.now(timezone.utc)
+        body = f"Customer rated {score}/5"
+        if feedback:
+            body = f"{body} — {feedback}"
+        self._add_activity(
+            ticket,
+            TicketActivityType.CSAT_RECEIVED,
+            actor_type=TicketActorType.CUSTOMER,
+            body=body,
+            metadata={"rating_id": str(rating_id), "score": score},
+        )
+        return ticket
 
     def _resolve_customer_by_email(
         self, organization_id: UUID, customer_email: str, customer_name: Optional[str]
@@ -833,11 +868,33 @@ class TicketService:
 
         ai_resolved, total_resolved = self.repo.resolved_counts_7d(organization_id)
         pct = round(100.0 * ai_resolved / total_resolved, 1) if total_resolved else None
+
         return {
             "open": open_count,
             "awaiting_approval": awaiting,
             "sla_breaching": breaching,
             "ai_resolved_pct_7d": pct,
+            **self.csat_stats(organization_id),
+        }
+
+    def csat_stats(self, organization_id: UUID, days: int = CSAT_WINDOW_DAYS) -> dict:
+        """Overall CSAT plus the AI-resolved vs human-resolved split. A wider
+        window than the resolution stats — CSAT responses are far sparser, and
+        a 7-day average would be noise for most orgs."""
+        by_resolver = self.repo.csat_by_resolver(organization_id, days=days)
+        total = sum(count for count, _ in by_resolver.values())
+        weighted = sum(count * avg for count, avg in by_resolver.values())
+
+        def side(actor: str) -> Optional[float]:
+            entry = by_resolver.get(actor)
+            return round(entry[1], 2) if entry else None
+
+        return {
+            "csat_responses": total,
+            "csat_avg": round(weighted / total, 2) if total else None,
+            "csat_ai_avg": side("ai"),
+            "csat_human_avg": side("user"),
+            "csat_window_days": days,
         }
 
     # ---------- internals ----------

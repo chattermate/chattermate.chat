@@ -38,6 +38,24 @@ const {
 const showCreateModal = ref(false)
 const canManage = permissionChecks.canManageTickets()
 
+// "AI 4.6 · human 4.2" when both sides have responses — the split is the point
+// of the chip now that L3 auto-resolve is live.
+const csatSub = computed(() => {
+  const s = stats.value
+  const days = s?.csat_window_days ?? 30
+  if (!s?.csat_responses) return `last ${days} days`
+  const parts: string[] = []
+  if (s.csat_ai_avg != null) parts.push(`AI ${s.csat_ai_avg.toFixed(1)}`)
+  if (s.csat_human_avg != null) parts.push(`human ${s.csat_human_avg.toFixed(1)}`)
+  return parts.length ? parts.join(' · ') : `${s.csat_responses} in ${days} days`
+})
+
+const csatColor = computed(() => {
+  const avg = stats.value?.csat_avg
+  if (avg == null) return 'var(--c-info)'
+  return avg >= 4 ? 'var(--c-positive)' : avg >= 3 ? 'var(--c-warn)' : 'var(--c-danger)'
+})
+
 const statChips = computed(() => [
   { label: 'Open', value: stats.value?.open ?? '—', color: 'var(--c-info)', alert: false },
   { label: 'Awaiting approval', value: stats.value?.awaiting_approval ?? '—', color: 'var(--c-warn)', alert: false },
@@ -53,6 +71,13 @@ const statChips = computed(() => [
     color: 'var(--c-positive)',
     alert: false,
     sub: 'last 7 days',
+  },
+  {
+    label: 'CSAT',
+    value: stats.value?.csat_avg != null ? `${stats.value.csat_avg.toFixed(1)}/5` : '—',
+    color: csatColor.value,
+    alert: false,
+    sub: csatSub.value,
   },
 ])
 

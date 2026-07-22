@@ -267,6 +267,9 @@ class TicketOut(BaseModel):
     closed_at: Optional[datetime] = None
     confirmation_requested_at: Optional[datetime] = None
     reopened_count: int = 0
+    csat_requested_at: Optional[datetime] = None
+    csat_score: Optional[int] = None
+    csat_responded_at: Optional[datetime] = None
     external_ref_type: Optional[str] = None
     external_ref_id: Optional[str] = None
     external_ref_url: Optional[str] = None
@@ -320,6 +323,12 @@ class TicketStats(BaseModel):
     awaiting_approval: int
     sla_breaching: int
     ai_resolved_pct_7d: Optional[float] = None
+    # CSAT over the trailing csat_window_days, overall and split by resolver.
+    csat_avg: Optional[float] = None
+    csat_ai_avg: Optional[float] = None
+    csat_human_avg: Optional[float] = None
+    csat_responses: int = 0
+    csat_window_days: int = 30
 
 
 class SlaTarget(BaseModel):
