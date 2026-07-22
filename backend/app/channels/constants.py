@@ -21,6 +21,8 @@ default. (It buys no import weight: app/channels/__init__ loads the registry
 regardless. It is about where the value belongs, not what it drags in.)
 """
 
+from typing import Optional
+
 # The language assumed when a caller doesn't name one. Meta has no default —
 # name and language together identify a template, so `order_update` in five
 # languages is five templates — which makes this our choice, and one worth
@@ -30,3 +32,19 @@ regardless. It is about where the value belongs, not what it drags in.)
 # The frontend's DEFAULT_LANGUAGE (utils/whatsappLanguages.ts) is the
 # unavoidable second copy, on the other side of the wire. Keep the two equal.
 DEFAULT_TEMPLATE_LANGUAGE = "en_US"
+
+
+# Channels served by our own chat widget rather than an external messaging
+# platform. They render our UI, so widget-only features (the rating prompt) work
+# there; on Telegram or WhatsApp the same prompt is a dead end.
+#
+# 'shopify' is that widget embedded in a Shopify storefront — a distinct origin
+# worth reporting on, but the same chat surface. Every "is this the widget?"
+# test has to accept both, or Shopify conversations quietly lose widget
+# features the moment they stop being labelled 'web'.
+WIDGET_CHANNELS = frozenset({"web", "shopify"})
+
+
+def is_widget_channel(channel: Optional[str]) -> bool:
+    """True for our own widget surfaces. A missing channel means the widget."""
+    return not channel or channel in WIDGET_CHANNELS

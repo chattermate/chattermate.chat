@@ -25,6 +25,7 @@ from app.models.agent import Agent
 from app.models.session_to_agent import SessionToAgent
 from app.repositories.channels import ChannelConversationRepository
 from app.core.logger import get_logger
+from app.channels.constants import is_widget_channel
 from app.models.user import User
 from app.repositories.customer import CustomerRepository
 from sqlalchemy.orm import joinedload
@@ -162,7 +163,7 @@ class ChatRepository:
         would multiply that query's groups. Only fires for channel sessions,
         and get_chat_detail fetches one session at a time.
         """
-        if not channel or channel == 'web':
+        if is_widget_channel(channel):
             return None
         conversation = ChannelConversationRepository(self.db).get_by_session(session_id)
         return str(conversation.channel_account_id) if conversation else None

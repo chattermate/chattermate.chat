@@ -29,6 +29,7 @@ from app.core.auth_utils import authenticate_socket, authenticate_socket_convers
 from app.database import get_db
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.widget import WidgetRepository
+from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 from app.core.security import decrypt_api_key
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.repositories.chat import ChatRepository
@@ -202,13 +203,20 @@ async def widget_connect(sid, environ, auth):
             session_id = str(active_session.session_id)
             logger.debug(f"Active session: {session_id}")  
         else:
-            # Create new session if none exists
+            # Create new session if none exists. Stamp the channel now, the way
+            # the messaging channels do: an agent wired to a Shopify store is
+            # serving that storefront, and the inbox labels the conversation
+            # accordingly. Still a widget surface — see WIDGET_CHANNELS.
             new_session_id = str(uuid.uuid4())
+            shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(
+                str(widget.agent_id)
+            )
             session_repo.create_session(
                 session_id=new_session_id,
                 agent_id=widget.agent_id,
                 customer_id=customer_id,
-                organization_id=org_id
+                organization_id=org_id,
+                channel='shopify' if shopify_config and shopify_config.enabled else 'web'
             )
             session_id = new_session_id
             logger.debug(f"New session: {session_id}")
