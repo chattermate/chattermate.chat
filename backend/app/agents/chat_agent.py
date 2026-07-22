@@ -165,7 +165,7 @@ def remove_urls_from_message(message: str) -> str:
     
     return message
 
-def enrich_shopify_response(response_content: ChatResponse, session_id: str) -> ChatResponse:
+def enrich_shopify_response(response_content: ChatResponse, session_id: str, fallback_cache_key: str = None) -> ChatResponse:
     """
     Enrich ChatResponse by converting ShopifyOutputDataLLM to ShopifyOutputData with full product data from Redis.
 
@@ -174,9 +174,16 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str) -> 
     2. Retrieves full products from Redis using product_cache_key
     3. Converts to ShopifyOutputData (with products) for socket/frontend
 
+    The cache key is preferred from the LLM's structured shopify_output, but falls back
+    to `fallback_cache_key` (the deterministic key the toolkit recorded when a product
+    tool actually ran this turn). This makes product attachment reliable even when the
+    LLM forgets to emit shopify_output / echo the key — the common failure mode.
+
     Args:
         response_content: The ChatResponse object from the LLM
         session_id: The current session ID (for logging)
+        fallback_cache_key: Redis key recorded by the toolkit this turn, used when the
+            LLM did not provide a usable product_cache_key.
 
     Returns:
         Enriched ChatResponse with shopify_output converted to ShopifyOutputData
@@ -184,14 +191,23 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str) -> 
     from app.core.redis import get_redis
     from app.models.schemas.chat import ShopifyOutputData
 
-    # Check if shopify_output exists and has a cache key
-    if not response_content.shopify_output:
+    # Prefer the toolkit's recorded key — it is authoritative for the products actually
+    # fetched this turn. The LLM's echoed key is only used when no tool ran this turn
+    # (e.g. paginating a prior result). This makes attachment reliable regardless of
+    # whether the LLM remembered to emit shopify_output.
+    llm_product_ids = getattr(response_content.shopify_output, 'product_ids', None) if response_content.shopify_output else None
+    if fallback_cache_key:
+        cache_key = fallback_cache_key
+        if not (response_content.shopify_output and getattr(response_content.shopify_output, 'product_cache_key', None)):
+            logger.info(f"LLM omitted shopify_output; attaching products via toolkit fallback key for session {session_id}")
+    elif response_content.shopify_output and getattr(response_content.shopify_output, 'product_cache_key', None):
+        cache_key = response_content.shopify_output.product_cache_key
+    else:
+        cache_key = None
+
+    if not cache_key:
         return response_content
 
-    if not hasattr(response_content.shopify_output, 'product_cache_key') or not response_content.shopify_output.product_cache_key:
-        return response_content
-
-    cache_key = response_content.shopify_output.product_cache_key
     logger.debug(f"Enriching response with cache key: {cache_key}")
 
     try:
@@ -210,18 +226,21 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str) -> 
         product_data = json.loads(cached_data)
 
         # Convert ShopifyOutputDataLLM to ShopifyOutputData with ALL fields from Redis
-        # LLM only provides cache_key + product_ids, everything else comes from Redis
+        # LLM only provides cache_key + product_ids, everything else comes from Redis.
+        # When the LLM omitted shopify_output, derive product_ids from the cached products.
         pageInfo = product_data.get("pageInfo", {})
+        products = product_data.get("products", [])
+        product_ids = llm_product_ids or [p.get("id") for p in products if p.get("id")]
 
         enriched_output = ShopifyOutputData(
-            products=product_data.get("products", []),
+            products=products,
             search_query=product_data.get("search_query"),
             search_type=product_data.get("search_type"),
             total_count=product_data.get("total_count"),
             has_more=pageInfo.get("hasNextPage", False),
             shop_domain=product_data.get("shop_domain"),
             product_cache_key=cache_key,
-            product_ids=response_content.shopify_output.product_ids
+            product_ids=product_ids
         )
 
         # Replace LLM output with enriched output (type change: ShopifyOutputDataLLM → ShopifyOutputData)
@@ -796,7 +815,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             logger.debug(f"Response content: {response_content}")
 
             # Enrich Shopify response with full product data from Redis
-            response_content = enrich_shopify_response(response_content, session_id)
+            response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=(self.shopify_tools.products_cache_key if getattr(self, 'shopify_tools', None) else None))
 
             # If shopify_output has products, remove URLs from message
             # (URLs should only be removed when products are being displayed separately)
@@ -1131,7 +1150,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 logger.debug(f"Response content: {response_content}")
 
                 # Enrich Shopify response with full product data from Redis
-                response_content = enrich_shopify_response(response_content, session_id)
+                response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=(self.shopify_tools.products_cache_key if getattr(self, 'shopify_tools', None) else None))
 
                 # If shopify_output has products, remove URLs from message
                 # (URLs should only be removed when products are being displayed separately)
