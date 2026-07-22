@@ -30,6 +30,7 @@ from app.database import get_db
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.widget import WidgetRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
+from app.channels.constants import is_widget_channel
 from app.core.security import decrypt_api_key
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.repositories.chat import ChatRepository
@@ -155,6 +156,27 @@ def validate_form_data(form_fields: list, form_data: dict) -> list:
     
     return errors
 
+def widget_channel(db, agent_id) -> str:
+    """Which widget surface this agent serves: a connected Shopify store, or the
+    plain website widget."""
+    config = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
+    return 'shopify' if config and config.enabled else 'web'
+
+
+def restamp_widget_channel(session, desired: str) -> bool:
+    """Relabel a reused session, returning whether anything changed.
+
+    Only ever moves between widget surfaces: a session belonging to Telegram or
+    WhatsApp must never be relabelled by the widget's connect handler, and
+    `channel` is the outbound routing key, so clobbering it would misroute
+    replies.
+    """
+    if session.channel == desired or not is_widget_channel(session.channel):
+        return False
+    session.channel = desired
+    return True
+
+
 @sio.on('connect', namespace='/widget')
 async def widget_connect(sid, environ, auth):
     db = None
@@ -201,6 +223,11 @@ async def widget_connect(sid, environ, auth):
               
         if active_session:
             session_id = str(active_session.session_id)
+            # Widget sessions are long-lived and reused across visits, so a
+            # conversation that began before the store was connected would keep
+            # its old label forever. Re-stamp on reconnect instead.
+            if restamp_widget_channel(active_session, widget_channel(db, widget.agent_id)):
+                db.commit()
             logger.debug(f"Active session: {session_id}")  
         else:
             # Create new session if none exists. Stamp the channel now, the way
@@ -208,15 +235,12 @@ async def widget_connect(sid, environ, auth):
             # serving that storefront, and the inbox labels the conversation
             # accordingly. Still a widget surface — see WIDGET_CHANNELS.
             new_session_id = str(uuid.uuid4())
-            shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(
-                str(widget.agent_id)
-            )
             session_repo.create_session(
                 session_id=new_session_id,
                 agent_id=widget.agent_id,
                 customer_id=customer_id,
                 organization_id=org_id,
-                channel='shopify' if shopify_config and shopify_config.enabled else 'web'
+                channel=widget_channel(db, widget.agent_id)
             )
             session_id = new_session_id
             logger.debug(f"New session: {session_id}")
