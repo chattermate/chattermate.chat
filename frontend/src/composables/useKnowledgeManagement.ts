@@ -177,8 +177,9 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
     try {
       const parsed = new URL(url)
       // new URL() accepts things like "mailto:x" and "foo:bar"; a crawlable
-      // source has to be http(s) with an actual host.
-      return /^https?:$/.test(parsed.protocol) && parsed.hostname.includes('.')
+      // source has to be http(s). Deliberately not requiring a dot in the host:
+      // self-hosted installs index intranet names like https://wiki.
+      return /^https?:$/.test(parsed.protocol) && !!parsed.hostname
     } catch {
       return false
     }

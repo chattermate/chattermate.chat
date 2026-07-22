@@ -54,9 +54,14 @@ describe('useKnowledgeManagement - URL handling', () => {
       (url) => expect(isValidUrl(url)).toBe(true)
     )
 
-    it.each(['mailto:someone@x.com', 'foo:bar', 'https://localhost', 'not a url'])(
+    it.each(['mailto:someone@x.com', 'foo:bar', 'not a url', 'https://'])(
       'rejects %s',
       (url) => expect(isValidUrl(url)).toBe(false)
+    )
+
+    it.each(['https://localhost', 'https://wiki', 'http://intranet:8080'])(
+      'accepts the intranet hostnames a self-hosted install indexes: %s',
+      (url) => expect(isValidUrl(url)).toBe(true)
     )
   })
 
