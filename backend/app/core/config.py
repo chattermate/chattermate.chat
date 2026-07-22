@@ -75,13 +75,12 @@ class Settings(BaseSettings):
     # Shopify
     SHOPIFY_API_KEY: str = os.getenv("SHOPIFY_API_KEY", "")
     SHOPIFY_API_SECRET: str = os.getenv("SHOPIFY_API_SECRET", "")
+    SHOPIFY_API_VERSION: str = os.getenv("SHOPIFY_API_VERSION", "2025-10")
 
-    # Slack
+    # Slack. The OAuth redirect URI is derived from BACKEND_URL, not configured.
     SLACK_CLIENT_ID: str = os.getenv("SLACK_CLIENT_ID", "")
     SLACK_CLIENT_SECRET: str = os.getenv("SLACK_CLIENT_SECRET", "")
     SLACK_SIGNING_SECRET: str = os.getenv("SLACK_SIGNING_SECRET", "")
-    SLACK_REDIRECT_URI: str = os.getenv("SLACK_REDIRECT_URI", "")
-    SHOPIFY_API_VERSION: str = os.getenv("SHOPIFY_API_VERSION", "2025-10")
 
     # Meta (WhatsApp Cloud API, Messenger, Instagram) — one app, shared webhook.
     # Self-hosters supply their own app; the cloud supplies its approved app.

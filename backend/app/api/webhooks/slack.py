@@ -29,6 +29,51 @@ from app.services.channel_chat import process_channel_message
 router = APIRouter()
 logger = get_logger(__name__)
 
+# Workspace-level events that end our access: the app was removed, or its
+# tokens were revoked. Both mean the stored credentials are dead.
+LIFECYCLE_EVENT_TYPES = frozenset({"app_uninstalled", "tokens_revoked"})
+
+
+def _revokes_bot_access(event: dict) -> bool:
+    """Whether the event actually kills the credentials we hold.
+
+    An uninstall always does. tokens_revoked also fires when a *user* token
+    is revoked, which leaves the bot working — we only ever store a bot
+    token, so acting on those would disconnect a healthy workspace.
+    """
+    if event.get("type") == "app_uninstalled":
+        return True
+    return bool((event.get("tokens") or {}).get("bot"))
+
+
+def _handle_lifecycle_event(payload: dict, account_repo: ChannelAccountRepository) -> None:
+    """Drop the workspace's stored credentials after an uninstall or revoke.
+
+    Deleting the account closes any open sessions and cascades to its
+    conversations and agent config, so no agent is left holding a
+    conversation on a channel we can no longer reach.
+    """
+    if not _revokes_bot_access(payload.get("event") or {}):
+        logger.info("Slack tokens_revoked without a bot token; keeping the account")
+        return
+
+    team_id = payload.get("team_id", "")
+    if not team_id:
+        logger.warning("Slack lifecycle event without a team_id; ignoring")
+        return
+
+    account = account_repo.get_by_external_id(ChannelType.SLACK.value, team_id)
+    if account is None:
+        # Already disconnected our side, or a workspace we never stored.
+        logger.info(f"Slack lifecycle event for unknown team {team_id}")
+        return
+
+    # delete() reports failure by returning False rather than raising.
+    if account_repo.delete(account):
+        logger.info(f"Removed Slack account for team {team_id} after lifecycle event")
+    else:
+        logger.error(f"Failed to remove Slack account for team {team_id}")
+
 
 @router.post("")
 async def slack_webhook(
@@ -53,8 +98,15 @@ async def slack_webhook(
     if payload.get("type") != "event_callback":
         return {"status": "ignored"}
 
-    adapter = get_adapter(ChannelType.SLACK.value)
     account_repo = ChannelAccountRepository(db)
+
+    # Lifecycle events carry no message, so parse_inbound drops them — resolve
+    # the workspace off the envelope instead, before the message loop.
+    if (payload.get("event") or {}).get("type") in LIFECYCLE_EVENT_TYPES:
+        _handle_lifecycle_event(payload, account_repo)
+        return {"status": "ok"}
+
+    adapter = get_adapter(ChannelType.SLACK.value)
 
     for inbound in adapter.parse_inbound(payload):
         account = account_repo.get_by_external_id(ChannelType.SLACK.value, inbound.external_account_id)
