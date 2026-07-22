@@ -42,6 +42,27 @@ class RatingRepository:
         self.db.refresh(db_rating)
         return db_rating
 
+    def upsert_rating(self, session_id: UUID, customer_id: UUID, user_id: UUID, agent_id: UUID,
+                      organization_id: UUID, rating: int, feedback: Optional[str] = None) -> Rating:
+        """Record the customer's rating for a session, replacing any earlier one.
+
+        One row per session: the widget can re-show the rating prompt, and
+        without this a customer could pile up rows that skew agent/org averages
+        and, since the score now flows onto the ticket, spam its activity feed.
+        """
+        existing = self.get_rating_by_session(session_id)
+        if existing is None:
+            return self.create_rating(
+                session_id=session_id, customer_id=customer_id, user_id=user_id,
+                agent_id=agent_id, organization_id=organization_id,
+                rating=rating, feedback=feedback,
+            )
+        existing.rating = rating
+        existing.feedback = feedback
+        self.db.commit()
+        self.db.refresh(existing)
+        return existing
+
     def get_rating_by_session(self, session_id: UUID) -> Optional[Rating]:
         """Get rating by session ID"""
         return self.db.query(Rating).filter(Rating.session_id == session_id).first()

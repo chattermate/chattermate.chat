@@ -1079,6 +1079,84 @@ class TestRatingSubmission:
         assert success_calls[0][0][1]['success'] is True
     
     @pytest.mark.asyncio
+    async def test_handle_rating_submission_bounds_feedback(
+        self, db, test_widget, test_customer, mock_sio, monkeypatch
+    ):
+        """Feedback is anonymous visitor input that reaches the agent UI and
+        the ticket activity feed — it must be capped and sanitized."""
+        from app.api import widget_chat
+        from app.repositories.session_to_agent import SessionToAgentRepository
+
+        monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
+
+        session_id = uuid4()
+        SessionToAgentRepository(db).create_session(
+            session_id=session_id,
+            agent_id=test_widget.agent_id,
+            customer_id=test_customer.id,
+            organization_id=test_widget.organization_id
+        )
+        mock_sio.get_session.return_value = {
+            "session_id": str(session_id),
+            "widget_id": str(test_widget.id),
+            "org_id": str(test_widget.organization_id),
+            "customer_id": str(test_customer.id)
+        }
+        monkeypatch.setattr(
+            widget_chat,
+            "authenticate_socket_conversation_token",
+            AsyncMock(return_value=(
+                str(test_widget.id),
+                str(test_widget.organization_id),
+                str(test_customer.id),
+                "test_token"
+            ))
+        )
+        mock_rating_repo = MagicMock()
+        monkeypatch.setattr(widget_chat, "RatingRepository", lambda db: mock_rating_repo)
+
+        await widget_chat.handle_rating_submission(
+            "test_sid",
+            {"rating": 4, "feedback": "x" * 5000 + "<script>alert(1)</script>"},
+        )
+
+        stored = mock_rating_repo.upsert_rating.call_args.kwargs["feedback"]
+        assert len(stored) <= widget_chat.MAX_RATING_FEEDBACK_LENGTH
+        assert "<script>" not in stored
+
+    @pytest.mark.asyncio
+    async def test_handle_rating_submission_rejects_non_string_feedback(
+        self, mock_sio, monkeypatch
+    ):
+        """A non-string feedback payload must be refused, not persisted."""
+        from app.api import widget_chat
+
+        monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        mock_sio.get_session.return_value = {
+            "session_id": "test_session",
+            "widget_id": "widget_id",
+            "org_id": "org_id",
+            "customer_id": "customer_id"
+        }
+        monkeypatch.setattr(
+            widget_chat,
+            "authenticate_socket_conversation_token",
+            AsyncMock(return_value=("widget_id", "org_id", "customer_id", "token"))
+        )
+
+        await widget_chat.handle_rating_submission(
+            "test_sid", {"rating": 5, "feedback": {"$ne": None}}
+        )
+
+        mock_sio.emit.assert_called_with(
+            'error',
+            {'error': 'Invalid feedback value', 'type': 'rating_error'},
+            to="test_sid",
+            namespace='/widget'
+        )
+
+    @pytest.mark.asyncio
     async def test_handle_rating_submission_invalid_rating(self, mock_sio, monkeypatch):
         """Test rating submission with invalid rating"""
         from app.api import widget_chat

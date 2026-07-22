@@ -675,7 +675,12 @@ class TicketService:
         self, ticket: Ticket, rating_id: UUID, score: int, feedback: Optional[str] = None
     ) -> Ticket:
         """Attach a submitted conversation rating to the ticket. The most
-        recent rating wins if a customer rates the same conversation twice."""
+        recent rating wins if a customer rates the same conversation twice.
+
+        Re-submitting the same score is ignored: the customer controls how
+        often this fires, and every write here appends to the audit feed."""
+        if ticket.csat_rating_id == rating_id and ticket.csat_score == score:
+            return ticket
         ticket.csat_score = score
         ticket.csat_rating_id = rating_id
         ticket.csat_responded_at = datetime.now(timezone.utc)
