@@ -55,6 +55,10 @@ from app.repositories.ticket import (
 
 logger = get_logger(__name__)
 
+# Widget sessions carry this channel; their replies reach the browser tab over
+# Socket.IO only, so ticket updates to them are also emailed (see below).
+WEB_CHANNEL = "web"
+
 # Open tickets whose title+description embed this close to an existing open
 # ticket are flagged as possible duplicates.
 DUPLICATE_SIMILARITY_THRESHOLD = 0.90
@@ -770,6 +774,7 @@ class TicketService:
         if session_record is None:
             await self._send_direct_email(ticket, message, record_activity)
             return
+        channel = getattr(session_record, "channel", None) or WEB_CHANNEL
         try:
             from app.services.message_delivery import deliver_to_customer
             from app.repositories.chat import ChatRepository
@@ -789,39 +794,42 @@ class TicketService:
             })
             if ticket.first_response_at is None:
                 ticket.first_response_at = datetime.now(timezone.utc)
-            if not record_activity:
-                return
-            self._add_activity(
-                ticket, TicketActivityType.CUSTOMER_NOTIFIED,
-                actor_type=TicketActorType.SYSTEM,
-                body=message,
-                metadata={
-                    "session_id": str(session_record.session_id),
-                    "channel": getattr(session_record, "channel", "web"),
-                },
-            )
+            if record_activity:
+                self._add_activity(
+                    ticket, TicketActivityType.CUSTOMER_NOTIFIED,
+                    actor_type=TicketActorType.SYSTEM,
+                    body=message,
+                    metadata={
+                        "session_id": str(session_record.session_id),
+                        "channel": channel,
+                    },
+                )
         except Exception as e:
             logger.error(f"Customer notification failed for {ticket.display_number}: {e}")
+
+        # Widget (web) sessions are delivered over Socket.IO to the browser tab
+        # only, but a ticket reply almost always arrives after the visitor has
+        # closed the chat — so it reaches nobody. When we have a real inbox for
+        # them, also email the reply through the org's connected email channel
+        # (their own domain) so async ticket updates actually land. External
+        # channels (WhatsApp/Telegram/email) already deliver asynchronously via
+        # their own adapter, so this supplement is web-only.
+        if channel == WEB_CHANNEL:
+            to_email = self._deliverable_email(ticket)
+            if to_email:
+                await self._email_customer_copy(ticket, message, to_email)
 
     async def _send_direct_email(
         self, ticket: Ticket, message: str, record_activity: bool
     ) -> None:
         """Email fallback for tickets with no linked conversation."""
-        to_email = ticket.customer.email if ticket.customer else None
+        to_email = self._deliverable_email(ticket)
         if not to_email:
             logger.info(
-                f"Ticket {ticket.display_number}: no linked session or customer email to notify"
+                f"Ticket {ticket.display_number}: no linked session or mailable customer email to notify"
             )
             return
-        from app.services.ticket_email import send_ticket_email
-        sent = await send_ticket_email(
-            self.db,
-            ticket.organization_id,
-            to_email,
-            subject=f"[{ticket.display_number}] {ticket.title}",
-            body=message,
-        )
-        if not sent:
+        if not await self._email_customer_copy(ticket, message, to_email):
             return
         if ticket.first_response_at is None:
             ticket.first_response_at = datetime.now(timezone.utc)
@@ -832,6 +840,33 @@ class TicketService:
             actor_type=TicketActorType.SYSTEM,
             body=message,
             metadata={"channel": "email", "to": to_email},
+        )
+
+    def _deliverable_email(self, ticket: Ticket) -> Optional[str]:
+        """The customer's real, mailable address, or None for anonymous /
+        placeholder records: …@noemail.com widget visitors, …@<channel>.channel
+        identity keys, and generate-token …@<org>.local anonymous stand-ins —
+        none of which can receive mail."""
+        from app.repositories.customer import CustomerRepository
+        email = ticket.customer.email if ticket.customer else None
+        if not email or CustomerRepository.is_placeholder_email(email) or email.endswith(".local"):
+            return None
+        return email
+
+    async def _email_customer_copy(self, ticket: Ticket, message: str, to_email: str) -> bool:
+        """Email a ticket reply to a customer through the org's email channel.
+        The single send point for both the widget (web) supplement and the
+        no-session fallback. Returns whether the mail was sent.
+
+        Best-effort — send_ticket_email swallows SMTP errors and returns False,
+        so a mail hiccup never fails the surrounding ticket mutation."""
+        from app.services.ticket_email import send_ticket_email
+        return await send_ticket_email(
+            self.db,
+            ticket.organization_id,
+            to_email,
+            subject=f"[{ticket.display_number}] {ticket.title}",
+            body=message,
         )
 
     def _primary_session(self, ticket: Ticket) -> Optional[SessionToAgent]:

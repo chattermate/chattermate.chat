@@ -251,6 +251,45 @@ class TestCustomerEmailPath:
         assert ticket.first_response_at is not None
 
     @pytest.mark.asyncio
+    async def test_web_session_reply_is_also_emailed(
+        self, service, db, test_organization, test_session
+    ):
+        """A widget (web) reply is emitted over the socket to the browser tab
+        only; when the customer has a real inbox it must also be emailed so a
+        ticket update reaches them after they've closed the chat."""
+        ticket = make_ticket(
+            service, db, test_organization, session_id=test_session.session_id
+        )
+        with patch(
+            "app.services.message_delivery.deliver_to_customer"
+        ) as deliver, patch(
+            "app.services.ticket_email.send_ticket_email", return_value=True
+        ) as send:
+            await service.send_customer_message(ticket, "Update on your ticket")
+        deliver.assert_awaited_once()
+        send.assert_awaited_once()
+        assert send.await_args.args[2] == test_session.customer.email
+
+    @pytest.mark.asyncio
+    async def test_web_session_reply_not_emailed_for_placeholder(
+        self, service, db, test_organization, test_session, test_customer
+    ):
+        """Anonymous widget visitors (…@noemail.com) have no real inbox — the
+        socket emit is the only delivery, no email is attempted."""
+        test_customer.email = "visitor@noemail.com"
+        db.commit()
+        ticket = make_ticket(
+            service, db, test_organization, session_id=test_session.session_id
+        )
+        with patch(
+            "app.services.message_delivery.deliver_to_customer"
+        ), patch(
+            "app.services.ticket_email.send_ticket_email", return_value=True
+        ) as send:
+            await service.send_customer_message(ticket, "Update on your ticket")
+        send.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_no_contact_is_a_silent_noop(self, service, db, test_organization):
         ticket = make_ticket(service, db, test_organization)
         with patch(
