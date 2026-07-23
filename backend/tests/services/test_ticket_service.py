@@ -311,6 +311,23 @@ class TestCustomerEmailPath:
         assert TicketActivityType.CUSTOMER_NOTIFIED.value not in types
         assert ticket.first_response_at is None
 
+    @pytest.mark.asyncio
+    async def test_repeat_resolve_notifies_customer_once(
+        self, service, db, test_organization, test_session
+    ):
+        """A double-submitted resolve must send the customer exactly one
+        resolution message — the second call is a no-op transition and must not
+        re-notify."""
+        ticket = make_ticket(
+            service, db, test_organization, session_id=test_session.session_id
+        )
+        with patch.object(
+            service, "notify_customer_resolved"
+        ) as notify:
+            await service.resolve(ticket, outcome="fixed", customer_message="All set")
+            await service.resolve(ticket, outcome="fixed", customer_message="All set")
+        notify.assert_awaited_once()
+
 
 class TestStatusMachine:
     def test_legal_transition(self, service, db, test_organization):

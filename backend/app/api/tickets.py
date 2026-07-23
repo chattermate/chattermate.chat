@@ -134,9 +134,13 @@ def _activity_out(activity) -> TicketActivityOut:
     return out
 
 
-def _get_ticket_or_404(db: Session, ticket_id: UUID, user: User) -> Ticket:
+def _get_ticket_or_404(
+    db: Session, ticket_id: UUID, user: User, for_update: bool = False
+) -> Ticket:
     from app.repositories.ticket import TicketRepository
-    ticket = TicketRepository(db).get_by_id(ticket_id, user.organization_id)
+    ticket = TicketRepository(db).get_by_id(
+        ticket_id, user.organization_id, for_update=for_update
+    )
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
@@ -454,7 +458,10 @@ async def resolve_ticket(
 ):
     check_ticketing_access(db, current_user.organization_id)
     service = _service(db)
-    ticket = _get_ticket_or_404(db, ticket_id, current_user)
+    # Lock the row so a double-submitted resolve serializes: the second request
+    # blocks until the first commits, then sees RESOLVED_PENDING_CONFIRMATION
+    # and skips re-notifying the customer.
+    ticket = _get_ticket_or_404(db, ticket_id, current_user, for_update=True)
     try:
         await service.resolve(
             ticket,

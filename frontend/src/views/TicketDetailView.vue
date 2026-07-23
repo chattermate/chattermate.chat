@@ -106,13 +106,22 @@ function copyLink() {
     .catch(() => {})
 }
 
+const isResolving = ref(false)
 async function submitResolve() {
-  await resolve({
-    outcome: resolveOutcome.value,
-    customer_message: resolveCustomerMessage.value.trim() || undefined,
-  })
-  showResolvePanel.value = false
-  resolveCustomerMessage.value = ''
+  // Guard against a double-clicked resolve firing multiple /resolve calls,
+  // which would send the customer the resolution message more than once.
+  if (isResolving.value) return
+  isResolving.value = true
+  try {
+    await resolve({
+      outcome: resolveOutcome.value,
+      customer_message: resolveCustomerMessage.value.trim() || undefined,
+    })
+    showResolvePanel.value = false
+    resolveCustomerMessage.value = ''
+  } finally {
+    isResolving.value = false
+  }
 }
 </script>
 
@@ -260,8 +269,8 @@ async function submitResolve() {
           </template>
           <div class="resolve-actions">
             <button class="action-btn" @click="showResolvePanel = false">Cancel</button>
-            <button class="resolve-submit" @click="submitResolve">
-              {{ canNotifyCustomer ? 'Resolve & notify customer' : 'Resolve' }}
+            <button class="resolve-submit" :disabled="isResolving" @click="submitResolve">
+              {{ isResolving ? 'Resolving…' : (canNotifyCustomer ? 'Resolve & notify customer' : 'Resolve') }}
             </button>
           </div>
           <div class="resolve-hint">
@@ -564,6 +573,10 @@ async function submitResolve() {
   font-size: 13px;
   font-weight: var(--font-weight-bold);
   cursor: pointer;
+}
+.resolve-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .resolve-hint {
   margin-top: 10px;

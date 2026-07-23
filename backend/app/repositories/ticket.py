@@ -87,10 +87,20 @@ class TicketRepository:
         self.db.flush()
         return ticket
 
-    def get_by_id(self, ticket_id: UUID, organization_id: Optional[UUID] = None) -> Optional[Ticket]:
+    def get_by_id(
+        self,
+        ticket_id: UUID,
+        organization_id: Optional[UUID] = None,
+        for_update: bool = False,
+    ) -> Optional[Ticket]:
         query = self.db.query(Ticket).filter(Ticket.id == ticket_id)
         if organization_id is not None:
             query = query.filter(Ticket.organization_id == organization_id)
+        if for_update:
+            # Serialize concurrent mutations of the same ticket (e.g. a
+            # double-submitted resolve) so each request observes the prior
+            # one's committed status. No-op on sqlite (tests).
+            query = query.with_for_update()
         return query.first()
 
     def get_by_number(self, organization_id: UUID, ticket_number: int) -> Optional[Ticket]:
