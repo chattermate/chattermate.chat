@@ -170,7 +170,9 @@ const jiraSiteUrl = ref('')
 const isLoading = ref(true)
 const showDisconnectConfirm = ref(false)
 const disconnectingIntegration = ref<string | null>(null)
-const lastConnectionError = ref<string | null>(null)
+// OAuth connect error, tagged with the integration it belongs to so the banner
+// renders on that card rather than always on Jira's.
+const connectionError = ref<{ integration: string; message: string } | null>(null)
 
 // Check if Jira is connected
 const fetchJiraStatus = async () => {
@@ -191,7 +193,7 @@ const fetchJiraStatus = async () => {
 const connectJira = () => {
   try {
     // Clear any previous error messages
-    lastConnectionError.value = null
+    connectionError.value = null
     window.location.href = getJiraAuthUrl()
   } catch (error) {
     console.error('Error connecting to Jira:', error)
@@ -501,29 +503,28 @@ onMounted(async () => {
       else {
         toast.success(`${integrationName(route.query.integration as string)} connected successfully!`)
       }
-      lastConnectionError.value = null
+      connectionError.value = null
     } else if (route.query.status === 'failure') {
-      // Handle different failure reasons
+      // Jira's callback omits the integration param, so a missing value means Jira.
+      const failedIntegration = (route.query.integration as string) || 'jira'
+      const name = integrationName(failedIntegration)
       const reason = route.query.reason as string || 'unknown'
-      const integration = route.query.integration as string || 'integration'
-      
-      let errorMessage = `Failed to connect to ${integration}`
-      
+
+      let errorMessage = `Failed to connect to ${name}`
+
       // Map common error reasons to user-friendly messages
       if (reason === 'cancelled') {
-        errorMessage = `${integration} connection was cancelled`
+        errorMessage = `${name} connection was cancelled`
       } else if (reason === 'invalid_state') {
         errorMessage = 'Authentication session expired or is invalid'
       } else if (reason.includes('unauthorized')) {
         errorMessage = 'Authorization failed. Please check your permissions'
       } else if (reason) {
-        // Format the reason to be more readable
-        const formattedReason = reason.replace(/_/g, ' ')
-        errorMessage = `Failed to connect to ${integration}: ${formattedReason}`
+        errorMessage = `Failed to connect to ${name}: ${reason.replace(/_/g, ' ')}`
       }
-      
+
       toast.error(errorMessage)
-      lastConnectionError.value = errorMessage
+      connectionError.value = { integration: failedIntegration, message: errorMessage }
     }
     
     // Remove the query parameters to avoid showing the toast on refresh
@@ -617,8 +618,8 @@ onMounted(async () => {
           <div v-else-if="integration.connected && integration.teamName" class="integration-meta">
             <span class="meta-text">{{ integration.teamName }}</span>
           </div>
-          <div v-else-if="!integration.connected && integration.id === 'jira' && lastConnectionError" class="integration-meta">
-            <span class="meta-error">⚠️ {{ lastConnectionError }}</span>
+          <div v-else-if="!integration.connected && connectionError && connectionError.integration === integration.id" class="integration-meta">
+            <span class="meta-error">⚠️ {{ connectionError.message }}</span>
           </div>
 
           <!-- Loading state -->
