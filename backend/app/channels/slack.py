@@ -40,6 +40,26 @@ MAX_SIGNATURE_AGE_SECONDS = 60 * 5
 # Slack recommends keeping messages well under the 40k hard limit
 MAX_MESSAGE_LENGTH = 12000
 
+# App Home / Assistant (Agents & AI Apps) copy — kept in one place so the tone
+# stays consistent across the Messages tab, the Home tab, and the sidebar.
+MAX_SUGGESTED_PROMPTS = 4  # Slack caps setSuggestedPrompts at 4
+ASSISTANT_READY_STATUS = "is getting ready…"
+WELCOME_WITH_AGENT = (
+    "Hi! I'm {agent}. 👋\n\n"
+    "Ask me anything and I'll help right away — I answer from your team's "
+    "knowledge and can bring in a human when you need one."
+)
+WELCOME_NO_AGENT = (
+    "Hi! I'm ChatterMate. 👋\n\n"
+    "No agent is connected to this workspace yet. Set one up in ChatterMate and "
+    "I'll start answering here."
+)
+SUGGESTED_PROMPTS_TITLE = "Try asking:"
+STARTER_PROMPTS = [
+    {"title": "What can you help with?", "message": "What can you help me with?"},
+    {"title": "Talk to a human", "message": "I'd like to talk to a human."},
+]
+
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
 
 _http_client: Optional[httpx.AsyncClient] = None
@@ -62,6 +82,80 @@ async def slack_api(method: str, access_token: str, payload: dict, form: bool = 
         **kwargs,
     )
     return response.json()
+
+
+# --- App Home / Assistant API wrappers (Agents & AI Apps) -------------------
+# All take JSON, so they go through slack_api directly. Status and prompts are
+# cosmetic — failures are logged, never raised, so a hiccup can't break the flow.
+
+async def set_assistant_status(token: str, channel_id: str, thread_ts: str, status: str) -> dict:
+    """Show a transient status line (e.g. 'is thinking…') in an assistant thread."""
+    data = await slack_api("assistant.threads.setStatus", token,
+                           {"channel_id": channel_id, "thread_ts": thread_ts, "status": status})
+    if not data.get("ok"):
+        logger.debug(f"Slack assistant.threads.setStatus: {data.get('error')}")
+    return data
+
+
+async def set_suggested_prompts(token: str, channel_id: str, thread_ts: str,
+                                prompts: List[dict], title: Optional[str] = None) -> dict:
+    """Offer starter prompts in an assistant thread. `prompts` is capped at 4."""
+    payload = {"channel_id": channel_id, "thread_ts": thread_ts,
+               "prompts": prompts[:MAX_SUGGESTED_PROMPTS]}
+    if title:
+        payload["title"] = title
+    data = await slack_api("assistant.threads.setSuggestedPrompts", token, payload)
+    if not data.get("ok"):
+        logger.debug(f"Slack assistant.threads.setSuggestedPrompts: {data.get('error')}")
+    return data
+
+
+async def publish_home_view(token: str, user_id: str, view: dict) -> dict:
+    """Publish the App Home (Home tab) view for one user."""
+    data = await slack_api("views.publish", token, {"user_id": user_id, "view": view})
+    if not data.get("ok"):
+        logger.error(f"Slack views.publish failed: {data.get('error')}")
+    return data
+
+
+# Home-tab presentation. Cards are pre-resolved by the caller (photo URLs signed)
+# so this stays a pure, testable Block Kit builder.
+HOME_INSTRUCTION_MAX = 250
+_STATUS_ONLINE = ":large_green_circle: Online"
+_STATUS_OFFLINE = ":white_circle: Offline"
+
+
+def build_home_view(agent_cards: List[dict]) -> dict:
+    """Assemble the App Home view from resolved agent cards.
+
+    Each card: {"name", "is_active", "instruction", "photo_url" | None}.
+    """
+    blocks: List[dict] = [{"type": "header", "text": {"type": "plain_text", "text": "ChatterMate"}}]
+
+    if not agent_cards:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn",
+                       "text": "No agent is connected yet. Set one up in ChatterMate to start answering here."}})
+        return {"type": "home", "blocks": blocks}
+
+    blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "*Your AI agents*"}})
+    for card in agent_cards:
+        header: List[dict] = []
+        if card.get("photo_url"):
+            header.append({"type": "image", "image_url": card["photo_url"], "alt_text": card["name"]})
+        header.append({"type": "mrkdwn", "text": f"*{card['name']}*"})
+        blocks.append({"type": "context", "elements": header})
+
+        status = _STATUS_ONLINE if card.get("is_active") else _STATUS_OFFLINE
+        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": status}]})
+
+        instruction = (card.get("instruction") or "").strip()
+        if instruction:
+            if len(instruction) > HOME_INSTRUCTION_MAX:
+                instruction = instruction[:HOME_INSTRUCTION_MAX - 1].rstrip() + "…"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": instruction}})
+        blocks.append({"type": "divider"})
+
+    return {"type": "home", "blocks": blocks}
 
 
 # Placeholder "typing…" message ts per (account, conversation) — set by
@@ -137,6 +231,11 @@ class SlackAdapter(ChannelAdapter):
         if is_mention:
             thread_ts = event.get("thread_ts") or ts
             conversation_id = f"{channel}:{thread_ts}"
+        elif event.get("thread_ts"):
+            # Assistant-sidebar messages are DMs that carry the assistant thread's
+            # ts; key by thread so the reply posts back into that thread. Plain
+            # DMs have no thread_ts and stay one continuous conversation.
+            conversation_id = f"{channel}:{event['thread_ts']}"
         else:
             conversation_id = channel
 

@@ -25,6 +25,11 @@ from app.database import get_db
 from app.models.channels import ChannelType
 from app.repositories.channels import ChannelAccountRepository
 from app.services.channel_chat import process_channel_message
+from app.services.slack_events import (
+    deliver_home_welcome,
+    handle_assistant_thread_started,
+    publish_agent_home,
+)
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -32,6 +37,15 @@ logger = get_logger(__name__)
 # Workspace-level events that end our access: the app was removed, or its
 # tokens were revoked. Both mean the stored credentials are dead.
 LIFECYCLE_EVENT_TYPES = frozenset({"app_uninstalled", "tokens_revoked"})
+
+# App Home / Assistant surfaces — not messages, so parse_inbound drops them.
+# Handled off the envelope and dispatched to background tasks.
+APP_HOME_OPENED = "app_home_opened"
+ASSISTANT_THREAD_STARTED = "assistant_thread_started"
+ASSISTANT_CONTEXT_CHANGED = "assistant_thread_context_changed"
+APP_SURFACE_EVENT_TYPES = frozenset(
+    {APP_HOME_OPENED, ASSISTANT_THREAD_STARTED, ASSISTANT_CONTEXT_CHANGED}
+)
 
 
 def _revokes_bot_access(event: dict) -> bool:
@@ -75,6 +89,36 @@ def _handle_lifecycle_event(payload: dict, account_repo: ChannelAccountRepositor
         logger.error(f"Failed to remove Slack account for team {team_id}")
 
 
+def _dispatch_app_surface_event(event: dict, team_id: str,
+                                account_repo: ChannelAccountRepository,
+                                background_tasks: BackgroundTasks) -> None:
+    """Fan an App Home / Assistant event out to the right background handler.
+
+    The Home tab publishes agent cards; the Messages tab and the Assistant
+    sidebar both send a welcome — this is what lets the app keep the Messages
+    tab enabled under the Marketplace guidelines.
+    """
+    if not team_id:
+        return
+    account = account_repo.get_by_external_id(ChannelType.SLACK.value, team_id)
+    if account is None or not account.is_active:
+        logger.info(f"Slack app-surface event for inactive/unknown team {team_id}")
+        return
+
+    event_type = event.get("type")
+    if event_type == APP_HOME_OPENED:
+        user = event.get("user", "")
+        if event.get("tab", "messages") == "home":
+            background_tasks.add_task(publish_agent_home, account.id, user)
+        else:  # Messages tab (or unspecified) — welcome on first open.
+            background_tasks.add_task(deliver_home_welcome, account.id, user, event.get("channel", ""))
+    elif event_type == ASSISTANT_THREAD_STARTED:
+        thread = event.get("assistant_thread") or {}
+        background_tasks.add_task(handle_assistant_thread_started, account.id,
+                                  thread.get("channel_id", ""), thread.get("thread_ts", ""))
+    # assistant_thread_context_changed: nothing to do — prompts are set on start.
+
+
 @router.post("")
 async def slack_webhook(
     request: Request,
@@ -100,10 +144,18 @@ async def slack_webhook(
 
     account_repo = ChannelAccountRepository(db)
 
+    event = payload.get("event") or {}
+    event_type = event.get("type")
+
     # Lifecycle events carry no message, so parse_inbound drops them — resolve
     # the workspace off the envelope instead, before the message loop.
-    if (payload.get("event") or {}).get("type") in LIFECYCLE_EVENT_TYPES:
+    if event_type in LIFECYCLE_EVENT_TYPES:
         _handle_lifecycle_event(payload, account_repo)
+        return {"status": "ok"}
+
+    # App Home / Assistant surfaces (welcome, home cards) — also not messages.
+    if event_type in APP_SURFACE_EVENT_TYPES:
+        _dispatch_app_surface_event(event, payload.get("team_id", ""), account_repo, background_tasks)
         return {"status": "ok"}
 
     adapter = get_adapter(ChannelType.SLACK.value)
