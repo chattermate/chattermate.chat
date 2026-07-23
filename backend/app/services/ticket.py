@@ -375,6 +375,15 @@ class TicketService:
         """Resolve pending customer confirmation. Notifies the customer with
         the plain-language message; the lifecycle worker closes it after the
         confirmation timeout."""
+        # A repeat resolve (double-clicked button, client retry) must not
+        # re-send the resolution message. transition_status already no-ops when
+        # the status is unchanged, so key the notification off a real
+        # transition: only notify when the ticket wasn't already awaiting
+        # confirmation. Pair with a row lock in the endpoint so concurrent
+        # resolves serialize and the later ones observe the resolved status.
+        already_pending = (
+            TicketStatus(ticket.status) == TicketStatus.RESOLVED_PENDING_CONFIRMATION
+        )
         ticket.resolution_outcome = outcome
         if resolution_summary:
             ticket.resolution_summary = resolution_summary
@@ -387,7 +396,8 @@ class TicketService:
             actor_type=actor_type,
             actor_user_id=actor_user_id,
         )
-        await self.notify_customer_resolved(ticket)
+        if not already_pending:
+            await self.notify_customer_resolved(ticket)
         return ticket
 
     async def close(
