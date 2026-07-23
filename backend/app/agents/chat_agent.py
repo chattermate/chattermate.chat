@@ -325,6 +325,24 @@ class ChatAgent(ChatAgentMCPMixin):
             # Load lead-capture config (prompt-driven, like transfer_to_human: a toggle;
             # the agent collects details conversationally and reports structured output).
             # Extract plain values while the session is open so they survive the block.
+            # Known identity of an already-identified customer (authenticated
+            # generate-token visitor, or one whose email/name we captured
+            # earlier). Injected into the ticket instructions so the agent
+            # doesn't ask an identified customer to repeat their email/name.
+            self.known_customer_email = None
+            self.known_customer_name = None
+            if customer_id:
+                try:
+                    from app.repositories.customer import CustomerRepository
+                    cust = CustomerRepository(db).get_by_id(customer_id)
+                    if cust:
+                        if not CustomerRepository.is_placeholder_email(cust.email):
+                            self.known_customer_email = cust.email
+                        if (cust.full_name or "").strip():
+                            self.known_customer_name = cust.full_name.strip()
+                except Exception as e:
+                    logger.error(f"Failed to load customer identity: {e}")
+
             self.lead_capture_enabled = False
             self.lead_capture_fields = []
             self.lead_capture_require_consent = True
@@ -590,7 +608,32 @@ Keep your responses concise and focused. Provide clear, actionable information i
             # Add native ticketing instructions when AI ticketing drives the
             # ticket tools (explicit agent Jira config takes precedence below)
             if self.ticketing_enabled and not self.transfer_to_human and not (self.agent_data and self.agent_data.jira_enabled):
-                ticket_instructions = """
+                # For an already-identified customer, hand the agent their known
+                # email/name so it passes them straight to create_ticket instead
+                # of asking the customer to repeat details we already have.
+                if self.known_customer_email or self.known_customer_name:
+                    known_bits = []
+                    if self.known_customer_name:
+                        known_bits.append(f'name "{self.known_customer_name}"')
+                    if self.known_customer_email:
+                        known_bits.append(f'account email "{self.known_customer_email}"')
+                    identity_instruction = (
+                        "This customer is already identified — " + ", ".join(known_bits) + ". "
+                        "Pass these directly as customer_name and customer_email when calling "
+                        "create_ticket. Do NOT ask the customer to provide or confirm their "
+                        "email or name again."
+                    )
+                else:
+                    identity_instruction = (
+                        "BEFORE creating a ticket, collect the customer's identity so the support "
+                        "AI can look them up in the connected systems: their account email, and "
+                        "their registered name. If they've already given the email or name in this "
+                        "conversation, use those values. If not, ask for them in one short message "
+                        "and wait for the reply before calling create_ticket. Then pass them as "
+                        "customer_email and customer_name. Never invent an email or name; if the "
+                        "customer declines, create the ticket without them."
+                    )
+                ticket_instructions = f"""
                 You have access to native support-ticket tools:
                 1. check_existing_ticket — check if this conversation already has a ticket (always call this first)
                 2. create_ticket — open a support ticket that the team's AI investigator and humans will work on
@@ -602,15 +645,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 - You've tried to resolve the issue but were unable to do so
                 - No ticket already exists for this conversation
 
-                BEFORE creating a ticket, collect the customer's identity so the support
-                AI can look them up in the connected systems:
-                - their account email, and
-                - their registered name.
-                If they've already given the email or name in this conversation, use those
-                values. If not, ask for them in one short message and wait for the reply
-                before calling create_ticket. Then pass them as customer_email and
-                customer_name. Never invent an email or name; if the customer declines,
-                create the ticket without them.
+                {identity_instruction}
 
                 After creating a ticket, tell the customer their ticket number and that the team is investigating.
                 Priorities are: urgent, high, medium, low.
