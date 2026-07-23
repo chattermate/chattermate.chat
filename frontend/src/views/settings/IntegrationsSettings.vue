@@ -530,6 +530,17 @@ onMounted(async () => {
     // Remove the query parameters to avoid showing the toast on refresh
     window.history.replaceState({}, document.title, window.location.pathname)
   }
+
+  // Landing-page install: arriving with ?connect=slack starts the OAuth flow
+  // immediately. The router guard has already ensured the user is signed in
+  // (redirecting through login if needed), so this same-domain redirect carries
+  // the session cookie the install endpoint requires.
+  if (route.query.connect === 'slack') {
+    window.history.replaceState({}, document.title, window.location.pathname)
+    if (accountsFor('slack').length === 0) {
+      connectSlack()
+    }
+  }
 })
 </script>
 

@@ -338,7 +338,9 @@ router.beforeEach(async (to, from, next) => {
     if (!isSetupComplete && to.path !== '/setup') {
       return next('/setup')
     } else if (requiresAuth) {
-      return next('/login')
+      // Preserve where they were headed (e.g. the Slack install landing link)
+      // so login can send them straight back instead of the default page.
+      return next({ path: '/login', query: { redirect: to.fullPath } })
     }
     // Public route; allow
     return next()
