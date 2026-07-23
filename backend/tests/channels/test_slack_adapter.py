@@ -17,13 +17,15 @@ limitations under the License.
 import hashlib
 import hmac
 import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import app.api.webhooks.slack as slack_webhook
+import app.services.slack_events as slack_events
 from app.api.webhooks.slack import _handle_lifecycle_event
 from app.channels import get_adapter
-from app.channels.slack import SlackAdapter, verify_slack_signature
+from app.channels.slack import SlackAdapter, build_home_view, verify_slack_signature
 from app.core.config import settings
 
 
@@ -263,3 +265,141 @@ class TestSlackProfileAndTyping:
         assert ("a", "c1") not in slk._typing_placeholders  # stale, pruned
         assert ("a", "c2") in slk._typing_placeholders       # fresh, kept
         slk._typing_placeholders.clear()
+
+
+def test_parse_dm_with_thread_keys_by_thread(adapter):
+    """Assistant-sidebar messages are DMs carrying the assistant thread ts — they
+    key by thread so the reply posts back into that thread."""
+    ev = make_event({"type": "message", "channel_type": "im", "user": "U42",
+                     "text": "hi", "channel": "D7", "ts": "1720000002.0003",
+                     "thread_ts": "1719999999.0001"})
+    m = adapter.parse_inbound(ev)[0]
+    assert m.external_conversation_id == "D7:1719999999.0001"
+
+
+class TestHomeView:
+    def test_empty_prompts_setup(self):
+        v = build_home_view([])
+        assert v["type"] == "home"
+        assert any("No agent" in b.get("text", {}).get("text", "") for b in v["blocks"])
+
+    def test_card_and_truncation(self):
+        import json
+        v = build_home_view([{"name": "Support", "is_active": True,
+                              "instruction": "x" * 300, "photo_url": None}])
+        assert "Support" in json.dumps(v)  # name renders somewhere in the card
+        section_texts = [b["text"]["text"] for b in v["blocks"] if b.get("type") == "section"]
+        long_text = next(t for t in section_texts if t.startswith("x"))
+        assert long_text.endswith("…") and len(long_text) <= 250
+
+
+class TestAppSurfaceDispatch:
+    """Webhook fan-out: the right event schedules the right background handler."""
+
+    def _repo(self, active=True):
+        account = MagicMock(); account.id = "acc1"; account.is_active = active
+        repo = MagicMock(); repo.get_by_external_id.return_value = account
+        return repo
+
+    def test_messages_tab_open_schedules_welcome(self):
+        bg = MagicMock()
+        slack_webhook._dispatch_app_surface_event(
+            {"type": "app_home_opened", "user": "U1", "channel": "D1", "tab": "messages"},
+            "T1", self._repo(), bg)
+        args = bg.add_task.call_args[0]
+        assert args[0] is slack_webhook.deliver_home_welcome
+        assert args[1:] == ("acc1", "U1", "D1")
+
+    def test_missing_tab_defaults_to_welcome(self):
+        bg = MagicMock()
+        slack_webhook._dispatch_app_surface_event(
+            {"type": "app_home_opened", "user": "U1", "channel": "D1"}, "T1", self._repo(), bg)
+        assert bg.add_task.call_args[0][0] is slack_webhook.deliver_home_welcome
+
+    def test_home_tab_open_schedules_home_publish(self):
+        bg = MagicMock()
+        slack_webhook._dispatch_app_surface_event(
+            {"type": "app_home_opened", "user": "U1", "tab": "home"}, "T1", self._repo(), bg)
+        args = bg.add_task.call_args[0]
+        assert args[0] is slack_webhook.publish_agent_home and args[1:] == ("acc1", "U1")
+
+    def test_assistant_started_schedules_handler(self):
+        bg = MagicMock()
+        slack_webhook._dispatch_app_surface_event(
+            {"type": "assistant_thread_started",
+             "assistant_thread": {"channel_id": "D2", "thread_ts": "111.222"}},
+            "T1", self._repo(), bg)
+        args = bg.add_task.call_args[0]
+        assert args[0] is slack_webhook.handle_assistant_thread_started
+        assert args[1:] == ("acc1", "D2", "111.222")
+
+    def test_context_changed_is_noop(self):
+        bg = MagicMock()
+        slack_webhook._dispatch_app_surface_event(
+            {"type": "assistant_thread_context_changed"}, "T1", self._repo(), bg)
+        bg.add_task.assert_not_called()
+
+    def test_inactive_team_is_noop(self):
+        bg = MagicMock()
+        slack_webhook._dispatch_app_surface_event(
+            {"type": "app_home_opened", "user": "U1", "tab": "messages"},
+            "T1", self._repo(active=False), bg)
+        bg.add_task.assert_not_called()
+
+    def test_missing_team_id_is_noop(self):
+        bg = MagicMock()
+        slack_webhook._dispatch_app_surface_event(
+            {"type": "app_home_opened", "user": "U1"}, "", self._repo(), bg)
+        bg.add_task.assert_not_called()
+
+
+class TestHomeWelcomeDelivery:
+    def _patch_common(self, monkeypatch):
+        db = MagicMock()
+        monkeypatch.setattr(slack_events, "SessionLocal", lambda: db)
+        account = MagicMock(); account.is_active = True
+        repo = MagicMock(); repo.get_by_id.return_value = account
+        monkeypatch.setattr(slack_events, "ChannelAccountRepository", lambda d: repo)
+        monkeypatch.setattr(slack_events, "_assigned_agent", lambda d, a: None)
+        monkeypatch.setattr(slack_events.SlackAdapter, "_access_token", staticmethod(lambda a: "tok"))
+        api = AsyncMock()
+        monkeypatch.setattr(slack_events, "slack_api", api)
+        return api
+
+    @pytest.mark.asyncio
+    async def test_welcome_sent_once(self, monkeypatch):
+        api = self._patch_common(monkeypatch)
+        redis = MagicMock()
+        redis.set.side_effect = [True, None]  # first claims the slot, second is taken
+        monkeypatch.setattr(slack_events, "get_redis", lambda: redis)
+
+        await slack_events.deliver_home_welcome("acc1", "U1", "D1")
+        await slack_events.deliver_home_welcome("acc1", "U1", "D1")
+
+        assert api.await_count == 1
+        assert api.await_args[0][0] == "chat.postMessage"
+        assert api.await_args[0][2]["channel"] == "D1"
+
+    @pytest.mark.asyncio
+    async def test_no_channel_no_send(self, monkeypatch):
+        api = self._patch_common(monkeypatch)
+        monkeypatch.setattr(slack_events, "get_redis", lambda: None)
+        await slack_events.deliver_home_welcome("acc1", "U1", "")
+        api.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_assistant_started_sets_status_prompts_and_welcome(self, monkeypatch):
+        self._patch_common(monkeypatch)
+        status = AsyncMock(); prompts = AsyncMock()
+        monkeypatch.setattr(slack_events, "set_assistant_status", status)
+        monkeypatch.setattr(slack_events, "set_suggested_prompts", prompts)
+        api = AsyncMock()
+        monkeypatch.setattr(slack_events, "slack_api", api)
+
+        await slack_events.handle_assistant_thread_started("acc1", "D2", "111.222")
+
+        status.assert_awaited_once()
+        prompts.assert_awaited_once()
+        api.assert_awaited_once()
+        assert api.await_args[0][0] == "chat.postMessage"
+        assert api.await_args[0][2].get("thread_ts") == "111.222"
