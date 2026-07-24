@@ -118,42 +118,67 @@ async def publish_home_view(token: str, user_id: str, view: dict) -> dict:
     return data
 
 
-# Home-tab presentation. Cards are pre-resolved by the caller (photo URLs signed)
-# so this stays a pure, testable Block Kit builder.
+# Home-tab presentation. The card is pre-resolved by the caller (photo URL
+# signed) so this stays a pure, testable Block Kit builder. Per Slack's App Home
+# guidance: lead with what the app does, surface the most relevant thing (the
+# connected agent), keep call-to-actions minimal, link out to settings.
 HOME_INSTRUCTION_MAX = 250
 _STATUS_ONLINE = ":large_green_circle: Online"
 _STATUS_OFFLINE = ":white_circle: Offline"
+HOME_INTRO = (
+    "AI customer support, right inside Slack. @mention me in a channel and I'll "
+    "answer in the thread, or send me a direct message. My answers come from your "
+    "team's own knowledge, and I hand off to a human when a conversation needs one."
+)
+HOME_HOW_TO = (
+    "*How to use me*\n"
+    "• @mention *ChatterMate* in any channel — I reply in the thread\n"
+    "• Send me a *direct message* for a private conversation\n"
+    "• Open me from the *assistant* in the top bar for a side-by-side chat"
+)
+HOME_NO_AGENT = (
+    "*No agent connected yet*\nConnect an agent to this workspace from the "
+    "ChatterMate dashboard and I'll start answering here."
+)
+DASHBOARD_LINK_LABEL = "Open the ChatterMate dashboard →"
 
 
-def build_home_view(agent_cards: List[dict]) -> dict:
-    """Assemble the App Home view from resolved agent cards.
+def build_home_view(agent_card: Optional[dict], dashboard_url: str) -> dict:
+    """Assemble the App Home view: what the app does, the connected agent, how to
+    use it, and a link to the dashboard.
 
-    Each card: {"name", "is_active", "instruction", "photo_url" | None}.
+    `agent_card` (or None if no agent is assigned): {"name", "is_active",
+    "instruction", "photo_url" | None}.
     """
-    blocks: List[dict] = [{"type": "header", "text": {"type": "plain_text", "text": "ChatterMate"}}]
+    blocks: List[dict] = [
+        {"type": "header", "text": {"type": "plain_text", "text": "ChatterMate", "emoji": True}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": HOME_INTRO}},
+        {"type": "divider"},
+    ]
 
-    if not agent_cards:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn",
-                       "text": "No agent is connected yet. Set one up in ChatterMate to start answering here."}})
-        return {"type": "home", "blocks": blocks}
-
-    blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "*Your AI agents*"}})
-    for card in agent_cards:
+    if agent_card:
+        status = _STATUS_ONLINE if agent_card.get("is_active") else _STATUS_OFFLINE
         header: List[dict] = []
-        if card.get("photo_url"):
-            header.append({"type": "image", "image_url": card["photo_url"], "alt_text": card["name"]})
-        header.append({"type": "mrkdwn", "text": f"*{card['name']}*"})
+        if agent_card.get("photo_url"):
+            header.append({"type": "image", "image_url": agent_card["photo_url"],
+                           "alt_text": agent_card["name"]})
+        header.append({"type": "mrkdwn", "text": f"*{agent_card['name']}*  ·  {status}"})
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "*Connected agent*"}})
         blocks.append({"type": "context", "elements": header})
 
-        status = _STATUS_ONLINE if card.get("is_active") else _STATUS_OFFLINE
-        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": status}]})
-
-        instruction = (card.get("instruction") or "").strip()
+        instruction = (agent_card.get("instruction") or "").strip()
         if instruction:
             if len(instruction) > HOME_INSTRUCTION_MAX:
                 instruction = instruction[:HOME_INSTRUCTION_MAX - 1].rstrip() + "…"
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": instruction}})
-        blocks.append({"type": "divider"})
+    else:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": HOME_NO_AGENT}})
+
+    blocks.append({"type": "divider"})
+    blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": HOME_HOW_TO}})
+    # A markdown link, not a Block Kit button — link buttons still require
+    # Interactivity to be enabled, which this app intentionally leaves off.
+    blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"<{dashboard_url}|{DASHBOARD_LINK_LABEL}>"}})
 
     return {"type": "home", "blocks": blocks}
 
