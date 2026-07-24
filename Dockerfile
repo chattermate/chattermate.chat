@@ -10,9 +10,12 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies. Bump pip's per-request timeout and retry count so
+# the large torch/opencv/onnxruntime wheel downloads survive slow links and the
+# heavier amd64/x86_64 wheels don't abort with ReadTimeoutError.
+ENV PIP_DEFAULT_TIMEOUT=120
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --retries 10 -r requirements.txt
 
 # Copy application code
 COPY backend/app ./app
