@@ -277,17 +277,29 @@ def test_parse_dm_with_thread_keys_by_thread(adapter):
     assert m.external_conversation_id == "D7:1719999999.0001"
 
 
-class TestHomeView:
-    def test_empty_prompts_setup(self):
-        v = build_home_view([])
-        assert v["type"] == "home"
-        assert any("No agent" in b.get("text", {}).get("text", "") for b in v["blocks"])
+DASH = "https://app.chattermate.chat"
 
-    def test_card_and_truncation(self):
+
+class TestHomeView:
+    def test_intro_and_dashboard_link_always_present(self):
         import json
-        v = build_home_view([{"name": "Support", "is_active": True,
-                              "instruction": "x" * 300, "photo_url": None}])
-        assert "Support" in json.dumps(v)  # name renders somewhere in the card
+        blob = json.dumps(build_home_view(None, DASH))
+        assert "AI customer support" in blob   # what it does, up top
+        assert DASH in blob                     # dashboard link
+        assert "How to use me" in blob
+
+    def test_no_agent_shows_connect_prompt(self):
+        import json
+        v = build_home_view(None, DASH)
+        assert v["type"] == "home"
+        assert "No agent connected" in json.dumps(v)
+
+    def test_connected_agent_card_and_truncation(self):
+        import json
+        v = build_home_view({"name": "Support", "is_active": True,
+                             "instruction": "x" * 300, "photo_url": None}, DASH)
+        blob = json.dumps(v)
+        assert "Connected agent" in blob and "Support" in blob
         section_texts = [b["text"]["text"] for b in v["blocks"] if b.get("type") == "section"]
         long_text = next(t for t in section_texts if t.startswith("x"))
         assert long_text.endswith("…") and len(long_text) <= 250

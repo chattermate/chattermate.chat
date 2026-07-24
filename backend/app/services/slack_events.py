@@ -146,8 +146,13 @@ async def _agent_card(agent) -> dict:
     }
 
 
+def _dashboard_url() -> str:
+    return settings.FRONTEND_URL.rstrip("/")
+
+
 async def publish_agent_home(account_id: UUID, user_id: str) -> None:
-    """Publish the Home tab for a user: a card per org agent."""
+    """Publish the Home tab: what ChatterMate does, the agent connected to this
+    workspace, how to use it, and a link to the dashboard."""
     if not user_id:
         return
     db = SessionLocal()
@@ -155,9 +160,10 @@ async def publish_agent_home(account_id: UUID, user_id: str) -> None:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
             return
-        agents = AgentRepository(db).get_org_agents(account.organization_id, active_only=False)
-        cards = [await _agent_card(agent) for agent in agents]
-        await publish_home_view(SlackAdapter._access_token(account), user_id, build_home_view(cards))
+        agent = _assigned_agent(db, account)
+        card = await _agent_card(agent) if agent is not None else None
+        view = build_home_view(card, _dashboard_url())
+        await publish_home_view(SlackAdapter._access_token(account), user_id, view)
     except Exception as e:
         logger.error(f"Slack Home tab publish failed: {e}")
     finally:
