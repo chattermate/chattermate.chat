@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
+import { getApiUrl, getWidgetUrl } from '@/config/api'
 import { isAbsoluteUrl } from '@/utils/avatars'
 import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri, terminalMarkSvgDataUri } from '@/utils/orb'
 
@@ -169,12 +170,15 @@ const previewCustomization = ref<AgentCustomization>({
 
 
 
+// Resolve at runtime (window.APP_CONFIG) so the iframe embed + token endpoint
+// point at THIS install's backend on self-hosted deployments, not the values
+// baked at build time.
 const baseUrl = computed(() => {
-    return import.meta.env.VITE_API_URL
+    return getApiUrl()
 })
 
 const widgetUrl = computed(() => {
-    return import.meta.env.VITE_WIDGET_URL
+    return getWidgetUrl()
 })
 
 // Computed property to handle instructions as text
