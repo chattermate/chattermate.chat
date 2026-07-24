@@ -292,6 +292,29 @@ async def head_health_check():
         "version": settings.VERSION
     }
 
+
+@app.get("/health/help-center-domain", include_in_schema=False, operation_id="help_center_domain_tls_check")
+async def help_center_domain_tls_check(domain: str = ""):
+    """On-demand-TLS "ask" gate for the edge proxy (e.g. Caddy).
+
+    Returns 200 only when ``domain`` is a help-center host we actually serve —
+    a ``{slug}.HELP_CENTER_BASE_DOMAIN`` subdomain or a DB-verified custom
+    domain — so the edge provisions a certificate for those and refuses every
+    other name pointed at us. Public by design (the edge calls it
+    unauthenticated) but it leaks nothing: the answer is a bare status code and
+    the lookup reuses the same in-memory cache/slug check as host dispatch, so
+    there is no per-request database hit.
+    """
+    from fastapi import Response
+
+    from app.core.help_center_host import is_help_center_host, normalize_host
+
+    host = normalize_host(domain)
+    if host and is_help_center_host(host):
+        return Response(status_code=200)
+    return Response(status_code=404)
+
+
 # Create upload directories if they don't exist
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
