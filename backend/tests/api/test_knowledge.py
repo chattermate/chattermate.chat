@@ -249,7 +249,24 @@ def test_add_sitemap(client: TestClient, test_organization, db):
     ).first()
     assert item is not None
     assert item.source_type == "sitemap"
-    assert item.queue_metadata.get("max_links") == 10  # non-enterprise default
+    # Non-enterprise honors the configurable KB_MAX_LINKS (not a hardcoded default).
+    assert item.queue_metadata.get("max_links") == settings.KB_MAX_LINKS
+
+
+def test_add_website_honors_kb_max_links(client: TestClient, test_organization, db):
+    """A self-hosted (non-enterprise) website crawl records KB_MAX_LINKS, not a
+    hardcoded 10, so the setting actually controls crawl scope (issue #237)."""
+    with patch("app.core.config.settings.KB_MAX_LINKS", 200):
+        response = client.post("/api/v1/knowledge/add/urls", json={
+            "org_id": str(test_organization.id),
+            "websites": ["https://example.com/docs"],
+        })
+        assert response.status_code == 200
+        item = db.query(KnowledgeQueue).filter(
+            KnowledgeQueue.source == "https://example.com/docs"
+        ).first()
+        assert item is not None
+        assert item.queue_metadata.get("max_links") == 200
 
 
 def test_link_knowledge_to_agent(client: TestClient, test_knowledge, test_agent):

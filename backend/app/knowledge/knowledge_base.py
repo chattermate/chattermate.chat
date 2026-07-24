@@ -448,8 +448,8 @@ class KnowledgeManager:
                     )
                     
                     max_links = queue_item.queue_metadata.get(
-                        'max_links', 10) if queue_item.queue_metadata else 10
-                    
+                        'max_links', settings.KB_MAX_LINKS) if queue_item.queue_metadata else settings.KB_MAX_LINKS
+
                     # Use EnhancedWebsiteReader for all website crawling
                     logger.info(f"Using EnhancedWebsiteReader for queue item: {queue_item.source}")
                     reader = EnhancedWebsiteReader(
@@ -502,7 +502,7 @@ class KnowledgeManager:
                     queue_repo.update_progress(queue_item.id, ProcessingStage.CRAWLING)
 
                     max_links = queue_item.queue_metadata.get(
-                        'max_links', 10) if queue_item.queue_metadata else 10
+                        'max_links', settings.KB_MAX_LINKS) if queue_item.queue_metadata else settings.KB_MAX_LINKS
 
                     logger.info(f"Using SitemapReader for queue item: {queue_item.source}")
                     reader = SitemapReader(

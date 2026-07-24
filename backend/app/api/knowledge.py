@@ -67,6 +67,15 @@ ALLOWED_PDF_TYPES = ("application/pdf",)
 from app.core.processor import PROCESSOR_STATUS
 
 
+def resolve_plan_max_links(subscription) -> int:
+    """Per-source sub-page crawl cap: the enterprise plan's ``max_sub_pages``
+    when enterprise is active, otherwise the self-host configurable
+    ``KB_MAX_LINKS`` (so self-hosted installs actually control crawl scope)."""
+    if HAS_ENTERPRISE and subscription:
+        return subscription.plan.max_sub_pages
+    return settings.KB_MAX_LINKS
+
+
 class UrlsRequest(BaseModel):
     org_id: UUID
     pdf_urls: List[str] = []
@@ -235,6 +244,8 @@ async def upload_pdf_files(
                 # 404 (not 403) so we don't reveal another org's agent existence.
                 raise HTTPException(status_code=404, detail="Agent not found")
 
+        # Bound for the non-enterprise path (resolve_plan_max_links below).
+        subscription = None
         # Check enterprise subscription limits if enterprise module is available
         if HAS_ENTERPRISE:
             knowledge_repo = KnowledgeRepository(db)
@@ -295,7 +306,7 @@ async def upload_pdf_files(
                 source=file_path,
                 status=QueueStatus.PENDING,
                 queue_metadata={
-                    "max_links": subscription.plan.max_sub_pages if HAS_ENTERPRISE and subscription else 10
+                    "max_links": resolve_plan_max_links(subscription)
                 }
             )
             queued_items.append(queue_repo.create(queue_item))
@@ -346,7 +357,7 @@ async def add_explore_url(
             status=QueueStatus.PENDING,
             priority=10,  # High priority for explore URLs (default is 0)
             queue_metadata={
-                "max_links": 20  # Default to 10 links
+                "max_links": settings.KB_MAX_LINKS
             }
         )
         
@@ -510,6 +521,8 @@ async def add_urls(
                 # 404 (not 403) so we don't reveal another org's agent existence.
                 raise HTTPException(status_code=404, detail="Agent not found")
 
+        # Bound for the non-enterprise path (resolve_plan_max_links below).
+        subscription = None
         # Check enterprise subscription limits if enterprise module is available
         if HAS_ENTERPRISE:
             knowledge_repo = KnowledgeRepository(db)
@@ -539,7 +552,7 @@ async def add_urls(
         # Per-source sub-page cap: the plan limit, optionally narrowed by the
         # request's crawl scope (e.g. "this page only" -> max_links=1), never
         # allowed to exceed the plan limit.
-        plan_sub_pages = subscription.plan.max_sub_pages if (HAS_ENTERPRISE and subscription) else 10
+        plan_sub_pages = resolve_plan_max_links(subscription)
         website_max_links = (
             min(request.max_links, plan_sub_pages) if request.max_links else plan_sub_pages
         )

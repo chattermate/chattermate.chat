@@ -437,6 +437,85 @@ export function useKnowledgeExplorer(
     }
   }
 
+  // ---- Link existing org-level knowledge to this agent (agent mode only) ----
+  // Org sources are created with agent_id=NULL, so they never auto-link to an
+  // agent; this picker restores the ability to attach them from the agent tab.
+  const linkPickerOpen = ref(false)
+  const orgSources = ref<KnowledgeItem[]>([])
+  const isLoadingOrgSources = ref(false)
+  const orgSourcesError = ref<string | null>(null)
+  // Knowledge ids with a link/unlink request in flight (per-row busy state).
+  const linkingIds = ref<Set<number>>(new Set())
+
+  // Ids already linked to this agent — drives the Link/Unlink toggle per row.
+  const linkedSourceIds = computed(() => new Set(sources.value.map((s) => s.id)))
+
+  const loadOrgSources = async () => {
+    isLoadingOrgSources.value = true
+    orgSourcesError.value = null
+    try {
+      const response = await knowledgeService.getKnowledgeByOrganization(organizationId, 1, 100)
+      orgSources.value = response.knowledge || []
+    } catch (err) {
+      console.error('Failed to load organization knowledge:', err)
+      orgSourcesError.value = 'Failed to load your organization’s knowledge'
+    } finally {
+      isLoadingOrgSources.value = false
+    }
+  }
+
+  const openLinkPicker = async () => {
+    if (mode !== 'agent' || !agentId) return
+    linkPickerOpen.value = true
+    await loadOrgSources()
+  }
+
+  // Shared link/unlink runner: guards concurrent clicks per row, keeps the
+  // busy-state Set in sync, refetches the agent's linked sources, and toasts.
+  const runLinkOp = async (
+    knowledgeId: number,
+    op: (id: number, agentId: string) => Promise<unknown>,
+    { successMsg, failMsg, onSuccess }: {
+      successMsg: string
+      failMsg: string
+      onSuccess?: () => void
+    },
+  ) => {
+    if (mode !== 'agent' || !agentId || linkingIds.value.has(knowledgeId)) return
+    linkingIds.value.add(knowledgeId)
+    try {
+      await op(knowledgeId, agentId)
+      onSuccess?.()
+      await fetchSources()
+      toast.success(successMsg)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : failMsg
+      console.error(`${failMsg}:`, err)
+      toast.error(failMsg, { description: msg })
+    } finally {
+      linkingIds.value.delete(knowledgeId)
+    }
+  }
+
+  const linkSource = (knowledgeId: number) =>
+    runLinkOp(knowledgeId, (id, aid) => knowledgeService.linkToAgent(id, aid), {
+      successMsg: 'Knowledge linked to this agent',
+      failMsg: 'Could not link knowledge',
+    })
+
+  const unlinkSource = (knowledgeId: number) =>
+    runLinkOp(knowledgeId, (id, aid) => knowledgeService.unlinkFromAgent(id, aid), {
+      successMsg: 'Knowledge removed from this agent',
+      failMsg: 'Could not remove knowledge',
+      // Clear the detail pane if the removed source was selected.
+      onSuccess: () => {
+        if (selectedSourceId.value === knowledgeId) {
+          selectedSourceId.value = null
+          selectedPageId.value = null
+        }
+      },
+    })
+
   const linkedAgentId = mode === 'agent' ? agentId : undefined
 
   // Handle add/urls responses that report duplicates instead of throwing.
@@ -547,10 +626,16 @@ export function useKnowledgeExplorer(
     draftUrl,
     isSaving,
     isDeleting,
+    linkPickerOpen,
+    orgSources,
+    isLoadingOrgSources,
+    orgSourcesError,
+    linkingIds,
     // computed
     selectedSource,
     selectedPage,
     filteredSources,
+    linkedSourceIds,
     // helpers for the view
     sourceStatus,
     pageRows,
@@ -567,6 +652,9 @@ export function useKnowledgeExplorer(
     deletePage,
     deleteSource,
     submitSource,
+    openLinkPicker,
+    linkSource,
+    unlinkSource,
     startPolling,
     stopPolling,
   }
