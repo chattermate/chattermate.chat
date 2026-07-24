@@ -25,6 +25,7 @@ import KnowledgePageDetail from './KnowledgePageDetail.vue'
 import KnowledgePageEditor from './KnowledgePageEditor.vue'
 import KnowledgePlanMeters from './KnowledgePlanMeters.vue'
 import KnowledgeAddSourceModal from './KnowledgeAddSourceModal.vue'
+import KnowledgeLinkModal from './KnowledgeLinkModal.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -105,6 +106,16 @@ function askDeleteSource(source: ExplorerSource) {
       busyLabel: 'Cancelling…',
       action: () => ex.deleteSource(source),
     }
+  } else if (props.mode === 'agent') {
+    // In an agent's tab, "Remove" detaches the source from this agent but keeps
+    // it in the organization's knowledge — it does not delete the source.
+    confirmState.value = {
+      title: 'Remove from agent',
+      message: `Remove “${source.name}” from this agent? It stays in your organization’s knowledge.`,
+      actionLabel: 'Remove',
+      busyLabel: 'Removing…',
+      action: () => ex.unlinkSource(source.id),
+    }
   } else {
     confirmState.value = {
       title: 'Delete source',
@@ -156,6 +167,11 @@ onUnmounted(() => {
       </div>
       <div class="explorer__actions">
         <slot name="actions" />
+        <button v-if="mode === 'agent'" class="btn btn--ghost" type="button" @click="ex.openLinkPicker">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" /></svg>
+          Link existing
+        </button>
         <button class="btn btn--primary" type="button" @click="openAdd">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
@@ -247,6 +263,18 @@ onUnmounted(() => {
       :submitting="isSubmittingSource"
       @close="addOpen = false"
       @submit="onSubmitSource"
+    />
+
+    <KnowledgeLinkModal
+      v-if="ex.linkPickerOpen.value"
+      :sources="ex.orgSources.value"
+      :linked-ids="ex.linkedSourceIds.value"
+      :busy-ids="ex.linkingIds.value"
+      :loading="ex.isLoadingOrgSources.value"
+      :error="ex.orgSourcesError.value"
+      @close="ex.linkPickerOpen.value = false"
+      @link="ex.linkSource"
+      @unlink="ex.unlinkSource"
     />
   </div>
 </template>
