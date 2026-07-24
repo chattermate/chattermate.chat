@@ -1,0 +1,72 @@
+name: Publish Docker Images
+
+# Builds and pushes the public OSS images to Docker Hub. Triggered by pushing a
+# version tag (e.g. `v1.4.0`), or manually. Enterprise submodules are NOT checked
+# out — the published images are OSS-only.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Least-privilege GITHUB_TOKEN: the job only reads the repo to build; the push
+# to Docker Hub authenticates with the DOCKERHUB_* secrets, not GITHUB_TOKEN.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build & push OSS images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (OSS — private submodules intentionally not fetched)
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tags for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: chattermate/backend
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend.prod
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+
+      - name: Tags for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: chattermate/frontend
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend.prod
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
