@@ -8,6 +8,11 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Least-privilege GITHUB_TOKEN: the job only reads the repo to build; the push
+# to Docker Hub authenticates with the DOCKERHUB_* secrets, not GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   publish:
     name: Build & push OSS images
