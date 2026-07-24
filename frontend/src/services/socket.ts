@@ -17,6 +17,7 @@ limitations under the License.
 import { io, Socket } from 'socket.io-client'
 import { ref } from 'vue'
 import emitter from '@/utils/emitter'
+import { getWsUrl } from '@/config/api'
 
 // Utility function to set cookies
 function setCookie(name: string, value: string, maxAge: number = 1800) {
@@ -40,7 +41,10 @@ class SocketService {
   connect(namespace: string = '/agent') {
     if (this.socket?.connected) return
 
-    const apiUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+    // Use the runtime-resolved WS URL (window.APP_CONFIG → VITE_WS_URL → localhost),
+    // same as every other consumer. Reading import.meta.env directly baked the
+    // published image to ws://localhost:8000 and broke self-hosted dashboards.
+    const apiUrl = getWsUrl()
     this.socket = io(apiUrl + namespace, {
       transports: ['websocket', 'polling'],
       withCredentials: true,

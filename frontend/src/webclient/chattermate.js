@@ -2,6 +2,8 @@
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
+/** @type {string} */
+window.chattermateBaseUrl;
 /** @type {{ init: (options: { baseUrl?: string, id: string }) => void }} */
 window.ChatterMate;
 
@@ -11,20 +13,30 @@ window.ChatterMate;
     return /^#[0-9A-F]{6}$/i.test(color);
   }
 
-  // Get base URL - injected at build time or fallback to config
+  // Resolve the backend base URL at RUNTIME so a single built chattermate.min.js
+  // works for every deployment without a rebuild. Priority:
+  //   1. window.chattermateBaseUrl — set by the install snippet the dashboard
+  //      generates, so a self-hosted embed reaches the right backend even though
+  //      this script runs on the customer's own site (where config.js is absent).
+  //   2. window.APP_CONFIG.API_URL — present when embedded inside our own SPA.
+  //   3. __CHATTERMATE_API_URL__ — the default baked at build time (see the
+  //      build-webclient scripts). Only this default changes per build; the
+  //      resolution logic above stays runtime, so env changes need no rebuild.
   function getBaseUrl() {
-    // Use build-time injected API URL if available
+    if (typeof window !== 'undefined' && window.chattermateBaseUrl) {
+      return window.chattermateBaseUrl;
+    }
+
+    if (typeof window !== 'undefined' && window.APP_CONFIG && window.APP_CONFIG.API_URL) {
+      return window.APP_CONFIG.API_URL;
+    }
+
     if (typeof __CHATTERMATE_API_URL__ !== 'undefined') {
       return __CHATTERMATE_API_URL__;
     }
-    
-    // Fallback: Check if window.APP_CONFIG exists (from config.js)
-    if (typeof window !== 'undefined' && window.APP_CONFIG) {
-      return window.APP_CONFIG.API_URL;
-    }
-    
+
     // Final fallback — default to production so a plain build ships working.
-    return 'https://api.chattermate.chat';
+    return 'https://api.chattermate.chat/api/v1';
   }
 
   // Configuration object

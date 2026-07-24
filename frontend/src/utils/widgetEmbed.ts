@@ -14,8 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-function getWidgetUrl(): string {
-  return import.meta.env.VITE_WIDGET_URL
+import { getApiUrl } from '@/config/api'
+
+// The loader (chattermate.min.js) is served by THIS frontend, so resolve its
+// origin at snippet-generation time from where the dashboard is running — no
+// build-time VITE_WIDGET_URL bake, so a self-hosted install just works.
+function getLoaderOrigin(): string {
+  return typeof window !== 'undefined' ? window.location.origin : ''
 }
 
 /**
@@ -24,9 +29,14 @@ function getWidgetUrl(): string {
  * - Token-auth variant: fetches a short-lived token from the host's backend
  *   before loading the widget (used when the agent requires token auth).
  * Shared by the AI Agents list and the onboarding Launch step.
+ *
+ * `window.chattermateBaseUrl` is baked into the snippet from the runtime API URL
+ * so the embedded widget (running on the customer's own site, where APP_CONFIG is
+ * absent) talks to THIS install's backend instead of the vendor cloud.
  */
 export function buildWidgetEmbed(widgetId: string, requireTokenAuth?: boolean): string {
-  const widgetUrl = getWidgetUrl()
+  const loaderOrigin = getLoaderOrigin()
+  const apiUrl = getApiUrl()
   if (requireTokenAuth) {
     return `<!-- Get token from your backend: POST /api/v1/generate-token with API key -->
 <!-- Security Note: Widget ID and token are cryptographically bound in the JWT. -->
@@ -48,14 +58,15 @@ export function buildWidgetEmbed(widgetId: string, requireTokenAuth?: boolean): 
         }
         if (!token || !widget_id) throw new Error('Failed to extract token or widget_id');
         window.chattermateId = widget_id;
+        window.chattermateBaseUrl = '${apiUrl}';
         localStorage.setItem('ctid', token);
         const script = document.createElement('script');
-        script.src = '${widgetUrl}/webclient/chattermate.min.js';
+        script.src = '${loaderOrigin}/webclient/chattermate.min.js';
         document.head.appendChild(script);
         })
         .catch(e => console.error('[ChatterMate] Initialization failed:', e));
     })();
     <\/script>`
   }
-  return `<script>window.chattermateId='${widgetId}';<\/script><script src="${widgetUrl}/webclient/chattermate.min.js"><\/script>`
+  return `<script>window.chattermateId='${widgetId}';window.chattermateBaseUrl='${apiUrl}';<\/script><script src="${loaderOrigin}/webclient/chattermate.min.js"><\/script>`
 }

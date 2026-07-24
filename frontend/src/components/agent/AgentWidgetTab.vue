@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Agent } from '@/types/agent'
+import { getApiUrl } from '@/config/api'
 
 interface Widget {
   id: string;
@@ -43,6 +44,11 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['copy-widget-code', 'copy-iframe-code', 'copy-backend-code'])
+
+// Runtime backend API URL baked into the embed snippet so the widget connects to
+// THIS install. The loader script itself is served by this frontend origin.
+const apiBaseUrl = computed(() => getApiUrl())
+const loaderOrigin = computed(() => (typeof window !== 'undefined' ? window.location.origin : props.widgetUrl))
 
 // Check if token authentication is required
 const requiresTokenAuth = computed(() => {
@@ -172,11 +178,12 @@ const { data } = await response.json();
     .then(data => {
       // Set widget ID and token
       window.chattermateId = '{{ widget.id }}';
+      window.chattermateBaseUrl = '{{ apiBaseUrl }}';
       window.chattermateToken = data.token;
 
       // Load the widget script
       const script = document.createElement('script');
-      script.src = '{{ widgetUrl }}/webclient/chattermate.min.js';
+      script.src = '{{ loaderOrigin }}/webclient/chattermate.min.js';
       document.head.appendChild(script);
     })
     .catch(e => console.error('Failed to initialize chat:', e));
@@ -211,8 +218,9 @@ const { data } = await response.json();
             <div class="code-block">
               <pre><code>&lt;script&gt;
   window.chattermateId = '{{ widget.id }}';
+  window.chattermateBaseUrl = '{{ apiBaseUrl }}';
 &lt;/script&gt;
-&lt;script src="{{ widgetUrl }}/webclient/chattermate.min.js"&gt;&lt;/script&gt;</code></pre>
+&lt;script src="{{ loaderOrigin }}/webclient/chattermate.min.js"&gt;&lt;/script&gt;</code></pre>
               <button class="copy-button" @click="copyWidgetCode" title="Copy to clipboard">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V7.41421C20 6.88378 19.7893 6.37507 19.4142 6L16 2.58579C15.6249 2.21071 15.1162 2 14.5858 2H10C8.89543 2 8 2.89543 8 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />

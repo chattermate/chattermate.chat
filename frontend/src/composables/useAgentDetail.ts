@@ -25,6 +25,7 @@ import { listGroups } from '@/services/groups'
 import { agentStorage } from '@/utils/storage'
 import { useJiraIntegration } from './useJiraIntegration'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { getApiUrl } from '@/config/api'
 
 const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 
@@ -193,6 +194,12 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
   const copyWidgetCode = (baseUrl: string, requireTokenAuth?: boolean) => {
     if (!widget.value) return
 
+    // Loader is served by this frontend; its API target is the runtime backend
+    // URL. Both are resolved at generation time so the copied snippet points at
+    // THIS install, not the vendor cloud — no rebuild needed when env changes.
+    const loaderOrigin = typeof window !== 'undefined' ? window.location.origin : baseUrl
+    const apiUrl = getApiUrl()
+
     let code: string
     
     if (requireTokenAuth) {
@@ -223,12 +230,13 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
         throw new Error('Failed to extract token or widget_id from response');
       }
       window.chattermateId = widget_id;
+      window.chattermateBaseUrl = '${apiUrl}';
 
       localStorage.setItem('ctid', token);
-      
+
       // Load the chattermate.min.js script
       const script = document.createElement('script');
-      script.src = '${baseUrl}/webclient/chattermate.min.js';
+      script.src = '${loaderOrigin}/webclient/chattermate.min.js';
       script.onload = () => {
         console.log('[ChatterMate] chattermate.min.js loaded and executed successfully');
       };
@@ -247,8 +255,9 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
       code = `<!-- ChatterMate Widget - Simple Integration -->
 <script>
   window.chattermateId = '${widget.value.id}';
+  window.chattermateBaseUrl = '${apiUrl}';
 <\/script>
-<script src="${baseUrl}/webclient/chattermate.min.js"><\/script>`
+<script src="${loaderOrigin}/webclient/chattermate.min.js"><\/script>`
     }
     
     navigator.clipboard.writeText(code)

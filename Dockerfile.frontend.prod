@@ -20,10 +20,12 @@ COPY frontend/ .
 # Install dependencies with legacy peer deps
 RUN npm install 
 
-# Build the application, widget, and webclient
+# Build the application, widget, and webclient. Use the :prod webclient build so
+# the shipped loader bakes the production fallback URL (the real backend URL is
+# resolved at runtime via window.chattermateBaseUrl / APP_CONFIG regardless).
 RUN npm run build-only && \
     npm run build:widgetdocker && \
-    npm run build:webclient && \
+    npm run build:webclient:prod && \
     if [ ! -f dist/index.html ]; then \
         echo "<!DOCTYPE html><html><head><meta charset='utf-8'><title>ChatterMate</title><link rel='icon' href='/favicon.ico'></head><body><div id='app'></div><script type='module' src='/src/main.ts'></script></body></html>" > dist/index.html; \
     fi
@@ -36,6 +38,12 @@ RUN rm -rf /usr/share/nginx/html/*
 
 # Copy the built files to nginx
 COPY --from=builder /app/dist/ /usr/share/nginx/html/
+
+# Also serve the docker-built widget (widget.js/widget.css). build:widgetdocker
+# emits these to /app/backend-assets; without this they are discarded and a
+# frontend-served widget (VITE_WIDGET_URL -> frontend) falls back to the stale
+# checked-in bundle. Fixed filenames, so this won't clobber hashed dashboard assets.
+COPY --from=builder /app/backend-assets/ /usr/share/nginx/html/assets/
 
 # Copy nginx configuration
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
