@@ -25,6 +25,7 @@ import { listGroups } from '@/services/groups'
 import { agentStorage } from '@/utils/storage'
 import { useJiraIntegration } from './useJiraIntegration'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { buildWidgetEmbed } from '@/utils/widgetEmbed'
 
 const { hasEnterpriseModule, loadModule, moduleImports } = useEnterpriseFeatures()
 
@@ -190,67 +191,13 @@ export function useAgentDetail(agentData: { value: AgentWithCustomization }, emi
     }
   }
 
-  const copyWidgetCode = (baseUrl: string, requireTokenAuth?: boolean) => {
+  const copyWidgetCode = (requireTokenAuth?: boolean) => {
     if (!widget.value) return
 
-    let code: string
-    
-    if (requireTokenAuth) {
-      // Token-based authentication code (for secure portal integrations)
-      code = `<!-- Get token from your backend: POST /api/v1/generate-token with API key -->
-<!-- Security Note: Widget ID and token are cryptographically bound in the JWT. -->
-<!-- Never hardcode widget_id - always get it from the token response. -->
-<script>
-(function() {
-  fetch('/api/chattermate')
-    .then(r => r.json())
-    .then(d => {
-      let token, widget_id;
-      
-      if (d.data && d.data.token && d.data.widget_id) {
-        // Direct path from Wappler response
-        token = d.data.token;
-        widget_id = d.data.widget_id;
-      } else if (d.token && d.token.data && d.token.data.data) {
-        token = d.token.data.data.token;
-        widget_id = d.token.data.data.widget_id;
-      } else if (d.token && d.widget_id) {
-        // Flat path
-        token = d.token;
-        widget_id = d.widget_id;
-      }
-      if (!token || !widget_id) {
-        throw new Error('Failed to extract token or widget_id from response');
-      }
-      window.chattermateId = widget_id;
+    // Single source of truth for the embed snippet (see buildWidgetEmbed) so the
+    // copied code never drifts from the AI Agents list or the on-screen preview.
+    const code = buildWidgetEmbed(widget.value.id, requireTokenAuth)
 
-      localStorage.setItem('ctid', token);
-      
-      // Load the chattermate.min.js script
-      const script = document.createElement('script');
-      script.src = '${baseUrl}/webclient/chattermate.min.js';
-      script.onload = () => {
-        console.log('[ChatterMate] chattermate.min.js loaded and executed successfully');
-      };
-      script.onerror = (err) => {
-        console.error('[ChatterMate] Failed to load chattermate.min.js:', err);
-      };
-      document.head.appendChild(script);
-    })
-    .catch(e => {
-      console.error('[ChatterMate] Initialization failed:', e);
-    });
-})();
-<\/script>`
-    } else {
-      // Simple embed code (auto-generated tokens)
-      code = `<!-- ChatterMate Widget - Simple Integration -->
-<script>
-  window.chattermateId = '${widget.value.id}';
-<\/script>
-<script src="${baseUrl}/webclient/chattermate.min.js"><\/script>`
-    }
-    
     navigator.clipboard.writeText(code)
       .then(() => {
         toast.success(requireTokenAuth 

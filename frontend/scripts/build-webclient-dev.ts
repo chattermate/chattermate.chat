@@ -22,30 +22,16 @@ async function buildWebClientDev() {
     // Set NODE_ENV to development for the build
     process.env.NODE_ENV = 'development'
     
-    // Get API URL from environment or default to development
+    // Baked DEFAULT base URL only; getBaseUrl() still resolves
+    // window.chattermateBaseUrl / window.APP_CONFIG at runtime, so no rebuild is
+    // needed when a deployment's env changes.
     const apiUrl = process.env.VITE_API_URL || 'http://localhost:8000/api/v1'
     console.log('Using API URL:', apiUrl)
-    
-    // Read the source file and replace the placeholder
+
     const sourceFile = resolve(dirname(__dirname), 'src/webclient/chattermate.js')
-    const tempFile = resolve(dirname(__dirname), 'src/webclient/chattermate.temp.js')
-    
-    let sourceContent = fs.readFileSync(sourceFile, 'utf8')
-    
-    // Replace the getBaseUrl function with a direct return of the API URL
-    sourceContent = sourceContent.replace(
-      /\/\/ Get base URL - injected at build time or fallback to config[\s\S]*?function getBaseUrl\(\) \{[\s\S]*?\n  \}/,
-      `// Get base URL - injected at build time
-  function getBaseUrl() {
-    return "${apiUrl}";
-  }`
-    )
-    
-    // Write temporary file
-    fs.writeFileSync(tempFile, sourceContent)
-    
+
     await build({
-      entryPoints: [tempFile],
+      entryPoints: [sourceFile],
       bundle: true,
       minify: false, // Don't minify for development
       outfile: resolve(dirname(__dirname), 'public/webclient/chattermate.min.js'),
@@ -56,12 +42,10 @@ async function buildWebClientDev() {
       },
       define: {
         'process.env.NODE_ENV': '"development"',
+        '__CHATTERMATE_API_URL__': JSON.stringify(apiUrl),
       },
       sourcemap: true, // Add sourcemap for development
     })
-    
-    // Clean up temporary file
-    fs.unlinkSync(tempFile)
 
     // Copy output to dist/webclient directory
     const publicWebclientPath = resolve(dirname(__dirname), 'public/webclient/chattermate.min.js')

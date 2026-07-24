@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Agent } from '@/types/agent'
+import { buildWidgetEmbed } from '@/utils/widgetEmbed'
 
 interface Widget {
   id: string;
@@ -48,6 +49,10 @@ const emit = defineEmits(['copy-widget-code', 'copy-iframe-code', 'copy-backend-
 const requiresTokenAuth = computed(() => {
   return props.agent?.require_token_auth ?? false
 })
+
+// The exact snippet the Copy button produces (see buildWidgetEmbed) — rendered
+// in the preview so what you see always matches what you copy.
+const embedCode = computed(() => buildWidgetEmbed(props.widget?.id ?? '', requiresTokenAuth.value))
 
 const copyWidgetCode = () => {
   emit('copy-widget-code')
@@ -161,27 +166,10 @@ const { data } = await response.json();
                 <h5 class="step-title">Add to your website (Client-side)</h5>
               </div>
               <p class="step-description">
-                Add this code to your HTML, replacing <code>/api/chat-token</code> with your backend endpoint:
+                Add this code to your HTML, replacing <code>/api/chattermate</code> with your backend endpoint:
               </p>
               <div class="code-block">
-                <pre><code>&lt;script&gt;
-(function() {
-  // Fetch token from your backend
-  fetch('/api/chat-token')
-    .then(r => r.json())
-    .then(data => {
-      // Set widget ID and token
-      window.chattermateId = '{{ widget.id }}';
-      window.chattermateToken = data.token;
-
-      // Load the widget script
-      const script = document.createElement('script');
-      script.src = '{{ widgetUrl }}/webclient/chattermate.min.js';
-      document.head.appendChild(script);
-    })
-    .catch(e => console.error('Failed to initialize chat:', e));
-})();
-&lt;/script&gt;</code></pre>
+                <pre><code>{{ embedCode }}</code></pre>
                 <button class="copy-button" @click="copyWidgetCode" title="Copy to clipboard">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V7.41421C20 6.88378 19.7893 6.37507 19.4142 6L16 2.58579C15.6249 2.21071 15.1162 2 14.5858 2H10C8.89543 2 8 2.89543 8 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -209,10 +197,7 @@ const { data } = await response.json();
               Add this code snippet to your website's HTML, just before the closing <code>&lt;/body&gt;</code> tag:
             </p>
             <div class="code-block">
-              <pre><code>&lt;script&gt;
-  window.chattermateId = '{{ widget.id }}';
-&lt;/script&gt;
-&lt;script src="{{ widgetUrl }}/webclient/chattermate.min.js"&gt;&lt;/script&gt;</code></pre>
+              <pre><code>{{ embedCode }}</code></pre>
               <button class="copy-button" @click="copyWidgetCode" title="Copy to clipboard">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V7.41421C20 6.88378 19.7893 6.37507 19.4142 6L16 2.58579C15.6249 2.21071 15.1162 2 14.5858 2H10C8.89543 2 8 2.89543 8 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />

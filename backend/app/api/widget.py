@@ -42,6 +42,24 @@ from app.core.s3 import get_s3_signed_url
 router = APIRouter()
 logger = get_logger(__name__)
 
+
+def _widget_runtime_config() -> dict:
+    """Runtime API/WS URLs to hand the widget iframe as ``window.APP_CONFIG``.
+
+    Derived from ``BACKEND_URL`` so a self-hosted widget talks to the configured
+    backend instead of the vendor cloud. On the hosted deployment BACKEND_URL is
+    ``https://api.chattermate.chat``, which yields exactly the widget's baked-in
+    defaults, so injecting this is a no-op there.
+    """
+    api_base = settings.BACKEND_URL.rstrip("/")
+    if api_base.startswith("https://"):
+        ws_url = "wss://" + api_base[len("https://"):]
+    elif api_base.startswith("http://"):
+        ws_url = "ws://" + api_base[len("http://"):]
+    else:
+        ws_url = api_base
+    return {"API_URL": f"{api_base}/api/v1", "WS_URL": ws_url}
+
 @router.post("", response_model=WidgetResponse)
 def create_new_widget(
     widget: WidgetCreate,
@@ -182,6 +200,12 @@ async def get_widget_html(widget_id: str, agent_name: str, agent_customization: 
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
             <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+            <script>
+                // Runtime backend config so the widget connects to THIS install's
+                // backend instead of falling back to the baked cloud default.
+                // Declared before the widget module loads.
+                window.APP_CONFIG = {json.dumps(_widget_runtime_config())};
+            </script>
             <script type="module" crossorigin src="{widget_url}/assets/widget.js"></script>
             <link rel="stylesheet" crossorigin href="{widget_url}/assets/widget.css">
             <script>

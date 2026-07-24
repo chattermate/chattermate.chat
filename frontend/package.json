@@ -20,7 +20,7 @@
     "type-check": "vue-tsc --noEmit -p tsconfig.app.json --composite false",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "format": "prettier --write src/",
-    "build:webclient": "tsx scripts/build-webclient.ts",
+    "build:webclient": "npm run build:webclient:prod",
     "build:webclient:dev": "tsx scripts/build-webclient-dev.ts",
     "build:webclient:prod": "tsx scripts/build-webclient-prod.ts",
     "build:widget": "tsx scripts/build-widget.ts",

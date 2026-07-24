@@ -71,7 +71,7 @@ def get_cors_origins() -> Set[str]:
         # In local dev the help center is reached on a non-standard port (e.g.
         # :8000), which the browser puts in the Origin header. socket.io matches
         # origins exactly (no regex), so add that port variant when configured.
-        dev_port = urlparse(settings.APP_BASE_URL).port
+        dev_port = urlparse(settings.BACKEND_URL).port
         for slug in hc_repo.list_enabled_slugs():
             for scheme in ("https", "http"):
                 all_origins.add(f"{scheme}://{slug}.{base}")

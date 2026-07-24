@@ -124,6 +124,23 @@ def test_get_widget_ui(client: TestClient, test_widget: Widget):
     assert str(test_widget.id) in response.text
     assert test_widget.agent.display_name or test_widget.agent.name in response.text
 
+def test_widget_ui_injects_app_config(client: TestClient, test_widget: Widget):
+    """The iframe HTML must inject window.APP_CONFIG derived from BACKEND_URL so a
+    self-hosted widget connects to the configured backend, not the cloud default."""
+    from app.core.config import settings
+
+    response = client.get(f"/api/v1/widgets/{test_widget.id}/data")
+    assert response.status_code == 200
+
+    api_base = settings.BACKEND_URL.rstrip("/")
+    expected_ws = api_base.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+    assert "window.APP_CONFIG" in response.text
+    assert f'"API_URL": "{api_base}/api/v1"' in response.text
+    assert f'"WS_URL": "{expected_ws}"' in response.text
+    # APP_CONFIG must be declared before the widget module so it exists at load time.
+    assert response.text.index("window.APP_CONFIG") < response.text.index("assets/widget.js")
+
+
 def test_get_widget_data(client: TestClient, test_widget: Widget):
     """Test getting widget data with conversation token"""
     # First get the widget UI to get the initial token
