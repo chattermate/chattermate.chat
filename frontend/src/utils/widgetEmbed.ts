@@ -68,5 +68,9 @@ export function buildWidgetEmbed(widgetId: string, requireTokenAuth?: boolean): 
     })();
     <\/script>`
   }
-  return `<script>window.chattermateId='${widgetId}';window.chattermateBaseUrl='${apiUrl}';<\/script><script src="${loaderOrigin}/webclient/chattermate.min.js"><\/script>`
+  return `<script>
+  window.chattermateId = '${widgetId}';
+  window.chattermateBaseUrl = '${apiUrl}';
+<\/script>
+<script src="${loaderOrigin}/webclient/chattermate.min.js"><\/script>`
 }

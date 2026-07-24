@@ -42,8 +42,8 @@ describe('buildWidgetEmbed', () => {
 
   it('bakes chattermateBaseUrl from the runtime API url (simple variant)', () => {
     const code = buildWidgetEmbed('w-123')
-    expect(code).toContain(`window.chattermateBaseUrl='${API_URL}'`)
-    expect(code).toContain(`window.chattermateId='w-123'`)
+    expect(code).toContain(`window.chattermateBaseUrl = '${API_URL}'`)
+    expect(code).toContain(`window.chattermateId = 'w-123'`)
     expect(code).toContain(`${ORIGIN}/webclient/chattermate.min.js`)
   })
 

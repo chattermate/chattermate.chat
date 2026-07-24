@@ -335,7 +335,7 @@ const handleClose = () => {
 }
 
 const copyWidgetCode = () => {
-    copyWidgetCodeFn(widgetUrl.value, agentData.value.require_token_auth)
+    copyWidgetCodeFn(agentData.value.require_token_auth)
 }
 
 const copyIframeCode = () => {
