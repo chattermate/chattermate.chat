@@ -39,6 +39,7 @@ from app.models.role import Role
 from app.services.chat_scope_roles import resolve_role
 from app.core.s3 import get_s3_signed_url, sign_s3_url, upload_file_to_s3, delete_file_from_s3
 from app.core.config import settings
+from app.services.file_storage import local_upload_path
 from app.repositories.shopify_shop_repository import ShopifyShopRepository
 from app.models.schemas.shopify.shopify_shop import ShopifyShopUpdate
 from app.core.cors import update_cors_middleware
@@ -115,7 +116,8 @@ async def save_upload_file(file: UploadFile, org_id: str, user_id: str) -> str:
             content = await file.read()
             buffer.write(content)
         
-        return f"/uploads/user/{org_id}/{user_id}/{filename}"
+        # Prefixed to match the {API_V1_STR}/uploads static mount, as store_upload does.
+        return f"{settings.API_V1_STR}/uploads/user/{org_id}/{user_id}/{filename}"
 
 @router.post("", response_model=UserResponse)
 async def create_user(
@@ -421,8 +423,10 @@ async def get_my_avatar(current_user: User = Depends(get_current_user)):
 
     location = sign_s3_url(current_user.profile_pic)
     if not location.startswith(("http://", "https://")):
-        # Local storage. save_upload_file stores "/uploads/user/...", but the
-        # static mount lives under the API prefix, so the bare path 404s.
+        # Local storage is served under the API prefix, which is what
+        # save_upload_file now stores. Rows written before that normalisation
+        # carry a bare "/uploads/..." and would 404, so prefix those too —
+        # same tolerance local_upload_path applies on the way back down.
         path = location.lstrip("/")
         if path.startswith("uploads/"):
             path = f"{settings.API_V1_STR.strip('/')}/{path}"
@@ -1106,7 +1110,7 @@ async def upload_profile_pic(
             if settings.S3_FILE_STORAGE:
                 await delete_file_from_s3(current_user.profile_pic)
             else:
-                old_photo_path = current_user.profile_pic.lstrip('/')
+                old_photo_path = local_upload_path(current_user.profile_pic)
                 if os.path.exists(old_photo_path):
                     os.remove(old_photo_path)
         
@@ -1154,7 +1158,7 @@ async def delete_profile_pic(
             if settings.S3_FILE_STORAGE:
                 await delete_file_from_s3(current_user.profile_pic)
             else:
-                old_photo_path = current_user.profile_pic.lstrip('/')
+                old_photo_path = local_upload_path(current_user.profile_pic)
                 if os.path.exists(old_photo_path):
                     os.remove(old_photo_path)
 

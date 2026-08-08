@@ -42,6 +42,7 @@ from PIL import Image
 from uuid import UUID
 from app.core.s3 import upload_file_to_s3
 from app.core.config import settings
+from app.services.file_storage import local_upload_path
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
 from app.utils.agno_utils import create_model
@@ -131,7 +132,9 @@ async def save_file(file: UploadFile, organization_id: UUID) -> str:
             content = await file.read()
             await f.write(content)
 
-        return f"/{file_path}"
+        # The uploads/ directory is static-mounted at {API_V1_STR}/uploads,
+        # so the stored URL must carry that prefix (same shape as store_upload).
+        return f"{settings.API_V1_STR}/{file_path}"
 
 
 @router.post("", response_model=AgentWithCustomizationResponse, status_code=status.HTTP_201_CREATED)
@@ -527,7 +530,7 @@ async def upload_agent_photo(
                 from app.core.s3 import delete_file_from_s3
                 await delete_file_from_s3(db_customization.photo_url)
             else:
-                old_photo_path = db_customization.photo_url.lstrip('/')
+                old_photo_path = local_upload_path(db_customization.photo_url)
                 if os.path.exists(old_photo_path):
                     os.remove(old_photo_path)
 

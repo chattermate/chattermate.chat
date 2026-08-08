@@ -44,16 +44,30 @@ async def store_upload(content: bytes, folder: str, file_name: str, content_type
     return f"{settings.API_V1_STR}/uploads/{folder}/{file_name}"
 
 
+def local_upload_path(stored: str) -> str:
+    """Filesystem path under `uploads/` for a stored local upload URL.
+
+    Tolerates every shape the app has ever written: the current
+    `{API_V1_STR}/uploads/...`, the legacy bare `/uploads/...` that
+    agent photos and profile pictures carried before they were normalised,
+    and a plain relative key with no prefix at all.
+    """
+    relative = stored.lstrip("/")
+    api_prefix = f"{settings.API_V1_STR.strip('/')}/"
+    if relative.startswith(api_prefix):
+        relative = relative[len(api_prefix):]
+    if relative.startswith("uploads/"):
+        relative = relative[len("uploads/"):]
+    return os.path.join("uploads", relative)
+
+
 async def load_upload(stored: str) -> bytes:
     """Read back a previously stored upload by the URL/path store_upload
     returned. Used by workers running in a different container than the API
     (shared local uploads mount or S3)."""
     if stored.startswith("http"):
         return await download_file_from_s3(stored)
-    # `{API_V1_STR}/uploads/...` → local `uploads/...`
-    marker = f"{settings.API_V1_STR}/uploads/"
-    relative = stored.split(marker, 1)[1] if marker in stored else stored.lstrip("/")
-    async with aiofiles.open(os.path.join("uploads", relative), "rb") as f:
+    async with aiofiles.open(local_upload_path(stored), "rb") as f:
         return await f.read()
 
 
@@ -63,9 +77,7 @@ async def delete_upload(stored: str) -> None:
         if stored.startswith("http"):
             await delete_file_from_s3(stored)
             return
-        marker = f"{settings.API_V1_STR}/uploads/"
-        relative = stored.split(marker, 1)[1] if marker in stored else stored.lstrip("/")
-        os.remove(os.path.join("uploads", relative))
+        os.remove(local_upload_path(stored))
     except Exception:
         pass
 
