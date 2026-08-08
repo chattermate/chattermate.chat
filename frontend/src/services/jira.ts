@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import { getApiUrl } from '@/config/api'
+import { apiPath } from '@/config/api'
 
 /**
  * Check if Jira is connected for the current organization
@@ -34,7 +34,7 @@ export const checkJiraConnection = async () => {
  * Get the Jira authorization URL
  */
 export const getJiraAuthUrl = () => {
-  return `${getApiUrl()}/jira/authorize`
+  return apiPath('/jira/authorize')
 }
 
 /**

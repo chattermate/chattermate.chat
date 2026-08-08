@@ -22,7 +22,7 @@ import { useTicketingSettings } from '@/composables/useTicketingSettings'
 import { PRIORITIES, priorityMeta } from '@/components/tickets/ticketMeta'
 import TicketConnectorsSection from '@/components/tickets/TicketConnectorsSection.vue'
 import TicketDbConnectorsSection from '@/components/tickets/TicketDbConnectorsSection.vue'
-import { getApiUrl } from '@/config/api'
+import { apiPath } from '@/config/api'
 import { userService } from '@/services/user'
 import type { SlaTarget, TicketPriority } from '@/types/ticket'
 
@@ -75,7 +75,7 @@ const webhookUrl = computed(() => {
   if (!settings.value?.alert_webhook_enabled || !settings.value?.alert_webhook_secret) return null
   const orgId = userService.getCurrentUser()?.organization_id
   if (!orgId) return null
-  return `${getApiUrl()}/tickets/webhooks/alerts/${orgId}/${settings.value.alert_webhook_secret}`
+  return apiPath(`/tickets/webhooks/alerts/${orgId}/${settings.value.alert_webhook_secret}`)
 })
 
 function copyWebhookUrl() {

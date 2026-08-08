@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import { getApiUrl } from '@/config/api'
+import { apiPath } from '@/config/api'
 import type { SignupChannel } from '@/utils/metaSdk'
 
 // Types
@@ -322,7 +322,7 @@ const channelsService = {
 
   /** Browser URL that starts the Slack OAuth install (redirects to Slack) */
   getSlackInstallUrl(): string {
-    return `${getApiUrl()}/channels/slack/install`
+    return apiPath('/channels/slack/install')
   },
 
   async disconnectSlack(accountId: string): Promise<void> {

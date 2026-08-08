@@ -17,7 +17,7 @@ limitations under the License.
 import { ref, type Ref } from 'vue'
 import type { ChatDetail } from '@/types/chat'
 import FileUpload from '@/components/common/FileUpload.vue'
-import { getApiUrl, resolveUploadUrl } from '@/config/api'
+import { apiPath, resolveUploadUrl } from '@/config/api'
 
 export function useConversationFiles(
   currentChat: Ref<ChatDetail>,
@@ -168,7 +168,7 @@ export function useConversationFiles(
     const cleanUrl = fileUrl.startsWith('/uploads/')
                      ? fileUrl.replace('/uploads/', '')
                      : fileUrl.replace('/', '')
-    return `${getApiUrl()}/files/download/${cleanUrl}`
+    return apiPath(`/files/download/${cleanUrl}`)
   }
 
   // Generate image URL for attachments. Blob previews and absolute S3 URLs pass

@@ -33,6 +33,19 @@ export function getWsUrl(): string {
 }
 
 /**
+ * An absolute API URL for `path`, for the places that need a real URL string
+ * rather than an axios call — browser navigations (OAuth installs), download
+ * links, webhook URLs we show the user.
+ *
+ * Use this instead of `${getApiUrl()}${path}` by hand. A self-hoster is free to
+ * set API_URL with a trailing slash, and hand-concatenation then emits
+ * `/api/v1//crm/...`; Starlette matches paths exactly, so that 404s.
+ */
+export function apiPath(path: string): string {
+  return `${getApiUrl().replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+}
+
+/**
  * URL for a stored upload path (avatar, attachment). Always use this instead of
  * concatenating getApiUrl() by hand — stored local paths already include the
  * /api/v1 prefix. See buildUploadUrl.
@@ -54,7 +67,7 @@ export function resolveUploadUrl(stored?: string | null): string {
  * which sign afresh every time.
  */
 export function myAvatarUrl(cacheBuster?: string | number): string {
-  const base = `${getApiUrl().replace(/\/$/, '')}/users/me/avatar`
+  const base = apiPath('/users/me/avatar')
   return cacheBuster ? `${base}?t=${cacheBuster}` : base
 }
 

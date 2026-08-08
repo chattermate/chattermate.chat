@@ -23,6 +23,8 @@ vi.mock('@/services/api', () => ({ default: {} }))
 
 import crmService from '@/services/crm'
 import channelsService from '@/services/channels'
+import { getJiraAuthUrl } from '@/services/jira'
+import { apiPath } from '@/config/api'
 
 type MutableWindow = { APP_CONFIG?: Record<string, string> }
 
@@ -43,6 +45,7 @@ describe('OAuth install URLs', () => {
   })
 
   const builders: Array<[string, () => string]> = [
+    ['jira/authorize', () => getJiraAuthUrl()],
     ['crm/hubspot', () => crmService.getInstallUrl('hubspot')],
     ['crm/pipedrive', () => crmService.getInstallUrl('pipedrive')],
     ['channels/slack', () => channelsService.getSlackInstallUrl()],
@@ -66,6 +69,12 @@ describe('OAuth install URLs', () => {
     expect(build()).toContain('second.example')
   })
 
+  it.each(builders)('%s survives an API_URL with a trailing slash', (_name, build) => {
+    // Starlette matches paths exactly, so a "//" from hand-concatenation 404s.
+    setRuntimeApiUrl('https://self.hosted.example/api/v1/')
+    expect(build()).not.toContain('/api/v1//')
+  })
+
   it('points at the endpoint the backend actually mounts', () => {
     setRuntimeApiUrl('https://self.hosted.example/api/v1')
     expect(crmService.getInstallUrl('pipedrive')).toBe(
@@ -74,5 +83,38 @@ describe('OAuth install URLs', () => {
     expect(channelsService.getSlackInstallUrl()).toBe(
       'https://self.hosted.example/api/v1/channels/slack/install',
     )
+    expect(getJiraAuthUrl()).toBe('https://self.hosted.example/api/v1/jira/authorize')
+  })
+})
+
+describe('apiPath', () => {
+  afterEach(() => {
+    delete (window as unknown as MutableWindow).APP_CONFIG
+  })
+
+  it('joins on exactly one slash however the two sides are punctuated', () => {
+    setRuntimeApiUrl('https://h.example/api/v1')
+    expect(apiPath('/x')).toBe('https://h.example/api/v1/x')
+    expect(apiPath('x')).toBe('https://h.example/api/v1/x')
+    setRuntimeApiUrl('https://h.example/api/v1/')
+    expect(apiPath('/x')).toBe('https://h.example/api/v1/x')
+    expect(apiPath('x')).toBe('https://h.example/api/v1/x')
+  })
+
+  it('collapses repeated slashes on either side', () => {
+    setRuntimeApiUrl('https://h.example/api/v1///')
+    expect(apiPath('///x')).toBe('https://h.example/api/v1/x')
+  })
+
+  it('leaves the query string alone', () => {
+    setRuntimeApiUrl('https://h.example/api/v1/')
+    expect(apiPath('/shopify/auth?shop=a.myshopify.com&x=1')).toBe(
+      'https://h.example/api/v1/shopify/auth?shop=a.myshopify.com&x=1',
+    )
+  })
+
+  it('does not mangle the scheme separator', () => {
+    setRuntimeApiUrl('https://h.example')
+    expect(apiPath('/x')).toBe('https://h.example/x')
   })
 })

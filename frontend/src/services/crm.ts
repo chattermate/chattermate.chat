@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import { getApiUrl } from '@/config/api'
+import { apiPath } from '@/config/api'
 
 export type CrmProvider = 'hubspot' | 'pipedrive'
 
@@ -48,7 +48,7 @@ export default {
    *  at build time, so a self-hoster's window.APP_CONFIG.API_URL never reaches
    *  it and the browser leaves for the wrong host with no session cookie. */
   getInstallUrl(provider: CrmProvider): string {
-    return `${getApiUrl()}/crm/${provider}/install`
+    return apiPath(`/crm/${provider}/install`)
   },
 
   async testConnection(provider: CrmProvider): Promise<CrmTestResult> {
