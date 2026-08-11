@@ -37,6 +37,11 @@ logger = get_logger(__name__)
 # timeout costs only the phrasing — the handoff still goes ahead.
 TRANSFER_TIMEOUT_MESSAGE = "Let me connect you with someone from our team."
 FOLLOW_UP_TIMEOUT_MESSAGE = "Our team will get back to you shortly."
+# Same fallback, for when nobody is available AND we have no way to reach them —
+# it still has to ask, or the follow-up it promises can never happen.
+FOLLOW_UP_NEEDS_EMAIL_TIMEOUT_MESSAGE = (
+    "Our team will get back to you shortly. What's the best email address to reach you on?"
+)
 
 class TransferResponseAgent:
     def __init__(self, api_key: str, model_name: str, model_type: str = "OPENAI", agent_id: str = None):
@@ -132,6 +137,34 @@ class TransferResponseAgent:
         
         chat_history_text = "\n".join(formatted_history[-5:])  # Get last 5 messages
         
+        will_transfer = is_business_hours and available_agents > 0
+
+        # What to say about contact details depends on whether anyone is about to
+        # pick this chat up:
+        #   - known email        -> name it, so the promise is concrete.
+        #   - nobody picking up  -> ASK for an email. Promising a follow-up with no
+        #                           way to reach them is a dead end: the visitor
+        #                           leaves, and the team opens a chat with no
+        #                           contact details at all.
+        #   - live transfer      -> stay quiet; a human is arriving in this chat,
+        #                           and the handoff form collects details anyway.
+        if customer_email:
+            contact_instruction = f"Tell them the team will follow up at {customer_email}. "
+        elif not will_transfer:
+            contact_instruction = (
+                "No email is on file and nobody is available to pick this up, so the team "
+                "has no way to reach them. ASK them to reply with their email address so the "
+                "team can follow up. Ask plainly, in one short sentence. Do NOT mention, "
+                "reference, or link to any form; never write a URL, a bracketed placeholder, "
+                "or any example email address. "
+            )
+        else:
+            contact_instruction = (
+                "No email is on file, but a human agent is joining this chat now, so do NOT "
+                "ask for an email. Do NOT mention, reference, or link to any form; never write "
+                "a URL, a bracketed placeholder, or any email address. "
+            )
+
         prompt = (
             f"Based on the following context, generate an appropriate response for communicating the transfer of the chat to the different agent:\n\n"
             f"Business Context:\n{business_context}\n"
@@ -143,15 +176,13 @@ class TransferResponseAgent:
             f"explain that you need to transfer to a human agent who can better assist them.\n"
             f"2. If outside business hours or no agents available, if jira tool is available, "
             f"create a ticket so the team can follow up. "
-            f"{('Tell them the team will follow up at ' + customer_email + '. ') if customer_email else 'No email is on file. Simply reassure them that the team will follow up. Do NOT ask for an email; do NOT mention, reference, or link to any form; and never write a URL, a bracketed placeholder, or any email address. '}"
+            f"{contact_instruction}"
             f"\n"
             f"3. Keep the response professional and empathetic.\n"
             f"4. Never show a placeholder or fake email address. Make it clear whether they should expect "
             f"immediate help (transfer) or a follow-up.\n"
             f"Generate a natural-sounding response:"
         )
-
-        will_transfer = is_business_hours and available_agents > 0
 
         # Bounded like the chat run: this call happens inside the visitor's turn,
         # so a stuck run would hang the widget even though the handoff decision
@@ -167,8 +198,14 @@ class TransferResponseAgent:
                 f"cancelled; falling back to a plain handoff line "
                 f"(will_transfer={will_transfer})"
             )
+            if will_transfer:
+                fallback = TRANSFER_TIMEOUT_MESSAGE
+            elif customer_email:
+                fallback = FOLLOW_UP_TIMEOUT_MESSAGE
+            else:
+                fallback = FOLLOW_UP_NEEDS_EMAIL_TIMEOUT_MESSAGE
             return {
-                "message": TRANSFER_TIMEOUT_MESSAGE if will_transfer else FOLLOW_UP_TIMEOUT_MESSAGE,
+                "message": fallback,
                 "transfer_to_human": will_transfer
             }
 

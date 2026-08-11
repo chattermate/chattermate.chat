@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, AsyncMock
 import sys
 from app.agents.transfer_agent import (
+    FOLLOW_UP_NEEDS_EMAIL_TIMEOUT_MESSAGE,
     FOLLOW_UP_TIMEOUT_MESSAGE,
     TRANSFER_TIMEOUT_MESSAGE,
     TransferResponseAgent,
@@ -337,13 +338,25 @@ async def test_get_transfer_response_timeout():
             assert response["message"] == TRANSFER_TIMEOUT_MESSAGE
             assert response["transfer_to_human"] is True
 
-            # Nobody available -> follow-up wording, no transfer
+            # Nobody available and no email on file -> the fallback has to ask
+            # for one, or the follow-up it promises can never happen.
             response = await agent.get_transfer_response(
                 chat_history=[],
                 business_hours=business_hours,
                 available_agents=0,
                 is_business_hours=False,
                 customer_email=None
+            )
+            assert response["message"] == FOLLOW_UP_NEEDS_EMAIL_TIMEOUT_MESSAGE
+            assert response["transfer_to_human"] is False
+
+            # Nobody available but we already know where to reach them -> no ask.
+            response = await agent.get_transfer_response(
+                chat_history=[],
+                business_hours=business_hours,
+                available_agents=0,
+                is_business_hours=False,
+                customer_email="known@acme.com"
             )
             assert response["message"] == FOLLOW_UP_TIMEOUT_MESSAGE
             assert response["transfer_to_human"] is False
@@ -581,3 +594,103 @@ async def test_timezone_handling(test_agent):
         
         # Verify that timezone was called with the invalid timezone
         mock_pytz.timezone.assert_called_with("Invalid/Timezone") 
+
+# ---------- asking for an email when nobody can pick the chat up ----------
+
+async def _prompt_for(available_agents, is_business_hours, customer_email):
+    """Run get_transfer_response and return the prompt the LLM was given."""
+    mock_agent_repo = MagicMock()
+    mock_agent_repo.get_by_agent_id.return_value = None
+    with patch('app.agents.transfer_agent.AgentRepository', return_value=mock_agent_repo), \
+         patch('app.utils.agno_utils.create_model', return_value=MagicMock()), \
+         patch('app.agents.transfer_agent.Agent', return_value=MockPhiAgent()):
+        agent = TransferResponseAgent(api_key="k", model_name="gpt-4", model_type="OPENAI")
+        agent.agent.arun = AsyncMock(return_value=MagicMock(content="ok"))
+        await agent.get_transfer_response(
+            chat_history=[MagicMock(message_type="user", message="I want a human")],
+            business_hours={'monday': {'start': '09:00', 'end': '17:00', 'enabled': True}},
+            available_agents=available_agents,
+            is_business_hours=is_business_hours,
+            customer_email=customer_email,
+        )
+        return agent.agent.arun.call_args.kwargs["message"]
+
+
+@pytest.mark.asyncio
+async def test_asks_for_email_when_nobody_is_available_and_none_on_file():
+    """The reported bug: out of hours with no email, the visitor was told the team
+    would follow up and never asked how. The team then opens a chat with no way to
+    reach anyone."""
+    prompt = await _prompt_for(available_agents=0, is_business_hours=False, customer_email=None)
+
+    assert "ASK them to reply with their email address" in prompt
+    assert "Do NOT ask for an email" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_asks_for_email_when_in_hours_but_no_agents_online():
+    """Same dead end — business hours don't matter if nobody is online."""
+    prompt = await _prompt_for(available_agents=0, is_business_hours=True, customer_email=None)
+
+    assert "ASK them to reply with their email address" in prompt
+
+
+@pytest.mark.asyncio
+async def test_does_not_ask_when_a_human_is_actually_joining():
+    """A live transfer needs no email — a person is arriving in this chat."""
+    prompt = await _prompt_for(available_agents=3, is_business_hours=True, customer_email=None)
+
+    assert "do NOT ask for an email" in prompt
+    assert "ASK them to reply with their email address" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_does_not_ask_when_the_email_is_already_known():
+    prompt = await _prompt_for(
+        available_agents=0, is_business_hours=False, customer_email="known@acme.com"
+    )
+
+    assert "will follow up at known@acme.com" in prompt
+    assert "ASK them to reply with their email address" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_never_invents_a_form_link_or_placeholder_address():
+    """These guards exist because the model used to emit fake addresses and
+    links to forms that don't exist; asking for an email must not lose them."""
+    prompt = await _prompt_for(available_agents=0, is_business_hours=False, customer_email=None)
+
+    assert "never write a URL" in prompt
+    assert "Do NOT mention, reference, or link to any form" in prompt
+
+
+@pytest.mark.asyncio
+async def test_timeout_fallback_still_asks_when_there_is_no_email():
+    """A stuck LLM run must not silently drop the ask — the canned line has to
+    carry it too, or a timeout reintroduces the same dead end."""
+    mock_agent_repo = MagicMock()
+    mock_agent_repo.get_by_agent_id.return_value = None
+    with patch('app.agents.transfer_agent.AgentRepository', return_value=mock_agent_repo), \
+         patch('app.utils.agno_utils.create_model', return_value=MagicMock()), \
+         patch('app.agents.transfer_agent.Agent', return_value=MockPhiAgent()):
+        agent = TransferResponseAgent(api_key="k", model_name="gpt-4", model_type="OPENAI")
+
+        async def _hang(*a, **kw):
+            await asyncio.sleep(3600)
+
+        agent.agent.arun = _hang
+        with patch.object(settings, "AGENT_RUN_TIMEOUT", 0.01):
+            no_email = await agent.get_transfer_response(
+                chat_history=[MagicMock(message_type="user", message="human please")],
+                business_hours={'monday': {'start': '09:00', 'end': '17:00', 'enabled': True}},
+                available_agents=0, is_business_hours=False, customer_email=None,
+            )
+            known = await agent.get_transfer_response(
+                chat_history=[MagicMock(message_type="user", message="human please")],
+                business_hours={'monday': {'start': '09:00', 'end': '17:00', 'enabled': True}},
+                available_agents=0, is_business_hours=False, customer_email="a@b.com",
+            )
+
+    assert no_email["message"] == FOLLOW_UP_NEEDS_EMAIL_TIMEOUT_MESSAGE
+    assert "email" in no_email["message"].lower()
+    assert known["message"] == FOLLOW_UP_TIMEOUT_MESSAGE
