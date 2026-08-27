@@ -62,6 +62,23 @@ describe('TicketInvestigationPanel connector warning', () => {
     expect(wrapper.find('.connector-warning').exists()).toBe(false)
   })
 
+  it('warns when every connector loaded but the provider refused their tools', () => {
+    // The #303 case: nothing "failed", so the loaded-vs-configured check alone
+    // reports a clean run that gathered no evidence at all.
+    const wrapper = mountPanel({
+      connector_status: {
+        configured: 1,
+        loaded: 1,
+        failed: [],
+        provider_errors: ["The model provider rejected a connected tool's schema."],
+      },
+    })
+    const warning = wrapper.find('.connector-warning')
+    expect(warning.exists()).toBe(true)
+    expect(warning.text()).toContain("couldn't be used")
+    expect(warning.text()).toContain('rejected a connected tool')
+  })
+
   it('stays silent when the run has no connector status (older runs)', () => {
     const wrapper = mountPanel({})
     expect(wrapper.find('.connector-warning').exists()).toBe(false)

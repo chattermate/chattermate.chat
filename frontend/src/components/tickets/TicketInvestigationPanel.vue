@@ -59,10 +59,15 @@ const tokenLabel = computed(() => {
 })
 
 // A run that finished with fewer MCP connectors than configured produced its
-// answer without the evidence those tools were meant to gather — warn.
+// answer without the evidence those tools were meant to gather. So did a run
+// whose connectors all came up but whose tools the provider refused — that one
+// reports every connector loaded, so it needs its own check (#303).
 const connectorWarning = computed(() => {
   const status = run.value?.connector_status
-  if (!status || status.loaded >= status.configured) return null
+  if (!status) return null
+  const missingConnectors = status.loaded < status.configured
+  const refusedTools = !!status.provider_errors?.length
+  if (!missingConnectors && !refusedTools) return null
   return status
 })
 </script>
@@ -97,14 +102,20 @@ const connectorWarning = computed(() => {
     </div>
 
     <div v-if="connectorWarning" class="connector-warning">
-      <div>
+      <div v-if="connectorWarning.loaded < connectorWarning.configured">
         Ran with {{ connectorWarning.loaded }} of {{ connectorWarning.configured }} configured
         connector{{ connectorWarning.configured === 1 ? '' : 's' }} — findings may be missing evidence.
+      </div>
+      <div v-else>
+        Connectors came up, but their tools couldn't be used — findings may be missing evidence.
       </div>
       <ul v-if="connectorWarning.failed.length" class="connector-warning__list">
         <li v-for="f in connectorWarning.failed" :key="f.name">
           <strong>{{ f.name }}</strong>: {{ f.error }}
         </li>
+      </ul>
+      <ul v-if="connectorWarning.provider_errors?.length" class="connector-warning__list">
+        <li v-for="reason in connectorWarning.provider_errors" :key="reason">{{ reason }}</li>
       </ul>
     </div>
 

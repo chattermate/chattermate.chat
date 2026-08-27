@@ -882,6 +882,55 @@ async def test_connect_timeout_error_reports_configured_budget():
     assert "130s" in result["error"]
 
 
+def _connected_instance(functions):
+    instance = MagicMock()
+    instance.__aenter__ = AsyncMock()
+    instance.__aexit__ = AsyncMock()
+    instance.functions = functions
+    return instance
+
+
+def _function(parameters):
+    function = MagicMock()
+    function.parameters = parameters
+    return function
+
+
+@pytest.mark.asyncio
+async def test_connected_tools_are_opted_out_of_provider_strict_mode():
+    """agno marks every tool strict whenever the agent has a response_model.
+    A third-party schema can't satisfy that subset, and the resulting 400 kills
+    every request carrying the tool (#303) — so these must opt out."""
+    manager = MCPToolsManager()
+    search = _function({
+        "type": "object",
+        "properties": {"queryBody": {"type": "object", "additionalProperties": {}}},
+    })
+
+    with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        mock_mcp_tools_cls.return_value = _connected_instance({"search": search})
+        result = await manager.test_tool_config(_stdio_config())
+
+    assert result["success"] is True
+    # False, not None: agno only defaults strict when it is still unset.
+    assert search.strict is False
+
+
+@pytest.mark.asyncio
+async def test_the_advertised_schema_is_left_exactly_as_the_server_sent_it():
+    """Rewriting a foreign schema would change what the model may send; with
+    strict off the provider accepts it as published."""
+    manager = MCPToolsManager()
+    schema = {"type": "object", "properties": {"queryBody": {"type": "object", "additionalProperties": {}}}}
+    search = _function(schema)
+
+    with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        mock_mcp_tools_cls.return_value = _connected_instance({"search": search})
+        await manager.test_tool_config(_stdio_config())
+
+    assert search.parameters == schema
+
+
 class TestChatAgentMCPMixin:
     """Tests for ChatAgentMCPMixin"""
 

@@ -224,7 +224,13 @@ async def run_investigation_phases(
         else:
             hypothesis.status = HypothesisStatus.INCONCLUSIVE
             hypothesis.confidence = 0.0
-            hypothesis.conclusion = "The tester produced no parseable verdict."
+            # A provider that refused the request is a hard, deterministic
+            # failure — saying "no parseable verdict" for it reads as a model
+            # quality problem and hides a fixable connector issue (#303).
+            hypothesis.conclusion = (
+                getattr(agent, "last_provider_error", None)
+                or "The tester produced no parseable verdict."
+            )
         db.commit()
     recorder.hypothesis_id = None
     return hypotheses, budget_exhausted

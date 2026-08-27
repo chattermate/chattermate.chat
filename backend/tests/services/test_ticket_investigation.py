@@ -99,11 +99,12 @@ def recorder(db, run, ticket) -> EvidenceRecorder:
 class _FakeAgent:
     """Deterministic stand-in for TicketInvestigatorAgent."""
 
-    def __init__(self, plan=None, verdict=None, rca=None):
+    def __init__(self, plan=None, verdict=None, rca=None, last_provider_error=None):
         self.plan = plan
         self.verdict = verdict
         self.rca = rca
         self.test_calls = 0
+        self.last_provider_error = last_provider_error
 
     async def generate_hypotheses(self, context):
         return self.plan
@@ -207,6 +208,25 @@ class TestInvestigationPhases:
         )
         hypotheses, _ = await run_investigation_phases(db, run, ticket, agent, "ctx", [], recorder)
         assert hypotheses[0].status == HypothesisStatus.INCONCLUSIVE.value
+        assert hypotheses[0].conclusion == "The tester produced no parseable verdict."
+
+    @pytest.mark.asyncio
+    async def test_provider_rejection_is_not_reported_as_a_missing_verdict(
+        self, db, run, ticket, recorder
+    ):
+        """A provider that refused the request is a hard, fixable connector
+        problem; calling it "no parseable verdict" reads as model quality and
+        sends operators looking in the wrong place (#303)."""
+        agent = _FakeAgent(
+            plan=HypothesisPlan(hypotheses=[HypothesisSpec(title="H", rationale="r")]),
+            verdict=None,
+            last_provider_error="The model provider rejected a connected tool's schema.",
+        )
+
+        hypotheses, _ = await run_investigation_phases(db, run, ticket, agent, "ctx", [], recorder)
+
+        assert hypotheses[0].status == HypothesisStatus.INCONCLUSIVE.value
+        assert hypotheses[0].conclusion == "The model provider rejected a connected tool's schema."
 
     @pytest.mark.asyncio
     async def test_invalid_verdict_status_whitelisted(self, db, run, ticket, recorder):

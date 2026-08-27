@@ -134,6 +134,8 @@ export interface InvestigationRun {
     configured: number
     loaded: number
     failed: { name: string; error: string }[]
+    /** Hard provider rejections seen during the run. */
+    provider_errors?: string[]
   } | null
   started_at?: string | null
   finished_at?: string | null
