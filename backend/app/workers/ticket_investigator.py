@@ -53,6 +53,10 @@ TRIAGE_WALL_SECONDS = 120
 # model server_defaults so behaviour can't drift between them).
 DEFAULT_MAX_WALL_SECONDS = 600
 DEFAULT_AUTO_RESOLVE_CONFIDENCE = 0.85
+# Share of a run's wall budget the connectors may spend coming up. Generous
+# per-connector timeouts are what make slow `npx` servers usable, but a run
+# that spends all its time connecting produces no hypotheses at all.
+CONNECT_BUDGET_SHARE = 0.25
 
 
 async def _build_triage_context(db, service: TicketService, ticket: Ticket):
@@ -432,7 +436,8 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
 
     from app.tools.mcp_manager import MCPToolsManager
 
-    mcp_manager = MCPToolsManager()
+    wall_seconds = run.max_wall_seconds or DEFAULT_MAX_WALL_SECONDS
+    mcp_manager = MCPToolsManager(connect_budget=wall_seconds * CONNECT_BUDGET_SHARE)
     hypotheses = []
     partial = False
     try:
@@ -441,7 +446,7 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
                 db, run, service, ticket, agent, context_message, settings_row,
                 recorder, mcp_manager
             ),
-            timeout=run.max_wall_seconds or DEFAULT_MAX_WALL_SECONDS,
+            timeout=wall_seconds,
         )
         partial = budget_exhausted
     except asyncio.TimeoutError:

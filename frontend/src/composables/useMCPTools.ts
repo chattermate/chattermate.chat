@@ -17,6 +17,7 @@ limitations under the License.
 import { ref, reactive } from 'vue'
 import { mcpService } from '@/services/mcp'
 import type { MCPTool, MCPToolCreate, MCPToolUpdate, MCPToolTestResult, MCPTransportType } from '@/types/mcp'
+import { DEFAULT_MCP_TIMEOUT, clampMCPTimeout } from '@/utils/mcp'
 import { toast } from 'vue-sonner'
 
 export function useMCPTools(agentId: string) {
@@ -42,7 +43,7 @@ export function useMCPTools(agentId: string) {
     env_vars: {},
     url: '',
     headers: {},
-    timeout: 30,
+    timeout: DEFAULT_MCP_TIMEOUT,
     sse_read_timeout: 60,
     terminate_on_close: true
   })
@@ -108,7 +109,10 @@ export function useMCPTools(agentId: string) {
   // Create a new MCP tool
   const createMCPTool = async () => {
     try {
-      const newTool = await mcpService.createMCPTool(createForm)
+      const newTool = await mcpService.createMCPTool({
+        ...createForm,
+        timeout: clampMCPTimeout(createForm.timeout),
+      })
       
       // Add to agent immediately
       await mcpService.addMCPToolToAgent(newTool.id, agentId)
@@ -205,7 +209,7 @@ export function useMCPTools(agentId: string) {
       env_vars: {},
       url: '',
       headers: {},
-      timeout: 30,
+      timeout: DEFAULT_MCP_TIMEOUT,
       sse_read_timeout: 60,
       terminate_on_close: true
     })

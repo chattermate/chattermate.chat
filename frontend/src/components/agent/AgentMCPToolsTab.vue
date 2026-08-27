@@ -370,7 +370,7 @@ onMounted(() => {
           <!-- HTTP/SSE Configuration -->
           <div v-else-if="createForm.transport_type === 'http' || createForm.transport_type === 'sse'" class="form-section">
             <h4>{{ createForm.transport_type.toUpperCase() }} Configuration</h4>
-            <div class="form-grid">
+            <div class="form-grid single">
               <div class="form-group">
                 <label for="url">Server URL *</label>
                 <input 
@@ -379,17 +379,6 @@ onMounted(() => {
                   type="url" 
                   placeholder="https://example.com/mcp"
                   required
-                >
-              </div>
-              <div class="form-group">
-                <label for="timeout">Timeout (seconds)</label>
-                <input 
-                  id="timeout"
-                  v-model.number="createForm.timeout" 
-                  type="number" 
-                  min="1" 
-                  max="300"
-                  placeholder="30"
                 >
               </div>
             </div>
@@ -433,6 +422,28 @@ onMounted(() => {
                     <button type="button" @click="removeHeader(key)" class="remove-button">×</button>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Applies to every transport -->
+          <div class="form-section">
+            <h4>Connection</h4>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="timeout">Timeout (seconds)</label>
+                <input 
+                  id="timeout"
+                  v-model.number="createForm.timeout" 
+                  type="number" 
+                  min="1" 
+                  max="300"
+                  placeholder="30"
+                >
+                <small class="field-hint">
+                  Applies to the startup handshake and to each tool call. Raise it for
+                  <code>npx</code> servers that download the package on first launch.
+                </small>
               </div>
             </div>
           </div>
@@ -987,6 +998,11 @@ onMounted(() => {
   gap: 14px;
 }
 
+/* one field on the row — don't leave it stranded at half width */
+.form-grid.single {
+  grid-template-columns: 1fr;
+}
+
 .form-group {
   margin-bottom: 0;
 }
@@ -1003,6 +1019,18 @@ onMounted(() => {
   color: var(--text3);
   margin-bottom: 8px;
   font-weight: 500;
+}
+
+.field-hint {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted2);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.field-hint code {
+  font-size: 12px;
 }
 
 .req {

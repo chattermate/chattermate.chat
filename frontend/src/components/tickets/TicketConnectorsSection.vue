@@ -19,6 +19,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { mcpService } from '@/services/mcp'
 import type { MCPTool, MCPTransportType } from '@/types/mcp'
+import { DEFAULT_MCP_TIMEOUT, clampMCPTimeout } from '@/utils/mcp'
 import grafanaLogo from '@/assets/grafana-logo.svg'
 import elasticsearchLogo from '@/assets/elasticsearch-logo.svg'
 import sentryLogo from '@/assets/sentry-logo.svg'
@@ -96,6 +97,7 @@ const form = reactive({
   command: '',
   args: '',
   envLines: '',
+  timeout: DEFAULT_MCP_TIMEOUT,
 })
 
 function applyPreset(preset: (typeof PRESETS)[0] | null) {
@@ -108,6 +110,7 @@ function applyPreset(preset: (typeof PRESETS)[0] | null) {
     command: preset?.command || '',
     args: preset?.args || '',
     envLines: preset?.envLines || '',
+    timeout: DEFAULT_MCP_TIMEOUT,
   })
   showForm.value = true
 }
@@ -150,6 +153,7 @@ async function createConnector() {
       command: !isRemote ? form.command.trim() : undefined,
       args: !isRemote ? form.args.trim().split(/\s+/).filter(Boolean) : undefined,
       env_vars: !isRemote ? parseLines(form.envLines) : undefined,
+      timeout: clampMCPTimeout(form.timeout),
     })
     await fetchConnectors()
     // New investigation connectors are opted in immediately.
@@ -231,6 +235,17 @@ onMounted(fetchConnectors)
             <textarea v-model="form.envLines" class="field-input mono" rows="3"></textarea>
           </label>
         </template>
+        <label class="form-field">
+          <span class="field-label">Timeout (seconds)</span>
+          <input
+            v-model.number="form.timeout"
+            type="number"
+            min="1"
+            max="300"
+            class="field-input"
+          />
+          <span class="field-note">Handshake and per-call limit. Raise it for slow first launches.</span>
+        </label>
       </div>
       <div class="form-actions">
         <button class="cancel-btn" @click="showForm = false">Cancel</button>
@@ -351,6 +366,11 @@ onMounted(fetchConnectors)
 .field-label {
   font-size: 11px;
   color: var(--faint);
+}
+.field-note {
+  font-size: 11px;
+  color: var(--muted2);
+  line-height: 1.45;
 }
 .field-input {
   padding: 8px 11px;

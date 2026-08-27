@@ -21,9 +21,23 @@ ChatterMate - MCP Manager Tests
 import pytest
 import asyncio
 from unittest.mock import patch, AsyncMock, MagicMock
+from time import monotonic
 from uuid import uuid4
 
-from app.tools.mcp_manager import MCPToolsManager, initialize_mcp_tools, cleanup_mcp_tools
+from app.models.mcp_tool import MCPTransportType
+from app.tools.mcp_manager import (
+    CHAT_CONNECT_BUDGET_SECONDS,
+    CONNECT_TIMEOUT_MARGIN_SECONDS,
+    DEFAULT_TIMEOUT_SECONDS,
+    HANDSHAKE_REQUESTS,
+    MCPToolsManager,
+    TEST_CONNECT_BUDGET_SECONDS,
+    _connect_timeout,
+    _pending_teardowns,
+    _session_timeout,
+    cleanup_mcp_tools,
+    initialize_mcp_tools,
+)
 
 
 @pytest.mark.asyncio
@@ -45,6 +59,7 @@ async def test_initialize_mcp_tools_stdio_success():
     mock_tool_config.transport_type = type("T", (), {"__eq__": lambda s, o: False})()  # placeholder
     from app.models.mcp_tool import MCPTransportType
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = "npx"
     mock_tool_config.args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
     mock_tool_config.env_vars = {"FOO": "bar"}
@@ -83,6 +98,7 @@ async def test_initialize_mcp_tools_stdio_missing_dirs_skips():
     mock_tool_config = MagicMock()
     from app.models.mcp_tool import MCPTransportType
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.name = "FS Tool"
     mock_tool_config.command = "npx"
     mock_tool_config.args = ["-y", "@modelcontextprotocol/server-filesystem"]  # no dirs after package
@@ -159,6 +175,7 @@ async def test_initialize_mcp_tools_filesystem_with_env_dirs():
     mock_tool_config = MagicMock()
     mock_tool_config.name = "FS Tool"
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = "npx"
     mock_tool_config.args = ["-y", "@modelcontextprotocol/server-filesystem"]  # No dirs in args
     mock_tool_config.env_vars = {"ALLOWED_DIRECTORIES": "/tmp, /home"}  # Dirs in env
@@ -192,6 +209,7 @@ async def test_initialize_mcp_tools_filesystem_empty_env_dirs():
     mock_tool_config = MagicMock()
     mock_tool_config.name = "FS Tool"
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = "npx"
     mock_tool_config.args = ["-y", "@modelcontextprotocol/server-filesystem"]
     mock_tool_config.env_vars = {"ALLOWED_DIRECTORIES": ""}  # Empty dirs
@@ -220,6 +238,7 @@ async def test_initialize_mcp_tools_uvx_command():
     mock_tool_config = MagicMock()
     mock_tool_config.name = "Python Tool"
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = "uvx"
     mock_tool_config.args = ["python-mcp-server"]
     mock_tool_config.env_vars = {}
@@ -253,6 +272,7 @@ async def test_initialize_mcp_tools_connection_timeout():
     mock_tool_config = MagicMock()
     mock_tool_config.name = "Slow Tool"
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = "npx"
     mock_tool_config.args = ["-y", "slow-package"]
     mock_tool_config.env_vars = {}
@@ -287,6 +307,7 @@ async def test_initialize_mcp_tools_package_not_found():
     mock_tool_config = MagicMock()
     mock_tool_config.name = "Missing Tool"
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = "npx"
     mock_tool_config.args = ["-y", "nonexistent"]
     mock_tool_config.env_vars = {}
@@ -321,6 +342,7 @@ async def test_initialize_mcp_tools_no_functions_loaded():
     mock_tool_config = MagicMock()
     mock_tool_config.name = "Empty Tool"
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = "npx"
     mock_tool_config.args = ["-y", "empty-package"]
     mock_tool_config.env_vars = {}
@@ -348,17 +370,16 @@ async def test_initialize_mcp_tools_no_functions_loaded():
 
 @pytest.mark.asyncio
 async def test_initialize_mcp_tools_sse_transport():
-    """Test SSE transport (not implemented)"""
+    """A remote tool that can't be reached is excluded and recorded."""
     manager = MCPToolsManager()
     agent_id = str(uuid4())
     org_id = str(uuid4())
 
-    mock_tool_config = MagicMock()
-    mock_tool_config.name = "SSE Tool"
-    mock_tool_config.transport_type = MCPTransportType.SSE
+    mock_tool_config = _remote_config(MCPTransportType.SSE, name="SSE Tool")
 
     with patch("app.tools.mcp_manager.SessionLocal") as mock_sess_local, \
-         patch("app.tools.mcp_manager.MCPToolRepository") as mock_repo_cls:
+         patch("app.tools.mcp_manager.MCPToolRepository") as mock_repo_cls, \
+         patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
 
         mock_db = MagicMock()
         mock_sess_local.return_value.__enter__.return_value = mock_db
@@ -366,24 +387,29 @@ async def test_initialize_mcp_tools_sse_transport():
         mock_repo.get_agent_mcp_tools.return_value = [mock_tool_config]
         mock_repo_cls.return_value = mock_repo
 
+        mock_mcp_instance = MagicMock()
+        mock_mcp_instance.__aenter__ = AsyncMock(side_effect=Exception("connection refused"))
+        mock_mcp_instance.__aexit__ = AsyncMock()
+        mock_mcp_tools_cls.return_value = mock_mcp_instance
+
         tools = await manager.initialize_mcp_tools(agent_id, org_id)
 
         assert tools == []
+        assert manager.failed_tools[-1]["name"] == "SSE Tool"
 
 
 @pytest.mark.asyncio
 async def test_initialize_mcp_tools_http_transport():
-    """Test HTTP transport (not implemented)"""
+    """A remote tool that can't be reached is excluded and recorded."""
     manager = MCPToolsManager()
     agent_id = str(uuid4())
     org_id = str(uuid4())
 
-    mock_tool_config = MagicMock()
-    mock_tool_config.name = "HTTP Tool"
-    mock_tool_config.transport_type = MCPTransportType.HTTP
+    mock_tool_config = _remote_config(MCPTransportType.HTTP, name="HTTP Tool")
 
     with patch("app.tools.mcp_manager.SessionLocal") as mock_sess_local, \
-         patch("app.tools.mcp_manager.MCPToolRepository") as mock_repo_cls:
+         patch("app.tools.mcp_manager.MCPToolRepository") as mock_repo_cls, \
+         patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
 
         mock_db = MagicMock()
         mock_sess_local.return_value.__enter__.return_value = mock_db
@@ -391,9 +417,15 @@ async def test_initialize_mcp_tools_http_transport():
         mock_repo.get_agent_mcp_tools.return_value = [mock_tool_config]
         mock_repo_cls.return_value = mock_repo
 
+        mock_mcp_instance = MagicMock()
+        mock_mcp_instance.__aenter__ = AsyncMock(side_effect=Exception("connection refused"))
+        mock_mcp_instance.__aexit__ = AsyncMock()
+        mock_mcp_tools_cls.return_value = mock_mcp_instance
+
         tools = await manager.initialize_mcp_tools(agent_id, org_id)
 
         assert tools == []
+        assert manager.failed_tools[-1]["name"] == "HTTP Tool"
 
 
 @pytest.mark.asyncio
@@ -406,6 +438,7 @@ async def test_initialize_mcp_tools_missing_command():
     mock_tool_config = MagicMock()
     mock_tool_config.name = "Bad Tool"
     mock_tool_config.transport_type = MCPTransportType.STDIO
+    mock_tool_config.timeout = None
     mock_tool_config.command = None
     mock_tool_config.args = None
 
@@ -529,13 +562,14 @@ async def test_cleanup_mcp_tools_unexpected_error():
 # ==================== Failure tracking + connection test ====================
 
 
-def _stdio_config(name="Elasticsearch", command="npx", args=None, env_vars=None):
+def _stdio_config(name="Elasticsearch", command="npx", args=None, env_vars=None, timeout=None):
     config = MagicMock()
     config.name = name
     config.transport_type = MCPTransportType.STDIO
     config.command = command
     config.args = args if args is not None else ["-y", "@elastic/mcp-server-elasticsearch"]
     config.env_vars = env_vars or {}
+    config.timeout = timeout
     return config
 
 
@@ -662,7 +696,7 @@ async def test_test_tool_config_timeout():
         await asyncio.sleep(60)
 
     with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls, \
-         patch("app.tools.mcp_manager.CONNECT_TIMEOUT_SECONDS", 0.01):
+         patch("app.tools.mcp_manager._connect_timeout", return_value=0.01):
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.__aenter__ = MagicMock(side_effect=hang)
         mock_mcp_instance.__aexit__ = AsyncMock()
@@ -709,6 +743,143 @@ async def test_test_tool_config_no_functions():
 
         assert result["success"] is False
         assert "no tools" in result["error"]
+
+
+def _remote_config(transport, name="Remote", url="https://example.com/mcp", timeout=None):
+    config = MagicMock()
+    config.name = name
+    config.transport_type = transport
+    config.url = url
+    config.headers = None
+    config.timeout = timeout
+    config.sse_read_timeout = None
+    config.terminate_on_close = True
+    return config
+
+
+def test_stdio_tool_uses_configured_timeout():
+    """The configured timeout reaches the MCP session on the STDIO path.
+    Without it agno falls back to its 5s default, which npx-launched servers
+    straddle — the same config then connects or times out at random."""
+    with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        MCPToolsManager._build_tool(_stdio_config(timeout=120))
+
+    assert mock_mcp_tools_cls.call_args.kwargs["timeout_seconds"] == 120
+
+
+def test_stdio_tool_defaults_timeout_when_unset():
+    with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        MCPToolsManager._build_tool(_stdio_config(timeout=None))
+
+    assert mock_mcp_tools_cls.call_args.kwargs["timeout_seconds"] == DEFAULT_TIMEOUT_SECONDS
+
+
+@pytest.mark.parametrize("transport", [MCPTransportType.SSE, MCPTransportType.HTTP])
+def test_remote_tool_passes_timeout_to_session(transport):
+    """Remote transports need timeout_seconds too: agno takes the *min* of it
+    and the transport timeout, so leaving it unset pins the session to 5s no
+    matter what the server params say."""
+    with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        MCPToolsManager._build_tool(_remote_config(transport, timeout=90))
+
+    assert mock_mcp_tools_cls.call_args.kwargs["timeout_seconds"] == 90
+
+
+def test_connect_budget_covers_the_whole_handshake():
+    """The outer guard has to sit above what the handshake can legitimately
+    spend — initialize and list_tools each get the full per-request timeout —
+    otherwise raising the timeout changes nothing, the guard just fires first."""
+    config = _stdio_config(timeout=120)
+
+    assert _connect_timeout(config) > _session_timeout(config) * HANDSHAKE_REQUESTS
+    assert _connect_timeout(config) == 120 * HANDSHAKE_REQUESTS + CONNECT_TIMEOUT_MARGIN_SECONDS
+
+
+def test_connect_budget_caps_a_generous_per_tool_timeout():
+    """An interactive caller's ceiling wins over the tool's own budget, so a
+    connector that spawns but never speaks can't stall a live reply."""
+    manager = MCPToolsManager(connect_budget=12.0)
+    config = _stdio_config(timeout=300)
+
+    assert manager._budgeted_connect_timeout(config, monotonic() + 12.0) <= 12.0
+
+
+@pytest.mark.asyncio
+async def test_connect_budget_is_shared_across_tools():
+    """The ceiling is for the whole set: once it's gone the remaining tools
+    are reported as skipped rather than silently retried at full budget."""
+    manager = MCPToolsManager(connect_budget=0.05)
+    first, second = _stdio_config(name="First"), _stdio_config(name="Second")
+
+    async def slow_connect():
+        await asyncio.sleep(0.2)
+
+    with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        mock_instance = MagicMock()
+        mock_instance.__aenter__ = MagicMock(side_effect=slow_connect)
+        mock_instance.__aexit__ = AsyncMock()
+        mock_mcp_tools_cls.return_value = mock_instance
+
+        tools = await manager._initialize_from_configs([first, second])
+
+    assert tools == []
+    assert [failure["name"] for failure in manager.failed_tools] == ["First", "Second"]
+    assert "Skipped" in manager.failed_tools[-1]["error"]
+
+
+def test_chat_turn_gets_a_tighter_budget_than_the_test_button():
+    """create_async runs per chat turn with a visitor waiting, so it can't
+    inherit the patience the Test button needs for a cold npx launch."""
+    assert CHAT_CONNECT_BUDGET_SECONDS < TEST_CONNECT_BUDGET_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_abort_does_not_block_on_a_hanging_teardown():
+    """A STDIO server that never answered leaves __aexit__ unwinding anyio
+    scopes that can't take a further cancellation. Awaiting that would hold
+    the caller long past its connect budget, so the teardown runs detached."""
+    tool = MagicMock()
+    started = asyncio.Event()
+
+    async def never_finishes(*args):
+        started.set()
+        await asyncio.sleep(3600)
+
+    tool.__aexit__ = never_finishes
+
+    # Returns promptly even though the teardown itself never will...
+    await asyncio.wait_for(MCPToolsManager._abort_tool(tool), timeout=1.0)
+    # ...and the teardown really was started, not skipped.
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+
+    for task in list(_pending_teardowns):
+        task.cancel()
+
+
+def test_no_connect_budget_leaves_the_tool_timeout_intact():
+    """Background callers (the investigation worker) get the full budget —
+    they're bounded by their own wall clock instead."""
+    manager = MCPToolsManager()
+    config = _stdio_config(timeout=300)
+
+    assert manager._budgeted_connect_timeout(config, None) == _connect_timeout(config)
+
+
+@pytest.mark.asyncio
+async def test_connect_timeout_error_reports_configured_budget():
+    manager = MCPToolsManager()
+
+    with patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls, \
+         patch("app.tools.mcp_manager._connect_timeout", return_value=130.0):
+        mock_instance = MagicMock()
+        mock_instance.__aenter__ = AsyncMock(side_effect=asyncio.TimeoutError())
+        mock_instance.__aexit__ = AsyncMock()
+        mock_mcp_tools_cls.return_value = mock_instance
+
+        result = await manager.test_tool_config(_stdio_config(timeout=120))
+
+    assert result["success"] is False
+    assert "130s" in result["error"]
 
 
 class TestChatAgentMCPMixin:
