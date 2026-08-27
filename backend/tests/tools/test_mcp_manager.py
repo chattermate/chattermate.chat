@@ -26,10 +26,12 @@ from uuid import uuid4
 
 from app.models.mcp_tool import MCPTransportType
 from app.tools.mcp_manager import (
+    CHAT_CONNECT_BUDGET_SECONDS,
     CONNECT_TIMEOUT_MARGIN_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     HANDSHAKE_REQUESTS,
     MCPToolsManager,
+    TEST_CONNECT_BUDGET_SECONDS,
     _connect_timeout,
     _pending_teardowns,
     _session_timeout,
@@ -823,6 +825,12 @@ async def test_connect_budget_is_shared_across_tools():
     assert tools == []
     assert [failure["name"] for failure in manager.failed_tools] == ["First", "Second"]
     assert "Skipped" in manager.failed_tools[-1]["error"]
+
+
+def test_chat_turn_gets_a_tighter_budget_than_the_test_button():
+    """create_async runs per chat turn with a visitor waiting, so it can't
+    inherit the patience the Test button needs for a cold npx launch."""
+    assert CHAT_CONNECT_BUDGET_SECONDS < TEST_CONNECT_BUDGET_SECONDS
 
 
 @pytest.mark.asyncio

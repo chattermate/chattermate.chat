@@ -41,12 +41,20 @@ CONNECT_TIMEOUT_MARGIN_SECONDS = 10.0
 # list_tools — each entitled to the full per-request timeout.
 HANDSHAKE_REQUESTS = 2
 
-# Ceiling on how long an interactive caller (a chat turn, the Test button)
-# waits for connectors, however generous the per-tool timeouts are. Without
-# it a connector that spawns but never speaks would stall a live reply for
-# minutes. Background callers pass no ceiling: the ticket investigation
-# worker is already bounded by its own wall-clock budget.
-INTERACTIVE_CONNECT_BUDGET_SECONDS = 60.0
+# Ceiling on connector setup for a live chat turn. A visitor is waiting on
+# the reply and create_async runs per turn, so a connector that spawns but
+# never speaks would otherwise make every message in the conversation hang.
+# Short on purpose: a connector too slow to start inside this is too slow to
+# be usable in a live chat regardless.
+CHAT_CONNECT_BUDGET_SECONDS = 15.0
+
+# The Test button's ceiling. Someone is deliberately waiting to find out
+# whether a connector comes up — including a cold `npx` launch — so it can be
+# far more patient than a chat turn while still bounding the request.
+TEST_CONNECT_BUDGET_SECONDS = 60.0
+
+# Background callers pass no ceiling at all: the ticket investigation worker
+# derives its own from the run's wall-clock budget.
 
 # How long a detached teardown is given before we stop caring about it.
 ABORT_TIMEOUT_SECONDS = 2.0
@@ -132,9 +140,7 @@ class MCPToolsManager:
     async def _initialize_from_configs(self, configs) -> List[MCPTools]:
         """Build + connect each configured tool, keeping only the ones that
         come up with functions available."""
-        deadline = (
-            monotonic() + self.connect_budget if self.connect_budget is not None else None
-        )
+        deadline = self._deadline()
         try:
             # Initialize each MCP tool asynchronously
             for mcp_tool_config in configs:
@@ -166,6 +172,13 @@ class MCPToolsManager:
 
         logger.debug(f"Initialized {len(self.mcp_tools)} MCP tools")
         return self.mcp_tools
+
+    def _deadline(self) -> Optional[float]:
+        """When this manager's overall connect budget runs out, or None when
+        it doesn't have one."""
+        if self.connect_budget is None:
+            return None
+        return monotonic() + self.connect_budget
 
     def _budgeted_connect_timeout(self, config, deadline: Optional[float]) -> float:
         """The tool's own connect budget, trimmed to whatever is left of the
@@ -238,9 +251,7 @@ class MCPToolsManager:
         build/connect path as a real run, so the reported error is exactly
         what a run would record. Never raises."""
         failures_before = len(self.failed_tools)
-        deadline = (
-            monotonic() + self.connect_budget if self.connect_budget is not None else None
-        )
+        deadline = self._deadline()
         try:
             mcp_tool = self._build_tool(config)
             connected = await self._connect_and_register(
@@ -472,7 +483,7 @@ class ChatAgentMCPMixin:
         if agent_id and org_id:
             try:
                 mcp_manager = MCPToolsManager(
-                    connect_budget=INTERACTIVE_CONNECT_BUDGET_SECONDS
+                    connect_budget=CHAT_CONNECT_BUDGET_SECONDS
                 )
                 mcp_tools = await mcp_manager.initialize_mcp_tools(agent_id, org_id)
             except Exception as e:

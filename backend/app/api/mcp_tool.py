@@ -35,7 +35,7 @@ from app.models.schemas.mcp_tool import (
     MCPToolToAgentCreate, MCPToolToAgentResponse,
     AgentMCPToolsResponse, MCPToolTestResponse
 )
-from app.tools.mcp_manager import INTERACTIVE_CONNECT_BUDGET_SECONDS, MCPToolsManager
+from app.tools.mcp_manager import TEST_CONNECT_BUDGET_SECONDS, MCPToolsManager
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -185,7 +185,7 @@ async def test_mcp_tool(
         # A request is waiting on this, so cap it no matter how generous the
         # tool's own timeout is — a hung server must not hold the worker and
         # its DB session for minutes.
-        manager = MCPToolsManager(connect_budget=INTERACTIVE_CONNECT_BUDGET_SECONDS)
+        manager = MCPToolsManager(connect_budget=TEST_CONNECT_BUDGET_SECONDS)
         return await manager.test_tool_config(mcp_tool)
 
     except HTTPException as e:
