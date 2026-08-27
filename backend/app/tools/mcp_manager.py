@@ -48,6 +48,13 @@ HANDSHAKE_REQUESTS = 2
 # worker is already bounded by its own wall-clock budget.
 INTERACTIVE_CONNECT_BUDGET_SECONDS = 60.0
 
+# How long a detached teardown is given before we stop caring about it.
+ABORT_TIMEOUT_SECONDS = 2.0
+
+# Strong references to in-flight teardowns; without them the loop can garbage
+# collect a task mid-flight.
+_pending_teardowns: set = set()
+
 
 def _session_timeout(config) -> int:
     """Per-request read timeout for the MCP session, on every transport.
@@ -336,11 +343,28 @@ class MCPToolsManager:
 
     @staticmethod
     async def _abort_tool(mcp_tool: MCPTools) -> None:
-        """Best-effort teardown of a tool that failed to come up."""
+        """Best-effort teardown of a tool that failed to come up.
+
+        Detached deliberately. When a STDIO server never answers the
+        handshake, __aexit__ unwinds anyio scopes that were entered inside the
+        task asyncio.wait_for has already cancelled; that unwind cannot
+        process further cancellation, so awaiting it — even through another
+        wait_for — blocks until the child process happens to exit and defeats
+        the connect budget entirely.
+        """
+        task = asyncio.create_task(MCPToolsManager._close_quietly(mcp_tool))
+        _pending_teardowns.add(task)
+        task.add_done_callback(_pending_teardowns.discard)
+
+    @staticmethod
+    async def _close_quietly(mcp_tool: MCPTools) -> None:
+        """Exit a tool's context, swallowing whatever it throws on the way."""
         try:
-            await asyncio.wait_for(mcp_tool.__aexit__(None, None, None), timeout=2.0)
-        except Exception:
-            pass
+            await asyncio.wait_for(
+                mcp_tool.__aexit__(None, None, None), timeout=ABORT_TIMEOUT_SECONDS
+            )
+        except Exception as e:
+            logger.debug(f"MCP tool teardown after a failed connect did not finish: {e}")
 
     async def cleanup_mcp_tools(self):
         """

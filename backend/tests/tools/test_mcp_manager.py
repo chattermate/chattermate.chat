@@ -31,6 +31,7 @@ from app.tools.mcp_manager import (
     HANDSHAKE_REQUESTS,
     MCPToolsManager,
     _connect_timeout,
+    _pending_teardowns,
     _session_timeout,
     cleanup_mcp_tools,
     initialize_mcp_tools,
@@ -822,6 +823,29 @@ async def test_connect_budget_is_shared_across_tools():
     assert tools == []
     assert [failure["name"] for failure in manager.failed_tools] == ["First", "Second"]
     assert "Skipped" in manager.failed_tools[-1]["error"]
+
+
+@pytest.mark.asyncio
+async def test_abort_does_not_block_on_a_hanging_teardown():
+    """A STDIO server that never answered leaves __aexit__ unwinding anyio
+    scopes that can't take a further cancellation. Awaiting that would hold
+    the caller long past its connect budget, so the teardown runs detached."""
+    tool = MagicMock()
+    started = asyncio.Event()
+
+    async def never_finishes(*args):
+        started.set()
+        await asyncio.sleep(3600)
+
+    tool.__aexit__ = never_finishes
+
+    # Returns promptly even though the teardown itself never will...
+    await asyncio.wait_for(MCPToolsManager._abort_tool(tool), timeout=1.0)
+    # ...and the teardown really was started, not skipped.
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+
+    for task in list(_pending_teardowns):
+        task.cancel()
 
 
 def test_no_connect_budget_leaves_the_tool_timeout_intact():
