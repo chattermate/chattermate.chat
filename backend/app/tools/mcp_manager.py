@@ -16,6 +16,7 @@ limitations under the License.
 
 import asyncio
 from datetime import timedelta
+from time import monotonic
 from typing import List, Optional
 from agno.tools.mcp import MCPTools, SSEClientParams, StreamableHTTPClientParams
 from app.database import SessionLocal
@@ -25,13 +26,51 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-CONNECT_TIMEOUT_SECONDS = 10.0
+# Per-request read timeout for the MCP client session when a tool doesn't
+# configure one. It governs the startup handshake and every later tool call,
+# so it has to cover a cold `npx` launch (registry resolution + download) as
+# well as a slow query. agno's own default is 5s, which npx-launched servers
+# routinely exceed — hence the intermittent handshake failures this replaces.
+DEFAULT_TIMEOUT_SECONDS = 30
+
+# Headroom for process spawn on top of the requests the handshake itself
+# makes, so the outer guard never fires before the per-request timeout does.
+CONNECT_TIMEOUT_MARGIN_SECONDS = 10.0
+
+# Bringing a tool up costs two sequential requests — initialize, then
+# list_tools — each entitled to the full per-request timeout.
+HANDSHAKE_REQUESTS = 2
+
+# Ceiling on how long an interactive caller (a chat turn, the Test button)
+# waits for connectors, however generous the per-tool timeouts are. Without
+# it a connector that spawns but never speaks would stall a live reply for
+# minutes. Background callers pass no ceiling: the ticket investigation
+# worker is already bounded by its own wall-clock budget.
+INTERACTIVE_CONNECT_BUDGET_SECONDS = 60.0
+
+
+def _session_timeout(config) -> int:
+    """Per-request read timeout for the MCP session, on every transport.
+    Bounds the startup handshake and each individual tool call."""
+    return config.timeout or DEFAULT_TIMEOUT_SECONDS
+
+
+def _connect_timeout(config) -> float:
+    """Wall-clock budget for bringing a tool up, kept above what the handshake
+    can legitimately spend so a slow-but-healthy server isn't cut off by the
+    outer guard."""
+    return _session_timeout(config) * HANDSHAKE_REQUESTS + CONNECT_TIMEOUT_MARGIN_SECONDS
 
 
 class MCPToolsManager:
     """Manager class for handling MCP tools initialization and cleanup"""
 
-    def __init__(self):
+    def __init__(self, connect_budget: Optional[float] = None):
+        """connect_budget caps the total time spent connecting this manager's
+        tools. Interactive callers pass one so a hanging connector can't stall
+        a reply; background callers leave it None and let each tool have its
+        configured budget."""
+        self.connect_budget = connect_budget
         self.mcp_tools: List[MCPTools] = []
         # Names of tools that connected, and {name, error} for those that
         # didn't. Unlike mcp_tools (cleared on cleanup) these survive the run,
@@ -86,13 +125,28 @@ class MCPToolsManager:
     async def _initialize_from_configs(self, configs) -> List[MCPTools]:
         """Build + connect each configured tool, keeping only the ones that
         come up with functions available."""
+        deadline = (
+            monotonic() + self.connect_budget if self.connect_budget is not None else None
+        )
         try:
             # Initialize each MCP tool asynchronously
             for mcp_tool_config in configs:
                 try:
+                    connect_timeout = self._budgeted_connect_timeout(mcp_tool_config, deadline)
+                    if connect_timeout <= 0:
+                        # Earlier connectors ate the budget. Say so rather than
+                        # reporting this one as a connection failure.
+                        logger.warning(f"Skipping MCP tool {mcp_tool_config.name}: connect budget exhausted")
+                        self.failed_tools.append({
+                            "name": mcp_tool_config.name,
+                            "error": "Skipped — the earlier connectors used up the time available",
+                        })
+                        continue
                     logger.debug(f"Initializing MCP tool: {mcp_tool_config.name}")
                     mcp_tool = self._build_tool(mcp_tool_config)
-                    await self._connect_and_register(mcp_tool, mcp_tool_config.name)
+                    await self._connect_and_register(
+                        mcp_tool, mcp_tool_config.name, connect_timeout
+                    )
                 except Exception as e:
                     logger.error(f"Failed to initialize MCP tool {mcp_tool_config.name}: {e}")
                     import traceback
@@ -105,6 +159,14 @@ class MCPToolsManager:
 
         logger.debug(f"Initialized {len(self.mcp_tools)} MCP tools")
         return self.mcp_tools
+
+    def _budgeted_connect_timeout(self, config, deadline: Optional[float]) -> float:
+        """The tool's own connect budget, trimmed to whatever is left of the
+        manager's overall one."""
+        connect_timeout = _connect_timeout(config)
+        if deadline is None:
+            return connect_timeout
+        return min(connect_timeout, deadline - monotonic())
 
     @classmethod
     def _build_tool(cls, config) -> Optional[MCPTools]:
@@ -157,7 +219,11 @@ class MCPToolsManager:
                 # Values may hold credentials (API keys, tokens) — log names only
                 logger.debug(f"Environment variables configured: {list(env_vars_for_process.keys())}")
 
-        return MCPTools(command_str, env=env_vars_for_process)
+        return MCPTools(
+            command_str,
+            env=env_vars_for_process,
+            timeout_seconds=_session_timeout(config),
+        )
 
     async def test_tool_config(self, config) -> dict:
         """Connect to a configured tool once and report what happened — backs
@@ -165,9 +231,14 @@ class MCPToolsManager:
         build/connect path as a real run, so the reported error is exactly
         what a run would record. Never raises."""
         failures_before = len(self.failed_tools)
+        deadline = (
+            monotonic() + self.connect_budget if self.connect_budget is not None else None
+        )
         try:
             mcp_tool = self._build_tool(config)
-            connected = await self._connect_and_register(mcp_tool, config.name)
+            connected = await self._connect_and_register(
+                mcp_tool, config.name, self._budgeted_connect_timeout(config, deadline)
+            )
         except Exception as e:
             return {"success": False, "functions": [], "error": str(e)}
         if connected:
@@ -187,7 +258,7 @@ class MCPToolsManager:
             logger.warning(f"Remote MCP tool {config.name} missing URL, skipping")
             return None
         headers = config.headers or None
-        timeout = config.timeout or 30
+        timeout = _session_timeout(config)
         sse_read_timeout = config.sse_read_timeout or 300
         if config.transport_type == MCPTransportType.SSE:
             server_params = SSEClientParams(
@@ -196,7 +267,12 @@ class MCPToolsManager:
                 timeout=timeout,
                 sse_read_timeout=sse_read_timeout,
             )
-            return MCPTools(url=config.url, transport="sse", server_params=server_params)
+            return MCPTools(
+                url=config.url,
+                transport="sse",
+                server_params=server_params,
+                timeout_seconds=timeout,
+            )
         server_params = StreamableHTTPClientParams(
             url=config.url,
             headers=headers,
@@ -206,9 +282,16 @@ class MCPToolsManager:
                 config.terminate_on_close if config.terminate_on_close is not None else True
             ),
         )
-        return MCPTools(url=config.url, transport="streamable-http", server_params=server_params)
+        return MCPTools(
+            url=config.url,
+            transport="streamable-http",
+            server_params=server_params,
+            timeout_seconds=timeout,
+        )
 
-    async def _connect_and_register(self, mcp_tool: Optional[MCPTools], name: str) -> bool:
+    async def _connect_and_register(
+        self, mcp_tool: Optional[MCPTools], name: str, connect_timeout: float
+    ) -> bool:
         """Connect a built tool, verify it exposes functions, and register it
         for use + cleanup. Failed tools are torn down, never registered."""
         if mcp_tool is None:
@@ -218,13 +301,13 @@ class MCPToolsManager:
             })
             return False
         try:
-            await asyncio.wait_for(mcp_tool.__aenter__(), timeout=CONNECT_TIMEOUT_SECONDS)
+            await asyncio.wait_for(mcp_tool.__aenter__(), timeout=connect_timeout)
             logger.debug(f"Entered MCP tool context: {name}")
         except asyncio.TimeoutError:
             logger.error(f"Timeout connecting to MCP tool {name}")
             self.failed_tools.append({
                 "name": name,
-                "error": f"Timed out after {CONNECT_TIMEOUT_SECONDS:.0f}s connecting to the server",
+                "error": f"Timed out after {connect_timeout:.0f}s connecting to the server",
             })
             await self._abort_tool(mcp_tool)
             return False
@@ -364,7 +447,9 @@ class ChatAgentMCPMixin:
         mcp_manager = None
         if agent_id and org_id:
             try:
-                mcp_manager = MCPToolsManager()
+                mcp_manager = MCPToolsManager(
+                    connect_budget=INTERACTIVE_CONNECT_BUDGET_SECONDS
+                )
                 mcp_tools = await mcp_manager.initialize_mcp_tools(agent_id, org_id)
             except Exception as e:
                 logger.error(f"Failed to initialize MCP tools: {e}")
