@@ -51,16 +51,22 @@ const PRESETS = [
     args: '',
   },
   {
+    // Elastic's own MCP endpoint, served by Kibana. The old
+    // @elastic/mcp-server-elasticsearch npm package is deprecated and its last
+    // published version is the deprecated one, so npx would install a dead
+    // package. The API key needs the feature_agentBuilder.read privilege or
+    // Kibana answers 403. Self-hosters below 9.2 can run Elastic's Docker
+    // image in http mode and point this at their own host instead.
     key: 'elasticsearch',
     name: 'Elasticsearch',
     logo: elasticsearchLogo,
-    desc: 'Query indices, mappings and logs directly',
-    transport: 'stdio' as MCPTransportType,
-    url: '',
-    headerLines: '',
-    command: 'npx',
-    args: '-y @elastic/mcp-server-elasticsearch',
-    envLines: 'ES_URL=https://your-cluster.es.example:9243\nES_API_KEY=<api-key>',
+    desc: 'Query indices, mappings and logs via Agent Builder (Elastic 9.2+ or Serverless)',
+    transport: 'http' as MCPTransportType,
+    url: 'https://your-kibana-host/api/agent_builder/mcp',
+    headerLines: 'Authorization=ApiKey <api-key>',
+    command: '',
+    args: '',
+    envLines: '',
   },
   {
     key: 'sentry',

@@ -474,6 +474,10 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
             "configured": len(configured_tool_ids),
             "loaded": len(mcp_manager.connected_tool_names),
             "failed": mcp_manager.failed_tools,
+            # A connector can come up perfectly and still be unusable if the
+            # provider refuses its tools; that must show next to the
+            # connection failures, not only in worker logs (#303).
+            "provider_errors": list(getattr(agent, "provider_errors", []) or []),
         }
     rca = await synthesize_and_store_rca(
         db, run, ticket, agent, context_message, hypotheses, recorder, partial

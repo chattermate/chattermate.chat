@@ -341,6 +341,7 @@ class MCPToolsManager:
         # Verify functions are loaded after connection
         if getattr(mcp_tool, "functions", None):
             logger.debug(f"MCP tool {name} loaded functions: {list(mcp_tool.functions.keys())}")
+            self._prepare_functions_for_provider(mcp_tool, name)
             # Configured display name — lets consumers (e.g. the investigation
             # evidence log) attribute each tool call to its connector.
             mcp_tool._connector_name = name
@@ -351,6 +352,28 @@ class MCPToolsManager:
         self.failed_tools.append({"name": name, "error": "Connected, but the server exposed no tools"})
         await self._abort_tool(mcp_tool)
         return False
+
+    @staticmethod
+    def _prepare_functions_for_provider(mcp_tool: MCPTools, name: str) -> None:
+        """Keep a connected server's tools out of the provider's strict mode.
+
+        Whenever an agent has a response_model, agno marks every tool `strict`
+        — including these, whose schemas come from third-party servers. A
+        foreign schema generally can't satisfy OpenAI's strict subset: an
+        open-ended record (zod's `z.record`, which the Elasticsearch server
+        uses for `queryBody`) has no strict equivalent at all, and agno's
+        strict shim only stamps `additionalProperties` on the top level, so
+        any nested object is refused as well. One such tool then 400s every
+        request that carries it, which empties an investigation of evidence
+        and breaks chat outright (#303).
+
+        Strict is what we want for OUR structured output, not for schemas we
+        don't control. agno only defaults this when it is still None, so
+        setting it here is enough to keep it off.
+        """
+        for function in (getattr(mcp_tool, "functions", None) or {}).values():
+            function.strict = False
+        logger.debug(f"MCP tool {name} functions opted out of provider strict mode")
 
     @staticmethod
     async def _abort_tool(mcp_tool: MCPTools) -> None:
