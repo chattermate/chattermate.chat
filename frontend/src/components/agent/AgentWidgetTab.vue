@@ -93,6 +93,12 @@ ChatterMate.toggle();
 ChatterMate.on('unread', (count) => { /* badge your own button */ });
 ChatterMate.on('ready', () => { /* widget loaded */ });
 
+// Single-page apps — switch identity without reloading the page:
+ChatterMate.identify(token);         // after login (token from your backend)
+ChatterMate.logout();                // after logout: back to anonymous
+ChatterMate.destroy();               // remove the widget from the page
+ChatterMate.reload();                // rebuild it (also brings back a destroyed widget)
+
 // Or with no JavaScript at all:
 <button data-chattermate-open>Chat with us</button>`
 
