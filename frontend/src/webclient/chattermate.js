@@ -191,10 +191,13 @@ window.chattermateConfig;
   // The widget iframe's window, once created — message handlers accept commands
   // only from it, so other embedded frames (ads etc.) can't drive the widget.
   let widgetFrameWindow = null
+  // Set by destroy(): the site removed the widget on purpose, so nothing may
+  // rebuild it or queue work against it until it calls reload().
+  let isDestroyed = false
   function withController(fn) {
     if (controller) {
       fn()
-    } else {
+    } else if (!isDestroyed) {
       pendingCalls.push(fn)
     }
   }
@@ -1163,10 +1166,20 @@ window.chattermateConfig;
     }
   }
 
+  // A token is only usable if it's a non-empty string. The stringified "undefined"
+  // and "null" turn up routinely in site code that read an empty session.
+  function normalizeToken(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return null;
+    return trimmed;
+  }
+
   // Get stored token - check window.chattermateToken first (set by developer),
   // then fall back to localStorage (persisted from previous sessions)
   function getStoredToken() {
-    return window.chattermateToken || localStorage.getItem(config.tokenKey);
+    return normalizeToken(window.chattermateToken)
+      || normalizeToken(localStorage.getItem(config.tokenKey));
   }
 
   // Save token
@@ -1333,6 +1346,7 @@ window.chattermateConfig;
 
   // Initialize function to create and append elements
   function initialize() {
+    isDestroyed = false
     updateStyles()
 
     // Create chat button with icon
@@ -1463,6 +1477,75 @@ window.chattermateConfig;
       }
     }
 
+    // The visitor's identity is baked into the document the backend renders (the
+    // token lands in __INITIAL_DATA__), so it can't be changed in place: switching
+    // users means throwing this frame away and fetching a new one. Everything tied
+    // to the old frame is reset here.
+    let loadGeneration = 0
+    function teardownFrame() {
+      // Invalidates the callbacks of a load still in flight — see prefetchWidget.
+      loadGeneration++
+      // Clears the iframe and, after a failed load, the error card.
+      while (container.firstChild) container.removeChild(container.firstChild)
+      iframe = null
+      widgetFrameWindow = null
+      iframeReady = false
+      widgetReadyFired = false
+      pendingPrefill = null
+      isLoading = false
+      button.classList.remove('loading')
+      paletteContentHeight = 0
+      applyPaletteHeight()
+    }
+
+    // Rebuild the widget for whatever token is current — the mechanism behind
+    // ChatterMate.identify() / logout() / reload().
+    function reloadWidget() {
+      // The conversation goes away with the frame; leaving the panel open would
+      // just show the visitor an empty box while the replacement loads.
+      if (isOpen) toggleChat()
+      teardownFrame()
+      config.unreadCount = 0
+      config.hasOpened = false
+      updateBadge()
+      prefetchWidget()
+    }
+
+    // Remove the widget from the page entirely: frame, launcher, styles, listeners
+    // and timers. Nothing of ours is left behind for a site that is unmounting the
+    // page region it lives in, or hiding chat for a whole class of visitor.
+    // ChatterMate.reload() builds it again from scratch.
+    function destroyWidget() {
+      if (isOpen) toggleChat()
+      teardownFrame()
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('message', handleFrameMessage)
+      // The nudge is appended to <body>, not to our container, and it runs a
+      // typewriter interval that would keep ticking on a detached node.
+      if (initiationMessageElement) {
+        if (initiationMessageElement.typeInterval) clearInterval(initiationMessageElement.typeInterval)
+        removeNode(initiationMessageElement)
+        initiationMessageElement = null
+      }
+      ;[button, backdrop, container, mobileCloseButton, mobileTopbar].forEach(removeNode)
+      removeNode(document.getElementById('chattermate-styles'))
+      document.body.classList.remove('ask-anything-mobile')
+      // A rebuilt launcher starts hidden again (.chattermate-pending) and needs its
+      // own reveal, so drop the reveal state and the pending safety-net timer with it.
+      buttonRevealed = false
+      if (revealTimeoutId) {
+        clearTimeout(revealTimeoutId)
+        revealTimeoutId = null
+      }
+      onRevealCallbacks.length = 0
+      config.unreadCount = 0
+      config.hasOpened = false
+      controller = null
+      pendingCalls.length = 0
+      triggerClickQueued = false
+      isDestroyed = true
+    }
+
     // Create error UI for authentication failures using safe DOM methods
     function createErrorUI(message) {
       const errorDiv = document.createElement('div');
@@ -1549,6 +1632,10 @@ window.chattermateConfig;
     async function prefetchWidget() {
       if (isLoading || iframe) return
 
+      // A reload for a new identity bumps loadGeneration, so a response that was
+      // already on its way for the previous one is dropped instead of rendered.
+      const generation = loadGeneration
+
       try {
         isLoading = true
         button.classList.add('loading')
@@ -1565,6 +1652,7 @@ window.chattermateConfig;
 
         fetch(url, options)
           .then(async response => {
+            if (generation !== loadGeneration) return null;
             // Handle 401 Unauthorized - only for token-required widgets
             if (response.status === 401) {
               // Try to read error detail to determine if this is token-auth required
@@ -1594,6 +1682,7 @@ window.chattermateConfig;
           })
           .then(html => {
             if (html === null) return; // Error was already handled
+            if (generation !== loadGeneration) return; // superseded by a reload
 
             iframe = document.createElement('iframe')
             iframe.className = 'chattermate-iframe'
@@ -1621,6 +1710,7 @@ window.chattermateConfig;
             iframe.style.opacity = '1'
           })
           .catch(error => {
+            if (generation !== loadGeneration) return; // superseded by a reload
             console.error('Failed to load widget:', error)
             button.classList.remove('loading')
             // A failed fetch here is almost always the browser blocking the request
@@ -1638,30 +1728,6 @@ window.chattermateConfig;
             revealButton();
           });
 
-        // Listen for token + unread-count updates from iframe
-        window.addEventListener('message', function(event) {
-          if (!event.data || typeof event.data.type !== 'string') return
-          // Only the widget iframe may talk to the loader. Both frames can be
-          // null-origin (srcdoc), so identity of the source window is the check.
-          if (!widgetFrameWindow || event.source !== widgetFrameWindow) return
-          if (event.data.type === 'UNREAD_COUNT') {
-            config.unreadCount = Math.max(0, parseInt(event.data.count, 10) || 0)
-            updateBadge()
-            // With a hidden launcher there's no badge — the site listens for this
-            // event to decorate its own trigger.
-            emitEvent('unread', config.unreadCount)
-            return
-          }
-          if (event.data.type === 'TOKEN_UPDATE' && iframe) {
-            saveToken(event.data.token);
-            // Confirm token storage to iframe
-            iframe.contentWindow.postMessage({
-              type: 'TOKEN_RECEIVED',
-              token: event.data.token
-            }, '*');
-          }
-        });
-
       } catch (error) {
         console.error('Failed to load widget:', error)
         button.classList.remove('loading')
@@ -1671,6 +1737,32 @@ window.chattermateConfig;
       }
     }
 
+    // Token + unread-count updates from the widget frame. Registered once for the
+    // page: the frame is replaced on every identity change (see reloadWidget), and
+    // registering per load would stack a duplicate handler each time.
+    function handleFrameMessage(event) {
+      if (!event.data || typeof event.data.type !== 'string') return
+      // Only the widget iframe may talk to the loader. Both frames can be
+      // null-origin (srcdoc), so identity of the source window is the check.
+      if (!widgetFrameWindow || event.source !== widgetFrameWindow) return
+      if (event.data.type === 'UNREAD_COUNT') {
+        config.unreadCount = Math.max(0, parseInt(event.data.count, 10) || 0)
+        updateBadge()
+        // With a hidden launcher there's no badge — the site listens for this
+        // event to decorate its own trigger.
+        emitEvent('unread', config.unreadCount)
+        return
+      }
+      if (event.data.type === 'TOKEN_UPDATE') {
+        const updated = normalizeToken(event.data.token)
+        if (!updated) return
+        saveToken(updated)
+        // Confirm token storage to iframe
+        event.source.postMessage({ type: 'TOKEN_RECEIVED', token: updated }, '*')
+      }
+    }
+    window.addEventListener('message', handleFrameMessage)
+
     // Start prefetching immediately
     prefetchWidget()
 
@@ -1679,6 +1771,7 @@ window.chattermateConfig;
     // pointing at a launcher that isn't on screen yet.
     onRevealCallbacks.push(() => {
       setTimeout(() => {
+        if (isDestroyed) return
         if (!isOpen && config.chatInitiationMessages.length > 0) {
           initiationMessageElement = createInitiationMessage();
           showInitiationMessage(initiationMessageElement, toggleChat);
@@ -1705,7 +1798,7 @@ window.chattermateConfig;
     }
 
     // Handle window resize to update mobile behavior
-    window.addEventListener('resize', function() {
+    function handleResize() {
       const isMobile = isMobileDevice()
       
       if (isMobile && !isOpen) {
@@ -1728,7 +1821,8 @@ window.chattermateConfig;
       updateStyles()
       // The palette's ceiling is 76vh, which just moved.
       applyPaletteHeight()
-    })
+    }
+    window.addEventListener('resize', handleResize)
 
     // Expose the open/close mechanics to the public API, then run anything the
     // site called before the DOM was ready.
@@ -1742,6 +1836,8 @@ window.chattermateConfig;
       close: function () {
         if (isOpen) toggleChat()
       },
+      reload: reloadWidget,
+      destroy: destroyWidget,
     }
     pendingCalls.splice(0).forEach(function (fn) {
       try { fn() } catch (e) { /* keep the widget alive if a queued call throws */ }
@@ -1754,7 +1850,9 @@ window.chattermateConfig;
 
   // Wait for DOM to be fully loaded
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize)
+    document.addEventListener('DOMContentLoaded', function () {
+      if (!isDestroyed) initialize()
+    })
   } else {
     initialize()
   }
@@ -1795,7 +1893,7 @@ window.chattermateConfig;
     if (match.tagName === 'A') e.preventDefault()
     if (controller) {
       controller.toggle()
-    } else if (!triggerClickQueued) {
+    } else if (!isDestroyed && !triggerClickQueued) {
       // Clicks landing before the widget is built coalesce into one "open" — replaying
       // N raw toggles would flap the window open/closed on init.
       triggerClickQueued = true
@@ -1892,6 +1990,10 @@ window.chattermateConfig;
     return typeof value === 'number' && isFinite(value)
   }
 
+  function removeNode(node) {
+    if (node && node.parentNode) node.parentNode.removeChild(node)
+  }
+
   // Re-inject styles so an already-rendered widget updates immediately; before the
   // first render this is a no-op (initialize() injects them).
   function refreshStylesIfRendered() {
@@ -1973,6 +2075,62 @@ window.chattermateConfig;
     refreshStylesIfRendered()
   }
 
+  // Identity control for single-page apps. The widget's identity is fixed when its
+  // frame loads, so a login or logout that never reloads the page has to reload the
+  // frame — otherwise the visitor keeps the identity they had when the script ran.
+  // Before the widget is built there's nothing to reload: initialize() will fetch
+  // with whatever token is current by then. A destroyed widget stays destroyed —
+  // only reload() brings it back.
+  function reloadWidgetIfRunning() {
+    if (controller) controller.reload()
+  }
+
+  // ChatterMate.reload(): rebuild the widget, and build it again after destroy().
+  function reloadOrRebuild() {
+    if (controller) {
+      controller.reload()
+      return
+    }
+    if (!isDestroyed) return
+    isDestroyed = false
+    // With the loader in <head> there may be no <body> to build into yet; clearing
+    // the flag is enough, because the pending DOMContentLoaded boot then runs.
+    if (document.readyState !== 'loading') initialize()
+  }
+
+  function destroyWidgetIfRunning() {
+    if (controller) {
+      controller.destroy()
+      return
+    }
+    // destroy() before the DOM was ready — a site deciding this visitor gets no
+    // chat at all. Cancel the pending build rather than let it run afterwards.
+    isDestroyed = true
+    pendingCalls.length = 0
+    triggerClickQueued = false
+  }
+
+  // Switch to the identity carried by `token` (from your backend's
+  // /api/v1/generate-token call) and start that visitor's conversation.
+  function setIdentity(token) {
+    const next = normalizeToken(token)
+    if (!next) return
+    // Sites re-identify on every route change; re-tokenizing with the token the
+    // widget already runs on must not throw away a conversation in progress.
+    if (next === getStoredToken()) return
+    window.chattermateToken = next
+    saveToken(next)
+    reloadWidgetIfRunning()
+  }
+
+  // Drop the current identity and its conversation, back to anonymous. The next
+  // load gets a fresh anonymous token from the backend.
+  function clearIdentity() {
+    window.chattermateToken = null
+    removeToken()
+    reloadWidgetIfRunning()
+  }
+
   function setLauncherVisible(visible) {
     setDevConfig('launcher', !!visible)
     refreshStylesIfRendered()
@@ -2001,6 +2159,15 @@ window.chattermateConfig;
     },
     showLauncher: function () { setLauncherVisible(true) },
     hideLauncher: function () { setLauncherVisible(false) },
+    // SPA login: identify(token) switches the widget to that visitor.
+    identify: function (token) { setIdentity(token) },
+    // SPA logout: back to an anonymous visitor, previous conversation dropped.
+    logout: function () { clearIdentity() },
+    // Rebuild the widget with the current token (e.g. after a failed load, or to
+    // bring it back after destroy()).
+    reload: function () { reloadOrRebuild() },
+    // Remove the widget from the page: nothing of ours is left behind.
+    destroy: function () { destroyWidgetIfRunning() },
     // Events: 'ready' (widget loaded), 'open', 'close', 'unread' (count payload).
     on: function (event, cb) {
       if (typeof event !== 'string' || typeof cb !== 'function') return
