@@ -67,6 +67,56 @@ class TestCreateModel:
             )
             assert result == mock_model
 
+    def test_create_model_openai_compatible(self):
+        """Test creating an OPENAI_COMPATIBLE model passes base_url through"""
+        with patch("app.utils.agno_utils.OpenAIChat") as mock_openai:
+            mock_model = MagicMock()
+            mock_openai.return_value = mock_model
+
+            result = agno_utils.create_model(
+                model_type="OPENAI_COMPATIBLE",
+                api_key="test-api-key",
+                model_name="local-model",
+                base_url="https://openrouter.ai/api/v1"
+            )
+
+            mock_openai.assert_called_once_with(
+                api_key="test-api-key",
+                id="local-model",
+                base_url="https://openrouter.ai/api/v1",
+                max_tokens=1000
+            )
+            assert result == mock_model
+
+    def test_create_model_openai_compatible_strips_chat_completions_suffix(self):
+        """A base_url accidentally including /chat/completions is normalized"""
+        with patch("app.utils.agno_utils.OpenAIChat") as mock_openai:
+            mock_model = MagicMock()
+            mock_openai.return_value = mock_model
+
+            agno_utils.create_model(
+                model_type="OPENAI_COMPATIBLE",
+                api_key="test-api-key",
+                model_name="local-model",
+                base_url="https://openrouter.ai/api/v1/chat/completions/"
+            )
+
+            mock_openai.assert_called_once_with(
+                api_key="test-api-key",
+                id="local-model",
+                base_url="https://openrouter.ai/api/v1",
+                max_tokens=1000
+            )
+
+    def test_create_model_openai_compatible_requires_base_url(self):
+        """OPENAI_COMPATIBLE without a base_url raises"""
+        with pytest.raises(HTTPException):
+            agno_utils.create_model(
+                model_type="OPENAI_COMPATIBLE",
+                api_key="test-api-key",
+                model_name="local-model"
+            )
+
     def test_create_model_chattermate(self):
         """Test creating CHATTERMATE model (should use OpenAI)"""
         with patch("app.utils.agno_utils.OpenAIChat") as mock_openai:
@@ -369,7 +419,7 @@ class TestModelApiKey:
             result = await agno_utils.test_model_api_key("test-api-key", "OPENAI", "gpt-4")
 
             # Assert the function was called with correct parameters
-            mock_create_model.assert_called_once_with("OPENAI", "test-api-key", "gpt-4")
+            mock_create_model.assert_called_once_with("OPENAI", "test-api-key", "gpt-4", base_url=None)
             mock_agent_class.assert_called_once_with(
                 name="Test Agent",
                 model=mock_model,
@@ -442,7 +492,7 @@ class TestModelApiKey:
                 result = await agno_utils.test_model_api_key("test-api-key", model_type, model_name)
 
                 # Assert
-                mock_create_model.assert_called_once_with(model_type, "test-api-key", model_name)
+                mock_create_model.assert_called_once_with(model_type, "test-api-key", model_name, base_url=None)
                 assert result is True
 
 
@@ -522,5 +572,5 @@ class TestEdgeCases:
 
             result = await agno_utils.test_model_api_key("", "", "")
 
-            mock_create_model.assert_called_once_with("", "", "")
+            mock_create_model.assert_called_once_with("", "", "", base_url=None)
             assert result is True 

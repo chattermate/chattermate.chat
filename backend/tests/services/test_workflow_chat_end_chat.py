@@ -37,7 +37,8 @@ def sample_session_data():
         'ai_config': Mock(
             encrypted_api_key='encrypted-key',
             model_name='gpt-4',
-            model_type='openai'
+            model_type='openai',
+            settings={}
         )
     }
 
@@ -174,6 +175,7 @@ class TestWorkflowChatServiceEndChat:
                     api_key='decrypted-key',
                     model_name='gpt-4',
                     model_type='openai',
+                    base_url=None,
                     org_id="test-org",
                     agent_id='test-agent-id',
                     customer_id="test-customer",
