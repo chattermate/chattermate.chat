@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import re
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from app.core.logger import get_logger
@@ -28,31 +29,40 @@ logger = get_logger(__name__)
 # is the single choke point where the 1.7.6 runtime patches get applied.
 apply_agno_patches()
 
-def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int = 1000, response_format: Optional[Dict[str, Any]] = None) -> Any:
+def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int = 1000, response_format: Optional[Dict[str, Any]] = None, base_url: Optional[str] = None) -> Any:
     """
     Create and return the specified model based on model_type.
-    
+
     Args:
         model_type: The type of model (OPENAI, GROQ, etc.)
         api_key: The API key
         model_name: The name/ID of the model
         max_tokens: Maximum tokens for model output
         response_format: Optional response format specification
-        
+        base_url: Custom API endpoint, used by OPENAI_COMPATIBLE
+
     Returns:
         The initialized model object
-        
+
     Raises:
         HTTPException: If the model type is not supported
     """
     model_type = model_type.upper()
-    
+
     try:
         if model_type == 'OPENAI' or model_type == 'CHATTERMATE': # own model for enterprise customers
             if response_format:
                 return OpenAIChat(api_key=api_key, id=model_name, max_tokens=max_tokens, response_format=response_format)
             else:
                 return OpenAIChat(api_key=api_key, id=model_name, max_tokens=max_tokens)
+        elif model_type == 'OPENAI_COMPATIBLE':
+            if not base_url:
+                raise ValueError("base_url is required for OPENAI_COMPATIBLE")
+            base_url = re.sub(r'/chat/completions/?$', '', base_url.strip()).rstrip('/')
+            if response_format:
+                return OpenAIChat(api_key=api_key, id=model_name, base_url=base_url, max_tokens=max_tokens, response_format=response_format)
+            else:
+                return OpenAIChat(api_key=api_key, id=model_name, base_url=base_url, max_tokens=max_tokens)
         elif model_type == 'ANTHROPIC':
             from agno.models.anthropic import Claude
             return Claude(api_key=api_key, id=model_name, max_tokens=max_tokens)
@@ -143,21 +153,22 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
         logger.error(f"Error creating model type {model_type}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to initialize model: {str(e)}")
 
-async def test_model_api_key(api_key: str, model_type: str, model_name: str) -> bool:
+async def test_model_api_key(api_key: str, model_type: str, model_name: str, base_url: Optional[str] = None) -> bool:
     """
     Test if the API key is valid for the given model type.
-    
+
     Args:
         api_key: The API key to test
         model_type: The type of model
         model_name: The name of the model
-        
+        base_url: Custom API endpoint, used by OPENAI_COMPATIBLE
+
     Returns:
         bool: True if the API key is valid, False otherwise
     """
     try:
         # Create a simple model and agent for testing
-        model = create_model(model_type, api_key, model_name)
+        model = create_model(model_type, api_key, model_name, base_url=base_url)
         test_agent = Agent(
             name="Test Agent",
             model=model,

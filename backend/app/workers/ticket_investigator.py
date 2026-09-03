@@ -178,6 +178,7 @@ async def process_run(run_id: UUID) -> None:
                 api_key=decrypt_api_key(config.encrypted_api_key),
                 model_name=config.model_name,
                 model_type=model_type,
+                base_url=(config.settings or {}).get('base_url'),
             )
             run.model_name = config.model_name
             # Metered only on the hosted model — own-key orgs pay their provider

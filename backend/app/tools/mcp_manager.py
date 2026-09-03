@@ -492,11 +492,11 @@ class ChatAgentMCPMixin:
     """
     
     @classmethod
-    async def create_async(cls, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", 
-                          org_id: str = None, agent_id: str = None, customer_id: str = None, 
+    async def create_async(cls, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI",
+                          org_id: str = None, agent_id: str = None, customer_id: str = None,
                           session_id: str = None, custom_system_prompt: str = None,
                           transfer_to_human: bool | None = None, source: str = None,
-                          channel: str = None, extra_context: str = None):
+                          channel: str = None, extra_context: str = None, base_url: str = None):
         """
         Async factory method to create a ChatAgent with MCP tools initialized.
         """
@@ -526,7 +526,8 @@ class ChatAgentMCPMixin:
             mcp_tools=mcp_tools,
             source=source,
             channel=channel,
-            extra_context=extra_context
+            extra_context=extra_context,
+            base_url=base_url
         )
         
         # Attach the MCP manager to the instance for cleanup

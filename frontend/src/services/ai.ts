@@ -21,6 +21,8 @@ export interface AIConfig {
   model_type: string;
   model_name: string;
   api_key: string;
+  base_url?: string;
+  settings?: Record<string, unknown>;
 }
 
 export const aiService = {

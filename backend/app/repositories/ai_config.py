@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from sqlalchemy.orm import Session
-from app.models.ai_config import AIConfig, AIModelType
+from app.models.ai_config import AIConfig, AIModelType, DEFAULT_AI_SETTINGS
 from app.core.security import encrypt_api_key, decrypt_api_key
 from typing import Optional
 
@@ -24,7 +24,7 @@ class AIConfigRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_config(self, org_id: str, model_type: str, model_name: str, api_key: str) -> AIConfig:
+    def create_config(self, org_id: str, model_type: str, model_name: str, api_key: str, base_url: Optional[str] = None) -> AIConfig:
         """Create a new AI configuration"""
         try:
             # Encrypt API key before storing
@@ -38,6 +38,11 @@ class AIConfigRepository:
                 encrypted_api_key=encrypted_key,
                 is_active=True
             )
+            if base_url:
+                # No dedicated column: base_url lives in the JSON settings blob.
+                # The column default is only applied by SQLAlchemy at flush time,
+                # so start from the same default explicitly rather than {}.
+                config.settings = {**DEFAULT_AI_SETTINGS, "base_url": base_url}
 
             # Deactivate any existing configs
             existing_configs = self.db.query(AIConfig).filter(
@@ -78,7 +83,20 @@ class AIConfigRepository:
 
         for key, value in kwargs.items():
             if key == 'api_key':
-                config.encrypted_api_key = encrypt_api_key(value)
+                if value is not None:
+                    config.encrypted_api_key = encrypt_api_key(value)
+            elif key == 'base_url':
+                # None means "no change" (mirrors api_key above). An explicit
+                # empty string clears it. Merged into settings JSON — no
+                # dedicated column — so the rest of settings survives.
+                if value is None:
+                    continue
+                current_settings = dict(config.settings or DEFAULT_AI_SETTINGS)
+                if value:
+                    current_settings['base_url'] = value
+                else:
+                    current_settings.pop('base_url', None)
+                config.settings = current_settings
             else:
                 setattr(config, key, value)
 

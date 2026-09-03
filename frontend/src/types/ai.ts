@@ -26,6 +26,7 @@ export interface AIProvider {
   custom_allowed: boolean
   api_key_url: string
   models: AIModel[]
+  requires_base_url: boolean
 }
 
 export interface AIConfig {

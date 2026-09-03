@@ -142,10 +142,20 @@ async def setup_ai(
             # what catches an invalid custom (typed) model ID.
             model_type_upper = config_data.model_type.upper()
             if is_known_provider(model_type_upper):
+                if model_type_upper == 'OPENAI_COMPATIBLE' and not config_data.base_url:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "Missing base URL",
+                            "type": "invalid_base_url",
+                            "details": "A base URL is required for the OpenAI Compatible provider."
+                        }
+                    )
                 is_valid = await ChatAgent.test_api_key(
                     api_key=config_data.api_key.get_secret_value(),
                     model_type=config_data.model_type,
-                    model_name=config_data.model_name
+                    model_name=config_data.model_name,
+                    base_url=config_data.base_url
                 )
                 if not is_valid:
                     raise HTTPException(
@@ -175,7 +185,8 @@ async def setup_ai(
             org_id=current_user.organization_id,
             model_type=config_data.model_type,
             model_name=config_data.model_name,
-            api_key=config_data.api_key.get_secret_value()
+            api_key=config_data.api_key.get_secret_value(),
+            base_url=config_data.base_url
         )
 
         # Prepare response
@@ -300,11 +311,21 @@ async def update_ai_config(
             if config_data.api_key:
                 model_type_upper = config_data.model_type.upper()
                 if is_known_provider(model_type_upper):
+                    if model_type_upper == 'OPENAI_COMPATIBLE' and not config_data.base_url:
+                        raise HTTPException(
+                            status_code=400,
+                            detail={
+                                "error": "Missing base URL",
+                                "type": "invalid_base_url",
+                                "details": "A base URL is required for the OpenAI Compatible provider."
+                            }
+                        )
                     try:
                         is_valid = await ChatAgent.test_api_key(
                             api_key=config_data.api_key.get_secret_value(),
                             model_type=config_data.model_type,
-                            model_name=config_data.model_name
+                            model_name=config_data.model_name,
+                            base_url=config_data.base_url
                         )
                         if not is_valid:
                             raise HTTPException(
@@ -315,6 +336,8 @@ async def update_ai_config(
                                     "details": "The provided API key is invalid or does not have access to the selected model."
                                 }
                             )
+                    except HTTPException:
+                        raise
                     except Exception as e:
                         raise HTTPException(
                             status_code=400,
@@ -324,18 +347,19 @@ async def update_ai_config(
                                 "details": str(e)
                             }
                         )
-            
+
             # Determine the API key to use
             api_key = None  # None indicates no change
             if config_data.api_key:
                 api_key = config_data.api_key.get_secret_value()
-            
+
             # Update AI configuration
             updated_config = ai_config_repo.update_config(
                 config_id=current_config.id,
                 model_type=config_data.model_type,
                 model_name=config_data.model_name,
-                api_key=api_key
+                api_key=api_key,
+                base_url=config_data.base_url
             )
             
             logger.info(f"AI config updated for org {current_user.organization_id}")

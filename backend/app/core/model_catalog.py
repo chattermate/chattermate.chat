@@ -47,6 +47,9 @@ class CatalogProvider(TypedDict):
     # Console URL where the user creates/copies their API key for this provider.
     api_key_url: str
     models: List[CatalogModel]
+    # Whether this provider needs a user-supplied base URL (e.g. a self-hosted or
+    # third-party OpenAI-compatible endpoint). Defaults to False when absent.
+    requires_base_url: bool
 
 
 def _m(value: str, label: str) -> CatalogModel:
@@ -148,6 +151,17 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
             _m("llama-3.3-70b-versatile", "Llama 3.3 70B Versatile"),
         ],
     },
+    "OPENAI_COMPATIBLE": {
+        "label": "OpenAI Compatible",
+        "requires_api_key": True,
+        "custom_allowed": True,
+        "requires_base_url": True,
+        # No hosted console — points at the provider's own docs for getting a key.
+        "api_key_url": "",
+        # No suggested models: the endpoint and model catalog are whatever the
+        # user's server exposes, so the model name must always be typed in.
+        "models": [],
+    },
 }
 
 
@@ -166,6 +180,7 @@ def list_providers() -> List[dict]:
             "custom_allowed": entry["custom_allowed"],
             "api_key_url": entry["api_key_url"],
             "models": entry["models"],
+            "requires_base_url": entry.get("requires_base_url", False),
         }
         for provider_value, entry in MODEL_CATALOG.items()
     ]

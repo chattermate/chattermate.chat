@@ -38,13 +38,13 @@ TRANSFER_TIMEOUT_MESSAGE = "Let me connect you with someone from our team."
 FOLLOW_UP_TIMEOUT_MESSAGE = "Our team will get back to you shortly."
 
 class TransferResponseAgent:
-    def __init__(self, api_key: str, model_name: str, model_type: str = "OPENAI", agent_id: str = None):
-        # Initialize model based on type using the utility function
+    def __init__(self, api_key: str, model_name: str, model_type: str = "OPENAI", agent_id: str = None, base_url: str = None):
         model = create_model(
             model_type=model_type,
             api_key=api_key,
             model_name=model_name,
-            max_tokens=1000
+            max_tokens=1000,
+            base_url=base_url
         )
 
         # Define instructions for transfer response agent
@@ -188,7 +188,8 @@ async def get_agent_availability_response(
     model_name: str,
     model_type: str,
     session_id: str,
-    transfer_group_id: str = None
+    transfer_group_id: str = None,
+    base_url: str = None
 ) -> dict:
     customer_repo = CustomerRepository(db)
     group_repo = GroupRepository(db)
@@ -254,7 +255,8 @@ async def get_agent_availability_response(
         api_key=api_key,
         model_name=model_name,
         model_type=model_type,
-        agent_id=agent.get("id") if isinstance(agent, dict) else agent.id
+        agent_id=agent.get("id") if isinstance(agent, dict) else agent.id,
+        base_url=base_url
     )
 
     # Check if Jira is enabled for this agent

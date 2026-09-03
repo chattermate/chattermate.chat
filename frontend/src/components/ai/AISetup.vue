@@ -594,6 +594,21 @@ const chatterMateButtonText = computed(() => {
                   </div>
                 </div>
 
+                <div v-if="selectedProvider?.requires_base_url" class="form-group">
+                  <label for="baseUrl">Base URL</label>
+                  <input
+                    id="baseUrl"
+                    type="text"
+                    v-model="setupConfig.baseUrl"
+                    required
+                    placeholder="https://your-endpoint.example.com/v1"
+                    class="form-control form-control-mono"
+                  />
+                  <p class="key-hint">
+                    The OpenAI-compatible base URL for your endpoint (e.g. a self-hosted server or third-party gateway).
+                  </p>
+                </div>
+
                 <div class="form-group">
                   <label for="model">Model Name</label>
                   <select

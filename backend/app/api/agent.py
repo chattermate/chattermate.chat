@@ -716,7 +716,8 @@ async def generate_instructions(
         api_key = ""
         model_name = ""
         model_type = ""
-        
+        base_url = None
+
         if HAS_ENTERPRISE:
             # Use Groq/OpenAI with keys from env for ChatterMate model
             model_type = 'OPENAI'
@@ -744,7 +745,8 @@ async def generate_instructions(
             model_type = ai_config.model_type
             model_name = ai_config.model_name
             api_key = ai_config.api_key
-            
+            base_url = (ai_config.settings or {}).get('base_url')
+
             if not api_key:
                 raise HTTPException(
                     status_code=500,
@@ -783,7 +785,8 @@ async def generate_instructions(
             model_type=model_type,
             api_key=api_key,
             model_name=model_name,
-            max_tokens=800
+            max_tokens=800,
+            base_url=base_url
         )
         
         generator = AgnoAgent(

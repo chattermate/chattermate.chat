@@ -132,10 +132,11 @@ class FAQGeneratorAgent:
     configured model. Groq gets the shared `json`-tool structured-output path;
     every other provider uses agno's native response_model."""
 
-    def __init__(self, api_key: str, model_name: str, model_type: str):
+    def __init__(self, api_key: str, model_name: str, model_type: str, base_url: str = None):
         self.model_type = model_type
         self.model_name = model_name
         self.api_key = api_key
+        self.base_url = base_url
         self._use_groq_json_tool = model_type.upper() == "GROQ"
         # Batch size + FAQ yield scale with the selected model's context
         # window (fewer, larger LLM calls on big-context models).
@@ -199,6 +200,7 @@ class FAQGeneratorAgent:
             api_key=self.api_key,
             model_name=self.model_name,
             max_tokens=self.max_tokens,
+            base_url=self.base_url,
         )
         return Agent(
             name="FAQ Generator",

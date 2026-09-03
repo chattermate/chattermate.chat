@@ -166,10 +166,11 @@ class TicketInvestigatorAgent:
     provider uses agno's native response_model — the FAQ generator pattern.
     """
 
-    def __init__(self, api_key: str, model_name: str, model_type: str):
+    def __init__(self, api_key: str, model_name: str, model_type: str, base_url: str = None):
         self.api_key = api_key
         self.model_name = model_name
         self.model_type = model_type
+        self.base_url = base_url
         self._use_groq_json_tool = model_type.upper() == "GROQ"
         # Metering hook, fired once per provider call — set by the worker.
         self.on_llm_call: Optional[Callable[[], None]] = None
@@ -277,6 +278,7 @@ class TicketInvestigatorAgent:
                 api_key=self.api_key,
                 model_name=self.model_name,
                 max_tokens=max_tokens,
+                base_url=self.base_url,
             ),
             tools=tools,
             instructions=instructions,

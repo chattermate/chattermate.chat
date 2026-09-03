@@ -28,6 +28,9 @@ class AIConfigBase(BaseModel):
 
 class AIConfigCreate(AIConfigBase):
     api_key: SecretStr
+    # Required for OPENAI_COMPATIBLE (a self-hosted or third-party endpoint);
+    # ignored by providers that don't need it.
+    base_url: Optional[str] = None
 
 
 class AIConfigUpdate(BaseModel):
@@ -35,6 +38,7 @@ class AIConfigUpdate(BaseModel):
     model_name: Optional[str] = None
     api_key: Optional[SecretStr] = None
     settings: Optional[Dict] = None
+    base_url: Optional[str] = None
 
 
 class AIConfigResponse(BaseModel):

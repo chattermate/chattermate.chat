@@ -195,6 +195,7 @@ async def answer_question(organization_id, agent_id, question: str) -> Optional[
             model_type = config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type)
             model_name = config.model_name
             api_key = decrypt_api_key(config.encrypted_api_key)
+            base_url = (config.settings or {}).get('base_url')
 
         def _run() -> Optional[str]:
             from agno.agent import Agent
@@ -207,7 +208,7 @@ async def answer_question(organization_id, agent_id, question: str) -> Optional[
             if agent_id:
                 tools.append(KnowledgeSearchByAgent(agent_id=str(agent_id), org_id=organization_id))
             model = create_model(
-                model_type=model_type, api_key=api_key, model_name=model_name, max_tokens=ANSWER_MAX_TOKENS
+                model_type=model_type, api_key=api_key, model_name=model_name, max_tokens=ANSWER_MAX_TOKENS, base_url=base_url
             )
             agent = Agent(
                 name="Help Center Answers",
