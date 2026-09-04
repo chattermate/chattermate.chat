@@ -111,6 +111,19 @@ const emit = defineEmits<{
     opacity: 0.85;
 }
 
+/* Ending a chat cannot be undone, and on a phone this is a thumb hitting glass:
+   give both answers a real touch target rather than a 27px pill. */
+@media (pointer: coarse) {
+    .new-chat-confirm {
+        padding: 10px 12px;
+    }
+
+    .new-chat-confirm__button {
+        min-height: 40px;
+        padding: 8px 14px;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .new-chat-confirm__button {
         transition: none;

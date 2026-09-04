@@ -6337,7 +6337,7 @@ const Cr = (e) => dp(Ue(e || "")), jr = "Start a new chat", al = "Start a new ch
   for (const [s, r] of t)
     n[s] = r;
   return n;
-}, Wc = /* @__PURE__ */ zo(kp, [["__scopeId", "data-v-706e7b6d"]]), xp = { class: "askai" }, Tp = { class: "askai__bar" }, Ap = ["value", "placeholder", "disabled", "aria-label", "onKeydown"], Ep = ["disabled", "title", "aria-label", "aria-expanded"], Sp = { class: "askai__intro" }, Cp = { class: "askai__title" }, Rp = {
+}, Wc = /* @__PURE__ */ zo(kp, [["__scopeId", "data-v-6c78f353"]]), xp = { class: "askai" }, Tp = { class: "askai__bar" }, Ap = ["value", "placeholder", "disabled", "aria-label", "onKeydown"], Ep = ["disabled", "title", "aria-label", "aria-expanded"], Sp = { class: "askai__intro" }, Cp = { class: "askai__title" }, Rp = {
   key: 0,
   class: "askai__subtitle"
 }, Ip = {
