@@ -463,6 +463,39 @@ def test_update_ai_config_openai_compatible_requires_base_url(client, db, test_u
     data = response.json()
     assert data["detail"]["type"] == "invalid_base_url"
 
+def test_update_ai_config_openai_compatible_requires_base_url_without_api_key(client, db, test_user, test_ai_config):
+    """The base_url-required check must not be skippable by omitting api_key."""
+    update_data = {
+        "model_type": "OPENAI_COMPATIBLE",
+        "model_name": "local-model"
+    }
+
+    response = client.put(
+        "/api/ai/config",
+        json=update_data
+    )
+    assert response.status_code == 400
+    data = response.json()
+    assert data["detail"]["type"] == "invalid_base_url"
+
+def test_update_ai_config_openai_compatible_base_url_only_validates_existing_key(client, db, test_user, test_ai_config):
+    """A base_url-only change (no new api_key) is still live-validated, using the
+    existing stored key, instead of being persisted unchecked."""
+    update_data = {
+        "model_type": "OPENAI_COMPATIBLE",
+        "model_name": "local-model",
+        "base_url": "http://localhost:11434/v1"
+    }
+
+    with patch.object(ai_setup_router, 'decrypt_api_key', return_value='decrypted-existing-key'):
+        response = client.put(
+            "/api/ai/config",
+            json=update_data
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["model_type"] == "OPENAI_COMPATIBLE"
+
 def test_update_ai_config_not_found(client, db, test_user):
     """Test updating AI config when none exists"""
     update_data = {

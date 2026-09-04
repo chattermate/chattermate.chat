@@ -35,11 +35,16 @@ class ContentSummarizer:
         self.model_type = settings.KNOWLEDGE_SUMMARY_MODEL_TYPE
         self.model_name = settings.KNOWLEDGE_SUMMARY_MODEL_NAME
         self.api_key = settings.KNOWLEDGE_SUMMARY_API_KEY
+        self.base_url = settings.KNOWLEDGE_SUMMARY_BASE_URL or None
         self.max_tokens = settings.KNOWLEDGE_SUMMARY_MAX_TOKENS
         self._agent = None
 
         if self.enabled and not self.api_key:
             logger.warning("Content summarization is enabled but KNOWLEDGE_SUMMARY_API_KEY is not set. Summarization will be disabled.")
+            self.enabled = False
+
+        if self.enabled and self.model_type.upper() == "OPENAI_COMPATIBLE" and not self.base_url:
+            logger.warning("Content summarization model type is OPENAI_COMPATIBLE but KNOWLEDGE_SUMMARY_BASE_URL is not set. Summarization will be disabled.")
             self.enabled = False
 
     def _get_agent(self) -> Optional[Agent]:
@@ -53,7 +58,8 @@ class ContentSummarizer:
                     model_type=self.model_type,
                     api_key=self.api_key,
                     model_name=self.model_name,
-                    max_tokens=self.max_tokens
+                    max_tokens=self.max_tokens,
+                    base_url=self.base_url
                 )
 
                 self._agent = Agent(

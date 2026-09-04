@@ -23,6 +23,7 @@ from app.models.user import User
 from app.core.auth import get_current_user, require_permissions
 from app.repositories.ai_config import AIConfigRepository
 from app.agents.chat_agent import ChatAgent
+from app.core.security import decrypt_api_key
 from app.models.schemas.ai_config import AIConfigCreate, AIConfigResponse, AISetupResponse, AIConfigUpdate
 from sqlalchemy.orm import Session
 import os
@@ -307,22 +308,37 @@ async def update_ai_config(
             
             logger.info(f"ChatterMate AI config updated for org {current_user.organization_id}")
         else:
-            # For custom model, validate API key first if provided
-            if config_data.api_key:
-                model_type_upper = config_data.model_type.upper()
-                if is_known_provider(model_type_upper):
-                    if model_type_upper == 'OPENAI_COMPATIBLE' and not config_data.base_url:
-                        raise HTTPException(
-                            status_code=400,
-                            detail={
-                                "error": "Missing base URL",
-                                "type": "invalid_base_url",
-                                "details": "A base URL is required for the OpenAI Compatible provider."
-                            }
-                        )
+            # For custom model, validate API key and/or base_url first if either is
+            # changing in this request.
+            model_type_upper = config_data.model_type.upper()
+            if is_known_provider(model_type_upper):
+                is_openai_compatible = model_type_upper == 'OPENAI_COMPATIBLE'
+
+                # Required up front regardless of whether the API key is being
+                # resent - a base_url-only update (e.g. rotating the endpoint while
+                # keeping the existing key) must not skip this check.
+                if is_openai_compatible and not config_data.base_url:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "Missing base URL",
+                            "type": "invalid_base_url",
+                            "details": "A base URL is required for the OpenAI Compatible provider."
+                        }
+                    )
+
+                # Live-validate whenever the API key or (for OPENAI_COMPATIBLE) the
+                # base_url is changing - a base_url-only change must be tested
+                # against the existing key rather than persisted unchecked.
+                if config_data.api_key or (is_openai_compatible and config_data.base_url):
                     try:
+                        test_api_key_value = (
+                            config_data.api_key.get_secret_value()
+                            if config_data.api_key
+                            else decrypt_api_key(current_config.encrypted_api_key)
+                        )
                         is_valid = await ChatAgent.test_api_key(
-                            api_key=config_data.api_key.get_secret_value(),
+                            api_key=test_api_key_value,
                             model_type=config_data.model_type,
                             model_name=config_data.model_name,
                             base_url=config_data.base_url

@@ -175,6 +175,8 @@ class Settings(BaseSettings):
     KNOWLEDGE_SUMMARY_MODEL_NAME: str = os.getenv("KNOWLEDGE_SUMMARY_MODEL_NAME", "llama-3.1-8b-instant")
     KNOWLEDGE_SUMMARY_API_KEY: str = os.getenv("KNOWLEDGE_SUMMARY_API_KEY", "")
     KNOWLEDGE_SUMMARY_MAX_TOKENS: int = int(os.getenv("KNOWLEDGE_SUMMARY_MAX_TOKENS", "4000"))
+    # Required when KNOWLEDGE_SUMMARY_MODEL_TYPE=OPENAI_COMPATIBLE, ignored otherwise.
+    KNOWLEDGE_SUMMARY_BASE_URL: str = os.getenv("KNOWLEDGE_SUMMARY_BASE_URL", "")
 
     # Global chat guardrails (platform-owned; deliberately NOT tenant-configurable).
     # GUARDRAIL_POLICY_ENABLED       -> prepend the code-owned policy block to every

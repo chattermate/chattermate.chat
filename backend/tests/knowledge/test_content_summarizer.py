@@ -63,6 +63,44 @@ class TestContentSummarizer:
             assert summarizer.enabled
             assert summarizer.api_key == "test_api_key"
 
+    def test_init_openai_compatible_no_base_url(self):
+        """OPENAI_COMPATIBLE without a base_url disables summarization, like a missing API key"""
+        with patch('app.knowledge.content_summarizer.settings') as mock_settings:
+            mock_settings.KNOWLEDGE_SUMMARY_ENABLED = True
+            mock_settings.KNOWLEDGE_SUMMARY_MODEL_TYPE = "OPENAI_COMPATIBLE"
+            mock_settings.KNOWLEDGE_SUMMARY_MODEL_NAME = "local-model"
+            mock_settings.KNOWLEDGE_SUMMARY_API_KEY = "test_api_key"
+            mock_settings.KNOWLEDGE_SUMMARY_MAX_TOKENS = 4000
+            mock_settings.KNOWLEDGE_SUMMARY_BASE_URL = ""
+
+            summarizer = ContentSummarizer()
+
+            assert not summarizer.enabled
+
+    def test_init_openai_compatible_with_base_url(self):
+        """OPENAI_COMPATIBLE with a base_url stays enabled and passes base_url to create_model"""
+        with patch('app.knowledge.content_summarizer.settings') as mock_settings, \
+             patch('app.knowledge.content_summarizer.create_model') as mock_create_model:
+            mock_settings.KNOWLEDGE_SUMMARY_ENABLED = True
+            mock_settings.KNOWLEDGE_SUMMARY_MODEL_TYPE = "OPENAI_COMPATIBLE"
+            mock_settings.KNOWLEDGE_SUMMARY_MODEL_NAME = "local-model"
+            mock_settings.KNOWLEDGE_SUMMARY_API_KEY = "test_api_key"
+            mock_settings.KNOWLEDGE_SUMMARY_MAX_TOKENS = 4000
+            mock_settings.KNOWLEDGE_SUMMARY_BASE_URL = "http://localhost:11434/v1"
+
+            summarizer = ContentSummarizer()
+            assert summarizer.enabled
+
+            summarizer._get_agent()
+
+            mock_create_model.assert_called_once_with(
+                model_type="OPENAI_COMPATIBLE",
+                api_key="test_api_key",
+                model_name="local-model",
+                max_tokens=4000,
+                base_url="http://localhost:11434/v1"
+            )
+
     def test_summarize_disabled(self):
         """Test that original content is returned when summarization is disabled"""
         with patch('app.knowledge.content_summarizer.settings') as mock_settings:

@@ -58,7 +58,7 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
         elif model_type == 'OPENAI_COMPATIBLE':
             if not base_url:
                 raise ValueError("base_url is required for OPENAI_COMPATIBLE")
-            base_url = re.sub(r'/chat/completions/?$', '', base_url.strip()).rstrip('/')
+            base_url = re.sub(r'/chat/completions/?$', '', base_url.strip(), flags=re.IGNORECASE).rstrip('/')
             if response_format:
                 return OpenAIChat(api_key=api_key, id=model_name, base_url=base_url, max_tokens=max_tokens, response_format=response_format)
             else:
