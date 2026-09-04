@@ -1,0 +1,181 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL}
+      VITE_WS_URL: ${VITE_WS_URL}
+      VITE_WIDGET_URL: ${VITE_WIDGET_URL}
+      NODE_ENV: production
+      HOST: 0.0.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+
+      FRONTEND_URL: ${FRONTEND_URL}
+      BACKEND_URL: ${BACKEND_URL}
+      APP_BASE_URL: ${BACKEND_URL}
+      VITE_WIDGET_URL: ${VITE_WIDGET_URL}
+
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      CONVERSATION_SECRET_KEY: ${CONVERSATION_SECRET_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+
+      FIREBASE_CREDENTIALS: app/config/firebase-config.json
+
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+      WORKERS: "1"
+      TIMEOUT: "180"
+
+      HF_HOME: /app/.cache/huggingface
+      TRANSFORMERS_CACHE: /app/.cache/huggingface/transformers
+      SENTENCE_TRANSFORMERS_HOME: /app/.cache/huggingface/sentence_transformers
+      HF_HUB_CACHE: /app/.cache/huggingface/hub
+      HF_HUB_DISABLE_TELEMETRY: "1"
+
+      TORCH_HOME: /app/.cache/torch
+      PYTORCH_TRANSFORMERS_CACHE: /app/.cache/pytorch_transformers
+
+      EMBEDDING_MAX_WORKERS: "1"
+      KB_MAX_WORKERS: "1"
+      EMBEDDING_SINGLE_THREADED: "true"
+      EMBEDDING_SEQUENTIAL_FALLBACK: "true"
+
+      S3_FILE_STORAGE: "false"
+      S3_BUCKET: chattermate-uploads
+      S3_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+
+      VERIFY_SSL_CERTIFICATES: "true"
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    volumes:
+      - backend_data:/app/uploads
+      - temp_data:/app/temp
+      - config_data:/app/config
+      - huggingface_cache:/app/.cache/huggingface
+      - torch_cache:/app/.cache/torch
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 240s
+
+  knowledge_processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -m app.workers.knowledge_processor
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+      PYTHONUNBUFFERED: "1"
+
+      FRONTEND_URL: ${FRONTEND_URL}
+      BACKEND_URL: ${BACKEND_URL}
+      APP_BASE_URL: ${BACKEND_URL}
+      VITE_WIDGET_URL: ${VITE_WIDGET_URL}
+
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      CONVERSATION_SECRET_KEY: ${CONVERSATION_SECRET_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+
+      FIREBASE_CREDENTIALS: app/config/firebase-config.json
+
+      HF_HOME: /app/.cache/huggingface
+      TRANSFORMERS_CACHE: /app/.cache/huggingface/transformers
+      SENTENCE_TRANSFORMERS_HOME: /app/.cache/huggingface/sentence_transformers
+      HF_HUB_CACHE: /app/.cache/huggingface/hub
+      HF_HUB_DISABLE_TELEMETRY: "1"
+
+      TORCH_HOME: /app/.cache/torch
+      PYTORCH_TRANSFORMERS_CACHE: /app/.cache/pytorch_transformers
+
+      EMBEDDING_MAX_WORKERS: "1"
+      KB_MAX_WORKERS: "1"
+      EMBEDDING_SINGLE_THREADED: "true"
+      EMBEDDING_SEQUENTIAL_FALLBACK: "true"
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    volumes:
+      - backend_data:/app/uploads
+      - temp_data:/app/temp
+      - config_data:/app/config
+      - huggingface_cache:/app/.cache/huggingface
+      - torch_cache:/app/.cache/torch
+
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_data:
+  temp_data:
+  config_data:
+  huggingface_cache:
+  torch_cache:
