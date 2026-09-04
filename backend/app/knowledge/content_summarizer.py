@@ -19,6 +19,7 @@ from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.config import settings
+from app.core.model_catalog import requires_base_url
 
 logger = get_logger(__name__)
 
@@ -43,8 +44,8 @@ class ContentSummarizer:
             logger.warning("Content summarization is enabled but KNOWLEDGE_SUMMARY_API_KEY is not set. Summarization will be disabled.")
             self.enabled = False
 
-        if self.enabled and self.model_type.upper() == "OPENAI_COMPATIBLE" and not self.base_url:
-            logger.warning("Content summarization model type is OPENAI_COMPATIBLE but KNOWLEDGE_SUMMARY_BASE_URL is not set. Summarization will be disabled.")
+        if self.enabled and requires_base_url(self.model_type) and not self.base_url:
+            logger.warning(f"Content summarization model type is {self.model_type} but KNOWLEDGE_SUMMARY_BASE_URL is not set. Summarization will be disabled.")
             self.enabled = False
 
     def _get_agent(self) -> Optional[Agent]:

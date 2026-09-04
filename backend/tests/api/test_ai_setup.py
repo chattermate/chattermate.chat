@@ -376,6 +376,53 @@ def test_setup_ai_general_exception(client, db, test_user):
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to setup AI configuration"
 
+def test_requires_base_url_is_catalog_driven():
+    """The base_url requirement is read from the catalog, not a hardcoded name."""
+    from app.core.model_catalog import requires_base_url
+
+    assert requires_base_url("OPENAI_COMPATIBLE") is True
+    assert requires_base_url("openai_compatible") is True
+    assert requires_base_url("OPENAI") is False
+    assert requires_base_url("NOT_A_PROVIDER") is False
+    assert requires_base_url("") is False
+    assert requires_base_url(None) is False
+
+
+def test_setup_ai_base_url_enforced_for_any_catalog_provider(client, db, test_user):
+    """A new provider only has to set requires_base_url in the catalog - the API
+    enforces it without another hardcoded provider-name check."""
+    from app.core import model_catalog
+
+    # OLLAMA is a real AIModelType but is deliberately not in the catalog today,
+    # so it stands in for "a provider added later that needs a base URL".
+    fake_catalog = {
+        **model_catalog.MODEL_CATALOG,
+        "OLLAMA": {
+            "label": "Ollama (self-hosted)",
+            "requires_api_key": True,
+            "custom_allowed": True,
+            "requires_base_url": True,
+            "api_key_url": "",
+            "models": [],
+        },
+    }
+
+    config_data = {
+        "model_type": "OLLAMA",
+        "model_name": "some-model",
+        "api_key": "test_valid_key"
+    }
+
+    with patch.object(model_catalog, 'MODEL_CATALOG', fake_catalog):
+        response = client.post(
+            "/api/ai/setup",
+            json=config_data
+        )
+    assert response.status_code == 400
+    data = response.json()
+    assert data["detail"]["type"] == "invalid_base_url"
+
+
 def test_get_providers(client, db, test_user):
     """The /providers endpoint returns the catalog of selectable providers."""
     response = client.get("/api/ai/providers")

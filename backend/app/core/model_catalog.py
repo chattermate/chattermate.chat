@@ -152,7 +152,10 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         ],
     },
     "OPENAI_COMPATIBLE": {
-        "label": "OpenAI Compatible",
+        # Names the wire protocol, not the field: the endpoint must speak the
+        # OpenAI chat-completions API (OpenRouter, vLLM, llama.cpp, Ollama, LiteLLM
+        # and friends all do). The parenthetical is what self-hosters recognise.
+        "label": "OpenAI-compatible (self-hosted, OpenRouter, Ollama…)",
         "requires_api_key": True,
         "custom_allowed": True,
         "requires_base_url": True,
@@ -168,6 +171,18 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
 def is_known_provider(provider: str) -> bool:
     """Return True if the provider is a selectable BYO-key provider in the catalog."""
     return bool(provider) and provider.upper() in MODEL_CATALOG
+
+
+def requires_base_url(provider: str) -> bool:
+    """Return True if the provider needs a user-supplied base URL.
+
+    The catalog is the single source of truth for this, so a new self-hosted or
+    gateway provider only has to set ``requires_base_url`` on its entry — callers
+    must not string-compare against a specific provider name.
+    """
+    if not is_known_provider(provider):
+        return False
+    return MODEL_CATALOG[provider.upper()].get("requires_base_url", False)
 
 
 def list_providers() -> List[dict]:
