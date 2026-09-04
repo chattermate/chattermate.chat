@@ -132,7 +132,7 @@ def client(db, test_user) -> TestClient:
     return TestClient(app)
 
 # Mock for ChatAgent.test_api_key
-async def mock_test_api_key(api_key: str, model_type: str, model_name: str) -> bool:
+async def mock_test_api_key(api_key: str, model_type: str, model_name: str, base_url: str = None) -> bool:
     """Mock implementation of test_api_key"""
     if api_key == "invalid_key":
         raise Exception("Invalid API key")
@@ -178,6 +178,40 @@ def test_setup_ai_success(client, db, test_user):
     assert data["message"] == "AI configuration completed successfully"
     assert data["config"]["model_type"] == config_data["model_type"]
     assert data["config"]["model_name"] == config_data["model_name"]
+
+def test_setup_ai_openai_compatible_requires_base_url(client, db, test_user):
+    """OPENAI_COMPATIBLE without a base_url is rejected before the API key is tested"""
+    config_data = {
+        "model_type": "OPENAI_COMPATIBLE",
+        "model_name": "local-model",
+        "api_key": "test_valid_key"
+    }
+
+    response = client.post(
+        "/api/ai/setup",
+        json=config_data
+    )
+    assert response.status_code == 400
+    data = response.json()
+    assert data["detail"]["type"] == "invalid_base_url"
+
+def test_setup_ai_openai_compatible_success(client, db, test_user):
+    """OPENAI_COMPATIBLE with a base_url is set up and the base_url is stored in settings"""
+    config_data = {
+        "model_type": "OPENAI_COMPATIBLE",
+        "model_name": "local-model",
+        "api_key": "test_valid_key",
+        "base_url": "http://localhost:11434/v1"
+    }
+
+    response = client.post(
+        "/api/ai/setup",
+        json=config_data
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["model_type"] == "OPENAI_COMPATIBLE"
+    assert data["config"]["settings"]["base_url"] == "http://localhost:11434/v1"
 
 def test_setup_ai_invalid_key(client, db, test_user):
     """Test AI setup with invalid API key"""
@@ -342,6 +376,53 @@ def test_setup_ai_general_exception(client, db, test_user):
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to setup AI configuration"
 
+def test_requires_base_url_is_catalog_driven():
+    """The base_url requirement is read from the catalog, not a hardcoded name."""
+    from app.core.model_catalog import requires_base_url
+
+    assert requires_base_url("OPENAI_COMPATIBLE") is True
+    assert requires_base_url("openai_compatible") is True
+    assert requires_base_url("OPENAI") is False
+    assert requires_base_url("NOT_A_PROVIDER") is False
+    assert requires_base_url("") is False
+    assert requires_base_url(None) is False
+
+
+def test_setup_ai_base_url_enforced_for_any_catalog_provider(client, db, test_user):
+    """A new provider only has to set requires_base_url in the catalog - the API
+    enforces it without another hardcoded provider-name check."""
+    from app.core import model_catalog
+
+    # OLLAMA is a real AIModelType but is deliberately not in the catalog today,
+    # so it stands in for "a provider added later that needs a base URL".
+    fake_catalog = {
+        **model_catalog.MODEL_CATALOG,
+        "OLLAMA": {
+            "label": "Ollama (self-hosted)",
+            "requires_api_key": True,
+            "custom_allowed": True,
+            "requires_base_url": True,
+            "api_key_url": "",
+            "models": [],
+        },
+    }
+
+    config_data = {
+        "model_type": "OLLAMA",
+        "model_name": "some-model",
+        "api_key": "test_valid_key"
+    }
+
+    with patch.object(model_catalog, 'MODEL_CATALOG', fake_catalog):
+        response = client.post(
+            "/api/ai/setup",
+            json=config_data
+        )
+    assert response.status_code == 400
+    data = response.json()
+    assert data["detail"]["type"] == "invalid_base_url"
+
+
 def test_get_providers(client, db, test_user):
     """The /providers endpoint returns the catalog of selectable providers."""
     response = client.get("/api/ai/providers")
@@ -349,7 +430,7 @@ def test_get_providers(client, db, test_user):
     data = response.json()
     providers = {p["value"]: p for p in data["providers"]}
     # Newly enabled providers are present alongside OpenAI/Groq
-    for expected in ("OPENAI", "GROQ", "ANTHROPIC", "GOOGLE", "MISTRAL", "XAI", "DEEPSEEK"):
+    for expected in ("OPENAI", "GROQ", "ANTHROPIC", "GOOGLE", "MISTRAL", "XAI", "DEEPSEEK", "OPENAI_COMPATIBLE"):
         assert expected in providers, f"{expected} missing from /providers"
     # ChatterMate (managed) is not a user-selectable BYO-key provider
     assert "CHATTERMATE" not in providers
@@ -359,9 +440,19 @@ def test_get_providers(client, db, test_user):
     assert openai["custom_allowed"] is True
     assert len(openai["models"]) > 0
     assert all("value" in m and "label" in m for m in openai["models"])
-    # Every provider exposes a console URL for obtaining an API key
+    # OPENAI_COMPATIBLE points at a user-supplied endpoint rather than a hosted
+    # console, so it has no api_key_url, and it's the only provider that
+    # requires a base URL up front.
+    openai_compatible = providers["OPENAI_COMPATIBLE"]
+    assert openai_compatible["api_key_url"] == ""
+    assert openai_compatible["requires_base_url"] is True
+    assert openai_compatible["models"] == []
+    # Every other provider exposes a console URL for obtaining an API key
     for p in data["providers"]:
+        if p["value"] == "OPENAI_COMPATIBLE":
+            continue
         assert p["api_key_url"].startswith("https://"), f"{p['value']} missing api_key_url"
+        assert p.get("requires_base_url", False) is False
 
 def test_get_ai_config_success(client, db, test_user, test_ai_config):
     """Test getting AI configuration"""
@@ -402,6 +493,55 @@ def test_update_ai_config_success(client, db, test_user, test_ai_config):
     data = response.json()
     assert data["message"] == "AI configuration updated successfully"
     assert data["config"]["model_name"] == update_data["model_name"]
+
+def test_update_ai_config_openai_compatible_requires_base_url(client, db, test_user, test_ai_config):
+    """Switching an existing config to OPENAI_COMPATIBLE without a base_url is rejected"""
+    update_data = {
+        "model_type": "OPENAI_COMPATIBLE",
+        "model_name": "local-model",
+        "api_key": "new_valid_key"
+    }
+
+    response = client.put(
+        "/api/ai/config",
+        json=update_data
+    )
+    assert response.status_code == 400
+    data = response.json()
+    assert data["detail"]["type"] == "invalid_base_url"
+
+def test_update_ai_config_openai_compatible_requires_base_url_without_api_key(client, db, test_user, test_ai_config):
+    """The base_url-required check must not be skippable by omitting api_key."""
+    update_data = {
+        "model_type": "OPENAI_COMPATIBLE",
+        "model_name": "local-model"
+    }
+
+    response = client.put(
+        "/api/ai/config",
+        json=update_data
+    )
+    assert response.status_code == 400
+    data = response.json()
+    assert data["detail"]["type"] == "invalid_base_url"
+
+def test_update_ai_config_openai_compatible_base_url_only_validates_existing_key(client, db, test_user, test_ai_config):
+    """A base_url-only change (no new api_key) is still live-validated, using the
+    existing stored key, instead of being persisted unchecked."""
+    update_data = {
+        "model_type": "OPENAI_COMPATIBLE",
+        "model_name": "local-model",
+        "base_url": "http://localhost:11434/v1"
+    }
+
+    with patch.object(ai_setup_router, 'decrypt_api_key', return_value='decrypted-existing-key'):
+        response = client.put(
+            "/api/ai/config",
+            json=update_data
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["model_type"] == "OPENAI_COMPATIBLE"
 
 def test_update_ai_config_not_found(client, db, test_user):
     """Test updating AI config when none exists"""
@@ -455,8 +595,9 @@ def test_update_ai_config_failed_validation(client, db, test_user, test_ai_confi
     )
     assert response.status_code == 400
     data = response.json()
-    # The mock returns False, which triggers the InvalidAPI exception that gets caught and re-raised as validation error
-    assert data["detail"]["type"] == "api_key_validation_error"
+    # The mock returns False, which raises the invalid_api_key HTTPException
+    # directly - it's re-raised as-is, not wrapped into a generic validation error.
+    assert data["detail"]["type"] == "invalid_api_key"
 
 def test_update_ai_config_validation_exception(client, db, test_user, test_ai_config):
     """Test update AI config with validation exception"""

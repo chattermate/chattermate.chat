@@ -330,7 +330,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None):
+    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -462,6 +462,7 @@ class ChatAgent(ChatAgentMCPMixin):
         self.api_key = api_key
         self.model_name = model_name
         self.model_type = model_type
+        self.base_url = base_url
         self.jira_instructions_added = False
         self.shopify_instructions_added = False
         self.mcp_instructions_added = False
@@ -864,6 +865,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             api_key=api_key,
             model_name=model_name,
             max_tokens=base_max_tokens,
+            base_url=base_url,
             # response_format={"type": "json_object"} if model_type.upper() != 'GROQ' else {"type": "text"}
         )
 
@@ -1165,6 +1167,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
             api_key=self.api_key,
             model_name=self.model_name,
             model_type=self.model_type,
+            base_url=self.base_url,
             session_id=session_id,
             transfer_group_id=transfer_group_id if is_workflow_transfer else None
         )
@@ -1514,23 +1517,24 @@ Keep your responses concise and focused. Provide clear, actionable information i
             return error_response
 
     @staticmethod
-    async def test_api_key(api_key: str, model_type: str, model_name: str) -> bool:
+    async def test_api_key(api_key: str, model_type: str, model_name: str, base_url: str = None) -> bool:
         """Test if the API key is valid for the given model type.
-        
+
         Args:
             api_key: The API key to test
             model_type: The type of model (OPENAI, ANTHROPIC, etc.)
             model_name: The name of the model
-            
+            base_url: Custom API endpoint, used by OPENAI_COMPATIBLE
+
         Returns:
             bool: True if the API key is valid
-            
+
         Raises:
             ValueError: If the model type is not supported
         """
         try:
             from app.utils.agno_utils import test_model_api_key
-            return await test_model_api_key(api_key, model_type, model_name)
+            return await test_model_api_key(api_key, model_type, model_name, base_url=base_url)
         except Exception as e:
             traceback.print_exc()
             logger.error(f"Error testing API key: {str(e)}")

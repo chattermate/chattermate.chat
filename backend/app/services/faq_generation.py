@@ -95,6 +95,7 @@ def build_generator(db: Session, organization_id, job: Optional[FAQGenerationJob
         api_key=decrypt_api_key(config.encrypted_api_key),
         model_name=config.model_name,
         model_type=config.model_type.value if hasattr(config.model_type, "value") else str(config.model_type),
+        base_url=(config.settings or {}).get('base_url'),
     )
     if job is not None:
         job_repo = FAQGenerationJobRepository(db)

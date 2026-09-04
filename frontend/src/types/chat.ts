@@ -73,7 +73,7 @@ export interface Conversation {
     /** False when this agent never answers with AI — its chats wait for a person. */
     ai_replies_enabled?: boolean
   }
-  last_message: string
+  last_message: string | null
   updated_at: string
   message_count: number
   session_id: string

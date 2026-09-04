@@ -136,7 +136,7 @@ class ShopifyOutputData(BaseModel):
         return self.dict()
 
 class Message(BaseModel):
-    message: str
+    message: Optional[str] = None
     message_type: str
     created_at: datetime
     attributes: Optional[dict] = None
@@ -169,7 +169,7 @@ class Message(BaseModel):
 class ChatOverviewResponse(BaseModel):
     customer: CustomerInfo
     agent: AgentInfo
-    last_message: str
+    last_message: Optional[str] = None
     updated_at: datetime
     message_count: int
     status: SessionStatus

@@ -272,6 +272,7 @@ async def widget_connect(sid, environ, auth):
             encrypted_api_key=ai_config.encrypted_api_key,
             model_name=ai_config.model_name,
             model_type=ai_config.model_type,
+            settings=ai_config.settings,
         )
 
         session_data = {
@@ -536,6 +537,7 @@ async def handle_widget_chat(sid, data):
                 api_key=decrypt_api_key(session['ai_config'].encrypted_api_key),
                 model_name=session['ai_config'].model_name,
                 model_type=session['ai_config'].model_type,
+                base_url=(session['ai_config'].settings or {}).get('base_url'),
                 org_id=org_id,
                 agent_id=session['agent_id'],
                 customer_id=customer_id,
@@ -594,6 +596,7 @@ async def handle_widget_chat(sid, data):
                     api_key=decrypt_api_key(session['ai_config'].encrypted_api_key),
                     model_name=session['ai_config'].model_name,
                     model_type=session['ai_config'].model_type,
+                    base_url=(session['ai_config'].settings or {}).get('base_url'),
                     session_id=session_id
                 )
             else:
@@ -1572,6 +1575,7 @@ async def handle_get_workflow_state(sid):
                     api_key=decrypt_api_key(session['ai_config'].encrypted_api_key),
                     model_name=session['ai_config'].model_name,
                     model_type=session['ai_config'].model_type,
+                    base_url=(session['ai_config'].settings or {}).get('base_url'),
                     org_id=org_id,
                     agent_id=session['agent_id'],
                     customer_id=customer_id,
@@ -1866,6 +1870,7 @@ async def handle_proceed_workflow(sid, data):
             api_key=decrypt_api_key(session['ai_config'].encrypted_api_key),
             model_name=session['ai_config'].model_name,
             model_type=session['ai_config'].model_type,
+            base_url=(session['ai_config'].settings or {}).get('base_url'),
             source=session.get('source')
         )
         
@@ -2122,6 +2127,7 @@ async def handle_form_submission(sid, data):
             api_key=decrypt_api_key(session['ai_config'].encrypted_api_key),
             model_name=session['ai_config'].model_name,
             model_type=session['ai_config'].model_type,
+            base_url=(session['ai_config'].settings or {}).get('base_url'),
             source=session.get('source')
         )
 

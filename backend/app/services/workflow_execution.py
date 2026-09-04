@@ -75,6 +75,7 @@ class WorkflowExecutionService:
         api_key: str = None,
         model_name: str = None,
         model_type: str = None,
+        base_url: str = None,
         org_id: str = None,
         agent_id: str = None,
         customer_id: str = None,
@@ -175,6 +176,7 @@ class WorkflowExecutionService:
                     api_key,
                     model_name,
                     model_type,
+                    base_url,
                     org_id,
                     agent_id,
                     customer_id,
@@ -315,6 +317,7 @@ class WorkflowExecutionService:
         api_key: str = None,
         model_name: str = None,
         model_type: str = None,
+        base_url: str = None,
         source: str = None
     ) -> WorkflowExecutionResult:
         """
@@ -380,6 +383,7 @@ class WorkflowExecutionService:
                 api_key=api_key,
                 model_name=model_name,
                 model_type=model_type,
+                base_url=base_url,
                 org_id=org_id,
                 agent_id=agent_id,
                 customer_id=customer_id,
@@ -420,6 +424,7 @@ class WorkflowExecutionService:
         api_key: str,
         model_name: str,
         model_type: str,
+        base_url: str,
         org_id: str,
         agent_id: str,
         customer_id: str,
@@ -437,7 +442,7 @@ class WorkflowExecutionService:
             elif node.node_type == NodeType.LLM:
                 return await self._execute_llm_node(
                     node, workflow, workflow_state, user_message, api_key, model_name, 
-                    model_type, org_id, agent_id, customer_id, session_id, source
+                    model_type, base_url, org_id, agent_id, customer_id, session_id, source
                 )
             
             elif node.node_type == NodeType.CONDITION:
@@ -509,6 +514,7 @@ class WorkflowExecutionService:
         api_key: str,
         model_name: str,
         model_type: str,
+        base_url: str,
         org_id: str,
         agent_id: str,
         customer_id: str,
@@ -588,6 +594,7 @@ class WorkflowExecutionService:
                 api_key=api_key,
                 model_name=model_name,
                 model_type=model_type,
+                base_url=base_url,
                 org_id=org_id,
                 agent_id=agent_id,
                 customer_id=customer_id,

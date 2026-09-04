@@ -31,7 +31,21 @@ class AIModelType(str, Enum):
     HUGGINGFACE = "HUGGINGFACE"
     OLLAMA = "OLLAMA"
     XAI = "XAI"
+    OPENAI_COMPATIBLE = "OPENAI_COMPATIBLE"
     CHATTERMATE = "CHATTERMATE" # own model for enterprise customers
+
+DEFAULT_AI_SETTINGS = {
+    "instructions": [
+        "You are a helpful customer service agent.",
+        "Be concise and professional.",
+        "If you don't know something, say so.",
+        "Always maintain a friendly tone."
+    ],
+    "tools": ["web_search"],
+    "memory": True,
+    "markdown": True
+}
+
 
 class AIConfig(Base):
     __tablename__ = "ai_configs"
@@ -43,17 +57,7 @@ class AIConfig(Base):
     model_name = Column(String, nullable=False)  # e.g. "gpt-4", "claude-3"
     encrypted_api_key = Column(String, nullable=False)
     # For additional model-specific settings
-    settings = Column(JSON, nullable=True, default={
-        "instructions": [
-            "You are a helpful customer service agent.",
-            "Be concise and professional.",
-            "If you don't know something, say so.",
-            "Always maintain a friendly tone."
-        ],
-        "tools": ["web_search"],
-        "memory": True,
-        "markdown": True
-    })
+    settings = Column(JSON, nullable=True, default=DEFAULT_AI_SETTINGS)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(),

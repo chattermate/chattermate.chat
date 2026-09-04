@@ -25,10 +25,12 @@ export function useAISetup() {
     provider: string
     model: string
     apiKey: string
+    baseUrl: string
   }>({
     provider: '',
     model: '',
     apiKey: '',
+    baseUrl: '',
   })
 
   const hasExistingConfig = ref(false)
@@ -56,7 +58,8 @@ export function useAISetup() {
       setupConfig.value = {
         provider: config.model_type.toLowerCase(),
         model: config.model_name,
-        apiKey: config.api_key
+        apiKey: config.api_key,
+        baseUrl: (config.settings?.base_url as string) || ''
       }
       hasExistingConfig.value = true
     } catch (err: unknown) {
@@ -84,6 +87,7 @@ export function useAISetup() {
         model_type: setupConfig.value.provider.toUpperCase(),
         model_name: setupConfig.value.model,
         api_key: setupConfig.value.apiKey,
+        base_url: setupConfig.value.baseUrl || undefined,
       })
       return true
     } catch (err: unknown) {
@@ -103,6 +107,7 @@ export function useAISetup() {
         model_type: setupConfig.value.provider.toUpperCase(),
         model_name: setupConfig.value.model,
         api_key: setupConfig.value.apiKey,
+        base_url: setupConfig.value.baseUrl || undefined,
       })
       return true
     } catch (err: unknown) {

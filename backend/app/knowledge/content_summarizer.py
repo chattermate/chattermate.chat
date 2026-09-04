@@ -19,6 +19,7 @@ from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.config import settings
+from app.core.model_catalog import requires_base_url
 
 logger = get_logger(__name__)
 
@@ -35,11 +36,16 @@ class ContentSummarizer:
         self.model_type = settings.KNOWLEDGE_SUMMARY_MODEL_TYPE
         self.model_name = settings.KNOWLEDGE_SUMMARY_MODEL_NAME
         self.api_key = settings.KNOWLEDGE_SUMMARY_API_KEY
+        self.base_url = settings.KNOWLEDGE_SUMMARY_BASE_URL or None
         self.max_tokens = settings.KNOWLEDGE_SUMMARY_MAX_TOKENS
         self._agent = None
 
         if self.enabled and not self.api_key:
             logger.warning("Content summarization is enabled but KNOWLEDGE_SUMMARY_API_KEY is not set. Summarization will be disabled.")
+            self.enabled = False
+
+        if self.enabled and requires_base_url(self.model_type) and not self.base_url:
+            logger.warning(f"Content summarization model type is {self.model_type} but KNOWLEDGE_SUMMARY_BASE_URL is not set. Summarization will be disabled.")
             self.enabled = False
 
     def _get_agent(self) -> Optional[Agent]:
@@ -53,7 +59,8 @@ class ContentSummarizer:
                     model_type=self.model_type,
                     api_key=self.api_key,
                     model_name=self.model_name,
-                    max_tokens=self.max_tokens
+                    max_tokens=self.max_tokens,
+                    base_url=self.base_url
                 )
 
                 self._agent = Agent(
