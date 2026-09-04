@@ -109,9 +109,16 @@ def is_ttl_supported(ttl_seconds: Optional[int]) -> bool:
     return MIN_TTL_SECONDS <= ttl_seconds <= MAX_TTL_SECONDS
 
 
-def names_a_customer(payload: Dict[str, Any]) -> bool:
-    """True when the token identifies someone rather than an anonymous visitor."""
-    return bool(payload.get("sub") or payload.get("customer_id"))
+def is_identified(payload: Dict[str, Any]) -> bool:
+    """True when the EMBEDDING APP vouched for this visitor.
+
+    Deliberately narrower than "has a customer id": every widget visitor gets a
+    customer row, including the anonymous `<timestamp>@noemail.com` ones the widget
+    mints for itself. Only a token from POST /generate-token carries the email the
+    app asserted, and only that identity is worth refusing a request over - an
+    anonymous token that lapses can simply be replaced, exactly as before.
+    """
+    return bool(payload.get("customer_email") or payload.get("email"))
 
 
 def mint(
@@ -205,7 +212,7 @@ def inspect(token: Optional[str], widget_id: Optional[str] = None) -> TokenState
     jti = payload.get("jti")
     if jti and not _is_token_in_redis(jti):
         # Revoked, or its Redis TTL ran out before the JWT's exp did.
-        return TokenState(identity_lost=names_a_customer(payload))
+        return TokenState(identity_lost=is_identified(payload))
 
     return TokenState(payload=payload)
 
@@ -238,4 +245,4 @@ def _inspect_lapsed(token: str, widget_id: Optional[str]) -> TokenState:
     if widget_id and payload.get("widget_id") != widget_id:
         return TokenState()
 
-    return TokenState(identity_lost=names_a_customer(payload))
+    return TokenState(identity_lost=is_identified(payload))

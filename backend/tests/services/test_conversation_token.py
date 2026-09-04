@@ -174,6 +174,29 @@ def test_inspect_treats_an_expired_anonymous_token_as_no_token():
     assert not state.identity_lost
 
 
+def test_a_lapsed_widget_minted_token_is_replaceable_not_lost():
+    """The widget mints its own customers (<timestamp>@noemail.com) with a `sub` but
+    no asserted email. Those must keep being replaced silently - refusing them would
+    break every anonymous visitor whose long-lived token ran out, and the Explore
+    demo along with them."""
+    expired = jwt.encode(
+        {
+            "widget_id": WIDGET_ID,
+            "type": "conversation",
+            "jti": "widget-minted",
+            "sub": CUSTOMER_ID,
+            "exp": int((datetime.now(timezone.utc) - timedelta(hours=1)).timestamp()),
+        },
+        CONVERSATION_SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    state = conversation_token.inspect(expired, WIDGET_ID)
+
+    assert not state.is_live
+    assert not state.identity_lost
+
+
 def test_inspect_ignores_garbage_and_foreign_signatures():
     foreign = jwt.encode({"widget_id": WIDGET_ID, "type": "conversation"},
                          "not-our-secret", algorithm=ALGORITHM)

@@ -169,6 +169,47 @@ describe('ChatterMate identity continuity', () => {
     expect(provider).toHaveBeenCalledTimes(1)
   })
 
+  it('falls back to anonymous when a token-required widget rejects a lapsed token', async () => {
+    ;(window as any).chattermateToken = tokenFor('cust-1')
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ detail: { code: 'identity_expired', message: 'gone' } }),
+      })
+      .mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve(html) })
+
+    await loadLoader()
+    await flush()
+
+    // Exactly one retry, without the dead token, and it renders rather than looping.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect((fetchMock.mock.calls[1][1] as RequestInit).headers).toEqual({})
+    expect(localStorage.getItem('ctid')).toBeNull()
+    expect(document.querySelector('.chattermate-iframe')).not.toBeNull()
+  })
+
+  it('shows the configuration error when a token-required widget cannot load at all', async () => {
+    ;(window as any).chattermateToken = tokenFor('cust-1')
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ detail: { code: 'identity_expired', message: 'gone' } }),
+      })
+      .mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ detail: 'Token must be obtained from /generate-token' }),
+      })
+
+    await loadLoader()
+    await flush()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(document.querySelector('.chattermate-error-ui')).not.toBeNull()
+  })
+
   it('swaps a fresher token for the same visitor in place', async () => {
     const first = tokenFor('cust-1', 'a')
     ;(window as any).chattermateToken = first
