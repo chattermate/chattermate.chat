@@ -14,27 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, timezone
-import jwt
+from datetime import datetime, timezone
 import logging
 import time
 from typing import Optional, Dict, Any
-import uuid
 
 from app.database import get_db
 from app.models.widget import Widget
 from app.models.customer import Customer
 from app.core.config import settings
 from app.core.security import (
-    CONVERSATION_SECRET_KEY,
-    ALGORITHM,
     verify_conversation_token,
     get_existing_valid_token_jti,
-    _store_token_in_redis,
     revoke_token as security_revoke_token,
 )
+from app.services import conversation_token
 from app.repositories.widget_app import WidgetAppRepository
 from app.repositories.customer import CustomerRepository
 from pydantic import BaseModel, field_validator
@@ -71,6 +67,10 @@ class GenerateTokenRequest(BaseModel):
         if size > CUSTOM_DATA_MAX_BYTES:
             raise ValueError(f"custom_data must be at most {CUSTOM_DATA_MAX_BYTES} bytes when serialized")
         return value
+
+class RefreshTokenRequest(BaseModel):
+    """Request to rotate a still-valid conversation token"""
+    widget_id: str
 
 class RevokeTokenRequest(BaseModel):
     """Request to revoke a token"""
@@ -275,65 +275,43 @@ async def generate_widget_token(
             logger.info(f"Created anonymous customer: {customer.id}")
         
         # Validate TTL
-        ttl = body.ttl_seconds or 3600
-        if ttl < 60 or ttl > 86400:
+        if not conversation_token.is_ttl_supported(body.ttl_seconds):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ttl_seconds must be between 60 and 86400 (1 minute to 24 hours) for security and performance reasons"
+                detail=(
+                    f"ttl_seconds must be between {conversation_token.MIN_TTL_SECONDS} and "
+                    f"{conversation_token.MAX_TTL_SECONDS} (1 minute to 24 hours) for security "
+                    "and performance reasons"
+                )
             )
-        
+
         # Check for existing valid token for this customer/widget combination
         # This prevents token multiplication when user refreshes page
         customer_email = body.customer_email or customer.email
         existing_jti = get_existing_valid_token_jti(customer_email, body.widget_id, str(customer.id))
-        
-        now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(seconds=ttl)
         if existing_jti:
-            # Try to retrieve the existing token from the database or cache
-            # Since we only store JTI in Redis, we need to reconstruct the token scenario
-            # But we can return the same JTI and create a token with same data
+            # Only the JTI is kept in Redis, so the token itself is re-signed - reusing
+            # the ID keeps this customer to one revocable session per widget.
             logger.info(f"Found existing valid token for customer {customer.id} in widget {body.widget_id}, reusing JTI")
-            jti = existing_jti
-        else:
-            # No existing valid token, generate new one
-            jti = str(uuid.uuid4())
-        
-        token_payload = {
-            "sub": str(customer.id),  # Sub is now always the customer_id
-            "widget_id": body.widget_id,
-            "customer_email": customer_email,
-            "customer_name": body.customer_name or customer.full_name,
-            "customer_id": str(customer.id),  # Explicit customer_id claim
-            "jti": jti,  # Add JTI for revocation support
-            "iat": int(now.timestamp()),
-            "exp": int(expires_at.timestamp()),
-            "type": "conversation"
-        }
-        
-        # Include custom data if provided
-        if body.custom_data:
-            token_payload["custom_data"] = body.custom_data
-        
-        # Generate JWT token
-        token = jwt.encode(
-            token_payload,
-            CONVERSATION_SECRET_KEY,
-            algorithm=ALGORITHM
+
+        token, expires_at, ttl = conversation_token.mint(
+            {
+                "sub": str(customer.id),  # Sub is now always the customer_id
+                "widget_id": body.widget_id,
+                "customer_email": customer_email,
+                "customer_name": body.customer_name or customer.full_name,
+                "customer_id": str(customer.id),  # Explicit customer_id claim
+                "custom_data": body.custom_data,
+            },
+            ttl_seconds=body.ttl_seconds,
+            jti=existing_jti,
         )
-        
-        # Always store/update Redis to ensure TTL is extended for reused JTIs
-        _store_token_in_redis(
-            jti, 
-            ttl, 
-            email=customer_email,
-            widget_id=body.widget_id
-        )
-        
+        now = datetime.now(timezone.utc)
+
         if not existing_jti:
             logger.info(f"Generated new widget token for widget_id={body.widget_id}, customer_email={customer_email}, expires_in={ttl}s")
         else:
-            logger.info(f"Reused JTI and refreshed Redis TTL for widget_id={body.widget_id}, customer_email={customer_email}, jti={jti[:8]}...")
+            logger.info(f"Reused JTI and refreshed Redis TTL for widget_id={body.widget_id}, customer_email={customer_email}, jti={existing_jti[:8]}...")
         
         return GenerateTokenResponse(
             success=True,
@@ -355,6 +333,73 @@ async def generate_widget_token(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate token"
         )
+
+@router.post("/refresh-token", response_model=GenerateTokenResponse)
+async def refresh_widget_token(
+    body: RefreshTokenRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Rotate a still-valid conversation token, keeping the visitor's identity.
+
+    The widget calls this before its token lapses, so a page left open longer than
+    `ttl_seconds` doesn't silently drop an identified visitor back to anonymous.
+
+    No API key: the request is authenticated by the conversation token it carries,
+    which the caller already holds, so rotating it grants nothing new. An expired or
+    revoked token is refused - only POST /generate-token (API key) can assert an
+    identity - and rotation stops once the chain reaches its absolute ceiling.
+
+    Args:
+        body: RefreshTokenRequest with the widget_id the token was issued for
+        authorization: `Bearer <conversation token>`
+
+    Returns:
+        GenerateTokenResponse with the replacement token
+
+    Raises:
+        HTTPException 401: missing, invalid, expired or revoked conversation token
+    """
+    token = authorization[len("Bearer "):].strip() if authorization and authorization.startswith("Bearer ") else None
+    state = conversation_token.inspect(token, body.widget_id)
+
+    if not state.is_live:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": (
+                    conversation_token.IDENTITY_EXPIRED_CODE if state.identity_lost
+                    else conversation_token.INVALID_TOKEN_CODE
+                ),
+                "message": "Conversation token is no longer valid. Issue a new one with /generate-token.",
+            },
+        )
+
+    rotated = conversation_token.rotate(state.payload)
+    if not rotated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": conversation_token.IDENTITY_EXPIRED_CODE,
+                "message": "Conversation token has reached its maximum lifetime. Issue a new one with /generate-token.",
+            },
+        )
+
+    new_token, expires_at, ttl = rotated
+    logger.info(f"Rotated conversation token for widget_id={body.widget_id}, expires_in={ttl}s")
+
+    return GenerateTokenResponse(
+        success=True,
+        data=TokenData(
+            token=new_token,
+            widget_id=body.widget_id,
+            expires_in=ttl,
+            expires_at=expires_at.isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat()
+        ),
+        message=f"Token refreshed successfully. Expires in {ttl} seconds."
+    )
+
 
 @router.post("/verify-token")
 async def verify_widget_token(
@@ -464,16 +509,10 @@ async def revoke_widget_token(
                 detail="Token cannot be empty"
             )
         
-        # Verify and decode the token
-        try:
-            payload = jwt.decode(
-                token,
-                CONVERSATION_SECRET_KEY,
-                algorithms=[ALGORITHM],
-                options={"verify_exp": False}  # Allow revocation of expired tokens
-            )
-        except jwt.InvalidTokenError as e:
-            logger.warning(f"Invalid token format for revocation: {str(e)}")
+        # Expired tokens stay revocable: only the signature has to hold up here.
+        payload = conversation_token.claims_ignoring_expiry(token)
+        if payload is None:
+            logger.warning("Invalid token format for revocation")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid token format"

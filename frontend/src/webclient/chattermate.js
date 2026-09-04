@@ -50,6 +50,7 @@ window.chattermateConfig;
     chatBubbleColor: '#f34611', // Default color
     loadingContainerId: 'chattermate-loading',
     tokenKey: 'ctid', // Key for localStorage
+    tokenProvider: null, // Host callback that mints a fresh conversation token
     containerBottom: 100, // Default bottom position
     containerRight: 20, // Default right position
     containerWidth: 400, // Default width
@@ -191,6 +192,9 @@ window.chattermateConfig;
   // The widget iframe's window, once created — message handlers accept commands
   // only from it, so other embedded frames (ads etc.) can't drive the widget.
   let widgetFrameWindow = null
+  // The conversation the frame is in, reported by CHAT_CREATED. Kept so logout() and
+  // a change of identity can close it server-side before the frame goes away.
+  let currentSessionId = null
   // Set by destroy(): the site removed the widget on purpose, so nothing may
   // rebuild it or queue work against it until it calls reload().
   let isDestroyed = false
@@ -1182,6 +1186,24 @@ window.chattermateConfig;
       || normalizeToken(localStorage.getItem(config.tokenKey));
   }
 
+  // The customer a token names, or null. Read-only: the backend still verifies every
+  // token; this only decides whether an identify() is a change of person (rebuild) or
+  // the same person with a fresher token (swap in place). The loader is a standalone
+  // script with no imports, so it carries its own copy of this rather than sharing
+  // the widget app's useConversationToken.
+  function tokenSubject(token) {
+    const value = normalizeToken(token);
+    if (!value) return null;
+    const payload = value.split('.')[1];
+    if (!payload) return null;
+    try {
+      const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+      return claims.sub || claims.customer_id || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // Save token
   function saveToken(token) {
     if (token) {
@@ -1489,6 +1511,7 @@ window.chattermateConfig;
       while (container.firstChild) container.removeChild(container.firstChild)
       iframe = null
       widgetFrameWindow = null
+      currentSessionId = null
       iframeReady = false
       widgetReadyFired = false
       pendingPrefill = null
@@ -1658,7 +1681,18 @@ window.chattermateConfig;
               // Try to read error detail to determine if this is token-auth required
               try {
                 const errorData = await response.json();
-                const errorDetail = errorData.detail || '';
+                const detail = errorData.detail;
+                // The stored token belongs to a visitor whose identity has run out —
+                // a page reopened long after the app identified them. Ask the page for
+                // a fresh one and load again as that visitor, rather than showing an
+                // error or silently starting over as a stranger.
+                if (detail && detail.code === 'identity_expired') {
+                  button.classList.remove('loading')
+                  emitEvent('identityExpired')
+                  recoverIdentityAndLoad()
+                  return null;
+                }
+                const errorDetail = typeof detail === 'string' ? detail : '';
                 // Only show auth error for token-required cases (contains generate-token or API key)
                 if (errorDetail.includes('generate-token') || errorDetail.includes('API key') || errorDetail.includes('Token must be obtained')) {
                   button.classList.remove('loading')
@@ -1700,6 +1734,8 @@ window.chattermateConfig;
                 pendingPrefill = null
               }
               widgetReadyFired = true
+              // A frame that actually loaded clears the recovery budget.
+              identityRecoveryUsed = false
               emitEvent('ready')
             })
             container.appendChild(iframe)
@@ -1759,7 +1795,106 @@ window.chattermateConfig;
         saveToken(updated)
         // Confirm token storage to iframe
         event.source.postMessage({ type: 'TOKEN_RECEIVED', token: updated }, '*')
+        return
       }
+      if (event.data.type === 'CHAT_SESSION') {
+        currentSessionId = String(event.data.sessionId || '') || null
+        // Only a conversation the server actually created is news: reconnecting into
+        // the one already in progress is not a new chat. `authenticated` says whether
+        // it still belongs to the identified visitor, so a site can re-identify
+        // instead of guessing.
+        if (event.data.created) {
+          emitEvent('chatCreated', {
+            sessionId: currentSessionId,
+            authenticated: !!event.data.authenticated,
+          })
+        }
+        return
+      }
+      if (event.data.type === 'IDENTITY_EXPIRED') {
+        // The widget cannot mint a token: that needs the site's API key. Ask the page
+        // for one, and tell it either way so it can react on its own terms.
+        emitEvent('identityExpired')
+        requestTokenFromHost()
+      }
+      return
+    }
+
+    // The frame could not even be fetched with the stored token. Replace the identity
+    // if the page can, and otherwise fall back to an anonymous visitor - a chat widget
+    // that refuses to load at all is worse than one that has forgotten who you are.
+    function recoverIdentityAndLoad() {
+      if (identityRecoveryUsed || typeof config.tokenProvider !== 'function') {
+        // Nobody can replace the identity, so load as an anonymous visitor rather
+        // than leaving the page with a chat widget that refuses to open at all.
+        removeToken()
+        window.chattermateToken = null
+        prefetchWidget()
+        return
+      }
+      identityRecoveryUsed = true
+      Promise.resolve()
+        .then(() => config.tokenProvider())
+        .then((token) => {
+          const next = normalizeToken(token)
+          if (next) {
+            window.chattermateToken = next
+            saveToken(next)
+          } else {
+            removeToken()
+            window.chattermateToken = null
+          }
+        })
+        .catch((error) => {
+          console.error('ChatterMate: tokenProvider failed', error)
+          removeToken()
+          window.chattermateToken = null
+        })
+        .finally(() => {
+          prefetchWidget()
+        })
+    }
+
+    // Ask the host page for a replacement token and hand it to the LIVE frame.
+    // Deliberately not a reload: the visitor is looking at a conversation, and
+    // rebuilding the frame would take it away to fix a problem they never saw.
+    let tokenRequestInFlight = false
+    // A tokenProvider that keeps handing back a token the backend rejects would
+    // otherwise fetch in a loop. One recovery per successful load is enough.
+    let identityRecoveryUsed = false
+    function requestTokenFromHost() {
+      if (tokenRequestInFlight) return
+      if (identityRecoveryUsed || typeof config.tokenProvider !== 'function') {
+        // Nothing is coming: let the frame stop waiting and carry on anonymously,
+        // rather than leaving the visitor at a chat that can't authenticate.
+        tellFrame({ type: 'IDENTITY_UNAVAILABLE' })
+        return
+      }
+      tokenRequestInFlight = true
+      identityRecoveryUsed = true
+      Promise.resolve()
+        .then(() => config.tokenProvider())
+        .then((token) => {
+          const next = normalizeToken(token)
+          if (!next) {
+            tellFrame({ type: 'IDENTITY_UNAVAILABLE' })
+            return
+          }
+          window.chattermateToken = next
+          saveToken(next)
+          tellFrame({ type: 'TOKEN_REFRESH', token: next })
+        })
+        .catch((error) => {
+          console.error('ChatterMate: tokenProvider failed', error)
+          tellFrame({ type: 'IDENTITY_UNAVAILABLE' })
+        })
+        .finally(() => {
+          tokenRequestInFlight = false
+        })
+    }
+
+    function tellFrame(message) {
+      if (widgetFrameWindow) widgetFrameWindow.postMessage(message, '*')
     }
     window.addEventListener('message', handleFrameMessage)
 
@@ -2035,6 +2170,11 @@ window.chattermateConfig;
     if (options.id) {
       window.chattermateId = options.id
     }
+    if (typeof options.tokenProvider === 'function') {
+      // Called when the widget needs a token the page alone can mint: on an expired
+      // identity, or when there is none yet. Must resolve to a /generate-token token.
+      config.tokenProvider = options.tokenProvider
+    }
     if (typeof options.launcher === 'boolean') {
       setDevConfig('launcher', options.launcher)
     }
@@ -2085,6 +2225,31 @@ window.chattermateConfig;
     if (controller) controller.reload()
   }
 
+  // Close the conversation the widget is leaving behind, then rebuild the frame.
+  // Dropping the frame alone only takes the conversation off THIS page: the session
+  // stays open on the server, so identifying that visitor again would hand them back
+  // a transcript logout() told them was gone. Closed from here rather than from the
+  // frame, which is about to be destroyed and may not get its request out; keepalive
+  // lets it finish even if the page is being torn down at the same time.
+  function endConversationThenReload(token, sessionId) {
+    if (token && sessionId) {
+      const url = `${config.baseUrl}/widgets/${window.chattermateId}/end-chat`
+        + `?session_id=${encodeURIComponent(sessionId)}&reason=CUSTOMER_REQUEST`
+      try {
+        fetch(url, {
+          method: 'POST',
+          mode: 'cors',
+          keepalive: true,
+          headers: { 'Authorization': `Bearer ${token}` },
+        }).catch(() => { /* the widget is being rebuilt either way */ })
+      } catch (e) {
+        /* the widget is being rebuilt either way */
+      }
+    }
+    currentSessionId = null
+    reloadWidgetIfRunning()
+  }
+
   // ChatterMate.reload(): rebuild the widget, and build it again after destroy().
   function reloadOrRebuild() {
     if (controller) {
@@ -2115,20 +2280,35 @@ window.chattermateConfig;
   function setIdentity(token) {
     const next = normalizeToken(token)
     if (!next) return
+    const current = getStoredToken()
     // Sites re-identify on every route change; re-tokenizing with the token the
     // widget already runs on must not throw away a conversation in progress.
-    if (next === getStoredToken()) return
+    if (next === current) return
+
+    const sameVisitor = current && tokenSubject(next) && tokenSubject(next) === tokenSubject(current)
     window.chattermateToken = next
     saveToken(next)
-    reloadWidgetIfRunning()
+
+    // A fresher token for the SAME visitor is not a new identity: hand it to the
+    // running frame instead of rebuilding, so re-authenticating never costs the
+    // visitor the chat they are in the middle of.
+    if (sameVisitor && widgetFrameWindow) {
+      widgetFrameWindow.postMessage({ type: 'TOKEN_REFRESH', token: next }, '*')
+      return
+    }
+    // A different visitor: the previous one's conversation must not be left open on
+    // the server, or re-identifying them later would replay it.
+    endConversationThenReload(current, currentSessionId)
   }
 
   // Drop the current identity and its conversation, back to anonymous. The next
   // load gets a fresh anonymous token from the backend.
   function clearIdentity() {
+    const previous = getStoredToken()
+    const previousSession = currentSessionId
     window.chattermateToken = null
     removeToken()
-    reloadWidgetIfRunning()
+    endConversationThenReload(previous, previousSession)
   }
 
   function setLauncherVisible(visible) {
@@ -2168,7 +2348,9 @@ window.chattermateConfig;
     reload: function () { reloadOrRebuild() },
     // Remove the widget from the page: nothing of ours is left behind.
     destroy: function () { destroyWidgetIfRunning() },
-    // Events: 'ready' (widget loaded), 'open', 'close', 'unread' (count payload).
+    // Events: 'ready' (widget loaded), 'open', 'close', 'unread' (count payload),
+    // 'chatCreated' ({ sessionId, authenticated }), 'identityExpired' (the token this
+    // widget was identified with has run out - hand it a new one with identify()).
     on: function (event, cb) {
       if (typeof event !== 'string' || typeof cb !== 'function') return
       // 'ready' already happened — call straight away so consent-gated / lazy site

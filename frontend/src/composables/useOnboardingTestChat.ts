@@ -38,9 +38,9 @@ export function useOnboardingTestChat() {
     cleanup: socketCleanup,
   } = useWidgetSocket()
 
-  // useWidgetSocket persists the conversation token to localStorage 'ctid';
-  // clear the synthetic onboarding token on teardown so it can't leak into a
-  // real widget session on the same origin.
+  // Older builds persisted the socket's token to localStorage 'ctid'. Nothing writes
+  // it from here any more, but the removal stays: a token left by one of those builds
+  // must not leak into a real widget session on the same origin.
   const cleanup = () => {
     socketCleanup()
     try { localStorage.removeItem('ctid') } catch { /* ignore */ }

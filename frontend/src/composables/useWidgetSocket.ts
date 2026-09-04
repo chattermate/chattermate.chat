@@ -23,6 +23,19 @@ import type { Message } from '@/types/chat'
 
 type ConnectionStatus = 'connected' | 'connecting' | 'failed'
 
+/** The conversation this connection landed in. */
+export interface SessionState {
+    session_id: string
+    /** True when the conversation belongs to the visitor the host page identified. */
+    authenticated: boolean
+    /** True when the server created it, false when it resumed an open one. */
+    created: boolean
+}
+
+// How long to wait for the server to confirm a chat was closed. Generous enough for
+// a slow round trip, short enough that the visitor is not left staring at a button.
+const END_CHAT_TIMEOUT_MS = 5000
+
 export function useWidgetSocket() {
     const messages = ref<Message[]>([])
     const loading = ref(false)
@@ -64,14 +77,23 @@ export function useWidgetSocket() {
     let onTakeoverCallback: ((data: { session_id: string, user_name: string }) => void) | null = null
     let onWorkflowStateCallback: ((data: any) => void) | null = null
     let onWorkflowProceededCallback: ((data: any) => void) | null = null
+    let onSessionStateCallback: ((data: SessionState) => void) | null = null
+    // The server announces the conversation the moment the socket connects, which is
+    // before the widget has finished starting up and registered its listener - so the
+    // last announcement is held and replayed to a late subscriber.
+    let lastSessionState: SessionState | null = null
     let widgetToken: string | undefined = undefined
     let widgetIdAuth: string | undefined = undefined
 
-    // Store token for socket authentication
+    // Store token for socket authentication.
+    // A rotated token has to reach the open connection too: the server keeps the
+    // token the socket connected with and re-checks it on later events (end_chat),
+    // so leaving it behind would break a conversation that outlives its token.
     const setToken = (token: string | undefined) => {
         widgetToken = token
-        if (token) {
-            localStorage.setItem('ctid', token)
+        if (!token) return
+        if (socket?.connected) {
+            socket.emit('refresh_token', { conversation_token: token })
         }
     }
 
@@ -252,8 +274,16 @@ export function useWidgetSocket() {
         socket.on('session_initialized', (data) => {
             // Capture session_id immediately upon connection
             if (data.session_id) {
-                console.log('Initialized session_id from session_initialized:', data.session_id)
                 currentSessionId.value = data.session_id
+                // Report every connection's conversation: the host page needs to know
+                // when a new one was created (a visitor starting a new chat used to
+                // happen with no signal at all) and whether it is still authenticated.
+                lastSessionState = {
+                    session_id: data.session_id,
+                    authenticated: !!data.authenticated,
+                    created: !!data.created
+                }
+                onSessionStateCallback?.(lastSessionState)
             }
         })
 
@@ -314,6 +344,12 @@ export function useWidgetSocket() {
     // Register takeover callback
     const onTakeover = (callback: (data: { session_id: string, user_name: string }) => void) => {
         onTakeoverCallback = callback
+    }
+
+    // Register conversation-state callback
+    const onSessionState = (callback: (data: SessionState) => void) => {
+        onSessionStateCallback = callback
+        if (lastSessionState) callback(lastSessionState)
     }
 
     // Register workflow state callback
@@ -592,26 +628,33 @@ export function useWidgetSocket() {
     // Must be a member of EndChatReasonType (backend/app/models/session_to_agent.py):
     // the column is an enum, and an unknown value makes close_session roll back and
     // silently leave the session open.
-    const endChat = (reason = 'CUSTOMER_REQUEST'): Promise<void> => {
+    const endChat = (reason = 'CUSTOMER_REQUEST'): Promise<boolean> => {
         return new Promise((resolve) => {
             if (!socket || !socket.connected) {
-                // Nothing to close server-side from here; still clear locally so the
-                // control does something visible rather than appearing broken.
-                resetConversationState()
-                resolve()
+                // Nothing was closed server-side, so the session is still open and
+                // will come back on the next connect. Say so rather than clearing the
+                // transcript and calling it a new chat.
+                resolve(false)
                 return
             }
             let settled = false
-            const finish = () => {
+            const settle = (closed: boolean) => {
                 if (settled) return
                 settled = true
                 clearTimeout(timer)
-                socket?.off('chat_ended', finish)
-                resetConversationState()
-                resolve()
+                socket?.off('chat_ended', onClosed)
+                socket?.off('error', onFailed)
+                if (closed) resetConversationState()
+                resolve(closed)
             }
-            const timer = setTimeout(finish, 3000)
-            socket.on('chat_ended', finish)
+            const onClosed = () => settle(true)
+            const onFailed = (error: any) => {
+                if (error?.type === 'end_chat_error') settle(false)
+            }
+            // Nothing confirmed in this long means the close did not happen.
+            const timer = setTimeout(() => settle(false), END_CHAT_TIMEOUT_MS)
+            socket.on('chat_ended', onClosed)
+            socket.on('error', onFailed)
             socket.emit('end_chat', { reason })
         })
     }
@@ -660,6 +703,7 @@ export function useWidgetSocket() {
         cleanup,
         humanAgent,
         onTakeover,
+        onSessionState,
         submitRating,
         currentForm,
         submitForm,

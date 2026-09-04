@@ -28,6 +28,9 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderMarkdown } from './markdown'
+import { postToHost } from './host-bridge'
+import NewChatConfirm from './NewChatConfirm.vue'
+import { NEW_CHAT_LABEL } from './new-chat'
 import type { Message } from '../types/chat'
 
 const props = defineProps<{
@@ -54,8 +57,10 @@ const props = defineProps<{
     /** Opt-in "New chat" control (customization.allow_new_chat). */
     canStartNewChat: boolean
     startingNewChat: boolean
-    /** Armed = the next click confirms (ending a chat can't be undone). */
+    /** Armed = the confirmation is showing (ending a chat can't be undone). */
     newChatArmed: boolean
+    /** Set when the last attempt to start a new chat failed. */
+    newChatError?: string
 }>()
 
 const emit = defineEmits<{
@@ -64,6 +69,7 @@ const emit = defineEmits<{
     (e: 'ask', question: string): void
     (e: 'close'): void
     (e: 'newChat'): void
+    (e: 'confirmNewChat'): void
     (e: 'cancelNewChat'): void
 }>()
 
@@ -143,7 +149,7 @@ const reportHeight = () => {
     // Ignore sub-pixel churn, which would otherwise ping-pong with the resize.
     if (Math.abs(height - lastReportedHeight) < 3) return
     lastReportedHeight = height
-    window.parent.postMessage({ type: 'WIDGET_RESIZE', height }, '*')
+    postToHost({ type: 'WIDGET_RESIZE', height })
 }
 
 let contentObserver: ResizeObserver | null = null
@@ -160,6 +166,11 @@ watch(
         if (bodyEl.value) bodyEl.value.scrollTop = bodyEl.value.scrollHeight
     })
 )
+
+// The confirmation bar is chrome outside the measured content, so the ResizeObserver
+// never sees it come or go - the palette would be reported at the wrong height and
+// clip it.
+watch(() => props.newChatArmed, () => nextTick(() => reportHeight()))
 
 // Focus only once the embedder actually shows the widget: the iframe is created
 // eagerly at page load, so focusing on mount would steal it from the host page.
@@ -211,22 +222,29 @@ onBeforeUnmount(() => {
                 class="askai__new"
                 :class="{ 'askai__new--armed': newChatArmed }"
                 :disabled="startingNewChat"
-                :title="newChatArmed ? 'This ends the current chat — click again to confirm' : 'Start a new chat'"
-                :aria-label="newChatArmed ? 'Confirm starting a new chat' : 'Start a new chat'"
+                :title="NEW_CHAT_LABEL"
+                :aria-label="NEW_CHAT_LABEL"
+                :aria-expanded="newChatArmed"
                 @click="emit('newChat')"
-                @blur="emit('cancelNewChat')"
             >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 20h9" />
                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                 </svg>
-                <span v-if="newChatArmed" class="askai__new-hint">Click again to confirm</span>
             </button>
             <button type="button" class="askai__close" aria-label="Close" title="Close (Esc)" @click="emit('close')">
                 <span class="askai__kbd">Esc</span>
             </button>
         </div>
+
+        <NewChatConfirm
+            v-if="newChatArmed && canStartNewChat"
+            :busy="startingNewChat"
+            :error="newChatError"
+            @confirm="emit('confirmNewChat')"
+            @cancel="emit('cancelNewChat')"
+        />
 
         <div ref="bodyEl" class="askai__body">
           <!-- flow-root so child margins don't collapse out of this box: its measured
@@ -368,21 +386,6 @@ onBeforeUnmount(() => {
     transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-.askai__new-hint {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    padding: 4px 8px;
-    border-radius: 7px;
-    background: rgba(20, 20, 24, 0.92);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.3;
-    white-space: nowrap;
-    pointer-events: none;
-    z-index: 3;
-}
 
 .askai__new:hover:not(:disabled) {
     color: var(--cm-text);

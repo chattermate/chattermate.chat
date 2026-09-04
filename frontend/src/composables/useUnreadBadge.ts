@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue'
+import { postToHost } from '../webclient/host-bridge'
 
 /**
  * Tracks unread agent/bot messages that arrive while the widget is minimized and
@@ -27,7 +28,7 @@ export function useUnreadBadge(messages: Ref<any[]>) {
     let unread = 0
 
     const post = () => {
-        window.parent.postMessage({ type: 'UNREAD_COUNT', count: unread }, '*')
+        postToHost({ type: 'UNREAD_COUNT', count: unread })
     }
 
     const onMessage = (e: MessageEvent) => {

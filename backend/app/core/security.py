@@ -94,14 +94,6 @@ def verify_token(token: str) -> Optional[dict]:
     except JWTError:
         return None
     
-def verify_conversation_token(token: str) -> Optional[dict]:
-    try:
-        payload = jwt.decode(token, CONVERSATION_SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
-    except JWTError:
-        return None
-
-
 def encrypt_api_key(api_key: str) -> str:
     """Encrypt API key before storing in database"""
     try:
