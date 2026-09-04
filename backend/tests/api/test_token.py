@@ -185,7 +185,7 @@ class TestGenerateToken:
 
         with patch('app.api.token.WidgetAppRepository') as MockRepo, \
              patch('app.api.token.get_existing_valid_token_jti', return_value=None), \
-             patch('app.api.token._store_token_in_redis'):
+             patch('app.services.conversation_token._store_token_in_redis'):
 
             mock_repo = MagicMock()
             mock_repo.validate_api_key.return_value = mock_widget_app
@@ -304,7 +304,7 @@ class TestGenerateToken:
 
         with patch('app.api.token.WidgetAppRepository') as MockRepo, \
              patch('app.api.token.get_existing_valid_token_jti', return_value=None), \
-             patch('app.api.token._store_token_in_redis'):
+             patch('app.services.conversation_token._store_token_in_redis'):
 
             mock_repo = MagicMock()
             mock_repo.validate_api_key.return_value = mock_widget_app
@@ -351,7 +351,7 @@ class TestGenerateToken:
 
         with patch('app.api.token.WidgetAppRepository') as MockRepo, \
              patch('app.api.token.get_existing_valid_token_jti', return_value=None), \
-             patch('app.api.token._store_token_in_redis'):
+             patch('app.services.conversation_token._store_token_in_redis'):
 
             mock_repo = MagicMock()
             mock_repo.validate_api_key.return_value = mock_widget_app
@@ -406,7 +406,7 @@ class TestGenerateToken:
 
         with patch('app.api.token.WidgetAppRepository') as MockRepo, \
              patch('app.api.token.get_existing_valid_token_jti', return_value=existing_jti), \
-             patch('app.api.token._store_token_in_redis'):
+             patch('app.services.conversation_token._store_token_in_redis'):
 
             mock_repo = MagicMock()
             mock_repo.validate_api_key.return_value = mock_widget_app
@@ -780,7 +780,7 @@ class TestTokenCustomData:
 
         with patch('app.api.token.WidgetAppRepository') as MockRepo, \
              patch('app.api.token.get_existing_valid_token_jti', return_value=None), \
-             patch('app.api.token._store_token_in_redis'):
+             patch('app.services.conversation_token._store_token_in_redis'):
 
             mock_repo = MagicMock()
             mock_repo.validate_api_key.return_value = mock_widget_app
@@ -841,7 +841,7 @@ class TestTokenCustomData:
 
         with patch('app.api.token.WidgetAppRepository') as MockRepo, \
              patch('app.api.token.get_existing_valid_token_jti', return_value=None), \
-             patch('app.api.token._store_token_in_redis'), \
+             patch('app.services.conversation_token._store_token_in_redis'), \
              patch('app.api.token.CustomerRepository') as MockCustomerRepo:
 
             mock_repo = MagicMock()

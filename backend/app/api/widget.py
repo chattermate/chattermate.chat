@@ -18,7 +18,6 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Header, Query, 
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from jose import JWTError
 from datetime import datetime
 from pathlib import Path
 import json
@@ -32,6 +31,7 @@ from app.database import get_db
 from app.repositories.widget import WidgetRepository
 from app.repositories.agent import AgentRepository
 from app.core.security import create_conversation_token, verify_conversation_token
+from app.services import conversation_token
 from app.repositories.customer import CustomerRepository
 from app.models.schemas.widget import WidgetCreate, WidgetResponse
 from app.core.logger import get_logger
@@ -43,6 +43,22 @@ from app.utils.business_hours import is_within_business_hours
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+def _identity_expired() -> HTTPException:
+    """401 telling the widget its visitor's identity lapsed, not that it never had one.
+
+    The embed loader answers this by asking the host page for a fresh token
+    (`tokenProvider`) and retrying, so an identified visitor is never silently
+    re-created as an anonymous customer.
+    """
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": conversation_token.IDENTITY_EXPIRED_CODE,
+            "message": "Conversation token expired. Issue a new one with /generate-token.",
+        },
+    )
 
 
 _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
@@ -137,12 +153,15 @@ async def get_widget_ui(
     # Try to validate existing token if provided
     if authorization and authorization.startswith('Bearer '):
         token = authorization.split(' ')[1]
-
-        try:
-            token_data = verify_conversation_token(token)
-            if token_data and token_data.get("widget_id") == widget_id:
-                customer_id = token_data.get("sub")
-        except (JWTError, ValueError):
+        state = conversation_token.inspect(token, widget_id)
+        if state.is_live:
+            customer_id = state.payload.get("sub")
+        elif state.identity_lost:
+            # A lapsed token that named a customer means a signed-in visitor whose
+            # identity just ran out. Say so instead of rendering the frame as a
+            # brand-new anonymous visitor - the loader re-identifies and retries.
+            raise _identity_expired()
+        else:
             token = None  # Invalid token
 
     # SECURITY: If token auth is required, valid token MUST be provided
@@ -325,16 +344,20 @@ async def get_widget_data(
     customer_id = None
     token = None
     old_token_source = None
-    
+
     # Try to validate existing token if provided
     if authorization and authorization.startswith('Bearer '):
         token = authorization.split(' ')[1]
-        try:
-            token_data = verify_conversation_token(token)
-            if token_data and token_data.get("widget_id") == widget_id:
-                customer_id = token_data.get("sub")
-                old_token_source = token_data.get("source")
-        except (JWTError, ValueError):
+        state = conversation_token.inspect(token, widget_id)
+        if state.is_live:
+            customer_id = state.payload.get("sub")
+            old_token_source = state.payload.get("source")
+        elif state.identity_lost:
+            # Identity ran out rather than never existing: minting a fresh anonymous
+            # customer here is what used to turn a signed-in visitor into "Anonymous"
+            # in the inbox the moment they started a new chat.
+            raise _identity_expired()
+        else:
             token = None
     
     # SECURITY: If token auth required, must have valid token with customer_id

@@ -21,6 +21,7 @@ import {
     isValidEmail} from '../types/widget'
 import { renderMarkdown } from './markdown'
 import AskAiPanel from './AskAiPanel.vue'
+import NewChatConfirm from './NewChatConfirm.vue'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
@@ -32,6 +33,12 @@ import { useWidgetSocket } from '../composables/useWidgetSocket'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
+import { useConversationToken, IDENTITY_EXPIRED_CODE, sanitizeToken } from '../composables/useConversationToken'
+import {
+    NEW_CHAT_CONFIRM_TIMEOUT_MS,
+    NEW_CHAT_FAILED_TEXT,
+    NEW_CHAT_LABEL,
+} from './new-chat'
 import { themeCssVars } from './widget-theme'
 import './widget-surface.css'
 import { useCurrency } from '../composables/useCurrency'
@@ -83,7 +90,8 @@ const {
     onWorkflowProceeded,
     currentSessionId,
     setToken,
-    setWidgetId
+    setWidgetId,
+    onSessionState
 } = useWidgetSocket()
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
@@ -276,22 +284,26 @@ const closeHeaderMenu = (event: Event) => {
 // Add loading state
 const isInitializing = ref(true)
 
-// Add these to the script setup section after the imports
-const TOKEN_KEY = 'ctid'
-
-// Helper to sanitize token - reject "undefined" and "null" strings
-const sanitizeToken = (tokenValue: any): string | null => {
-  if (!tokenValue || tokenValue === 'undefined' || tokenValue === 'null') {
-    return null
-  }
-  if (typeof tokenValue === 'string' && tokenValue.trim() === '') {
-    return null
-  }
-  return tokenValue
-}
-
-// @ts-ignore
-const token = ref(sanitizeToken(window.__INITIAL_DATA__?.initialToken || localStorage.getItem(TOKEN_KEY)))
+// The conversation token, kept alive by useConversationToken: it rotates before the
+// token lapses so a page left open for hours doesn't drop an identified visitor.
+const {
+    token,
+    start: startTokenLifecycle,
+    stop: stopTokenLifecycle,
+    setToken: adoptToken,
+    ensureFresh: ensureFreshToken
+} = useConversationToken({
+    onTokenChanged: (next) => {
+        window.parent.postMessage({ type: 'TOKEN_UPDATE', token: next }, '*')
+        // The open socket authenticated with the previous token and re-checks it on
+        // later events; without this a conversation that outlives its token starts
+        // failing authentication mid-chat.
+        setToken(next)
+    },
+    onIdentityExpired: () => {
+        handleIdentityExpired()
+    }
+})
 const hasToken = computed(() => !!token.value)
 
 // Authentication error state
@@ -310,17 +322,9 @@ if (props.initialAuthError) {
 initializeFromData()
 const initialData = window.__INITIAL_DATA__
 
-if (initialData?.initialToken) {
-    const validatedToken = sanitizeToken(initialData.initialToken)
-    if (validatedToken) {
-      token.value = validatedToken
-      // Notify parent window to store token
-      window.parent.postMessage({
-          type: 'TOKEN_UPDATE',
-          token: validatedToken
-      }, '*')
-      hasConversationToken.value = true
-    }
+startTokenLifecycle(initialData?.widgetId || '', initialData?.initialToken)
+if (token.value) {
+    hasConversationToken.value = true
 }
 
 // Initialize allowAttachments from __INITIAL_DATA__
@@ -478,6 +482,10 @@ const checkAuthorization = async () => {
             return false
         }
 
+        // Rotate a token that is close to expiry BEFORE it is used to authorize
+        // anything: this call is the only one a long-lived page makes after load.
+        await ensureFreshToken(widgetId.value)
+
         const url = new URL(`${widgetEnv.API_URL}/widgets/${widgetId.value}`)
         if (emailInput.value.trim() && isValidEmail(emailInput.value.trim())) {
             url.searchParams.append('email', emailInput.value.trim())
@@ -501,7 +509,17 @@ const checkAuthorization = async () => {
             hasConversationToken.value = false
             try {
                 const errorData = await response.json()
-                const errorDetail = errorData.detail || ''
+                const detail = errorData.detail
+
+                // The visitor was signed in and their token has run out. Ask the host
+                // page for a new one instead of quietly becoming a new anonymous
+                // customer - which is what used to happen here.
+                if (detail?.code === IDENTITY_EXPIRED_CODE) {
+                    handleIdentityExpired()
+                    return false
+                }
+
+                const errorDetail = typeof detail === 'string' ? detail : ''
 
                 // Check if this is specifically an API key/token authentication error
                 // These indicate the widget requires token auth (require_token_auth=true)
@@ -509,8 +527,7 @@ const checkAuthorization = async () => {
                     isApiKeyAuthRequired.value = true
                     authError.value = 'Widget authentication not configured. Please contact the website administrator.'
                     showAuthError.value = true
-                    localStorage.removeItem(TOKEN_KEY)
-                    token.value = null
+                    adoptToken(null)
                 }
                 // For plain "Unauthorized" - this is a regular non-auth agent waiting for email
                 // Don't show auth error, just let the email input display
@@ -518,8 +535,7 @@ const checkAuthorization = async () => {
                 // If we can't parse the error, assume it's a token issue
                 authError.value = 'Authentication required. Your token has expired or is invalid. Please refresh the page.'
                 showAuthError.value = true
-                localStorage.removeItem(TOKEN_KEY)
-                token.value = null
+                adoptToken(null)
             }
             return false
         }
@@ -540,10 +556,7 @@ const checkAuthorization = async () => {
 
         // Update token if new one is provided
         if (data.token) {
-            token.value = data.token
-            localStorage.setItem(TOKEN_KEY, data.token)
-            // Notify parent window of token update
-            window.parent.postMessage({ type: 'TOKEN_UPDATE', token: data.token }, '*')
+            adoptToken(data.token)
         }
 
         hasConversationToken.value = true
@@ -1177,6 +1190,31 @@ const handleUserInputSubmit = async (message: any) => {
     }
 }
 
+/**
+ * The visitor's identity ran out and the widget cannot renew it on its own: only the
+ * host page can mint a token (that needs the org's API key). Tell it, and let it
+ * answer with TOKEN_REFRESH. Nothing is destroyed here - the conversation on screen
+ * stays exactly where it is.
+ */
+const handleIdentityExpired = () => {
+    window.parent.postMessage({ type: 'IDENTITY_EXPIRED' }, '*')
+}
+
+/** Drop an identity nobody can renew and carry on as an anonymous visitor. */
+const continueAnonymously = async () => {
+    if (!token.value) return
+    adoptToken(null)
+    await initializeWidget()
+}
+
+/** Adopt a token the host page supplied, then re-authorize without a rebuild. */
+const adoptHostToken = async (hostToken: unknown) => {
+    const next = sanitizeToken(hostToken)
+    if (!next || next === token.value) return
+    adoptToken(next)
+    await initializeWidget()
+}
+
 // Initialize widget - main initialization logic
 const initializeWidget = async () => {
     try {
@@ -1229,9 +1267,17 @@ window.addEventListener('message', (event) => {
     if (event.data.type === 'SCROLL_TO_BOTTOM') {
         scrollToBottom()
     }
-    if (event.data.type === 'TOKEN_RECEIVED') {
-        // Parent confirmed token storage
-        localStorage.setItem(TOKEN_KEY, event.data.token)
+    if (event.data.type === 'IDENTITY_UNAVAILABLE') {
+        // The host page has no replacement identity for us. Start over as an
+        // anonymous visitor rather than leaving the chat stuck: they can still talk
+        // to the agent, they are just no longer signed in.
+        void continueAnonymously()
+    }
+    if (event.data.type === 'TOKEN_REFRESH') {
+        // The host page issued a replacement token (usually answering
+        // IDENTITY_EXPIRED). Adopt it and re-authorize in place: rebuilding the frame
+        // would throw away the conversation the visitor is looking at.
+        void adoptHostToken(event.data.token)
     }
     if (event.data.type === 'WIDGET_VISIBILITY') {
         // The loader reports open/closed. Without this the Ask AI palette would
@@ -1266,6 +1312,18 @@ const setupEventListeners = () => {
     // Register takeover callback
     onTakeover(async () => {
         await checkAuthorization()
+    })
+
+    // Tell the host page which conversation this connection is in, whether it was
+    // just created (a visitor starting a new chat used to be invisible to the host)
+    // and whether it still belongs to the identified visitor.
+    onSessionState(({ session_id, authenticated, created }) => {
+        window.parent.postMessage({
+            type: 'CHAT_SESSION',
+            sessionId: session_id,
+            authenticated,
+            created
+        }, '*')
     })
 
     // Register workflow state callback
@@ -1346,15 +1404,17 @@ const canStartNewChat = computed(() =>
 )
 
 const startingNewChat = ref(false)
+const newChatError = ref('')
 
 // Ending a chat closes the session, and history is scoped to the active session —
-// so the old conversation is gone for good. Ask once rather than wiping on a stray
-// click; the arm state lapses on its own so it can't sit there confusing people.
+// so the old conversation is gone for good. The control asks first, in words, inside
+// the widget; the question withdraws itself if it is left unanswered.
 const newChatArmed = ref(false)
 let newChatArmTimer: ReturnType<typeof setTimeout> | null = null
 
 const disarmNewChat = () => {
     newChatArmed.value = false
+    newChatError.value = ''
     if (newChatArmTimer) {
         clearTimeout(newChatArmTimer)
         newChatArmTimer = null
@@ -1363,29 +1423,48 @@ const disarmNewChat = () => {
 
 const requestNewChat = () => {
     if (startingNewChat.value) return
-    if (!newChatArmed.value) {
-        newChatArmed.value = true
-        // Long enough to read the hint and act; short enough that a forgotten arm
-        // state doesn't turn a later stray click into a wiped conversation.
-        newChatArmTimer = setTimeout(disarmNewChat, 8000)
+    if (newChatArmed.value) {
+        disarmNewChat()
         return
     }
-    disarmNewChat()
-    handleStartNewChat()
+    newChatArmed.value = true
+    newChatError.value = ''
+    newChatArmTimer = setTimeout(disarmNewChat, NEW_CHAT_CONFIRM_TIMEOUT_MS)
+}
+
+// The visitor answered the confirmation.
+const confirmNewChat = async () => {
+    if (startingNewChat.value) return
+    if (newChatArmTimer) {
+        clearTimeout(newChatArmTimer)
+        newChatArmTimer = null
+    }
+    await handleStartNewChat()
+    // Keep the bar up when it failed, so the message has somewhere to live.
+    if (!newChatError.value) newChatArmed.value = false
 }
 
 // Close the session, drop the local conversation, and reconnect into a fresh one.
 const handleStartNewChat = async () => {
     if (startingNewChat.value) return
     startingNewChat.value = true
+    newChatError.value = ''
     try {
-        await socketEndChat()
+        // Only a confirmed close makes the next conversation a new one. Clearing the
+        // transcript after a failed close would show an empty chat that the server
+        // still considers open, and the old messages would come back on reconnect.
+        const closed = await socketEndChat()
+        if (!closed) {
+            newChatError.value = NEW_CHAT_FAILED_TEXT
+            return
+        }
         humanAgent.value = {}
         newMessage.value = ''
         uploadedAttachments.value = []
         await initializeWidget()
     } catch (error) {
         console.error('Failed to start a new chat:', error)
+        newChatError.value = NEW_CHAT_FAILED_TEXT
     } finally {
         startingNewChat.value = false
     }
@@ -1457,6 +1536,10 @@ onUnmounted(() => {
 
     // Clean up native event listeners
     cleanupNativeEventListeners()
+
+    // Stop the token refresh timer with everything else, or it outlives the widget.
+    stopTokenLifecycle()
+    disarmNewChat()
 
     cleanup()
 })
@@ -1844,7 +1927,9 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             :can-start-new-chat="canStartNewChat"
             :starting-new-chat="startingNewChat"
             :new-chat-armed="newChatArmed"
+            :new-chat-error="newChatError"
             @new-chat="requestNewChat"
+            @confirm-new-chat="confirmNewChat"
             @cancel-new-chat="disarmNewChat"
             :citation-label="citationLabel"
             :citation-tooltip="citationTooltip"
@@ -2159,16 +2244,15 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                     :class="{ armed: newChatArmed }"
                     :style="messageNameStyles"
                     :disabled="startingNewChat"
-                    :title="newChatArmed ? 'This ends the current chat — click again to confirm' : 'Start a new chat'"
-                    :aria-label="newChatArmed ? 'Confirm starting a new chat' : 'Start a new chat'"
+                    :title="NEW_CHAT_LABEL"
+                    :aria-label="NEW_CHAT_LABEL"
+                    :aria-expanded="newChatArmed"
                     @click="requestNewChat"
-                    @blur="disarmNewChat"
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M12 20h9"></path>
                         <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
                     </svg>
-                    <span v-if="newChatArmed" class="new-chat-hint">Click again to start a new chat</span>
                 </button>
                 <button
                     type="button"
@@ -2234,6 +2318,14 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                     @click="submitEmailGate"
                 >{{ submittingEmail ? 'Please wait…' : 'Continue to chat' }}</button>
             </div>
+
+            <NewChatConfirm
+                v-if="newChatArmed"
+                :busy="startingNewChat"
+                :error="newChatError"
+                @confirm="confirmNewChat"
+                @cancel="disarmNewChat"
+            />
 
             <div v-show="!showEmailGate" class="chat-messages" ref="messagesContainer">
                 <!-- Welcome message on open (cleared after the first send). Quick actions
@@ -3032,21 +3124,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
    than growing the button and shoving the header around. */
 .header-new-chat.armed { background: color-mix(in srgb, currentColor 20%, transparent); }
 
-.header-new-chat .new-chat-hint {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    padding: 4px 8px;
-    border-radius: 7px;
-    background: rgba(20, 20, 24, 0.92);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.3;
-    white-space: nowrap;
-    pointer-events: none;
-    z-index: 3;
-}
 
 .header-new-chat:disabled {
     opacity: 0.5;

@@ -30,12 +30,13 @@ from app.database import get_db
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.widget import WidgetRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
-from app.core.security import decrypt_api_key
+from app.core.security import decrypt_api_key, verify_conversation_token
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.customer import CustomerRepository
 import uuid
 from app.services.socket_rate_limit import socket_rate_limit
+from app.services import conversation_token as conversation_token_service
 from app.services.workflow_chat import WorkflowChatService
 from app.services.file_upload_service import FileUploadService
 from app.core.config import settings
@@ -219,6 +220,7 @@ async def widget_connect(sid, environ, auth):
             agent_id=widget.agent_id
         )
               
+        session_created = active_session is None
         if active_session:
             session_id = str(active_session.session_id)
             logger.debug(f"Active session: {session_id}")  
@@ -253,13 +255,15 @@ async def widget_connect(sid, environ, auth):
         overall_limit_per_ip = agent.overall_limit_per_ip if agent else 100
         requests_per_sec = agent.requests_per_sec if agent else 1.0
         
-        # Extract source from conversation token if available
+        # Source (Explore flow) and whether the embedding app vouched for this
+        # visitor - both live in the conversation token, so no extra query.
         source = None
+        is_identified = False
         try:
-            from app.core.security import verify_conversation_token
             token_data = verify_conversation_token(conversation_token)
             if token_data:
                 source = token_data.get("source")
+                is_identified = bool(token_data.get("customer_email") or token_data.get("email"))
         except Exception:
             pass
         
@@ -309,11 +313,15 @@ async def widget_connect(sid, environ, auth):
         await sio.save_session(sid, session_data, namespace='/widget')
         logger.info(f"Widget client connected: {sid} joined room: {session_id}")
         
-        # Send session_id back to client immediately so it can be used for end_chat
+        # Send session_id back to client immediately so it can be used for end_chat.
+        # `authenticated` lets the widget tell the host page whether a conversation it
+        # just started belongs to the identified visitor or to an anonymous one.
         await sio.emit('session_initialized', {
             'session_id': session_id,
             'customer_id': customer_id,
-            'agent_id': str(widget.agent_id)
+            'agent_id': str(widget.agent_id),
+            'authenticated': is_identified,
+            'created': session_created
         }, to=sid, namespace='/widget')
 
         return True
@@ -1023,6 +1031,39 @@ async def get_widget_chat_history(sid):
     finally:
         if db:
             db.close()
+
+
+@sio.on('refresh_token', namespace='/widget')
+async def handle_refresh_token(sid, data):
+    """Adopt the rotated conversation token for an already-connected socket.
+
+    The token that authenticated the connection is kept in the socket session and
+    re-checked by later handlers (end_chat among them). Without this, refreshing the
+    token in the page would leave the socket holding the expiring one, and a long
+    conversation would fail to close the session it is sitting in.
+    """
+    try:
+        session = await sio.get_session(sid, namespace='/widget')
+        if not session:
+            return
+
+        token = (data or {}).get('conversation_token') if isinstance(data, dict) else None
+        state = conversation_token_service.inspect(token, session.get('widget_id'))
+        if not state.is_live:
+            logger.warning(f"Rejected token refresh for sid {sid}: token is not valid")
+            return
+
+        # A refresh may only extend the connection it already has - never move it to
+        # another customer, which would hand this socket someone else's conversation.
+        if str(state.payload.get('sub')) != str(session.get('customer_id')):
+            logger.warning(f"Rejected token refresh for sid {sid}: customer mismatch")
+            return
+
+        session['conversation_token'] = token
+        await sio.save_session(sid, session, namespace='/widget')
+        logger.debug(f"Conversation token refreshed for sid {sid}")
+    except Exception as e:
+        logger.error(f"Error refreshing token for sid {sid}: {str(e)}")
 
 
 @sio.on('end_chat', namespace='/widget')
