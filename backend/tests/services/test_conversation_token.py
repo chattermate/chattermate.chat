@@ -22,7 +22,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from jose import jwt
 
-from app.core.security import ALGORITHM, CONVERSATION_SECRET_KEY
+from app.core.security import (
+    ALGORITHM,
+    CONVERSATION_SECRET_KEY,
+    _is_token_in_redis as security_is_token_in_redis,
+    _store_token_in_redis as security_store_token_in_redis,
+)
 from app.services import conversation_token
 
 WIDGET_ID = "widget-1"
@@ -204,6 +209,32 @@ def test_inspect_ignores_garbage_and_foreign_signatures():
     assert not conversation_token.inspect("not-a-jwt", WIDGET_ID).is_live
     assert not conversation_token.inspect(foreign, WIDGET_ID).identity_lost
     assert not conversation_token.inspect(None, WIDGET_ID).is_live
+
+
+def test_everything_still_works_with_redis_unavailable(monkeypatch):
+    """Self-hosted installs run without Redis, and the hosted one can lose it.
+
+    Revocation checks fail open there (see _is_token_in_redis), so a live token must
+    still verify and rotate rather than the widget deciding every visitor's identity
+    has expired.
+    """
+    import app.core.redis as redis_module
+    monkeypatch.setattr(redis_module, "redis_client", None)
+    # The real helpers rather than this module's stubs: their no-Redis behaviour is
+    # exactly what is under test here.
+    monkeypatch.setattr(conversation_token, "_store_token_in_redis",
+                        security_store_token_in_redis)
+    monkeypatch.setattr(conversation_token, "_is_token_in_redis",
+                        security_is_token_in_redis)
+
+    token, _, ttl = conversation_token.mint(IDENTIFIED_CLAIMS, ttl_seconds=600)
+    state = conversation_token.inspect(token, WIDGET_ID)
+
+    assert state.is_live
+    assert ttl == 600
+    rotated = conversation_token.rotate(state.payload)
+    assert rotated is not None
+    assert conversation_token.inspect(rotated[0], WIDGET_ID).is_live
 
 
 def test_inspect_rejects_a_token_of_another_kind():

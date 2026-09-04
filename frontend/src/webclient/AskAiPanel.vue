@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
         </div>
 
         <NewChatConfirm
-            v-if="newChatArmed"
+            v-if="newChatArmed && canStartNewChat"
             :busy="startingNewChat"
             :error="newChatError"
             @confirm="emit('confirmNewChat')"

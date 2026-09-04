@@ -24,6 +24,7 @@ import pytest
 from app.api import widget_chat
 from app.models.customer import Customer
 from app.models.session_to_agent import SessionStatus, SessionToAgent
+from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import conversation_token
 
 
@@ -194,6 +195,82 @@ async def test_a_token_for_another_customer_is_refused(
 
     # The socket keeps its own conversation; a refresh may never move it to another.
     assert mock_sio.save_session.call_args[0][1]['conversation_token'] == connected
+
+
+@pytest.mark.asyncio
+async def test_a_conversation_survives_the_token_it_started_with(
+    db, test_widget, identified_customer, mock_sio, connected, monkeypatch
+):
+    """The failure this whole path exists for: a chat open longer than its token.
+
+    end_chat re-authenticates from the token the socket connected with, so a
+    conversation whose token was rotated in the page must close on the rotated one -
+    otherwise the visitor's New chat silently does nothing.
+    """
+    await widget_chat.widget_connect("sid-7", {}, {})
+    session = mock_sio.save_session.call_args[0][1]
+    mock_sio.get_session.return_value = session
+    session_id = session['session_id']
+
+    rotated, _, _ = conversation_token.mint(
+        {
+            "sub": str(identified_customer.id),
+            "widget_id": str(test_widget.id),
+            "customer_email": identified_customer.email,
+        },
+        ttl_seconds=600,
+    )
+    await widget_chat.handle_refresh_token("sid-7", {"conversation_token": rotated})
+    mock_sio.get_session.return_value = mock_sio.save_session.call_args[0][1]
+
+    # The original token is now gone, exactly as it would be past its TTL.
+    monkeypatch.setattr(
+        widget_chat,
+        "authenticate_socket_conversation_token",
+        AsyncMock(side_effect=lambda sid, sess: (
+            (str(test_widget.id), str(test_widget.organization_id),
+             str(identified_customer.id), sess.get('conversation_token'))
+            if sess.get('conversation_token') == rotated
+            else (None, None, None, None)
+        )),
+    )
+
+    await widget_chat.handle_end_chat("sid-7", {"reason": "CUSTOMER_REQUEST"})
+
+    closed = SessionToAgentRepository(db).get_session(session_id)
+    assert closed.status == SessionStatus.CLOSED
+    assert any(call[0][0] == 'chat_ended' for call in mock_sio.emit.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_a_taken_over_conversation_can_still_adopt_a_rotated_token(
+    db, test_widget, test_user, identified_customer, mock_sio, connected
+):
+    """A handover lasts far longer than an hour-long token. Refreshing must keep
+    working while a person is handling the chat, or the socket ends up holding a
+    token that no longer authenticates mid-conversation."""
+    await widget_chat.widget_connect("sid-8", {}, {})
+    session = mock_sio.save_session.call_args[0][1]
+    mock_sio.get_session.return_value = session
+
+    # A human agent takes the conversation over.
+    repo = SessionToAgentRepository(db)
+    taken_over = repo.get_session(session['session_id'])
+    taken_over.user_id = test_user.id
+    db.commit()
+
+    rotated, _, _ = conversation_token.mint(
+        {
+            "sub": str(identified_customer.id),
+            "widget_id": str(test_widget.id),
+            "customer_email": identified_customer.email,
+        },
+        ttl_seconds=600,
+    )
+    await widget_chat.handle_refresh_token("sid-8", {"conversation_token": rotated})
+
+    assert mock_sio.save_session.call_args[0][1]['conversation_token'] == rotated
+    assert repo.get_session(session['session_id']).user_id == test_user.id
 
 
 @pytest.mark.asyncio

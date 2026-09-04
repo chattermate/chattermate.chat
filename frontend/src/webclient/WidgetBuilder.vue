@@ -1432,6 +1432,13 @@ const requestNewChat = () => {
     newChatArmTimer = setTimeout(disarmNewChat, NEW_CHAT_CONFIRM_TIMEOUT_MS)
 }
 
+// A human agent taking the chat over (or the last message going away) hides the New
+// chat control - the open question has to go with it, or a visitor could confirm
+// their way out of a live handover the moment a person joined.
+watch(canStartNewChat, (can) => {
+    if (!can) disarmNewChat()
+})
+
 // The visitor answered the confirmation.
 const confirmNewChat = async () => {
     if (startingNewChat.value) return
@@ -2320,7 +2327,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             </div>
 
             <NewChatConfirm
-                v-if="newChatArmed"
+                v-if="newChatArmed && canStartNewChat"
                 :busy="startingNewChat"
                 :error="newChatError"
                 @confirm="confirmNewChat"
