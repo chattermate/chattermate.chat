@@ -125,21 +125,102 @@ def test_get_widget_ui(client: TestClient, test_widget: Widget):
     assert str(test_widget.id) in response.text
     assert test_widget.agent.display_name or test_widget.agent.name in response.text
 
-def test_widget_ui_injects_app_config(client: TestClient, test_widget: Widget):
+def test_widget_ui_injects_app_config(client: TestClient, test_widget: Widget, monkeypatch):
     """The iframe HTML must inject window.APP_CONFIG derived from BACKEND_URL so a
     self-hosted widget connects to the configured backend, not the cloud default."""
     from app.core.config import settings
 
+    monkeypatch.setattr(settings, "BACKEND_URL", "https://support.example.com")
+
     response = client.get(f"/api/v1/widgets/{test_widget.id}/data")
     assert response.status_code == 200
 
-    api_base = settings.BACKEND_URL.rstrip("/")
-    expected_ws = api_base.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
     assert "window.APP_CONFIG" in response.text
-    assert f'"API_URL": "{api_base}/api/v1"' in response.text
-    assert f'"WS_URL": "{expected_ws}"' in response.text
+    assert '"API_URL": "https://support.example.com/api/v1"' in response.text
+    assert '"WS_URL": "wss://support.example.com"' in response.text
     # APP_CONFIG must be declared before the widget module so it exists at load time.
     assert response.text.index("window.APP_CONFIG") < response.text.index("assets/widget.js")
+
+
+def test_widget_ui_app_config_falls_back_to_request_origin(
+    client: TestClient, test_widget: Widget, monkeypatch
+):
+    """BACKEND_URL defaults to localhost and neither compose file sets it, so an
+    install that never overrode it served every visitor a widget whose socket
+    dialled the visitor's own machine. Loopback can never be right for someone
+    else's browser: use the origin the widget was actually fetched over."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "BACKEND_URL", "http://localhost:8000")
+
+    response = client.get(
+        f"/api/v1/widgets/{test_widget.id}/data",
+        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "chat.example.com"},
+    )
+    assert response.status_code == 200
+
+    assert '"API_URL": "https://chat.example.com/api/v1"' in response.text
+    assert '"WS_URL": "wss://chat.example.com"' in response.text
+
+
+def test_widget_ui_app_config_assumes_tls_behind_a_host_rewriting_proxy(
+    client: TestClient, test_widget: Widget, monkeypatch
+):
+    """Some proxies rewrite the host but not the protocol. Reading the scheme off
+    the proxy's own plaintext hop would hand an https page a ws:// socket, which
+    the browser refuses as mixed content."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "BACKEND_URL", "http://localhost:8000")
+
+    response = client.get(
+        f"/api/v1/widgets/{test_widget.id}/data",
+        headers={"X-Forwarded-Host": "chat.example.com"},
+    )
+    assert response.status_code == 200
+
+    assert '"API_URL": "https://chat.example.com/api/v1"' in response.text
+    assert '"WS_URL": "wss://chat.example.com"' in response.text
+
+
+def test_widget_ui_app_config_takes_the_browsers_end_of_a_proxy_chain(
+    client: TestClient, test_widget: Widget, monkeypatch
+):
+    """Each proxy appends to these headers, so the browser's own value is first.
+    Taking the last would point the widget at an internal hop no visitor can reach."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "BACKEND_URL", "http://localhost:8000")
+
+    response = client.get(
+        f"/api/v1/widgets/{test_widget.id}/data",
+        headers={
+            "X-Forwarded-Host": "chat.example.com, internal-lb.local",
+            "X-Forwarded-Proto": "https, http",
+        },
+    )
+    assert response.status_code == 200
+
+    assert '"API_URL": "https://chat.example.com/api/v1"' in response.text
+    assert '"WS_URL": "wss://chat.example.com"' in response.text
+
+
+def test_widget_ui_app_config_keeps_loopback_for_local_development(
+    client: TestClient, test_widget: Widget, monkeypatch
+):
+    """Running everything on one machine is the case loopback is right for, and
+    the request origin says so too — nothing to substitute."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "BACKEND_URL", "http://localhost:8000")
+
+    response = client.get(
+        f"/api/v1/widgets/{test_widget.id}/data", headers={"Host": "localhost:8000"}
+    )
+    assert response.status_code == 200
+
+    assert '"API_URL": "http://localhost:8000/api/v1"' in response.text
+    assert '"WS_URL": "ws://localhost:8000"' in response.text
 
 
 def test_widget_ui_presence_is_ai_when_the_ai_answers(client: TestClient, test_widget: Widget):

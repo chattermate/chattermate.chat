@@ -931,34 +931,38 @@ class TestChatHistoryErrors:
         )
     
     @pytest.mark.asyncio
-    async def test_get_chat_history_session_mismatch(self, mock_sio, monkeypatch):
-        """Test chat history with session mismatch"""
+    async def test_live_connection_does_not_recheck_the_token(self, mock_sio, monkeypatch):
+        """The token authenticates the connection, not every event on it.
+
+        Re-verifying it per event tore working chats down the moment the token's
+        TTL passed, or Redis lost its JTI (#315). An established socket carries
+        its identity in the server-side session.
+        """
         from app.api import widget_chat
-        
+
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
-        
-        # Mock session data with different IDs
+
         mock_sio.get_session.return_value = {
-            "widget_id": "different_widget_id",
-            "org_id": "different_org_id",
-            "customer_id": "different_customer_id"
+            "widget_id": "widget_id",
+            "org_id": "org_id",
+            "customer_id": "customer_id",
+            "agent_id": "agent_id",
+            "conversation_token": "expired-token",
         }
-        
-        # Mock authentication with different IDs
-        monkeypatch.setattr(
-            widget_chat,
-            "authenticate_socket_conversation_token",
-            AsyncMock(return_value=("widget_id", "org_id", "customer_id", "token"))
-        )
-        
+
+        # Would reject the token if anything still asked it to.
+        reauth = AsyncMock(return_value=(None, None, None, None))
+        monkeypatch.setattr(widget_chat, "authenticate_socket_conversation_token", reauth)
+
         await widget_chat.get_widget_chat_history("test_sid")
-        
-        mock_sio.emit.assert_called_with(
-            'error',
-            {'error': 'Authentication failed', 'type': 'auth_error'},
-            to="test_sid",
-            namespace='/widget'
-        )
+
+        reauth.assert_not_called()
+        auth_errors = [
+            call for call in mock_sio.emit.call_args_list
+            if call.args and call.args[0] == 'error'
+            and call.args[1].get('type') == 'auth_error'
+        ]
+        assert auth_errors == []
 
 
 class TestAgentHandlers:

@@ -282,3 +282,125 @@ async def test_an_unusable_token_is_refused(mock_sio, connected):
     await widget_chat.handle_refresh_token("sid-6", {"conversation_token": "not-a-jwt"})
 
     assert mock_sio.save_session.call_args[0][1]['conversation_token'] == connected
+
+
+@pytest.mark.asyncio
+async def test_closing_a_chat_does_not_depend_on_the_token_still_being_live(
+    db, mock_sio, connected, monkeypatch
+):
+    """The symptom the visitor reported: "Authentication failed" on closing the chat.
+
+    end_chat used to re-verify the conversation token, so a chat open longer than
+    its TTL - or one whose JTI Redis had dropped - could not be closed at all. This
+    kills the token by every measure the old path used and expects the close to go
+    through regardless.
+    """
+    await widget_chat.widget_connect("sid-closing", {}, {})
+    session = mock_sio.save_session.call_args[0][1]
+    mock_sio.get_session.return_value = session
+    session_id = session['session_id']
+
+    # Expired signature, and a JTI Redis no longer knows about.
+    monkeypatch.setattr(
+        widget_chat,
+        "authenticate_socket_conversation_token",
+        AsyncMock(return_value=(None, None, None, None)),
+    )
+    monkeypatch.setattr(widget_chat, "verify_conversation_token", lambda token: None)
+    monkeypatch.setattr(
+        "app.core.security.verify_conversation_token", lambda token: None
+    )
+
+    await widget_chat.handle_end_chat("sid-closing", {"reason": "CUSTOMER_REQUEST"})
+
+    closed = SessionToAgentRepository(db).get_session(session_id)
+    assert closed.status == SessionStatus.CLOSED
+    assert any(call[0][0] == 'chat_ended' for call in mock_sio.emit.call_args_list)
+    assert not _auth_errors(mock_sio)
+
+
+@pytest.mark.asyncio
+async def test_the_contact_form_gets_past_the_guard_after_the_token_lapses(
+    mock_sio, connected, monkeypatch
+):
+    """The handoff contact form posts on a connection that may be hours old.
+
+    Refusing it at the identity guard would lose the email a person is waiting on
+    to follow up. This covers the guard only - what the handler then does with the
+    address is the subject of the contact-capture tests.
+    """
+    await widget_chat.widget_connect("sid-contact", {}, {})
+    session = mock_sio.save_session.call_args[0][1]
+    mock_sio.get_session.return_value = session
+
+    monkeypatch.setattr(
+        widget_chat,
+        "authenticate_socket_conversation_token",
+        AsyncMock(return_value=(None, None, None, None)),
+    )
+
+    # An address the handler must reject on its own merits: reaching the
+    # validation error proves it got past the identity guard.
+    await widget_chat.handle_contact_info(
+        "sid-contact", {"form_data": {"email": "not-an-address"}}
+    )
+
+    assert not _auth_errors(mock_sio)
+    assert any(
+        call[0][0] == 'error' and call[0][1].get('type') == 'validation_error'
+        for call in mock_sio.emit.call_args_list
+    )
+
+
+# Every widget event that used to re-verify the conversation token, with an
+# argument shape each one accepts. What the handler goes on to do differs; what
+# they must agree on is that a lapsed token is not a reason to refuse.
+GUARDED_HANDLERS = [
+    ("chat", lambda sid: widget_chat.handle_widget_chat(sid, {"message": "hello"})),
+    ("get_chat_history", lambda sid: widget_chat.get_widget_chat_history(sid)),
+    ("end_chat", lambda sid: widget_chat.handle_end_chat(sid, {"reason": "CUSTOMER_REQUEST"})),
+    ("submit_rating", lambda sid: widget_chat.handle_rating_submission(sid, {"rating": 5})),
+    ("get_workflow_state", lambda sid: widget_chat.handle_get_workflow_state(sid)),
+    ("proceed_workflow", lambda sid: widget_chat.handle_proceed_workflow(sid, {})),
+    ("submit_contact_info", lambda sid: widget_chat.handle_contact_info(
+        sid, {"form_data": {"email": "someone@example.com"}})),
+    ("submit_form", lambda sid: widget_chat.handle_form_submission(
+        sid, {"form_data": {"name": "Someone"}})),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name,call", GUARDED_HANDLERS, ids=[h[0] for h in GUARDED_HANDLERS])
+async def test_no_widget_event_refuses_a_live_connection_over_a_lapsed_token(
+    name, call, mock_sio, connected, monkeypatch
+):
+    """One rule, eight handlers: the token authenticates the connection, and a
+    connection that was authenticated stays authenticated for its lifetime.
+
+    Anything else and a chat open longer than its TTL starts failing an event at a
+    time - which is how this reached us, as messages that stopped sending and a
+    New chat button that did nothing (#315).
+    """
+    await widget_chat.widget_connect(f"sid-{name}", {}, {})
+    session = mock_sio.save_session.call_args[0][1]
+    mock_sio.get_session.return_value = session
+    mock_sio.emit.reset_mock()
+
+    # Dead by every measure the old per-event check used.
+    monkeypatch.setattr(
+        widget_chat,
+        "authenticate_socket_conversation_token",
+        AsyncMock(return_value=(None, None, None, None)),
+    )
+    monkeypatch.setattr(widget_chat, "verify_conversation_token", lambda token: None)
+
+    await call(f"sid-{name}")
+
+    assert not _auth_errors(mock_sio), f"{name} refused a live connection"
+
+
+def _auth_errors(mock_sio) -> list:
+    return [
+        call for call in mock_sio.emit.call_args_list
+        if call[0][0] == 'error' and call[0][1].get('type') == 'auth_error'
+    ]

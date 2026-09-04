@@ -365,33 +365,41 @@ class TestGetWidgetChatHistory:
         )
     
     @pytest.mark.asyncio
-    async def test_get_widget_chat_history_session_mismatch(self, mock_sio, monkeypatch, test_widget, test_customer):
-        """Test get chat history with session data mismatch"""
+    async def test_get_widget_chat_history_serves_an_expired_token(
+        self, mock_sio, monkeypatch, test_widget, test_customer, db
+    ):
+        """A token that has since expired must not break the open connection.
+
+        The widget kept a socket for longer than the token's TTL and every event
+        on it started failing with "Authentication failed" (#315). Identity comes
+        from the session the connect handler saved.
+        """
         from app.api import widget_chat
-        
+
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
-        
-        # Mock successful authentication but mismatched session data
-        mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), "token")
+        monkeypatch.setattr(widget_chat, "get_db", lambda: iter([db]))
+
         mock_sio.get_session.return_value = {
-            "widget_id": "different_widget_id",  # Mismatch
+            "widget_id": str(test_widget.id),
             "org_id": str(test_widget.organization_id),
-            "customer_id": str(test_customer.id)
+            "customer_id": str(test_customer.id),
+            "agent_id": str(test_widget.agent_id),
+            "conversation_token": "expired-token",
         }
         monkeypatch.setattr(
             widget_chat,
             "authenticate_socket_conversation_token",
-            AsyncMock(return_value=mock_auth_result)
+            AsyncMock(return_value=(None, None, None, None))
         )
-        
+
         sid = "test_sid"
-        
-        await widget_chat.get_widget_chat_history(sid)
-        
-        # Should emit authentication error
+
+        with patch.object(SessionToAgentRepository, 'get_active_customer_session', return_value=None):
+            await widget_chat.get_widget_chat_history(sid)
+
         mock_sio.emit.assert_called_with(
-            'error',
-            {'error': 'Authentication failed', 'type': 'auth_error'},
+            'chat_history',
+            {'messages': [], 'type': 'chat_history'},
             to=sid,
             namespace='/widget'
         )

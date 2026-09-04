@@ -567,13 +567,13 @@ const checkAuthorization = async () => {
         // 🔐 SECURITY: Pass token to WebSocket before connecting
         setToken(token.value || undefined)
 
-        // Connect socket and verify connection success
+        // Connect the socket. A failure here is not fatal any more: the socket
+        // keeps retrying in the background and the header shows the connection
+        // banner, so replacing the whole widget with an error overlay would take
+        // away the chat the visitor is about to get back.
         const connected = await connect()
         if (!connected) {
-            console.error('Failed to connect to chat service')
-            authError.value = 'Failed to connect to chat service. Please try again.'
-            showAuthError.value = true
-            return false
+            console.error('Chat service not reachable yet; retrying in the background')
         }
 
         await fetchChatHistory()
