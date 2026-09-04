@@ -28,6 +28,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderMarkdown } from './markdown'
+import { postToHost } from './host-bridge'
 import NewChatConfirm from './NewChatConfirm.vue'
 import { NEW_CHAT_LABEL } from './new-chat'
 import type { Message } from '../types/chat'
@@ -148,7 +149,7 @@ const reportHeight = () => {
     // Ignore sub-pixel churn, which would otherwise ping-pong with the resize.
     if (Math.abs(height - lastReportedHeight) < 3) return
     lastReportedHeight = height
-    window.parent.postMessage({ type: 'WIDGET_RESIZE', height }, '*')
+    postToHost({ type: 'WIDGET_RESIZE', height })
 }
 
 let contentObserver: ResizeObserver | null = null

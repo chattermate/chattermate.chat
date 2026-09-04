@@ -27,6 +27,7 @@ import { isEndChatMessage } from '../utils/endChat'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
 import { presenceLine } from '../utils/widgetPresence'
 import { widgetEnv, resolveWidgetUploadUrl } from './widget-env'
+import { postToHost } from './host-bridge'
 import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
@@ -294,7 +295,7 @@ const {
     ensureFresh: ensureFreshToken
 } = useConversationToken({
     onTokenChanged: (next) => {
-        window.parent.postMessage({ type: 'TOKEN_UPDATE', token: next }, '*')
+        postToHost({ type: 'TOKEN_UPDATE', token: next })
         // The open socket authenticated with the previous token and re-checks it on
         // later events; without this a conversation that outlives its token starts
         // failing authentication mid-chat.
@@ -460,7 +461,7 @@ const sendQuickAction = (label: string) => {
 
 // Ask the embedder to minimize the widget (reuses the launcher toggle on that side).
 const minimizeWidget = () => {
-    window.parent.postMessage({ type: 'WIDGET_MINIMIZE' }, '*')
+    postToHost({ type: 'WIDGET_MINIMIZE' })
 }
 
 // Handle enter key
@@ -833,19 +834,19 @@ const handleAddToCart = (message) => {
 
     if (productData) {
         // Send a message to the parent window (the main shop)
-        window.parent.postMessage({
+        postToHost({
             type: 'ADD_TO_CART',
             product: productData
-        }, '*');
+        });
     }
 };
 
 const handleAddToCartFromCarousel = (product) => {
     if (product) {
-        window.parent.postMessage({
+        postToHost({
             type: 'ADD_TO_CART',
             product: product
-        }, '*');
+        });
     }
 };
 
@@ -1197,7 +1198,7 @@ const handleUserInputSubmit = async (message: any) => {
  * stays exactly where it is.
  */
 const handleIdentityExpired = () => {
-    window.parent.postMessage({ type: 'IDENTITY_EXPIRED' }, '*')
+    postToHost({ type: 'IDENTITY_EXPIRED' })
 }
 
 /** Drop an identity nobody can renew and carry on as an anonymous visitor. */
@@ -1318,12 +1319,12 @@ const setupEventListeners = () => {
     // just created (a visitor starting a new chat used to be invisible to the host)
     // and whether it still belongs to the identified visitor.
     onSessionState(({ session_id, authenticated, created }) => {
-        window.parent.postMessage({
+        postToHost({
             type: 'CHAT_SESSION',
             sessionId: session_id,
             authenticated,
             created
-        }, '*')
+        })
     })
 
     // Register workflow state callback
@@ -1818,7 +1819,7 @@ const useAskAiPanel = computed(() =>
 // to the chat panel (rating, product card, workflow form), leaving a full chat UI
 // squeezed into a box sized for a two-line answer.
 watch(useAskAiPanel, (palette) => {
-    window.parent.postMessage({ type: 'WIDGET_SURFACE', palette }, '*')
+    postToHost({ type: 'WIDGET_SURFACE', palette })
 }, { immediate: true })
 
 const askAiSubtitle = computed(() =>

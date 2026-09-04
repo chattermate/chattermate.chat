@@ -17,6 +17,7 @@ limitations under the License.
 import { ref } from 'vue'
 import type { AgentCustomization } from '../types/agent'
 import WebFont from 'webfontloader'
+import { postToHost } from '../webclient/host-bridge'
 
 // Design fonts the redesigned widget always needs (display / body / mono), with
 // the weights it actually uses. The user's custom font_family is layered on top.
@@ -69,7 +70,7 @@ export function useWidgetCustomization() {
         loadFonts(newCustomization.font_family)
 
         // Send customization update to parent
-        window.parent.postMessage({
+        postToHost({
             type: 'CUSTOMIZATION_UPDATE',
             data: {
                 chat_bubble_color: newCustomization.chat_bubble_color || '#C9F24E',
@@ -79,7 +80,7 @@ export function useWidgetCustomization() {
                 // under any options the installing developer set.
                 widget_display: newCustomization.customization_metadata?.widget_display
             }
-        }, '*')
+        })
     }
 
     // Initialize from window.__INITIAL_DATA__
