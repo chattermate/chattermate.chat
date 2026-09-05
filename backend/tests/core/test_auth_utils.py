@@ -16,7 +16,12 @@ limitations under the License.
 
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-from app.core.auth_utils import refresh_access_token, authenticate_socket, authenticate_socket_conversation_token
+from app.core.auth_utils import (
+    refresh_access_token,
+    authenticate_socket,
+    authenticate_socket_conversation_token,
+    widget_socket_identity,
+)
 from app.models.user import User
 from app.models.widget import Widget
 from uuid import uuid4
@@ -316,3 +321,34 @@ async def test_authenticate_socket_invalid_token_format(mock_db):
         assert result_token is None
         assert result_user_id is None
         assert result_org_id is None 
+
+
+def test_widget_socket_identity_reads_the_connected_session():
+    """A live connection's identity comes from what connect resolved, not from
+    re-verifying the token on every event (#315)."""
+    session = {
+        "widget_id": "widget-1",
+        "org_id": "org-1",
+        "customer_id": "customer-1",
+        "conversation_token": "long-since-expired",
+    }
+
+    assert widget_socket_identity(session) == ("widget-1", "org-1", "customer-1")
+
+
+def test_widget_socket_identity_allows_an_anonymous_customer():
+    """A visitor who has not been identified still has a widget and an org."""
+    session = {"widget_id": "widget-1", "org_id": "org-1"}
+
+    assert widget_socket_identity(session) == ("widget-1", "org-1", None)
+
+
+@pytest.mark.parametrize("session", [
+    None,
+    {},
+    {"widget_id": "widget-1"},
+    {"org_id": "org-1"},
+])
+def test_widget_socket_identity_rejects_an_unauthenticated_socket(session):
+    """No session means connect never authenticated this sid."""
+    assert widget_socket_identity(session) == (None, None, None)

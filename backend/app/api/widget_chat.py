@@ -25,7 +25,11 @@ from app.core.socketio import sio
 from app.core.logger import get_logger
 import traceback
 from app.agents.chat_agent import ChatAgent, ChatResponse
-from app.core.auth_utils import authenticate_socket, authenticate_socket_conversation_token
+from app.core.auth_utils import (
+    authenticate_socket,
+    authenticate_socket_conversation_token,
+    widget_socket_identity,
+)
 from app.database import get_db
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.widget import WidgetRepository
@@ -345,13 +349,13 @@ async def handle_widget_chat(sid, data):
     """Handle widget chat messages"""
     db = None
     try:
-        # Authenticate using conversation token
+        # Identity was established (and the token verified) at connect time.
         session = await sio.get_session(sid, namespace='/widget')
 
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id = widget_socket_identity(session)
         
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
@@ -376,11 +380,6 @@ async def handle_widget_chat(sid, data):
             return
 
         session_id = session['session_id']
-        # Verify session matches authenticated data
-        if (session['widget_id'] != widget_id or 
-            session['org_id'] != org_id or 
-            session['customer_id'] != customer_id):
-            raise ValueError("Session mismatch")
         
         # Upload files if provided
         uploaded_files = []
@@ -933,21 +932,13 @@ async def get_widget_chat_history(sid):
         logger.info(f"Getting chat history for sid {sid}")
         # Get session data
         session = await sio.get_session(sid, namespace='/widget')
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id = widget_socket_identity(session)
         
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
-
-        
-        # Verify session matches authenticated data
-        if (session['widget_id'] != widget_id or 
-            session['org_id'] != org_id or 
-            session['customer_id'] != customer_id):
-            raise ValueError("Session mismatch")
-        
         db = next(get_db())
         
         # Get active session using new repository
@@ -1037,10 +1028,10 @@ async def get_widget_chat_history(sid):
 async def handle_refresh_token(sid, data):
     """Adopt the rotated conversation token for an already-connected socket.
 
-    The token that authenticated the connection is kept in the socket session and
-    re-checked by later handlers (end_chat among them). Without this, refreshing the
-    token in the page would leave the socket holding the expiring one, and a long
-    conversation would fail to close the session it is sitting in.
+    The socket session holds the token the connection was authenticated with, and
+    that is what a reconnect and any later reader see. Keeping it current means the
+    stored token matches the one the page actually holds, rather than an expiring
+    one nobody can use again.
     """
     try:
         session = await sio.get_session(sid, namespace='/widget')
@@ -1078,13 +1069,13 @@ async def handle_end_chat(sid, data):
             logger.error(f"No session found for sid {sid}")
             return
         
-        # The saved /widget session holds the conversation token directly; there is no
-        # 'auth' key, so passing session.get('auth') failed authentication every time
-        # and this handler could never close a session.
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        # Identity was established (and the token verified) at connect time. Closing
+        # the widget must not depend on the token still being live — re-checking it
+        # here is what made "Authentication failed" appear on close (#315).
+        widget_id, org_id, customer_id = widget_socket_identity(session)
 
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
@@ -1471,21 +1462,16 @@ async def handle_rating_submission(sid, data):
     """Handle rating submission from widget"""
     db = None
     try:
-        # Get session data and authenticate
+        # Identity was established (and the token verified) at connect time.
         session = await sio.get_session(sid, namespace='/widget')
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id = widget_socket_identity(session)
         
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
         session_id = session['session_id']
-        # Verify session matches authenticated data
-        if (session['widget_id'] != widget_id or 
-            session['org_id'] != org_id or 
-            session['customer_id'] != customer_id):
-            raise ValueError("Session mismatch")
 
         # Validate rating data
         rating = data.get('rating')
@@ -1565,21 +1551,16 @@ async def handle_get_workflow_state(sid):
     db = None
     try:
         logger.info(f"Getting workflow state for sid {sid}")
-        # Get session data and authenticate
+        # Identity was established (and the token verified) at connect time.
         session = await sio.get_session(sid, namespace='/widget')
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id = widget_socket_identity(session)
         
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
         session_id = session['session_id']
-        # Verify session matches authenticated data
-        if (session['widget_id'] != widget_id or 
-            session['org_id'] != org_id or 
-            session['customer_id'] != customer_id):
-            raise ValueError("Session mismatch")
 
         db = next(get_db())
         session_repo = SessionToAgentRepository(db)
@@ -1833,21 +1814,16 @@ async def handle_proceed_workflow(sid, data):
     db = None
     try:
         logger.info(f"Proceeding workflow for sid {sid}")
-        # Get session data and authenticate
+        # Identity was established (and the token verified) at connect time.
         session = await sio.get_session(sid, namespace='/widget')
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id = widget_socket_identity(session)
         
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
         session_id = session['session_id']
-        # Verify session matches authenticated data
-        if (session['widget_id'] != widget_id or 
-            session['org_id'] != org_id or 
-            session['customer_id'] != customer_id):
-            raise ValueError("Session mismatch")
 
         db = next(get_db())
         session_repo = SessionToAgentRepository(db)
@@ -2021,19 +1997,14 @@ async def handle_contact_info(sid, data):
     db = None
     try:
         session = await sio.get_session(sid, namespace='/widget')
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id = widget_socket_identity(session)
 
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
         session_id = session['session_id']
-        # Verify session matches authenticated data (mirror other handlers)
-        if (session['widget_id'] != widget_id or
-            session['org_id'] != org_id or
-            session['customer_id'] != customer_id):
-            raise ValueError("Session mismatch")
 
         form_data = data.get('form_data', {}) or {}
         email = (form_data.get('email') or '').strip()
@@ -2091,21 +2062,16 @@ async def handle_form_submission(sid, data):
     db = None
     try:
         logger.info(f"Submitting form for sid {sid}")
-        # Get session data and authenticate
+        # Identity was established (and the token verified) at connect time.
         session = await sio.get_session(sid, namespace='/widget')
-        widget_id, org_id, customer_id, conversation_token = await authenticate_socket_conversation_token(sid, session)
+        widget_id, org_id, customer_id = widget_socket_identity(session)
         
         if not widget_id or not org_id:
-            logger.error(f"Widget authentication failed for sid {sid}")
+            logger.error(f"No authenticated widget session for sid {sid}")
             await sio.emit('error', {'error': 'Authentication failed', 'type': 'auth_error'}, room=sid, namespace='/widget')
             return
 
         session_id = session['session_id']
-        # Verify session matches authenticated data
-        if (session['widget_id'] != widget_id or 
-            session['org_id'] != org_id or 
-            session['customer_id'] != customer_id):
-            raise ValueError("Session mismatch")
 
         # Validate form data
         form_data = data.get('form_data', {})

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Header, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Header, Query, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 import time
+from urllib.parse import urlparse
 
 from app.models.widget import Widget
 from app.models.user import User
@@ -90,7 +91,53 @@ def _widget_html_response(html: str) -> HTMLResponse:
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
-def _widget_runtime_config() -> dict:
+# BACKEND_URL defaults to http://localhost:8000 and neither compose file sets
+# it, so a self-hosted install that never overrode it used to serve every visitor
+# a widget whose socket dialled the visitor's own machine (#315). Loopback can
+# never be right for a browser on someone else's computer, so we fall back to the
+# origin the widget HTML was actually fetched over.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"})
+
+_warned_about_loopback_backend_url = False
+
+
+def _is_loopback(url: str) -> bool:
+    host = urlparse(url).hostname
+    return host is not None and host.lower() in _LOOPBACK_HOSTS
+
+
+def _public_origin(request: Optional[Request]) -> Optional[str]:
+    """Scheme and host this request reached us on, as the browser sees them.
+
+    Reads the forwarding headers our nginx sets rather than ``request.url``, which
+    only reflects them when the ASGI server is started with proxy headers enabled.
+    """
+    if request is None:
+        return None
+
+    # Several proxies in a chain append to these, and the browser's own value is
+    # the first entry.
+    forwarded_host = request.headers.get("x-forwarded-host")
+    host = (forwarded_host or request.headers.get("host") or "").split(",")[0].strip()
+    if not host:
+        return None
+
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto:
+        scheme = forwarded_proto.split(",")[0].strip()
+    elif forwarded_host:
+        # A proxy that rewrites the host but not the protocol (Traefik and some
+        # Caddy setups, unlike our nginx) leaves request.url.scheme reading "http"
+        # for the proxy's own hop. Trusting that would hand an https page a ws://
+        # socket the browser refuses as mixed content, so assume the hop was TLS.
+        scheme = "https"
+    else:
+        scheme = request.url.scheme or "https"
+
+    return f"{scheme}://{host}"
+
+
+def _widget_runtime_config(request: Optional[Request] = None) -> dict:
     """Runtime API/WS URLs to hand the widget iframe as ``window.APP_CONFIG``.
 
     Derived from ``BACKEND_URL`` so a self-hosted widget talks to the configured
@@ -98,7 +145,22 @@ def _widget_runtime_config() -> dict:
     ``https://api.chattermate.chat``, which yields exactly the widget's baked-in
     defaults, so injecting this is a no-op there.
     """
+    global _warned_about_loopback_backend_url
+
     api_base = settings.BACKEND_URL.rstrip("/")
+    if _is_loopback(api_base):
+        derived = _public_origin(request)
+        if derived and not _is_loopback(derived):
+            if not _warned_about_loopback_backend_url:
+                _warned_about_loopback_backend_url = True
+                logger.warning(
+                    "BACKEND_URL is %s, which no visitor's browser can reach. "
+                    "Serving widgets against %s instead, taken from the request. "
+                    "Set BACKEND_URL to this install's public API URL.",
+                    api_base, derived,
+                )
+            api_base = derived
+
     if api_base.startswith("https://"):
         ws_url = "wss://" + api_base[len("https://"):]
     elif api_base.startswith("http://"):
@@ -121,6 +183,7 @@ def create_new_widget(
 @router.get("/{widget_id}/data", response_class=HTMLResponse)
 async def get_widget_ui(
     widget_id: str,
+    request: Request,
     response: Response,
     authorization: Optional[str] = Header(None),
     source: Optional[str] = Query(None),
@@ -182,7 +245,8 @@ async def get_widget_ui(
             agent_workflow=bool(agent.use_workflow and agent.active_workflow_id),
             allow_attachments=agent.allow_attachments,
             ai_replies_enabled=agent.ai_replies_enabled,
-            presence=presence
+            presence=presence,
+            request=request
         ))
     
     # Token auth NOT required - allow anonymous access
@@ -197,7 +261,8 @@ async def get_widget_ui(
             agent_workflow=bool(agent.use_workflow and agent.active_workflow_id),
             allow_attachments=agent.allow_attachments,
             ai_replies_enabled=agent.ai_replies_enabled,
-            presence=presence
+            presence=presence,
+            request=request
         ))
 
     # No valid token - create new one for anonymous access
@@ -218,11 +283,12 @@ async def get_widget_ui(
         agent_workflow=bool(agent.use_workflow and agent.active_workflow_id),
         allow_attachments=agent.allow_attachments,
         ai_replies_enabled=agent.ai_replies_enabled,
-        presence=presence
+        presence=presence,
+        request=request
     ))
 
 async def get_widget_html(widget_id: str, agent_name: str, agent_customization: dict, customer_id: Optional[str] = None, initial_token: Optional[str] = None, agent_workflow: bool = False, allow_attachments: bool = False, ai_replies_enabled: bool = True,
-                          presence: Optional[dict] = None) -> str:
+                          presence: Optional[dict] = None, request: Optional[Request] = None) -> str:
     """Generate widget HTML with embedded data"""
     import html
     widget_url = settings.VITE_WIDGET_URL
@@ -275,7 +341,7 @@ async def get_widget_html(widget_id: str, agent_name: str, agent_customization: 
                 // Runtime backend config so the widget connects to THIS install's
                 // backend instead of falling back to the baked cloud default.
                 // Declared before the widget module loads.
-                window.APP_CONFIG = {json.dumps(_widget_runtime_config())};
+                window.APP_CONFIG = {json.dumps(_widget_runtime_config(request))};
             </script>
             <script type="module" crossorigin src="{widget_url}/assets/widget.js{asset_query}"></script>
             <link rel="stylesheet" crossorigin href="{widget_url}/assets/widget.css{asset_query}">

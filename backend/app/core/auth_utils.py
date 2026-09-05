@@ -170,3 +170,28 @@ async def authenticate_socket_conversation_token(sid: str, auth: dict) -> Tuple[
     except Exception as e:
         logger.error(f"Widget authentication error for sid {sid}: {str(e)}")
         return None, None, None, None
+
+
+def widget_socket_identity(session: Optional[dict]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """Identity of an already-connected widget socket, from its server-side session.
+
+    The conversation token authenticates the *connection*: the /widget connect
+    handler runs authenticate_socket_conversation_token once and stores what it
+    resolved. Events arriving on a live connection read that back instead of
+    re-verifying the token, because the token's lifetime is not the connection's
+    lifetime — re-checking tore down working chats the moment the TTL passed
+    (mid-conversation, and on end_chat when the visitor closed the widget), and
+    it did the same whenever Redis lost the token's JTI. Expiry and revocation
+    still take effect: the next connect is authenticated normally.
+
+    Returns (None, None, None) when there is no authenticated session for the sid.
+    """
+    if not session:
+        return None, None, None
+
+    widget_id = session.get('widget_id')
+    org_id = session.get('org_id')
+    if not widget_id or not org_id:
+        return None, None, None
+
+    return widget_id, org_id, session.get('customer_id')

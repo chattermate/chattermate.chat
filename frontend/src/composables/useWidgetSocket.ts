@@ -74,6 +74,40 @@ export function useWidgetSocket() {
     }
 
     let socket: Socket | null = null
+
+    // socket.io retries transport failures on its own, but not a connection the
+    // server rejected outright — see the connect_error handler. These drive the
+    // attempts we have to make ourselves.
+    const MANUAL_RETRY_BASE_MS = 1000
+    const MANUAL_RETRY_MAX_MS = 15000
+    let manualRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+    // Errors that say the server will refuse this widget until someone changes
+    // something, so retrying is just load. Anything else — including the generic
+    // connection_error the connect handler raises on a transient failure — is
+    // worth another attempt.
+    const UNRECOVERABLE_ERRORS = new Set(['ai_config_missing'])
+    let refusedForGood = false
+
+    const clearManualRetry = () => {
+        if (manualRetryTimer) {
+            clearTimeout(manualRetryTimer)
+            manualRetryTimer = null
+        }
+    }
+
+    const scheduleManualRetry = () => {
+        if (manualRetryTimer || refusedForGood) return
+        const delay = Math.min(
+            MANUAL_RETRY_BASE_MS * 2 ** Math.max(0, retryCount.value - 1),
+            MANUAL_RETRY_MAX_MS
+        )
+        manualRetryTimer = setTimeout(() => {
+            manualRetryTimer = null
+            socket?.connect()
+        }, delay)
+    }
+
     let onTakeoverCallback: ((data: { session_id: string, user_name: string }) => void) | null = null
     let onWorkflowStateCallback: ((data: any) => void) | null = null
     let onWorkflowProceededCallback: ((data: any) => void) | null = null
@@ -87,8 +121,7 @@ export function useWidgetSocket() {
 
     // Store token for socket authentication.
     // A rotated token has to reach the open connection too: the server keeps the
-    // token the socket connected with and re-checks it on later events (end_chat),
-    // so leaving it behind would break a conversation that outlives its token.
+    // token the socket connected with, and that copy is what a reconnect presents.
     const setToken = (token: string | undefined) => {
         widgetToken = token
         if (!token) return
@@ -102,10 +135,11 @@ export function useWidgetSocket() {
         widgetIdAuth = widgetId
     }
 
-    const initializeSocket = (sessionId: string) => {
+    /** Auth payload for one connection attempt, read fresh each time. */
+    const buildAuth = () => {
         // Use passed token first, then stored token, then localStorage
         const token = widgetToken || localStorage.getItem('ctid')
-        
+
         // Build auth object with token and widget_id
         const auth: any = {}
         if (token) {
@@ -124,19 +158,28 @@ export function useWidgetSocket() {
         } catch {
             auth.page_url = document.referrer || ''
         }
-        
+        return auth
+    }
+
+    const initializeSocket = (sessionId: string) => {
         socket = io(`${widgetEnv.WS_URL}/widget`, {
             transports: ['websocket'],
             reconnection: true,
-            reconnectionAttempts: MAX_RETRIES,
+            // Keep trying. The old cap of 5 attempts was ~15s of backoff, so a
+            // backend restart or a laptop waking from sleep left the widget dead
+            // until the visitor reloaded the page.
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
-            auth: Object.keys(auth).length > 0 ? auth : undefined
+            reconnectionDelayMax: 15000,
+            // Called before every attempt, so a token refreshed since the socket
+            // was created is the one that gets sent.
+            auth: (cb: (data: object) => void) => cb(buildAuth())
         })
 
         // Set up event listeners
         socket.on('connect', () => {
             connectionStatus.value = 'connected'
-            
+            clearManualRetry()
             retryCount.value = 0
         })
 
@@ -157,10 +200,21 @@ export function useWidgetSocket() {
 
         socket.on('connect_error', () => {
             retryCount.value++
-            console.error('Socket connection failed, attempt:', retryCount.value, 'connection status:', connectionStatus.value)
+            console.error('Socket connection failed, attempt:', retryCount.value)
+
+            // Offer the manual retry once it has been failing for a while. The
+            // automatic attempts carry on underneath — 'connect' puts this back to
+            // 'connected' as soon as one of them lands.
             if (retryCount.value >= MAX_RETRIES) {
-               
                 connectionStatus.value = 'failed'
+            }
+
+            // `active` is false when the server rejected the connection itself
+            // rather than the transport failing, and socket.io does not retry
+            // those. One transient error inside the connect handler would
+            // otherwise wedge the widget on "Connecting..." until a page reload.
+            if (socket && !socket.active) {
+                scheduleManualRetry()
             }
         })
 
@@ -306,6 +360,8 @@ export function useWidgetSocket() {
 
             // Cleanup existing socket if any
             stopBotTyping()
+            clearManualRetry()
+            refusedForGood = false
             if (socket) {
                 socket.removeAllListeners()
                 socket.disconnect()
@@ -367,7 +423,12 @@ export function useWidgetSocket() {
         stopBotTyping()
         errorMessage.value = getErrorMessage(error as SocketError)
         showError.value = true
-        
+
+        if (UNRECOVERABLE_ERRORS.has((error as SocketError)?.type)) {
+            refusedForGood = true
+            clearManualRetry()
+        }
+
         // Hide error after 5 seconds
         setTimeout(() => {
             showError.value = false
@@ -677,6 +738,7 @@ export function useWidgetSocket() {
         // Before removeAllListeners, or the disconnect handler that would have
         // done it never fires and the timer outlives the widget.
         stopBotTyping()
+        clearManualRetry()
         if (socket) {
             socket.removeAllListeners()
             socket.disconnect()

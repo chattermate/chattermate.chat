@@ -41,7 +41,12 @@ const props = defineProps<{
     welcomeTitle?: string
     welcomeSubtitle?: string
     placeholder: string
+    /** Whether a message may be sent: false while a reply is in flight. */
     inputEnabled: boolean
+    /** Whether the field accepts typing. Stays true while a reply is in flight —
+     *  disabling the input blurs it, which cost the visitor their cursor after
+     *  every reply (#316). Defaults to inputEnabled for callers that don't care. */
+    typingEnabled?: boolean
     loading: boolean
     showCitations: boolean
     disclaimer?: string
@@ -96,7 +101,9 @@ const onInput = (event: Event) => {
 }
 
 const submit = () => {
-    if (!props.inputEnabled || !props.draft.trim()) return
+    // The typing gate, not the sending one: a message typed during a reply has to
+    // reach the parent, which decides whether to send it now or hold it (#316).
+    if (!(props.typingEnabled ?? props.inputEnabled) || !props.draft.trim()) return
     emit('send')
 }
 
@@ -209,7 +216,7 @@ onBeforeUnmount(() => {
                 class="askai__input"
                 :value="draft"
                 :placeholder="placeholder"
-                :disabled="!inputEnabled"
+                :disabled="!(typingEnabled ?? inputEnabled)"
                 :aria-label="placeholder"
                 autocomplete="off"
                 spellcheck="false"
