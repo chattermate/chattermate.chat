@@ -20,6 +20,8 @@ import {
   MAX_MCP_TIMEOUT,
   MIN_MCP_TIMEOUT,
   clampMCPTimeout,
+  linesToRecord,
+  recordToLines,
 } from '@/utils/mcp'
 
 describe('clampMCPTimeout', () => {
@@ -44,5 +46,24 @@ describe('clampMCPTimeout', () => {
     expect(clampMCPTimeout(NaN)).toBe(DEFAULT_MCP_TIMEOUT)
     expect(clampMCPTimeout(0)).toBe(DEFAULT_MCP_TIMEOUT)
     expect(clampMCPTimeout(-5)).toBe(DEFAULT_MCP_TIMEOUT)
+  })
+})
+
+describe('KEY=value line editing', () => {
+  it('round-trips a record through the textarea form', () => {
+    const record = { AWS_REGION: 'us-east-1', AWS_ACCESS_KEY_ID: 'abc' }
+    expect(linesToRecord(recordToLines(record))).toEqual(record)
+  })
+
+  it('keeps a value containing "=" intact', () => {
+    expect(linesToRecord('Authorization=Bearer a=b')).toEqual({ Authorization: 'Bearer a=b' })
+  })
+
+  it('ignores lines without a key', () => {
+    expect(linesToRecord('novalue\n=orphan\nA=1')).toEqual({ A: '1' })
+  })
+
+  it('treats a missing record as empty', () => {
+    expect(recordToLines(undefined)).toBe('')
   })
 })

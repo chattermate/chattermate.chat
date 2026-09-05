@@ -32,12 +32,15 @@ const {
   showCreateModal,
   showLinkModal,
   showDeleteConfirm,
+  deleteReferences,
+  editingToolId,
   createForm,
   transportTypes,
   mcpPresets,
   fetchAgentMCPTools,
   fetchAvailableMCPTools,
-  createMCPTool,
+  saveMCPTool,
+  startEdit,
   linkMCPTool,
   unlinkMCPTool,
   deleteMCPTool,
@@ -94,16 +97,21 @@ const openCreateModal = () => {
   showCreateModal.value = true
 }
 
+const closeToolModal = () => {
+  showCreateModal.value = false
+  resetCreateForm()
+}
+
 const openLinkModal = () => {
   fetchAvailableMCPTools()
   showLinkModal.value = true
 }
 
-const handleCreateTool = async () => {
+const handleSaveTool = async () => {
   try {
-    await createMCPTool()
+    await saveMCPTool()
   } catch (error) {
-    console.error('Error creating MCP tool:', error)
+    console.error('Error saving MCP tool:', error)
   }
 }
 
@@ -202,8 +210,26 @@ onMounted(() => {
               >
                 {{ testingToolId === tool.id ? 'Testing…' : 'Test' }}
               </button>
-              <button class="remove-button" @click="confirmDelete(tool.id)" title="Remove tool">
-                Remove
+              <button
+                class="test-button"
+                @click="startEdit(tool)"
+                title="Edit this connector"
+              >
+                Edit
+              </button>
+              <button
+                class="test-button"
+                @click="unlinkMCPTool(tool.id)"
+                title="Stop this agent using the connector, keeping it for other agents"
+              >
+                Unlink
+              </button>
+              <button
+                class="remove-button"
+                @click="confirmDelete(tool.id)"
+                title="Delete the connector for the whole organization"
+              >
+                Delete
               </button>
             </div>
           </div>
@@ -224,17 +250,17 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Create MCP Tool Modal -->
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
+    <!-- Create / Edit MCP Tool Modal -->
+    <div v-if="showCreateModal" class="modal-overlay" @click.self="closeToolModal">
       <div class="modal-content large">
         <div class="modal-header">
-          <h3>Create MCP tool</h3>
-          <button class="close-button" @click="showCreateModal = false">✕</button>
+          <h3>{{ editingToolId === null ? 'Create MCP tool' : 'Edit MCP tool' }}</h3>
+          <button class="close-button" @click="closeToolModal">✕</button>
         </div>
 
         <div class="modal-body">
-          <!-- Presets -->
-          <div class="form-section">
+          <!-- Presets — a starting point for a new tool only -->
+          <div v-if="editingToolId === null" class="form-section">
             <h4>Quick start presets</h4>
             <div class="presets-grid">
               <button
@@ -450,16 +476,16 @@ onMounted(() => {
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="secondary-button" @click="showCreateModal = false">
+          <button type="button" class="secondary-button" @click="closeToolModal">
             Cancel
           </button>
           <button 
             type="button" 
             class="primary-button" 
-            @click="handleCreateTool"
+            @click="handleSaveTool"
             :disabled="!createForm.name.trim()"
           >
-            Create Tool
+            {{ editingToolId === null ? 'Create Tool' : 'Save Changes' }}
           </button>
         </div>
       </div>
@@ -543,7 +569,21 @@ onMounted(() => {
         </div>
         
         <div class="modal-body">
-          <p class="confirm-text">Are you sure you want to remove this MCP tool from the agent? This action cannot be undone.</p>
+          <p class="confirm-text">
+            This deletes the connector for the whole organization, along with its stored
+            credentials. To stop just this agent using it, close this and choose Unlink.
+          </p>
+          <ul
+            v-if="deleteReferences && (deleteReferences.agents.length || deleteReferences.used_in_investigations)"
+            class="confirm-refs"
+          >
+            <li v-if="deleteReferences.used_in_investigations">
+              It is selected for investigations — it will be deselected.
+            </li>
+            <li v-if="deleteReferences.agents.length">
+              Linked to {{ deleteReferences.agents.join(', ') }} — those links will be removed.
+            </li>
+          </ul>
         </div>
         
         <div class="modal-footer">
@@ -551,7 +591,7 @@ onMounted(() => {
             Cancel
           </button>
           <button type="button" class="danger-button" @click="deleteMCPTool">
-            Remove Tool
+            Delete Connector
           </button>
         </div>
       </div>
@@ -560,6 +600,14 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.confirm-refs {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted2, var(--text-muted));
+  line-height: 1.6;
+}
+
 .mcp-tools-container {
   display: flex;
   flex-direction: column;

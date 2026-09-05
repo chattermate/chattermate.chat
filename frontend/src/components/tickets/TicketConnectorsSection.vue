@@ -18,8 +18,8 @@ limitations under the License.
 import { onMounted, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { mcpService } from '@/services/mcp'
-import type { MCPTool, MCPTransportType } from '@/types/mcp'
-import { DEFAULT_MCP_TIMEOUT, clampMCPTimeout } from '@/utils/mcp'
+import type { MCPTool, MCPToolReferences, MCPTransportType } from '@/types/mcp'
+import { DEFAULT_MCP_TIMEOUT, SECRET_MASK, clampMCPTimeout, linesToRecord, recordToLines } from '@/utils/mcp'
 import grafanaLogo from '@/assets/grafana-logo.svg'
 import elasticsearchLogo from '@/assets/elasticsearch-logo.svg'
 import sentryLogo from '@/assets/sentry-logo.svg'
@@ -31,8 +31,13 @@ const emit = defineEmits<{ (e: 'update:selected-ids', ids: number[]): void }>()
 const connectors = ref<MCPTool[]>([])
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
-const isCreating = ref(false)
+const isSaving = ref(false)
 const showForm = ref(false)
+// Which connector the form is editing, or null when it is creating one.
+const editingId = ref<number | null>(null)
+const deleteTarget = ref<MCPTool | null>(null)
+const deleteRefs = ref<MCPToolReferences | null>(null)
+const isDeleting = ref(false)
 
 // One-click starting points for the common observability platforms. All
 // values are placeholders the user edits — any other platform with an MCP
@@ -118,17 +123,26 @@ function applyPreset(preset: (typeof PRESETS)[0] | null) {
     envLines: preset?.envLines || '',
     timeout: DEFAULT_MCP_TIMEOUT,
   })
+  editingId.value = null
   showForm.value = true
 }
 
-/** "KEY=value" lines -> record. Lines without '=' are ignored. */
-function parseLines(lines: string): Record<string, string> {
-  const result: Record<string, string> = {}
-  for (const line of lines.split('\n')) {
-    const idx = line.indexOf('=')
-    if (idx > 0) result[line.slice(0, idx).trim()] = line.slice(idx + 1).trim()
-  }
-  return result
+/** Load an existing connector into the same form. Secret values arrive
+ * masked; leaving them alone keeps the stored credential. */
+function startEdit(connector: MCPTool) {
+  Object.assign(form, {
+    name: connector.name,
+    description: connector.description || '',
+    transport: connector.transport_type,
+    url: connector.url || '',
+    headerLines: recordToLines(connector.headers),
+    command: connector.command || '',
+    args: (connector.args || []).join(' '),
+    envLines: recordToLines(connector.env_vars),
+    timeout: connector.timeout ?? DEFAULT_MCP_TIMEOUT,
+  })
+  editingId.value = connector.id
+  showForm.value = true
 }
 
 async function fetchConnectors() {
@@ -144,32 +158,91 @@ async function fetchConnectors() {
   }
 }
 
-async function createConnector() {
+/** The form's fields as an API payload. Fields belonging to the other
+ * transport are cleared so a switched connector carries no stale command or
+ * URL alongside its new one. */
+function formPayload() {
+  const isRemote = form.transport !== 'stdio'
+  return {
+    name: form.name.trim(),
+    // Sent even when empty: an omitted key cannot clear a stored description.
+    description: form.description.trim(),
+    transport_type: form.transport,
+    enabled: true,
+    url: isRemote ? form.url.trim() : '',
+    headers: isRemote ? linesToRecord(form.headerLines) : {},
+    command: isRemote ? '' : form.command.trim(),
+    args: isRemote ? [] : form.args.trim().split(/\s+/).filter(Boolean),
+    env_vars: isRemote ? {} : linesToRecord(form.envLines),
+    timeout: clampMCPTimeout(form.timeout),
+  }
+}
+
+async function saveConnector() {
   if (!form.name.trim()) return
-  isCreating.value = true
+  isSaving.value = true
   try {
-    const isRemote = form.transport !== 'stdio'
-    const created = await mcpService.createMCPTool({
-      name: form.name.trim(),
-      description: form.description.trim() || undefined,
-      transport_type: form.transport,
-      enabled: true,
-      url: isRemote ? form.url.trim() : undefined,
-      headers: isRemote ? parseLines(form.headerLines) : undefined,
-      command: !isRemote ? form.command.trim() : undefined,
-      args: !isRemote ? form.args.trim().split(/\s+/).filter(Boolean) : undefined,
-      env_vars: !isRemote ? parseLines(form.envLines) : undefined,
-      timeout: clampMCPTimeout(form.timeout),
-    })
+    if (editingId.value !== null) {
+      const updated = await mcpService.updateMCPTool(editingId.value, formPayload())
+      await fetchConnectors()
+      showForm.value = false
+      editingId.value = null
+      toast.success(`${updated.name} updated`)
+      return
+    }
+    const created = await mcpService.createMCPTool(formPayload())
     await fetchConnectors()
     // New investigation connectors are opted in immediately.
     emit('update:selected-ids', [...props.selectedIds, created.id])
     showForm.value = false
     toast.success(`${created.name} connected`)
   } catch (err: any) {
-    toast.error(err.response?.data?.detail || 'Failed to create the connector')
+    const fallback = editingId.value !== null
+      ? 'Failed to update the connector'
+      : 'Failed to create the connector'
+    toast.error(err.response?.data?.detail || fallback)
   } finally {
-    isCreating.value = false
+    isSaving.value = false
+  }
+}
+
+function cancelForm() {
+  showForm.value = false
+  editingId.value = null
+}
+
+/** Ask what points at the connector before offering to delete it, so the
+ * confirmation can name what it is about to break. */
+async function requestDelete(connector: MCPTool) {
+  deleteTarget.value = connector
+  deleteRefs.value = null
+  try {
+    deleteRefs.value = await mcpService.getMCPToolReferences(connector.id)
+  } catch {
+    // Non-fatal — confirm without the reference list rather than blocking.
+  }
+}
+
+async function deleteConnector() {
+  const target = deleteTarget.value
+  if (!target) return
+  isDeleting.value = true
+  try {
+    await mcpService.deleteMCPTool(target.id)
+    if (editingId.value === target.id) cancelForm()
+    await fetchConnectors()
+    // The API drops the id from the org's selection itself; mirror that
+    // locally only when this connector was actually selected, so deleting an
+    // unselected one costs no settings write.
+    if (props.selectedIds.includes(target.id)) {
+      emit('update:selected-ids', props.selectedIds.filter((id) => id !== target.id))
+    }
+    deleteTarget.value = null
+    toast.success(`${target.name} removed`)
+  } catch (err: any) {
+    toast.error(err.response?.data?.detail || 'Failed to remove the connector')
+  } finally {
+    isDeleting.value = false
   }
 }
 
@@ -204,6 +277,7 @@ onMounted(fetchConnectors)
     </div>
 
     <div v-if="showForm" class="create-form">
+      <div v-if="editingId !== null" class="form-title">Editing {{ form.name || 'connector' }}</div>
       <div class="form-grid">
         <label class="form-field">
           <span class="field-label">Name</span>
@@ -225,6 +299,9 @@ onMounted(fetchConnectors)
           <label class="form-field wide">
             <span class="field-label">Headers (one per line, KEY=value)</span>
             <textarea v-model="form.headerLines" class="field-input mono" rows="2"></textarea>
+            <span v-if="editingId !== null" class="field-note">
+              Stored values show as {{ SECRET_MASK }} — leave them to keep the current credential.
+            </span>
           </label>
         </template>
         <template v-else>
@@ -239,6 +316,9 @@ onMounted(fetchConnectors)
           <label class="form-field wide">
             <span class="field-label">Environment (one per line, KEY=value)</span>
             <textarea v-model="form.envLines" class="field-input mono" rows="3"></textarea>
+            <span v-if="editingId !== null" class="field-note">
+              Stored values show as {{ SECRET_MASK }} — leave them to keep the current credential.
+            </span>
           </label>
         </template>
         <label class="form-field">
@@ -254,9 +334,10 @@ onMounted(fetchConnectors)
         </label>
       </div>
       <div class="form-actions">
-        <button class="cancel-btn" @click="showForm = false">Cancel</button>
-        <button class="connect-btn" :disabled="isCreating || !form.name.trim()" @click="createConnector">
-          {{ isCreating ? 'Connecting…' : 'Connect' }}
+        <button class="cancel-btn" @click="cancelForm">Cancel</button>
+        <button class="connect-btn" :disabled="isSaving || !form.name.trim()" @click="saveConnector">
+          <template v-if="editingId !== null">{{ isSaving ? 'Saving…' : 'Save changes' }}</template>
+          <template v-else>{{ isSaving ? 'Connecting…' : 'Connect' }}</template>
         </button>
       </div>
     </div>
@@ -264,28 +345,57 @@ onMounted(fetchConnectors)
     <div v-if="isLoading" class="state-note">Loading connectors…</div>
     <div v-else-if="loadError" class="state-note">{{ loadError }}</div>
     <div v-else-if="connectors.length" class="connector-list">
-      <label v-for="connector in connectors" :key="connector.id" class="connector-row">
-        <input
-          type="checkbox"
-          :checked="selectedIds.includes(connector.id)"
-          :disabled="!connector.enabled"
-          @change="toggleSelected(connector.id, ($event.target as HTMLInputElement).checked)"
-        />
-        <div class="connector-info">
-          <div class="connector-name">
-            {{ connector.name }}
-            <span class="transport-tag mono">{{ connector.transport_type }}</span>
-            <span v-if="!connector.enabled" class="disabled-tag mono">disabled</span>
+      <div v-for="connector in connectors" :key="connector.id" class="connector-row">
+        <label class="connector-select">
+          <input
+            type="checkbox"
+            :checked="selectedIds.includes(connector.id)"
+            :disabled="!connector.enabled"
+            @change="toggleSelected(connector.id, ($event.target as HTMLInputElement).checked)"
+          />
+          <div class="connector-info">
+            <div class="connector-name">
+              {{ connector.name }}
+              <span class="transport-tag mono">{{ connector.transport_type }}</span>
+              <span v-if="!connector.enabled" class="disabled-tag mono">disabled</span>
+            </div>
+            <div class="connector-sub mono">
+              {{ connector.url || [connector.command, ...(connector.args || [])].join(' ') }}
+            </div>
           </div>
-          <div class="connector-sub mono">
-            {{ connector.url || [connector.command, ...(connector.args || [])].join(' ') }}
-          </div>
+          <span class="use-label">Use in investigations</span>
+        </label>
+        <div class="row-actions">
+          <button class="row-btn" @click="startEdit(connector)">Edit</button>
+          <button class="row-btn danger" @click="requestDelete(connector)">Delete</button>
         </div>
-        <span class="use-label">Use in investigations</span>
-      </label>
+      </div>
     </div>
     <div v-else class="state-note">
       No connectors yet — connect one above so the AI can gather evidence from your logs and metrics.
+    </div>
+
+    <div v-if="deleteTarget" class="confirm-overlay" @click.self="deleteTarget = null">
+      <div class="confirm-box">
+        <h4 class="confirm-title">Delete {{ deleteTarget.name }}?</h4>
+        <p class="confirm-text">
+          Its stored credentials are deleted with it. This cannot be undone.
+        </p>
+        <ul v-if="deleteRefs && (deleteRefs.agents.length || deleteRefs.used_in_investigations)" class="confirm-refs">
+          <li v-if="deleteRefs.used_in_investigations">
+            It is selected for investigations — it will be deselected.
+          </li>
+          <li v-if="deleteRefs.agents.length">
+            Linked to {{ deleteRefs.agents.join(', ') }} — the link will be removed.
+          </li>
+        </ul>
+        <div class="form-actions">
+          <button class="cancel-btn" @click="deleteTarget = null">Cancel</button>
+          <button class="danger-btn" :disabled="isDeleting" @click="deleteConnector">
+            {{ isDeleting ? 'Deleting…' : 'Delete connector' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="lock-note">
@@ -442,7 +552,91 @@ onMounted(fetchConnectors)
   background: var(--surface);
   border: 1px solid var(--o08);
   border-radius: 11px;
+}
+.connector-select {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
   cursor: pointer;
+}
+.row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.row-btn {
+  padding: 5px 11px;
+  background: var(--o05);
+  border: 1px solid var(--o10);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.row-btn:hover {
+  color: var(--text);
+}
+.row-btn.danger:hover {
+  color: var(--c-danger);
+  border-color: var(--c-danger);
+}
+.form-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 11px;
+}
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.confirm-box {
+  background: var(--bg2);
+  border: 1px solid var(--o10);
+  border-radius: 13px;
+  padding: 18px 20px;
+  max-width: 420px;
+  width: 100%;
+}
+.confirm-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+.confirm-text {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+.confirm-refs {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted2);
+  line-height: 1.6;
+}
+.danger-btn {
+  padding: 7px 16px;
+  background: var(--c-danger);
+  color: var(--on-dark);
+  border: none;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+.danger-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .connector-info {
   flex: 1;

@@ -33,7 +33,8 @@ except ImportError:
 from app.models.schemas.mcp_tool import (
     MCPToolCreate, MCPToolUpdate, MCPToolResponse,
     MCPToolToAgentCreate, MCPToolToAgentResponse,
-    AgentMCPToolsResponse, MCPToolTestResponse
+    AgentMCPToolsResponse, MCPToolTestResponse, MCPToolReferencesResponse,
+    MCPTransportTypeEnum, unmask_secret_values
 )
 from app.tools.mcp_manager import TEST_CONNECT_BUDGET_SECONDS, MCPToolsManager
 from sqlalchemy.orm import Session
@@ -130,6 +131,8 @@ async def get_mcp_tool(
 ):
     """Get a specific MCP tool"""
     try:
+        check_mcp_feature_access(current_user, db)
+
         mcp_tool_repo = MCPToolRepository(db)
         mcp_tool = mcp_tool_repo.get_mcp_tool(mcp_tool_id)
         
@@ -195,6 +198,45 @@ async def test_mcp_tool(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{mcp_tool_id}/references", response_model=MCPToolReferencesResponse)
+async def get_mcp_tool_references(
+    mcp_tool_id: int,
+    current_user: User = Depends(require_permissions("manage_agents")),
+    db: Session = Depends(get_db)
+):
+    """What currently points at this connector, so a delete confirmation can
+    name what it is about to break. Deliberately ungated, like the delete it
+    precedes."""
+    try:
+        mcp_tool_repo = MCPToolRepository(db)
+        mcp_tool = mcp_tool_repo.get_mcp_tool(mcp_tool_id)
+
+        if not mcp_tool:
+            raise HTTPException(
+                status_code=404,
+                detail="MCP tool not found"
+            )
+
+        if mcp_tool.organization_id != current_user.organization_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to access this MCP tool"
+            )
+
+        return MCPToolReferencesResponse(
+            agents=mcp_tool_repo.get_mcp_tool_agent_names(mcp_tool_id),
+            used_in_investigations=mcp_tool_repo.is_used_in_investigations(
+                mcp_tool_id, current_user.organization_id
+            ),
+        )
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error fetching MCP tool references: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/{mcp_tool_id}", response_model=MCPToolResponse)
 async def update_mcp_tool(
     mcp_tool_id: int,
@@ -204,6 +246,8 @@ async def update_mcp_tool(
 ):
     """Update an existing MCP tool"""
     try:
+        check_mcp_feature_access(current_user, db)
+
         mcp_tool_repo = MCPToolRepository(db)
         mcp_tool = mcp_tool_repo.get_mcp_tool(mcp_tool_id)
         
@@ -222,7 +266,36 @@ async def update_mcp_tool(
         
         # Update MCP tool with provided fields
         update_dict = update_data.model_dump(exclude_unset=True)
+
+        # Secrets are masked on the way out, so a form that round-trips them
+        # untouched must leave the stored credential alone.
+        if 'env_vars' in update_dict:
+            update_dict['env_vars'] = unmask_secret_values(
+                update_dict['env_vars'], mcp_tool.env_vars
+            )
+        if 'headers' in update_dict:
+            update_dict['headers'] = unmask_secret_values(
+                update_dict['headers'], mcp_tool.headers
+            )
         
+        # transport_type is editable, and MCPToolUpdate carries none of the
+        # create-time validators, so check the state the update would leave
+        # behind — otherwise a connector can be saved with a transport it has
+        # no command or URL for and fails only mid-investigation.
+        transport = update_dict.get('transport_type', mcp_tool.transport_type)
+        transport = getattr(transport, 'value', transport)
+        if transport == MCPTransportTypeEnum.STDIO.value:
+            if not update_dict.get('command', mcp_tool.command):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Command is required for STDIO transport"
+                )
+        elif not update_dict.get('url', mcp_tool.url):
+            raise HTTPException(
+                status_code=400,
+                detail="URL is required for SSE/HTTP transport"
+            )
+
         # Check for name conflicts if name is being updated
         if 'name' in update_dict:
             existing = mcp_tool_repo.get_by_name(
@@ -251,7 +324,12 @@ async def delete_mcp_tool(
     current_user: User = Depends(require_permissions("manage_agents")),
     db: Session = Depends(get_db)
 ):
-    """Delete an MCP tool"""
+    """Delete an MCP tool.
+
+    Deliberately not behind check_mcp_feature_access: an org whose plan no
+    longer carries mcp_tools must still be able to remove its connectors,
+    otherwise a downgrade would strand their credentials in env_vars for good.
+    """
     try:
         mcp_tool_repo = MCPToolRepository(db)
         mcp_tool = mcp_tool_repo.get_mcp_tool(mcp_tool_id)

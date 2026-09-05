@@ -34,3 +34,28 @@ export function clampMCPTimeout(value: number | undefined | null): number {
   }
   return Math.min(Math.max(Math.round(value), MIN_MCP_TIMEOUT), MAX_MCP_TIMEOUT)
 }
+
+/**
+ * What the API sends instead of a stored environment/header value. Sending it
+ * back unchanged keeps the stored credential, so editing an unrelated field
+ * never forces the operator to mint a new one — providers typically show an
+ * API key exactly once. Must match SECRET_MASK in the backend schema.
+ */
+export const SECRET_MASK = '********'
+
+/** Record -> "KEY=value" lines, for the textarea editors. */
+export function recordToLines(record: Record<string, string> | undefined | null): string {
+  return Object.entries(record || {})
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n')
+}
+
+/** "KEY=value" lines -> record. Lines without '=' are ignored. */
+export function linesToRecord(lines: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const line of lines.split('\n')) {
+    const idx = line.indexOf('=')
+    if (idx > 0) result[line.slice(0, idx).trim()] = line.slice(idx + 1).trim()
+  }
+  return result
+}

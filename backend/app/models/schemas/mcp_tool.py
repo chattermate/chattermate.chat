@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_serializer, validator
 from typing import List, Optional, Dict, Union
 from enum import Enum
 from uuid import UUID
@@ -26,6 +26,39 @@ class MCPTransportTypeEnum(str, Enum):
     STDIO = "stdio"
     SSE = "sse"
     HTTP = "http"
+
+
+# Stand-in sent to the client in place of stored environment/header values.
+# An update that sends it back means "keep what is stored", so correcting an
+# unrelated field never costs a credential rotation — providers typically show
+# an API key exactly once.
+SECRET_MASK = "********"
+
+
+def mask_secret_values(values: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    """Replace every value with the mask, keeping the keys so the operator can
+    still see which variables are set."""
+    if not values:
+        return values
+    return {key: SECRET_MASK for key in values}
+
+
+def unmask_secret_values(
+    incoming: Optional[Dict[str, str]], stored: Optional[Dict[str, str]]
+) -> Optional[Dict[str, str]]:
+    """Resolve an incoming secret map against what is stored: a masked value
+    keeps the stored one, anything else is a deliberate replacement. A masked
+    key with nothing stored behind it is dropped rather than written empty."""
+    if not incoming:
+        return incoming
+    stored = stored or {}
+    resolved = {}
+    for key, value in incoming.items():
+        if value != SECRET_MASK:
+            resolved[key] = value
+        elif key in stored:
+            resolved[key] = stored[key]
+    return resolved
 
 
 class MCPToolBase(BaseModel):
@@ -66,6 +99,7 @@ class MCPToolCreate(MCPToolBase):
 class MCPToolUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
+    transport_type: Optional[MCPTransportTypeEnum] = None
     enabled: Optional[bool] = None
     
     # STDIO transport fields
@@ -104,8 +138,21 @@ class MCPToolResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_serializer("env_vars", "headers")
+    def _mask_secrets(self, values: Optional[Dict[str, str]], _info):
+        """Credentials never leave the server. The edit form round-trips the
+        mask, and the update endpoint resolves it back to the stored value."""
+        return mask_secret_values(values)
+
     class Config:
         from_attributes = True
+
+
+class MCPToolReferencesResponse(BaseModel):
+    """Where a connector is in use, so a delete confirmation can name what it
+    is about to break instead of asking blind."""
+    agents: List[str] = []
+    used_in_investigations: bool = False
 
 
 class MCPToolToAgentCreate(BaseModel):
