@@ -402,13 +402,35 @@ const isMessageInputEnabled = computed(() => {
            connectionStatus.value === 'connected' && !loading.value)  || window.__INITIAL_DATA__?.workflow
 })
 
+// Whether the field accepts typing. Same conditions as sending, except that a
+// reply being in flight does not close the field: disabling an input blurs it, so
+// the visitor lost their cursor after every single reply and had to click back in
+// (#316). Sending stays gated on isMessageInputEnabled, so a second message
+// cannot jump the queue - only the typing carries on.
+const canTypeMessage = computed(() => isMessageInputEnabled.value || (
+    loading.value && connectionStatus.value === 'connected' && hasStartedChat.value
+))
+
 const placeholderText = computed(() => {
     return connectionStatus.value === 'connected' ? (isAskAnythingStyle.value ? 'Ask me anything...' : 'Type a message...') : 'Connecting...'
 })
 
+// A message typed while the assistant is still answering. The field stays open
+// during a reply (see canTypeMessage), so this is reachable now in a way it never
+// was when the input was disabled — and neither obvious option is right on its
+// own: sending starts a second agent run on the same conversation, and dropping
+// it loses what the visitor typed without saying so. Hold it, and send it the
+// moment the reply lands.
+const pendingSend = ref(false)
+
 // Update the sendMessage function
 const sendMessage = async () => {
     if (!newMessage.value.trim() && uploadedAttachments.value.length === 0) return
+
+    if (loading.value && hasStartedChat.value) {
+        pendingSend.value = true
+        return
+    }
 
     // If first message, fetch customization with email first
     if (!hasStartedChat.value && emailInput.value) {
@@ -451,6 +473,17 @@ const sendMessage = async () => {
         setupNativeEventListeners()
     }, 500)
 }
+
+// Release a queued message once the reply lands. Ending a chat also clears
+// `loading` (resetConversationState stops the typing indicator), so hasStartedChat
+// is what tells the two apart: a conversation the visitor just closed must not
+// receive the message they typed into the one before it. A drop leaves it in the
+// box, where the composer already shows them it has not been sent.
+watch(loading, (isReplying) => {
+    if (isReplying || !pendingSend.value) return
+    pendingSend.value = false
+    if (connectionStatus.value === 'connected' && hasStartedChat.value) void sendMessage()
+})
 
 // Send a predefined quick-action: reuse the normal send path with the label text.
 const sendQuickAction = (label: string) => {
@@ -1927,6 +1960,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             :welcome-subtitle="askAiSubtitle"
             :placeholder="placeholderText"
             :input-enabled="isMessageInputEnabled"
+            :typing-enabled="canTypeMessage"
             :loading="loading"
             :show-citations="showCitations"
             :disclaimer="showAiDisclaimer ? AI_DISCLAIMER_TEXT : ''"
@@ -1988,8 +2022,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         @keypress="handleKeyPress"
                         @input="handleInputSync"
                         @change="handleInputSync"
-                        :disabled="!isMessageInputEnabled"
-                        :class="{ 'disabled': !isMessageInputEnabled }"
+                        :disabled="!canTypeMessage"
+                        :class="{ 'disabled': !canTypeMessage }"
                         class="welcome-message-field"
                     >
                     <button
@@ -2853,8 +2887,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         @drop="handleDrop"
                         @dragover="handleDragOver"
                         @dragleave="handleDragLeave"
-                        :disabled="!isMessageInputEnabled"
-                        :class="{ 'disabled': !isMessageInputEnabled, 'ask-anything-field': isAskAnythingStyle }"
+                        :disabled="!canTypeMessage"
+                        :class="{ 'disabled': !canTypeMessage, 'ask-anything-field': isAskAnythingStyle }"
                     >
                     <button
                         v-if="canUploadMore"
