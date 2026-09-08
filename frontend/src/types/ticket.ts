@@ -136,6 +136,9 @@ export interface InvestigationRun {
     failed: { name: string; error: string }[]
     /** Hard provider rejections seen during the run. */
     provider_errors?: string[]
+    /** Tool calls attempted, and how many of them errored. */
+    tool_calls?: number
+    tool_calls_failed?: number
   } | null
   started_at?: string | null
   finished_at?: string | null

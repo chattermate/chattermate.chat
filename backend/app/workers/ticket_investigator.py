@@ -470,11 +470,19 @@ async def _process_investigation(db, run, service: TicketService, ticket: Ticket
     # of its configured MCP tools (missing npx, bad key, unreachable server)
     # must be visible on the dashboard, not just in worker logs (issue #271).
     configured_tool_ids = settings_row.investigation_mcp_tool_ids or []
-    if configured_tool_ids:
+    # Also reported when the org has no MCP connectors at all: a
+    # DB-connector-only run can still have every query fail, and that must not
+    # render as a clean run (#318).
+    if configured_tool_ids or recorder.tool_calls:
         run.connector_status = {
             "configured": len(configured_tool_ids),
             "loaded": len(mcp_manager.connected_tool_names),
             "failed": mcp_manager.failed_tools,
+            # A connector can load cleanly and then error on every query. That
+            # leaves loaded == configured with no provider errors, so the run
+            # looks healthy while resting on nothing (#318).
+            "tool_calls": recorder.tool_calls,
+            "tool_calls_failed": recorder.failed_tool_calls,
             # A connector can come up perfectly and still be unusable if the
             # provider refuses its tools; that must show next to the
             # connection failures, not only in worker logs (#303).

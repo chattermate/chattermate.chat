@@ -18,6 +18,7 @@ RCA synthesis/versioning.
 """
 
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 
@@ -38,6 +39,7 @@ from app.models.schemas.investigation import (
 from app.models.ticket import Ticket, TicketPriority, TicketSource, TicketStatus
 from app.services.ticket_investigation import (
     EvidenceRecorder,
+    enforce_evidence_backed_verdict,
     redact_snippet,
     run_investigation_phases,
     synthesize_and_store_rca,
@@ -303,3 +305,138 @@ class TestRcaSynthesis:
         )
         assert result is None
         assert db.query(RCADocument).count() == 0
+
+
+class TestEvidenceBackedVerdicts:
+    """Tool errors are the absence of evidence, never evidence of absence.
+
+    A run whose every search failed could still report "the record does not
+    exist — validated, 0.90", which a support agent would act on (#318).
+    """
+
+    @staticmethod
+    def _agent_claiming(status, confidence=0.9):
+        return _FakeAgent(
+            plan=HypothesisPlan(hypotheses=[HypothesisSpec(title="H", rationale="r")]),
+            verdict=HypothesisVerdict(
+                status=status, confidence=confidence,
+                conclusion="No record of the order exists in any index.",
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_verdict_is_downgraded_when_every_tool_call_failed(
+        self, db, run, ticket, recorder
+    ):
+        async def failing_tool(**kwargs):
+            raise RuntimeError("index_not_found_exception: no such index [app-logs-*]")
+
+        agent = self._agent_claiming("validated")
+
+        async def test_hypothesis(context, title, rationale, **kwargs):
+            for _ in range(3):
+                with pytest.raises(RuntimeError):
+                    await recorder.tool_hook("search_logs", failing_tool, {"q": "x"})
+            return agent.verdict
+
+        agent.test_hypothesis = test_hypothesis
+        hypotheses, _ = await run_investigation_phases(
+            db, run, ticket, agent, "context", [object()], recorder
+        )
+
+        assert hypotheses[0].status == HypothesisStatus.INCONCLUSIVE
+        assert hypotheses[0].confidence == 0.0
+        assert "all 3 tool calls in this phase failed" in hypotheses[0].conclusion
+        # The model's claim is recorded, but its wording is not — the RCA
+        # writer would otherwise quote "no record exists" as a finding.
+        assert "validated" in hypotheses[0].conclusion
+        assert "No record of the order exists" not in hypotheses[0].conclusion
+
+    @pytest.mark.asyncio
+    async def test_an_invalidated_verdict_is_downgraded_too(self, db, run, ticket, recorder):
+        """The reported case: 'the record does not exist' is a claim of
+        absence, and absence is exactly what a failed search cannot prove."""
+        async def failing_tool(**kwargs):
+            raise RuntimeError("boom")
+
+        agent = self._agent_claiming("invalidated")
+
+        async def test_hypothesis(context, title, rationale, **kwargs):
+            with pytest.raises(RuntimeError):
+                await recorder.tool_hook("search_logs", failing_tool, {})
+            return agent.verdict
+
+        agent.test_hypothesis = test_hypothesis
+        hypotheses, _ = await run_investigation_phases(
+            db, run, ticket, agent, "context", [object()], recorder
+        )
+
+        assert hypotheses[0].status == HypothesisStatus.INCONCLUSIVE
+        assert "all 1 tool call in this phase failed" in hypotheses[0].conclusion
+
+    @pytest.mark.asyncio
+    async def test_a_verdict_survives_when_one_call_succeeded(self, db, run, ticket, recorder):
+        """Partial failure still leaves real evidence; only a total washout
+        removes the basis for a finding."""
+        async def failing_tool(**kwargs):
+            raise RuntimeError("boom")
+
+        async def working_tool(**kwargs):
+            return "1 hit: status 500"
+
+        agent = self._agent_claiming("validated")
+
+        async def test_hypothesis(context, title, rationale, **kwargs):
+            with pytest.raises(RuntimeError):
+                await recorder.tool_hook("search_logs", failing_tool, {})
+            await recorder.tool_hook("search_logs", working_tool, {})
+            return agent.verdict
+
+        agent.test_hypothesis = test_hypothesis
+        hypotheses, _ = await run_investigation_phases(
+            db, run, ticket, agent, "context", [object()], recorder
+        )
+
+        assert hypotheses[0].status == "validated"
+        assert hypotheses[0].confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_a_hypothesis_with_no_tool_calls_is_left_alone(
+        self, db, run, ticket, recorder
+    ):
+        """Reasoning from the ticket alone is legitimate — the instructions
+        explicitly allow it when there are no tools."""
+        agent = self._agent_claiming("validated")
+        hypotheses, _ = await run_investigation_phases(
+            db, run, ticket, agent, "context", [], recorder
+        )
+
+        assert hypotheses[0].status == "validated"
+        assert hypotheses[0].confidence == 0.9
+
+    def test_the_rule_leaves_an_already_inconclusive_verdict_untouched(self, recorder):
+        hypothesis = InvestigationHypothesis(
+            id=uuid4(), run_id=uuid4(), ticket_id=uuid4(), idx=1, title="H",
+            status=HypothesisStatus.INCONCLUSIVE, confidence=0.4, conclusion="Not enough.",
+        )
+        recorder.calls_by_hypothesis[hypothesis.id] = [2, 2]
+
+        assert enforce_evidence_backed_verdict(hypothesis, recorder) is False
+        assert hypothesis.conclusion == "Not enough."
+
+    @pytest.mark.asyncio
+    async def test_the_run_reports_how_many_calls_errored(self, db, recorder, run):
+        """connector_status is what the dashboard reads; a connector that
+        loads and then errors on every query shows up nowhere else."""
+        async def failing_tool(**kwargs):
+            raise RuntimeError("boom")
+
+        async def working_tool(**kwargs):
+            return "ok"
+
+        with pytest.raises(RuntimeError):
+            await recorder.tool_hook("t", failing_tool, {})
+        await recorder.tool_hook("t", working_tool, {})
+
+        assert recorder.tool_calls == 2
+        assert recorder.failed_tool_calls == 1

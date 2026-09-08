@@ -33,7 +33,8 @@ from app.models.agent import Agent, AgentType
 from app.models.mcp_tool import MCPTransportType
 from app.repositories.mcp_tool import MCPToolRepository
 from app.models.schemas.mcp_tool import (
-    MCPToolCreate, MCPToolUpdate, MCPToolToAgentCreate, SECRET_MASK
+    MCPToolCreate, MCPToolUpdate, MCPToolToAgentCreate,
+    MAX_USAGE_GUIDANCE_CHARS, SECRET_MASK,
 )
 from app.models.ticket_settings import OrganizationTicketSettings
 
@@ -421,3 +422,56 @@ def test_update_rejects_clearing_the_stdio_command(client: TestClient, db):
     bad = client.put(f"/api/mcp/{tool_id}", json={"command": ""})
     assert bad.status_code == 400
     assert "Command is required" in bad.json()["detail"]
+
+
+GUIDANCE = "Indices: app-logs-*. Order id is fields.order_ref, not order_id."
+
+
+def test_usage_guidance_round_trips_and_is_not_masked(client: TestClient, db):
+    """Guidance is prompt text, not a credential — masking it would make the
+    edit form unable to show the operator what they wrote."""
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "GuidedTool",
+        "transport_type": MCPTransportType.HTTP.value,
+        "url": "https://example.com/mcp",
+        "usage_guidance": GUIDANCE,
+        "enabled": True,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["usage_guidance"] == GUIDANCE
+    tool_id = resp.json()["id"]
+
+    assert client.get(f"/api/mcp/{tool_id}").json()["usage_guidance"] == GUIDANCE
+
+    updated = client.put(f"/api/mcp/{tool_id}", json={"usage_guidance": "Replaced."})
+    assert updated.status_code == 200
+    assert updated.json()["usage_guidance"] == "Replaced."
+
+
+def test_usage_guidance_defaults_to_none(client: TestClient, db):
+    """A connector nobody has documented must stay untouched."""
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "UndocumentedTool",
+        "transport_type": MCPTransportType.HTTP.value,
+        "url": "https://example.com/mcp",
+        "enabled": True,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["usage_guidance"] is None
+
+
+def test_overlong_usage_guidance_is_rejected(client: TestClient, db):
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "TooMuchGuidance",
+        "transport_type": MCPTransportType.HTTP.value,
+        "url": "https://example.com/mcp",
+        "usage_guidance": "x" * (MAX_USAGE_GUIDANCE_CHARS + 1),
+        "enabled": True,
+    })
+    assert resp.status_code == 422

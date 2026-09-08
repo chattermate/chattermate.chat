@@ -18,6 +18,12 @@ limitations under the License.
 import { onMounted, ref } from 'vue'
 import { useMCPTools } from '@/composables/useMCPTools'
 import type { MCPTransportType } from '@/types/mcp'
+import {
+  CONNECTOR_GUIDANCE_EXAMPLE,
+  CONNECTOR_GUIDANCE_HINT,
+  CONNECTOR_GUIDANCE_LABEL,
+} from '@/utils/mcp'
+import GuidanceTextarea from '@/components/common/GuidanceTextarea.vue'
 
 const props = defineProps<{
   agentId: string
@@ -298,8 +304,16 @@ onMounted(() => {
                   type="text" 
                   placeholder="What does this tool do?"
                 >
+                <small class="field-hint">A label for your team. The AI doesn't read this.</small>
               </div>
             </div>
+            <GuidanceTextarea
+              v-model="createForm.usage_guidance"
+              :label="CONNECTOR_GUIDANCE_LABEL"
+              :hint="CONNECTOR_GUIDANCE_HINT"
+              :example="CONNECTOR_GUIDANCE_EXAMPLE"
+              :rows="5"
+            />
           </div>
 
           <!-- Transport Type -->

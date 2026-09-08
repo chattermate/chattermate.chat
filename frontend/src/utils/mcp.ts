@@ -59,3 +59,42 @@ export function linesToRecord(lines: string): Record<string, string> {
   }
   return result
 }
+
+/**
+ * Ceiling on a connector's usage guidance. Must match MAX_USAGE_GUIDANCE_CHARS
+ * in the backend schema — if it drifts, the operator hits a bare 422 toast
+ * instead of the textarea stopping them.
+ */
+export const MAX_GUIDANCE_CHARS = 2000
+
+/**
+ * Copy for the connector guidance field. Lives here because the field appears
+ * in two structurally unrelated forms — the investigation connector list and
+ * the agent MCP tools modal — and the wording must not drift between them.
+ */
+export const CONNECTOR_GUIDANCE_LABEL = 'How to query this source'
+
+export const CONNECTOR_GUIDANCE_HINT =
+  'Given to the AI whenever it uses this connector. Name the indices, projects or ' +
+  'tables it should reach for, and the fields that identify a customer or an order. ' +
+  'Optional — leave it blank and the AI explores blind.'
+
+/**
+ * Deliberately written as instructions, not as a description. Tested against a
+ * real MCP server and a real model: naming the field ("Order id is
+ * fields.order_ref") got the right index but a bare keyword query and a false
+ * "no such order". Telling it what to *do* ("query app-logs-* with
+ * fields.order_ref:<ref> — always name that field") found the record in one
+ * call. Operators copy this example, so it has to model the phrasing that
+ * works.
+ *
+ * The last line matters just as much: a query against a field that does not
+ * exist returns zero hits rather than an error, so without the warning the AI
+ * reads a clean "no results" and concludes the record is absent.
+ */
+export const CONNECTOR_GUIDANCE_EXAMPLE = `Indices: app-logs-* (one doc per request), payment-logs-* (Stripe webhooks).
+To find an order, query app-logs-* with \`fields.order_ref:<the reference>\` —
+always name that field explicitly; a bare keyword search matches nothing.
+Timestamps are @timestamp, UTC, 30-day retention.
+There is no order_id field; matching on it returns zero hits rather than an
+error, so an empty result is not evidence the order is absent.`

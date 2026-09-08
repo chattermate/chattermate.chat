@@ -27,6 +27,8 @@ from uuid import uuid4
 from app.models.mcp_tool import MCPTransportType
 from app.tools.mcp_manager import (
     CHAT_CONNECT_BUDGET_SECONDS,
+    CONNECTOR_GUIDANCE_TEMPLATE,
+    MAX_GUIDANCE_FUNCTIONS,
     CONNECT_TIMEOUT_MARGIN_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     HANDSHAKE_REQUESTS,
@@ -982,3 +984,189 @@ class TestChatAgentMCPMixin:
         agent = TestAgent()
         agent.__del__()  # Should not raise
 
+
+
+# --- Per-connector usage guidance (#318) -------------------------------------
+#
+# The model never sees a connector's name or description; MCP function names
+# arrive in one flat namespace shared by every connected server. Guidance is
+# what tells it which source a function belongs to and which fields to query.
+
+def _guided_config(guidance, name="Elastic prod", functions=None):
+    config = MagicMock()
+    config.name = name
+    config.transport_type = MCPTransportType.STDIO
+    config.timeout = None
+    config.command = "npx"
+    config.args = ["-y", "@elastic/mcp-server-elasticsearch"]
+    config.env_vars = {}
+    config.usage_guidance = guidance
+    return config
+
+
+async def _connect(manager, config, functions=("search", "esql")):
+    """Run a config through the real build/connect path with MCPTools mocked,
+    and hand back the toolkit instance the manager registered."""
+    with patch("app.tools.mcp_manager.SessionLocal") as mock_sess_local, \
+         patch("app.tools.mcp_manager.MCPToolRepository") as mock_repo_cls, \
+         patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        mock_sess_local.return_value.__enter__.return_value = MagicMock()
+        mock_repo = MagicMock()
+        mock_repo.get_by_ids.return_value = [config]
+        mock_repo_cls.return_value = mock_repo
+
+        instance = AsyncMock()
+        instance.functions = {name: MagicMock() for name in functions}
+        instance.instructions = None
+        instance.add_instructions = False
+        mock_mcp_tools_cls.return_value = instance
+
+        await manager.initialize_mcp_tools_by_ids(str(uuid4()), [1])
+        return instance
+
+
+@pytest.mark.asyncio
+async def test_guidance_becomes_toolkit_instructions_naming_the_connector():
+    config = _guided_config("Order id is fields.order_ref, not order_id.")
+    instance = await _connect(MCPToolsManager(), config)
+
+    assert instance.add_instructions is True
+    assert "Order id is fields.order_ref" in instance.instructions
+    # The connector name and its functions are what bind the guidance to the
+    # right tools in a namespace shared with every other connector.
+    assert "Elastic prod" in instance.instructions
+    assert "search" in instance.instructions and "esql" in instance.instructions
+
+
+@pytest.mark.asyncio
+async def test_a_connector_without_guidance_leaves_the_prompt_untouched():
+    """The regression fence for every org that never opts in."""
+    instance = await _connect(MCPToolsManager(), _guided_config(None))
+
+    assert instance.instructions is None
+    assert instance.add_instructions is False
+
+
+@pytest.mark.asyncio
+async def test_whitespace_only_guidance_injects_nothing():
+    instance = await _connect(MCPToolsManager(), _guided_config("   \n  "))
+
+    assert instance.instructions is None
+    assert instance.add_instructions is False
+
+
+@pytest.mark.asyncio
+async def test_guidance_is_truncated_to_the_schema_limit():
+    from app.models.schemas.mcp_tool import MAX_USAGE_GUIDANCE_CHARS
+
+    instance = await _connect(MCPToolsManager(), _guided_config("x" * 5000))
+
+    assert "x" * MAX_USAGE_GUIDANCE_CHARS in instance.instructions
+    assert "x" * (MAX_USAGE_GUIDANCE_CHARS + 1) not in instance.instructions
+
+
+@pytest.mark.asyncio
+async def test_the_function_list_is_capped_for_a_large_server():
+    names = [f"tool_{i}" for i in range(MAX_GUIDANCE_FUNCTIONS + 10)]
+    instance = await _connect(MCPToolsManager(), _guided_config("Guidance."), functions=names)
+
+    assert "(10 more)" in instance.instructions
+    assert f"tool_{MAX_GUIDANCE_FUNCTIONS + 5}" not in instance.instructions
+
+
+@pytest.mark.asyncio
+async def test_a_connector_that_fails_to_connect_carries_no_guidance():
+    """Guidance must never describe a source that isn't actually there."""
+    manager = MCPToolsManager()
+    config = _guided_config("Indices: app-logs-*.")
+
+    with patch("app.tools.mcp_manager.SessionLocal") as mock_sess_local, \
+         patch("app.tools.mcp_manager.MCPToolRepository") as mock_repo_cls, \
+         patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        mock_sess_local.return_value.__enter__.return_value = MagicMock()
+        mock_repo = MagicMock()
+        mock_repo.get_by_ids.return_value = [config]
+        mock_repo_cls.return_value = mock_repo
+
+        instance = AsyncMock()
+        instance.functions = {}  # connected, but exposed nothing
+        instance.instructions = None
+        instance.add_instructions = False
+        mock_mcp_tools_cls.return_value = instance
+
+        tools = await manager.initialize_mcp_tools_by_ids(str(uuid4()), [1])
+
+    assert tools == []
+    assert instance.instructions is None
+    assert instance.add_instructions is False
+
+
+@pytest.mark.asyncio
+async def test_chat_agents_get_connector_guidance_too():
+    """Connectors are shared between investigations and chat agents, and the
+    guidance is documentation about the source — it applies on both paths."""
+    manager = MCPToolsManager()
+    config = _guided_config("Indices: app-logs-*.")
+
+    with patch("app.tools.mcp_manager.SessionLocal") as mock_sess_local, \
+         patch("app.tools.mcp_manager.MCPToolRepository") as mock_repo_cls, \
+         patch("app.tools.mcp_manager.MCPTools") as mock_mcp_tools_cls:
+        mock_sess_local.return_value.__enter__.return_value = MagicMock()
+        mock_repo = MagicMock()
+        mock_repo.get_agent_mcp_tools.return_value = [config]
+        mock_repo_cls.return_value = mock_repo
+
+        instance = AsyncMock()
+        instance.functions = {"search": MagicMock()}
+        instance.instructions = None
+        instance.add_instructions = False
+        mock_mcp_tools_cls.return_value = instance
+
+        await manager.initialize_mcp_tools(str(uuid4()), str(uuid4()))
+
+    assert instance.add_instructions is True
+    assert "Indices: app-logs-*." in instance.instructions
+
+
+def test_agno_still_renders_toolkit_instructions_into_the_system_message():
+    """Contract test against the real agno library, not a mock.
+
+    Every other test here mocks MCPTools, so they would all keep passing if
+    agno renamed or dropped `Toolkit.add_instructions` — and the feature would
+    silently do nothing. This pins the one assumption the whole thing rests
+    on: guidance set on a toolkit reaches the SYSTEM prompt, after the agent's
+    own instructions. If an agno upgrade breaks this, fail here and loudly.
+    """
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
+    from agno.tools.toolkit import Toolkit
+
+    class _Connector(Toolkit):
+        def __init__(self):
+            super().__init__(name="MCPTools")
+            self.register(self.search_logs)
+
+        def search_logs(self, q: str) -> str:
+            """Search logs."""
+            return "ok"
+
+    toolkit = _Connector()
+    toolkit.instructions = CONNECTOR_GUIDANCE_TEMPLATE.format(
+        name="Elastic prod", functions="search_logs", guidance="Order id is fields.order_ref."
+    )
+    toolkit.add_instructions = True
+
+    agent = Agent(
+        name="t",
+        tools=[toolkit],
+        instructions="BASE RULES.",
+        markdown=False,
+        model=OpenAIChat(id="gpt-4o-mini", api_key="not-used-no-request-is-made"),
+    )
+    agent.determine_tools_for_model(model=agent.model, session_id="s1")
+    system_message = agent.get_system_message(session_id="s1").content
+
+    assert "Order id is fields.order_ref." in system_message
+    assert "Elastic prod" in system_message
+    # After the agent's own instructions, so the base rules are read first.
+    assert system_message.index("</instructions>") < system_message.index("data_source")
