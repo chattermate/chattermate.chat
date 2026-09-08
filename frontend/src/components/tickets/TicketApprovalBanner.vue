@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { InvestigationHypothesis, TicketProposal } from '@/types/ticket'
+import InvestigationNoteForm from './InvestigationNoteForm.vue'
 
 const props = defineProps<{
   proposal: TicketProposal
@@ -30,7 +31,6 @@ const emit = defineEmits<{
 }>()
 
 const isRejecting = ref(false)
-const rejectReason = ref('')
 const reinvestigate = ref(true)
 const isSubmitting = ref(false)
 
@@ -52,9 +52,9 @@ function approve() {
   emit('approve')
 }
 
-function submitReject() {
+function submitReject(reason: string) {
   isSubmitting.value = true
-  emit('reject', rejectReason.value.trim(), reinvestigate.value)
+  emit('reject', reason, reinvestigate.value)
 }
 </script>
 
@@ -102,23 +102,20 @@ function submitReject() {
             Approve &amp; resolve
           </button>
         </template>
-        <div v-else class="reject-form">
-          <textarea
-            v-model="rejectReason"
-            class="reject-input"
-            placeholder="Why is this wrong? Your reason guides the next investigation…"
-          ></textarea>
+        <InvestigationNoteForm
+          v-else
+          placeholder="Why is this wrong? Your note guides the next investigation…"
+          submit-label="Reject proposal"
+          tone="danger"
+          :busy="isSubmitting"
+          @cancel="isRejecting = false"
+          @submit="submitReject"
+        >
           <label class="reinvestigate-row">
             <input v-model="reinvestigate" type="checkbox" />
             Re-run the investigation with this feedback
           </label>
-          <div class="reject-actions">
-            <button class="cancel-btn" @click="isRejecting = false">Cancel</button>
-            <button class="reject-confirm" :disabled="isSubmitting" @click="submitReject">
-              Reject proposal
-            </button>
-          </div>
-        </div>
+        </InvestigationNoteForm>
       </div>
       <div v-else class="banner-sub">
         You don't have permission to approve AI actions on tickets.
@@ -285,29 +282,9 @@ function submitReject() {
   margin-right: 9px;
 }
 .approve-btn:disabled,
-.reject-btn:disabled,
-.reject-confirm:disabled {
+.reject-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-.reject-form {
-  background: var(--surface);
-  border: 1px solid var(--o08);
-  border-radius: 11px;
-  padding: 12px;
-}
-.reject-input {
-  width: 100%;
-  min-height: 68px;
-  resize: vertical;
-  background: var(--bg2);
-  border: 1px solid var(--o10);
-  border-radius: 9px;
-  padding: 9px 11px;
-  color: var(--text);
-  font-size: 12.5px;
-  line-height: 1.5;
-  outline: none;
 }
 .reinvestigate-row {
   display: flex;
@@ -316,31 +293,6 @@ function submitReject() {
   margin-top: 9px;
   font-size: 12px;
   color: var(--text3);
-  cursor: pointer;
-}
-.reject-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 9px;
-  margin-top: 10px;
-}
-.cancel-btn {
-  padding: 7px 13px;
-  background: var(--o05);
-  border: 1px solid var(--o10);
-  color: var(--muted);
-  border-radius: 9px;
-  font-size: 12.5px;
-  cursor: pointer;
-}
-.reject-confirm {
-  padding: 7px 15px;
-  background: var(--c-danger);
-  color: var(--on-light, #fff);
-  border: none;
-  border-radius: 9px;
-  font-size: 12.5px;
-  font-weight: var(--font-weight-semibold);
   cursor: pointer;
 }
 </style>
