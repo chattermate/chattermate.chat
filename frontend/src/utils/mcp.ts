@@ -59,3 +59,34 @@ export function linesToRecord(lines: string): Record<string, string> {
   }
   return result
 }
+
+/**
+ * Ceiling on a connector's usage guidance. Must match MAX_USAGE_GUIDANCE_CHARS
+ * in the backend schema — if it drifts, the operator hits a bare 422 toast
+ * instead of the textarea stopping them.
+ */
+export const MAX_GUIDANCE_CHARS = 2000
+
+/**
+ * Copy for the connector guidance field. Lives here because the field appears
+ * in two structurally unrelated forms — the investigation connector list and
+ * the agent MCP tools modal — and the wording must not drift between them.
+ */
+export const CONNECTOR_GUIDANCE_LABEL = 'How to query this source'
+
+export const CONNECTOR_GUIDANCE_HINT =
+  'Given to the AI whenever it uses this connector. Name the indices, projects or ' +
+  'tables it should reach for, and the fields that identify a customer or an order. ' +
+  'Optional — leave it blank and the AI explores blind.'
+
+/**
+ * The third line is the point of the example: a query against a field that
+ * does not exist returns zero hits rather than an error, so the AI reads a
+ * clean "no results" and concludes the record is absent. Operators need to
+ * know that is worth warning about.
+ */
+export const CONNECTOR_GUIDANCE_EXAMPLE = `Indices: app-logs-* (one doc per request), payment-logs-* (Stripe webhooks).
+Order id is fields.order_ref on app-logs-*, metadata.order on payment-logs-*.
+There is no order_id field — matching on it returns zero hits, not an error.
+Timestamps are @timestamp, UTC, 30-day retention.
+Query with the ES|QL tool; the search tool is not enabled on this cluster.`

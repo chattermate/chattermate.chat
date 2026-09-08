@@ -20,6 +20,8 @@ export interface MCPTool {
   id: number
   name: string
   description?: string
+  /** Prompt text: what this source holds and how to query it. */
+  usage_guidance?: string | null
   transport_type: MCPTransportType
   enabled: boolean
   
@@ -43,6 +45,8 @@ export interface MCPTool {
 export interface MCPToolCreate {
   name: string
   description?: string
+  /** Prompt text: what this source holds and how to query it. */
+  usage_guidance?: string | null
   transport_type: MCPTransportType
   enabled: boolean
   
@@ -62,6 +66,8 @@ export interface MCPToolCreate {
 export interface MCPToolUpdate {
   name?: string
   description?: string
+  /** Prompt text: what this source holds and how to query it. */
+  usage_guidance?: string | null
   enabled?: boolean
   
   // STDIO transport fields

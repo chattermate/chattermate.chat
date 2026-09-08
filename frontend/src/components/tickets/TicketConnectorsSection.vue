@@ -19,7 +19,17 @@ import { onMounted, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { mcpService } from '@/services/mcp'
 import type { MCPTool, MCPToolReferences, MCPTransportType } from '@/types/mcp'
-import { DEFAULT_MCP_TIMEOUT, SECRET_MASK, clampMCPTimeout, linesToRecord, recordToLines } from '@/utils/mcp'
+import {
+  CONNECTOR_GUIDANCE_EXAMPLE,
+  CONNECTOR_GUIDANCE_HINT,
+  CONNECTOR_GUIDANCE_LABEL,
+  DEFAULT_MCP_TIMEOUT,
+  SECRET_MASK,
+  clampMCPTimeout,
+  linesToRecord,
+  recordToLines,
+} from '@/utils/mcp'
+import GuidanceTextarea from '@/components/common/GuidanceTextarea.vue'
 import grafanaLogo from '@/assets/grafana-logo.svg'
 import elasticsearchLogo from '@/assets/elasticsearch-logo.svg'
 import sentryLogo from '@/assets/sentry-logo.svg'
@@ -109,6 +119,7 @@ const form = reactive({
   args: '',
   envLines: '',
   timeout: DEFAULT_MCP_TIMEOUT,
+  usageGuidance: '',
 })
 
 function applyPreset(preset: (typeof PRESETS)[0] | null) {
@@ -122,6 +133,10 @@ function applyPreset(preset: (typeof PRESETS)[0] | null) {
     args: preset?.args || '',
     envLines: preset?.envLines || '',
     timeout: DEFAULT_MCP_TIMEOUT,
+    // Never seeded from the preset: its `desc` is a one-line marketing
+    // subtitle, and shipping that as prompt text is the exact failure this
+    // field exists to fix.
+    usageGuidance: '',
   })
   editingId.value = null
   showForm.value = true
@@ -140,6 +155,7 @@ function startEdit(connector: MCPTool) {
     args: (connector.args || []).join(' '),
     envLines: recordToLines(connector.env_vars),
     timeout: connector.timeout ?? DEFAULT_MCP_TIMEOUT,
+    usageGuidance: connector.usage_guidance || '',
   })
   editingId.value = connector.id
   showForm.value = true
@@ -175,6 +191,7 @@ function formPayload() {
     args: isRemote ? [] : form.args.trim().split(/\s+/).filter(Boolean),
     env_vars: isRemote ? {} : linesToRecord(form.envLines),
     timeout: clampMCPTimeout(form.timeout),
+    usage_guidance: form.usageGuidance.trim() || null,
   }
 }
 
@@ -332,6 +349,15 @@ onMounted(fetchConnectors)
           />
           <span class="field-note">Handshake and per-call limit. Raise it for slow first launches.</span>
         </label>
+        <div class="form-field wide">
+          <GuidanceTextarea
+            v-model="form.usageGuidance"
+            :label="CONNECTOR_GUIDANCE_LABEL"
+            :hint="CONNECTOR_GUIDANCE_HINT"
+            :example="CONNECTOR_GUIDANCE_EXAMPLE"
+            :rows="5"
+          />
+        </div>
       </div>
       <div class="form-actions">
         <button class="cancel-btn" @click="cancelForm">Cancel</button>
@@ -358,6 +384,7 @@ onMounted(fetchConnectors)
               {{ connector.name }}
               <span class="transport-tag mono">{{ connector.transport_type }}</span>
               <span v-if="!connector.enabled" class="disabled-tag mono">disabled</span>
+              <span v-if="connector.usage_guidance" class="guided-tag mono" title="The AI has guidance for this source">guided</span>
             </div>
             <div class="connector-sub mono">
               {{ connector.url || [connector.command, ...(connector.args || [])].join(' ') }}
@@ -658,12 +685,18 @@ onMounted(fetchConnectors)
   border-radius: 6px;
   text-transform: uppercase;
 }
-.disabled-tag {
+.disabled-tag,
+.guided-tag {
   font-size: 9.5px;
-  color: var(--faint);
   background: var(--o05);
   padding: 1px 7px;
   border-radius: 6px;
+}
+.disabled-tag {
+  color: var(--faint);
+}
+.guided-tag {
+  color: var(--muted);
 }
 .connector-sub {
   font-size: 10.5px;

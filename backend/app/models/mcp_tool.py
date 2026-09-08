@@ -32,6 +32,10 @@ class MCPTool(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)  # Display name for the MCP server
     description = Column(Text)  # Optional description of what this MCP server does
+    # What this source holds and how to query it. Reaches the model as agno
+    # per-toolkit instructions, in the system prompt — unlike `description`,
+    # which is a preset-populated UI subtitle the model never sees.
+    usage_guidance = Column(Text)
     transport_type = Column(SQLEnum(MCPTransportType), nullable=False)
     enabled = Column(Boolean, default=True, nullable=False)
     

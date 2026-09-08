@@ -80,3 +80,46 @@ describe('useMCPTools connection test', () => {
     expect(testingToolId.value).toBeNull()
   })
 })
+
+describe('useMCPTools guidance', () => {
+  it('carries guidance through the create form and clears it on reset', () => {
+    const { createForm, resetCreateForm, applyPreset, mcpPresets } = useMCPTools('agent-1')
+
+    createForm.usage_guidance = 'Order id is fields.order_ref.'
+    resetCreateForm()
+    expect(createForm.usage_guidance).toBe('')
+
+    // A preset's own description must never become prompt text.
+    applyPreset(mcpPresets[0])
+    expect(createForm.usage_guidance).toBe('')
+    expect(createForm.description).toBe(mcpPresets[0].description)
+  })
+
+  it('loads a connector\'s stored guidance when editing it', () => {
+    const { createForm, startEdit } = useMCPTools('agent-1')
+
+    startEdit({
+      id: 3,
+      name: 'Elastic',
+      transport_type: 'http',
+      enabled: true,
+      usage_guidance: 'Indices: app-logs-*.',
+      organization_id: 'o',
+      created_at: '',
+      updated_at: '',
+    } as any)
+
+    expect(createForm.usage_guidance).toBe('Indices: app-logs-*.')
+  })
+
+  it('turns a null guidance from the API into an empty field', () => {
+    const { createForm, startEdit } = useMCPTools('agent-1')
+
+    startEdit({
+      id: 4, name: 'Bare', transport_type: 'http', enabled: true,
+      usage_guidance: null, organization_id: 'o', created_at: '', updated_at: '',
+    } as any)
+
+    expect(createForm.usage_guidance).toBe('')
+  })
+})

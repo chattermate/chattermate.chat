@@ -34,6 +34,11 @@ class MCPTransportTypeEnum(str, Enum):
 # an API key exactly once.
 SECRET_MASK = "********"
 
+# Ceiling on a connector's usage guidance. Enforced here so an over-long value
+# is a clean 422, and again at injection so a row written before this existed
+# can never blow the prompt.
+MAX_USAGE_GUIDANCE_CHARS = 2000
+
 
 def mask_secret_values(values: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
     """Replace every value with the mask, keeping the keys so the operator can
@@ -64,6 +69,10 @@ def unmask_secret_values(
 class MCPToolBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Display name for the MCP server")
     description: Optional[str] = Field(None, description="Optional description of what this MCP server does")
+    usage_guidance: Optional[str] = Field(
+        None, max_length=MAX_USAGE_GUIDANCE_CHARS,
+        description="What this source holds and how to query it — given to the AI as tool guidance",
+    )
     transport_type: MCPTransportTypeEnum
     enabled: bool = Field(default=True, description="Whether this MCP tool is enabled")
     
@@ -99,6 +108,10 @@ class MCPToolCreate(MCPToolBase):
 class MCPToolUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
+    usage_guidance: Optional[str] = Field(
+        None, max_length=MAX_USAGE_GUIDANCE_CHARS,
+        description="What this source holds and how to query it — given to the AI as tool guidance",
+    )
     transport_type: Optional[MCPTransportTypeEnum] = None
     enabled: Optional[bool] = None
     
@@ -119,6 +132,8 @@ class MCPToolResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    # Deliberately not masked — guidance is prompt text, not a credential.
+    usage_guidance: Optional[str]
     transport_type: MCPTransportTypeEnum
     enabled: bool
     

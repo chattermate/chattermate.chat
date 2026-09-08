@@ -44,6 +44,32 @@ logger = get_logger(__name__)
 
 MAX_RESULT_CHARS = 4000
 
+# The catalogue is put in the system prompt, so it has to stay proportionate
+# to the rest of it — a connector with hundreds of allowlisted tables gets
+# trimmed and the agent falls back on list_database_tables for the rest.
+MAX_CATALOGUE_CHARS = 1500
+
+# Front-loading the catalogue saves the run a tool call: the investigator's
+# first move was otherwise always list_database_tables, spending one of its
+# max_tool_calls_per_run just to learn which tables exist (#318). agno renders
+# this into the SYSTEM message (Toolkit.instructions + add_instructions).
+_DB_TOOLKIT_INSTRUCTIONS = """<data_source name="Database">
+`query_database` reads these connectors (read-only, allowlisted tables only):
+{sources}
+Call `describe_database_table` for a table's columns before querying it. Any
+table not listed is not queryable — do not attempt it.
+</data_source>"""
+
+
+def _trim_to_line(text: str, limit: int) -> str:
+    """Trim to whole lines. Cutting mid-name would leave a half-written table
+    in the prompt that reads as a real one, and the model would spend a call
+    querying it — the exact waste this catalogue exists to avoid."""
+    if len(text) <= limit:
+        return text
+    kept, _, _ = text[:limit].rpartition("\n")
+    return (kept or "") + "\n(list truncated — call list_database_tables for the rest)"
+
 
 class GuardrailedDBTools(Toolkit):
     """Read-only, allowlisted SQL access for AI investigations."""
@@ -65,6 +91,25 @@ class GuardrailedDBTools(Toolkit):
         self.register(self.list_database_tables)
         self.register(self.describe_database_table)
         self.register(self.query_database)
+        self._set_prompt_catalogue()
+
+    def _set_prompt_catalogue(self) -> None:
+        """Front-load the table catalogue into the system prompt.
+
+        Never raises: a malformed row_scope on one connector must cost this
+        prompt optimisation, not the whole toolkit — the caller
+        (_build_db_tools) turns any exception here into "no database tools at
+        all", which is far worse than one extra list_database_tables call.
+        """
+        if not self.configs:
+            return
+        try:
+            self.instructions = _DB_TOOLKIT_INSTRUCTIONS.format(
+                sources=_trim_to_line(self._source_catalogue(), MAX_CATALOGUE_CHARS)
+            )
+            self.add_instructions = True
+        except Exception as e:
+            logger.error(f"Could not build the DB catalogue for the prompt: {e}")
 
     def _config(self, connector: str) -> Optional[DBConnectorConfig]:
         if connector in self.configs:
@@ -161,6 +206,11 @@ class GuardrailedDBTools(Toolkit):
     async def list_database_tables(self) -> str:
         """List the database connectors you may query and the tables each one
         allows. Access is read-only; only these tables are queryable."""
+        return self._source_catalogue()
+
+    def _source_catalogue(self) -> str:
+        """The connector/table catalogue, as both the tool result and the
+        toolkit's system-prompt instructions. Sync so __init__ can use it."""
         if not self.configs:
             return "No database connectors are configured."
         lines = []

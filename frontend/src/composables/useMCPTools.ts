@@ -39,6 +39,7 @@ export function useMCPTools(agentId: string) {
   const createForm = reactive<MCPToolCreate>({
     name: '',
     description: '',
+    usage_guidance: '',
     transport_type: 'stdio' as MCPTransportType,
     enabled: true,
     command: '',
@@ -115,6 +116,7 @@ export function useMCPTools(agentId: string) {
     Object.assign(createForm, {
       name: tool.name,
       description: tool.description || '',
+      usage_guidance: tool.usage_guidance || '',
       transport_type: tool.transport_type,
       enabled: tool.enabled,
       command: tool.command || '',
@@ -222,6 +224,9 @@ export function useMCPTools(agentId: string) {
   const applyPreset = (preset: typeof mcpPresets[0]) => {
     Object.assign(createForm, {
       ...preset,
+      // Presets describe themselves for humans; that copy must never become
+      // prompt text the AI treats as a description of the real source.
+      usage_guidance: '',
       enabled: true
     })
   }
@@ -232,6 +237,7 @@ export function useMCPTools(agentId: string) {
     Object.assign(createForm, {
       name: '',
       description: '',
+      usage_guidance: '',
       transport_type: 'stdio' as MCPTransportType,
       enabled: true,
       command: '',
