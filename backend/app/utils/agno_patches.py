@@ -46,6 +46,7 @@ limitations under the License.
 from agno.models.base import Model
 
 from app.core.logger import get_logger
+from app.utils.agno_eval_guard import install_eval_guard
 
 logger = get_logger(__name__)
 
@@ -116,6 +117,10 @@ def _strip_tools(self, kwargs: dict) -> dict:
 
 def apply_agno_patches() -> None:
     """Apply all agno runtime patches. Safe to call more than once."""
+    # Idempotent on its own, so it sits before the flag check: the guard must be
+    # in place whichever call reaches here first.
+    install_eval_guard()
+
     if getattr(Model.create_tool_call_limit_error_result, _PATCHED_FLAG, False):
         return
 
