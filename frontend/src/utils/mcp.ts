@@ -80,13 +80,21 @@ export const CONNECTOR_GUIDANCE_HINT =
   'Optional — leave it blank and the AI explores blind.'
 
 /**
- * The third line is the point of the example: a query against a field that
- * does not exist returns zero hits rather than an error, so the AI reads a
- * clean "no results" and concludes the record is absent. Operators need to
- * know that is worth warning about.
+ * Deliberately written as instructions, not as a description. Tested against a
+ * real MCP server and a real model: naming the field ("Order id is
+ * fields.order_ref") got the right index but a bare keyword query and a false
+ * "no such order". Telling it what to *do* ("query app-logs-* with
+ * fields.order_ref:<ref> — always name that field") found the record in one
+ * call. Operators copy this example, so it has to model the phrasing that
+ * works.
+ *
+ * The last line matters just as much: a query against a field that does not
+ * exist returns zero hits rather than an error, so without the warning the AI
+ * reads a clean "no results" and concludes the record is absent.
  */
 export const CONNECTOR_GUIDANCE_EXAMPLE = `Indices: app-logs-* (one doc per request), payment-logs-* (Stripe webhooks).
-Order id is fields.order_ref on app-logs-*, metadata.order on payment-logs-*.
-There is no order_id field — matching on it returns zero hits, not an error.
+To find an order, query app-logs-* with \`fields.order_ref:<the reference>\` —
+always name that field explicitly; a bare keyword search matches nothing.
 Timestamps are @timestamp, UTC, 30-day retention.
-Query with the ES|QL tool; the search tool is not enabled on this cluster.`
+There is no order_id field; matching on it returns zero hits rather than an
+error, so an empty result is not evidence the order is absent.`
