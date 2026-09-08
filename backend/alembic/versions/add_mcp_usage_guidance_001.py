@@ -38,7 +38,18 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column() -> bool:
+    """Development databases are shared between feature branches, so the column
+    can already exist by the time this runs. Adding it twice would abort the
+    upgrade."""
+    inspector = sa.inspect(op.get_bind())
+    return any(c['name'] == 'usage_guidance'
+               for c in inspector.get_columns('mcp_tools'))
+
+
 def upgrade() -> None:
+    if _has_column():
+        return
     op.add_column(
         'mcp_tools',
         sa.Column('usage_guidance', sa.Text(), nullable=True),
@@ -46,4 +57,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column('mcp_tools', 'usage_guidance')
+    if _has_column():
+        op.drop_column('mcp_tools', 'usage_guidance')
