@@ -114,8 +114,10 @@ uv
 
 # Web Crawling
 httpx
-pyOpenSSL==26.0.0
-cryptography==46.0.3
+# pyOpenSSL and cryptography move together: each pyOpenSSL release bounds the
+# cryptography versions it accepts (26.4 needs >=49,<51).
+pyOpenSSL==26.4.0
+cryptography==50.0.1
 # 0.7.x hard-required sentence-transformers (and with it torch); 0.9 dropped that.
 crawl4ai>=0.9
 
