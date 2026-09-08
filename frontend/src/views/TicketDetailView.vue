@@ -44,6 +44,12 @@ const {
 
 const canManage = permissionChecks.canManageTickets()
 const canApprove = permissionChecks.canApproveTicketActions()
+// Only gates the deep link to Ticketing settings, which that role owns.
+const canEditSettings = permissionChecks.canManageOrganization()
+
+// Shared by the header's Investigate button and the panel's guided re-run, so
+// the two can't drift into disagreeing about why a run is unavailable.
+const RESOLVED_TOOLTIP = 'This ticket is resolved — reopen it to investigate again'
 
 // The banner shows a pending proposal always; a decided one only while the
 // ticket still reflects that decision (approved → resolved states).
@@ -210,7 +216,7 @@ async function submitResolve() {
                 :disabled="isReopenable"
                 :title="
                   isReopenable
-                    ? 'This ticket is resolved — reopen it to investigate again'
+                    ? RESOLVED_TOOLTIP
                     : 'Run an AI investigation (hypotheses + evidence + RCA)'
                 "
                 @click="investigate()"
@@ -319,6 +325,10 @@ async function submitResolve() {
         <TicketInvestigationPanel
           v-if="investigation?.run"
           :investigation="investigation"
+          :can-reinvestigate="canManage && !hasActiveRun"
+          :reinvestigate-blocked-reason="isReopenable ? RESOLVED_TOOLTIP : null"
+          :can-edit-settings="canEditSettings"
+          @reinvestigate="(note: string) => investigate(note)"
         />
 
         <TicketRcaDoc

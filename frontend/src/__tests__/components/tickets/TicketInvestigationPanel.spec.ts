@@ -28,7 +28,7 @@ const baseRun: InvestigationRun = {
   tool_calls_used: 0,
 }
 
-const mountPanel = (run: Partial<InvestigationRun>) =>
+const mountPanel = (run: Partial<InvestigationRun>, props: Record<string, unknown> = {}) =>
   mount(TicketInvestigationPanel, {
     props: {
       investigation: {
@@ -36,6 +36,13 @@ const mountPanel = (run: Partial<InvestigationRun>) =>
         hypotheses: [],
         events: [],
       } as InvestigationDetail,
+      ...props,
+    },
+    global: {
+      stubs: {
+        'font-awesome-icon': true,
+        'router-link': { template: '<a><slot /></a>' },
+      },
     },
   })
 
@@ -143,5 +150,65 @@ describe('TicketInvestigationPanel errored tool calls', () => {
     })
 
     expect(wrapper.find('.connector-warning').exists()).toBe(false)
+  })
+})
+
+describe('TicketInvestigationPanel guided re-run', () => {
+  /**
+   * Below autonomy 2 no proposal is created, so the L2 approval banner never
+   * renders — and it held the only reject-with-feedback path. An L1 operator
+   * had no way to correct a run short of editing the ticket description.
+   */
+  it('offers a guided re-run when the user can start one', () => {
+    const wrapper = mountPanel({}, { canReinvestigate: true })
+    expect(wrapper.find('.rerun-btn').exists()).toBe(true)
+  })
+
+  it('is absent for a user who cannot manage tickets', () => {
+    expect(mountPanel({}, { canReinvestigate: false }).find('.panel-foot').exists()).toBe(false)
+    expect(mountPanel({}).find('.panel-foot').exists()).toBe(false)
+  })
+
+  it('disables the button with the reason a run is unavailable', () => {
+    const wrapper = mountPanel({}, {
+      canReinvestigate: true,
+      reinvestigateBlockedReason: 'This ticket is resolved — reopen it to investigate again',
+    })
+
+    const button = wrapper.find('.rerun-btn')
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.attributes('title')).toContain('reopen it')
+  })
+
+  it('emits the trimmed note and closes the form', async () => {
+    const wrapper = mountPanel({}, { canReinvestigate: true })
+    await wrapper.find('.rerun-btn').trigger('click')
+
+    await wrapper.find('.note-input').setValue('  Use fields.order_ref, not order_id.  ')
+    await wrapper.find('.submit-btn').trigger('click')
+
+    expect(wrapper.emitted('reinvestigate')?.[0]).toEqual(['Use fields.order_ref, not order_id.'])
+    // Back to the button, so a second run needs a deliberate click.
+    expect(wrapper.find('.note-input').exists()).toBe(false)
+  })
+
+  it('lets the operator back out without starting a run', async () => {
+    const wrapper = mountPanel({}, { canReinvestigate: true })
+    await wrapper.find('.rerun-btn').trigger('click')
+    await wrapper.find('.cancel-btn').trigger('click')
+
+    expect(wrapper.emitted('reinvestigate')).toBeUndefined()
+    expect(wrapper.find('.rerun-btn').exists()).toBe(true)
+  })
+
+  it('links to settings only for someone who can edit them', async () => {
+    const allowed = mountPanel({}, { canReinvestigate: true, canEditSettings: true })
+    await allowed.find('.rerun-btn').trigger('click')
+    expect(allowed.find('.rerun-scope a').exists()).toBe(true)
+
+    const denied = mountPanel({}, { canReinvestigate: true, canEditSettings: false })
+    await denied.find('.rerun-btn').trigger('click')
+    expect(denied.find('.rerun-scope a').exists()).toBe(false)
+    expect(denied.find('.rerun-scope').text()).toContain('Ticketing settings')
   })
 })

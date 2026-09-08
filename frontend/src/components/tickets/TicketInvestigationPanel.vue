@@ -15,11 +15,33 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { InvestigationDetail } from '@/types/ticket'
 import HypothesisCard from './HypothesisCard.vue'
+import InvestigationNoteForm from './InvestigationNoteForm.vue'
 
-const props = defineProps<{ investigation: InvestigationDetail }>()
+const props = defineProps<{
+  investigation: InvestigationDetail
+  /** Whether this user can start another run right now. */
+  canReinvestigate?: boolean
+  /** Why they can't, shown as a tooltip on the disabled button. */
+  reinvestigateBlockedReason?: string | null
+  /** Gates the deep link to settings, which needs manage_organization. */
+  canEditSettings?: boolean
+}>()
+
+const emit = defineEmits<{ (e: 'reinvestigate', note: string): void }>()
+
+// A guided re-run belongs here rather than only in the L2 approval banner:
+// below autonomy 2 no proposal is ever created, so that banner never renders
+// and an L1 operator had no way to correct a run short of editing the ticket
+// description (#318).
+const isNoting = ref(false)
+
+function submitRerun(note: string) {
+  isNoting.value = false
+  emit('reinvestigate', note)
+}
 
 const run = computed(() => props.investigation.run)
 const isActive = computed(() => ['pending', 'running'].includes(run.value?.status || ''))
@@ -142,10 +164,66 @@ const connectorWarning = computed(() => {
       />
     </div>
     <p v-else-if="!isActive" class="empty-note">No hypotheses were generated in this run.</p>
+
+    <div v-if="canReinvestigate" class="panel-foot">
+      <button
+        v-if="!isNoting"
+        class="rerun-btn"
+        :disabled="!!reinvestigateBlockedReason"
+        :title="reinvestigateBlockedReason || 'Run again with a note telling the AI what to do differently'"
+        @click="isNoting = true"
+      >
+        <font-awesome-icon :icon="['fas', 'rotate-right']" />
+        Re-run with guidance…
+      </button>
+      <template v-else>
+        <InvestigationNoteForm
+          placeholder="What should the AI do differently this time? e.g. &quot;The order id is fields.order_ref, not order_id — search app-logs-* from 14:00 UTC on the 3rd.&quot;"
+          submit-label="Re-run investigation"
+          @cancel="isNoting = false"
+          @submit="submitRerun"
+        />
+        <p class="rerun-scope">
+          Applies to this run only. To tell the AI this every time, put it on the connector under
+          <router-link v-if="canEditSettings" to="/settings/ticketing">Ticketing settings</router-link>
+          <span v-else>Ticketing settings</span>.
+        </p>
+      </template>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.panel-foot {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--o07);
+}
+.rerun-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--o12);
+  color: var(--text3);
+  border-radius: 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.rerun-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+.rerun-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.rerun-scope {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
 .connector-warning__calls {
   margin-top: 6px;
   font-weight: var(--font-weight-semibold);
