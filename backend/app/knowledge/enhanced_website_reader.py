@@ -692,7 +692,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                         else:
                             logger.warning(f"Crawl4AI extraction failed, keeping BeautifulSoup result")
                     else:
-                        logger.warning(f"⚠️  Crawl4AI not available for JS-heavy site. Install with: pip install crawl4ai>=0.7.0")
+                        logger.warning(f"⚠️  Crawl4AI not available for JS-heavy site. Install with: pip install crawl4ai>=0.9")
                         logger.warning(f"   Falling back to BeautifulSoup (may have incomplete content)")
 
                 # If the content is still a bot-challenge interstitial (the browser
@@ -751,7 +751,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                             else:
                                 logger.error(f"Crawl4AI fallback failed for {current_url}")
                         else:
-                            logger.warning(f"⚠️  Crawl4AI not available. Install with: pip install crawl4ai>=0.7.0")
+                            logger.warning(f"⚠️  Crawl4AI not available. Install with: pip install crawl4ai>=0.9")
                         
                         # Final check
                         if not content or len(content) < self.min_content_length:
@@ -868,7 +868,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                 except Exception as crawl_error:
                     logger.error(f"Crawl4AI fallback error: {str(crawl_error)}", exc_info=True)
             else:
-                logger.warning(f"⚠️  Crawl4AI not available to retry failed request. Install with: pip install crawl4ai>=0.7.0")
+                logger.warning(f"⚠️  Crawl4AI not available to retry failed request. Install with: pip install crawl4ai>=0.9")
             
             # Final failure
             self._failed_crawls += 1

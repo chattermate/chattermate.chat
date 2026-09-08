@@ -90,11 +90,7 @@ boto3
 
 groq
 
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.8.0+cpu
-transformers==4.57.1
-sentence-transformers==5.1.1
-
+# Embeddings run on fastembed (ONNX); no torch/transformers stack is installed.
 fastembed==0.7.3
 
 # Shopify API
@@ -117,7 +113,8 @@ uv
 httpx
 pyOpenSSL==26.0.0
 cryptography==46.0.3
-crawl4ai>=0.7.0
+# 0.7.x hard-required sentence-transformers (and with it torch); 0.9 dropped that.
+crawl4ai>=0.9
 
 # Help center (public SSR templates + custom-domain DNS verification)
 jinja2
