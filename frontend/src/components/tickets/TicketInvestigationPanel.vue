@@ -58,6 +58,12 @@ const tokenLabel = computed(() => {
   return total >= 1000 ? `${(total / 1000).toFixed(1)}k tokens` : `${total} tokens`
 })
 
+// How many of the run's tool calls failed. Surfaced because a verdict resting
+// on failed queries is worth nothing, however confident it reads (#318).
+const erroredCalls = computed(() => run.value?.connector_status?.tool_calls_failed || 0)
+const totalCalls = computed(() => run.value?.connector_status?.tool_calls || 0)
+const allCallsFailed = computed(() => totalCalls.value > 0 && erroredCalls.value === totalCalls.value)
+
 // A run that finished with fewer MCP connectors than configured produced its
 // answer without the evidence those tools were meant to gather. So did a run
 // whose connectors all came up but whose tools the provider refused — that one
@@ -67,7 +73,10 @@ const connectorWarning = computed(() => {
   if (!status) return null
   const missingConnectors = status.loaded < status.configured
   const refusedTools = !!status.provider_errors?.length
-  if (!missingConnectors && !refusedTools) return null
+  // A connector can come up, load its tools, and then error on every query.
+  // That reports loaded === configured with no provider errors, so it needs
+  // its own check or the run renders as healthy (#318).
+  if (!missingConnectors && !refusedTools && !erroredCalls.value) return null
   return status
 })
 </script>
@@ -117,6 +126,11 @@ const connectorWarning = computed(() => {
       <ul v-if="connectorWarning.provider_errors?.length" class="connector-warning__list">
         <li v-for="reason in connectorWarning.provider_errors" :key="reason">{{ reason }}</li>
       </ul>
+      <div v-if="erroredCalls" class="connector-warning__calls">
+        {{ erroredCalls }} of {{ totalCalls }} tool call{{ totalCalls === 1 ? '' : 's' }} errored<template
+          v-if="allCallsFailed"
+        > — nothing was gathered, so no finding here is evidence-backed</template>.
+      </div>
     </div>
 
     <div v-if="investigation.hypotheses.length" class="hypothesis-list">
@@ -132,6 +146,10 @@ const connectorWarning = computed(() => {
 </template>
 
 <style scoped>
+.connector-warning__calls {
+  margin-top: 6px;
+  font-weight: var(--font-weight-semibold);
+}
 .investigation-panel {
   background: var(--surface);
   border: 1px solid var(--o08);

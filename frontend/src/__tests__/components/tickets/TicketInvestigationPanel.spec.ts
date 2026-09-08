@@ -84,3 +84,64 @@ describe('TicketInvestigationPanel connector warning', () => {
     expect(wrapper.find('.connector-warning').exists()).toBe(false)
   })
 })
+
+describe('TicketInvestigationPanel errored tool calls', () => {
+  /**
+   * A connector can come up, load its tools, and then error on every query.
+   * That reports loaded === configured with no provider errors, so before
+   * #318 the run rendered completely clean with a confident wrong answer.
+   */
+  it('warns when every tool call errored, even with all connectors loaded', () => {
+    const wrapper = mountPanel({
+      connector_status: {
+        configured: 1,
+        loaded: 1,
+        failed: [],
+        tool_calls: 3,
+        tool_calls_failed: 3,
+      },
+    })
+
+    const text = wrapper.find('.connector-warning').text()
+    expect(text).toContain('3 of 3 tool calls errored')
+    expect(text).toContain('no finding here is evidence-backed')
+  })
+
+  it('reports a partial failure without claiming nothing was gathered', () => {
+    const wrapper = mountPanel({
+      connector_status: {
+        configured: 1,
+        loaded: 1,
+        failed: [],
+        tool_calls: 4,
+        tool_calls_failed: 1,
+      },
+    })
+
+    const text = wrapper.find('.connector-warning').text()
+    expect(text).toContain('1 of 4 tool calls errored')
+    expect(text).not.toContain('evidence-backed')
+  })
+
+  it('stays silent on a clean run', () => {
+    const wrapper = mountPanel({
+      connector_status: {
+        configured: 2,
+        loaded: 2,
+        failed: [],
+        tool_calls: 5,
+        tool_calls_failed: 0,
+      },
+    })
+
+    expect(wrapper.find('.connector-warning').exists()).toBe(false)
+  })
+
+  it('handles a run recorded before these counts existed', () => {
+    const wrapper = mountPanel({
+      connector_status: { configured: 1, loaded: 1, failed: [] },
+    })
+
+    expect(wrapper.find('.connector-warning').exists()).toBe(false)
+  })
+})

@@ -80,6 +80,12 @@ class EvidenceRecorder:
         self.seq = 0
         self.tool_calls = 0
         self.hypothesis_id: Optional[UUID] = None
+        # Per-hypothesis tool-call outcomes: {hypothesis_id: [total, errored]}.
+        # A verdict is only worth as much as the evidence under it, and a run
+        # where every query failed must not be able to assert a fact (#318).
+        self.calls_by_hypothesis: dict = {}
+        # Run-level totals, for the dashboard's connector banner.
+        self.failed_tool_calls = 0
         # tool function name -> configured connector (MCP server) name.
         self.connector_by_function: dict = {}
         # In-memory digest for RCA synthesis, mirroring the persisted rows.
@@ -129,6 +135,13 @@ class EvidenceRecorder:
             raise
         finally:
             self.tool_calls += 1
+            if error:
+                self.failed_tool_calls += 1
+            if self.hypothesis_id is not None:
+                tally = self.calls_by_hypothesis.setdefault(self.hypothesis_id, [0, 0])
+                tally[0] += 1
+                if error:
+                    tally[1] += 1
             duration_ms = int((time.monotonic() - started) * 1000)
             try:
                 input_text = json.dumps(arguments, default=str)
@@ -149,6 +162,49 @@ class EvidenceRecorder:
                 f"[E{self.seq}] {function_name}({input_snippet[:300]}) -> "
                 + (f"ERROR: {error[:200]}" if error else (result_snippet or "")[:500])
             )
+
+
+    def tool_outcomes(self, hypothesis_id: UUID) -> tuple:
+        """(total, errored) tool calls made while testing this hypothesis."""
+        total, errored = self.calls_by_hypothesis.get(hypothesis_id, [0, 0])
+        return total, errored
+
+
+def enforce_evidence_backed_verdict(
+    hypothesis: InvestigationHypothesis, recorder: "EvidenceRecorder"
+) -> bool:
+    """Downgrade a definite verdict that no successful query supports.
+
+    The model returns status and confidence as free text, and nothing else
+    checks them against what actually happened. A run whose every search
+    errored — a missing index, a rejected client version — can still come back
+    "the record does not exist, validated, 0.90", which a support agent would
+    reasonably act on. Tool errors are the absence of evidence, never evidence
+    of absence.
+
+    Only fires when the phase made tool calls and every one of them failed;
+    a hypothesis reasoned from ticket context alone is left as the model
+    returned it. Returns True when it changed the verdict.
+    """
+    total, errored = recorder.tool_outcomes(hypothesis.id)
+    if not total or errored < total:
+        return False
+    if str(hypothesis.status) == HypothesisStatus.INCONCLUSIVE.value:
+        return False
+
+    original = str(hypothesis.status)
+    confidence = hypothesis.confidence
+    hypothesis.status = HypothesisStatus.INCONCLUSIVE
+    hypothesis.confidence = 0.0
+    # The model's own conclusion is dropped rather than kept: it reads as a
+    # finding, and the RCA writer would quote it as one.
+    hypothesis.conclusion = (
+        f"Not tested — all {total} tool call{'' if total == 1 else 's'} in this phase "
+        f"failed, so no evidence was gathered. The tester reported "
+        f"\"{original}\"{f' at {confidence:.2f} confidence' if confidence is not None else ''}, "
+        "which nothing supports. Check the connector errors in the evidence log."
+    )
+    return True
 
 
 def hypotheses_digest(hypotheses: List[InvestigationHypothesis]) -> str:
@@ -221,6 +277,11 @@ async def run_investigation_phases(
             hypothesis.status = verdict.status
             hypothesis.confidence = max(0.0, min(1.0, verdict.confidence))
             hypothesis.conclusion = verdict.conclusion
+            if enforce_evidence_backed_verdict(hypothesis, recorder):
+                logger.warning(
+                    f"H{hypothesis.idx} claimed '{verdict.status}' with every tool "
+                    f"call failing; forced to inconclusive"
+                )
         else:
             hypothesis.status = HypothesisStatus.INCONCLUSIVE
             hypothesis.confidence = 0.0
