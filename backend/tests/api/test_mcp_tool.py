@@ -31,7 +31,11 @@ from app.models.role import Role
 from app.models.permission import Permission
 from app.models.agent import Agent, AgentType
 from app.models.mcp_tool import MCPTransportType
-from app.models.schemas.mcp_tool import MCPToolCreate, MCPToolUpdate, MCPToolToAgentCreate
+from app.repositories.mcp_tool import MCPToolRepository
+from app.models.schemas.mcp_tool import (
+    MCPToolCreate, MCPToolUpdate, MCPToolToAgentCreate, SECRET_MASK
+)
+from app.models.ticket_settings import OrganizationTicketSettings
 
 
 app = FastAPI()
@@ -257,3 +261,163 @@ def test_test_mcp_tool_endpoint_other_org_forbidden(client: TestClient, db):
 
     resp = client.post(f"/api/mcp/{other_org_tool.id}/test")
     assert resp.status_code == 403
+
+
+def test_secrets_are_masked_on_the_way_out(client: TestClient, db):
+    """Credentials must never reach the browser — the edit form only ever
+    sees the mask."""
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "MaskedTool",
+        "transport_type": MCPTransportType.STDIO.value,
+        "command": "uvx",
+        "env_vars": {"AWS_SECRET_ACCESS_KEY": "super-secret", "AWS_REGION": "us-east-1"},
+        "enabled": True,
+    })
+    assert resp.status_code == 200
+    tool_id = resp.json()["id"]
+
+    # Keys stay visible so the operator knows what is set; values do not.
+    assert resp.json()["env_vars"] == {
+        "AWS_SECRET_ACCESS_KEY": SECRET_MASK,
+        "AWS_REGION": SECRET_MASK,
+    }
+    assert client.get(f"/api/mcp/{tool_id}").json()["env_vars"] == {
+        "AWS_SECRET_ACCESS_KEY": SECRET_MASK,
+        "AWS_REGION": SECRET_MASK,
+    }
+
+
+def test_update_keeps_secrets_the_form_sent_back_masked(client: TestClient, db):
+    """Fixing a typo in an unrelated field must not cost a credential rotation."""
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "KeepSecret",
+        "transport_type": MCPTransportType.HTTP.value,
+        "url": "https://example.com/mpc",
+        "headers": {"Authorization": "ApiKey real-key"},
+        "enabled": True,
+    })
+    tool_id = resp.json()["id"]
+
+    # The form round-trips the mask and corrects only the URL typo.
+    upd = client.put(f"/api/mcp/{tool_id}", json={
+        "url": "https://example.com/mcp",
+        "headers": {"Authorization": SECRET_MASK},
+    })
+    assert upd.status_code == 200
+    assert upd.json()["url"] == "https://example.com/mcp"
+
+    stored = MCPToolRepository(db).get_mcp_tool(tool_id)
+    assert stored.headers == {"Authorization": "ApiKey real-key"}
+
+
+def test_update_replaces_a_secret_the_operator_retyped(client: TestClient, db):
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "RotateSecret",
+        "transport_type": MCPTransportType.HTTP.value,
+        "url": "https://example.com/mcp",
+        "headers": {"Authorization": "ApiKey old-key"},
+        "enabled": True,
+    })
+    tool_id = resp.json()["id"]
+
+    client.put(f"/api/mcp/{tool_id}", json={"headers": {"Authorization": "ApiKey new-key"}})
+
+    stored = MCPToolRepository(db).get_mcp_tool(tool_id)
+    assert stored.headers == {"Authorization": "ApiKey new-key"}
+
+
+def test_delete_clears_the_investigation_selection(client: TestClient, db):
+    """investigation_mcp_tool_ids has no foreign key, so a deleted connector
+    would otherwise stay 'configured' and every later run would report fewer
+    connectors loaded than configured."""
+    mcp_api.HAS_ENTERPRISE = False
+    user = db.query(User).first()
+
+    resp = client.post("/api/mcp", json={
+        "name": "Doomed",
+        "transport_type": MCPTransportType.HTTP.value,
+        "url": "https://example.com/mcp",
+        "enabled": True,
+    })
+    tool_id = resp.json()["id"]
+
+    settings = OrganizationTicketSettings(
+        organization_id=user.organization_id,
+        investigation_mcp_tool_ids=[tool_id, 999],
+    )
+    db.add(settings)
+    db.commit()
+
+    assert client.get(f"/api/mcp/{tool_id}/references").json()["used_in_investigations"] is True
+
+    assert client.delete(f"/api/mcp/{tool_id}").status_code == 200
+    db.refresh(settings)
+    assert settings.investigation_mcp_tool_ids == [999]
+
+
+def test_references_names_the_agents_using_the_tool(client: TestClient, db):
+    mcp_api.HAS_ENTERPRISE = False
+    user = db.query(User).first()
+    agent = _create_agent(db, user.organization_id)
+
+    resp = client.post("/api/mcp", json={
+        "name": "Referenced",
+        "transport_type": MCPTransportType.HTTP.value,
+        "url": "https://example.com/mcp",
+        "enabled": True,
+    })
+    tool_id = resp.json()["id"]
+    client.post("/api/mcp/agent-association", json={
+        "mcp_tool_id": tool_id, "agent_id": str(agent.id)
+    })
+
+    refs = client.get(f"/api/mcp/{tool_id}/references")
+    assert refs.status_code == 200
+    assert refs.json() == {"agents": [agent.name], "used_in_investigations": False}
+
+
+def test_update_rejects_a_transport_switch_with_nothing_to_connect_to(client: TestClient, db):
+    """The update path must not accept a state the create path rejects."""
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "SwitchMe",
+        "transport_type": MCPTransportType.STDIO.value,
+        "command": "uvx",
+        "enabled": True,
+    })
+    tool_id = resp.json()["id"]
+
+    bad = client.put(f"/api/mcp/{tool_id}", json={
+        "transport_type": MCPTransportType.HTTP.value, "url": ""
+    })
+    assert bad.status_code == 400
+    assert "URL is required" in bad.json()["detail"]
+
+    good = client.put(f"/api/mcp/{tool_id}", json={
+        "transport_type": MCPTransportType.HTTP.value, "url": "https://example.com/mcp"
+    })
+    assert good.status_code == 200
+    assert good.json()["transport_type"] == MCPTransportType.HTTP.value
+
+
+def test_update_rejects_clearing_the_stdio_command(client: TestClient, db):
+    mcp_api.HAS_ENTERPRISE = False
+
+    resp = client.post("/api/mcp", json={
+        "name": "NeedsCommand",
+        "transport_type": MCPTransportType.STDIO.value,
+        "command": "uvx",
+        "enabled": True,
+    })
+    tool_id = resp.json()["id"]
+
+    bad = client.put(f"/api/mcp/{tool_id}", json={"command": ""})
+    assert bad.status_code == 400
+    assert "Command is required" in bad.json()["detail"]

@@ -91,6 +91,12 @@ export interface AgentMCPTools {
   mcp_tools: MCPTool[]
 }
 
+/** What currently points at a connector — shown before deleting it. */
+export interface MCPToolReferences {
+  agents: string[]
+  used_in_investigations: boolean
+}
+
 export interface MCPToolTestResult {
   success: boolean
   functions: string[]

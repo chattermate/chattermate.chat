@@ -16,7 +16,7 @@ limitations under the License.
 
 import { ref, reactive } from 'vue'
 import { mcpService } from '@/services/mcp'
-import type { MCPTool, MCPToolCreate, MCPToolUpdate, MCPToolTestResult, MCPTransportType } from '@/types/mcp'
+import type { MCPTool, MCPToolCreate, MCPToolReferences, MCPToolTestResult, MCPTransportType } from '@/types/mcp'
 import { DEFAULT_MCP_TIMEOUT, clampMCPTimeout } from '@/utils/mcp'
 import { toast } from 'vue-sonner'
 
@@ -31,6 +31,9 @@ export function useMCPTools(agentId: string) {
   const showLinkModal = ref(false)
   const showDeleteConfirm = ref(false)
   const deleteTargetId = ref<number | null>(null)
+  const deleteReferences = ref<MCPToolReferences | null>(null)
+  // Which tool the form is editing, or null when it is creating one.
+  const editingToolId = ref<number | null>(null)
 
   // Form state for creating MCP tools
   const createForm = reactive<MCPToolCreate>({
@@ -106,27 +109,53 @@ export function useMCPTools(agentId: string) {
     }
   }
 
-  // Create a new MCP tool
-  const createMCPTool = async () => {
+  // Load an existing tool into the shared form. Secret values arrive masked;
+  // leaving them alone keeps the stored credential.
+  const startEdit = (tool: MCPTool) => {
+    Object.assign(createForm, {
+      name: tool.name,
+      description: tool.description || '',
+      transport_type: tool.transport_type,
+      enabled: tool.enabled,
+      command: tool.command || '',
+      args: [...(tool.args || [])],
+      env_vars: { ...(tool.env_vars || {}) },
+      url: tool.url || '',
+      headers: { ...(tool.headers || {}) },
+      timeout: tool.timeout ?? DEFAULT_MCP_TIMEOUT,
+      sse_read_timeout: tool.sse_read_timeout ?? 60,
+      terminate_on_close: tool.terminate_on_close ?? true
+    })
+    editingToolId.value = tool.id
+    showCreateModal.value = true
+  }
+
+  // Create a new MCP tool, or save the one being edited
+  const saveMCPTool = async () => {
+    const isEditing = editingToolId.value !== null
     try {
-      const newTool = await mcpService.createMCPTool({
-        ...createForm,
-        timeout: clampMCPTimeout(createForm.timeout),
-      })
-      
-      // Add to agent immediately
-      await mcpService.addMCPToolToAgent(newTool.id, agentId)
-      
+      const payload = { ...createForm, timeout: clampMCPTimeout(createForm.timeout) }
+
+      if (isEditing) {
+        await mcpService.updateMCPTool(editingToolId.value as number, payload)
+      } else {
+        const newTool = await mcpService.createMCPTool(payload)
+        // Add to agent immediately
+        await mcpService.addMCPToolToAgent(newTool.id, agentId)
+      }
+
       // Refresh agent tools
       await fetchAgentMCPTools()
-      
+
       // Reset form and close modal
       resetCreateForm()
       showCreateModal.value = false
-      
-      toast.success('MCP tool created and linked successfully')
+      editingToolId.value = null
+
+      toast.success(isEditing ? 'MCP tool updated successfully' : 'MCP tool created and linked successfully')
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || 'Failed to create MCP tool'
+      const errorMessage = err.response?.data?.detail
+        || (isEditing ? 'Failed to update MCP tool' : 'Failed to create MCP tool')
       toast.error(errorMessage)
       throw err
     }
@@ -199,6 +228,7 @@ export function useMCPTools(agentId: string) {
 
   // Reset create form
   const resetCreateForm = () => {
+    editingToolId.value = null
     Object.assign(createForm, {
       name: '',
       description: '',
@@ -215,15 +245,23 @@ export function useMCPTools(agentId: string) {
     })
   }
 
-  // Confirm delete
-  const confirmDelete = (toolId: number) => {
+  // Confirm delete. This destroys the connector for the whole organization,
+  // so the dialog first asks what else points at it.
+  const confirmDelete = async (toolId: number) => {
     deleteTargetId.value = toolId
+    deleteReferences.value = null
     showDeleteConfirm.value = true
+    try {
+      deleteReferences.value = await mcpService.getMCPToolReferences(toolId)
+    } catch {
+      // Non-fatal — confirm without the reference list rather than blocking.
+    }
   }
 
   // Cancel delete
   const cancelDelete = () => {
     deleteTargetId.value = null
+    deleteReferences.value = null
     showDeleteConfirm.value = false
   }
 
@@ -304,6 +342,8 @@ export function useMCPTools(agentId: string) {
     showCreateModal,
     showLinkModal,
     showDeleteConfirm,
+    deleteReferences,
+    editingToolId,
     createForm,
     transportTypes,
     mcpPresets,
@@ -311,7 +351,8 @@ export function useMCPTools(agentId: string) {
     // Methods
     fetchAgentMCPTools,
     fetchAvailableMCPTools,
-    createMCPTool,
+    saveMCPTool,
+    startEdit,
     linkMCPTool,
     unlinkMCPTool,
     deleteMCPTool,

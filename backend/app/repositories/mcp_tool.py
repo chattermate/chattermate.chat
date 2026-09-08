@@ -16,7 +16,9 @@ limitations under the License.
 
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
+from app.models.agent import Agent
 from app.models.mcp_tool import MCPTool, MCPToolToAgent, MCPTransportType
+from app.models.ticket_settings import OrganizationTicketSettings
 from uuid import UUID
 from app.core.logger import get_logger
 
@@ -88,11 +90,42 @@ class MCPToolRepository:
         self.db.refresh(mcp_tool)
         return mcp_tool
 
+    def _get_ticket_settings(self, organization_id: UUID) -> Optional[OrganizationTicketSettings]:
+        return self.db.query(OrganizationTicketSettings).filter(
+            OrganizationTicketSettings.organization_id == organization_id
+        ).first()
+
+    def is_used_in_investigations(self, mcp_tool_id: int, organization_id: UUID) -> bool:
+        """Whether the org's investigation connector selection points at this tool."""
+        settings = self._get_ticket_settings(organization_id)
+        return bool(settings and mcp_tool_id in (settings.investigation_mcp_tool_ids or []))
+
+    def get_mcp_tool_agent_names(self, mcp_tool_id: int) -> List[str]:
+        """Names of the agents this tool is linked to."""
+        rows = self.db.query(Agent.name)\
+            .join(MCPToolToAgent, MCPToolToAgent.agent_id == Agent.id)\
+            .filter(MCPToolToAgent.mcp_tool_id == mcp_tool_id)\
+            .order_by(Agent.name)\
+            .all()
+        return [name for (name,) in rows]
+
     def delete_mcp_tool(self, mcp_tool_id: int) -> bool:
-        """Delete an MCP tool"""
+        """Delete an MCP tool, along with every reference to it."""
         mcp_tool = self.get_mcp_tool(mcp_tool_id)
         if not mcp_tool:
             return False
+
+        # investigation_mcp_tool_ids is a plain JSON id list with no foreign
+        # key, so a deleted connector would otherwise stay "configured"
+        # forever and every later run would report fewer connectors loaded
+        # than configured — the exact signal #271 added to catch real
+        # failures. Agent links go with the tool via cascade.
+        settings = self._get_ticket_settings(mcp_tool.organization_id)
+        if settings and mcp_tool_id in (settings.investigation_mcp_tool_ids or []):
+            settings.investigation_mcp_tool_ids = [
+                tool_id for tool_id in settings.investigation_mcp_tool_ids
+                if tool_id != mcp_tool_id
+            ]
 
         self.db.delete(mcp_tool)
         self.db.commit()

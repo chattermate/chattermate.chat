@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import type { MCPTool, MCPToolCreate, MCPToolUpdate, MCPToolToAgent, AgentMCPTools, MCPToolTestResult } from '@/types/mcp'
+import type { MCPTool, MCPToolCreate, MCPToolUpdate, MCPToolToAgent, AgentMCPTools, MCPToolTestResult, MCPToolReferences } from '@/types/mcp'
 
 export const mcpService = {
   // MCP Tool management
@@ -38,6 +38,11 @@ export const mcpService = {
 
   async updateMCPTool(toolId: number, data: MCPToolUpdate): Promise<MCPTool> {
     const response = await api.put(`/mcp-tools/${toolId}`, data)
+    return response.data
+  },
+
+  async getMCPToolReferences(toolId: number): Promise<MCPToolReferences> {
+    const response = await api.get(`/mcp-tools/${toolId}/references`)
     return response.data
   },
 
