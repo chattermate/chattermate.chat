@@ -17,7 +17,7 @@ limitations under the License.
 import pytest
 from fastapi.testclient import TestClient
 from app.database import get_db
-from fastapi import FastAPI, status, HTTPException, Depends
+from fastapi import FastAPI, status
 from app.models.user import User
 from app.models.role import Role
 from app.models.permission import Permission, role_permissions
@@ -31,7 +31,6 @@ from app.core.auth import get_current_user, require_permissions
 from typing import Generator
 from datetime import datetime
 from app.models.schemas.chat import ChatDetailResponse, CustomerInfo, AgentInfo, Message
-from sqlalchemy.orm import Session
 from tests.conftest import engine, TestingSessionLocal, create_tables, Base
 from app.models.organization import Organization
 from app.repositories.session_to_agent import SessionToAgentRepository
@@ -301,34 +300,21 @@ def mock_chat_response(test_agent, test_customer) -> ChatDetailResponse:
     )
 
 @pytest.fixture
-def client(user_with_manage_chats_permission, mock_chat_response) -> TestClient:
-    """Create test client with mocked dependencies"""
+def client(user_with_manage_chats_permission) -> TestClient:
+    """Create test client with mocked dependencies.
+
+    The takeover endpoint itself is the real one: these tests assert on the
+    status codes it raises (403/404/400/500), so it must not be swapped for a
+    stub. Do not rebuild the sub-router's routes here — the app copied them at
+    include time, and on current FastAPI a late swap would replace the endpoint
+    under test.
+    """
     async def override_get_current_user():
         return user_with_manage_chats_permission
 
-    async def mock_takeover_chat(
-        session_id: str,
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
-    ) -> ChatDetailResponse:
-        # Create a new instance of ChatDetailResponse with the mock data
-        return mock_chat_response
-
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_db] = lambda: TestingSessionLocal()
-    
-    # Override the takeover_chat endpoint
-    session_to_agent_router.router.routes = [
-        route for route in session_to_agent_router.router.routes 
-        if route.path_format != "/{session_id}/takeover"
-    ]
-    session_to_agent_router.router.add_api_route(
-        "/{session_id}/takeover",
-        mock_takeover_chat,
-        methods=["POST"],
-        response_model=ChatDetailResponse
-    )
-    
+
     return TestClient(app)
 
 @pytest.fixture
@@ -384,24 +370,7 @@ def test_takeover_chat_invalid_session(client, db, user_with_manage_chats_permis
     """Test chat takeover with invalid session ID"""
     # Test takeover with invalid session ID
     invalid_session_id = str(uuid4())
-    
-    # Override the takeover_chat endpoint to raise 404
-    async def mock_takeover_chat(*args, **kwargs):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat session not found"
-        )
-    session_to_agent_router.router.routes = [
-        route for route in session_to_agent_router.router.routes 
-        if route.path_format != "/{session_id}/takeover"
-    ]
-    session_to_agent_router.router.add_api_route(
-        "/{session_id}/takeover",
-        mock_takeover_chat,
-        methods=["POST"],
-        response_model=ChatDetailResponse
-    )
-    
+
     response = client.post(
         f"/api/v1/session-to-agent/{invalid_session_id}/takeover"
     )

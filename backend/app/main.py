@@ -49,6 +49,7 @@ try:
 except ImportError:
     print("Enterprise models not available")
 from app.api import session_to_agent
+from app.workers.chat_auto_closer import run_auto_closer_loop
 
 logger = get_logger(__name__)
 
@@ -60,7 +61,7 @@ async def lifespan(app: FastAPI):
     verify_encryption_key()
     verify_secret_configuration()
     initialize_firebase()
-    await startup_event()
+    await startup_event(app)
     yield
     # Shutdown
     pass
@@ -84,17 +85,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    """Configure Socket.IO on startup"""
+async def startup_event(api: FastAPI):
+    """Configure Socket.IO on startup. Called from lifespan() with the FastAPI
+    instance; the on_event registration it used to carry never ran once a
+    custom lifespan was set. The module-level `app` is rebound to the Socket.IO
+    ASGI wrapper below, so the instance has to be passed in."""
     configure_socketio(cors_origins)
-    
+
     # Start CORS listener for multi-worker synchronization
     initialize_cors_listener()
-    
-    # Start chat auto-closer background task, AI chat will auto close after 1 day
-    from app.workers.chat_auto_closer import run_auto_closer_loop
-    asyncio.create_task(run_auto_closer_loop())
+
+    # Start chat auto-closer background task, AI chat will auto close after 1 day.
+    # Held on app.state so the task cannot be garbage-collected mid-run.
+    api.state.auto_closer_task = asyncio.create_task(run_auto_closer_loop())
 
 # Include routers
 app.include_router(
