@@ -303,7 +303,7 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
             total_duration = total_end_time - total_start_time
             logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed processing all {len(self.urls)} URLs with immediate embedding (Total time: {total_duration:.2f}s)")
 
-    def _raise_if_nothing_stored(self, total_documents: int) -> None:
+    def _raise_if_nothing_stored(self, total_documents: int, skipped_existing: int = 0) -> None:
         """Fail the run when it indexed nothing.
 
         A zero-page run used to be marked COMPLETED, which made a broken crawl
@@ -322,6 +322,18 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
                 "“Checking your browser” page). Add the content manually with "
                 "Upload PDF or Text."
             )
+
+        # Every URL was already in the vector store, so there was nothing new to
+        # crawl. That is a no-op, not a failed read: the content is already there
+        # and the caller links this agent to it afterwards. Reporting the crawl
+        # errors here blamed the site ("may require JavaScript") for what was
+        # really a re-add of a source we had already indexed.
+        if skipped_existing > 0 and skipped_existing >= len(self.urls):
+            logger.info(
+                f"Nothing to crawl: all {skipped_existing} URL(s) are already in the "
+                "knowledge base; keeping the existing content."
+            )
+            return
 
         raise EmptyCrawlError(
             f"No content could be read from {self.urls[0] if self.urls else 'this source'}. "
@@ -373,15 +385,17 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
 
         # Check if URLs exist in vector db
         urls_to_read = self.urls.copy()
+        skipped_existing = 0
         if not recreate and skip_existing:
             try:
                 urls_to_read = [url for url in self.urls if not self.vector_db.name_exists(name=url)]
-                skipped = len(self.urls) - len(urls_to_read)
-                if skipped > 0:
-                    logger.info(f"Skipping {skipped} already loaded URLs")
+                skipped_existing = len(self.urls) - len(urls_to_read)
+                if skipped_existing > 0:
+                    logger.info(f"Skipping {skipped_existing} already loaded URLs")
             except Exception as e:
                 logger.error(f"Error checking existing URLs: {str(e)}")
                 urls_to_read = self.urls.copy()
+                skipped_existing = 0
 
         # Process URLs in parallel with batched vector DB insertion
         total_documents = 0
@@ -532,7 +546,7 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
 
         # A run that stored nothing is a failure. Raised before the COMPLETED
         # write below so the queue item cannot report success for an empty crawl.
-        self._raise_if_nothing_stored(total_documents)
+        self._raise_if_nothing_stored(total_documents, skipped_existing)
 
         # Mark as completed after all processing is done
         if self.queue_item and self.queue_repo:

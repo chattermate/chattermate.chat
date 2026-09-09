@@ -21,7 +21,11 @@ from agno.document.base import Document
 from app.core.config import settings
 from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE
 from app.knowledge.enhanced_website_kb import EnhancedWebsiteKnowledgeBase
-from app.knowledge.enhanced_website_reader import EnhancedWebsiteReader
+from app.knowledge.enhanced_website_reader import (
+    BotProtectionError,
+    EmptyCrawlError,
+    EnhancedWebsiteReader,
+)
 
 # Test Data
 TEST_URLS = [
@@ -48,6 +52,9 @@ def mock_reader():
     """Create a mock website reader"""
     mock = MagicMock(spec=EnhancedWebsiteReader)
     mock.read.return_value = TEST_DOCUMENTS
+    # The real reader declares this as an int defaulting to 0; left as a Mock it
+    # is truthy, which would read as "bot protection blocked every page".
+    mock._challenge_blocked = 0
     return mock
 
 class TestEnhancedWebsiteKnowledgeBase:
@@ -113,10 +120,6 @@ class TestEnhancedWebsiteKnowledgeBase:
         reason was marked COMPLETED, making a broken source look identical to a
         healthy one with no sub-pages.
         """
-        from app.knowledge.enhanced_website_reader import (
-            BotProtectionError,
-            EmptyCrawlError,
-        )
         reader = EnhancedWebsiteReader(max_links=5)
         kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=reader)
 
@@ -138,6 +141,30 @@ class TestEnhancedWebsiteKnowledgeBase:
             kb._raise_if_nothing_stored(0)
         # The message names the source so the dashboard error is actionable.
         assert TEST_URLS[0] in str(excinfo.value)
+
+    def test_nothing_stored_because_everything_was_already_indexed(self):
+        """Skipping URLs we already hold is a no-op, not an unreadable source.
+
+        load() drops URLs already in the vector store, so a re-add reaches this
+        guard having stored nothing. Raising there failed the whole source and
+        blamed the site — "may require JavaScript" — for content already indexed.
+        """
+        reader = EnhancedWebsiteReader(max_links=5)
+        reader._challenge_blocked = 0
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=reader)
+
+        # Every URL skipped as already present → nothing to do, no error.
+        kb._raise_if_nothing_stored(0, skipped_existing=len(TEST_URLS))
+
+        # Some URLs were still meant to be read and yielded nothing → real failure.
+        with pytest.raises(EmptyCrawlError):
+            kb._raise_if_nothing_stored(0, skipped_existing=len(TEST_URLS) - 1)
+
+        # Bot protection keeps precedence over the skip shortcut: its message is
+        # the actionable one, and a blocked sitemap must still fail loudly.
+        reader._challenge_blocked = 2
+        with pytest.raises(BotProtectionError):
+            kb._raise_if_nothing_stored(0, skipped_existing=len(TEST_URLS))
     
     def test_document_lists_property(self, mock_reader):
         """Test the document_lists property"""
@@ -217,7 +244,22 @@ class TestEnhancedWebsiteKnowledgeBase:
         
         # Verify upsert was called once with the documents
         mock_vector_db.upsert.assert_called_once()
-    
+
+    def test_load_when_every_url_is_already_indexed(self, mock_vector_db, mock_reader):
+        """Re-adding a source that is fully indexed must not fail it.
+
+        Nothing is crawled and nothing is stored, which used to surface on the
+        queue item as "No content could be read ... may require JavaScript" even
+        though the content was sitting in the vector store the whole time.
+        """
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=mock_reader)
+        kb.vector_db = mock_vector_db
+        mock_vector_db.name_exists.return_value = True
+
+        kb.load(recreate=False)
+
+        mock_reader.read.assert_not_called()
+
     def test_load_with_existing_documents(self, mock_vector_db, mock_reader):
         """Test load method with existing documents"""
         kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=mock_reader)
