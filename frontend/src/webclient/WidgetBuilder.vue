@@ -176,6 +176,24 @@ setupDOMObserver.timeoutId = null
 // Keep track of current input fields for cleanup
 let currentInputFields: HTMLElement[] = []
 
+// Every deferred listener setup is tracked so unmount can cancel it: a bare
+// setTimeout outlives the component and then touches a document that is gone
+// (surfaced by the test runner as an error after environment teardown).
+const pendingListenerSetups = new Set<ReturnType<typeof setTimeout>>()
+
+const scheduleNativeListenerSetup = (delayMs: number) => {
+    const timer = setTimeout(() => {
+        pendingListenerSetups.delete(timer)
+        setupNativeEventListeners()
+    }, delayMs)
+    pendingListenerSetups.add(timer)
+}
+
+const cancelPendingListenerSetups = () => {
+    pendingListenerSetups.forEach(clearTimeout)
+    pendingListenerSetups.clear()
+}
+
 // Setup native DOM event listeners as fallback
 const setupNativeEventListeners = () => {
     // Clean up existing listeners first
@@ -469,9 +487,7 @@ const sendMessage = async () => {
 
     // Re-setup native event listeners after message is sent
     // The DOM might have changed, so we need to reattach listeners
-    setTimeout(() => {
-        setupNativeEventListeners()
-    }, 500)
+    scheduleNativeListenerSetup(500)
 }
 
 // Release a queued message once the reply lands. Ending a chat also clears
@@ -675,14 +691,14 @@ watch(() => messages.value, (newMessages) => {
 // Watch for connection status changes to set up event listeners when needed
 watch(connectionStatus, (newStatus, oldStatus) => {
     if (newStatus === 'connected' && oldStatus !== 'connected') {
-        setTimeout(setupNativeEventListeners, 100)
+        scheduleNativeListenerSetup(100)
     }
 })
 
 // Watch for messages to set up event listeners when chat becomes active
 watch(() => messages.value.length, (newLength, oldLength) => {
     if (newLength > 0 && oldLength === 0) {
-        setTimeout(setupNativeEventListeners, 100)
+        scheduleNativeListenerSetup(100)
     }
 })
 
@@ -1546,7 +1562,7 @@ onMounted(async () => {
 
     // Initial setup with intelligent timing
     if (shouldSetupListeners()) {
-        setTimeout(setupNativeEventListeners, 100)
+        scheduleNativeListenerSetup(100)
     } else {
         // If no immediate need, wait for DOM changes to trigger setup
         // Event listeners will be set up when connection is established or messages arrive
@@ -1574,6 +1590,7 @@ onUnmounted(() => {
         clearTimeout(setupDOMObserver.timeoutId)
         setupDOMObserver.timeoutId = null
     }
+    cancelPendingListenerSetups()
 
     // Clean up native event listeners
     cleanupNativeEventListeners()
