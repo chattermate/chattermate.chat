@@ -18,7 +18,6 @@ limitations under the License.
 import os
 import sys
 import logging
-from pathlib import Path
 
 # Add the app directory to the Python path
 sys.path.insert(0, '/app')
@@ -27,37 +26,8 @@ sys.path.insert(0, '/app')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def preload_sentence_transformer():
-    """Preload the sentence transformer model to avoid runtime issues"""
-    try:
-        from sentence_transformers import SentenceTransformer
-        
-        # Get model ID from environment or use default
-        model_id = os.getenv("EMBEDDING_MODEL_ID", "sentence-transformers/all-MiniLM-L6-v2")
-        
-        logger.info(f"Preloading SentenceTransformer model: {model_id}")
-        
-        # Load the model (this will download it if not cached)
-        model = SentenceTransformer(model_id)
-        
-        # Test the model with a simple embedding to ensure it's working
-        test_text = "This is a test sentence to verify the model is working correctly."
-        embedding = model.encode(test_text)
-        
-        logger.info(f"Successfully preloaded model {model_id}. Embedding dimension: {len(embedding)}")
-        
-        # Clean up to free memory
-        del model
-        del embedding
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to preload SentenceTransformer model: {str(e)}")
-        return False
-
 def preload_agno_embedder():
-    """Preload the Agno embedder to ensure it's working"""
+    """Preload the fastembed model agno embeds with"""
     try:
         from agno.embedder.fastembed import FastEmbedEmbedder
         
@@ -86,25 +56,15 @@ def preload_agno_embedder():
         return False
 
 def main():
-    """Main function to preload all models"""
+    """Warm the embedding model cache so the first request does not pay for the download"""
     logger.info("Starting model preloading process...")
-    
-    success = True
-    
-    # Preload SentenceTransformer model
-    if not preload_sentence_transformer():
-        success = False
-    
-    # Preload Agno embedder
+
     if not preload_agno_embedder():
-        success = False
-    
-    if success:
-        logger.info("All models preloaded successfully!")
-        return 0
-    else:
-        logger.error("Some models failed to preload")
+        logger.error("Model preloading failed")
         return 1
+
+    logger.info("All models preloaded successfully!")
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main()) 

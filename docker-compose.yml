@@ -32,13 +32,8 @@ services:
       - ENVIRONMENT=development
       # HuggingFace caching configuration
       - HF_HOME=/app/.cache/huggingface
-      - TRANSFORMERS_CACHE=/app/.cache/huggingface/transformers
-      - SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface/sentence_transformers
       - HF_HUB_CACHE=/app/.cache/huggingface/hub
       - HF_HUB_DISABLE_TELEMETRY=1
-      # PyTorch configuration
-      - TORCH_HOME=/app/.cache/torch
-      - PYTORCH_TRANSFORMERS_CACHE=/app/.cache/pytorch_transformers
       # Reduce parallelism to avoid conflicts
       - EMBEDDING_MAX_WORKERS=4
       - KB_MAX_WORKERS=4
@@ -56,7 +51,6 @@ services:
       - backend_assets:/app/assets
       # Add caching volumes for models
       - huggingface_cache:/app/.cache/huggingface
-      - torch_cache:/app/.cache/torch
     depends_on:
       db:
         condition: service_healthy
@@ -89,13 +83,9 @@ services:
       - ENVIRONMENT=development
       # HuggingFace caching configuration (shared with backend)
       - HF_HOME=/app/.cache/huggingface
-      - TRANSFORMERS_CACHE=/app/.cache/huggingface/transformers
-      - SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface/sentence_transformers
       - HF_HUB_CACHE=/app/.cache/huggingface/hub
       - HF_HUB_DISABLE_TELEMETRY=1
       # PyTorch configuration (shared with backend)
-      - TORCH_HOME=/app/.cache/torch
-      - PYTORCH_TRANSFORMERS_CACHE=/app/.cache/pytorch_transformers
       # Reduce parallelism to avoid conflicts
       - EMBEDDING_MAX_WORKERS=2
       - KB_MAX_WORKERS=2
@@ -108,7 +98,6 @@ services:
       - ./config:/app/config
       # Share the same caching volumes with backend
       - huggingface_cache:/app/.cache/huggingface
-      - torch_cache:/app/.cache/torch
     depends_on:
       db:
         condition: service_healthy
@@ -227,4 +216,3 @@ volumes:
   backend_assets:
   # Add new volumes for model caching
   huggingface_cache:
-  torch_cache: 

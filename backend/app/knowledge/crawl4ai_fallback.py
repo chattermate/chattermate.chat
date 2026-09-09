@@ -29,7 +29,7 @@ try:
     logger.info("✓ Crawl4AI module loaded successfully")
 except ImportError:
     CRAWL4AI_AVAILABLE = False
-    logger.warning("⚠️  Crawl4AI not installed. Install with: pip install crawl4ai>=0.7.0")
+    logger.warning("⚠️  Crawl4AI not installed. Install with: pip install crawl4ai>=0.9")
 
 # Note: We use threading for async compatibility instead of nest_asyncio
 # This avoids conflicts with uvloop and other event loop implementations
