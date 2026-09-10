@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from app.api.channels.accounts import get_org_account_or_404
 from app.channels import get_adapter
 from app.channels.meta_base import fetch_message_templates, graph_detail, graph_get
+from app.core.error_handlers import ClientSafeHTTPException
 from app.core.auth import (
     CHAT_MANAGE_PERMISSIONS,
     INBOX_PERMISSIONS,
@@ -82,8 +83,8 @@ async def _fetch_all_templates(waba_id: str, access_token: str) -> list[Template
     owns the HTTP error surface)."""
     ok, data = await fetch_message_templates(waba_id, access_token)
     if not ok:
-        raise HTTPException(status_code=502,
-                            detail=graph_detail(data, "Could not list templates"))
+        raise ClientSafeHTTPException(status_code=502,
+                                     detail=graph_detail(data, "Could not list templates"))
     return [TemplateOut(**template) for template in data]
 
 
@@ -127,7 +128,9 @@ async def start_whatsapp_conversation(
             customer_name=request.customer_name,
         )
     except OutboundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.detail)
+        # OutboundError details are written for the operator ("Recipient not on
+        # WhatsApp"), so they survive the 5xx sanitizer.
+        raise ClientSafeHTTPException(status_code=e.status_code, detail=e.detail)
     return OutboundConversationOut(session_id=session_id)
 
 
@@ -154,7 +157,7 @@ async def send_whatsapp_template(
         components=request.components,
     )
     if not result.ok:
-        raise HTTPException(status_code=502, detail=result.error or "Template send failed")
+        raise ClientSafeHTTPException(status_code=502, detail=result.error or "Template send failed")
     return {"status": "sent", "external_message_id": result.external_message_id}
 
 

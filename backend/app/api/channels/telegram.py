@@ -23,6 +23,7 @@ from app.api.channels.accounts import get_org_account_or_404, to_account_out
 from app.channels import telegram as telegram_api
 from app.core.auth import get_current_organization, require_permissions
 from app.core.config import settings
+from app.core.error_handlers import ClientSafeHTTPException
 from app.database import get_db
 from app.models.channels import ChannelType
 from app.models.organization import Organization
@@ -81,7 +82,7 @@ async def connect_telegram(
         detail = f"Failed to register Telegram webhook: {webhook_error}"
         if "https" in webhook_error.lower():
             detail += " — set BACKEND_URL to a public HTTPS URL (e.g. your ngrok domain)"
-        raise HTTPException(status_code=502, detail=detail)
+        raise ClientSafeHTTPException(status_code=502, detail=detail)
 
     logger.info(f"Connected Telegram bot @{bot.get('username')} for org {organization.id}")
     return to_account_out(db, account)

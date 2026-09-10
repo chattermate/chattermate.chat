@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.api.help_center_images import router as help_center_images_router
 from app.core.config import settings
+from app.core.error_handlers import ClientSafeHTTPException, install_error_handlers
 from app.database import get_db
 from app.models.faq import FAQ
 from app.models.help_center import HelpCenterSettings
@@ -73,6 +74,7 @@ from app.services.help_center_seo import (
 from app.services.public_rate_limit import allow_request
 
 public_app = FastAPI(title="ChatterMate Help Center", docs_url=None, redoc_url=None, openapi_url=None)
+install_error_handlers(public_app)
 # Serve ONLY help-center images on this app, so relative logo/article-image paths
 # resolve on a subdomain/custom-domain origin (host dispatch). Scoped to the
 # help_center/ subtree — the help center must never expose chat_attachments,
@@ -331,7 +333,7 @@ async def ask(payload: AskRequest, request: Request, db: Session = Depends(get_d
     # answer_question manages its own short sessions around the slow LLM call.
     answer = await answer_question(row.organization_id, row.agent_id, payload.question)
     if not answer:
-        raise HTTPException(status_code=503, detail="Could not answer right now — please try again.")
+        raise ClientSafeHTTPException(status_code=503, detail="Could not answer right now — please try again.")
     return {"answer": answer}
 
 
