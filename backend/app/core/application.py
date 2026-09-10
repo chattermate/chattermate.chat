@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 from fastapi import FastAPI
+from app.core.error_handlers import install_error_handlers
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -25,6 +26,9 @@ app = FastAPI(
     description="AI-Powered Customer Support Platform",
     version="1.0.0"
 )
+
+# 5xx bodies must not carry our own error text; see error_handlers.
+install_error_handlers(app)
 
 def initialize_cors_listener():
     """
