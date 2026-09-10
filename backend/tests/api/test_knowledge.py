@@ -35,7 +35,7 @@ from tests.conftest import engine, TestingSessionLocal, create_tables
 from datetime import datetime, timezone
 import io
 import os
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 from unittest.mock import MagicMock
 
 # Set enterprise flag to False
@@ -545,6 +545,33 @@ def test_get_processor_status(client: TestClient):
     assert "is_running" in data
     assert "last_run" in data
     assert "error" in data
+
+
+def test_processor_status_failure_does_not_return_the_exception(client: TestClient):
+    """A failure here used to answer 200 with {"error": str(e)}.
+
+    These routes report on infrastructure, so the exception text is a database
+    or Redis error — connection strings and SQL, handed to whoever asked. The
+    real reason belongs in the log only.
+    """
+    leak = "could not connect to postgresql://admin:hunter2@10.0.0.4/app"
+    with patch("app.api.knowledge.PROCESSOR_STATUS", new_callable=PropertyMock) as status:
+        status.side_effect = RuntimeError(leak)
+        response = client.get("/api/v1/knowledge/processor/status")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "hunter2" not in body
+    assert "postgresql://" not in body
+
+
+def test_queue_status_failure_does_not_return_the_exception(client: TestClient, test_knowledge_queue):
+    leak = "relation \"knowledge_queue\" does not exist"
+    with patch("app.api.knowledge.KnowledgeQueueRepository") as repo:
+        repo.side_effect = RuntimeError(leak)
+        response = client.get(f"/api/v1/knowledge/queue/{test_knowledge_queue.id}")
+
+    assert "does not exist" not in response.text
 
 def test_delete_knowledge(client: TestClient, test_knowledge):
     """Test deleting knowledge"""

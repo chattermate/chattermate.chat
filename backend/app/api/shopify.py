@@ -1039,7 +1039,7 @@ async def shopify_customers_data_request_webhook(
         logger.error(traceback.format_exc())
         return {
             "success": False,
-            "message": f"Error processing webhook: {str(e)}"
+            "message": "Error processing webhook"
         }
 
 @router.post("/webhooks/customers/redact")
@@ -1127,7 +1127,7 @@ async def shopify_customers_redact_webhook(
         logger.error(traceback.format_exc())
         return {
             "success": False,
-            "message": f"Error processing webhook: {str(e)}"
+            "message": "Error processing webhook"
         }
 
 @router.post("/webhooks/shop/redact")
@@ -1227,5 +1227,5 @@ async def shopify_shop_redact_webhook(
         logger.error(traceback.format_exc())
         return {
             "success": False,
-            "message": f"Error processing webhook: {str(e)}"
+            "message": "Error processing webhook"
         }

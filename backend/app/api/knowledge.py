@@ -53,6 +53,10 @@ except ImportError:
     HAS_ENTERPRISE = False
 
 router = APIRouter()
+
+# Shown in place of the database error when a source's page table can't be read.
+# The real reason is logged; it must not travel to the caller.
+PAGES_UNREADABLE = "Could not read this source's pages"
 logger = get_logger(__name__)
 
 # Add this near the top of the file with other constants
@@ -838,7 +842,7 @@ async def get_knowledge_by_agent(
 
                 except Exception as e:
                     logger.error(f"Error querying table {k.table_name}: {str(e)}")
-                    knowledge_data["error"] = f"Error accessing data: {str(e)}"
+                    knowledge_data["error"] = PAGES_UNREADABLE
 
             result.append(knowledge_data)
 
@@ -1058,7 +1062,7 @@ async def get_knowledge_by_organization(
 
                 except Exception as e:
                     logger.error(f"Error querying table {k.table_name}: {str(e)}")
-                    knowledge_data["error"] = f"Error accessing data: {str(e)}"
+                    knowledge_data["error"] = PAGES_UNREADABLE
 
             result.append(knowledge_data)
 
@@ -1109,7 +1113,7 @@ async def get_queue_status(
 
     except Exception as e:
         logger.error(f"Error getting queue status: {str(e)}")
-        return {"error": str(e)}
+        return {"error": "Could not read the queue status"}
 
 
 @router.get("/processor/status")
@@ -1157,7 +1161,7 @@ async def get_processor_status(
 
     except Exception as e:
         logger.error(f"Error getting processor status: {str(e)}")
-        return {"error": str(e)}
+        return {"error": "Could not read the processor status"}
 
 
 @router.delete("/{knowledge_id}")

@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from urllib.parse import urlparse
+
 import socketio
 from socketio import AsyncServer
 from app.core.config import settings
@@ -21,6 +23,18 @@ from app.core.logger import get_logger
 from app.core.cors import get_cors_origins
 
 logger = get_logger(__name__)
+
+# ElastiCache endpoints terminate TLS, so a redis:// URL pointing at one has to be
+# upgraded to rediss://. Match the HOST: ".cache.amazonaws.com" anywhere in the
+# string would also accept redis://evil.com/?x=.cache.amazonaws.com.
+ELASTICACHE_HOST_SUFFIX = ".cache.amazonaws.com"
+
+
+def needs_elasticache_tls(redis_url: str | None) -> bool:
+    """True when this plaintext Redis URL points at an ElastiCache host."""
+    if not redis_url or not redis_url.startswith("redis://"):
+        return False
+    return (urlparse(redis_url).hostname or "").endswith(ELASTICACHE_HOST_SUFFIX)
 
 # Initialize Socket.IO server with basic config
 sio: AsyncServer = socketio.AsyncServer(
@@ -52,7 +66,7 @@ def configure_socketio(cors_origins=None):
     if settings.REDIS_ENABLED:
         # Use rediss:// protocol if TLS is needed (ElastiCache)
         redis_url = settings.REDIS_URL
-        if redis_url and redis_url.startswith("redis://") and ".cache.amazonaws.com" in redis_url:
+        if needs_elasticache_tls(redis_url):
             redis_url = "rediss://" + redis_url[8:]
             logger.info(f"Using TLS for Redis connection: {redis_url}")
         

@@ -54,6 +54,9 @@ logger = get_logger(__name__)
 UPLOAD_DIR = "uploads/agents"
 
 ALLOWED_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+# The stored name's extension comes from the validated content type, never from
+# the caller's filename — nothing user-supplied reaches the path that way.
+MIME_EXTENSIONS = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 # Model for instruction generation request
@@ -113,8 +116,7 @@ async def save_file(file: UploadFile, organization_id: UUID) -> str:
             detail="Invalid image file"
         )
 
-    file_ext = os.path.splitext(file.filename)[1].lower()
-    file_name = f"{uuid4()}{file_ext}"
+    file_name = f"{uuid4()}{MIME_EXTENSIONS[file.content_type]}"
     
     if settings.S3_FILE_STORAGE:
         folder = f"agents/{organization_id}"
