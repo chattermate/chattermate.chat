@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from urllib.parse import urlparse
+
 import socketio
 from socketio import AsyncServer
 from app.core.config import settings
@@ -52,7 +54,12 @@ def configure_socketio(cors_origins=None):
     if settings.REDIS_ENABLED:
         # Use rediss:// protocol if TLS is needed (ElastiCache)
         redis_url = settings.REDIS_URL
-        if redis_url and redis_url.startswith("redis://") and ".cache.amazonaws.com" in redis_url:
+        # Match the host itself: ".cache.amazonaws.com" anywhere in the string would
+        # also accept redis://evil.com/?x=.cache.amazonaws.com.
+        redis_host = urlparse(redis_url).hostname if redis_url else None
+        if redis_url and redis_url.startswith("redis://") and (
+            redis_host or ""
+        ).endswith(".cache.amazonaws.com"):
             redis_url = "rediss://" + redis_url[8:]
             logger.info(f"Using TLS for Redis connection: {redis_url}")
         
