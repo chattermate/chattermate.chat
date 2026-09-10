@@ -53,6 +53,10 @@ except ImportError:
     HAS_ENTERPRISE = False
 
 router = APIRouter()
+
+# Shown in place of the database error when a source's page table can't be read.
+# The real reason is logged; it must not travel to the caller.
+PAGES_UNREADABLE = "Could not read this source's pages"
 logger = get_logger(__name__)
 
 # Add this near the top of the file with other constants
@@ -838,7 +842,7 @@ async def get_knowledge_by_agent(
 
                 except Exception as e:
                     logger.error(f"Error querying table {k.table_name}: {str(e)}")
-                    knowledge_data["error"] = "Could not read this source's pages"
+                    knowledge_data["error"] = PAGES_UNREADABLE
 
             result.append(knowledge_data)
 
@@ -1058,7 +1062,7 @@ async def get_knowledge_by_organization(
 
                 except Exception as e:
                     logger.error(f"Error querying table {k.table_name}: {str(e)}")
-                    knowledge_data["error"] = "Could not read this source's pages"
+                    knowledge_data["error"] = PAGES_UNREADABLE
 
             result.append(knowledge_data)
 
