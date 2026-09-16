@@ -28,10 +28,13 @@ import { listTeammates, type Teammate } from '@/services/users'
 import channelsService, { type ChannelAccount } from '@/services/channels'
 import NewWhatsAppConversation from '@/components/conversations/NewWhatsAppConversation.vue'
 import { useBreakpoint } from '@/composables/useBreakpoint'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 const route = useRoute()
 const router = useRouter()
 const { isMobile } = useBreakpoint()
+const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const PromoInboxCard = enterpriseComponent(moduleImports.promoUsageCard)
 // Deep-link target session (e.g. from analytics "Sessions Needing Attention")
 const initialSessionId = ref<string | null>(
   typeof route.query.session === 'string' ? route.query.session : null
@@ -406,6 +409,15 @@ const handleChatClosed = (_sessionId?: string) => {
       @started="onConversationStarted"
     />
 
+    <!-- Promo usage nudge for the workspace owner (phones, list pane only).
+         Above the grid: a grid child would take its single bounded row and
+         push the list into an unbounded one (see .main-content). -->
+    <PromoInboxCard
+      v-if="isMobile && !mobileChatOpen && hasEnterpriseModule"
+      compact
+      class="promo-inbox-card"
+    />
+
     <div class="main-content">
       <ConversationsList
         ref="conversationsListRef"
@@ -447,6 +459,11 @@ const handleChatClosed = (_sessionId?: string) => {
 </template>
 
 <style scoped>
+.promo-inbox-card {
+  flex-shrink: 0;
+  margin: 0 16px 8px;
+}
+
 .conversations-page {
   display: flex;
   flex-direction: column;

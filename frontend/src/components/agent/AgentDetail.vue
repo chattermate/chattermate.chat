@@ -15,6 +15,7 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { AgentWithCustomization, AgentCustomization } from '@/types/agent'
 import { getApiUrl, getWidgetUrl, resolveUploadUrl } from '@/config/api'
@@ -44,7 +45,8 @@ const props = defineProps<{
     agent: AgentWithCustomization
 }>()
 
-const { hasEnterpriseModule } = useEnterpriseFeatures()
+const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const PromoGateNotice = enterpriseComponent(moduleImports.promoGateNotice)
 const agentData = ref({ ...props.agent })
 
 // Avatar picker (preset avatars + upload)
@@ -372,6 +374,7 @@ const { data } = await response.json();
 const showTips = ref(false)
 
 // Dialog state for upgrade modal
+const router = useRouter()
 const showUpgradeModal = ref(false)
 const upgradeModalType = ref<'workflow' | 'mcp' | 'advanced' | 'lead-capture'>('workflow')
 
@@ -388,10 +391,17 @@ const closeUpgradeModal = () => {
 }
 
 const handleUpgrade = () => {
-    // Navigate to subscription/upgrade page
-    // You can implement this based on your routing structure
-    window.location.href = '/subscription'
+    closeUpgradeModal()
+    void router.push('/settings/subscription')
 }
+
+/** The feature the gate notice unlocks, by type - never derived from UI copy. */
+const gateFeatureLabel = computed(() => ({
+    workflow: 'Workflow',
+    mcp: 'MCP Tools',
+    advanced: 'Advanced Settings',
+    'lead-capture': 'Lead Capture',
+}[upgradeModalType.value] ?? 'this feature'))
 
 // Tab switching function
 const switchTab = (tab: string) => {
@@ -1344,6 +1354,8 @@ onMounted(async () => {
                             <span>{{ feature }}</span>
                         </div>
                     </div>
+                    <!-- Live promo offer, when one applies to this organization -->
+                    <PromoGateNotice :feature="gateFeatureLabel" @claim="closeUpgradeModal" />
                 </div>
                 <div class="upgrade-modal-footer">
                     <button class="upgrade-button" @click="handleUpgrade">

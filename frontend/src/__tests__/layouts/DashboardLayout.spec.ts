@@ -63,7 +63,9 @@ vi.mock('@/composables/useEnterpriseFeatures', () => ({
     },
     initializeSubscriptionStore: vi.fn().mockResolvedValue(undefined),
     showMessageLimitWarning: false,
-    messageLimitStatus: null
+    messageLimitStatus: null,
+    moduleImports: { promoSurfaces: '/src/modules/enterprise/components/promo/PromoSurfaces.vue' },
+    enterpriseComponent: () => ({ name: 'EnterpriseEmpty', render: () => null }),
   })
 }))
 

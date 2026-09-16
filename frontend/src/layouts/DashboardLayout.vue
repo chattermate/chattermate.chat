@@ -83,7 +83,9 @@ const PAGE_TITLES: Record<string, string> = {
 const pageTitle = computed(() => PAGE_TITLES[route.path] || '')
 
 // Initialize enterprise features
-const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus } = useEnterpriseFeatures()
+const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+// Promo strip / usage nudge / post-signup popup (enterprise only; empty in OSS)
+const PromoSurfaces = enterpriseComponent(moduleImports.promoSurfaces)
 
 const currentPlan = computed(() => subscriptionStore.value.currentPlan)
 const isLoadingPlan = computed(() => subscriptionStore.value.isLoadingPlan)
@@ -268,6 +270,12 @@ const openNotificationsFromSheet = () => {
                     </div>
                 </div>
             </div>
+
+            <!-- Promo offer surfaces (strip, usage nudge, first-landing popup) -->
+            <PromoSurfaces
+                v-if="!props.hideHeader && hasEnterpriseModule"
+                :hide-usage-card="showMessageLimitWarning"
+            />
 
             <!-- Header -->
             <header v-if="!props.hideHeader" class="header">
