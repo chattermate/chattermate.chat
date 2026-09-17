@@ -41,6 +41,7 @@ import os
 from app.core.socketio import socket_app, configure_socketio, sio
 from app.core.cors import get_cors_origins, get_cors_origin_regex
 from app.core.application import app, initialize_cors_listener
+from app.core.crawler_policy import install_crawler_policy
 
 # Import models to ensure they're registered with SQLAlchemy
 from app.models import Organization, User, Customer
@@ -349,6 +350,10 @@ if not os.path.exists("uploads/agents"):
 # Mount static files
 app.mount("/api/v1/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
+# The API origin is not a website: no robots.txt meant crawlers were free to
+# discover /api/v1/... endpoints and report them as 404s.
+install_crawler_policy(app)
 
 # Create final ASGI app
 # Public help center: requests for {slug}.<help domain> / verified custom
