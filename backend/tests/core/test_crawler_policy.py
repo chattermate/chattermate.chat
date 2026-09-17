@@ -87,8 +87,11 @@ class TestNoIndexHeader:
         assert response.headers["x-robots-tag"] == "noindex"
 
     def test_api_404_is_noindex(self, client):
-        """The 404s are exactly what Search Console indexed, so they need it most."""
-        response = client.get("/api/v1/widgets/YOUR_WIDGET_ID/data")
+        """The 404s are exactly what Search Console indexed, so they need it
+        most. Deliberately a path no router claims: the 404 is then raised
+        before any endpoint dependency runs, so this asserts the middleware
+        and not some unrelated route's database access."""
+        response = client.get("/api/v1/no-such-endpoint")
 
         assert response.status_code == 404
         assert response.headers["x-robots-tag"] == "noindex"
