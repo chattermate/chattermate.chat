@@ -94,6 +94,7 @@ const moduleImports = {
   shopifyIntegration: '/src/modules/enterprise/composables/useShopifyIntegration.ts',
   // Promo offer surfaces (render nothing in the open-source build)
   promoSurfaces: '/src/modules/enterprise/components/promo/PromoSurfaces.vue',
+  promoHeaderPill: '/src/modules/enterprise/components/promo/PromoHeaderPill.vue',
   promoUsageCard: '/src/modules/enterprise/components/promo/PromoUsageCard.vue',
   promoGateNotice: '/src/modules/enterprise/components/promo/PromoGateNotice.vue',
   promoLimitToast: '/src/modules/enterprise/components/promo/PromoLimitToast.vue',

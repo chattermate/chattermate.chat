@@ -64,7 +64,10 @@ vi.mock('@/composables/useEnterpriseFeatures', () => ({
     initializeSubscriptionStore: vi.fn().mockResolvedValue(undefined),
     showMessageLimitWarning: false,
     messageLimitStatus: null,
-    moduleImports: { promoSurfaces: '/src/modules/enterprise/components/promo/PromoSurfaces.vue' },
+    moduleImports: {
+      promoSurfaces: '/src/modules/enterprise/components/promo/PromoSurfaces.vue',
+      promoHeaderPill: '/src/modules/enterprise/components/promo/PromoHeaderPill.vue',
+    },
     enterpriseComponent: () => ({ name: 'EnterpriseEmpty', render: () => null }),
   })
 }))

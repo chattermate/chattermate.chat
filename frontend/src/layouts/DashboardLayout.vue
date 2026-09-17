@@ -86,6 +86,8 @@ const pageTitle = computed(() => PAGE_TITLES[route.path] || '')
 const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
 // Promo strip / usage nudge / post-signup popup (enterprise only; empty in OSS)
 const PromoSurfaces = enterpriseComponent(moduleImports.promoSurfaces)
+// Always-on offer pill in the header: survives the strip being dismissed
+const PromoHeaderPill = enterpriseComponent(moduleImports.promoHeaderPill)
 
 const currentPlan = computed(() => subscriptionStore.value.currentPlan)
 const isLoadingPlan = computed(() => subscriptionStore.value.isLoadingPlan)
@@ -293,6 +295,7 @@ const openNotificationsFromSheet = () => {
                         <button class="icon-btn" @click="toggleTheme" :title="themeTitle" :aria-label="themeTitle"
                             v-html="navIconSvg(themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor', 17)">
                         </button>
+                        <PromoHeaderPill v-if="hasEnterpriseModule" />
                         <div v-if="hasEnterpriseModule && (isLoadingPlan || isInTrial)" class="plan-display">
                             <div v-if="isLoadingPlan" class="plan-loading">
                                 <span class="loading-spinner"></span>
