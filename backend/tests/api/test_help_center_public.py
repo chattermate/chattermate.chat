@@ -354,6 +354,33 @@ def test_sitemap_and_robots(client, db, test_organization, help_center, subdomai
     assert "Sitemap:" in robots.text
 
 
+def test_robots_closes_non_content_paths_but_keeps_articles(
+    client, db, test_organization, help_center, subdomain_mode
+):
+    """The articles stay crawlable — only the paths that are not pages are
+    closed: /feedback and /search (the catch-all 404s both as article slugs)
+    and the per-category ?topic= variants of the landing page."""
+    lines = client.get("/robots.txt", headers={"host": HOST}).text.splitlines()
+
+    assert "Allow: /" in lines
+    assert "Disallow: /feedback" in lines
+    assert "Disallow: /search" in lines
+    assert "Disallow: /*?topic=" in lines
+    assert not any(line.startswith("Disallow: /a/") for line in lines)
+
+
+def test_robots_disallows_carry_the_base_path_in_path_mode(
+    path_client, db, test_organization, help_center
+):
+    """A bare "Disallow: /feedback" would name the origin root under path
+    dispatch, not this site — so the rules carry the base path, same as every
+    other link the site builds. (Crawlers only read the origin-root
+    robots.txt, which is the API one; this keeps the two consistent.)"""
+    lines = path_client.get("/help/test-org/robots.txt").text.splitlines()
+
+    assert "Disallow: /help/test-org/feedback" in lines
+
+
 # ---------- path dispatch (self-host default) ----------
 
 def test_path_dispatch_serves_index(path_client, db, test_organization, help_center):

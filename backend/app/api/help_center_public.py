@@ -99,6 +99,16 @@ PAGE_CACHE_CONTROL = "public, max-age=60"
 ASK_LIMIT_PER_MINUTE = 10
 ASK_LIMIT_PER_DAY = 100
 
+# Paths robots.txt keeps crawlers off. The articles themselves stay fully
+# crawlable ("Allow: /"); these are the non-content paths only:
+#   /feedback, /search  Not navigable pages. The catch-all resolves them as
+#                       article slugs and 404s, which is how they reached
+#                       Search Console as "Not found (404)".
+#   /*?topic=           Every article header links one filter per category —
+#                       query-parameter variants of the landing page, none of
+#                       them in sitemap.xml.
+CRAWLER_DISALLOWED_PATHS = ("/feedback", "/search", "/*?topic=")
+
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=MAX_QUESTION_CHARS)
@@ -376,7 +386,11 @@ async def sitemap(request: Request, db: Session = Depends(get_db)):
 @public_app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots(request: Request, db: Session = Depends(get_db)):
     row = _resolve_or_404(request, db)
-    return PlainTextResponse(f"User-agent: *\nAllow: /\nSitemap: {site_url(row)}/sitemap.xml\n")
+    base_path = _base_path(request)
+    lines = ["User-agent: *", "Allow: /"]
+    lines += [f"Disallow: {base_path}{path}" for path in CRAWLER_DISALLOWED_PATHS]
+    lines.append(f"Sitemap: {site_url(row)}/sitemap.xml")
+    return PlainTextResponse("\n".join(lines) + "\n")
 
 
 @public_app.get("/healthz")
