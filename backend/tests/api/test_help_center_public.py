@@ -366,6 +366,9 @@ def test_robots_closes_non_content_paths_but_keeps_articles(
     assert "Disallow: /feedback" in lines
     assert "Disallow: /search" in lines
     assert "Disallow: /*?topic=" in lines
+    # The landing page re-renders itself filtered for ?q= too — an unbounded
+    # set of thin near-duplicates, and the bigger surface of the two.
+    assert "Disallow: /*?q=" in lines
     assert not any(line.startswith("Disallow: /a/") for line in lines)
 
 

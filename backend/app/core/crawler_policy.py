@@ -40,10 +40,16 @@ def api_robots_txt() -> str:
     indexed; a bare "Disallow: /" would quietly de-index every self-hosted
     help center. Cloud runs subdomain mode, where nothing on this origin is a
     page and the carve-out is absent.
+
+    The Allow goes FIRST. RFC 9309 crawlers take the most specific match and
+    would get this right either way, but ones that take the first match read
+    a leading "Disallow: /" and stop — skipping the very pages the carve-out
+    exists to keep crawlable.
     """
-    lines = ["User-agent: *", "Disallow: /"]
+    lines = ["User-agent: *"]
     if settings.HELP_CENTER_PUBLIC_MODE == "path":
         lines.append("Allow: /help/")
+    lines.append("Disallow: /")
     return "\n".join(lines) + "\n"
 
 

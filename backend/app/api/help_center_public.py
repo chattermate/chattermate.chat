@@ -104,10 +104,12 @@ ASK_LIMIT_PER_DAY = 100
 #   /feedback, /search  Not navigable pages. The catch-all resolves them as
 #                       article slugs and 404s, which is how they reached
 #                       Search Console as "Not found (404)".
-#   /*?topic=           Every article header links one filter per category —
-#                       query-parameter variants of the landing page, none of
-#                       them in sitemap.xml.
-CRAWLER_DISALLOWED_PATHS = ("/feedback", "/search", "/*?topic=")
+#   /*?q=, /*?topic=    The landing page re-renders itself filtered for both:
+#                       one URL per category, and one per search phrase — an
+#                       unbounded set of thin near-duplicates, none of them in
+#                       sitemap.xml. ("/search" is not a route; it is listed so
+#                       a future one cannot leak before anyone thinks of this.)
+CRAWLER_DISALLOWED_PATHS = ("/feedback", "/search", "/*?q=", "/*?topic=")
 
 
 class AskRequest(BaseModel):

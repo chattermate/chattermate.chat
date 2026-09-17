@@ -55,6 +55,14 @@ class TestApiRobotsTxt:
 
         assert "Allow: /help/" in api_robots_txt().splitlines()
 
+    def test_path_mode_allow_precedes_the_blanket_disallow(self, monkeypatch):
+        """A crawler that takes the first match instead of the most specific
+        one must not read "Disallow: /" before reaching the carve-out."""
+        monkeypatch.setattr(settings, "HELP_CENTER_PUBLIC_MODE", "path")
+        lines = api_robots_txt().splitlines()
+
+        assert lines.index("Allow: /help/") < lines.index("Disallow: /")
+
     def test_subdomain_mode_has_nothing_to_carve_out(self, monkeypatch):
         monkeypatch.setattr(settings, "HELP_CENTER_PUBLIC_MODE", "subdomain")
         lines = api_robots_txt().splitlines()
