@@ -962,7 +962,6 @@ onMounted(async () => {
                                             'active': agentData.use_workflow,
                                             'locked': isWorkflowLocked
                                         }"
-                                        :disabled="isWorkflowLocked && !agentData.use_workflow"
                                         @click="agentData.use_workflow || handleToggleUseWorkflow()"
                                         :title="isWorkflowLocked ? 'Upgrade your plan to unlock Workflow mode' : 'Switch to Workflow mode'"
                                     >
@@ -1002,7 +1001,6 @@ onMounted(async () => {
                                 'active': activeTab === 'workflow-builder',
                                 'locked': isWorkflowLocked 
                             }"
-                            :disabled="isWorkflowLocked"
                             @click="isWorkflowLocked ? (upgradeModalType = 'workflow', showUpgradeModal = true) : switchTab('workflow-builder')"
                             :title="isWorkflowLocked ? 'Upgrade your plan to unlock Workflow Builder' : 'Workflow Builder'"
                             v-if="agentData.use_workflow || isWorkflowLocked"
@@ -1041,7 +1039,6 @@ onMounted(async () => {
                         <button
                             class="tab-button"
                             :class="{ 'active': activeTab === 'lead-capture', 'locked': isLeadCaptureLocked }"
-                            :disabled="isLeadCaptureLocked"
                             @click="isLeadCaptureLocked ? (upgradeModalType = 'lead-capture', showUpgradeModal = true) : switchTab('lead-capture')"
                             :title="isLeadCaptureLocked ? 'Upgrade your plan to unlock Lead Capture' : 'Lead Capture'"
                         >
@@ -1051,7 +1048,6 @@ onMounted(async () => {
                         <button
                             class="tab-button"
                             :class="{ 'active': activeTab === 'mcp-tools', 'locked': isMCPLocked }"
-                            :disabled="isMCPLocked"
                             @click="isMCPLocked ? (upgradeModalType = 'mcp', showUpgradeModal = true) : switchTab('mcp-tools')"
                             :title="isMCPLocked ? 'Upgrade your plan to unlock MCP Tools' : 'MCP Tools'"
                         >
@@ -1068,7 +1064,6 @@ onMounted(async () => {
                         <button 
                             class="tab-button" 
                             :class="{ 'active': activeTab === 'advanced', 'locked': isAdvancedLocked }"
-                            :disabled="isAdvancedLocked"
                             @click="isAdvancedLocked ? (upgradeModalType = 'advanced', showUpgradeModal = true) : switchTab('advanced')"
                             :title="isAdvancedLocked ? 'Upgrade your plan to unlock Advanced Settings' : 'Advanced'"
                         >
@@ -1937,7 +1932,8 @@ onMounted(async () => {
 
 .mode-button.locked {
     opacity: 0.6;
-    cursor: not-allowed;
+    /* the lock opens the upgrade dialog, so invite the click */
+    cursor: pointer;
     position: relative;
 }
 
@@ -2682,7 +2678,8 @@ input:checked + .slider:before {
 
 .tab-button.locked {
     opacity: 0.6;
-    cursor: not-allowed;
+    /* the lock opens the upgrade dialog, so invite the click */
+    cursor: pointer;
     position: relative;
 }
 
@@ -3051,6 +3048,12 @@ input:checked + .slider:before {
     justify-content: center;
     z-index: 1000;
     backdrop-filter: blur(4px);
+    /* The dialog is taller than a laptop viewport: without these its header
+       and its own Upgrade button are cut off the screen with no way to reach
+       them. Scroll the overlay and let the box start at the top when it
+       cannot be centred. */
+    overflow-y: auto;
+    padding: var(--space-lg) var(--space-md);
 }
 
 .upgrade-modal {
@@ -3058,6 +3061,7 @@ input:checked + .slider:before {
     border-radius: 16px;
     width: 90%;
     max-width: 500px;
+    margin: auto;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     overflow: hidden;
     animation: modalSlideIn 0.3s ease-out;
