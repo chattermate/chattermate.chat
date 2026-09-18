@@ -231,8 +231,8 @@ async def upload_pdf_files(
             # still-in-paid-period; raises 403 when the org has no plan.
             subscription = require_accessible_subscription(db, org_uuid)
 
-            # Get current knowledge sources count
-            current_count = knowledge_repo.count_by_organization(org_uuid)
+            # Sources already spoken for: indexed, plus crawls still queued
+            current_count = knowledge_repo.count_sources_in_use(org_uuid)
 
             # Check if adding these files would exceed the limit
             new_count = current_count + len(files)
@@ -461,8 +461,8 @@ async def add_urls(
             # still-in-paid-period; raises 403 when the org has no plan.
             subscription = require_accessible_subscription(db, request.org_id)
 
-            # Get current knowledge sources count
-            current_count = knowledge_repo.count_by_organization(request.org_id)
+            # Sources already spoken for: indexed, plus crawls still queued
+            current_count = knowledge_repo.count_sources_in_use(request.org_id)
 
             # Calculate total new URLs to be added (each sitemap is one source)
             total_new_urls = len(request.pdf_urls) + len(request.websites) + len(request.sitemaps)
@@ -602,7 +602,7 @@ async def add_text_source(
         # Enforce the source-count limit (enterprise only).
         if HAS_ENTERPRISE:
             subscription = require_accessible_subscription(db, request.org_id)
-            current_count = knowledge_repo.count_by_organization(request.org_id)
+            current_count = knowledge_repo.count_sources_in_use(request.org_id)
             max_sources = subscription.plan.max_knowledge_sources
             if max_sources is not None and current_count + 1 > max_sources:
                 raise HTTPException(

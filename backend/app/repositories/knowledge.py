@@ -22,6 +22,7 @@ from sqlalchemy.sql import text
 import logging
 from uuid import UUID
 from app.models.knowledge_to_agent import KnowledgeToAgent
+from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +101,41 @@ class KnowledgeRepository:
         return False
 
     def count_by_organization(self, org_id: UUID) -> int:
-        """Get total count of knowledge items for an organization"""
+        """Get total count of indexed knowledge items for an organization"""
         
         query = (self.db.query(func.count(Knowledge.id))
                 .filter(Knowledge.organization_id == org_id))
         
         result = query.scalar() or 0
         return result
+
+    # A crawl occupies its plan slot the moment it is queued, not when it
+    # finishes. Counting only indexed rows let an organization submit its
+    # whole backlog in one sitting - every request saw a count of zero - and
+    # end up over the plan limit once the queue drained.
+    IN_FLIGHT_QUEUE_STATUSES = (QueueStatus.PENDING.value, QueueStatus.PROCESSING.value)
+
+    def count_sources_in_use(self, org_id: UUID) -> int:
+        """Knowledge sources occupying a plan slot: the indexed ones plus the
+        crawls still queued or running. A queued source has no Knowledge row
+        yet, so it is counted from the queue - by distinct source, and only
+        when nothing indexed already covers it, so the two never double up."""
+        indexed = self.count_by_organization(org_id)
+
+        indexed_sources = (
+            self.db.query(Knowledge.source)
+            .filter(Knowledge.organization_id == org_id)
+        )
+        in_flight = (
+            self.db.query(func.count(func.distinct(KnowledgeQueue.source)))
+            .filter(
+                KnowledgeQueue.organization_id == org_id,
+                KnowledgeQueue.status.in_(self.IN_FLIGHT_QUEUE_STATUSES),
+                KnowledgeQueue.source.notin_(indexed_sources),
+            )
+            .scalar() or 0
+        )
+        return indexed + in_flight
 
     def get_by_organization(
         self,
