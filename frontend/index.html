@@ -42,10 +42,19 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
   <title>ChatterMate - Setup</title>
   <meta name="shopify-api-key" content="<%= VITE_SHOPIFY_API_KEY %>" />
-  <!-- Shopify App Bridge - must be first script tag, no async/defer -->
-  <!-- Shopify Polaris Web Components -->
-  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
-  <script src="https://cdn.shopify.com/shopifycloud/polaris.js"></script>
+  <!-- Shopify App Bridge - must be first script tag, no async/defer.
+       Only loaded inside the Shopify admin (host/shop query params present);
+       outside it App Bridge throws "missing required configuration fields: shop".
+       document.write keeps the load synchronous, as App Bridge requires. -->
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search)
+      if (!params.has('host') && !params.has('shop')) return
+      document.write('<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"><\/script>')
+      // Shopify Polaris Web Components
+      document.write('<script src="https://cdn.shopify.com/shopifycloud/polaris.js"><\/script>')
+    })()
+  </script>
 </head>
 
 <body>
