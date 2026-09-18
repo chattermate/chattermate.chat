@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -42,14 +42,16 @@ def _index(db, org_id, source: str) -> Knowledge:
     return row
 
 
-def _queue(db, org_id, source: str, status=QueueStatus.PENDING) -> KnowledgeQueue:
+def _queue(db, org_id, source: str, status=QueueStatus.PENDING, age=None) -> KnowledgeQueue:
     """A crawl that has been accepted but has produced nothing yet."""
+    started = datetime.now(timezone.utc) - (age or timedelta(0))
     item = KnowledgeQueue(
         organization_id=org_id,
         source_type="website",
         source=source,
         status=status,
-        created_at=datetime.now(timezone.utc),
+        created_at=started,
+        updated_at=started,
     )
     db.add(item)
     db.commit()
@@ -76,15 +78,24 @@ class TestCountSourcesInUse:
         _index(db, test_organization.id, "https://a.example")
         assert repo.count_sources_in_use(test_organization.id) == 1
 
-    def test_a_running_crawl_is_not_counted_twice_once_indexed(self, repo, db, test_organization):
-        """A crawl can index its seed before the queue row is marked done."""
-        _queue(db, test_organization.id, "https://a.example", QueueStatus.PROCESSING)
-        _index(db, test_organization.id, "https://a.example")
-        assert repo.count_sources_in_use(test_organization.id) == 1
+    def test_the_same_url_queued_twice_holds_two_slots(self, repo, db, test_organization):
+        """Each queue row becomes its own knowledge row - the worker does not
+        merge repeats - so counting distinct sources let a customer who kept
+        pressing Add walk past the limit."""
+        _queue(db, test_organization.id, "https://a.example")
+        _queue(db, test_organization.id, "https://a.example")
+        assert repo.count_sources_in_use(test_organization.id) == 2
 
-    def test_the_same_url_queued_twice_holds_one_slot(self, repo, db, test_organization):
-        _queue(db, test_organization.id, "https://a.example")
-        _queue(db, test_organization.id, "https://a.example")
+    def test_a_crawl_abandoned_mid_flight_stops_holding_its_slot(self, repo, db, test_organization):
+        """Only PENDING rows are ever retried, so a row left PROCESSING by a
+        restart would otherwise cost a slot for ever."""
+        _queue(db, test_organization.id, "https://a.example", QueueStatus.PROCESSING,
+               age=KnowledgeRepository.STALE_PROCESSING_AFTER + timedelta(minutes=1))
+        assert repo.count_sources_in_use(test_organization.id) == 0
+
+    def test_a_long_running_crawl_keeps_its_slot(self, repo, db, test_organization):
+        _queue(db, test_organization.id, "https://a.example", QueueStatus.PROCESSING,
+               age=KnowledgeRepository.STALE_PROCESSING_AFTER - timedelta(minutes=5))
         assert repo.count_sources_in_use(test_organization.id) == 1
 
     def test_failed_and_completed_crawls_hold_nothing(self, repo, db, test_organization):

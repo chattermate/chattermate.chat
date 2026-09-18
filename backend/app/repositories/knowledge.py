@@ -14,7 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_
 from app.models.knowledge import Knowledge
 from typing import List, Optional
 from sqlalchemy import func
@@ -114,28 +117,40 @@ class KnowledgeRepository:
     # whole backlog in one sitting - every request saw a count of zero - and
     # end up over the plan limit once the queue drained.
     IN_FLIGHT_QUEUE_STATUSES = (QueueStatus.PENDING.value, QueueStatus.PROCESSING.value)
+    # The worker only ever picks up PENDING, so a row left PROCESSING by a
+    # restart is never retried and never completes. Stop charging for one
+    # after this long, or a redeploy mid-crawl would cost a slot for ever.
+    STALE_PROCESSING_AFTER = timedelta(hours=6)
 
-    def count_sources_in_use(self, org_id: UUID) -> int:
+    def count_sources_in_use(self, org_id: UUID, now: datetime = None) -> int:
         """Knowledge sources occupying a plan slot: the indexed ones plus the
-        crawls still queued or running. A queued source has no Knowledge row
-        yet, so it is counted from the queue - by distinct source, and only
-        when nothing indexed already covers it, so the two never double up."""
-        indexed = self.count_by_organization(org_id)
+        crawls still queued or running.
 
-        indexed_sources = (
-            self.db.query(Knowledge.source)
-            .filter(Knowledge.organization_id == org_id)
-        )
+        Every queue row becomes its own Knowledge row - the worker does not
+        merge repeats - so rows are counted, not distinct sources: otherwise
+        submitting one URL repeatedly walked past the limit unchecked. A row
+        that has just written its Knowledge row but is not yet marked complete
+        is counted twice for that instant, which errs toward refusing, the
+        safe direction for a limit."""
+        now = now or datetime.now(timezone.utc)
+        fresh_enough = now - self.STALE_PROCESSING_AFTER
         in_flight = (
-            self.db.query(func.count(func.distinct(KnowledgeQueue.source)))
+            self.db.query(func.count(KnowledgeQueue.id))
             .filter(
                 KnowledgeQueue.organization_id == org_id,
-                KnowledgeQueue.status.in_(self.IN_FLIGHT_QUEUE_STATUSES),
-                KnowledgeQueue.source.notin_(indexed_sources),
+                or_(
+                    KnowledgeQueue.status == QueueStatus.PENDING.value,
+                    and_(
+                        KnowledgeQueue.status == QueueStatus.PROCESSING.value,
+                        func.coalesce(
+                            KnowledgeQueue.updated_at, KnowledgeQueue.created_at
+                        ) >= fresh_enough,
+                    ),
+                ),
             )
             .scalar() or 0
         )
-        return indexed + in_flight
+        return self.count_by_organization(org_id) + in_flight
 
     def get_by_organization(
         self,

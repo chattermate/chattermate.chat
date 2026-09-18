@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import Column, Integer, String, JSON, DateTime, Enum, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, JSON, DateTime, Enum, ForeignKey, Float, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -36,6 +36,11 @@ class ProcessingStage(str, enum.Enum):
 
 class KnowledgeQueue(Base):
     __tablename__ = "knowledge_queue"
+    # The plan's source limit counts the crawls still in flight, so this is
+    # read on every add.
+    __table_args__ = (
+        Index("ix_knowledge_queue_org_status", "organization_id", "status"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(UUID(as_uuid=True), nullable=False)
