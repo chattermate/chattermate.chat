@@ -55,6 +55,7 @@ class SitemapReader(EnhancedWebsiteReader):
         self._successful_crawls = 0
         self._failed_crawls = 0
         self._challenge_blocked = 0
+        self._failure_causes = {}
 
         # A sitemap index legitimately lists pages on sibling hosts
         # (help.example.com from example.com/sitemap.xml), so the pages it names

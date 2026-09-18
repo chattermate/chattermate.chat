@@ -35,6 +35,7 @@ from app.knowledge.enhanced_website_reader import (
     EnhancedWebsiteReader,
     BotProtectionError,
     EmptyCrawlError,
+    FAILURE_ADVICE,
 )
 
 # Initialize logger for this module
@@ -250,21 +251,22 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
             logger.error(f"Error embedding document '{document.id}': {str(e)}")
             raise
 
-    def _process_document_batch(self, documents: List[Document], filters: Optional[Dict[str, Any]] = None) -> None:
-        """Process a batch of documents by inserting them into the vector database"""
+    def _process_document_batch(self, documents: List[Document], filters: Optional[Dict[str, Any]] = None) -> int:
+        """Insert a batch into the vector database; return how many were stored.
+
+        The count is what the caller checks before reporting success. Swallowing
+        the failure and returning nothing is how a run that stored zero vectors
+        still finished as COMPLETED.
+        """
         if not documents or not self.vector_db:
-            return
+            return 0
 
         try:
-            batch_start_time = time.time()
-            
-            # Use the most efficient upsert method available
             self.vector_db.upsert(documents=documents, filters=filters)
-            
-            batch_end_time = time.time()
-            batch_duration = batch_end_time - batch_start_time
+            return len(documents)
         except Exception as e:
             logger.error(f"Error processing document batch: {str(e)}")
+            return 0
 
     @property
     def document_lists(self) -> Iterator[List[Document]]:
@@ -303,16 +305,20 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
             total_duration = total_end_time - total_start_time
             logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed processing all {len(self.urls)} URLs with immediate embedding (Total time: {total_duration:.2f}s)")
 
-    def _raise_if_nothing_stored(self, total_documents: int, skipped_existing: int = 0) -> None:
-        """Fail the run when it indexed nothing.
+    def _raise_if_nothing_stored(self, stored_documents: int, skipped_existing: int = 0) -> None:
+        """Fail the run when it stored nothing.
 
         A zero-page run used to be marked COMPLETED, which made a broken crawl
         indistinguishable from a healthy source that happens to have no sub-pages —
         the dashboard showed success while the agent had nothing to answer from.
         Raising here is enough: process_queue_item already turns any exception into
         a FAILED queue item with the message shown to the user.
+
+        The count is of documents *stored*, not crawled: a page that crawls fine
+        and then fails to embed leaves the vector table empty, and counting it as
+        progress reported success for a source with nothing behind it.
         """
-        if total_documents > 0:
+        if stored_documents > 0:
             return
 
         # Bot protection first: it is the specific, actionable cause.
@@ -335,10 +341,28 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
             )
             return
 
-        raise EmptyCrawlError(
-            f"No content could be read from {self.urls[0] if self.urls else 'this source'}. "
-            "The page may be empty, require JavaScript, or be unreachable — check the "
-            "URL is correct and publicly accessible."
+        raise EmptyCrawlError(self._failure_message())
+
+    def _failure_message(self) -> str:
+        """What to tell the user, based on what the crawl actually hit.
+
+        The reader records a cause per failed page; the most common one is what
+        the source as a whole ran into. Only when it recorded nothing do we fall
+        back to the old catch-all.
+        """
+        url = self.urls[0] if self.urls else 'this source'
+        cause = None
+        if self.reader is not None and hasattr(self.reader, 'dominant_failure_cause'):
+            cause = self.reader.dominant_failure_cause()
+
+        advice = FAILURE_ADVICE.get(cause)
+        if advice:
+            return advice.format(url=url)
+
+        return (
+            f"No content could be read from {url}. The page may be empty, require "
+            "JavaScript, or be unreachable — check the URL is correct and publicly "
+            "accessible."
         )
 
     def load(
@@ -399,6 +423,10 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
 
         # Process URLs in parallel with batched vector DB insertion
         total_documents = 0
+        # Crawled and stored are different numbers, and only the second one means
+        # the source works. A document that fails to embed or upsert still counts
+        # toward total_documents.
+        stored_documents = 0
         completed_urls = 0
         total_urls = len(urls_to_read)
         
@@ -516,7 +544,7 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
             total_batches = (len(all_documents) + self.batch_size - 1) // self.batch_size
             for i, batch_start in enumerate(range(0, len(all_documents), self.batch_size)):
                 batch = all_documents[batch_start:batch_start + self.batch_size]
-                self._process_document_batch(batch, filters)
+                stored_documents += self._process_document_batch(batch, filters)
                 
                 # Update progress during DB operations
                 if self.queue_item and self.queue_repo and total_batches > 1:
@@ -546,7 +574,14 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
 
         # A run that stored nothing is a failure. Raised before the COMPLETED
         # write below so the queue item cannot report success for an empty crawl.
-        self._raise_if_nothing_stored(total_documents, skipped_existing)
+        # Retrievable means embedded *and* upserted. An unembedded document is
+        # skipped by the vector store, so counting the upsert alone reported
+        # success for a source whose table stayed empty (chatring.ai); counting
+        # the embedding alone would miss a failed insert.
+        retrievable_documents = (
+            min(stored_documents, final_embedded_count) if upsert else final_embedded_count
+        )
+        self._raise_if_nothing_stored(retrievable_documents, skipped_existing)
 
         # Mark as completed after all processing is done
         if self.queue_item and self.queue_repo:

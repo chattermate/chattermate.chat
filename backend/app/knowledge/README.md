@@ -121,19 +121,37 @@ Content stored by earlier, wider crawls is cleaned up in two steps:
   source and deletes them only with `--apply`.
 - **batch_size**: Size of document batches for database operations (default: 20)
 - **blacklist_tags**: HTML tags to remove before content extraction (scripts, styles, etc.)
-- **common_content_tags**: HTML tags likely to contain main content
-- **common_content_classes**: CSS class names likely to indicate main content
-- **common_content_ids**: HTML IDs likely to indicate main content
+- **min_content_length**: Floor a page's extracted text must clear to count as readable (default: 100)
+
+Candidate containers and the retention threshold live in `main_content.py`
+(`CANDIDATE_TAGS`, `CONTENT_RETENTION`), shared with the help-center importer.
 
 ## Content Extraction Strategy
 
-The enhanced reader uses a multi-layered approach to extract content:
+Selection happens in `main_content.select_main_node()`, shared with the help-center
+article importer: it picks the **deepest container that still holds at least
+`CONTENT_RETENTION` (90%) of the page's non-boilerplate text**, which resolves to
+`<main>` or the content `<div>` where one exists and to `<body>` otherwise.
+Navigation chrome (`nav`, `header`, `footer`, `aside`) is excluded when measuring,
+so a page whose only text is a phone number and a login link reads as empty.
 
-1. **Tag-based extraction**: Looks for common content containers like `<article>`, `<main>`, `<section>`, etc.
-2. **Class-based extraction**: Searches for elements with classes like "content", "main-content", "article-content", etc.
-3. **ID-based extraction**: Searches for elements with IDs like "content", "main-content", "article-content", etc.
-4. **Density-based extraction**: Analyzes paragraph density to identify content-rich areas when conventional selectors fail.
-5. **Fallback extraction**: Falls back to the cleaned body content if all other methods fail.
+This replaced a walk that returned the *first* candidate clearing
+`min_content_length`. That floor is not a quality bar — a hero banner clears it —
+so a page whose first `<article>` was a 108-character search widget indexed the
+widget and discarded 4,500 characters. Choosing by how much of the page a
+container holds cannot make that mistake.
+
+If the selected node yields less than `min_content_length`, the page is thin or
+JavaScript-rendered and these fallbacks run in order:
+
+1. **Density-based extraction**: Analyzes paragraph density to identify content-rich areas.
+2. **Meaningful-element extraction**: Collects headings, paragraphs, lists and tables.
+3. **Body fallback**: The cleaned body content.
+4. **Last resort**: All text in the document.
+
+Falling through to these is also what routes a JavaScript-rendered page to the
+Crawl4AI browser fallback in `_process_url` — so boilerplate must never be
+allowed to clear the floor on its own.
 
 ## Testing
 

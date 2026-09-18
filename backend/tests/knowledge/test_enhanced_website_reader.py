@@ -97,55 +97,75 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         """
         self.soup = BeautifulSoup(self.test_html, 'html.parser')
         
-    def test_extract_content_by_tags(self):
-        """Test content extraction by common tags"""
-        # Extract content from the main tag
+    def test_extracts_every_content_block_on_the_page(self):
+        """All of a page's content blocks are kept, not just the first one.
+
+        The old walk returned the first container clearing min_content_length,
+        so a page like this one yielded only <main> and silently dropped the
+        three sibling blocks below it.
+        """
         content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Main Content", content)
         self.assertIn("This is the main content of the page", content)
-        
-    def test_extract_content_by_class_names(self):
-        """Test content extraction by class names"""
-        # Remove the main tag to test fallback to class names
-        main_tag = self.soup.find('main')
-        if main_tag:
-            main_tag.decompose()
-            
-        content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Additional Content", content)
         self.assertIn("More content in a div with class 'content'", content)
-        
-    def test_extract_content_by_id(self):
-        """Test content extraction by id"""
-        # Remove the main tag and content class to test fallback to id
-        main_tag = self.soup.find('main')
-        if main_tag:
-            main_tag.decompose()
-        content_div = self.soup.find(class_='content')
-        if content_div:
-            content_div.decompose()
-            
-        content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Post Content", content)
         self.assertIn("Content in a div with id 'post-content'", content)
-        
+        self.assertIn("Content in a generic div", content)
+
+    def test_a_banner_before_the_content_does_not_win(self):
+        """A short block that merely clears the floor must not beat the page.
+
+        This is eazzyliving.co.uk: its first <article> was a 108-character
+        search widget, and returning it discarded ~4,500 characters of page.
+        The customer retried four times and left.
+        """
+        html = """
+        <html><body>
+            <article>Search properties. Search by city, university, or
+            neighbourhood to find verified student rooms and studios.</article>
+            <div class="listings">
+                <h1>Student accommodation in Leeds</h1>
+                <p>%s</p>
+            </div>
+        </body></html>
+        """ % ("Verified rooms close to campus with bills included. " * 40)
+
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+
+        self.assertIn("Student accommodation in Leeds", content)
+        self.assertIn("Verified rooms close to campus", content)
+        self.assertGreater(len(content), 1000)
+
+    def test_a_page_of_only_boilerplate_stays_below_the_floor(self):
+        """Nav chrome must not pass as content.
+
+        www.solcontrol.ca renders its catalogue with JavaScript; all the served
+        HTML holds is a phone number and a login link. That cleared the
+        100-character floor, so it was stored as the page's content *and* it
+        suppressed the browser fallback that reads the site properly. Staying
+        under the floor is what routes the page to Crawl4AI in _process_url.
+        """
+        html = """
+        <html><body>
+            <header><a href="/login">Welcome, Guest - Login</a>
+                    <a href="tel:905-230-8468">905-230-8468</a></header>
+            <nav><a href="/a">Products</a><a href="/b">About</a></nav>
+            <footer><a href="mailto:info@solcontrol.ca">info@solcontrol.ca</a></footer>
+        </body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+        self.assertLess(len(content), self.reader.min_content_length)
+
     def test_extract_content_by_density(self):
-        """Test content extraction by paragraph density"""
-        # Remove all specific tags, classes and ids to test density-based extraction
-        main_tag = self.soup.find('main')
-        if main_tag:
-            main_tag.decompose()
-        content_div = self.soup.find(class_='content')
-        if content_div:
-            content_div.decompose()
-        post_content_div = self.soup.find(id='post-content')
-        if post_content_div:
-            post_content_div.decompose()
-            
-        content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Generic Content", content)
-        self.assertIn("good paragraph with substantial text", content)
-        
+        """Density extraction still runs when no container holds the page."""
+        html = """
+        <html><body>
+            <span>x</span>
+            <div><p>%s</p><p>%s</p></div>
+        </body></html>
+        """ % ("A good paragraph with substantial text. " * 5,
+               "Another good paragraph that carries the page. " * 5)
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+        self.assertIn("A good paragraph with substantial text", content)
+
     def test_clean_soup(self):
         """Test cleaning of unwanted elements from HTML"""
         # Create a copy for testing

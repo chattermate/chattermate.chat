@@ -73,6 +73,43 @@ class OptimizedPgVector(PgVector):
             reranker=reranker,
         )
 
+    def create(self) -> None:
+        """Create the per-org table, tolerating a concurrent creator.
+
+        agno's PgVector.create() checks table_exists() and then issues CREATE
+        TABLE, which is not atomic. The knowledge processor runs two queue items
+        at once, so an organisation whose first two sources are queued together
+        has both workers find no table and both create it; the loser died with
+        `duplicate key value violates unique constraint "pg_type_typname_nsp_index"`
+        — Postgres rejecting the second table's implicit row type — and the user
+        lost that source.
+
+        Losing the race is not an error: the table the other worker created is
+        the one we wanted. Anything else still raises.
+        """
+        try:
+            super().create()
+        except Exception as e:
+            if not self._is_duplicate_object_error(e):
+                raise
+            logger.debug(
+                f"Table {self.schema}.{self.table_name} was created concurrently; continuing"
+            )
+
+    @staticmethod
+    def _is_duplicate_object_error(error: Exception) -> bool:
+        """True when the failure is 'someone else already created this'.
+
+        Matched on SQLSTATE rather than message text: 42P07 duplicate_table and
+        23505 unique_violation, the latter being how a clash on the pg_type
+        catalog index surfaces.
+        """
+        for exc in (error, getattr(error, 'orig', None)):
+            sqlstate = getattr(exc, 'sqlstate', None) or getattr(exc, 'pgcode', None)
+            if sqlstate in ('42P07', '23505'):
+                return True
+        return False
+
     def insert(
         self,
         documents: List[Document],
