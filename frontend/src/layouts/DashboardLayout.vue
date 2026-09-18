@@ -83,7 +83,11 @@ const PAGE_TITLES: Record<string, string> = {
 const pageTitle = computed(() => PAGE_TITLES[route.path] || '')
 
 // Initialize enterprise features
-const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus } = useEnterpriseFeatures()
+const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+// Promo strip / usage nudge / post-signup popup (enterprise only; empty in OSS)
+const PromoSurfaces = enterpriseComponent(moduleImports.promoSurfaces)
+// Always-on offer pill in the header: survives the strip being dismissed
+const PromoHeaderPill = enterpriseComponent(moduleImports.promoHeaderPill)
 
 const currentPlan = computed(() => subscriptionStore.value.currentPlan)
 const isLoadingPlan = computed(() => subscriptionStore.value.isLoadingPlan)
@@ -269,6 +273,12 @@ const openNotificationsFromSheet = () => {
                 </div>
             </div>
 
+            <!-- Promo offer surfaces (strip, usage nudge, first-landing popup) -->
+            <PromoSurfaces
+                v-if="!props.hideHeader && hasEnterpriseModule"
+                :hide-usage-card="showMessageLimitWarning"
+            />
+
             <!-- Header -->
             <header v-if="!props.hideHeader" class="header">
                 <div class="header-content">
@@ -285,6 +295,7 @@ const openNotificationsFromSheet = () => {
                         <button class="icon-btn" @click="toggleTheme" :title="themeTitle" :aria-label="themeTitle"
                             v-html="navIconSvg(themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor', 17)">
                         </button>
+                        <PromoHeaderPill v-if="hasEnterpriseModule" />
                         <div v-if="hasEnterpriseModule && (isLoadingPlan || isInTrial)" class="plan-display">
                             <div v-if="isLoadingPlan" class="plan-loading">
                                 <span class="loading-spinner"></span>

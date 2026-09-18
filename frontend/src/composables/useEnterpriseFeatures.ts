@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { ref, readonly, defineComponent, h, computed } from 'vue'
+import { ref, readonly, defineComponent, defineAsyncComponent, h, computed } from 'vue'
 import type { Component } from 'vue'
 
 // Create a proper Vue component for the fallback
@@ -92,7 +92,24 @@ const moduleImports = {
   shopifyAppBridge: '/src/modules/enterprise/plugins/shopifyAppBridge.ts',
   shopifyAppBridgeUtilities: '/src/modules/enterprise/plugins/shopifyAppBridgeUtilities.ts',
   shopifyIntegration: '/src/modules/enterprise/composables/useShopifyIntegration.ts',
+  // Promo offer surfaces (render nothing in the open-source build)
+  promoSurfaces: '/src/modules/enterprise/components/promo/PromoSurfaces.vue',
+  promoHeaderPill: '/src/modules/enterprise/components/promo/PromoHeaderPill.vue',
+  promoUsageCard: '/src/modules/enterprise/components/promo/PromoUsageCard.vue',
+  promoGateNotice: '/src/modules/enterprise/components/promo/PromoGateNotice.vue',
+  promoLimitToast: '/src/modules/enterprise/components/promo/PromoLimitToast.vue',
 }
+
+/** Renders nothing: the open-source stand-in for an enterprise-only surface. */
+const EmptyComponent = defineComponent({ name: 'EnterpriseEmpty', setup: () => () => null })
+
+// One glob for the whole module (a literal object per evaluation otherwise),
+// and one async-component definition per path for the life of the app.
+const allEnterpriseModules = import.meta.glob<EnterpriseModule>([
+  '/src/modules/enterprise/**/*.vue',
+  '/src/modules/enterprise/**/*.ts',
+])
+const asyncComponents = new Map<string, Component>()
 
 // Default subscription state
 const defaultSubscriptionState: SubscriptionStore = {
@@ -146,11 +163,7 @@ export const useEnterpriseFeatures = () => {
     return null
   })
 
-  // Create a single glob pattern that matches all possible enterprise module paths
-  const modules = import.meta.glob<EnterpriseModule>([
-    '/src/modules/enterprise/**/*.vue',
-    '/src/modules/enterprise/**/*.ts',
-  ])
+  const modules = allEnterpriseModules
 
   // Check if any enterprise modules exist
   const hasEnterpriseModule = Object.keys(modules).length > 0
@@ -172,6 +185,24 @@ export const useEnterpriseFeatures = () => {
     }
   }
 
+  /**
+   * An enterprise component as an async component, or an empty one when the
+   * module is absent - so open-source templates can mount promo surfaces
+   * unconditionally without importing enterprise code.
+   */
+  const enterpriseComponent = (modulePath: string): Component => {
+    if (!hasEnterpriseModule || !modules[modulePath]) return EmptyComponent
+    let component = asyncComponents.get(modulePath)
+    if (!component) {
+      component = defineAsyncComponent(async () => {
+        const module = await loadModule(modulePath)
+        return module?.default ?? EmptyComponent
+      })
+      asyncComponents.set(modulePath, component)
+    }
+    return component
+  }
+
   const initializeSubscriptionStore = async () => {
     if (hasEnterpriseModule) {
       try {
@@ -191,6 +222,7 @@ export const useEnterpriseFeatures = () => {
     initializeSubscriptionStore,
     loadModule,
     moduleImports,
+    enterpriseComponent,
     NotAvailableComponent,
     showMessageLimitWarning,
     messageLimitStatus,

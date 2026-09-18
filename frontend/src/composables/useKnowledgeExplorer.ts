@@ -16,6 +16,7 @@ limitations under the License.
 
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import { showPlanLimitError } from '@/utils/planLimitToast'
 import type {
   KnowledgeItem,
   KnowledgeLinkedAgent,
@@ -368,7 +369,7 @@ export function useKnowledgeExplorer(
       const msg = err instanceof Error ? err.message : 'Failed to add sub-page'
       console.error('Failed to add sub-page:', err)
       error.value = msg
-      toast.error('Could not add sub-page', { description: msg })
+      void showPlanLimitError('Could not add sub-page', msg)
     } finally {
       isSaving.value = false
     }
@@ -571,7 +572,8 @@ export function useKnowledgeExplorer(
       // reserved for the read/edit pane), so the user doesn't see it twice.
       const msg = err instanceof Error ? err.message : 'Failed to add source'
       console.error('Failed to add source:', err)
-      toast.error('Could not add source', { description: msg })
+      // Plan caps get the offer toast when one applies; other failures the plain one
+      void showPlanLimitError('Could not add source', msg)
       return false
     }
   }

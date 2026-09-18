@@ -31,7 +31,7 @@ class Organization(Base):
     name = Column(String(100), nullable=False)
     domain = Column(String(100), unique=True, nullable=False)
     timezone = Column(String(50), nullable=False, default='UTC')
-    business_hours = Column(JSON, default={
+    business_hours = Column(JSON, default=lambda: {
         'monday': {'start': '09:00', 'end': '17:00', 'enabled': True},
         'tuesday': {'start': '09:00', 'end': '17:00', 'enabled': True},
         'wednesday': {'start': '09:00', 'end': '17:00', 'enabled': True},
@@ -39,8 +39,8 @@ class Organization(Base):
         'friday': {'start': '09:00', 'end': '17:00', 'enabled': True},
         'saturday': {'start': '09:00', 'end': '17:00', 'enabled': False},
         'sunday': {'start': '09:00', 'end': '17:00', 'enabled': False}
-    })
-    settings = Column(JSON, default={})
+    })  # callable: a fresh dict per row, never a shared mutable default
+    settings = Column(JSON, default=dict)  # callable: never a shared mutable default
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(),

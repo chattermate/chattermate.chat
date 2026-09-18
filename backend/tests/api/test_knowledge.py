@@ -236,6 +236,44 @@ def test_add_urls(client: TestClient, test_organization):
     assert len(data["queue_items"]) == 2  # One for PDF, one for website
     assert all(item["status"] == "pending" for item in data["queue_items"])
 
+def test_add_urls_counts_queued_crawls_against_the_plan(
+    client: TestClient, test_organization, test_user, db
+):
+    """A crawl holds its plan slot from the moment it is queued. Before this,
+    every request read a count of zero until the queue drained, so a one-source
+    plan could be filled several times over in one sitting."""
+    db.add(KnowledgeQueue(
+        organization_id=test_organization.id,
+        user_id=test_user.id,
+        source_type="website",
+        source="https://already-queued.example",
+        status=QueueStatus.PENDING,
+    ))
+    db.commit()
+
+    plan = MagicMock()
+    plan.max_knowledge_sources = 1
+    plan.max_sub_pages = 10
+    subscription = MagicMock()
+    subscription.plan = plan
+
+    with patch.object(knowledge_router, "HAS_ENTERPRISE", True), \
+            patch.object(knowledge_router, "require_accessible_subscription",
+                         return_value=subscription, create=True):
+        response = client.post("/api/v1/knowledge/add/urls", json={
+            "org_id": str(test_organization.id),
+            "pdf_urls": [],
+            "websites": ["https://second.example"],
+        })
+
+    assert response.status_code == 403
+    assert "Maximum number of knowledge sources (1)" in response.json()["detail"]
+    # and nothing new was queued
+    assert db.query(KnowledgeQueue).filter(
+        KnowledgeQueue.source == "https://second.example"
+    ).count() == 0
+
+
 def test_add_sitemap(client: TestClient, test_organization, db):
     """A sitemaps request enqueues one source_type='sitemap' queue item."""
     response = client.post("/api/v1/knowledge/add/urls", json={

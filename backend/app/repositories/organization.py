@@ -87,10 +87,9 @@ class OrganizationRepository:
             if domain is not None:
                 organization.domain = domain
             if settings is not None:
-                # Merge new settings with existing
-                current_settings = organization.settings or {}
-                current_settings.update(settings)
-                organization.settings = current_settings
+                # Merge into a NEW dict: the column default is a shared mutable
+                # {} and an in-place update is invisible to the unit of work
+                organization.settings = {**(organization.settings or {}), **settings}
             if is_active is not None:
                 organization.is_active = is_active
 
@@ -110,10 +109,8 @@ class OrganizationRepository:
             if not organization:
                 return None
 
-            # Merge new settings with existing
-            current_settings = organization.settings or {}
-            current_settings.update(settings)
-            organization.settings = current_settings
+            # Merge into a NEW dict (shared mutable default, see update_organization)
+            organization.settings = {**(organization.settings or {}), **settings}
 
             self.db.commit()
             self.db.refresh(organization)
