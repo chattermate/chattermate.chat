@@ -140,6 +140,56 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         self.assertIn("Verified rooms close to campus", content)
         self.assertGreater(len(content), 1000)
 
+    def test_the_page_title_survives_when_it_sits_in_a_page_header(self):
+        """Docs themes put the <h1> in a <header>, which selection treats as chrome.
+
+        docs.chattermate.chat lost "Quickstart: Launch Your AI Support Agent in
+        5 Minutes" that way. A page's title is its strongest retrieval signal,
+        so losing it makes the page harder for an agent to find, not just
+        shorter.
+        """
+        body = "Run the stack on your own infrastructure with the CLI. " * 20
+        html = f"""
+        <html><body>
+            <header><h1>Quickstart: Launch in 5 Minutes</h1></header>
+            <div class="prose"><p>{body}</p></div>
+            <footer>GitHub Discord</footer>
+        </body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+
+        self.assertIn("Quickstart: Launch in 5 Minutes", content)
+        self.assertIn("own infrastructure", content)
+        self.assertNotIn("Discord", content, "footer chrome should stay out")
+
+    def test_a_page_with_no_h1_falls_back_to_the_document_title(self):
+        """<title> lives in <head>, which _clean_soup strips.
+
+        Reading it after the clean would always find nothing, so a page with no
+        <h1> would silently have no title at all.
+        """
+        body = "Refund terms and conditions apply to all orders. " * 20
+        html = f"""
+        <html><head><title>Refund Policy</title></head>
+        <body><div class="c"><p>{body}</p></div></body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+        self.assertIn("Refund Policy", content)
+
+    def test_the_title_is_not_duplicated_when_already_in_the_content(self):
+        """The usual case: the <h1> is inside the content container already."""
+        body = "Every plan we offer, billed monthly or yearly. " * 20
+        html = f"""
+        <html><body>
+            <main><h1>Plans and pricing</h1><p>{body}</p></main>
+        </body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+
+        self.assertIn("Plans and pricing", content)
+        self.assertEqual(content.count("Plans and pricing"), 1,
+                         "the heading must not be prepended on top of itself")
+
     def test_a_page_of_only_boilerplate_stays_below_the_floor(self):
         """Nav chrome must not pass as content.
 

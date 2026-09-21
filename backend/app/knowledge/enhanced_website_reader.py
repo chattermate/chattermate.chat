@@ -334,6 +334,35 @@ class EnhancedWebsiteReader(WebsiteReader):
         parsed_url = urlparse(self._normalize_url(url))
         return registrable_domain(parsed_url.hostname or parsed_url.netloc or "")
     
+    @staticmethod
+    def _page_title(soup: BeautifulSoup) -> str:
+        """The page's own title, <h1> first and <title> second.
+
+        Must run BEFORE _clean_soup, which strips <head> and takes <title> with
+        it — a page with no <h1> would otherwise have no title to fall back to.
+        """
+        heading = soup.find('h1')
+        if heading:
+            title = heading.get_text(" ", strip=True)
+            if title:
+                return title
+
+        tag = soup.find('title')
+        return tag.get_text(strip=True) if tag else ""
+
+    @staticmethod
+    def _prepend_title(title: str, content: str) -> str:
+        """Keep the title when selection left it outside the content container.
+
+        Mintlify and similar docs themes put the <h1> in a page <header>, which
+        selection correctly treats as chrome — but the title is the strongest
+        retrieval signal a page has, so dropping it makes the page harder for an
+        agent to find rather than merely shorter.
+        """
+        if title and title not in content:
+            return f"{title}\n\n{content}"
+        return content
+
     def _extract_main_content(self, soup: BeautifulSoup) -> str:
         """
         Extracts the main content from a BeautifulSoup object.
@@ -347,6 +376,9 @@ class EnhancedWebsiteReader(WebsiteReader):
         :param soup: The BeautifulSoup object to extract the main content from.
         :return: The main content as a string.
         """
+        # Read the title before cleaning: _clean_soup strips <head>.
+        page_title = self._page_title(soup)
+
         # Remove undesirable elements first
         self._clean_soup(soup)
 
@@ -362,6 +394,7 @@ class EnhancedWebsiteReader(WebsiteReader):
 
         content = self._get_clean_text(main_node, include_links=True, base_url=self._current_url)
         if len(content) >= self.min_content_length:
+            content = self._prepend_title(page_title, content)
             logger.info(f"✓ Content extracted from <{main_node.name}> ({len(content)} chars)")
             return content
         logger.debug(f"  Main content node too short: {len(content)} chars")
