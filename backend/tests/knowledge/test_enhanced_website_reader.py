@@ -15,12 +15,18 @@ limitations under the License.
 """
 
 import os
+import socket
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 from bs4 import BeautifulSoup
 import httpx
 
-from app.knowledge.enhanced_website_reader import EnhancedWebsiteReader
+from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE, CrawlScope
+from app.knowledge.enhanced_website_reader import (
+    EnhancedWebsiteReader,
+    FAILURE_ADVICE,
+    FailureCause,
+)
 
 
 class TestEnhancedWebsiteReader(unittest.TestCase):
@@ -97,55 +103,125 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         """
         self.soup = BeautifulSoup(self.test_html, 'html.parser')
         
-    def test_extract_content_by_tags(self):
-        """Test content extraction by common tags"""
-        # Extract content from the main tag
+    def test_extracts_every_content_block_on_the_page(self):
+        """All of a page's content blocks are kept, not just the first one.
+
+        The old walk returned the first container clearing min_content_length,
+        so a page like this one yielded only <main> and silently dropped the
+        three sibling blocks below it.
+        """
         content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Main Content", content)
         self.assertIn("This is the main content of the page", content)
-        
-    def test_extract_content_by_class_names(self):
-        """Test content extraction by class names"""
-        # Remove the main tag to test fallback to class names
-        main_tag = self.soup.find('main')
-        if main_tag:
-            main_tag.decompose()
-            
-        content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Additional Content", content)
         self.assertIn("More content in a div with class 'content'", content)
-        
-    def test_extract_content_by_id(self):
-        """Test content extraction by id"""
-        # Remove the main tag and content class to test fallback to id
-        main_tag = self.soup.find('main')
-        if main_tag:
-            main_tag.decompose()
-        content_div = self.soup.find(class_='content')
-        if content_div:
-            content_div.decompose()
-            
-        content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Post Content", content)
         self.assertIn("Content in a div with id 'post-content'", content)
-        
+        self.assertIn("Content in a generic div", content)
+
+    def test_a_banner_before_the_content_does_not_win(self):
+        """A short block that merely clears the floor must not beat the page.
+
+        This is eazzyliving.co.uk: its first <article> was a 108-character
+        search widget, and returning it discarded ~4,500 characters of page.
+        The customer retried four times and left.
+        """
+        html = """
+        <html><body>
+            <article>Search properties. Search by city, university, or
+            neighbourhood to find verified student rooms and studios.</article>
+            <div class="listings">
+                <h1>Student accommodation in Leeds</h1>
+                <p>%s</p>
+            </div>
+        </body></html>
+        """ % ("Verified rooms close to campus with bills included. " * 40)
+
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+
+        self.assertIn("Student accommodation in Leeds", content)
+        self.assertIn("Verified rooms close to campus", content)
+        self.assertGreater(len(content), 1000)
+
+    def test_the_page_title_survives_when_it_sits_in_a_page_header(self):
+        """Docs themes put the <h1> in a <header>, which selection treats as chrome.
+
+        docs.chattermate.chat lost "Quickstart: Launch Your AI Support Agent in
+        5 Minutes" that way. A page's title is its strongest retrieval signal,
+        so losing it makes the page harder for an agent to find, not just
+        shorter.
+        """
+        body = "Run the stack on your own infrastructure with the CLI. " * 20
+        html = f"""
+        <html><body>
+            <header><h1>Quickstart: Launch in 5 Minutes</h1></header>
+            <div class="prose"><p>{body}</p></div>
+            <footer>GitHub Discord</footer>
+        </body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+
+        self.assertIn("Quickstart: Launch in 5 Minutes", content)
+        self.assertIn("own infrastructure", content)
+        self.assertNotIn("Discord", content, "footer chrome should stay out")
+
+    def test_a_page_with_no_h1_falls_back_to_the_document_title(self):
+        """<title> lives in <head>, which _clean_soup strips.
+
+        Reading it after the clean would always find nothing, so a page with no
+        <h1> would silently have no title at all.
+        """
+        body = "Refund terms and conditions apply to all orders. " * 20
+        html = f"""
+        <html><head><title>Refund Policy</title></head>
+        <body><div class="c"><p>{body}</p></div></body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+        self.assertIn("Refund Policy", content)
+
+    def test_the_title_is_not_duplicated_when_already_in_the_content(self):
+        """The usual case: the <h1> is inside the content container already."""
+        body = "Every plan we offer, billed monthly or yearly. " * 20
+        html = f"""
+        <html><body>
+            <main><h1>Plans and pricing</h1><p>{body}</p></main>
+        </body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+
+        self.assertIn("Plans and pricing", content)
+        self.assertEqual(content.count("Plans and pricing"), 1,
+                         "the heading must not be prepended on top of itself")
+
+    def test_a_page_of_only_boilerplate_stays_below_the_floor(self):
+        """Nav chrome must not pass as content.
+
+        www.solcontrol.ca renders its catalogue with JavaScript; all the served
+        HTML holds is a phone number and a login link. That cleared the
+        100-character floor, so it was stored as the page's content *and* it
+        suppressed the browser fallback that reads the site properly. Staying
+        under the floor is what routes the page to Crawl4AI in _process_url.
+        """
+        html = """
+        <html><body>
+            <header><a href="/login">Welcome, Guest - Login</a>
+                    <a href="tel:905-230-8468">905-230-8468</a></header>
+            <nav><a href="/a">Products</a><a href="/b">About</a></nav>
+            <footer><a href="mailto:info@solcontrol.ca">info@solcontrol.ca</a></footer>
+        </body></html>
+        """
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+        self.assertLess(len(content), self.reader.min_content_length)
+
     def test_extract_content_by_density(self):
-        """Test content extraction by paragraph density"""
-        # Remove all specific tags, classes and ids to test density-based extraction
-        main_tag = self.soup.find('main')
-        if main_tag:
-            main_tag.decompose()
-        content_div = self.soup.find(class_='content')
-        if content_div:
-            content_div.decompose()
-        post_content_div = self.soup.find(id='post-content')
-        if post_content_div:
-            post_content_div.decompose()
-            
-        content = self.reader._extract_main_content(self.soup)
-        self.assertIn("Generic Content", content)
-        self.assertIn("good paragraph with substantial text", content)
-        
+        """Density extraction still runs when no container holds the page."""
+        html = """
+        <html><body>
+            <span>x</span>
+            <div><p>%s</p><p>%s</p></div>
+        </body></html>
+        """ % ("A good paragraph with substantial text. " * 5,
+               "Another good paragraph that carries the page. " * 5)
+        content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
+        self.assertIn("A good paragraph with substantial text", content)
+
     def test_clean_soup(self):
         """Test cleaning of unwanted elements from HTML"""
         # Create a copy for testing
@@ -396,4 +472,109 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()
+
+
+class TestUnreachableHostsFailFast(unittest.TestCase):
+    """A host we never reached fails the same way every attempt.
+
+    The old ladder — three tries with exponential backoff, then a headless
+    browser — spent 130 seconds on mateusoliveira.com (which drops the SYN on
+    80 and 443) and ~10 seconds on each domain with no A record, holding one of
+    only two queue slots for the whole time.
+    """
+
+    def setUp(self):
+        self.reader = EnhancedWebsiteReader(max_depth=1, max_links=1, min_content_length=50)
+        dns_patcher = patch(
+            'app.knowledge.url_safety.socket.getaddrinfo',
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        self.addCleanup(dns_patcher.stop)
+        dns_patcher.start()
+
+    def _crawl_with(self, error):
+        """Run one page through the fetch path with `error` raised every time."""
+        scope = CrawlScope.for_seed("https://example.com", DEFAULT_CRAWL_SCOPE)
+        with patch('app.knowledge.enhanced_website_reader.httpx.Client') as client, \
+             patch('app.knowledge.enhanced_website_reader.get_crawl4ai_fallback') as browser, \
+             patch('app.knowledge.enhanced_website_reader.time.sleep') as sleep:
+            client.return_value.__enter__.return_value.get.side_effect = error
+            browser.return_value.is_available = True
+            browser.return_value.fetch_with_browser.return_value = (None, None, None)
+            result = self.reader._process_url(("https://example.com", 1), scope)
+        return result, client.return_value.__enter__.return_value.get, browser, sleep
+
+
+    def test_a_domain_that_does_not_resolve_is_tried_once(self):
+        error = httpx.ConnectError("[Errno 8] nodename nor servname provided, or not known")
+        result, get, browser, _ = self._crawl_with(error)
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, 1, "no point retrying a name that does not resolve")
+        browser.return_value.fetch_with_browser.assert_not_called()
+        self.assertEqual(self.reader._failure_causes, {FailureCause.DNS: 1})
+
+    def test_a_dropped_connection_attempt_is_tried_once(self):
+        result, get, browser, _ = self._crawl_with(httpx.ConnectTimeout("timed out"))
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, 1)
+        browser.return_value.fetch_with_browser.assert_not_called()
+        self.assertEqual(self.reader._failure_causes, {FailureCause.TIMEOUT: 1})
+
+    def test_a_refused_connection_still_gets_the_browser(self):
+        """Could be a TLS quirk rather than a dead host, so give Chromium a turn."""
+        result, get, browser, _ = self._crawl_with(httpx.ConnectError("Connection refused"))
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, 1, "a refusal will not change in two seconds")
+        browser.return_value.fetch_with_browser.assert_called_once()
+        self.assertEqual(self.reader._failure_causes, {FailureCause.CONNECTION: 1})
+
+    def test_a_slow_page_is_still_retried(self):
+        """Read timeouts are the transient case retries exist for."""
+        result, get, browser, _ = self._crawl_with(httpx.ReadTimeout("too slow"))
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, self.reader.max_retries)
+        browser.return_value.fetch_with_browser.assert_called_once()
+
+    def test_our_own_bugs_are_not_blamed_on_the_customers_site(self):
+        """A crash in our parsing must not be reported as the site being down.
+
+        Everything inside the fetch block — BeautifulSoup, link extraction,
+        content selection — can raise. Classifying those as a connection
+        failure told the customer "your site refused the connection" when what
+        actually happened was our own AttributeError.
+        """
+        reader = EnhancedWebsiteReader()
+        for error in (AttributeError("'NoneType' has no attribute 'find'"),
+                      KeyError("href"),
+                      ValueError("bad parse")):
+            cause, _, _ = reader._classify_transport_error(error)
+            self.assertEqual(cause, FailureCause.UNKNOWN)
+            self.assertNotIn(cause, FAILURE_ADVICE,
+                             "UNKNOWN must fall back to the generic message")
+
+    def test_our_own_pool_exhaustion_is_not_blamed_on_the_site(self):
+        """PoolTimeout means we never sent the request, so the site is not slow."""
+        reader = EnhancedWebsiteReader()
+        cause, retry, _ = reader._classify_transport_error(httpx.PoolTimeout("pool full"))
+        self.assertEqual(cause, FailureCause.UNKNOWN)
+        self.assertTrue(retry, "a saturated pool does free up")
+
+    def test_name_resolution_is_detected_from_the_socket_error(self):
+        """Not from the message text, which other errors can imitate."""
+        reader = EnhancedWebsiteReader()
+
+        gai = httpx.ConnectError("connection failed")
+        gai.__cause__ = socket.gaierror(8, "nodename nor servname provided")
+        self.assertEqual(reader._classify_transport_error(gai)[0], FailureCause.DNS)
+
+        # A refusal that merely mentions a name must not be read as DNS, or we
+        # would skip the browser fallback for a host that is actually up.
+        refused = httpx.ConnectError("Connection refused by name-based vhost")
+        cause, _, browser = reader._classify_transport_error(refused)
+        self.assertEqual(cause, FailureCause.CONNECTION)
+        self.assertTrue(browser)

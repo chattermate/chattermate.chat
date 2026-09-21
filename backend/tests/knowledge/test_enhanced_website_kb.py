@@ -25,6 +25,7 @@ from app.knowledge.enhanced_website_reader import (
     BotProtectionError,
     EmptyCrawlError,
     EnhancedWebsiteReader,
+    FailureCause,
 )
 
 # Test Data
@@ -33,9 +34,21 @@ TEST_URLS = [
     "https://test.com"
 ]
 
+def _embedded(content, url):
+    """A document as it looks once a real run has embedded it.
+
+    Documents without an embedding are skipped by the vector store, so a fixture
+    without one describes a source that stores nothing — which the guard now
+    (correctly) fails.
+    """
+    document = Document(content=content, meta_data={"url": url})
+    document.embedding = [0.1, 0.2, 0.3]
+    return document
+
+
 TEST_DOCUMENTS = [
-    Document(content="Test content 1", meta_data={"url": "https://example.com/page1"}),
-    Document(content="Test content 2", meta_data={"url": "https://example.com/page2"})
+    _embedded("Test content 1", "https://example.com/page1"),
+    _embedded("Test content 2", "https://example.com/page2"),
 ]
 
 @pytest.fixture
@@ -142,6 +155,90 @@ class TestEnhancedWebsiteKnowledgeBase:
         # The message names the source so the dashboard error is actionable.
         assert TEST_URLS[0] in str(excinfo.value)
 
+    def test_a_crawled_page_that_never_reached_the_vector_store_is_a_failure(self):
+        """Crawled and stored are different numbers.
+
+        chatring.ai crawled one document, failed to embed it, stored nothing,
+        and was still marked COMPLETED — the org's vector table was empty while
+        the dashboard showed a healthy source. The guard counts what survived
+        the upsert, so a batch that stored nothing still fails the run.
+        """
+        reader = EnhancedWebsiteReader(max_links=5)
+        reader._challenge_blocked = 0
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=reader)
+
+        with pytest.raises(EmptyCrawlError):
+            kb._raise_if_nothing_stored(0)
+
+    def test_failed_batch_reports_zero_stored(self, mock_vector_db):
+        """An upsert that raises must not be counted as progress."""
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS)
+        kb.vector_db = mock_vector_db
+
+        assert kb._process_document_batch(TEST_DOCUMENTS) == len(TEST_DOCUMENTS)
+
+        mock_vector_db.upsert.side_effect = RuntimeError("connection reset")
+        assert kb._process_document_batch(TEST_DOCUMENTS) == 0
+
+    def test_a_run_whose_documents_never_embedded_fails(self, mock_vector_db, mock_reader):
+        """Crawling is not storing.
+
+        chatring.ai crawled one document, failed to embed it, stored nothing, and
+        was still marked COMPLETED — the org's vector table was empty while the
+        dashboard showed a healthy source. A document with no embedding is
+        skipped by the vector store, so the run has produced nothing retrievable
+        and must fail.
+        """
+        unembedded = Document(content="crawled but never embedded", meta_data={})
+        unembedded.embedding = None
+        mock_reader.read.return_value = [unembedded]
+
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS[:1], reader=mock_reader)
+        kb.vector_db = mock_vector_db
+        mock_vector_db.embedder = None
+
+        with pytest.raises(EmptyCrawlError):
+            kb.load()
+
+    @pytest.mark.parametrize("cause,expected", [
+        (FailureCause.DNS, "does not resolve"),
+        (FailureCause.TIMEOUT, "did not respond in time"),
+        (FailureCause.BOT_BLOCKED, "blocked automated crawling"),
+        (FailureCause.EMPTY_RESPONSE, "returned an empty page"),
+        (FailureCause.THIN_CONTENT, "JavaScript"),
+        (FailureCause.HTTP_ERROR, "error response"),
+        (FailureCause.BLOCKED_HOST, "not allowed to fetch"),
+    ])
+    def test_the_message_names_the_cause_the_crawl_actually_hit(self, cause, expected):
+        """Every distinct cause gets its own advice.
+
+        One string covering "empty, require JavaScript, or be unreachable" was
+        undiagnosable for the user and for us; the reader already knew which of
+        the three it hit.
+        """
+        reader = EnhancedWebsiteReader(max_links=5)
+        reader._challenge_blocked = 0
+        reader._failure_causes = {cause: 2}
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=reader)
+
+        with pytest.raises(EmptyCrawlError) as excinfo:
+            kb._raise_if_nothing_stored(0)
+
+        message = str(excinfo.value)
+        assert expected in message
+        assert TEST_URLS[0] in message
+
+    def test_message_falls_back_when_no_cause_was_recorded(self):
+        """An unexplained empty crawl still says something sensible."""
+        reader = EnhancedWebsiteReader(max_links=5)
+        reader._challenge_blocked = 0
+        reader._failure_causes = {}
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS, reader=reader)
+
+        with pytest.raises(EmptyCrawlError) as excinfo:
+            kb._raise_if_nothing_stored(0)
+        assert "No content could be read" in str(excinfo.value)
+
     def test_nothing_stored_because_everything_was_already_indexed(self):
         """Skipping URLs we already hold is a no-op, not an unreadable source.
 
@@ -199,8 +296,8 @@ class TestEnhancedWebsiteKnowledgeBase:
         kb.vector_db = mock_vector_db
         
         # Set up mock reader to return different documents for each URL
-        doc1 = Document(content="Test content 1", meta_data={"url": "https://example.com/page1"})
-        doc2 = Document(content="Test content 2", meta_data={"url": "https://test.com/page1"})
+        doc1 = _embedded("Test content 1", "https://example.com/page1")
+        doc2 = _embedded("Test content 2", "https://test.com/page1")
         mock_reader.read.side_effect = [[doc1], [doc2]]
         
         kb.load(recreate=True)

@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from agno.document import Document
+from agno.vectordb.pgvector.pgvector import PgVector
 from app.knowledge.optimized_pgvector import OptimizedPgVector
 
 
@@ -149,4 +150,56 @@ class TestOptimizedPgVector:
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", "test_optimized_pgvector.py"]) 
+    pytest.main(["-v", "test_optimized_pgvector.py"])
+
+
+class _PgError(Exception):
+    """Stand-in for a psycopg error, which carries the SQLSTATE as .sqlstate."""
+
+    def __init__(self, sqlstate):
+        super().__init__(sqlstate)
+        self.sqlstate = sqlstate
+
+
+class TestConcurrentTableCreate:
+    """The per-org vector table is created by whichever queue item gets there first.
+
+    agno's PgVector.create() does table_exists() and then CREATE TABLE, which is
+    not atomic. The processor runs two items at once, so an organisation whose
+    first two sources are queued together had both workers create the table and
+    the loser died with
+    `duplicate key value violates unique constraint "pg_type_typname_nsp_index"`,
+    losing that source (production queue item 372, goldmaidsteam.com).
+    """
+
+    def _vector_db(self):
+        return OptimizedPgVector.__new__(OptimizedPgVector)
+
+    @pytest.mark.parametrize("sqlstate", ["42P07", "23505"])
+    def test_losing_the_create_race_is_not_an_error(self, sqlstate):
+        db = self._vector_db()
+        db.table_name = "d_org"
+        db.schema = "ai"
+
+        with patch.object(PgVector, "create", side_effect=_PgError(sqlstate)):
+            db.create()  # the other worker created it; that is the table we wanted
+
+    def test_a_real_create_failure_still_raises(self):
+        db = self._vector_db()
+        db.table_name = "d_org"
+        db.schema = "ai"
+
+        with patch.object(PgVector, "create", side_effect=_PgError("42501")):
+            with pytest.raises(_PgError):
+                db.create()
+
+    def test_duplicate_detected_through_sqlalchemy_wrapping(self):
+        """SQLAlchemy wraps the driver error; the SQLSTATE lives on .orig."""
+        wrapped = RuntimeError("duplicate")
+        wrapped.orig = _PgError("23505")
+
+        with patch.object(PgVector, "create", side_effect=wrapped):
+            db = self._vector_db()
+            db.table_name = "d_org"
+            db.schema = "ai"
+            db.create()

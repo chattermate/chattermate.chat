@@ -16,6 +16,8 @@ limitations under the License.
 
 import random
 import re
+import socket
+import threading
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -41,6 +43,7 @@ from app.knowledge.crawl_scope import (
     url_scheme,
 )
 from app.knowledge.domains import registrable_domain
+from app.knowledge.main_content import select_main_node
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -60,6 +63,86 @@ class EmptyCrawlError(Exception):
     zero pages, so nobody learns the agent has no content to answer from."""
 
 
+def _is_name_resolution_error(error: Exception) -> bool:
+    """True when a connection failed because the name has no address.
+
+    Walks the cause chain for socket.gaierror rather than matching on the
+    message, which would also catch any other error whose text happens to
+    mention a "name" and wrongly skip the browser fallback for it.
+    """
+    seen = set()
+    current = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, socket.gaierror):
+            return True
+        current = current.__cause__ or current.__context__
+
+    text = str(error).lower()
+    return 'nodename' in text or 'name or service not known' in text or 'name resolution' in text
+
+
+class FailureCause:
+    """Why a page could not be read.
+
+    The old message offered the user three guesses at once ("empty, require
+    JavaScript, or be unreachable"). _process_url always knew which one it hit;
+    it just threw the answer away. These are the classes it can tell apart, and
+    each one gets its own advice in FAILURE_ADVICE below.
+    """
+
+    DNS = "dns"
+    CONNECTION = "connection"
+    TIMEOUT = "timeout"
+    BOT_BLOCKED = "bot_blocked"
+    HTTP_ERROR = "http_error"
+    EMPTY_RESPONSE = "empty_response"
+    THIN_CONTENT = "thin_content"
+    BLOCKED_HOST = "blocked_host"
+    # Something that is not a transport failure at all — most likely a bug of
+    # ours. Deliberately has no entry in FAILURE_ADVICE: we fall back to the
+    # generic message rather than blame the customer's site for our crash.
+    UNKNOWN = "unknown"
+
+
+# What to tell the user for each cause. Phrased as "what happened, what to do".
+FAILURE_ADVICE = {
+    FailureCause.DNS: (
+        "{url} could not be found — the domain does not resolve. Check the "
+        "address for typos, and that the site is published."
+    ),
+    FailureCause.CONNECTION: (
+        "{url} refused the connection. Check the site is online and reachable "
+        "from the public internet."
+    ),
+    FailureCause.TIMEOUT: (
+        "{url} did not respond in time. If the site is usually slow, try again "
+        "in a few minutes, or add a specific page instead of the whole site."
+    ),
+    FailureCause.BOT_BLOCKED: (
+        "{url} blocked automated crawling (its bot protection served a "
+        "challenge page). Add the content manually with Upload PDF or Paste text."
+    ),
+    FailureCause.HTTP_ERROR: (
+        "{url} returned an error response. Check the URL is correct and "
+        "publicly accessible, then try again."
+    ),
+    FailureCause.EMPTY_RESPONSE: (
+        "{url} returned an empty page. Check the site is published and serving "
+        "content at that address."
+    ),
+    FailureCause.THIN_CONTENT: (
+        "{url} loaded but had almost no readable text — it may render its "
+        "content with JavaScript we could not run. Add the content manually "
+        "with Upload PDF or Paste text."
+    ),
+    FailureCause.BLOCKED_HOST: (
+        "{url} redirected to an address we are not allowed to fetch. Use the "
+        "site's public URL."
+    ),
+}
+
+
 @dataclass
 class EnhancedWebsiteReader(WebsiteReader):
     """Enhanced Reader for Websites with more robust content extraction"""
@@ -69,17 +152,6 @@ class EnhancedWebsiteReader(WebsiteReader):
     # Only blacklist truly problematic tags - keep structural elements that may have useful content
     blacklist_tags: List[str] = field(default_factory=lambda: [
         'script', 'style', 'noscript', 'iframe', 'head'
-    ])
-    common_content_tags: List[str] = field(default_factory=lambda: [
-        'article', 'main', 'section', 'div', 'p', 'content', 'body'
-    ])
-    common_content_classes: List[str] = field(default_factory=lambda: [
-        'post-content', 'article-content', 'entry-content', 'page-content', 'main-content',
-        'blog-content', 'content', 'main', 'article', 'post', 'entry', 'text', 'body'
-    ])
-    common_content_ids: List[str] = field(default_factory=lambda: [
-        'content', 'main-content', 'post-content', 'article-content', 'entry-content', 'page-content',
-        'blog-content', 'main', 'article', 'post', 'entry', 'text', 'body'
     ])
     user_agent: str = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     headers: Dict[str, str] = field(default_factory=lambda: {
@@ -111,8 +183,65 @@ class EnhancedWebsiteReader(WebsiteReader):
     _successful_crawls: int = 0
     _failed_crawls: int = 0
     _challenge_blocked: int = 0  # Pages skipped because a bot-check couldn't be cleared
+    # Why pages failed, as {FailureCause: count}. One string covering "empty,
+    # JavaScript, or unreachable" told the user nothing and told us nothing;
+    # _process_url already knows which of those it hit, so keep it.
+    _failure_causes: Dict[str, int] = field(default_factory=dict)
+    # Pages are crawled on up to max_workers threads, and "read, add one, write
+    # back" loses increments when two of them fail at once.
+    _failure_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _current_url: str = None  # Track current URL being processed for link resolution
     
+    @staticmethod
+    def _classify_transport_error(error: Exception) -> Tuple[str, bool, bool]:
+        """Map a transport failure to (cause, retry_is_useful, browser_may_help).
+
+        Retrying only pays when the failure could plausibly differ next time.
+        A domain with no address and a host that drops the SYN both fail the
+        same way every attempt, so the old ladder of three tries with backoff
+        plus a headless browser spent 130 seconds on mateusoliveira.com and
+        ~10 on each dead domain, holding one of only two queue slots the whole
+        time. The browser shares our DNS and TCP stack, so it cannot reach what
+        we could not connect to — it is worth a turn only when the connection
+        itself was refused, which can be a TLS quirk rather than a dead host.
+        """
+        if isinstance(error, httpx.ConnectTimeout):
+            # No SYN-ACK. Waiting longer only waits longer.
+            return FailureCause.TIMEOUT, False, False
+
+        if isinstance(error, httpx.ConnectError):
+            if _is_name_resolution_error(error):
+                # Chromium reports ERR_NAME_NOT_RESOLVED for exactly these.
+                return FailureCause.DNS, False, False
+            return FailureCause.CONNECTION, False, True
+
+        if isinstance(error, httpx.PoolTimeout):
+            # Our own connection pool was saturated; the site never heard from
+            # us. Retry, but do not report it as the site being slow.
+            return FailureCause.UNKNOWN, True, True
+
+        if isinstance(error, httpx.TimeoutException):
+            # Connected, then went quiet: a slow page really may load next time.
+            return FailureCause.TIMEOUT, True, True
+
+        if isinstance(error, httpx.RequestError):
+            return FailureCause.CONNECTION, True, True
+
+        # Not a transport failure: a bug in our own parsing, most likely. Retry
+        # and let the browser try, but do not tell the user their site is down.
+        return FailureCause.UNKNOWN, True, True
+
+    def _record_failure(self, cause: str) -> None:
+        """Remember why a page failed so the queue item can be specific."""
+        with self._failure_lock:
+            self._failure_causes[cause] = self._failure_causes.get(cause, 0) + 1
+
+    def dominant_failure_cause(self) -> Optional[str]:
+        """The cause that accounts for the most failed pages, if any."""
+        if not self._failure_causes:
+            return None
+        return max(self._failure_causes.items(), key=lambda item: item[1])[0]
+
     def _normalize_url(self, url: str) -> str:
         """
         Normalize URL by ensuring it has a proper protocol (http:// or https://).
@@ -205,91 +334,89 @@ class EnhancedWebsiteReader(WebsiteReader):
         parsed_url = urlparse(self._normalize_url(url))
         return registrable_domain(parsed_url.hostname or parsed_url.netloc or "")
     
+    @staticmethod
+    def _page_title(soup: BeautifulSoup) -> str:
+        """The page's own title, <h1> first and <title> second.
+
+        Must run BEFORE _clean_soup, which strips <head> and takes <title> with
+        it — a page with no <h1> would otherwise have no title to fall back to.
+        """
+        heading = soup.find('h1')
+        if heading:
+            title = heading.get_text(" ", strip=True)
+            if title:
+                return title
+
+        tag = soup.find('title')
+        return tag.get_text(strip=True) if tag else ""
+
+    @staticmethod
+    def _prepend_title(title: str, content: str) -> str:
+        """Keep the title when selection left it outside the content container.
+
+        Mintlify and similar docs themes put the <h1> in a page <header>, which
+        selection correctly treats as chrome — but the title is the strongest
+        retrieval signal a page has, so dropping it makes the page harder for an
+        agent to find rather than merely shorter.
+        """
+        if title and title not in content:
+            return f"{title}\n\n{content}"
+        return content
+
     def _extract_main_content(self, soup: BeautifulSoup) -> str:
         """
-        Extracts the main content from a BeautifulSoup object using multiple strategies.
-        
-        Strategies:
-        1. Look for elements with role="main" attribute (semantic HTML)
-        2. Look for main content containers (article, main, etc.)
-        3. Look for content by class names
-        4. Look for content by ID
-        5. Density-based content extraction (paragraph density)
-        6. Collect all meaningful text with smart filtering
-        7. Fallback to cleaned body content
-        
+        Extracts the main content from a BeautifulSoup object.
+
+        Selection is shared with the help-center importer (see main_content.py):
+        the deepest container that still holds essentially the whole page. If it
+        yields too little text the page is thin or JavaScript-rendered, and the
+        progressively looser fallbacks below get a turn — falling through here is
+        also what routes such a page to the browser fallback in _process_url.
+
         :param soup: The BeautifulSoup object to extract the main content from.
         :return: The main content as a string.
         """
+        # Read the title before cleaning: _clean_soup strips <head>.
+        page_title = self._page_title(soup)
+
         # Remove undesirable elements first
         self._clean_soup(soup)
-        
-        # Strategy 1: Try to find main content by role="main" attribute (semantic HTML)
-        logger.debug(f"Trying Strategy 1: role='main' attribute")
-        main_role_element = soup.find(attrs={'role': 'main'})
-        if main_role_element:
-            logger.debug(f"  Found element with role='main'")
-            content = self._get_clean_text(main_role_element, include_links=True, base_url=self._current_url)
-            if len(content) >= self.min_content_length:
-                logger.info(f"✓ Content extracted using role='main' strategy ({len(content)} chars)")
-                return content
-            else:
-                logger.debug(f"  role='main' element too short: {len(content)} chars")
-        
-        # Strategy 2: Try to find main content by common content tags
-        logger.debug(f"Trying Strategy 2: Common content tags")
-        for tag in self.common_content_tags:
-            elements = soup.find_all(tag)
-            logger.debug(f"  Found {len(elements)} '{tag}' elements")
-            for element in elements:
-                content = self._get_clean_text(element, include_links=True, base_url=self._current_url)
-                if len(content) >= self.min_content_length:
-                    logger.info(f"✓ Content extracted using tag strategy: {tag} ({len(content)} chars)")
-                    return content
-                elif content:
-                    logger.debug(f"  '{tag}' element too short: {len(content)} chars (min: {self.min_content_length})")
-                    
-        # Strategy 3: Try to find main content by common class names
-        logger.debug(f"Trying Strategy 3: Common class names")
-        for class_name in self.common_content_classes:
-            elements = soup.find_all(class_=re.compile(class_name, re.IGNORECASE))
-            if elements:
-                logger.debug(f"  Found {len(elements)} elements with class matching '{class_name}'")
-            for element in elements:
-                content = self._get_clean_text(element, include_links=True, base_url=self._current_url)
-                if len(content) >= self.min_content_length:
-                    logger.info(f"✓ Content extracted using class strategy: {class_name} ({len(content)} chars)")
-                    return content
-        
-        # Strategy 4: Try to find main content by common IDs
-        logger.debug(f"Trying Strategy 4: Common IDs")
-        for id_name in self.common_content_ids:
-            element = soup.find(id=re.compile(id_name, re.IGNORECASE))
-            if element:
-                logger.debug(f"  Found element with ID matching '{id_name}'")
-                content = self._get_clean_text(element, include_links=True, base_url=self._current_url)
-                if len(content) >= self.min_content_length:
-                    logger.info(f"✓ Content extracted using ID strategy: {id_name} ({len(content)} chars)")
-                    return content
-        
-        # Strategy 5: Density-based content extraction
-        logger.debug(f"Trying Strategy 5: Text density")
+
+        main_node = select_main_node(soup, min_chars=self.min_content_length)
+        if main_node is None:
+            # Nothing but navigation chrome. The looser fallbacks below would
+            # happily return that chrome as the page's content — which is how
+            # www.solcontrol.ca came to store "Welcome, Guest - Login" and, worse,
+            # cleared the floor and so never reached the browser fallback that can
+            # actually render it. Report empty and let _process_url try Crawl4AI.
+            logger.warning("No readable content on the page (navigation chrome only)")
+            return ""
+
+        content = self._get_clean_text(main_node, include_links=True, base_url=self._current_url)
+        if len(content) >= self.min_content_length:
+            content = self._prepend_title(page_title, content)
+            logger.info(f"✓ Content extracted from <{main_node.name}> ({len(content)} chars)")
+            return content
+        logger.debug(f"  Main content node too short: {len(content)} chars")
+
+        # Fallback 1: Density-based content extraction
+        logger.debug(f"Trying fallback: text density")
         density_content = self._extract_by_text_density(soup)
         if density_content and len(density_content) >= self.min_content_length:
             logger.info(f"✓ Content extracted using density strategy ({len(density_content)} chars)")
             return density_content
-        
-        # Strategy 6: Collect all meaningful text elements (headings, paragraphs, lists, etc.)
-        logger.debug(f"Trying Strategy 6: All meaningful content (tables, headings, paragraphs, lists)")
+
+        # Fallback 2: Collect all meaningful text elements (headings, paragraphs, lists, etc.)
+        logger.debug(f"Trying fallback: all meaningful content (tables, headings, paragraphs, lists)")
         meaningful_content = self._extract_all_meaningful_content(soup)
         if meaningful_content and len(meaningful_content) >= self.min_content_length:
             logger.debug(f"✓ Content extracted using meaningful content strategy ({len(meaningful_content)} chars)")
             return meaningful_content
         else:
             logger.debug(f"  Meaningful content too short: {len(meaningful_content) if meaningful_content else 0} chars")
-            
-        # Strategy 7: Fallback to entire body content with minimal cleaning
-        logger.debug(f"Trying Strategy 7: Body fallback")
+
+        # Fallback 3: Entire body content with minimal cleaning
+        logger.debug(f"Trying fallback: body")
         body = soup.find('body')
         if body:
             content = self._get_clean_text(body, include_links=True, base_url=self._current_url)
@@ -300,16 +427,16 @@ class EnhancedWebsiteReader(WebsiteReader):
                 logger.warning(f"Body element found but no text extracted")
         else:
             logger.warning(f"No body element found in HTML")
-            
+
         # Last resort: just get all text from the document
-        logger.debug(f"Trying Last Resort: All text from document")
+        logger.debug(f"Trying last resort: all text from document")
         content = soup.get_text(strip=True, separator=" ")
         if content:
             logger.info(f"✓ Content extracted using last resort strategy (length: {len(content)})")
         else:
             logger.error(f"Failed to extract any text from HTML document")
         return content
-        
+
     def _clean_soup(self, soup: BeautifulSoup) -> None:
         """
         Removes undesirable elements from the soup.
@@ -573,6 +700,8 @@ class EnhancedWebsiteReader(WebsiteReader):
         new_links = []
         retry_count = 0
         last_error = None
+        last_cause = None
+        browser_can_help = True
         is_javascript_heavy = False
         soup = None
         
@@ -702,6 +831,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                     logger.warning(f"⚠️  Skipping {current_url}: bot-challenge interstitial could not be cleared")
                     self._failed_crawls += 1
                     self._challenge_blocked += 1
+                    self._record_failure(FailureCause.BOT_BLOCKED)
                     return None
 
                 # Check content quality
@@ -757,6 +887,10 @@ class EnhancedWebsiteReader(WebsiteReader):
                         if not content or len(content) < self.min_content_length:
                             logger.error(f"All extraction strategies failed for {current_url}. Final content: {len(content) if content else 0} chars")
                             self._failed_crawls += 1
+                            self._record_failure(
+                                FailureCause.EMPTY_RESPONSE if not response.text
+                                else FailureCause.THIN_CONTENT
+                            )
                             return None
                 
                 self._successful_crawls += 1
@@ -775,6 +909,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                 # fall back to the browser (which would also reach it).
                 logger.warning(str(e))
                 self._failed_crawls += 1
+                self._record_failure(FailureCause.BLOCKED_HOST)
                 return None
             except httpx.HTTPStatusError as e:
                 retry_count += 1
@@ -782,6 +917,10 @@ class EnhancedWebsiteReader(WebsiteReader):
                 last_error = f"HTTP {status_code}: {e.response.reason_phrase}"
                 logger.warning(f"HTTP error on attempt {retry_count}/{self.max_retries} for {current_url}: {last_error}")
                 
+                # 401/403/429 are the shapes bot protection takes; they need the
+                # "add it manually" advice rather than "check the URL".
+                last_cause = FailureCause.BOT_BLOCKED if status_code in (401, 403, 429) else FailureCause.HTTP_ERROR
+
                 # Special handling for 403 Forbidden (bot detection)
                 if status_code == 403:
                     logger.warning(f"⚠️  403 Forbidden - Server may be blocking bot requests")
@@ -792,25 +931,39 @@ class EnhancedWebsiteReader(WebsiteReader):
                     sleep_time = 2 ** retry_count
                     logger.info(f"Retrying in {sleep_time} seconds...")
                     time.sleep(sleep_time)
-            except httpx.TimeoutException as e:
-                retry_count += 1
-                last_error = f"Request timeout after {self.timeout}s"
-                logger.warning(f"Timeout on attempt {retry_count}/{self.max_retries} for {current_url}")
-                if retry_count < self.max_retries:
-                    sleep_time = 2 ** retry_count
-                    logger.info(f"Retrying in {sleep_time} seconds...")
-                    time.sleep(sleep_time)
             except Exception as e:
                 retry_count += 1
-                last_error = f"{type(e).__name__}: {str(e)}"
-                logger.error(f"Error on attempt {retry_count}/{self.max_retries} for {current_url}: {last_error}", exc_info=True)
+                last_cause, retry_is_useful, browser_may_help = self._classify_transport_error(e)
+                browser_can_help = browser_may_help
+                if isinstance(e, httpx.TimeoutException):
+                    last_error = f"Request timeout after {self.timeout}s"
+                    logger.warning(f"Timeout on attempt {retry_count}/{self.max_retries} for {current_url}")
+                else:
+                    last_error = f"{type(e).__name__}: {str(e)}"
+                    logger.error(
+                        f"Error on attempt {retry_count}/{self.max_retries} for {current_url}: {last_error}",
+                        exc_info=True,
+                    )
+
+                if not retry_is_useful:
+                    logger.info(f"Not retrying {current_url}: {last_cause} fails the same way every attempt")
+                    break
+
                 # Exponential backoff
                 if retry_count < self.max_retries:
                     sleep_time = 2 ** retry_count
                     logger.info(f"Retrying in {sleep_time} seconds...")
                     time.sleep(sleep_time)
         
-        # If all retries failed, try Crawl4AI fallback as last resort
+        # If all retries failed, try Crawl4AI fallback as last resort — but not
+        # when we never reached the host: Chromium shares our resolver and TCP
+        # stack, so it fails the same way after another browser launch.
+        if content is None and last_error and not browser_can_help:
+            self._failed_crawls += 1
+            self._record_failure(last_cause or FailureCause.CONNECTION)
+            logger.error(f"❌ {current_url} is unreachable ({last_error}); skipping the browser fallback")
+            return None
+
         if content is None and last_error:
             logger.warning(f"⚠️  All extraction attempts failed. Last error: {last_error}")
             
@@ -872,6 +1025,7 @@ class EnhancedWebsiteReader(WebsiteReader):
             
             # Final failure
             self._failed_crawls += 1
+            self._record_failure(last_cause or FailureCause.CONNECTION)
             logger.error(f"❌ Failed to extract content from {current_url} after all attempts. Last error: {last_error}")
             return None
         
@@ -903,6 +1057,7 @@ class EnhancedWebsiteReader(WebsiteReader):
         self._successful_crawls = 0
         self._failed_crawls = 0
         self._challenge_blocked = 0
+        self._failure_causes = {}
 
         crawl_start_time = time.time()
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting parallel crawl of {url} with max_depth={self.max_depth}, max_links={self.max_links}, and max_workers={self.max_workers}")
