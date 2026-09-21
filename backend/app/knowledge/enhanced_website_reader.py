@@ -16,6 +16,7 @@ limitations under the License.
 
 import random
 import re
+import socket
 import threading
 import time
 from copy import deepcopy
@@ -62,6 +63,25 @@ class EmptyCrawlError(Exception):
     zero pages, so nobody learns the agent has no content to answer from."""
 
 
+def _is_name_resolution_error(error: Exception) -> bool:
+    """True when a connection failed because the name has no address.
+
+    Walks the cause chain for socket.gaierror rather than matching on the
+    message, which would also catch any other error whose text happens to
+    mention a "name" and wrongly skip the browser fallback for it.
+    """
+    seen = set()
+    current = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, socket.gaierror):
+            return True
+        current = current.__cause__ or current.__context__
+
+    text = str(error).lower()
+    return 'nodename' in text or 'name or service not known' in text or 'name resolution' in text
+
+
 class FailureCause:
     """Why a page could not be read.
 
@@ -79,6 +99,10 @@ class FailureCause:
     EMPTY_RESPONSE = "empty_response"
     THIN_CONTENT = "thin_content"
     BLOCKED_HOST = "blocked_host"
+    # Something that is not a transport failure at all — most likely a bug of
+    # ours. Deliberately has no entry in FAILURE_ADVICE: we fall back to the
+    # generic message rather than blame the customer's site for our crash.
+    UNKNOWN = "unknown"
 
 
 # What to tell the user for each cause. Phrased as "what happened, what to do".
@@ -168,6 +192,45 @@ class EnhancedWebsiteReader(WebsiteReader):
     _failure_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _current_url: str = None  # Track current URL being processed for link resolution
     
+    @staticmethod
+    def _classify_transport_error(error: Exception) -> Tuple[str, bool, bool]:
+        """Map a transport failure to (cause, retry_is_useful, browser_may_help).
+
+        Retrying only pays when the failure could plausibly differ next time.
+        A domain with no address and a host that drops the SYN both fail the
+        same way every attempt, so the old ladder of three tries with backoff
+        plus a headless browser spent 130 seconds on mateusoliveira.com and
+        ~10 on each dead domain, holding one of only two queue slots the whole
+        time. The browser shares our DNS and TCP stack, so it cannot reach what
+        we could not connect to — it is worth a turn only when the connection
+        itself was refused, which can be a TLS quirk rather than a dead host.
+        """
+        if isinstance(error, httpx.ConnectTimeout):
+            # No SYN-ACK. Waiting longer only waits longer.
+            return FailureCause.TIMEOUT, False, False
+
+        if isinstance(error, httpx.ConnectError):
+            if _is_name_resolution_error(error):
+                # Chromium reports ERR_NAME_NOT_RESOLVED for exactly these.
+                return FailureCause.DNS, False, False
+            return FailureCause.CONNECTION, False, True
+
+        if isinstance(error, httpx.PoolTimeout):
+            # Our own connection pool was saturated; the site never heard from
+            # us. Retry, but do not report it as the site being slow.
+            return FailureCause.UNKNOWN, True, True
+
+        if isinstance(error, httpx.TimeoutException):
+            # Connected, then went quiet: a slow page really may load next time.
+            return FailureCause.TIMEOUT, True, True
+
+        if isinstance(error, httpx.RequestError):
+            return FailureCause.CONNECTION, True, True
+
+        # Not a transport failure: a bug in our own parsing, most likely. Retry
+        # and let the browser try, but do not tell the user their site is down.
+        return FailureCause.UNKNOWN, True, True
+
     def _record_failure(self, cause: str) -> None:
         """Remember why a page failed so the queue item can be specific."""
         with self._failure_lock:
@@ -605,6 +668,7 @@ class EnhancedWebsiteReader(WebsiteReader):
         retry_count = 0
         last_error = None
         last_cause = None
+        browser_can_help = True
         is_javascript_heavy = False
         soup = None
         
@@ -834,37 +898,39 @@ class EnhancedWebsiteReader(WebsiteReader):
                     sleep_time = 2 ** retry_count
                     logger.info(f"Retrying in {sleep_time} seconds...")
                     time.sleep(sleep_time)
-            except httpx.TimeoutException as e:
-                retry_count += 1
-                last_cause = FailureCause.TIMEOUT
-                last_error = f"Request timeout after {self.timeout}s"
-                logger.warning(f"Timeout on attempt {retry_count}/{self.max_retries} for {current_url}")
-                if retry_count < self.max_retries:
-                    sleep_time = 2 ** retry_count
-                    logger.info(f"Retrying in {sleep_time} seconds...")
-                    time.sleep(sleep_time)
             except Exception as e:
                 retry_count += 1
-                # A name that does not resolve is a dead domain, not a flaky
-                # connection, and deserves different advice.
-                if isinstance(e, httpx.ConnectError):
-                    text = str(e).lower()
-                    last_cause = (
-                        FailureCause.DNS
-                        if ('name' in text or 'resolve' in text or 'nodename' in text)
-                        else FailureCause.CONNECTION
-                    )
+                last_cause, retry_is_useful, browser_may_help = self._classify_transport_error(e)
+                browser_can_help = browser_may_help
+                if isinstance(e, httpx.TimeoutException):
+                    last_error = f"Request timeout after {self.timeout}s"
+                    logger.warning(f"Timeout on attempt {retry_count}/{self.max_retries} for {current_url}")
                 else:
-                    last_cause = FailureCause.CONNECTION
-                last_error = f"{type(e).__name__}: {str(e)}"
-                logger.error(f"Error on attempt {retry_count}/{self.max_retries} for {current_url}: {last_error}", exc_info=True)
+                    last_error = f"{type(e).__name__}: {str(e)}"
+                    logger.error(
+                        f"Error on attempt {retry_count}/{self.max_retries} for {current_url}: {last_error}",
+                        exc_info=True,
+                    )
+
+                if not retry_is_useful:
+                    logger.info(f"Not retrying {current_url}: {last_cause} fails the same way every attempt")
+                    break
+
                 # Exponential backoff
                 if retry_count < self.max_retries:
                     sleep_time = 2 ** retry_count
                     logger.info(f"Retrying in {sleep_time} seconds...")
                     time.sleep(sleep_time)
         
-        # If all retries failed, try Crawl4AI fallback as last resort
+        # If all retries failed, try Crawl4AI fallback as last resort — but not
+        # when we never reached the host: Chromium shares our resolver and TCP
+        # stack, so it fails the same way after another browser launch.
+        if content is None and last_error and not browser_can_help:
+            self._failed_crawls += 1
+            self._record_failure(last_cause or FailureCause.CONNECTION)
+            logger.error(f"❌ {current_url} is unreachable ({last_error}); skipping the browser fallback")
+            return None
+
         if content is None and last_error:
             logger.warning(f"⚠️  All extraction attempts failed. Last error: {last_error}")
             

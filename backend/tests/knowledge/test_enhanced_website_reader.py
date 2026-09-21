@@ -15,12 +15,18 @@ limitations under the License.
 """
 
 import os
+import socket
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 from bs4 import BeautifulSoup
 import httpx
 
-from app.knowledge.enhanced_website_reader import EnhancedWebsiteReader
+from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE, CrawlScope
+from app.knowledge.enhanced_website_reader import (
+    EnhancedWebsiteReader,
+    FAILURE_ADVICE,
+    FailureCause,
+)
 
 
 class TestEnhancedWebsiteReader(unittest.TestCase):
@@ -416,4 +422,109 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()
+
+
+class TestUnreachableHostsFailFast(unittest.TestCase):
+    """A host we never reached fails the same way every attempt.
+
+    The old ladder — three tries with exponential backoff, then a headless
+    browser — spent 130 seconds on mateusoliveira.com (which drops the SYN on
+    80 and 443) and ~10 seconds on each domain with no A record, holding one of
+    only two queue slots for the whole time.
+    """
+
+    def setUp(self):
+        self.reader = EnhancedWebsiteReader(max_depth=1, max_links=1, min_content_length=50)
+        dns_patcher = patch(
+            'app.knowledge.url_safety.socket.getaddrinfo',
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        self.addCleanup(dns_patcher.stop)
+        dns_patcher.start()
+
+    def _crawl_with(self, error):
+        """Run one page through the fetch path with `error` raised every time."""
+        scope = CrawlScope.for_seed("https://example.com", DEFAULT_CRAWL_SCOPE)
+        with patch('app.knowledge.enhanced_website_reader.httpx.Client') as client, \
+             patch('app.knowledge.enhanced_website_reader.get_crawl4ai_fallback') as browser, \
+             patch('app.knowledge.enhanced_website_reader.time.sleep') as sleep:
+            client.return_value.__enter__.return_value.get.side_effect = error
+            browser.return_value.is_available = True
+            browser.return_value.fetch_with_browser.return_value = (None, None, None)
+            result = self.reader._process_url(("https://example.com", 1), scope)
+        return result, client.return_value.__enter__.return_value.get, browser, sleep
+
+
+    def test_a_domain_that_does_not_resolve_is_tried_once(self):
+        error = httpx.ConnectError("[Errno 8] nodename nor servname provided, or not known")
+        result, get, browser, _ = self._crawl_with(error)
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, 1, "no point retrying a name that does not resolve")
+        browser.return_value.fetch_with_browser.assert_not_called()
+        self.assertEqual(self.reader._failure_causes, {FailureCause.DNS: 1})
+
+    def test_a_dropped_connection_attempt_is_tried_once(self):
+        result, get, browser, _ = self._crawl_with(httpx.ConnectTimeout("timed out"))
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, 1)
+        browser.return_value.fetch_with_browser.assert_not_called()
+        self.assertEqual(self.reader._failure_causes, {FailureCause.TIMEOUT: 1})
+
+    def test_a_refused_connection_still_gets_the_browser(self):
+        """Could be a TLS quirk rather than a dead host, so give Chromium a turn."""
+        result, get, browser, _ = self._crawl_with(httpx.ConnectError("Connection refused"))
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, 1, "a refusal will not change in two seconds")
+        browser.return_value.fetch_with_browser.assert_called_once()
+        self.assertEqual(self.reader._failure_causes, {FailureCause.CONNECTION: 1})
+
+    def test_a_slow_page_is_still_retried(self):
+        """Read timeouts are the transient case retries exist for."""
+        result, get, browser, _ = self._crawl_with(httpx.ReadTimeout("too slow"))
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, self.reader.max_retries)
+        browser.return_value.fetch_with_browser.assert_called_once()
+
+    def test_our_own_bugs_are_not_blamed_on_the_customers_site(self):
+        """A crash in our parsing must not be reported as the site being down.
+
+        Everything inside the fetch block — BeautifulSoup, link extraction,
+        content selection — can raise. Classifying those as a connection
+        failure told the customer "your site refused the connection" when what
+        actually happened was our own AttributeError.
+        """
+        reader = EnhancedWebsiteReader()
+        for error in (AttributeError("'NoneType' has no attribute 'find'"),
+                      KeyError("href"),
+                      ValueError("bad parse")):
+            cause, _, _ = reader._classify_transport_error(error)
+            self.assertEqual(cause, FailureCause.UNKNOWN)
+            self.assertNotIn(cause, FAILURE_ADVICE,
+                             "UNKNOWN must fall back to the generic message")
+
+    def test_our_own_pool_exhaustion_is_not_blamed_on_the_site(self):
+        """PoolTimeout means we never sent the request, so the site is not slow."""
+        reader = EnhancedWebsiteReader()
+        cause, retry, _ = reader._classify_transport_error(httpx.PoolTimeout("pool full"))
+        self.assertEqual(cause, FailureCause.UNKNOWN)
+        self.assertTrue(retry, "a saturated pool does free up")
+
+    def test_name_resolution_is_detected_from_the_socket_error(self):
+        """Not from the message text, which other errors can imitate."""
+        reader = EnhancedWebsiteReader()
+
+        gai = httpx.ConnectError("connection failed")
+        gai.__cause__ = socket.gaierror(8, "nodename nor servname provided")
+        self.assertEqual(reader._classify_transport_error(gai)[0], FailureCause.DNS)
+
+        # A refusal that merely mentions a name must not be read as DNS, or we
+        # would skip the browser fallback for a host that is actually up.
+        refused = httpx.ConnectError("Connection refused by name-based vhost")
+        cause, _, browser = reader._classify_transport_error(refused)
+        self.assertEqual(cause, FailureCause.CONNECTION)
+        self.assertTrue(browser)
