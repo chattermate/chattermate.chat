@@ -42,10 +42,29 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
   <title>ChatterMate - Setup</title>
   <meta name="shopify-api-key" content="<%= VITE_SHOPIFY_API_KEY %>" />
-  <!-- Shopify App Bridge - must be first script tag, no async/defer -->
-  <!-- Shopify Polaris Web Components -->
-  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
-  <script src="https://cdn.shopify.com/shopifycloud/polaris.js"></script>
+  <!-- Shopify App Bridge, and the Polaris web components the Shopify views use.
+       Only loaded inside the Shopify admin (host/shop query params present);
+       outside it App Bridge throws "missing required configuration fields: shop"
+       and both scripts are ~200KB of render-blocking script nothing else uses.
+       async = false keeps them in order and ahead of the app bundle. Appending
+       them beats document.write, which Chrome may block on a slow connection -
+       that would leave the embedded admin with no Polaris and an unstyled UI. -->
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search)
+      if (!params.has('host') && !params.has('shop')) return
+      var sources = [
+        'https://cdn.shopify.com/shopifycloud/app-bridge.js',
+        'https://cdn.shopify.com/shopifycloud/polaris.js'
+      ]
+      sources.forEach(function (src) {
+        var script = document.createElement('script')
+        script.src = src
+        script.async = false
+        document.head.appendChild(script)
+      })
+    })()
+  </script>
 </head>
 
 <body>
