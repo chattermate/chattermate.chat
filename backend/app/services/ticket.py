@@ -78,8 +78,8 @@ def _get_embedder():
     """Lazy module-level FastEmbed embedder (local model, no API cost)."""
     global _embedder
     if _embedder is None:
-        from agno.embedder.fastembed import FastEmbedEmbedder
-        _embedder = FastEmbedEmbedder()
+        from app.knowledge.embedder import get_embedder
+        _embedder = get_embedder()
     return _embedder
 
 

@@ -34,6 +34,7 @@ import httpx
 from agno.document.base import Document
 from agno.document.reader.website_reader import WebsiteReader
 from app.core.logger import get_logger
+from app.knowledge.chunking import chunk_page
 from app.knowledge.crawl4ai_fallback import get_crawl4ai_fallback
 from app.knowledge.content_summarizer import get_content_summarizer
 from app.knowledge.crawl_scope import (
@@ -1346,19 +1347,22 @@ class EnhancedWebsiteReader(WebsiteReader):
         
         documents = []
         
-        # Create a callback for immediate document processing
+        # Create a callback for immediate document processing. A page becomes
+        # one document per chunk (see app.knowledge.chunking); each is queued
+        # for embedding on its own so the whole page is searchable.
         def on_document_created(page_url: str, content: str):
             index = len(documents) + 1
-            document = self._create_document_from_content(page_url, content, url, index)
-            documents.append(document)
-            
-            # Call vector DB callback if provided
-            if vector_db_callback:
-                try:
-                    vector_db_callback(document)
-                    logger.info(f"✓ Document {document.id} successfully sent to vector DB")
-                except Exception as e:
-                    logger.error(f"Error sending document {document.id} to vector DB: {str(e)}")
+            page = self._create_document_from_content(page_url, content, url, index)
+            for document in chunk_page(page):
+                documents.append(document)
+
+                # Call vector DB callback if provided
+                if vector_db_callback:
+                    try:
+                        vector_db_callback(document)
+                        logger.info(f"✓ Document {document.id} successfully sent to vector DB")
+                    except Exception as e:
+                        logger.error(f"Error sending document {document.id} to vector DB: {str(e)}")
         
         # Crawl website with the callback for immediate document processing
         self.crawl(url, on_document_callback=on_document_created, on_url_crawled_callback=url_crawled_callback)

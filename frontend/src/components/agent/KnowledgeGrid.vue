@@ -15,9 +15,10 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
 import { knowledgeService } from '@/services/knowledge'
+import { groupChunksIntoPages } from '@/utils/knowledgePages'
 import DeleteIcon from '@/assets/delete.svg'
 import EditIcon from '@/assets/edit.svg'
 import mitt from '@/utils/emitter'
@@ -26,11 +27,6 @@ const props = defineProps<{
     agentId?: string
     organizationId?: string
 }>()
-
-const componentData = {
-    DeleteIcon,
-    EditIcon
-}
 
 const {
     knowledgeItems,
@@ -52,9 +48,6 @@ const {
     deleteQueueItem,
     handlePageChange,
     formatDate,
-
-    getFirstCreated,
-    isValidUrl,
     triggerFileInput,
     handleFileSelect,
     handleFileUpload,
@@ -76,18 +69,12 @@ const {
     urlFormError,
     uploadError,
     queueItems,
-    isLoadingQueue,
     selectedKnowledge,
     knowledgeContent,
     isLoadingContent,
-    isEditingContent,
-    editedContent,
     isSavingContent,
     showContentModal,
     viewKnowledgeContent,
-    enableContentEditing,
-    cancelContentEditing,
-    saveChunkContent,
     closeContentModal,
 } = useKnowledgeManagement(props.agentId || '', props.organizationId || '')
 
@@ -158,26 +145,32 @@ const handleUnlink = async (knowledgeId: number) => {
     await unlinkKnowledge(knowledgeId)
 }
 
+// A page is stored as several chunk rows; the grid shows and edits pages.
+const subpages = computed(() =>
+    knowledgeContent.value ? groupChunksIntoPages(knowledgeContent.value.chunks) : []
+)
+
 // Subpage editing state
 const editingSubpageId = ref<string | null>(null)
 const editingSubpageContent = ref('')
 const showEditSubpageModal = ref(false)
 
-const editSubpage = (subpageId: string) => {
-    const subpage = knowledgeContent.value?.chunks.find((c: any) => c.id === subpageId)
+const editSubpage = (pageId: string) => {
+    const subpage = subpages.value.find((p) => p.page_id === pageId)
     if (subpage) {
-        editingSubpageId.value = subpageId
+        editingSubpageId.value = pageId
         editingSubpageContent.value = subpage.content
         showEditSubpageModal.value = true
     }
 }
 
 const saveEditedSubpage = async () => {
-    if (editingSubpageId.value) {
-        await saveChunkContent(editingSubpageId.value, editingSubpageContent.value)
+    if (editingSubpageId.value && selectedKnowledge.value) {
+        await knowledgeService.updatePage(selectedKnowledge.value, editingSubpageId.value, editingSubpageContent.value)
         showEditSubpageModal.value = false
         editingSubpageId.value = null
         editingSubpageContent.value = ''
+        await viewKnowledgeContent(selectedKnowledge.value)
     }
 }
 
@@ -199,7 +192,7 @@ const confirmDeleteSubpage = (subpageId: string) => {
 const deleteSubpage = async () => {
     if (subpageToDelete.value && selectedKnowledge.value) {
         try {
-            await knowledgeService.deleteChunk(selectedKnowledge.value, subpageToDelete.value)
+            await knowledgeService.deletePage(selectedKnowledge.value, subpageToDelete.value)
             showDeleteSubpageConfirm.value = false
             subpageToDelete.value = null
             // Reload content
@@ -534,7 +527,7 @@ const closeKnowledgeModal = () => {
                         <div class="content-info">
                             <span class="content-source">{{ knowledgeContent.source }}</span>
                             <span class="content-type">{{ knowledgeContent.source_type }}</span>
-                            <span class="content-subpages-count">{{ knowledgeContent.chunks.length }} subpages</span>
+                            <span class="content-subpages-count">{{ subpages.length }} subpages</span>
                         </div>
                         <button class="add-subpage-btn" @click="showAddSubpageModal = true" title="Add new subpage">
                             + Add Subpage
@@ -551,16 +544,16 @@ const closeKnowledgeModal = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="(subpage, index) in knowledgeContent.chunks" :key="subpage.id"
-                                    class="subpage-row" :data-subpage-id="subpage.id">
+                                <tr v-for="subpage in subpages" :key="subpage.page_id"
+                                    class="subpage-row" :data-subpage-id="subpage.page_id">
                                     <td class="cell-url">
-                                        <a v-if="subpage.metadata && subpage.metadata.url" :href="subpage.metadata.url"
+                                        <a v-if="subpage.url !== subpage.page_id" :href="subpage.url"
                                             target="_blank" rel="noopener noreferrer" class="subpage-url"
-                                            :title="subpage.metadata.url">
-                                            {{ subpage.metadata.url }}
+                                            :title="subpage.url">
+                                            {{ subpage.url }}
                                         </a>
                                         <span v-else class="subpage-id">
-                                            {{ subpage.id }}
+                                            {{ subpage.page_id }}
                                         </span>
                                     </td>
                                     <td class="cell-content">
@@ -570,12 +563,12 @@ const closeKnowledgeModal = () => {
                                     </td>
                                     <td class="cell-actions">
                                         <div class="actions-buttons">
-                                            <button class="edit-subpage-btn" @click="() => editSubpage(subpage.id)"
+                                            <button class="edit-subpage-btn" @click="() => editSubpage(subpage.page_id)"
                                                 title="Edit this subpage">
                                                 <img :src="EditIcon" alt="Edit" class="action-icon-sm" />
                                             </button>
                                             <button class="delete-subpage-btn"
-                                                @click="() => confirmDeleteSubpage(subpage.id)"
+                                                @click="() => confirmDeleteSubpage(subpage.page_id)"
                                                 title="Delete this subpage">
                                                 <img :src="DeleteIcon" alt="Delete" class="action-icon-sm" />
                                             </button>

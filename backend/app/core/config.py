@@ -169,6 +169,22 @@ class Settings(BaseSettings):
     # so the budget can stay tight. AGENT_RUN_TIMEOUT is the real safety net.
     AGENT_TOOL_CALL_LIMIT: int = int(os.getenv("AGENT_TOOL_CALL_LIMIT", "5"))
 
+    # Chars of previous-turn history re-sent to the model each turn. Tool
+    # results from earlier turns are always stubbed out (see
+    # app.agents.history_memory); this bounds what remains by dropping the oldest
+    # turns. Stored history is never touched.
+    AGENT_HISTORY_MAX_CHARS: int = int(os.getenv("AGENT_HISTORY_MAX_CHARS", "40000"))
+
+    # Knowledge chunking. The search embedder (bge-small, 512-token window) only
+    # sees roughly this much text per row, so a bigger chunk is not searchable
+    # past this point — and crawled text is URL-dense (~3 chars/token).
+    KNOWLEDGE_CHUNK_SIZE: int = int(os.getenv("KNOWLEDGE_CHUNK_SIZE", "1100"))
+    KNOWLEDGE_CHUNK_OVERLAP: int = int(os.getenv("KNOWLEDGE_CHUNK_OVERLAP", "120"))
+    # Hits returned per knowledge search, and the ceiling on the rendered result
+    # (whole pages are dropped past it, a page is never cut mid-chunk).
+    KNOWLEDGE_SEARCH_RESULTS: int = int(os.getenv("KNOWLEDGE_SEARCH_RESULTS", "6"))
+    KNOWLEDGE_SEARCH_MAX_CHARS: int = int(os.getenv("KNOWLEDGE_SEARCH_MAX_CHARS", "15000"))
+
     # Knowledge base content summarization settings
     KNOWLEDGE_SUMMARY_ENABLED: bool = os.getenv("KNOWLEDGE_SUMMARY_ENABLED", "false").lower() == "true"
     KNOWLEDGE_SUMMARY_MODEL_TYPE: str = os.getenv("KNOWLEDGE_SUMMARY_MODEL_TYPE", "GROQ")

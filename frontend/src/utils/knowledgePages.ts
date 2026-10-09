@@ -16,9 +16,15 @@ limitations under the License.
 
 import type { KnowledgeContentChunk, KnowledgeSubPage } from '@/types/knowledge'
 
+/** `<page>::<n>` — chunk ids written by app/knowledge/chunking.py. */
+const CHUNK_ID_SUFFIX = /::\d+$/
+/** `<page>_<n>` — chunk ids agno's PDF reader used to write. */
+const LEGACY_CHUNK_ID_SUFFIX = /_\d+$/
+
 /**
- * Map a chunk id back to its page id by stripping a trailing `_<number>` chunk
- * suffix (agno splits a page into `<page>_1`, `<page>_2` … chunks).
+ * Map a chunk id back to its page id by stripping the trailing chunk suffix:
+ * `<page>::<n>` (app/knowledge/chunking.py) or the legacy `<page>_<n>` that
+ * agno's PDF reader produced.
  *
  * Only a numeric suffix is stripped, so real underscores in a page name (e.g.
  * `getting_started`) are preserved. Mirrors the backend `PAGE_ID_EXPR`
@@ -27,7 +33,20 @@ import type { KnowledgeContentChunk, KnowledgeSubPage } from '@/types/knowledge'
  * returns when listing sources — keep the two in sync.
  */
 export function basePageId(id: string): string {
-  return id.replace(/_\d+$/, '')
+  const chunked = id.replace(CHUNK_ID_SUFFIX, '')
+  if (chunked !== id) return chunked
+  return id.replace(LEGACY_CHUNK_ID_SUFFIX, '')
+}
+
+/**
+ * What goes between a chunk and the one before it when a page is rebuilt.
+ * `::n` chunks (app/knowledge/chunking.py) are verbatim slices of the page, so
+ * nothing: inserting a break would change the text that gets saved back.
+ * Legacy `_n` chunks were cut on whitespace that was dropped, so a paragraph
+ * break is the closest reconstruction.
+ */
+function chunkJoiner(chunkId: string): string {
+  return CHUNK_ID_SUFFIX.test(chunkId) ? '' : '\n\n'
 }
 
 function countWords(text: string): number {
@@ -71,7 +90,7 @@ export function groupChunksIntoPages(chunks: KnowledgeContentChunk[]): Knowledge
       order.push(pageId)
     }
 
-    page.content = page.content ? `${page.content}\n\n${content}` : content
+    page.content = page.content ? `${page.content}${chunkJoiner(chunk.id)}${content}` : content
     page.chunk_count += 1
     page.chunk_ids.push(chunk.id)
     page.updated_at = laterIso(page.updated_at, chunk.created_at ?? null)
