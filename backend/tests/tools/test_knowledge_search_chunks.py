@@ -61,22 +61,68 @@ def tool():
         yield tool
 
 
-def test_hit_comes_with_neighbours_grouped_and_ordered(tool):
-    hit = _chunk(PAGE, 3, 5, "part three")
+def test_hit_comes_with_page_head_and_neighbours_grouped_and_ordered(tool):
+    hit = _chunk(PAGE, 4, 6, "part four")
     tool.agent_knowledge.search.return_value = [hit]
     tool._db.execute.return_value.fetchall.return_value = [
-        _row(_chunk(PAGE, 4, 5, "part four")),
-        _row(_chunk(PAGE, 2, 5, "part two")),
+        _row(_chunk(PAGE, 5, 6, "part five")),
+        _row(_chunk(PAGE, 1, 6, "Thermofit gloves 39,90 EUR")),
+        _row(_chunk(PAGE, 3, 6, "part three")),
     ]
 
     result = tool.search_knowledge_base("pricing")
 
     assert result.startswith(f"[WEBSITE - https://x.com | {PAGE}] ")
-    assert result.index("(part 2/5) part two") < result.index("(part 3/5) part three") < result.index("(part 4/5) part four")
+    order = ["(part 1/6) Thermofit", "(part 3/6) part three", "(part 4/6) part four", "(part 5/6) part five"]
+    positions = [result.index(p) for p in order]
+    assert positions == sorted(positions)
     ids = tool._db.execute.call_args.args[1]["ids"]
-    assert sorted(ids) == [f"{PAGE}::2", f"{PAGE}::4"]
-    assert tool.seen_chunk_ids == {f"{PAGE}::2", f"{PAGE}::3", f"{PAGE}::4"}
+    assert sorted(ids) == [f"{PAGE}::1", f"{PAGE}::3", f"{PAGE}::5"]
+    assert tool.seen_chunk_ids == {f"{PAGE}::1", f"{PAGE}::3", f"{PAGE}::4", f"{PAGE}::5"}
     assert tool.collected_sources == [{"name": "https://x.com", "type": "website"}]
+
+
+def test_page_head_never_displaces_a_matched_page(tool, monkeypatch):
+    """Heads are added last and only where they fit: a page that matched the
+    query must not be dropped by the cap to make room for another page's head."""
+    a, b = "https://x.com/a", "https://x.com/b"
+    tool.agent_knowledge.search.return_value = [_chunk(a, 3, 3, "a" * 60), _chunk(b, 3, 3, "b" * 60)]
+    tool._db.execute.return_value.fetchall.return_value = [
+        _row(_chunk(a, 1, 3, "HEAD-A " + "h" * 60)),
+        _row(_chunk(b, 1, 3, "HEAD-B " + "h" * 60)),
+    ]
+    one_page = len(f"[WEBSITE - https://x.com | {a}] (part 3/3) " + "a" * 60) + 2
+    monkeypatch.setattr("app.tools.knowledge_search_byagent.settings.KNOWLEDGE_SEARCH_MAX_CHARS", 2 * one_page + 10)
+
+    result = tool.search_knowledge_base("q")
+
+    assert "a" * 60 in result and "b" * 60 in result  # both matched pages kept
+    assert "HEAD-A" not in result and "HEAD-B" not in result  # no room left for heads
+    assert f"{a}::1" not in tool.seen_chunk_ids  # unshown head stays searchable
+
+
+def test_page_head_added_when_it_fits(tool):
+    tool.agent_knowledge.search.return_value = [_chunk(PAGE, 5, 5, "tail")]
+    tool._db.execute.return_value.fetchall.return_value = [
+        _row(_chunk(PAGE, 4, 5, "four")),
+        _row(_chunk(PAGE, 1, 5, "Thermofit gloves 39,90 EUR")),
+    ]
+
+    result = tool.search_knowledge_base("Wie viel kosten die Handschuhe?")
+
+    assert result.index("39,90 EUR") < result.index("four") < result.index("tail")
+
+
+def test_page_head_is_not_fetched_twice(tool):
+    """A hit on chunk 2 already asks for chunk 1 as its neighbour; a hit on
+    chunk 1 needs no head lookup at all."""
+    tool.agent_knowledge.search.return_value = [_chunk(PAGE, 2, 4, "two"), _chunk(PAGE, 1, 4, "one")]
+    tool._db.execute.return_value.fetchall.return_value = [_row(_chunk(PAGE, 3, 4, "three"))]
+
+    tool.search_knowledge_base("q")
+
+    ids = tool._db.execute.call_args.args[1]["ids"]
+    assert sorted(ids) == [f"{PAGE}::3"]
 
 
 def test_unchunked_row_has_no_neighbour_lookup(tool):

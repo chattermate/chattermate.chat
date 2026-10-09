@@ -155,13 +155,14 @@ class KnowledgeSearchByAgent(Toolkit):
                     return NO_FURTHER_RESULTS if hits else NO_RESULTS
 
                 hits_by_id = {hit.id: hit for hit in fresh}
-                for hit in self._neighbours(db, fresh):
+                neighbours, heads = self._page_context(db, fresh)
+                for hit in neighbours:
                     hits_by_id.setdefault(hit.id, hit)
 
                 source_types = {
                     source.source: source.source_type.value.lower() for source in knowledge_sources
                 }
-                rendered, shown = self._render(hits_by_id.values(), source_types)
+                rendered, shown = self._render(hits_by_id.values(), heads, source_types)
                 # Only what the model actually received counts as seen or as a
                 # citation; a page dropped by the size cap stays searchable.
                 self.seen_chunk_ids.update(hit.id for hit in shown)
@@ -173,21 +174,35 @@ class KnowledgeSearchByAgent(Toolkit):
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return "Error searching knowledge base."
 
-    def _neighbours(self, db, hits: List[_Hit]) -> List[_Hit]:
-        """The chunk before and after each hit on its page, so a fact split by
-        a chunk boundary (a pricing table, a numbered procedure) arrives whole.
-        Only chunked pages have neighbours; a single-row page is complete."""
-        wanted: Set[str] = set()
+    def _page_context(self, db, hits: List[_Hit]) -> Tuple[List[_Hit], Dict[str, _Hit]]:
+        """Context for each hit on a chunked page, fetched in one query.
+
+        Neighbours — the chunk before and after a hit — so a fact split by a
+        chunk boundary (a pricing table, a numbered procedure) arrives whole.
+
+        Heads — the page's first chunk, keyed by page id — which is where a
+        page says what it is: a product's name and price, a plan's headline
+        terms. A query that matches the description further down (or is
+        phrased in another language than the page) would otherwise come back
+        without them. Heads are optional: ``_render`` adds them only where
+        they fit after every matched page has its place.
+
+        Only chunked pages have context; a single-row page is complete."""
+        neighbour_ids: Set[str] = set()
+        head_ids: Set[str] = set()
         for hit in hits:
             if not hit.is_chunked:
                 continue
             for index in (hit.chunk - 1, hit.chunk + 1):
                 if 1 <= index <= hit.chunk_count:
-                    wanted.add(chunk_id(hit.page_id, index))
-        wanted.difference_update(self.seen_chunk_ids)
-        wanted.difference_update(hit.id for hit in hits)
+                    neighbour_ids.add(chunk_id(hit.page_id, index))
+            head_ids.add(chunk_id(hit.page_id, 1))
+        known = self.seen_chunk_ids | {hit.id for hit in hits}
+        neighbour_ids -= known
+        head_ids -= known | neighbour_ids
+        wanted = neighbour_ids | head_ids
         if not wanted:
-            return []
+            return [], {}
 
         rows = db.execute(
             text(
@@ -196,7 +211,10 @@ class KnowledgeSearchByAgent(Toolkit):
             ),
             {"ids": list(wanted)},
         ).fetchall()
-        return [_Hit(row.id, row.content, row.meta_data or {}, row.name or "Untitled") for row in rows]
+        fetched = [_Hit(row.id, row.content, row.meta_data or {}, row.name or "Untitled") for row in rows]
+        neighbours = [hit for hit in fetched if hit.id in neighbour_ids]
+        heads = {hit.page_id: hit for hit in fetched if hit.id in head_ids}
+        return neighbours, heads
 
     def _record_sources(self, hits: Iterable[_Hit], source_types: Dict[str, str]) -> None:
         # Record structured citations (deduped by name+type) so the chat agent
@@ -208,36 +226,64 @@ class KnowledgeSearchByAgent(Toolkit):
                 seen.add(key)
                 self.collected_sources.append({'name': key[0], 'type': key[1]})
 
-    def _render(self, hits: Iterable[_Hit], source_types: Dict[str, str]) -> Tuple[str, List[_Hit]]:
-        """Group chunks by page, in page order, under one header per page. Pages
-        are dropped whole once the result would exceed the size cap — a page is
-        never cut mid-chunk, and the cap keeps one search from crowding out the
-        rest of the conversation. Returns the text and the hits it contains."""
+    def _render(
+        self, hits: Iterable[_Hit], heads: Dict[str, _Hit], source_types: Dict[str, str]
+    ) -> Tuple[str, List[_Hit]]:
+        """Group chunks by page, in page order, under one header per page.
+
+        Pages with matches are placed first and dropped whole once the result
+        would exceed the size cap — a page is never cut mid-chunk, and the cap
+        keeps one search from crowding out the rest of the conversation. Page
+        heads go in afterwards, only into pages that made it and only while
+        they still fit, so a head never displaces a page that matched.
+        Returns the text and the hits it contains."""
+        cap = settings.KNOWLEDGE_SEARCH_MAX_CHARS
         pages: Dict[str, List[_Hit]] = {}
         for hit in hits:
             pages.setdefault(hit.page_id, []).append(hit)
 
-        blocks: List[str] = []
-        shown: List[_Hit] = []
+        placed: List[List[_Hit]] = []
         total = 0
         for page_hits in pages.values():
-            page_hits.sort(key=lambda h: h.chunk or 0)
-            first = page_hits[0]
-            header = f"[{source_types.get(first.name, 'unknown').upper()} - {first.name}"
-            if first.url and first.url != first.name:
-                header += f" | {first.url}"
-            header += "]"
-            parts = []
-            for hit in page_hits:
-                label = f"(part {hit.chunk}/{hit.chunk_count}) " if hit.is_chunked else ""
-                parts.append(f"{label}{_hit_text(hit)}")
-            block = header + " " + "\n".join(parts)
-            if blocks and total + len(block) > settings.KNOWLEDGE_SEARCH_MAX_CHARS:
+            size = len(_page_block(page_hits, source_types)) + len(_PAGE_SEPARATOR)
+            if placed and total + size > cap:
                 break
-            blocks.append(block)
-            shown.extend(page_hits)
-            total += len(block)
-        return "\n\n".join(blocks), shown
+            placed.append(page_hits)
+            total += size
+
+        for page_hits in placed:
+            head = heads.get(page_hits[0].page_id)
+            if head is None:
+                continue
+            size = len(_chunk_text(head)) + len(_CHUNK_SEPARATOR)
+            if total + size <= cap:
+                page_hits.append(head)
+                total += size
+
+        blocks = [_page_block(page_hits, source_types) for page_hits in placed]
+        shown = [hit for page_hits in placed for hit in page_hits]
+        return _PAGE_SEPARATOR.join(blocks), shown
+
+
+_PAGE_SEPARATOR = "\n\n"
+_CHUNK_SEPARATOR = "\n"
+
+
+def _chunk_text(hit: _Hit) -> str:
+    label = f"(part {hit.chunk}/{hit.chunk_count}) " if hit.is_chunked else ""
+    return f"{label}{_hit_text(hit)}"
+
+
+def _page_block(page_hits: List[_Hit], source_types: Dict[str, str]) -> str:
+    """One page as the model sees it: a source header, then its chunks in
+    page order."""
+    page_hits.sort(key=lambda h: h.chunk or 0)
+    first = page_hits[0]
+    header = f"[{source_types.get(first.name, 'unknown').upper()} - {first.name}"
+    if first.url and first.url != first.name:
+        header += f" | {first.url}"
+    header += "]"
+    return header + " " + _CHUNK_SEPARATOR.join(_chunk_text(hit) for hit in page_hits)
 
 
 # A row this much bigger than a chunk was stored before pages were chunked and
