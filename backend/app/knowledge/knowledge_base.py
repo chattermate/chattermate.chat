@@ -24,6 +24,8 @@ from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE
 from app.knowledge.enhanced_website_kb import EnhancedWebsiteKnowledgeBase
 from app.knowledge.enhanced_website_reader import EnhancedWebsiteReader
 from app.knowledge.sitemap_reader import SitemapReader
+from agno.document.reader.pdf_reader import PDFUrlReader
+from app.knowledge.chunking import PageChunking
 from app.knowledge.enhanced_pdf_kb import EnhancedPDFKnowledgeBase
 from app.knowledge.enhanced_pdf_url_kb import EnhancedPDFUrlKnowledgeBase
 from app.core.s3 import delete_file_from_s3, is_s3_url
@@ -41,7 +43,7 @@ import requests
 import asyncio
 from urllib.parse import urlparse
 from uuid import UUID
-from agno.embedder.fastembed import FastEmbedEmbedder
+from app.knowledge.embedder import get_embedder
 
 # Try to import enterprise modules
 try:
@@ -67,10 +69,8 @@ class KnowledgeManager:
         embedder = None
         table_name = f"d_{org_id}"
         
-        # Use FastEmbedEmbedder instead of SentenceTransformerEmbedder
-        embedder = FastEmbedEmbedder(
-            id=settings.FASTEMBED_MODEL
-        )
+        # One loaded model per process; agno's embedder reloads it per call.
+        embedder = get_embedder()
         
         # Dimensions will be automatically set by the model
 
@@ -127,7 +127,8 @@ class KnowledgeManager:
                     # Use EnhancedPDFUrlKnowledgeBase for direct PDF URLs
                     knowledge_base = EnhancedPDFUrlKnowledgeBase(
                         urls=[url],  # Pass single URL in a list
-                        vector_db=self.vector_db
+                        vector_db=self.vector_db,
+                        reader=PDFUrlReader(chunking_strategy=PageChunking()),
                     )
                     # Extract filename from URL and remove extension
                     filename = os.path.splitext(os.path.basename(url))[0]
@@ -294,7 +295,7 @@ class KnowledgeManager:
                         knowledge_base = EnhancedPDFKnowledgeBase(
                             path=path_to_use,
                             vector_db=self.vector_db,
-                            reader=PDFReader(chunk=chunk) if not reader else reader
+                            reader=PDFReader(chunk=chunk, chunking_strategy=PageChunking()) if not reader else reader
                         )
                         if filename is None:
                             filename = os.path.splitext(os.path.basename(file_path))[0]
@@ -320,7 +321,7 @@ class KnowledgeManager:
                         knowledge_base = EnhancedPDFKnowledgeBase(
                             path=path_to_use,
                             vector_db=self.vector_db,
-                            reader=PDFImageReader(chunk=chunk)
+                            reader=PDFImageReader(chunk=chunk, chunking_strategy=PageChunking())
                         )
                         if filename is None:
                             filename = os.path.splitext(os.path.basename(file_path))[0]

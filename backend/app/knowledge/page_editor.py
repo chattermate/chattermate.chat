@@ -35,6 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
+from app.knowledge.chunking import CHUNK_META_KEYS, chunk_page
 from app.knowledge.knowledge_base import KnowledgeManager
 from app.models.knowledge import Knowledge, SourceType
 from app.models.knowledge_to_agent import KnowledgeToAgent
@@ -43,15 +44,23 @@ from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
 
 logger = get_logger(__name__)
 
-# SQL expression that maps a chunk ``id`` back to its page id by stripping a
-# trailing ``_<number>`` chunk suffix (agno splits a page's content into
-# ``<page>_1``, ``<page>_2`` … chunks). Only a *numeric* suffix is stripped, so
-# legitimate underscores in a page name (e.g. ``getting_started``) are kept and
-# distinct pages are never collapsed together. This is the single source of
-# truth for page grouping — the source-listing queries import it too, and the
-# frontend ``basePageId`` mirrors it — so page membership is identical
-# everywhere edit/delete/list operate.
-PAGE_ID_EXPR = "CASE WHEN id ~ '_[0-9]+$' THEN substring(id from '^(.*)_[0-9]+$') ELSE id END"
+# SQL expression that maps a chunk ``id`` back to its page id by stripping the
+# trailing chunk suffix: ``<page>::<n>`` (app.knowledge.chunking) or the legacy
+# ``<page>_<n>`` agno's PDF reader produced. Only a *numeric* suffix is
+# stripped, so legitimate underscores in a page name (e.g. ``getting_started``)
+# are kept. This is the single source of truth for page grouping — the
+# source-listing queries import it too, and ``page_id_of`` / the frontend
+# ``basePageId`` mirror it — so page membership is identical everywhere
+# edit/delete/list operate.
+PAGE_ID_EXPR = (
+    "CASE WHEN id ~ '::[0-9]+$' THEN substring(id from '^(.*)::[0-9]+$') "
+    "WHEN id ~ '_[0-9]+$' THEN substring(id from '^(.*)_[0-9]+$') ELSE id END"
+)
+
+# Chunk ids within a page sort naturally (length first) so ``page::2`` comes
+# before ``page::10`` where plain text ordering would not. The bare page id, if
+# any, sorts first.
+NATURAL_ID_ORDER = "length(id), id"
 
 
 def get_manager(organization_id) -> KnowledgeManager:
@@ -82,6 +91,39 @@ def embed_document(
     return doc
 
 
+def embed_page(
+    manager: KnowledgeManager,
+    source: str,
+    page_id: str,
+    content: str,
+    meta_data: Optional[Dict[str, Any]] = None,
+) -> List[Document]:
+    """Chunk a page and embed every chunk. Embedding happens before any write,
+    so an embedder failure changes nothing in the store."""
+    page = Document(name=source, id=page_id, content=content, meta_data=meta_data or {})
+    chunks = chunk_page(page)
+    for chunk in chunks:
+        chunk.embed(embedder=manager.vector_db.embedder)
+    return chunks
+
+
+def delete_page_chunks_except(
+    db: Session, knowledge: Knowledge, page_id: str, keep_ids: List[str]
+) -> int:
+    """Delete the chunks of a page whose id is not in ``keep_ids``. Used after
+    a page's new chunks are stored: whatever the old layout was (one bare row,
+    ``_N`` rows, ``::N`` rows), only the new set survives. Caller commits."""
+    sql = (
+        f'DELETE FROM {knowledge.schema}."{knowledge.table_name}" '
+        f"WHERE name = :source AND {PAGE_ID_EXPR} = :page_id "
+        "AND NOT (id = ANY(:keep_ids))"
+    )
+    result = db.execute(
+        text(sql), {"source": knowledge.source, "page_id": page_id, "keep_ids": keep_ids}
+    )
+    return result.rowcount
+
+
 def count_subpages(db: Session, knowledge: Knowledge) -> int:
     """Count the distinct sub-pages stored for a knowledge source.
 
@@ -101,31 +143,20 @@ def get_page_chunks(db: Session, knowledge: Knowledge, page_id: str) -> List[Any
     query = text(
         f'SELECT id, content, meta_data FROM {knowledge.schema}."{knowledge.table_name}" '
         f"WHERE name = :source AND {PAGE_ID_EXPR} = :page_id "
-        "ORDER BY id ASC"
+        f"ORDER BY {NATURAL_ID_ORDER}"
     )
     return db.execute(
         query, {"source": knowledge.source, "page_id": page_id}
     ).fetchall()
 
 
-def delete_page_chunks(
-    db: Session,
-    knowledge: Knowledge,
-    page_id: str,
-    exclude_canonical: bool = False,
-) -> int:
-    """Delete the chunks of a page. Returns the number of rows removed.
-
-    When ``exclude_canonical`` is True the row whose id equals ``page_id`` is
-    kept — used by :func:`replace_page` to clear leftover ``_N`` chunks after the
-    canonical row has been upserted. The caller commits the transaction.
-    """
+def delete_page_chunks(db: Session, knowledge: Knowledge, page_id: str) -> int:
+    """Delete every chunk of a page. Returns the number of rows removed. The
+    caller commits the transaction."""
     sql = (
         f'DELETE FROM {knowledge.schema}."{knowledge.table_name}" '
         f"WHERE name = :source AND {PAGE_ID_EXPR} = :page_id"
     )
-    if exclude_canonical:
-        sql += " AND id != :page_id"
     result = db.execute(text(sql), {"source": knowledge.source, "page_id": page_id})
     return result.rowcount
 
@@ -137,27 +168,25 @@ def replace_page(
     content: str,
     title: Optional[str] = None,
 ) -> int:
-    """Replace a page's content with a single freshly re-embedded chunk.
+    """Replace a page's content with freshly chunked and embedded rows.
 
-    Collapses the page into one chunk keyed by ``page_id`` holding ``content``.
     Metadata (including the page ``url`` and agent linkage) is preserved from the
     existing chunks where available, so the edited page stays attributed to the
     same agents and keeps its source URL.
 
     Ordering is chosen so the page can never be lost:
 
-    1. Embed the new content (if this raises, nothing has changed).
-    2. ``upsert`` the canonical ``page_id`` row on the vector store's own
-       connection — this overwrites the existing single-chunk page in place, or
-       inserts the collapsed row for a multi-chunk page. The new content is now
-       durably stored before anything is deleted.
-    3. Delete any leftover ``_N`` chunks (``exclude_canonical``) and commit.
+    1. Chunk and embed the new content (if this raises, nothing has changed).
+    2. ``upsert`` the new chunks on the vector store's own connection. Ids that
+       already exist are overwritten in place; the new content is now durably
+       stored before anything is deleted.
+    3. Delete every other row of the page — the bare ``page_id`` row of a page
+       that now spans several chunks, or trailing chunks of a page that shrank —
+       and commit.
 
     A failure at step 2 leaves the original page intact; a failure at step 3
     leaves the correct new content in place plus at most some stale extra chunks
-    (no data loss). ``upsert`` (vs ``insert``) also avoids a duplicate-key error
-    when the canonical row already exists. This function commits the request
-    session itself.
+    (no data loss). This function commits the request session itself.
 
     Returns the number of chunks the page had before the replace (0 if the page
     does not exist).
@@ -167,28 +196,36 @@ def replace_page(
         return 0
 
     # Preserve the first chunk's metadata (url, etc.); refresh agent linkage.
-    base_meta: Dict[str, Any] = dict(existing[0].meta_data or {})
+    # Per-chunk keys are recomputed by chunk_page — carrying them over would
+    # leave a page edited down to one row claiming to be "part 1 of 5".
+    base_meta: Dict[str, Any] = {
+        key: value
+        for key, value in (existing[0].meta_data or {}).items()
+        if key not in CHUNK_META_KEYS
+    }
     agent_ids = agent_ids_for(knowledge)
     base_meta["agent_id"] = agent_ids
     if title is not None:
         base_meta["title"] = title
 
     manager = get_manager(knowledge.organization_id)
-    doc = embed_document(manager, knowledge.source, page_id, content, base_meta)
+    chunks = embed_page(manager, knowledge.source, page_id, content, base_meta)
     filters = {
         "name": knowledge.source,
         "agent_id": agent_ids,
         "org_id": str(knowledge.organization_id),
     }
 
-    # Persist the new content first, then clear leftover chunks of the page.
-    manager.vector_db.upsert([doc], filters=filters)
-    removed_extra = delete_page_chunks(db, knowledge, page_id, exclude_canonical=True)
+    # Persist the new content first, then clear every other row of the page.
+    manager.vector_db.upsert(chunks, filters=filters)
+    removed_extra = delete_page_chunks_except(
+        db, knowledge, page_id, [chunk.id for chunk in chunks]
+    )
     db.commit()
 
     logger.info(
-        f"Replaced page '{page_id}' ({len(existing)} chunk(s), "
-        f"{removed_extra} extra removed) for source '{knowledge.source}'"
+        f"Replaced page '{page_id}' ({len(existing)} -> {len(chunks)} chunk(s), "
+        f"{removed_extra} old removed) for source '{knowledge.source}'"
     )
     return len(existing)
 
@@ -238,7 +275,7 @@ def create_text_source(
     agent_ids = [str(agent_id)] if agent_id else []
 
     # Embed first — an embedding failure then creates no source row at all.
-    doc = embed_document(
+    chunks = embed_page(
         manager, title, title, content, {"agent_id": agent_ids, "url": title, "title": title}
     )
 
@@ -261,9 +298,9 @@ def create_text_source(
                 KnowledgeToAgent(knowledge_id=knowledge.id, agent_id=agent_id)
             )
         # upsert (not insert) is idempotent on the id, so a raced duplicate title
-        # overwrites its own chunk instead of raising a duplicate-key error.
+        # overwrites its own chunks instead of raising a duplicate-key error.
         manager.vector_db.upsert(
-            [doc],
+            chunks,
             filters={"name": title, "agent_id": agent_ids, "org_id": str(organization_id)},
         )
     except Exception:
@@ -281,23 +318,24 @@ def insert_subpage(
     content: str,
     url: Optional[str] = None,
 ) -> None:
-    """Embed and insert a brand-new sub-page chunk.
+    """Embed and store a brand-new sub-page as one or more chunks.
 
     ``subpage_name`` is the page id/title; ``url`` is an optional source link
     stored in metadata so the UI can render it (and derive the title from the
     name rather than from a URL the user pasted). The write happens on the vector
     store's own session (which commits itself); there is nothing to commit on the
-    request session.
+    request session. The caller has already checked the page does not exist;
+    ``upsert`` keeps a retry from failing on a half-written page.
     """
     agent_ids = agent_ids_for(knowledge)
     meta_data: Dict[str, Any] = {"agent_id": agent_ids, "title": subpage_name}
     if url:
         meta_data["url"] = url
     manager = get_manager(knowledge.organization_id)
-    doc = embed_document(manager, knowledge.source, subpage_name, content, meta_data)
+    chunks = embed_page(manager, knowledge.source, subpage_name, content, meta_data)
     filters = {
         "name": knowledge.source,
         "agent_id": agent_ids,
         "org_id": str(knowledge.organization_id),
     }
-    manager.vector_db.insert([doc], filters=filters)
+    manager.vector_db.upsert(chunks, filters=filters)

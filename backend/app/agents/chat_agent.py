@@ -23,6 +23,7 @@ from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
 from app.database import get_db, SessionLocal, engine
 from app.agents.encrypted_storage import EncryptedPostgresAgentStorage
+from app.agents.history_memory import BoundedHistoryMemory, run_with_overflow_recovery
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.models.session_to_agent import SessionStatus
@@ -935,6 +936,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
            instructions=system_message,
            agent_id=str(agent_id),
            storage=storage,
+           memory=BoundedHistoryMemory(),
            add_history_to_messages=True,
            tool_call_limit=settings.AGENT_TOOL_CALL_LIMIT,
            num_history_responses=5,  # Reduced from 10 to 5 to minimize context size and improve speed
@@ -949,6 +951,19 @@ Keep your responses concise and focused. Provide clear, actionable information i
            user_message_role="user",
            show_tool_calls=settings.ENVIRONMENT == "development"
           )
+
+    async def _arun(self, message: str, session_id: str):
+        """One agent run under AGENT_RUN_TIMEOUT, with the context-overflow
+        retry. The retry is a fresh turn, so what the failed attempt searched
+        must be searchable again."""
+        knowledge_tool = getattr(self, "knowledge_tool", None)
+        return await run_with_overflow_recovery(
+            self.agent,
+            message,
+            session_id,
+            timeout=settings.AGENT_RUN_TIMEOUT,
+            before_retry=knowledge_tool.reset_turn if knowledge_tool is not None else None,
+        )
 
     async def _get_llm_response_only(self, message: str, session_id: str = None, org_id: str = None, agent_id: str = None, customer_id: str = None) -> ChatResponse:
         """
@@ -982,15 +997,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
             # Get AI response WITHOUT storing user message
             self._groq_json_capture.clear()
+            if self.knowledge_tool is not None:
+                self.knowledge_tool.reset_turn()
             try:
-                response = await asyncio.wait_for(
-                    self.agent.arun(
-                        message=message,
-                        session_id=session_id,
-                        stream=False
-                    ),
-                    timeout=settings.AGENT_RUN_TIMEOUT
-                )
+                response = await self._arun(message, session_id)
             except asyncio.TimeoutError:
                 logger.warning(
                     f"Agent run timed out after {settings.AGENT_RUN_TIMEOUT}s and was cancelled "
@@ -1361,22 +1371,15 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     })
                     return blocked_response
 
-                # Reset citation collection for this turn
+                # Reset citation collection and shown chunks for this turn
                 if self.knowledge_tool is not None:
-                    self.knowledge_tool.collected_sources = []
+                    self.knowledge_tool.reset_turn()
 
                 # Get AI response
                 self._groq_json_capture.clear()
                 _salvaged_content = None
                 try:
-                    response = await asyncio.wait_for(
-                        self.agent.arun(
-                            message=message,
-                            session_id=session_id,
-                            stream=False
-                        ),
-                        timeout=settings.AGENT_RUN_TIMEOUT
-                    )
+                    response = await self._arun(message, session_id)
                 except asyncio.TimeoutError:
                     logger.warning(
                         f"Agent run timed out after {settings.AGENT_RUN_TIMEOUT}s and was cancelled "

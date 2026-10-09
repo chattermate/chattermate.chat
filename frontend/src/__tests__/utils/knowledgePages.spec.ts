@@ -36,6 +36,15 @@ describe('basePageId', () => {
     expect(basePageId('getting_started_2')).toBe('getting_started')
   })
 
+  it('strips a `::n` chunk suffix', () => {
+    expect(basePageId('https://site.com/docs::1')).toBe('https://site.com/docs')
+    expect(basePageId('https://site.com/docs::12')).toBe('https://site.com/docs')
+  })
+
+  it('keeps a page url that itself ends in _n when chunked with ::n', () => {
+    expect(basePageId('https://site.com/post_2::1')).toBe('https://site.com/post_2')
+  })
+
   it('strips only the last numeric group', () => {
     expect(basePageId('x_10_3')).toBe('x_10')
   })
@@ -80,6 +89,20 @@ describe('groupChunksIntoPages', () => {
     const [page] = groupChunksIntoPages([chunk('https://site.com/docs/help', 'body')])
     expect(page.url).toBe('https://site.com/docs/help')
     expect(page.title).toBe('help')
+  })
+
+  it('rejoins `::n` chunks verbatim and legacy `_n` chunks with a paragraph break', () => {
+    const verbatim = groupChunksIntoPages([
+      { id: 'https://s.com/p::1', content: 'The plan costs ' },
+      { id: 'https://s.com/p::2', content: '$29 a month.\n' },
+    ])
+    expect(verbatim[0].content).toBe('The plan costs $29 a month.\n')
+
+    const legacy = groupChunksIntoPages([
+      { id: 'doc.pdf_1', content: 'first' },
+      { id: 'doc.pdf_2', content: 'second' },
+    ])
+    expect(legacy[0].content).toBe('first\n\nsecond')
   })
 
   it('returns an empty array for no chunks', () => {

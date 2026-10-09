@@ -14,17 +14,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import List, Dict, Any
+import traceback
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from agno.tools import Toolkit
 from agno.utils.log import logger
+from sqlalchemy import text
 from app.database import SessionLocal
 from app.core.config import settings
-from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
+from app.knowledge.chunking import chunk_id, page_id_of, split_text
 from app.repositories.knowledge import KnowledgeRepository
 from agno.knowledge.agent import AgentKnowledge
 from agno.vectordb.pgvector import PgVector, SearchType
-from agno.embedder.fastembed import FastEmbedEmbedder
+from app.knowledge.embedder import get_embedder
 from uuid import UUID
+
+NO_RESULTS = "No relevant information found in the knowledge base."
+NO_FURTHER_RESULTS = (
+    "No further results for this topic in the knowledge base beyond what earlier "
+    "searches in this turn already returned."
+)
+
+
+class _Hit:
+    """One chunk row as rendered to the model, plus what groups and orders it."""
+
+    __slots__ = ("id", "content", "page_id", "chunk", "chunk_count", "url", "name")
+
+    def __init__(self, id: str, content: str, meta: Dict[str, Any], name: str):
+        self.id = id
+        self.content = content
+        self.name = name
+        self.page_id = meta.get("page_id") or page_id_of(id)
+        self.chunk = meta.get("chunk") if isinstance(meta.get("chunk"), int) else None
+        self.chunk_count = meta.get("chunk_count") if isinstance(meta.get("chunk_count"), int) else None
+        self.url = meta.get("url")
+
+    @property
+    def is_chunked(self) -> bool:
+        return self.chunk is not None and self.chunk_count is not None and self.chunk_count > 1
+
 
 class KnowledgeSearchByAgent(Toolkit):
     def __init__(self, agent_id: str, org_id: UUID, source: str = None):
@@ -38,6 +66,10 @@ class KnowledgeSearchByAgent(Toolkit):
         # Structured citations for the most recent turn: list of {"name", "type"}.
         # Read (and reset) by the chat agent after each run to attach to the response.
         self.collected_sources: List[Dict[str, str]] = []
+        # Chunk ids already shown to the model this turn. A repeat search skips
+        # them and returns the next-best material instead of the same text again,
+        # so every tool call within the turn's budget adds something new.
+        self.seen_chunk_ids: Set[str] = set()
 
         # NOTE: this used to export the org's key as OPENAI_API_KEY for agno's
         # old default OpenAI embedder. Search now uses the local FastEmbed
@@ -45,7 +77,14 @@ class KnowledgeSearchByAgent(Toolkit):
         # was dead — and a cross-tenant race (concurrent orgs overwrote each
         # other's key in process-global state).
         self.agent_knowledge = None
+        self._table: Optional[str] = None
+        self._schema: Optional[str] = None
         self.register(self.search_knowledge_base)
+
+    def reset_turn(self) -> None:
+        """Forget this turn's citations and shown chunks before the next run."""
+        self.collected_sources = []
+        self.seen_chunk_ids = set()
 
     def search_knowledge_base(self, query: str) -> str:
         """Use this function to search the knowledge base for information about a query.
@@ -55,7 +94,7 @@ class KnowledgeSearchByAgent(Toolkit):
         """
         try:
             logger.debug(f"Searching knowledge base for query: {query}")
-            
+
             # Use context manager for database operations
             with SessionLocal() as db:
                 knowledge_repo = KnowledgeRepository(db)
@@ -65,22 +104,20 @@ class KnowledgeSearchByAgent(Toolkit):
                 if not knowledge_sources:
                     return "No knowledge sources available for this agent."
 
+                # All of an agent's sources live in the org's one vector table.
+                source = knowledge_sources[0]
+                self._table = source.table_name
+                self._schema = source.schema
+
                 # Initialize agent_knowledge if it doesn't exist
                 if self.agent_knowledge is None:
-                    # Use the first knowledge source's table and schema since they should all be in the same table
-                    source = knowledge_sources[0]
-                    embedder = FastEmbedEmbedder(
-                         # Use configurable model ID from settings
-                    )
-                    # Updated dimensions for the model (all-MiniLM-L6-v2 uses 384 dimensions)
-                    
                     # Initialize vector db with simpler search type to avoid connection issues
                     vector_db = PgVector(
                         table_name=source.table_name,
                         db_url=settings.DATABASE_URL,
                         schema=source.schema,
                         search_type=SearchType.vector,  # Changed from hybrid to vector for speed
-                        embedder=embedder
+                        embedder=get_embedder()
                     )
                     logger.debug(f"Vector db initialized: {source.table_name}")
 
@@ -93,58 +130,132 @@ class KnowledgeSearchByAgent(Toolkit):
                     filters["name"] = self.source
                 logger.debug(f"Search filters: {filters}")
 
-                # Search with filters - reduced from 5 to 3 documents for faster retrieval
-                # Only retrieve what we actually use to minimize database query time
+                # Ask for enough rows that, after skipping what this turn has
+                # already shown, a full set of new ones remains.
+                limit = settings.KNOWLEDGE_SEARCH_RESULTS
                 documents = self.agent_knowledge.search(
                     query=query,
-                    num_documents=3,  # Reduced from 5 to 3 since we only use top 3 anyway
+                    num_documents=limit + len(self.seen_chunk_ids),
                     filters=filters
                 )
                 logger.debug(f"Documents: {documents}")
 
-                search_results = []
-                for doc in documents:
-                    if doc.content:
-                        # Find the source type from knowledge sources
-                        source_type = next(
-                            (source.source_type.value.lower() for source in knowledge_sources if source.source == doc.name),
-                            'unknown'
-                        )
-                        search_results.append({
-                            'content': doc.content,
-                            'source_type': source_type,
-                            'name': doc.name or 'Untitled',
-                            'similarity': doc.score if hasattr(doc, 'score') else 0.0
-                        })
+                hits = [
+                    _Hit(
+                        getattr(doc, "id", None) or f"{doc.name}#{position}",
+                        doc.content,
+                        getattr(doc, "meta_data", None) or {},
+                        doc.name or "Untitled",
+                    )
+                    for position, doc in enumerate(documents)
+                    if doc.content
+                ]
+                fresh = [hit for hit in hits if hit.id not in self.seen_chunk_ids][:limit]
+                if not fresh:
+                    return NO_FURTHER_RESULTS if hits else NO_RESULTS
 
-                if not search_results:
-                    return "No relevant information found in the knowledge base."
+                hits_by_id = {hit.id: hit for hit in fresh}
+                for hit in self._neighbours(db, fresh):
+                    hits_by_id.setdefault(hit.id, hit)
 
-                # Sort by similarity and format results
-                search_results.sort(key=lambda x: x['similarity'], reverse=True)
-
-                # Record structured citations (deduped by name+type) so the chat agent
-                # can surface them to the widget.
-                seen = {(s['name'], s['type']) for s in self.collected_sources}
-                for result in search_results:
-                    key = (result['name'], result['source_type'])
-                    if key not in seen:
-                        seen.add(key)
-                        self.collected_sources.append({
-                            'name': result['name'],
-                            'type': result['source_type'],
-                        })
-
-                # Return all results (already limited to 3)
-                formatted_results = []
-                for result in search_results:
-                    formatted_results.append(
-                        f"[{result['source_type'].upper()} - {result['name']}] {result['content']}")
-                logger.debug(f"Formatted results: {formatted_results}")
-                return "\n\n".join(formatted_results)
+                source_types = {
+                    source.source: source.source_type.value.lower() for source in knowledge_sources
+                }
+                rendered, shown = self._render(hits_by_id.values(), source_types)
+                # Only what the model actually received counts as seen or as a
+                # citation; a page dropped by the size cap stays searchable.
+                self.seen_chunk_ids.update(hit.id for hit in shown)
+                self._record_sources(shown, source_types)
+                return rendered
 
         except Exception as e:
             logger.error(f"Error searching knowledge base: {str(e)}")
-            import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return "Error searching knowledge base."
+
+    def _neighbours(self, db, hits: List[_Hit]) -> List[_Hit]:
+        """The chunk before and after each hit on its page, so a fact split by
+        a chunk boundary (a pricing table, a numbered procedure) arrives whole.
+        Only chunked pages have neighbours; a single-row page is complete."""
+        wanted: Set[str] = set()
+        for hit in hits:
+            if not hit.is_chunked:
+                continue
+            for index in (hit.chunk - 1, hit.chunk + 1):
+                if 1 <= index <= hit.chunk_count:
+                    wanted.add(chunk_id(hit.page_id, index))
+        wanted.difference_update(self.seen_chunk_ids)
+        wanted.difference_update(hit.id for hit in hits)
+        if not wanted:
+            return []
+
+        rows = db.execute(
+            text(
+                f'SELECT id, name, content, meta_data FROM {self._schema}."{self._table}" '
+                "WHERE id = ANY(:ids)"
+            ),
+            {"ids": list(wanted)},
+        ).fetchall()
+        return [_Hit(row.id, row.content, row.meta_data or {}, row.name or "Untitled") for row in rows]
+
+    def _record_sources(self, hits: Iterable[_Hit], source_types: Dict[str, str]) -> None:
+        # Record structured citations (deduped by name+type) so the chat agent
+        # can surface them to the widget.
+        seen = {(s['name'], s['type']) for s in self.collected_sources}
+        for hit in hits:
+            key = (hit.name, source_types.get(hit.name, 'unknown'))
+            if key not in seen:
+                seen.add(key)
+                self.collected_sources.append({'name': key[0], 'type': key[1]})
+
+    def _render(self, hits: Iterable[_Hit], source_types: Dict[str, str]) -> Tuple[str, List[_Hit]]:
+        """Group chunks by page, in page order, under one header per page. Pages
+        are dropped whole once the result would exceed the size cap — a page is
+        never cut mid-chunk, and the cap keeps one search from crowding out the
+        rest of the conversation. Returns the text and the hits it contains."""
+        pages: Dict[str, List[_Hit]] = {}
+        for hit in hits:
+            pages.setdefault(hit.page_id, []).append(hit)
+
+        blocks: List[str] = []
+        shown: List[_Hit] = []
+        total = 0
+        for page_hits in pages.values():
+            page_hits.sort(key=lambda h: h.chunk or 0)
+            first = page_hits[0]
+            header = f"[{source_types.get(first.name, 'unknown').upper()} - {first.name}"
+            if first.url and first.url != first.name:
+                header += f" | {first.url}"
+            header += "]"
+            parts = []
+            for hit in page_hits:
+                label = f"(part {hit.chunk}/{hit.chunk_count}) " if hit.is_chunked else ""
+                parts.append(f"{label}{_hit_text(hit)}")
+            block = header + " " + "\n".join(parts)
+            if blocks and total + len(block) > settings.KNOWLEDGE_SEARCH_MAX_CHARS:
+                break
+            blocks.append(block)
+            shown.extend(page_hits)
+            total += len(block)
+        return "\n\n".join(blocks), shown
+
+
+# A row this much bigger than a chunk was stored before pages were chunked and
+# has not been re-indexed yet (scripts/rechunk_knowledge.py). It is a data
+# defect, not knowledge to protect: one such row can be 100k+ chars.
+OVERSIZED_ROW_FACTOR = 4
+OVERSIZED_ROW_NOTE = "\n(page continues — not yet re-indexed in full)"
+
+
+def _hit_text(hit: _Hit) -> str:
+    limit = settings.KNOWLEDGE_CHUNK_SIZE * OVERSIZED_ROW_FACTOR
+    if len(hit.content) <= limit:
+        return hit.content
+    kept: List[str] = []
+    total = 0
+    for piece in split_text(hit.content, settings.KNOWLEDGE_CHUNK_SIZE):
+        if total + len(piece) > limit:
+            break
+        kept.append(piece)
+        total += len(piece)
+    return "".join(kept) + OVERSIZED_ROW_NOTE

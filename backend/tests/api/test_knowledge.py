@@ -945,12 +945,16 @@ def test_replace_page_upserts_before_deleting(monkeypatch):
     fake_manager.vector_db.embedder = object()
     fake_manager.vector_db.upsert.side_effect = lambda *a, **kw: calls.append("upsert")
     monkeypatch.setattr(page_editor, "get_manager", lambda org_id: fake_manager)
-    monkeypatch.setattr(page_editor, "embed_document", lambda *a, **kw: SimpleNamespace(embedding=[0.1]))
+    new_chunks = [
+        SimpleNamespace(id="site.com/docs::1", embedding=[0.1]),
+        SimpleNamespace(id="site.com/docs::2", embedding=[0.2]),
+    ]
+    monkeypatch.setattr(page_editor, "embed_page", lambda *a, **kw: new_chunks)
 
-    def fake_delete(db, k, pid, exclude_canonical=False):
-        calls.append(("delete", exclude_canonical))
+    def fake_delete(db, k, pid, keep_ids):
+        calls.append(("delete", keep_ids))
         return 1
-    monkeypatch.setattr(page_editor, "delete_page_chunks", fake_delete)
+    monkeypatch.setattr(page_editor, "delete_page_chunks_except", fake_delete)
 
     db = MagicMock()
     db.commit.side_effect = lambda: calls.append("commit")
@@ -958,9 +962,10 @@ def test_replace_page_upserts_before_deleting(monkeypatch):
     replaced = page_editor.replace_page(db, knowledge, "site.com/docs", "new content", title="Docs")
 
     assert replaced == 1
-    # upsert (persist new content) must happen before the destructive delete.
+    # upsert (persist new content) must happen before the destructive delete,
+    # and the delete must spare exactly the rows just written.
     assert calls[0] == "upsert"
-    assert calls[1] == ("delete", True)
+    assert calls[1] == ("delete", ["site.com/docs::1", "site.com/docs::2"])
     assert "commit" in calls
 
 

@@ -1251,7 +1251,7 @@ async def get_knowledge_content(
                     created_at
                 FROM {knowledge.schema}."{knowledge.table_name}"
                 WHERE name = :source
-                ORDER BY created_at ASC
+                ORDER BY created_at ASC, {page_editor.NATURAL_ID_ORDER}
             """)
 
             
@@ -1487,10 +1487,12 @@ async def add_subpage(
                 pass
         
         try:
-            # Check if subpage name already exists within this source
+            # Check if subpage name already exists within this source. A page
+            # may be stored only as chunks, so compare the page id, not the row id.
             check_query = text(f"""
                 SELECT id FROM {knowledge.schema}."{knowledge.table_name}"
-                WHERE id = :subpage_name AND name = :source
+                WHERE {page_editor.PAGE_ID_EXPR} = :subpage_name AND name = :source
+                LIMIT 1
             """)
             existing = db.execute(
                 check_query, {"subpage_name": subpage_name, "source": knowledge.source}

@@ -33,7 +33,7 @@ from app.agents.faq_generator import FAQGeneratorAgent, GeneratedFAQ
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.security import decrypt_api_key
-from app.knowledge.page_editor import PAGE_ID_EXPR
+from app.knowledge.page_editor import NATURAL_ID_ORDER, PAGE_ID_EXPR
 from app.models.faq import FAQ, DEFAULT_FAQ_CATEGORY, FAQStatus
 from app.models.faq_generation_job import FAQGenerationJob, FAQJobStage, FAQJobType
 from app.models.knowledge import Knowledge
@@ -63,9 +63,6 @@ _STOPWORDS = frozenset(
     "there to we what when where which who why will with you your".split()
 )
 
-# Chunk ids look like 'page', 'page_1', ..., 'page_10' — natural sort (length
-# first) keeps 'page_2' before 'page_10' where plain text ordering would not.
-_NATURAL_ID_ORDER = "length(id), id"
 
 _PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
 
@@ -112,9 +109,13 @@ def load_source_pages(db: Session, knowledge: Knowledge, max_chars: Optional[int
     if not knowledge.schema or not knowledge.table_name:
         # Source rows without a vector table (failed/partial ingestion).
         return []
+    # Chunks written by app.knowledge.chunking (`::n` ids) are verbatim slices
+    # and join back with nothing between them; legacy agno `_n` chunks were
+    # cut on whitespace they dropped, so those keep a newline.
     query = text(
         f"SELECT {PAGE_ID_EXPR} AS page_id, "
-        f"string_agg(content, E'\n' ORDER BY {_NATURAL_ID_ORDER}) AS body "
+        "string_agg(content, CASE WHEN id ~ '::[0-9]+$' THEN '' ELSE E'\n' END "
+        f"ORDER BY {NATURAL_ID_ORDER}) AS body "
         f'FROM {knowledge.schema}."{knowledge.table_name}" '
         "WHERE name = :source GROUP BY 1 ORDER BY min(created_at) LIMIT :max_pages"
     )
