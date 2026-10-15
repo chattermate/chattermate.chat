@@ -4,7 +4,7 @@
 export { test, expect, type AgentSettings, type HandoverTeam, type Member, type MemberOptions, type TestAgent } from './fixtures'
 export { ApiClient } from './api/client'
 export { createGroup, createUser, roleId } from './api/team'
-export { setAlwaysClosed, setAlwaysOpen } from './api/organizations'
+export { setAlwaysClosed, setAlwaysOpen, setOrgDomain } from './api/organizations'
 export { chatMessages, chatsWithAgent, type ChatMessage, type ChatOverview } from './api/chats'
 export { findPerson, type Person } from './api/people'
 export { customizeAgent } from './api/customization'

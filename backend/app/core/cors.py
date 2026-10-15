@@ -120,19 +120,23 @@ def update_local_cors(app: FastAPI, new_origins: List[str]) -> bool:
         bool: True if CORS middleware was found and updated, False otherwise
     """
     middleware_found = False
-    
-    # First try standard FastAPI middleware structure
-    if hasattr(app, 'user_middleware'):
-        for middleware in app.user_middleware:
-            logger.debug(f"Middleware: {middleware}")
-            if isinstance(middleware.cls, CORSMiddleware):
-                logger.debug(f"Updating CORS origins: {new_origins}")
-                middleware.cls.options['allow_origins'] = new_origins
+
+    # Update the registered CORS middleware in place. `user_middleware` holds
+    # the class plus its kwargs, so match on the class itself; adding another
+    # layer instead would leave the old ones answering for removed origins.
+    for middleware in getattr(app, 'user_middleware', []):
+        if middleware.cls is CORSMiddleware:
+            # The publishing worker also hears its own Redis broadcast, and
+            # startup re-applies the cached list; skip the rebuild when nothing changed
+            if middleware.kwargs.get('allow_origins') != new_origins:
+                middleware.kwargs['allow_origins'] = new_origins
+                # Starlette rebuilds the stack from user_middleware on the next request
+                app.middleware_stack = None
                 logger.info(f"Updated FastAPI CORS origins: {new_origins}")
-                middleware_found = True
-                break
-    
-    # If middleware not found, try rebuilding the middleware stack
+            middleware_found = True
+            break
+
+    # No CORS middleware registered yet: add one
     if not middleware_found:
         logger.warning("Could not find CORS middleware in app.user_middleware, applying global update")
         try:
