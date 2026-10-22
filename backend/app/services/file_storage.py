@@ -33,6 +33,13 @@ from app.core.s3 import (
 )
 
 
+def profile_pic_folder(organization_id, user_id) -> str:
+    """Where a user's profile picture lives: `users/` on S3 and the public
+    `user/` mount on disk, as profile pictures have always been stored."""
+    root = "users" if settings.S3_FILE_STORAGE else "user"
+    return f"{root}/{organization_id}/{user_id}"
+
+
 async def store_upload(content: bytes, folder: str, file_name: str, content_type: str) -> str:
     """Persist bytes and return the URL to store. S3 mode returns the raw S3
     URL, local mode the {API_V1_STR}/uploads/... path; either way, pass it

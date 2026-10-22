@@ -19,9 +19,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import HTTPBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import json
 import os
-from urllib.parse import quote
 from sqlalchemy.sql import func
 from uuid import UUID
 
@@ -31,22 +29,26 @@ from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.models.schemas.user import AdminPasswordReset, TeammateResponse, UserCreate, UserStatusUpdate, UserUpdate, UserResponse, TokenResponse
 from datetime import datetime, timezone
 from app.core.security import validate_password_strength
-from app.core.auth import INBOX_PERMISSIONS, get_current_user, request_token, require_any_permission, require_permissions
-from app.services.auth_sessions import (
-    REFRESH, issue_tokens, live_payload, revoke_session, revoke_user_sessions, session_id_of,
+from app.core.auth import (
+    INBOX_PERMISSIONS, get_current_user, request_token, require_any_permission, require_permissions,
+    revoke_presented_sessions,
 )
+from app.services.auth_sessions import (
+    PASSWORD_LOGIN, REFRESH, issue_tokens, live_payload, revoke_user_sessions, session_id_of,
+    session_user_payload, set_session_cookies,
+)
+from app.services.sign_in_policy import SignInRefused, check_sign_in
+from app.services.sso_accounts import forget_identities
 from app.core.logger import get_logger
 from app.repositories.user import UserRepository
 from app.repositories.fcm_token import FCMTokenRepository
 from pydantic import BaseModel
 from app.models.role import Role
 from app.services.chat_scope_roles import resolve_role
-from app.core.s3 import get_s3_signed_url, sign_s3_url, upload_file_to_s3, delete_file_from_s3
+from app.core.s3 import get_s3_signed_url, sign_s3_url, delete_file_from_s3
 from app.core.config import settings
-from app.services.file_storage import local_upload_path
-from app.repositories.shopify_shop_repository import ShopifyShopRepository
-from app.services.shopify_links import owned_by_another_org, refresh_allowed_storefronts, use_shop_domain_if_unset
-from app.models.schemas.shopify.shopify_shop import ShopifyShopUpdate
+from app.services.file_storage import local_upload_path, profile_pic_folder, store_upload
+from app.services.shopify_links import link_shop_at_sign_in
 from app.core.params import MAX_DB_INT
 # Try to import enterprise modules
 try:
@@ -75,7 +77,6 @@ router = APIRouter(
 
 security = HTTPBearer()
 
-UPLOAD_DIR = "uploads/user"
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
@@ -98,30 +99,10 @@ def get_file_extension(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
 async def save_upload_file(file: UploadFile, org_id: str, user_id: str) -> str:
-    """Save uploaded file and return the file path"""
-    # Generate unique filename
-    file_extension = get_file_extension(file.filename)
-    filename = f"profile{file_extension}"
-    
-    if settings.S3_FILE_STORAGE:
-        folder = f"users/{org_id}/{user_id}"
-        content = await file.read()
-        return await upload_file_to_s3(content, folder, filename, content_type=file.content_type)
-    else:
-        # Local storage
-        # Create upload directory if it doesn't exist
-        user_upload_dir = os.path.join(UPLOAD_DIR, org_id, user_id)
-        os.makedirs(user_upload_dir, exist_ok=True)
-        
-        file_path = os.path.join(user_upload_dir, filename)
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-        
-        # Prefixed to match the {API_V1_STR}/uploads static mount, as store_upload does.
-        return f"{settings.API_V1_STR}/uploads/user/{org_id}/{user_id}/{filename}"
+    """Save an uploaded profile picture and return the URL to store"""
+    filename = f"profile{get_file_extension(file.filename)}"
+    content = await file.read()
+    return await store_upload(content, profile_pic_folder(org_id, user_id), filename, file.content_type)
 
 @router.post("", response_model=UserResponse)
 async def create_user(
@@ -443,6 +424,14 @@ async def get_my_avatar(current_user: User = Depends(get_current_user)):
     )
 
 
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The signed-in user, as a sign-in answers with it. The dashboard reads it
+    after an SSO sign-in, whose redirect can't carry a response body."""
+    role = db.query(Role).filter(Role.id == current_user.role_id).first()
+    return session_user_payload(current_user, role)
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: UUID,
@@ -509,101 +498,34 @@ async def login(
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        try:
+            check_sign_in(db, user, PASSWORD_LOGIN)
+        except SignInRefused as refused:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(refused))
 
-        # Update online status and open a session for this sign-in
+        # Update online status and open a session for this sign-in, ending the
+        # one this browser had
         user.is_online = True
         user.last_seen = func.now()
-        access_token, refresh_token = issue_tokens(db, user.id, user.organization_id)
+        revoke_presented_sessions(db, request)
+        access_token, refresh_token = issue_tokens(db, user.id, user.organization_id, auth_method=PASSWORD_LOGIN)
         db.commit()
 
         # Get role info
         role = db.query(Role).filter(Role.id == user.role_id).first()
 
-        # Set secure cookies
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            secure=True,
-            samesite="none",  # Changed to "none" for cross-domain support (shopifiy)
-            max_age=1800  # 30 minutes
-        )
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=True,
-            samesite="none",  # Changed to "none" for cross-domain support (shopifiy)
-            max_age=604800  # 7 days
-        )
+        set_session_cookies(response, user, role, access_token, refresh_token)
 
-        # Set session data with role information
-        user_info = json.dumps({
-            "id": str(user.id),
-            "email": user.email,
-            "full_name": user.full_name,
-            "organization_id": str(user.organization_id),
-            "role": role.to_dict() if role else None
-        }, default=str)
-        response.set_cookie(
-            key="user_info",
-            value=quote(user_info),  # URL encode the JSON string
-            samesite="none",  # Changed to "none" for cross-domain support (shopifiy)
-            secure=True,  # Required when samesite="none"
-            max_age=604800  # 7 days
-        )
-
-        # Handle Shopify shop update if shop_id is provided in query params
+        # Link the Shopify store the merchant signed in from, if any
         shop_id = request.query_params.get('shop_id')
         if shop_id:
-            try:
-                shop_repository = ShopifyShopRepository(db)
-                db_shop = shop_repository.get_shop(shop_id)
-
-                # Only a store nobody else owns yet (the same rule as
-                # /shopify/link-organization): otherwise signing in with another
-                # tenant's shop_id would take over their store
-                if db_shop and owned_by_another_org(db_shop, user.organization_id):
-                    logger.warning(f"Shop {db_shop.id} belongs to another organization; not linking it at login")
-                elif db_shop:
-                    # Update shop with user's organization_id
-                    shop_update = ShopifyShopUpdate(
-                        organization_id=str(user.organization_id)
-                    )
-                    shop_repository.update_shop(db_shop.id, shop_update)
-
-                    try:
-                        use_shop_domain_if_unset(db, user.organization_id, db_shop.shop_domain)
-                    except Exception as domain_error:
-                        logger.error(f"Error updating organization domain during login: {str(domain_error)}")
-                        # Don't fail login if domain update fails
-
-                    db.commit()
-
-                    refresh_allowed_storefronts()
-
-                    logger.info(f"Updated shop {db_shop.shop_domain} with organization_id {user.organization_id} after login")
-                else:
-                    logger.warning(f"Shop {shop_id} not found during login")
-            except Exception as e:
-                logger.error(f"Error updating shopify shop during login: {str(e)}")
-                # Don't fail login if shop update fails
+            link_shop_at_sign_in(db, shop_id, user.organization_id)
 
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "full_name": user.full_name,
-                "organization_id": user.organization_id,
-                "profile_pic": await get_s3_signed_url(user.profile_pic) if settings.S3_FILE_STORAGE and user.profile_pic else user.profile_pic,
-                "is_online": user.is_online,
-                "last_seen": user.last_seen,
-                "is_active": user.is_active,
-                "role": role.to_dict() if role else None
-            }
+            "user": session_user_payload(user, role),
         }
 
     except HTTPException:
@@ -680,55 +602,13 @@ async def refresh_token(
 
         role = db.query(Role).filter(Role.id == user.role_id).first()
 
-        # Set secure cookies
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            secure=True,
-            samesite="none",  # Changed to "none" for cross-domain support (shopifiy)
-            max_age=1800  # 30 minutes
-        )
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=True,
-            samesite="none",  # Changed to "none" for cross-domain support (shopifiy)
-            max_age=604800  # 7 days
-        )
-
-        # Set session data
-        user_info = json.dumps({
-            "id": str(user.id),
-            "email": user.email,
-            "full_name": user.full_name,
-            "organization_id": str(user.organization_id),
-            "role": role.to_dict() if role else None
-        }, default=str)
-        response.set_cookie(
-            key="user_info",
-            value=quote(user_info),  # URL encode the JSON string
-            samesite="none",  # Changed to "none" for cross-domain support (shopifiy)
-            secure=True,  # Required when samesite="none"
-            max_age=604800  # 7 days
-        )
+        set_session_cookies(response, user, role, access_token, refresh_token)
 
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "full_name": user.full_name,
-                "organization_id": user.organization_id,
-                "profile_pic": await get_s3_signed_url(user.profile_pic) if settings.S3_FILE_STORAGE and user.profile_pic else user.profile_pic,
-                "is_online": user.is_online,
-                "last_seen": user.last_seen,
-                "is_active": user.is_active,
-                "role": role.to_dict() if role else None
-            }
+            "user": session_user_payload(user, role),
         }
 
     except HTTPException:
@@ -750,10 +630,7 @@ async def logout(
 ):
     """Logout user, end the session and clear cookies"""
     # End the session server-side, so a copy of either token stops working
-    for token in (request_token(request), request.cookies.get("refresh_token")):
-        sid = session_id_of(token)
-        if sid:
-            revoke_session(db, sid)
+    revoke_presented_sessions(db, request)
 
     # Update online status (commits the revocation too)
     user_repo = UserRepository(db)
@@ -853,6 +730,8 @@ async def update_profile(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Email already registered"
                 )
+            # SSO links were made for the old address; they don't carry over.
+            forget_identities(db, current_user.id, keep_sid=session_id_of(request_token(request)))
         
         fields = data.dict(exclude_unset=True)
         # `password` and `current_password` are request-only fields; the column
@@ -940,6 +819,10 @@ async def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
             )
+        # A new address is a new person in the seat: the previous holder's SSO
+        # accounts and sessions must not carry over.
+        forget_identities(db, user.id)
+        revoke_user_sessions(db, user.id)
     
 
     if HAS_ENTERPRISE and hasattr(user_data, 'is_active') and user_data.is_active != user.is_active:

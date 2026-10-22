@@ -142,6 +142,22 @@ access, so the limits are enforced in code, not by prompting:
 | 🔐 **Role-Based Access Control** | Granular permissions for team members |
 | 🌐 **Open Source & Self-Hosted** | Full control over your data with self-hosting option |
 
+### Single sign-on
+
+Team members can sign in to the dashboard with **Google** or **Microsoft**
+(OpenID Connect) once an operator sets the provider's client id and secret
+(`GOOGLE_SSO_CLIENT_ID` / `MICROSOFT_SSO_CLIENT_ID` and secrets, see
+`backend/.env.example`). SSO signs in existing team members and never creates
+accounts: the first sign-in links the provider account to the team member with
+the same e-mail address, when the provider vouches for that address, and later
+sign-ins use that link. Changing a team member's address drops their links, and
+an admin can list and unlink them (`GET`/`DELETE /api/v1/users/{id}/identities`).
+A team member without a profile picture gets the provider's photo. Register
+`{BACKEND_URL}/api/v1/sso/<provider>/callback` as the redirect URI with the
+provider. With `PASSWORD_LOGIN_ENABLED=false` the login page leads with SSO, and
+a team member's password stops working once they have signed in with SSO (it
+applies install-wide, so it is meant for single-organization installs).
+
 ### Integrations
 
 **All of these are free and included** — every adapter ships in the

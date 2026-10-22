@@ -16,6 +16,7 @@ limitations under the License.
 
 import { describe, it, expect } from 'vitest'
 import {
+  isInternalPath,
   validatePassword,
   validateDomain,
   validateEmail,
@@ -99,3 +100,16 @@ describe('validateOrgName', () => {
     expect(validateOrgName('a'.repeat(101))).toBe(false) // too long
   })
 }) 
+
+describe('isInternalPath', () => {
+  it('accepts a page of the dashboard', () => {
+    expect(isInternalPath('/conversations')).toBe(true)
+    expect(isInternalPath('/shopify/agent-selection?shop_id=7')).toBe(true)
+  })
+
+  it('refuses anything a browser would take to another site', () => {
+    for (const value of ['//evil.example', '/\\evil.example', 'https://evil.example', 'evil', '', null, undefined, 42]) {
+      expect(isInternalPath(value)).toBe(false)
+    }
+  })
+})

@@ -28,6 +28,18 @@ vi.mock('@/services/auth', () => ({
   }
 }))
 
+// SSO: no providers unless a test configures some
+const ssoProviders = vi.hoisted(() => ({ value: [] as { key: string; label: string }[] }))
+const passwordLogin = vi.hoisted(() => ({ value: true }))
+vi.mock('@/services/sso', () => ({
+  ssoService: {
+    getConfig: vi.fn(async () => ({ providers: ssoProviders.value, passwordLogin: passwordLogin.value })),
+    startUrl: vi.fn((provider: string, query: Record<string, string>) => `http://api.test/api/v1/sso/${provider}/start?${new URLSearchParams(query)}`),
+    completeSignIn: vi.fn(),
+    errorMessage: vi.fn((code: string | null) => (code === 'no_account' ? 'No team account matches that e-mail address.' : 'Single sign-on failed.')),
+  },
+}))
+
 // The landing route is resolved from the real permission checks reading the
 // cached user, so this drives the user rather than mocking the checks away.
 const currentUser = vi.hoisted(() => ({ value: null as unknown }))
@@ -82,6 +94,7 @@ vi.mock('@/composables/useNotifications', () => ({
 
 // Import the mocked modules
 import { authService } from '@/services/auth'
+import { ssoService } from '@/services/sso'
 import { userWithPermissions } from '../fixtures/permissions'
 
 describe('LoginView', () => {
@@ -100,7 +113,8 @@ describe('LoginView', () => {
         { path: '/settings/organization', name: 'org-settings', component: { template: '<div>Organization Settings</div>' } },
         { path: '/settings/ai-config', name: 'ai-config', component: { template: '<div>AI Config</div>' } },
         { path: '/settings/user', name: 'user-settings', component: { template: '<div>User Settings</div>' } },
-        { path: '/403', name: 'forbidden', component: { template: '<div>403</div>' } }
+        { path: '/403', name: 'forbidden', component: { template: '<div>403</div>' } },
+        { path: '/shopify/auth-complete', name: 'shopify-auth-complete', component: { template: '<div>Shopify</div>' } }
       ]
     })
 
@@ -113,6 +127,8 @@ describe('LoginView', () => {
     
     // A user with no grants unless a test says otherwise
     currentUser.value = userWithPermissions([])
+    ssoProviders.value = []
+    passwordLogin.value = true
     
     wrapper = mount(LoginView, {
       global: {
@@ -253,4 +269,197 @@ describe('LoginView', () => {
     
     expect(router.currentRoute.value.path).toBe('/settings/user')
   })
-}) 
+
+  // --- single sign-on -------------------------------------------------------
+
+  // Mount at `path` with window.location.href assignments captured instead of followed.
+  const remountCapturingNavigation = async (path: string) => {
+    const assign = vi.fn()
+    const original = window.location
+    wrapper.unmount()
+    await router.push(path)
+    Object.defineProperty(window, 'location', { value: { ...original, search: original.search, set href(url: string) { assign(url) } }, writable: true, configurable: true })
+    const restore = () => Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+    wrapper = mount(LoginView, { global: { plugins: [router], stubs: { RouterView: true } } })
+    await flushPromises()
+    return { assign, restore }
+  }
+
+  const remountAt = async (path: string) => {
+    wrapper.unmount()
+    await router.push(path)
+    wrapper = mount(LoginView, { global: { plugins: [router], stubs: { RouterView: true } } })
+    await flushPromises()
+  }
+
+  it('shows no SSO buttons when no provider is configured', async () => {
+    await flushPromises()
+    expect(wrapper.find('.sso-btn').exists()).toBe(false)
+    expect(wrapper.find('.auth-divider').exists()).toBe(false)
+  })
+
+  it('offers one button per configured provider and sends the browser to the backend', async () => {
+    ssoProviders.value = [{ key: 'google', label: 'Google' }, { key: 'microsoft', label: 'Microsoft' }]
+    await remountAt('/?redirect=/conversations')
+    const buttons = wrapper.findAll('.sso-btn')
+    expect(buttons.map(b => b.text())).toEqual(['Continue with Google', 'Continue with Microsoft'])
+
+    const assign = vi.fn()
+    const original = window.location
+    Object.defineProperty(window, 'location', { value: { ...original, set href(url: string) { assign(url) } }, writable: true, configurable: true })
+    try {
+      await buttons[1].trigger('click')
+      // The login page's own query goes along; the backend hands it back.
+      expect(ssoService.startUrl).toHaveBeenCalledWith('microsoft', { redirect: '/conversations' })
+      expect(assign).toHaveBeenCalledWith('http://api.test/api/v1/sso/microsoft/start?redirect=%2Fconversations')
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+    }
+  })
+
+  it('completes a sign-in when the backend sends the browser back with sso=ok', async () => {
+    currentUser.value = userWithPermissions(['manage_agents'])
+    ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+    await remountAt('/?sso=ok')
+    expect(ssoService.completeSignIn).toHaveBeenCalled()
+    expect(router.currentRoute.value.path).toBe('/ai-agents')
+  })
+
+  it('lands on the requested page after a sign-in that started with ?redirect=', async () => {
+    ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+    await remountAt('/?sso=ok&redirect=%2Fconversations')
+    expect(router.currentRoute.value.path).toBe('/conversations')
+  })
+
+  it('finishes the Shopify install flow after a sign-in that started from it', async () => {
+    ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+    await remountAt('/?sso=ok&shopify_flow=1&shop=s.myshopify.com&shop_id=7&host=aG9zdA')
+    expect(router.currentRoute.value.path).toBe('/shopify/auth-complete')
+    expect(router.currentRoute.value.query).toEqual({ shop: 's.myshopify.com', shop_id: '7', host: 'aG9zdA' })
+  })
+
+  it('completes a sign-in without waiting for the provider list', async () => {
+    ;(ssoService.getConfig as any).mockReturnValueOnce(new Promise(() => {}))
+    ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+    await remountAt('/?sso=ok&redirect=%2Fconversations')
+    expect(router.currentRoute.value.path).toBe('/conversations')
+  })
+
+  it('says it is completing the sign-in even before the providers load', async () => {
+    ;(ssoService.getConfig as any).mockReturnValueOnce(new Promise(() => {}))
+    ;(ssoService.completeSignIn as any).mockReturnValueOnce(new Promise(() => {}))
+    await remountAt('/?sso=ok')
+    expect(wrapper.find('.sso-status').text()).toBe('Completing sign-in…')
+  })
+
+  it('reports a failed session pickup and stays on the login page', async () => {
+    ;(ssoService.completeSignIn as any).mockRejectedValueOnce(new Error('401'))
+    await remountAt('/?sso=ok')
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(wrapper.find('.auth-error').text()).toContain('Single sign-on failed')
+    expect(wrapper.find('.sso-status').exists()).toBe(false)
+  })
+
+  it('explains an sso_error instead of signing in', async () => {
+    await remountAt('/?sso_error=no_account')
+    expect(ssoService.completeSignIn).not.toHaveBeenCalled()
+    expect(wrapper.find('.auth-error').text()).toContain('No team account matches')
+  })
+
+  it('shows the redirect on the clicked provider button, not on the password button', async () => {
+    ssoProviders.value = [{ key: 'google', label: 'Google' }]
+    await remountAt('/')
+    const original = window.location
+    Object.defineProperty(window, 'location', { value: { ...original, set href(_url: string) {} }, writable: true, configurable: true })
+    try {
+      await wrapper.find('.sso-btn').trigger('click')
+      expect(wrapper.find('.sso-btn').text()).toBe('Redirecting to Google…')
+      expect(wrapper.find('.auth-submit').text()).toBe('Sign In')
+      expect(wrapper.find('.auth-submit').attributes('disabled')).toBeDefined()
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+    }
+  })
+
+  it('leads with SSO once an operator made it the way in, keeping the password a click away', async () => {
+    ssoProviders.value = [{ key: 'google', label: 'Google' }]
+    passwordLogin.value = false
+    await remountAt('/')
+    expect(wrapper.find('#email').exists()).toBe(false)
+    expect(wrapper.find('.auth-submit').exists()).toBe(false)
+    expect(wrapper.find('.auth-divider').exists()).toBe(false)
+    expect(wrapper.find('.sso-btn').text()).toBe('Continue with Google')
+
+    // Someone who hasn't linked an account yet still has their password.
+    await wrapper.find('.password-toggle').trigger('click')
+    expect(wrapper.find('#email').exists()).toBe(true)
+    expect(wrapper.find('.auth-submit').exists()).toBe(true)
+    expect(wrapper.find('.auth-divider').exists()).toBe(true)
+    expect(wrapper.find('.password-toggle').exists()).toBe(false)
+  })
+
+  it('offers no password toggle while the form already leads', async () => {
+    ssoProviders.value = [{ key: 'google', label: 'Google' }]
+    await remountAt('/')
+    expect(wrapper.find('#email').exists()).toBe(true)
+    expect(wrapper.find('.password-toggle').exists()).toBe(false)
+  })
+
+  it('hides SSO inside the embedded Shopify app, where the providers cannot load', async () => {
+    ssoProviders.value = [{ key: 'google', label: 'Google' }]
+    passwordLogin.value = false
+    await remountAt('/?embedded=true&shop_id=7')
+    expect(wrapper.find('.sso-btn').exists()).toBe(false)
+    expect(wrapper.find('#email').exists()).toBe(true)
+  })
+
+  it('hides SSO when the login page is framed', async () => {
+    ssoProviders.value = [{ key: 'google', label: 'Google' }]
+    const top = Object.getOwnPropertyDescriptor(window, 'top')
+    Object.defineProperty(window, 'top', { value: {}, configurable: true })
+    try {
+      await remountAt('/')
+      expect(wrapper.find('.sso-btn').exists()).toBe(false)
+    } finally {
+      if (top) Object.defineProperty(window, 'top', top)
+    }
+  })
+
+  it('never follows a return_to that leaves the dashboard', async () => {
+    ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+    const { assign, restore } = await remountCapturingNavigation(
+      '/?sso=ok&shopify_flow=1&shop=s.myshopify.com&shop_id=7&host=aG9zdA&return_to=https%3A%2F%2Fevil.example%2F')
+    try {
+      expect(assign).not.toHaveBeenCalled()
+      expect(router.currentRoute.value.path).toBe('/shopify/auth-complete')
+      expect(router.currentRoute.value.query.return_to).toBeUndefined()
+    } finally {
+      restore()
+    }
+  })
+
+  it('follows a return_to that is a page of the dashboard', async () => {
+    ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+    const { assign, restore } = await remountCapturingNavigation(
+      '/?sso=ok&shopify_flow=1&shop_id=7&return_to=%2Fshopify%2Fagent-selection%3Fshop_id%3D7')
+    try {
+      expect(assign).toHaveBeenCalledWith('/shopify/agent-selection?shop_id=7')
+    } finally {
+      restore()
+    }
+  })
+
+  it('does not route to a protocol-relative ?redirect=', async () => {
+    ;(ssoService.completeSignIn as any).mockResolvedValue({ id: 1, email: 'sso@example.com' })
+    const push = vi.spyOn(router, 'push')
+    await remountAt('/?sso=ok&redirect=%2F%2Fevil.example')
+    expect(push).not.toHaveBeenCalledWith('//evil.example')
+  })
+
+  it('keeps the password form when SSO-only is set but no provider is configured', async () => {
+    passwordLogin.value = false
+    await remountAt('/')
+    expect(wrapper.find('#email').exists()).toBe(true)
+    expect(wrapper.find('.auth-submit').exists()).toBe(true)
+  })
+})

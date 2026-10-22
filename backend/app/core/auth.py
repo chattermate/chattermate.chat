@@ -24,7 +24,7 @@ from uuid import UUID
 from app.database import get_db
 from app.models.user import User
 from app.models.organization import Organization
-from app.services.auth_sessions import ACCESS, live_payload
+from app.services.auth_sessions import ACCESS, live_payload, revoke_session, session_id_of
 from app.core.logger import get_logger
 from app.models.role import Role
 
@@ -178,6 +178,15 @@ def request_token(request: Request) -> Optional[str]:
     if auth_header and auth_header.startswith('Bearer '):
         return auth_header.split(' ')[1]
     return None
+
+
+def revoke_presented_sessions(db: Session, request: Request) -> None:
+    """End the session(s) this request's tokens belong to: on sign-out, and on
+    a new sign-in so the browser's previous session doesn't linger."""
+    for token in (request_token(request), request.cookies.get("refresh_token")):
+        sid = session_id_of(token)
+        if sid:
+            revoke_session(db, sid)
 
 
 def _unauthorized(detail: str) -> HTTPException:

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, func
+from sqlalchemy import Column, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
@@ -40,3 +40,13 @@ class AuthSession(Base):
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     revoked_at = Column(DateTime(timezone=True), nullable=True)
+    # How the session was opened ("password", "signup", "sso"), and through
+    # which linked SSO account, so unlinking an account or a sign-in policy
+    # can end exactly the sessions it opened. NULL on sessions from before.
+    auth_method = Column(String, nullable=True)
+    identity_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_identities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )

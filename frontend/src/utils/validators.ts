@@ -70,3 +70,8 @@ export const validateName = (name: string): boolean => {
 export const validateOrgName = (name: string): boolean => {
   return name.length >= 2 && name.length <= 100 && /^[a-zA-Z0-9\s\-'&.]+$/.test(name)
 }
+
+/** A path on this dashboard, never another site: "//host" and "/\host" are
+ * protocol-relative to browsers, so they don't count. */
+export const isInternalPath = (value: unknown): value is string =>
+  typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !value.includes('\\')

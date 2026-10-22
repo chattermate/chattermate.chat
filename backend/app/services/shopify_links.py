@@ -24,8 +24,10 @@ from sqlalchemy.orm import Session
 from app.core.application import app
 from app.core.cors import update_cors_middleware
 from app.core.logger import get_logger
+from app.models.schemas.shopify.shopify_shop import ShopifyShopUpdate
 from app.models.shopify.shopify_shop import ShopifyShop
 from app.repositories.organization import OrganizationRepository
+from app.repositories.shopify_shop_repository import ShopifyShopRepository
 
 logger = get_logger(__name__)
 
@@ -61,3 +63,33 @@ def refresh_allowed_storefronts() -> None:
         update_cors_middleware(app)
     except Exception as cors_error:
         logger.error(f"Error updating CORS middleware: {str(cors_error)}")
+
+
+def link_shop_at_sign_in(db: Session, shop_id: str, organization_id: Union[str, UUID]) -> None:
+    """Link the store a merchant signed in from (`?shop_id=` on the login page)
+    to their organization. Only a store nobody else owns yet (the same rule as
+    /shopify/link-organization): otherwise signing in with another tenant's
+    shop_id would take over their store. Best effort, so it never fails the
+    sign-in."""
+    try:
+        shop_repository = ShopifyShopRepository(db)
+        db_shop = shop_repository.get_shop(shop_id)
+        if not db_shop:
+            logger.warning(f"Shop {shop_id} not found during login")
+            return
+        if owned_by_another_org(db_shop, organization_id):
+            logger.warning(f"Shop {db_shop.id} belongs to another organization; not linking it at login")
+            return
+
+        shop_repository.update_shop(db_shop.id, ShopifyShopUpdate(organization_id=str(organization_id)))
+        try:
+            use_shop_domain_if_unset(db, organization_id, db_shop.shop_domain)
+        except Exception as domain_error:
+            # Don't fail login if domain update fails
+            logger.error(f"Error updating organization domain during login: {str(domain_error)}")
+        db.commit()
+
+        refresh_allowed_storefronts()
+        logger.info(f"Updated shop {db_shop.shop_domain} with organization_id {organization_id} after login")
+    except Exception as e:
+        logger.error(f"Error updating shopify shop during login: {str(e)}")

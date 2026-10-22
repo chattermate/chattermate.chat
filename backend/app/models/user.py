@@ -87,6 +87,9 @@ class User(Base):
     # One row per signed-in browser; see app/models/fcm_token.py
     fcm_tokens = relationship(
         "FCMToken", back_populates="user", cascade="all, delete-orphan")
+    # Single sign-on accounts linked to this user; see app/models/user_identity.py
+    identities = relationship(
+        "UserIdentity", back_populates="user", cascade="all, delete-orphan")
     chat_histories = relationship("ChatHistory", back_populates="user")
     
     # Add groups relationship

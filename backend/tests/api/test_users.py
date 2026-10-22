@@ -26,6 +26,9 @@ from app.models.fcm_token import FCMToken
 from app.models.organization import Organization
 from app.models.shopify.shopify_shop import ShopifyShop
 from app.models.role import Role
+from app.models.auth_session import AuthSession
+from app.models.user_identity import UserIdentity
+from app.services.auth_sessions import issue_tokens, session_id_of
 from app.models.permission import Permission, role_permissions
 from uuid import UUID, uuid4
 from app.api import users as users_router
@@ -325,6 +328,113 @@ def test_login_success(client: TestClient, test_user: User):
     assert "access_token" in cookies
     assert "refresh_token" in cookies
     assert "user_info" in cookies
+
+def _sso_only(monkeypatch):
+    monkeypatch.setattr(settings, "GOOGLE_SSO_CLIENT_ID", "google-client")
+    monkeypatch.setattr(settings, "GOOGLE_SSO_CLIENT_SECRET", "google-secret")
+    monkeypatch.setattr(settings, "PASSWORD_LOGIN_ENABLED", False)
+
+
+def _link_google(db: Session, user: User) -> UserIdentity:
+    link = UserIdentity(user_id=user.id, provider="google", issuer="https://accounts.google.com", subject="g-1", email=user.email)
+    db.add(link)
+    db.commit()
+    return link
+
+
+def test_sso_only_refuses_the_password_of_someone_who_signs_in_with_sso(client: TestClient, db: Session, test_user: User, monkeypatch):
+    _sso_only(monkeypatch)
+    _link_google(db, test_user)
+    response = client.post(
+        "/api/v1/users/login",
+        data={"username": test_user.email, "password": "testpassword"},
+    )
+    assert response.status_code == 403
+    assert "single sign-on" in response.json()["detail"]
+    assert "access_token" not in response.cookies
+
+
+def test_sso_only_still_lets_someone_not_linked_yet_in(client: TestClient, test_user: User, monkeypatch):
+    """Nobody is locked out while their provider can't (yet) vouch for them."""
+    _sso_only(monkeypatch)
+    response = client.post(
+        "/api/v1/users/login",
+        data={"username": test_user.email, "password": "testpassword"},
+    )
+    assert response.status_code == 200
+
+
+def test_sso_only_never_reveals_a_wrong_password_as_refused(client: TestClient, db: Session, test_user: User, monkeypatch):
+    _sso_only(monkeypatch)
+    _link_google(db, test_user)
+    response = client.post("/api/v1/users/login", data={"username": test_user.email, "password": "wrong"})
+    assert response.status_code == 401
+
+
+def test_login_still_works_when_switched_off_without_a_provider(client: TestClient, test_user: User, monkeypatch):
+    for name in ("GOOGLE_SSO_CLIENT_ID", "GOOGLE_SSO_CLIENT_SECRET", "MICROSOFT_SSO_CLIENT_ID", "MICROSOFT_SSO_CLIENT_SECRET"):
+        monkeypatch.setattr(settings, name, "")
+    monkeypatch.setattr(settings, "PASSWORD_LOGIN_ENABLED", False)
+    response = client.post(
+        "/api/v1/users/login",
+        data={"username": test_user.email, "password": "testpassword"},
+    )
+    assert response.status_code == 200
+
+
+def test_login_records_how_and_ends_the_browsers_previous_session(client: TestClient, db: Session, test_user: User):
+    first = client.post("/api/v1/users/login", data={"username": test_user.email, "password": "testpassword"})
+    first_sid = session_id_of(first.json()["access_token"])
+    client.cookies.set("access_token", first.json()["access_token"])
+    second = client.post("/api/v1/users/login", data={"username": test_user.email, "password": "testpassword"})
+    assert second.status_code == 200
+    db.expire_all()
+    previous = db.get(AuthSession, UUID(first_sid))
+    current = db.get(AuthSession, UUID(session_id_of(second.json()["access_token"])))
+    assert previous.revoked_at is not None
+    assert (current.revoked_at, current.auth_method) == (None, "password")
+
+
+def _sso_session(db: Session, user: User, link: UserIdentity) -> str:
+    access, _ = issue_tokens(db, user.id, user.organization_id, auth_method="sso", identity_id=link.id)
+    db.commit()
+    return access
+
+
+def test_an_admin_changing_an_address_drops_the_seats_sso_accounts_and_sessions(client: TestClient, db: Session, test_user: User):
+    """A new address is a new person in the seat."""
+    link = _link_google(db, test_user)
+    sso_token = _sso_session(db, test_user, link)
+    password_token, _ = issue_tokens(db, test_user.id, test_user.organization_id, auth_method="password")
+    db.commit()
+
+    response = client.put(f"/api/v1/users/{test_user.id}", json={"email": "next.person@test.com"})
+    assert response.status_code == 200
+    db.expire_all()
+    assert db.query(UserIdentity).count() == 0
+    for token in (sso_token, password_token):
+        assert db.get(AuthSession, UUID(session_id_of(token))).revoked_at is not None
+
+
+def test_an_admin_edit_that_keeps_the_address_keeps_the_links(client: TestClient, db: Session, test_user: User):
+    _link_google(db, test_user)
+    assert client.put(f"/api/v1/users/{test_user.id}", json={"full_name": "Renamed"}).status_code == 200
+    assert db.query(UserIdentity).count() == 1
+
+
+def test_changing_your_own_address_drops_your_sso_accounts_but_not_this_session(client: TestClient, db: Session, test_user: User):
+    link = _link_google(db, test_user)
+    this_session = _sso_session(db, test_user, link)
+    other_device = _sso_session(db, test_user, link)
+    client.cookies.set("access_token", this_session)
+
+    response = client.patch("/api/v1/users/me", json={"email": "moved@test.com"})
+    assert response.status_code == 200
+    db.expire_all()
+    assert db.query(UserIdentity).count() == 0
+    assert db.get(AuthSession, UUID(session_id_of(this_session))).revoked_at is None
+    assert db.get(AuthSession, UUID(session_id_of(other_device))).revoked_at is not None
+
 
 def test_login_never_takes_another_orgs_store(client: TestClient, test_user: User, db: Session):
     """Signing in with ?shop_id= links an unclaimed store; a store another
