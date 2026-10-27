@@ -14,12 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-# Base URLs of the third-party APIs the channel and CRM adapters call.
+# Base URLs of the third-party APIs the channel and CRM adapters call, and of
+# the single sign-on providers.
 #
-# Deployments never set these. The e2e suite points them at its recording fake
-# (e2e/services/fake-externals) so channel journeys run end to end without
-# reaching Telegram, Meta, Slack, … Read once at import, which is also when the
-# adapters bind them (Meta's helpers take the base as a default argument).
+# Deployments never set these. The e2e suite points them at its fakes
+# (e2e/services/fake-externals, e2e/services/fake-sso) so channel and sign-in
+# journeys run end to end without reaching Telegram, Meta, Slack, Google, …
+# Read once at import, which is also when the adapters bind them (Meta's
+# helpers take the base as a default argument).
 
 import os
 

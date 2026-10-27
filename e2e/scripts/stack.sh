@@ -10,7 +10,7 @@
 #   stack.sh tick <worker> one pass of a background worker against the stack's DB:
 #                          crm-sync | knowledge | ticket-lifecycle (tests call this
 #                          instead of waiting on always-on workers' poll intervals)
-#   stack.sh backend|frontend|fake-llm|fake-externals|fake-mcp|customer-site|mail   run one service in the foreground
+#   stack.sh backend|frontend|fake-llm|fake-externals|fake-mcp|fake-sso|customer-site|mail   run one service in the foreground
 #                                        (what playwright.config.ts webServer calls)
 #   stack.sh python ARGS...  run python with the stack's backend settings (one-off jobs a test needs)
 #
@@ -53,6 +53,7 @@ FRONTEND_PORT=15173
 FAKE_LLM_PORT=14010
 FAKE_EXTERNALS_PORT=14020
 FAKE_MCP_PORT=14030
+FAKE_SSO_PORT=14040
 CUSTOMER_SITE_PORT=13000
 # The same site with the last release's loader; the only customer-site origin in CORS_ORIGINS
 CUSTOMER_SITE_LEGACY_PORT=13001
@@ -253,6 +254,11 @@ run_fake_mcp() {
   exec node services/fake-mcp/server.ts --port "$FAKE_MCP_PORT"
 }
 
+run_fake_sso() {
+  cd "$E2E_DIR"
+  exec node services/fake-sso/server.ts --port "$FAKE_SSO_PORT"
+}
+
 run_customer_site() {
   cd "$E2E_DIR"
   exec node services/customer-site/server.ts --port "$CUSTOMER_SITE_PORT" --legacy-port "$CUSTOMER_SITE_LEGACY_PORT" \
@@ -324,6 +330,8 @@ cmd_up() {
   wait_for fake-externals "http://127.0.0.1:$FAKE_EXTERNALS_PORT/health" 30
   start_bg fake-mcp
   wait_for fake-mcp "http://127.0.0.1:$FAKE_MCP_PORT/health" 30
+  start_bg fake-sso
+  wait_for fake-sso "http://127.0.0.1:$FAKE_SSO_PORT/health" 30
   start_bg customer-site
   wait_for customer-site "http://127.0.0.1:$CUSTOMER_SITE_PORT/health" 30
   wait_for customer-site "http://127.0.0.1:$CUSTOMER_SITE_LEGACY_PORT/health" 30
@@ -336,7 +344,7 @@ cmd_up() {
   log "stack ready — dashboard http://127.0.0.1:$FRONTEND_PORT"
 }
 
-cmd_down() { for s in frontend backend customer-site fake-mcp fake-externals fake-llm mail; do stop_bg "$s"; done; log "stack stopped"; }
+cmd_down() { for s in frontend backend customer-site fake-sso fake-mcp fake-externals fake-llm mail; do stop_bg "$s"; done; log "stack stopped"; }
 
 wait_port_free() {
   local port="$1" i
@@ -366,6 +374,7 @@ case "${1:-}" in
   fake-llm) run_fake_llm ;;
   fake-externals) run_fake_externals ;;
   fake-mcp) run_fake_mcp ;;
+  fake-sso) run_fake_sso ;;
   customer-site) run_customer_site ;;
   mail) run_mail ;;
   python) shift; run_python "$@" ;;

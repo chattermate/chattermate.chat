@@ -13,6 +13,8 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Setup and auth | Sign out | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Agent role is denied AI settings | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign-out, deactivation and a password change end sessions server-side; a refresh token is not an access token | `specs/auth/sessions.spec.ts` | P1 | ✅ |
+| Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |
+| Setup and auth | Single sign-on refusals: an unknown address is told to ask for an invite; an account the provider can't vouch for isn't linked and the password still works; cancelling at the provider; a deep link survives the round trip; the return link can't be replayed in another browser | `specs/auth/sso.spec.ts` | P1 | ✅ |
 | Team | The Agent role is refused every admin API; sees channels without secrets; assigned-only sees just its group's handovers | `specs/team/permissions.spec.ts` | P1 | ✅ |
 | Widget chat | Customer gets the AI answer | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | History survives a reload | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |

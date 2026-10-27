@@ -23,7 +23,7 @@ export default tseslint.config(
       // Steps live in page objects and components, which run inside tests.
       'playwright/no-standalone-expect': 'off',
       // Shared helpers that assert inside count as assertions.
-      'playwright/expect-expect': ['error', { assertFunctionNames: ['expect', 'expectUnchanged', 'expectNoNewA11yViolations'] }],
+      'playwright/expect-expect': ['error', { assertFunctionNames: ['expect', 'expectUnchanged', 'expectNoNewA11yViolations', 'expectSignedIn'] }],
     },
   },
   {

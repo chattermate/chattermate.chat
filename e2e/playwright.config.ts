@@ -107,6 +107,7 @@ export default defineConfig({
     service('fake-llm', `${env.fakeLlmUrl}/health`, 30_000),
     service('fake-externals', `${env.fakeExternalsUrl}/health`, 30_000),
     service('fake-mcp', `${env.fakeMcpUrl}/health`, 30_000),
+    service('fake-sso', `${env.fakeSsoUrl}/health`, 30_000),
     service('customer-site', `${env.customerSiteUrl}/health`, 30_000),
     service('mail', `${env.mailUrl}/livez`, 30_000),
     service('backend', `${env.backendUrl}/health`, 180_000),
