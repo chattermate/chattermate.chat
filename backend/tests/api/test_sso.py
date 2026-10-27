@@ -30,6 +30,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from fastapi.responses import RedirectResponse
 from jose import jwt
 from sqlalchemy.orm import sessionmaker
 
@@ -46,7 +47,8 @@ from app.models.user import User
 from app.models.user_identity import UserIdentity
 from app.services import profile_pictures
 from app.services import sso as sso_service
-from app.services import sign_in_policy, sso_state
+from app.core.enterprise_hooks import EnterpriseHookBroken
+from app.services import sign_in_policy, sso_signup, sso_state
 from app.services.auth_sessions import issue_tokens, session_id_of
 from app.services.sign_in_policy import SignInRefused
 
@@ -133,7 +135,7 @@ def _begin(client: TestClient, query: str = "", provider: str = "google") -> dic
 
 def _started(client: TestClient, state: str) -> dict:
     """What this browser's state cookie holds for the sign-in."""
-    return jwt.decode(client.cookies.get(f"sso_{state}"), sso_state._signing_key(), algorithms=["HS256"])
+    return jwt.decode(client.cookies.get(f"sso_{state}"), sso_state.signing_key(), algorithms=["HS256"])
 
 
 def _callback(client: TestClient, query: dict, provider: str = "google"):
@@ -554,7 +556,7 @@ def _age_state(client: TestClient, state: str) -> None:
     """Make this browser's sign-in older than its ten minutes."""
     claims = {**_started(client, state), "exp": int(time.time()) - 1}
     client.cookies.clear()
-    client.cookies.set(f"sso_{state}", jwt.encode(claims, sso_state._signing_key(), algorithm="HS256"))
+    client.cookies.set(f"sso_{state}", jwt.encode(claims, sso_state.signing_key(), algorithm="HS256"))
 
 
 def test_a_sign_in_that_took_too_long_keeps_the_shopify_flow(client: TestClient, gmail_user: User, google_only, monkeypatch):
@@ -672,3 +674,91 @@ def test_unlinking_needs_permission_to_manage_users(client: TestClient, db, gmai
     assert client.get(f"/api/v1/users/{gmail_user.id}/identities").status_code == 403
     assert client.delete(f"/api/v1/users/{gmail_user.id}/identities/{link.id}").status_code == 403
     assert db.query(UserIdentity).filter(UserIdentity.id == link.id).count() == 1
+
+
+# --- signing up (an enterprise handler takes over) -------------------------------
+
+@pytest.fixture
+def signup_handler(monkeypatch):
+    """An installed enterprise signup handler that records what it was given."""
+    calls = []
+
+    def begin_signup(db_, provider, identity, carried):
+        calls.append((provider.key, identity.email, identity.email_trusted, carried))
+        return RedirectResponse("https://app.example.test/signup?sso_signup=1", status_code=302)
+
+    monkeypatch.setattr(sso_signup, "enterprise_hook", lambda module, name: begin_signup)
+    return calls
+
+
+def test_a_signup_with_no_account_is_handed_to_the_signup_handler(client: TestClient, db, google_only, signup_handler, monkeypatch):
+    query = _begin(client, "?intent=signup&shop_id=7")
+    _provider_says(monkeypatch, _google_claims("new.person@gmail.com"))
+    response = _callback(client, query)
+    assert response.headers["location"] == "https://app.example.test/signup?sso_signup=1"
+    assert signup_handler == [("google", "new.person@gmail.com", True, {"shop_id": "7"})]
+    assert f"sso_{query['state']}" not in client.cookies
+    assert db.query(AuthSession).count() == 0
+
+
+def test_an_address_the_provider_does_not_vouch_for_is_handed_over_too(client: TestClient, google_only, signup_handler, monkeypatch):
+    """The handler falls back to an emailed code for it."""
+    query = _begin(client, "?intent=signup")
+    _provider_says(monkeypatch, _google_claims("someone@company.test"))
+    _callback(client, query)
+    assert signup_handler == [("google", "someone@company.test", False, {})]
+
+
+def test_signing_up_with_an_existing_account_signs_in(client: TestClient, gmail_user: User, google_only, signup_handler, monkeypatch):
+    query = _begin(client, "?intent=signup&redirect=%2Fconversations")
+    _provider_says(monkeypatch, _google_claims(gmail_user.email))
+    assert _query_of(_callback(client, query)) == {"sso": "ok", "redirect": "/conversations"}
+    assert signup_handler == []
+
+
+def test_a_sign_in_from_the_login_page_is_never_a_signup(client: TestClient, google_only, signup_handler, monkeypatch):
+    query = _begin(client)
+    _provider_says(monkeypatch, _google_claims("new.person@gmail.com"))
+    assert urlparse(_callback(client, query).headers["location"]).path == "/login"
+    assert signup_handler == []
+
+
+def test_signup_errors_land_back_on_the_signup_page(client: TestClient, db, gmail_user: User, google_only, signup_handler, monkeypatch):
+    """Errors that are an answer for an existing account aren't the handler's."""
+    _link(db, gmail_user)
+    query = _begin(client, "?intent=signup&shop_id=7")
+    _provider_says(monkeypatch, _google_claims(gmail_user.email, sub="g-other"))
+    response = _callback(client, query)
+    assert urlparse(response.headers["location"]).path == "/signup"
+    assert _query_of(response) == {"sso_error": "already_linked", "shop_id": "7"}
+    assert signup_handler == []
+
+
+def test_without_a_signup_handler_there_is_no_signup(client: TestClient, google_only, monkeypatch):
+    monkeypatch.setattr(sso_signup, "enterprise_hook", lambda module, name: None)
+    query = _begin(client, "?intent=signup")
+    _provider_says(monkeypatch, _google_claims("new.person@gmail.com"))
+    response = _callback(client, query)
+    assert (urlparse(response.headers["location"]).path, _error_of(response)) == ("/signup", "no_account")
+
+
+def test_a_broken_signup_handler_offers_no_signup(client: TestClient, google_only, monkeypatch):
+    def broken(module, name):
+        raise EnterpriseHookBroken("No module named 'some_sdk'")
+    monkeypatch.setattr(sso_signup, "enterprise_hook", broken)
+    query = _begin(client, "?intent=signup")
+    _provider_says(monkeypatch, _google_claims("new.person@gmail.com"))
+    assert _error_of(_callback(client, query)) == "no_account"
+
+
+def test_only_the_signup_intent_is_carried(client: TestClient, google_only):
+    assert "intent" not in _started(client, _begin(client, "?intent=admin")["state"])["carry"]
+    assert _started(client, _begin(client, "?intent=signup")["state"])["carry"] == {"intent": "signup"}
+
+
+def test_a_signup_that_took_too_long_returns_to_the_signup_page(client: TestClient, google_only):
+    query = _begin(client, "?intent=signup&shop_id=7")
+    _age_state(client, query["state"])
+    response = _callback(client, query)
+    assert urlparse(response.headers["location"]).path == "/signup"
+    assert _query_of(response) == {"sso_error": "invalid_state", "shop_id": "7"}

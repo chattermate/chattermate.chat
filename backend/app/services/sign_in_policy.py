@@ -30,6 +30,7 @@ from typing import Callable, Optional
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.enterprise_hooks import EnterpriseHookBroken, enterprise_hook
 from app.core.logger import get_logger
 from app.models.user import User
 from app.services.auth_sessions import PASSWORD_LOGIN, revoke_non_sso_sessions
@@ -40,10 +41,6 @@ from app.services.sso_providers import providers
 logger = get_logger(__name__)
 
 _ENTERPRISE_HOOK = "app.enterprise.services.sign_in_policy"
-# Missing modules that mean "no enterprise policy here", not "it is broken".
-_ABSENT_ENTERPRISE_MODULES = {"app.enterprise", "app.enterprise.services", _ENTERPRISE_HOOK}
-_enterprise_check: Optional[Callable] = None
-_enterprise_loaded = False
 
 
 class SignInRefused(Exception):
@@ -78,21 +75,13 @@ def end_refused_sessions(db: Session, user: User) -> None:
 
 
 def _enterprise_rules() -> Optional[Callable]:
-    global _enterprise_check, _enterprise_loaded
-    if not _enterprise_loaded:
-        _enterprise_loaded = True
-        try:
-            from app.enterprise.services.sign_in_policy import check_sign_in as enterprise_check
-            _enterprise_check = enterprise_check
-        except ImportError as e:
-            if isinstance(e, ModuleNotFoundError) and e.name in _ABSENT_ENTERPRISE_MODULES:
-                _enterprise_check = None  # community edition, or an enterprise build without the hook
-            else:
-                # The policy is installed but can't load: refuse sign-ins rather
-                # than quietly drop whatever it enforces.
-                logger.error(f"Enterprise sign-in policy failed to load: {e}")
-                _enterprise_check = _refuse_all
-    return _enterprise_check
+    try:
+        return enterprise_hook(_ENTERPRISE_HOOK, "check_sign_in")
+    except EnterpriseHookBroken as e:
+        # Installed but can't load: refuse sign-ins rather than quietly drop
+        # whatever it enforces.
+        logger.error(f"Enterprise sign-in policy failed to load: {e}")
+        return _refuse_all
 
 
 def _refuse_all(db: Session, user: User, method: str, identity: Optional[SsoIdentity] = None) -> None:

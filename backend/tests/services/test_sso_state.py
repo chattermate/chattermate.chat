@@ -81,7 +81,7 @@ def test_anything_but_this_browsers_own_sign_in_is_refused(cookies, state):
 
 
 def _signed(claims: dict, key: str = None) -> str:
-    return jwt.encode(claims, key or sso_state._signing_key(), algorithm="HS256")
+    return jwt.encode(claims, key or sso_state.signing_key(), algorithm="HS256")
 
 
 def test_a_tampered_expired_or_foreign_token_is_refused():

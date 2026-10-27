@@ -43,28 +43,29 @@ _TOKEN_TYPE = "sso_state"
 _STATE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 
 
-def cookie_path() -> str:
-    """Where the callback is served, as the browser sees it: BACKEND_URL may
-    carry a path a reverse proxy strips before the app."""
+def cookie_path(api_path: str = "/sso") -> str:
+    """Where `api_path` (under /api/v1; the callback by default) is served, as
+    the browser sees it: BACKEND_URL may carry a path a reverse proxy strips
+    before the app."""
     prefix = urlparse(settings.BACKEND_URL).path.rstrip("/")
-    return f"{prefix}{settings.API_V1_STR}/sso"
+    return f"{prefix}{settings.API_V1_STR}{api_path}"
 
 
 def _cookie_name(state: str) -> Optional[str]:
     return f"{_COOKIE_PREFIX}{state}" if state and _STATE_PATTERN.match(state) else None
 
 
-def _signing_key() -> str:
-    # Its own key, so a state cookie and a session token can never be
-    # mistaken for one another whatever their claims say.
-    return hmac.new(settings.SECRET_KEY.encode(), b"sso_state", hashlib.sha256).hexdigest()
+def signing_key(purpose: str = _TOKEN_TYPE) -> str:
+    """A key of its own for each kind of signed cookie, so one can never be
+    mistaken for another (or for a session token) whatever its claims say."""
+    return hmac.new(settings.SECRET_KEY.encode(), purpose.encode(), hashlib.sha256).hexdigest()
 
 
 def remember(response: Response, state: str, payload: dict) -> None:
     """Hand this browser the sign-in it is starting."""
     token = jwt.encode(
         {**payload, "state": state, "type": _TOKEN_TYPE, "exp": int(time.time()) + TTL_SECONDS},
-        _signing_key(),
+        signing_key(),
         algorithm="HS256",
     )
     # Lax: the provider brings the browser back with a top-level GET.
@@ -80,7 +81,7 @@ def _payload(request: Request, state: Optional[str], expired_ok: bool) -> Option
     if not token:
         return None
     try:
-        payload = jwt.decode(token, _signing_key(), algorithms=["HS256"], options={"verify_exp": not expired_ok})
+        payload = jwt.decode(token, signing_key(), algorithms=["HS256"], options={"verify_exp": not expired_ok})
     except JWTError:
         return None
     if payload.get("type") != _TOKEN_TYPE or payload.get("state") != state:
