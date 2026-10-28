@@ -59,7 +59,6 @@ const STARTER_QUESTIONS = [
   'What can you help me with?',
   'How can I get in touch?',
 ]
-const DEFAULT_WELCOME = 'Hi! How can I help you today?'
 
 // Only these presets have rules of their own in the shared surface CSS
 const SURFACE_THEME_CLASS: Record<string, string> = {
@@ -78,21 +77,27 @@ const themeVars = computed(() =>
 )
 const themeClass = computed(() => SURFACE_THEME_CLASS[props.customization?.chat_style ?? ''] ?? '')
 
-const avatarUrl = computed(() =>
-  props.customization?.photo_url
-    ? resolveUploadUrl(props.customization.photo_url)
-    : orbSvgDataUri(props.agentName, props.customization?.customization_metadata?.orb_variant)
-)
-
-const welcome = computed(() => props.customization?.welcome_message?.trim() || DEFAULT_WELCOME)
+// The widget shows the orb when they chose it, or when there is no photo
+const avatarUrl = computed(() => {
+  const photo = props.customization?.photo_url
+  const meta = props.customization?.customization_metadata
+  return photo && meta?.avatar_style !== 'orb'
+    ? resolveUploadUrl(photo)
+    : orbSvgDataUri(props.agentName, meta?.orb_variant)
+})
 
 // Their own quick actions when they've set some, as the widget would show them
 const starters = computed(() => {
-  const own = (props.customization?.quick_actions ?? []).filter(a => a?.trim())
+  const own = [...new Set((props.customization?.quick_actions ?? []).map(a => a?.trim()).filter(Boolean))]
   return own.length ? own : STARTER_QUESTIONS
 })
 
 const chatError = computed(() => setupError.value || connectionError.value || '')
+
+// Like the widget: their welcome message opens the chat, until the first message
+const welcome = computed(() =>
+  !messages.value.length && !chatError.value ? props.customization?.welcome_message?.trim() || '' : ''
+)
 
 const showStarters = computed(() =>
   !messages.value.length && !loading.value && !connecting.value && !chatError.value
@@ -244,10 +249,11 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
         </div>
 
         <div ref="scrollEl" class="chat-messages">
-          <div v-if="!chatError" class="message agent-message">
+          <div v-if="welcome" class="message agent-message">
             <img :src="avatarUrl" alt="" class="cm-msg-avatar-img" />
             <div class="message-bubble">{{ welcome }}</div>
           </div>
+          <p v-else-if="showStarters" class="chat-hint">Pick a question below or type your own.</p>
           <div
             v-for="(msg, i) in messages"
             :key="i"
@@ -467,6 +473,7 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
   justify-content: flex-end;
 }
 
+.chat-hint,
 .chat-error {
   margin: auto;
   max-width: 320px;
@@ -475,10 +482,14 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
   color: var(--cm-muted);
 }
 
+.chat-error {
+  color: var(--cm-text);
+  font-weight: 600;
+}
+
 .typing {
   display: flex;
   gap: 4px;
-  padding: 14px;
 }
 
 .dot {

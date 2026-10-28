@@ -43,17 +43,26 @@ describe('StepTest - looks like their widget', () => {
     chat.send = vi.fn()
   })
 
-  it('shows the agent by name, online, with a greeting', async () => {
+  it('shows the agent by name and online; with no welcome message set, no invented greeting', async () => {
     const wrapper = await mountStep()
     expect(header(wrapper)).toContain('Rex')
     expect(header(wrapper)).toContain('Online')
-    expect(wrapper.find('.agent-message').text()).toBe('Hi! How can I help you today?')
+    expect(wrapper.find('.agent-message').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Pick a question below')
   })
 
-  it('uses their welcome message and quick actions when they have set them', async () => {
-    const wrapper = await mountStep({ welcome_message: 'Hey, ask me about plans', quick_actions: ['Pricing?', ' '] })
+  it('opens with their welcome message, until the first message, as the widget does', async () => {
+    const wrapper = await mountStep({ welcome_message: 'Hey, ask me about plans' })
     expect(wrapper.find('.agent-message').text()).toBe('Hey, ask me about plans')
-    expect(starters(wrapper).map(s => s.text())).toEqual(['Pricing?'])
+    expect(wrapper.text()).not.toContain('Pick a question below')
+    chat.messages.value = [{ message: 'Hi', message_type: 'user' }]
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Hey, ask me about plans')
+  })
+
+  it('offers their own quick actions, trimmed and without blanks or repeats', async () => {
+    const wrapper = await mountStep({ quick_actions: ['Pricing?', ' ', ' Pricing? ', 'Hours'] })
+    expect(starters(wrapper).map(s => s.text())).toEqual(['Pricing?', 'Hours'])
   })
 
   it('wears the widget theme: its colours, and their photo as the avatar', async () => {
@@ -69,6 +78,13 @@ describe('StepTest - looks like their widget', () => {
     expect(wrapper.find('.header-avatar').attributes('src')).toMatch(/^data:image\/svg\+xml/)
   })
 
+  it('when they chose the orb, it is the orb even though a photo exists', async () => {
+    const wrapper = await mountStep({
+      photo_url: 'https://cdn.example.com/rex.png', customization_metadata: { avatar_style: 'orb' },
+    })
+    expect(wrapper.find('.header-avatar').attributes('src')).toMatch(/^data:image\/svg\+xml/)
+  })
+
   it('user messages sit on the right, agent replies on the left with the avatar', async () => {
     const wrapper = await mountStep()
     chat.messages.value = [
@@ -77,10 +93,11 @@ describe('StepTest - looks like their widget', () => {
     ]
     await flushPromises()
     const rows = wrapper.findAll('.message')
-    expect(rows[1].classes()).toContain('user-message')
-    expect(rows[1].find('img').exists()).toBe(false)
-    expect(rows[2].classes()).toContain('agent-message')
-    expect(rows[2].find('strong').text()).toBe('plants')
+    expect(rows[0].classes()).toContain('user-message')
+    expect(rows[0].find('img').exists()).toBe(false)
+    expect(rows[1].classes()).toContain('agent-message')
+    expect(rows[1].find('img').exists()).toBe(true)
+    expect(rows[1].find('strong').text()).toBe('plants')
   })
 
   it('sending a message clears the box; a blank message is not sent', async () => {
@@ -104,7 +121,7 @@ describe('StepTest - looks like their widget', () => {
 
   it('when the session cannot start it shows offline and why, with no greeting', async () => {
     chat.connectionError.value = 'Could not connect to the agent. Please try again.'
-    const wrapper = await mountStep()
+    const wrapper = await mountStep({ welcome_message: 'Hey there' })
     expect(header(wrapper)).toContain('Offline')
     expect(wrapper.find('[role="alert"]').text()).toContain('Could not connect to the agent')
     expect(wrapper.find('.agent-message').exists()).toBe(false)
