@@ -46,6 +46,14 @@ const {
   cleanup,
 } = useOnboardingTestChat()
 
+// An empty chat leaves people unsure what to ask, and they move on without
+// trying it. One click sends any of these; they suit every agent type.
+const STARTER_QUESTIONS = [
+  'What do you do?',
+  'What can you help me with?',
+  'How can I get in touch?',
+]
+
 const input = ref('')
 const setupError = ref('')
 const scrollEl = ref<HTMLElement | null>(null)
@@ -142,6 +150,11 @@ const handleSend = () => {
   input.value = ''
 }
 
+const askStarter = (question: string) => {
+  if (loading.value) return
+  send(question)
+}
+
 const formatMessage = (content: string) => sanitizeHtml(marked(content) as string)
 </script>
 
@@ -156,9 +169,8 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
     <div v-if="knowledgeProcessing" class="kb-note processing">
       <span class="kb-spinner" aria-hidden="true"></span>
       <span>
-        Your knowledge is still being indexed in the background. Your agent can answer
-        <strong>general questions</strong> now — knowledge-based answers will kick in once it's done,
-        and we'll notify you.
+        Still reading your knowledge. <strong>Ask a question now</strong> — answers get more
+        specific as each page is added.
       </span>
     </div>
     <div v-else-if="knowledgeJustFinished" class="kb-note done">
@@ -180,6 +192,21 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
       </div>
 
       <div ref="scrollEl" class="chat-scroll">
+        <div
+          v-if="!messages.length && !loading && !connecting && !setupError && !connectionError"
+          class="starters"
+        >
+          <p class="starters-label">Try one of these</p>
+          <button
+            v-for="question in STARTER_QUESTIONS"
+            :key="question"
+            type="button"
+            class="starter"
+            @click="askStarter(question)"
+          >
+            {{ question }}
+          </button>
+        </div>
         <div
           v-for="(msg, i) in messages"
           :key="i"
@@ -332,6 +359,42 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.starters {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.starters-label {
+  margin: 0 0 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.starter {
+  padding: 9px 16px;
+  background: var(--surface);
+  border: 1px solid var(--o12);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 13.5px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.starter:hover {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+.starter:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
 }
 
 .bubble-row {
