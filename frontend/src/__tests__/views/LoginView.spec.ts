@@ -117,7 +117,8 @@ describe('LoginView', () => {
         { path: '/settings/ai-config', name: 'ai-config', component: { template: '<div>AI Config</div>' } },
         { path: '/settings/user', name: 'user-settings', component: { template: '<div>User Settings</div>' } },
         { path: '/403', name: 'forbidden', component: { template: '<div>403</div>' } },
-        { path: '/shopify/auth-complete', name: 'shopify-auth-complete', component: { template: '<div>Shopify</div>' } }
+        { path: '/shopify/auth-complete', name: 'shopify-auth-complete', component: { template: '<div>Shopify</div>' } },
+        { path: '/shopify/agent-selection', name: 'shopify-agent-selection', component: { template: '<div>Agent selection</div>' } }
       ]
     })
 
@@ -477,7 +478,8 @@ describe('LoginView', () => {
     const { assign, restore } = await remountCapturingNavigation(
       '/?sso=ok&shopify_flow=1&shop_id=7&return_to=%2Fshopify%2Fagent-selection%3Fshop_id%3D7')
     try {
-      expect(assign).toHaveBeenCalledWith('/shopify/agent-selection?shop_id=7')
+      expect(assign).not.toHaveBeenCalled()
+      expect(router.currentRoute.value.fullPath).toBe('/shopify/agent-selection?shop_id=7')
     } finally {
       restore()
     }

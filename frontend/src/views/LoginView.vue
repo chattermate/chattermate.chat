@@ -107,24 +107,10 @@ const continueAfterLogin = () => {
     const shopId = urlParams.get('shop_id')
     const returnTo = urlParams.get('return_to')
 
-    if (isShopifyFlow && shopId) {
-        console.log('🔗 Shopify flow detected, linking organization')
-
-        try {
-
-
-            // If return_to is specified, redirect there (only ever a page of ours)
-            if (isInternalPath(returnTo)) {
-                console.log('📍 Redirecting to return_to:', returnTo)
-                window.location.href = returnTo
-                return
-            }
-        } catch (linkError: any) {
-            console.error('❌ Failed to link organization:', linkError)
-            error.value = linkError.response?.data?.detail || 'Failed to link organization'
-            isLoading.value = false
-            return
-        }
+    // A return_to is only ever a page of ours, so the router takes it there
+    if (isShopifyFlow && shopId && isInternalPath(returnTo)) {
+        router.push(returnTo)
+        return
     }
     
     // Check if this is an OLD embedded Shopify login (opened in popup) - for backward compatibility
