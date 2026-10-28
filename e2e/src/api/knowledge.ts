@@ -3,10 +3,13 @@ import type { ApiClient } from './client'
 /**
  * Pasted-text knowledge is indexed synchronously, so it is searchable as soon as
  * this returns. Returns the source's id.
+ *
+ * Without `agentId` it is an organization source: linked to no agent while the
+ * org has several, but the backend gives it to the org's only agent.
  */
 export async function addKnowledgeText(
   api: ApiClient,
-  source: { orgId: string; agentId: string; title: string; content: string },
+  source: { orgId: string; agentId?: string; title: string; content: string },
 ): Promise<number> {
   const body = await api.post<{ knowledge: { id: number } }>('/knowledge/add/text', {
     data: { org_id: source.orgId, agent_id: source.agentId, title: source.title, content: source.content },

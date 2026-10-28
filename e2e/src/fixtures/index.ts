@@ -15,6 +15,7 @@ import { AiConfigPage } from '../pages/ai-config.page'
 import { Dashboard } from '../pages/dashboard.page'
 import { HumanAgentsPage } from '../pages/human-agents.page'
 import { InboxPage } from '../pages/inbox.page'
+import { KnowledgePage } from '../pages/knowledge.page'
 import { LoginPage } from '../pages/login.page'
 import { PeoplePage } from '../pages/people.page'
 import { TicketsPage } from '../pages/tickets.page'
@@ -121,6 +122,7 @@ interface TestFixtures {
   sidebar: Sidebar
   aiConfigPage: AiConfigPage
   agentsPage: AgentsPage
+  knowledgePage: KnowledgePage
   ticketsPage: TicketsPage
   peoplePage: PeoplePage
   humanAgentsPage: HumanAgentsPage
@@ -272,6 +274,7 @@ export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
   sidebar: async ({ page }, use) => use(new Sidebar(page)),
   aiConfigPage: async ({ page }, use) => use(new AiConfigPage(page)),
   agentsPage: async ({ page }, use) => use(new AgentsPage(page)),
+  knowledgePage: async ({ page }, use) => use(new KnowledgePage(page)),
   ticketsPage: async ({ page }, use) => use(new TicketsPage(page)),
   peoplePage: async ({ page }, use) => use(new PeoplePage(page)),
   humanAgentsPage: async ({ page }, use) => use(new HumanAgentsPage(page)),

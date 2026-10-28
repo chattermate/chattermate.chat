@@ -96,7 +96,7 @@ const MAX_AVATARS = 3
     </div>
 
     <div class="tree__body">
-      <div v-for="source in sources" :key="source.id" class="src">
+      <div v-for="source in sources" :key="source.id" class="src" role="group" :aria-label="source.name">
         <div class="src__row">
           <button
             class="src__toggle"
