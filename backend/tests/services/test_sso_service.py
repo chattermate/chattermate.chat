@@ -99,6 +99,14 @@ def test_providers_follow_configuration_and_tenant(both_providers, monkeypatch):
     assert list(providers()) == ["microsoft"]
 
 
+def test_provider_hosts_can_be_pointed_elsewhere(both_providers, monkeypatch):
+    # Only the e2e suite sets these, to reach its fake provider.
+    monkeypatch.setenv("GOOGLE_SSO_BASE", "http://127.0.0.1:14040/google/")
+    monkeypatch.setenv("MICROSOFT_SSO_BASE", "http://127.0.0.1:14040/microsoft")
+    assert providers()["google"].discovery_url == "http://127.0.0.1:14040/google/.well-known/openid-configuration"
+    assert providers()["microsoft"].discovery_url == "http://127.0.0.1:14040/microsoft/common/v2.0/.well-known/openid-configuration"
+
+
 def test_redirect_uri_derives_from_backend_url(both_providers, monkeypatch):
     monkeypatch.setattr(settings, "BACKEND_URL", "https://api.example.test/")
     assert sso.redirect_uri(get_provider("google")) == "https://api.example.test/api/v1/sso/google/callback"

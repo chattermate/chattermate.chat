@@ -29,6 +29,7 @@ from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 from app.core.config import settings
+from app.core.external_urls import external_base
 
 GOOGLE = "google"
 MICROSOFT = "microsoft"
@@ -165,7 +166,7 @@ _MICROSOFT_MAIL_DOMAINS = frozenset({
     "hotmail.es", "outlook.es", "outlook.in", "outlook.jp", "live.jp",
 })
 MICROSOFT_ISSUER_TEMPLATE = "https://login.microsoftonline.com/{tenantid}/v2.0"
-MICROSOFT_GRAPH_PHOTO_URL = "https://graph.microsoft.com/v1.0/me/photo/$value"
+MICROSOFT_GRAPH_PHOTO_URL = external_base("MICROSOFT_GRAPH_BASE", "https://graph.microsoft.com") + "/v1.0/me/photo/$value"
 
 
 @dataclass(frozen=True)
@@ -231,7 +232,7 @@ def providers() -> Dict[str, Provider]:
         out[GOOGLE] = GoogleProvider(
             key=GOOGLE,
             label="Google",
-            discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+            discovery_url=f"{external_base('GOOGLE_SSO_BASE', 'https://accounts.google.com')}/.well-known/openid-configuration",
             scopes="openid email profile",
             client_id=settings.GOOGLE_SSO_CLIENT_ID,
             client_secret=settings.GOOGLE_SSO_CLIENT_SECRET,
@@ -242,7 +243,7 @@ def providers() -> Dict[str, Provider]:
         out[MICROSOFT] = MicrosoftProvider(
             key=MICROSOFT,
             label="Microsoft",
-            discovery_url=f"https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration",
+            discovery_url=f"{external_base('MICROSOFT_SSO_BASE', 'https://login.microsoftonline.com')}/{tenant}/v2.0/.well-known/openid-configuration",
             # User.Read is what lets us read the profile photo from Graph.
             scopes="openid email profile User.Read",
             client_id=settings.MICROSOFT_SSO_CLIENT_ID,

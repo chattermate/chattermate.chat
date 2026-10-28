@@ -61,6 +61,17 @@ def test_a_linked_account_signs_in_and_its_address_is_kept_current(db, test_user
     assert link.last_login_at is not None
 
 
+def test_a_deactivated_users_link_is_turned_away_as_inactive(db, test_user: User):
+    """Not no_account: that would offer a signup, which the link already
+    there would then break."""
+    _link(db, test_user)
+    test_user.is_active = False
+    db.commit()
+    with pytest.raises(SsoError) as err:
+        sso_accounts.user_for_identity(db, "google", _identity("elsewhere@gmail.com"))
+    assert err.value.code == "account_inactive"
+
+
 def test_the_same_subject_from_another_issuer_is_another_account(db, test_user: User):
     _link(db, test_user, subject="s", provider="microsoft", issuer="https://login.microsoftonline.com/a/v2.0")
     with pytest.raises(SsoError) as err:

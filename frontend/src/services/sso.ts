@@ -45,6 +45,7 @@ export interface SsoConfig {
 export const SSO_ERROR_MESSAGES: Record<string, string> = {
   no_account: 'No team account matches that e-mail address. Ask an administrator for an invite.',
   email_unverified: 'The provider has not verified that account\'s e-mail address, so it cannot be linked to a team member.',
+  account_inactive: 'Your team account is no longer active. Ask an administrator.',
   ambiguous_account: 'More than one team account uses that e-mail address. Ask an administrator to fix it.',
   already_linked: 'Your team account is linked to a different account from this provider. Ask an administrator to unlink it.',
   wrong_domain: 'This workspace only accepts accounts from its own Google domain.',

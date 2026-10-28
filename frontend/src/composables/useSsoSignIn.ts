@@ -29,12 +29,15 @@ const RETURN_PARAMS = ['sso', 'sso_error']
 
 export interface SsoSignInOptions {
   /** A session now exists: carry on where the login page would. */
-  onSignedIn: () => void
-  /** Something to tell the person. */
-  onError: (message: string) => void
+  onSignedIn?: () => void
+  /** Something to tell the person; `code` is the backend's `sso_error`, if any. */
+  onError: (message: string, code: string | null) => void
+  /** 'signup' from the signup page: an account that doesn't exist yet is
+   * signed up rather than refused (where the backend offers signup). */
+  intent?: 'signup'
 }
 
-export function useSsoSignIn({ onSignedIn, onError }: SsoSignInOptions) {
+export function useSsoSignIn({ onSignedIn, onError, intent }: SsoSignInOptions) {
   const router = useRouter()
 
   // Configured providers; none means no buttons.
@@ -65,7 +68,8 @@ export function useSsoSignIn({ onSignedIn, onError }: SsoSignInOptions) {
     redirecting.value = provider.key
     // The backend carries the login page's own parameters (?redirect=, the
     // Shopify flows) through the provider and hands them back with ?sso=ok.
-    window.location.href = ssoService.startUrl(provider.key, router.currentRoute.value.query)
+    const query = intent ? { ...router.currentRoute.value.query, intent } : router.currentRoute.value.query
+    window.location.href = ssoService.startUrl(provider.key, query)
   }
 
   const dropReturnParams = async () => {
@@ -79,16 +83,16 @@ export function useSsoSignIn({ onSignedIn, onError }: SsoSignInOptions) {
     if (typeof ssoError !== 'string' && sso !== 'ok') return
     await dropReturnParams()
     if (typeof ssoError === 'string') {
-      onError(ssoService.errorMessage(ssoError))
+      onError(ssoService.errorMessage(ssoError), ssoError)
       return
     }
     try {
       completing.value = true
       await ssoService.completeSignIn()
-      onSignedIn()
+      onSignedIn?.()
     } catch (err) {
       console.error('SSO completion error:', err)
-      onError(ssoService.errorMessage(null))
+      onError(ssoService.errorMessage(null), null)
     } finally {
       completing.value = false
     }

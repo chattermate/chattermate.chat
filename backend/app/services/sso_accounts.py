@@ -77,12 +77,26 @@ def _already_linked_elsewhere(db: Session, user: User, provider_key: str) -> boo
 def _signed_in(link: UserIdentity, identity: SsoIdentity) -> Tuple[User, UserIdentity]:
     user = link.user
     if user is None or not user.is_active:
-        raise SsoError("no_account", "the linked user is no longer active")
+        raise SsoError("account_inactive", "the linked user is no longer active")
     link.last_login_at = func.now()
     if identity.email:
         # What the account is called now, for the admin's list.
         link.email = identity.email
     return user, link
+
+
+def link_account(db: Session, user_id, provider_key: str, issuer: str, subject: str, email: Optional[str]) -> UserIdentity:
+    """Link an account to a user with no address check: the caller vouched
+    for the pairing (a first sign-in by a vouched-for address, or signing up
+    with the account). The caller commits."""
+    link = UserIdentity(
+        user_id=user_id, provider=provider_key, issuer=issuer, subject=subject, email=email,
+        last_login_at=func.now(),
+    )
+    db.add(link)
+    db.flush()
+    logger.info(f"SSO {provider_key} account linked to user {user_id}")
+    return link
 
 
 def _link(db: Session, provider_key: str, identity: SsoIdentity) -> Tuple[User, UserIdentity]:
@@ -91,17 +105,8 @@ def _link(db: Session, provider_key: str, identity: SsoIdentity) -> Tuple[User, 
     user = _user_by_email(db, identity.email)
     if _already_linked_elsewhere(db, user, provider_key):
         raise SsoError("already_linked", f"user {user.id} already has another {provider_key} account")
-    link = UserIdentity(
-        user_id=user.id,
-        provider=provider_key,
-        issuer=identity.issuer,
-        subject=identity.subject,
-        email=identity.email,
-        last_login_at=func.now(),
-    )
-    db.add(link)
     try:
-        db.flush()
+        link = link_account(db, user.id, provider_key, identity.issuer, identity.subject, identity.email)
     except IntegrityError:
         # A parallel first sign-in linked it first: this same account (sign in
         # through that link), or another account of this provider to the same
@@ -112,7 +117,6 @@ def _link(db: Session, provider_key: str, identity: SsoIdentity) -> Tuple[User, 
         if existing is None:
             raise SsoError("already_linked", f"user {user.id} linked another {provider_key} account meanwhile")
         return _signed_in(existing, identity)
-    logger.info(f"SSO {provider_key} account linked to user {user.id}")
     return user, link
 
 

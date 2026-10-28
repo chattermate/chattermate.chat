@@ -1,11 +1,14 @@
 import { expect, type Locator, type Page } from '@playwright/test'
+import { SingleSignOn } from '../components/single-sign-on'
 import { step } from '../support/step'
 
 export class LoginPage {
   readonly page: Page
+  readonly sso: SingleSignOn
 
   constructor(page: Page) {
     this.page = page
+    this.sso = new SingleSignOn(page)
   }
 
   async goto(): Promise<void> {

@@ -134,6 +134,7 @@ A journey that should hold on every channel loops over `channels` (or `channelsW
 - **Provider limits are real:** the fake rejects payloads past each provider's published limits (`services/fake-externals/limits.ts`), the way the provider would.
 - **Faults:** `new FakeExternals(request).fail({ provider, action, contains, status, body, times })` makes matching calls fail; scope it with `contains` (e.g. the customer id) so parallel tests are untouched.
 - **MCP:** `services/fake-mcp` is a real MCP server (streamable HTTP) with a `lookup_order` tool.
+- **Single sign-on:** `services/fake-sso` plays Google and Microsoft (`GOOGLE_SSO_BASE`, `MICROSOFT_SSO_BASE`, `MICROSOFT_GRAPH_BASE`). Its sign-in page is a form where the test says who the account is: `loginPage.sso.continueWith('Google')` returns a `ProviderSignIn`, and `signInAs({ email, workspaceDomain, directory, domainVerified, … })` sets what the ID token claims. It checks PKCE, the redirect URI and the client credentials, and signs real RS256 tokens.
 
 ## Fixtures worth knowing
 
@@ -166,7 +167,7 @@ A journey that should hold on every channel loops over `channels` (or `channelsW
 
 ## Troubleshooting
 
-- **Port already in use:** something else is on 18000, 15173, 14010, 14020, 14030, 13000, 13001, 11025 or 18025. Run `./scripts/stack.sh down`, or stop the other process.
+- **Port already in use:** something else is on 18000, 15173, 14010, 14020, 14030, 14040, 13000, 13001, 11025 or 18025. Run `./scripts/stack.sh down`, or stop the other process.
 - **The launcher never becomes clickable:** the suite runs with `reducedMotion: 'reduce'` because the launcher floats forever otherwise. Keep that option on any new browser context.
 - **The customer site must be a real server:** Chrome blocks a page faked with `page.route` from calling `127.0.0.1` (Local Network Access).
 - **The widget and loader are built from source on every run.** `stack.sh` builds the widget bundle and `chattermate.min.js` from the current `frontend/src/webclient` into `e2e/.cache`, and points the backend at that build with `WIDGET_ASSETS_DIR`. The committed production bundles in `backend/assets` and `frontend/public/webclient` are never rebuilt or modified.

@@ -25,6 +25,8 @@ export const env = {
   fakeExternalsUrl: 'http://127.0.0.1:14020',
   /** A real MCP server with a lookup_order tool (services/fake-mcp). */
   fakeMcpUrl: 'http://127.0.0.1:14030',
+  /** Google's and Microsoft's sign-in, for single sign-on (services/fake-sso). */
+  fakeSsoUrl: 'http://127.0.0.1:14040',
   /** Mailpit's web/API port (its SMTP side is 127.0.0.1:11025, where .env.e2e sends all mail). */
   mailUrl: 'http://127.0.0.1:18025',
   /** The pretend customer website the widget is embedded on (services/customer-site). */
