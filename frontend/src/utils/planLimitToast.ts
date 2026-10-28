@@ -28,6 +28,11 @@ const PLAN_LIMIT_PATTERNS = [
   /not (available|included) (on|in) your (current )?plan/i,
 ]
 
+/** The plan's knowledge-source cap, which the add dialog answers with "replace". */
+export function isKnowledgeSourceLimit(message: string | undefined | null): boolean {
+  return !!message && /maximum number of knowledge sources/i.test(message)
+}
+
 function isPlanLimitError(message: string | undefined | null): boolean {
   if (!message) return false
   return PLAN_LIMIT_PATTERNS.some((pattern) => pattern.test(message))

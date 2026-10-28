@@ -30,6 +30,8 @@ const props = defineProps<{
   query: string
   statusOf: (source: ExplorerSource) => SourceStatus
   pageRowsOf: (source: ExplorerSource) => PageRow[]
+  // Org page: mark sources no agent answers from
+  flagUnlinked?: boolean
 }>()
 
 // Group page rows once per render (the template reads them twice per source).
@@ -131,6 +133,11 @@ const MAX_AVATARS = 3
               +{{ source.agents.length - MAX_AVATARS }}
             </span>
           </span>
+          <span
+            v-if="flagUnlinked && !source.queued && !source.agents.length"
+            class="unlinked"
+            title="No agent answers from this source. Link it from an agent’s Knowledge tab."
+          >No agent</span>
           <span class="dot" :class="`dot--${statusOf(source)}`" :title="statusLabel[statusOf(source)]"></span>
           <button
             v-if="!source.queued"
@@ -354,6 +361,17 @@ const MAX_AVATARS = 3
 
 .agents__avatar:first-child {
   margin-left: 0;
+}
+
+.unlinked {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--warning-bg);
+  color: var(--warning-color);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .agents__more {
