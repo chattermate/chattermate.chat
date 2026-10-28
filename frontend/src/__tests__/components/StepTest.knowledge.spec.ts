@@ -47,7 +47,7 @@ describe('StepTest - what the agent knows', () => {
     getAgentQueueItems.mockResolvedValueOnce(queue('pending')).mockResolvedValue(queue('failed'))
     getKnowledgeByAgent.mockResolvedValue(knowledgePage(0))
     const wrapper = await mountStep()
-    expect(wrapper.text()).toContain('still being indexed')
+    expect(wrapper.text()).toContain('Still reading your knowledge')
 
     await vi.advanceTimersByTimeAsync(5000)
     await flushPromises()
@@ -55,6 +55,15 @@ describe('StepTest - what the agent knows', () => {
     expect(wrapper.text()).not.toContain('Knowledge indexed')
     expect(wrapper.text()).toContain(`We couldn't read ${SITE}. ${REASON}`)
     expect(wrapper.text()).toContain("hasn't learned anything")
+  })
+
+  it('while indexing, asks them to try it now rather than wait to be notified', async () => {
+    getAgentQueueItems.mockResolvedValue(queue('processing'))
+    getKnowledgeByAgent.mockResolvedValue(knowledgePage(0))
+    const wrapper = await mountStep()
+
+    expect(wrapper.text()).toContain('Ask a question now')
+    expect(wrapper.text()).not.toContain('notify')
   })
 
   it('a crawl that finishes says it is indexed', async () => {
