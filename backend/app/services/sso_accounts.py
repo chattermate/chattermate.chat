@@ -77,7 +77,7 @@ def _already_linked_elsewhere(db: Session, user: User, provider_key: str) -> boo
 def _signed_in(link: UserIdentity, identity: SsoIdentity) -> Tuple[User, UserIdentity]:
     user = link.user
     if user is None or not user.is_active:
-        raise SsoError("no_account", "the linked user is no longer active")
+        raise SsoError("account_inactive", "the linked user is no longer active")
     link.last_login_at = func.now()
     if identity.email:
         # What the account is called now, for the admin's list.

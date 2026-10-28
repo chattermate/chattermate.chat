@@ -156,7 +156,12 @@ needs your current password), and an admin can list and unlink them
 (`GET`/`DELETE /api/v1/users/{id}/identities`).
 A team member without a profile picture gets the provider's photo. Register
 `{BACKEND_URL}/api/v1/sso/<provider>/callback` as the redirect URI with the
-provider. With `PASSWORD_LOGIN_ENABLED=false` the login page leads with SSO, and
+provider. For Microsoft on the default `common` tenant, add the optional `email`
+and `xms_edov` claims to the app's ID token (Entra ID → Token configuration):
+a work or school account links only when `xms_edov` says Microsoft verified its
+domain, so without it those accounts can't sign in. Step-by-step setup for both
+providers is in the [single sign-on docs](https://docs.chattermate.chat/features/single-sign-on).
+With `PASSWORD_LOGIN_ENABLED=false` the login page leads with SSO, and
 a team member's password stops working once they have signed in with SSO, and
 their password sessions end (it applies install-wide, so it is meant for
 single-organization installs).

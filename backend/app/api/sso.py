@@ -204,7 +204,7 @@ async def _complete_sign_in(
         db.rollback()
         return begin_signup(db, provider, identity, _page_params(carried))
     if user.organization is None or not user.organization.is_active:
-        raise SsoError("no_account", f"organization of user {user.id} is inactive")
+        raise SsoError("account_inactive", f"organization of user {user.id} is inactive")
     try:
         check_sign_in(db, user, SSO_LOGIN, identity)
     except SignInRefused as refused:

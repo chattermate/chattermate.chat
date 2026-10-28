@@ -40,7 +40,9 @@ def _enterprise_package(monkeypatch, module):
 
 
 def test_no_enterprise_package_means_no_hook(monkeypatch):
-    monkeypatch.setitem(sys.modules, "app.enterprise", None)
+    # Both levels: with the module installed its subpackage is already loaded
+    for name in ("app.enterprise", "app.enterprise.services"):
+        monkeypatch.setitem(sys.modules, name, None)
     assert enterprise_hook(HOOK, "run") is None
 
 

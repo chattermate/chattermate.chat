@@ -384,7 +384,7 @@ def test_linked_account_of_a_deactivated_user_is_turned_away(client: TestClient,
     db.commit()
     query = _begin(client)
     _provider_says(monkeypatch, _google_claims(gmail_user.email))
-    assert _error_of(_callback(client, query)) == "no_account"
+    assert _error_of(_callback(client, query)) == "account_inactive"
 
 
 def test_a_recreated_google_account_is_not_linked_on_its_own(client: TestClient, db, gmail_user: User, google_only, monkeypatch):
@@ -582,7 +582,7 @@ def test_a_member_of_an_inactive_organization_is_turned_away(client: TestClient,
     gmail_user.organization.is_active = False
     db.commit()
     _provider_says(monkeypatch, _google_claims(gmail_user.email))
-    assert _error_of(_callback(client, _begin(client))) == "no_account"
+    assert _error_of(_callback(client, _begin(client))) == "account_inactive"
     assert db.query(AuthSession).count() == 0
 
 
