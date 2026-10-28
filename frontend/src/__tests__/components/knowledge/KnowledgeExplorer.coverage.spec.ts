@@ -43,7 +43,7 @@ const ORG = 'org-1'
 const AGENT = 'agent-1'
 const LIMIT = 'Cannot add URLs: Maximum number of knowledge sources (1) would be exceeded'
 const STAGING = { id: 413, name: 'https://reportage-alpha.vercel.app/en', type: 'website', agents: [], pages: [] }
-const page = (knowledge: unknown[]) => ({ knowledge, pagination: { total_count: knowledge.length } })
+const page = (knowledge: unknown[]) => ({ knowledge, pagination: { total: knowledge.length } })
 
 const mountExplorer = async (mode: 'agent' | 'org') => {
   const wrapper = mount(KnowledgeExplorer, {
@@ -86,6 +86,13 @@ describe('KnowledgeExplorer: an agent with no knowledge', () => {
     await warning(wrapper).find('.banner__action').trigger('click')
     await flushPromises()
     expect(wrapper.findComponent({ name: 'KnowledgeLinkModal' }).exists()).toBe(true)
+  })
+
+  it('counts every organization source, not just the first page', async () => {
+    // The count is read from a one-row page: the server's total is what matters
+    kb.getKnowledgeByOrganization.mockResolvedValue({ knowledge: [STAGING], pagination: { total: 12, total_pages: 12 } })
+    const wrapper = await mountExplorer('agent')
+    expect(warning(wrapper).text()).toContain('Your organization has 12 sources it could use.')
   })
 
   it('with nothing in the organization either, offers to add a source', async () => {

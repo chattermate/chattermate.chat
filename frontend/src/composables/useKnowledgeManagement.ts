@@ -98,7 +98,7 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
       // Update org knowledge
       orgKnowledgeItems.value = orgResponse?.knowledge || []
       orgTotalPages.value = orgResponse?.pagination?.total_pages || 0
-      orgTotalCount.value = orgResponse?.pagination?.total_count || 0
+      orgTotalCount.value = orgResponse?.pagination?.total || 0
     } catch (err) {
       error.value = 'Failed to load knowledge sources'
       console.error(err)

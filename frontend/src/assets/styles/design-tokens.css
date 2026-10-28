@@ -110,6 +110,7 @@
   --success-bg: rgba(15,157,110,.1);
   --error-bg: rgba(220,38,38,.1);
   --warning-bg: rgba(217,119,6,.1);
+  --warning-border: color-mix(in srgb, var(--warning-color) 35%, transparent);
   --info-bg: rgba(37,99,235,.1);
 
   /* Fonts */

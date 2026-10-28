@@ -46,5 +46,6 @@ def resolve_source_agent(db: Session, org_id: UUID, agent_id: Optional[str]) -> 
             raise HTTPException(status_code=404, detail="Agent not found")
         return agent_uuid
 
-    agents = repo.get_all_agents(org_id)
-    return agents[0].id if len(agents) == 1 else None
+    # Two is enough to tell "only one" from "several"
+    agent_ids = repo.get_agent_ids(org_id, limit=2)
+    return agent_ids[0] if len(agent_ids) == 1 else None

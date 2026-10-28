@@ -168,6 +168,11 @@ class AgentRepository:
     def get_by_id(self, agent_id: str) -> Agent | None:
         return self.db.query(Agent).filter(Agent.id == agent_id).first()
 
+    def get_agent_ids(self, org_id: UUID, limit: int) -> List[UUID]:
+        """Up to `limit` of the organization's agent ids, without loading the agents."""
+        rows = self.db.query(Agent.id).filter(Agent.organization_id == org_id).limit(limit).all()
+        return [row.id for row in rows]
+
     def get_all_agents(self, org_id: UUID) -> List[Agent]:
         """Get all agents for organization"""
         return self.db.query(Agent)\

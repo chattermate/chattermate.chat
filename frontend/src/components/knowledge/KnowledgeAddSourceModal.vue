@@ -16,7 +16,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AddSourcePayload, CrawlScope } from '@/composables/useKnowledgeExplorer'
-import type { KnowledgeLinkedAgent } from '@/types/knowledge'
+import type { KnowledgeLinkedAgent, ReplaceableSource } from '@/types/knowledge'
 import KnowledgeSourceLimitPanel from './KnowledgeSourceLimitPanel.vue'
 
 type SourceKind = 'website' | 'sitemap' | 'pdf' | 'text'
@@ -29,7 +29,7 @@ const props = withDefaults(
     agents?: KnowledgeLinkedAgent[]
     // Set when the plan's source cap refused this add: offer a replacement.
     limitMessage?: string | null
-    replaceable?: { id: number; name: string; usedBy?: string[] }[]
+    replaceable?: ReplaceableSource[]
   }>(),
   { submitting: false, agents: () => [], limitMessage: null, replaceable: () => [] },
 )

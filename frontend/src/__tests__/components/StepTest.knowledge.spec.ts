@@ -28,7 +28,7 @@ const queue = (status: string) => ({
   queue_items: [{ id: 1, source: SITE, source_type: 'website', status, created_at: '',
                   reason: status === 'failed' ? REASON : null }]
 })
-const knowledgePage = (count: number) => ({ knowledge: [], pagination: { total_count: count } })
+const knowledgePage = (count: number) => ({ knowledge: [], pagination: { total: count } })
 
 const mountStep = async () => {
   const wrapper = mount(StepTest, { props: { agentId: 'agent-1', agentName: 'Rex', widgetId: 'w-1' } })

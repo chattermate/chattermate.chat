@@ -172,7 +172,7 @@ describe('StepTeach - after a website could not be read', () => {
   })
 
   it('a duplicate URL with nothing new staged keeps the failure on screen', async () => {
-    getKnowledgeByOrganization.mockResolvedValue({ knowledge: [{ id: 1, name: 'https://docs.erfanpv.com' }], pagination: { total_pages: 1, total_count: 1 } })
+    getKnowledgeByOrganization.mockResolvedValue({ knowledge: [{ id: 1, name: 'https://docs.erfanpv.com' }], pagination: { total_pages: 1, total: 1 } })
     await failFirst()
     await typeAndAdd('docs.erfanpv.com')
     expect(wrapper.text()).toContain('already exists in your knowledge base')
@@ -182,7 +182,7 @@ describe('StepTeach - after a website could not be read', () => {
 
   it('the plan cap message keeps the failure on screen when nothing could be staged', async () => {
     planLimits.mockReturnValue({ maxKnowledgeSources: 1 })
-    getKnowledgeByOrganization.mockResolvedValue({ knowledge: [{ id: 1, name: 'https://elsewhere.com' }], pagination: { total_pages: 1, total_count: 1 } })
+    getKnowledgeByOrganization.mockResolvedValue({ knowledge: [{ id: 1, name: 'https://elsewhere.com' }], pagination: { total_pages: 1, total: 1 } })
     getOrganization.mockResolvedValue({ id: 'org-1', domain: '' })
     getAgentQueueItems.mockResolvedValueOnce({ queue_items: [] }).mockResolvedValue({ queue_items: [firstSite] })
     await mountStep()

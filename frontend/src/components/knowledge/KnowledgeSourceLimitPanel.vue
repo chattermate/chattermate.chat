@@ -16,13 +16,15 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import type { ReplaceableSource } from '@/types/knowledge'
 
 // Shown in the add-source dialog when the plan's source cap refused the add.
 // Removing a source from an agent keeps it in the organization, where it still
 // counts, so the way forward is to replace one (or upgrade), not to retry.
 const props = defineProps<{
   message: string
-  sources: { id: number; name: string; usedBy?: string[] }[]
+  sources: ReplaceableSource[]
   busy: boolean
   canReplace: boolean
 }>()
@@ -35,6 +37,11 @@ const emit = defineEmits<{
 // after Add was clicked: bring it into view or the refusal goes unseen.
 const root = ref<HTMLElement | null>(null)
 onMounted(() => root.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }))
+
+// The plans page comes with the enterprise module; a link to a route the app
+// doesn't have would throw while rendering.
+const PLANS_ROUTE = 'subscription'
+const hasPlansPage = useRouter()?.hasRoute(PLANS_ROUTE) ?? false
 
 // "...knowledge sources (1) would be exceeded" -> 1
 const limit = computed(() => Number(/\((\d+)\)/.exec(props.message)?.[1]) || null)
@@ -56,7 +63,7 @@ const headline = computed(() => {
         <li v-for="source in sources" :key="source.id" class="limit__row">
           <span class="limit__meta">
             <span class="limit__name" :title="source.name">{{ source.name }}</span>
-            <span v-if="source.usedBy?.length" class="limit__used">Used by {{ source.usedBy.join(', ') }}</span>
+            <span v-if="source.usedBy.length" class="limit__used">Used by {{ source.usedBy.join(', ') }}</span>
           </span>
           <button
             type="button"
@@ -70,7 +77,7 @@ const headline = computed(() => {
       </ul>
     </template>
     <p v-else class="limit__sub">A crawl still in progress counts too. Wait for it to finish, or cancel it.</p>
-    <router-link class="limit__plans" to="/settings/subscription">See plans with more sources</router-link>
+    <router-link v-if="hasPlansPage" class="limit__plans" :to="{ name: PLANS_ROUTE }">See plans with more sources</router-link>
   </div>
 </template>
 
@@ -80,7 +87,7 @@ const headline = computed(() => {
   padding: 14px;
   border-radius: 11px;
   background: var(--warning-bg);
-  border: 1px solid color-mix(in srgb, var(--warning-color) 35%, transparent);
+  border: 1px solid var(--warning-border);
 }
 
 .limit__title {

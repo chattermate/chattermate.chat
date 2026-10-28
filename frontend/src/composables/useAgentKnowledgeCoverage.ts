@@ -40,7 +40,7 @@ export function useAgentKnowledgeCoverage(mode: ExplorerMode, organizationId: st
         orgAgents.value = (agents || []).map((a) => ({ id: a.id, name: a.display_name || a.name }))
       } else {
         const page = await knowledgeService.getKnowledgeByOrganization(organizationId, 1, 1)
-        orgSourceCount.value = page?.pagination?.total_count ?? page?.knowledge?.length ?? 0
+        orgSourceCount.value = page?.pagination?.total ?? page?.knowledge?.length ?? 0
       }
     } catch (err) {
       // Coverage hints are advisory: without them the explorer still works.

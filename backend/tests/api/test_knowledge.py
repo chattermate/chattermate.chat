@@ -27,6 +27,7 @@ from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from app.knowledge.login_wall import AUTH_URL_MESSAGE
 from app.models.agent import Agent, AgentType
+from app.models.organization import Organization
 from uuid import UUID, uuid4
 from app.api import knowledge as knowledge_router
 from app.core.auth import get_current_user, require_permissions
@@ -1271,7 +1272,6 @@ class TestSourcesGoToTheLoneAgent:
         assert self._queued_agent(db) == sales.id
 
     def test_another_orgs_agent_is_not_found(self, client, db, test_organization, test_agent):
-        from app.models.organization import Organization
         other = Organization(id=uuid4(), name="Other", domain="other-lone.example.com", timezone="UTC")
         db.add(other)
         db.commit()

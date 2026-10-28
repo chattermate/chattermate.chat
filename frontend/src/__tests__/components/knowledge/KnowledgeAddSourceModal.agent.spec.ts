@@ -18,6 +18,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import KnowledgeAddSourceModal from '../../../components/knowledge/KnowledgeAddSourceModal.vue'
 
+const routes = vi.hoisted(() => ({ hasPlans: true }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ hasRoute: (name: string) => name === 'subscription' && routes.hasPlans }) }))
+
 const SALES = { id: 'a-sales', name: 'Sales' }
 const SUPPORT = { id: 'a-support', name: 'Support' }
 const LIMIT = 'Cannot add URLs: Maximum number of knowledge sources (1) would be exceeded'
@@ -27,7 +30,7 @@ type Props = InstanceType<typeof KnowledgeAddSourceModal>['$props']
 const mountModal = async (props: Props = {}) => {
   const wrapper = mount(KnowledgeAddSourceModal, {
     props,
-    global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
+    global: { stubs: { RouterLink: { props: ['to'], template: '<a :data-route="to.name"><slot /></a>' } } },
   })
   await wrapper.find('#kb-add-url').setValue('https://reportagebeyondeg.com')
   return wrapper
@@ -89,7 +92,7 @@ describe('KnowledgeAddSourceModal: which agent answers from the source', () => {
 })
 
 describe('KnowledgeAddSourceModal: the plan’s source limit', () => {
-  const sources = [{ id: 413, name: 'https://reportage-alpha.vercel.app/en' }]
+  const sources = [{ id: 413, name: 'https://reportage-alpha.vercel.app/en', usedBy: [] as string[] }]
 
   it('is not shown until the limit refuses an add', async () => {
     const wrapper = await mountModal({ replaceable: sources })
@@ -100,7 +103,18 @@ describe('KnowledgeAddSourceModal: the plan’s source limit', () => {
     const wrapper = await mountModal({ limitMessage: LIMIT, replaceable: sources })
     expect(wrapper.find('.limit').text()).toContain('Your plan includes 1 knowledge source, and it’s in use.')
     expect(wrapper.find('.limit__name').text()).toBe('https://reportage-alpha.vercel.app/en')
-    expect(wrapper.find('.limit__plans').attributes('href')).toBe('/settings/subscription')
+    expect(wrapper.find('.limit__plans').attributes('data-route')).toBe('subscription')
+  })
+
+  it('without the plans page (community edition) it offers no plans link', async () => {
+    routes.hasPlans = false
+    try {
+      const wrapper = await mountModal({ limitMessage: LIMIT, replaceable: sources })
+      expect(wrapper.find('.limit__plans').exists()).toBe(false)
+      expect(wrapper.find('.limit__replace').exists()).toBe(true)
+    } finally {
+      routes.hasPlans = true
+    }
   })
 
   it('replace sends the old source and the new one, with the chosen agent', async () => {

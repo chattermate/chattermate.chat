@@ -11,7 +11,7 @@ const chat = vi.hoisted(() => ({
 vi.mock('@/services/knowledge', () => ({
   knowledgeService: {
     getAgentQueueItems: vi.fn().mockResolvedValue({ queue_items: [] }),
-    getKnowledgeByAgent: vi.fn().mockResolvedValue({ knowledge: [], pagination: { total_count: 1 } })
+    getKnowledgeByAgent: vi.fn().mockResolvedValue({ knowledge: [], pagination: { total: 1 } })
   }
 }))
 vi.mock('@/services/widget', () => ({ widgetService: { createAgentWidget: vi.fn() } }))

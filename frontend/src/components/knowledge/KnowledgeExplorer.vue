@@ -450,7 +450,7 @@ onUnmounted(() => {
 
 .banner--warn {
   background: var(--warning-bg);
-  border-color: color-mix(in srgb, var(--warning-color) 35%, transparent);
+  border-color: var(--warning-border);
   color: var(--text);
 }
 
