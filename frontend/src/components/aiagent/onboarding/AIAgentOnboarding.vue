@@ -206,6 +206,7 @@ const handleFinish = () => {
         :agent-id="agentId"
         :agent-name="agentName"
         :widget-id="widgetId"
+        :customization="createdAgent?.customization"
         @widget-created="handleWidgetCreated"
         @next="completeAndAdvance(2, 3)"
         @back="goTo(1)"

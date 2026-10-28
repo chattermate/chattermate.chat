@@ -15,19 +15,25 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
+import { orbSvgDataUri } from '@/utils/orb'
+import { resolveUploadUrl } from '@/config/api'
+import { themeCssVars } from '@/webclient/widget-theme'
+import '@/webclient/widget-surface.css'
 import { widgetService } from '@/services/widget'
 import { knowledgeService } from '@/services/knowledge'
 import { useOnboardingTestChat } from '@/composables/useOnboardingTestChat'
 import { newestPerSource } from '@/composables/useCrawlCheck'
 import type { QueueItem } from '@/types/knowledge'
+import type { AgentCustomization } from '@/types/agent'
 
 const props = defineProps<{
   agentId: string
   agentName: string
   widgetId: string | null
+  customization?: AgentCustomization | null
 }>()
 
 const emit = defineEmits<{
@@ -53,10 +59,49 @@ const STARTER_QUESTIONS = [
   'What can you help me with?',
   'How can I get in touch?',
 ]
+const DEFAULT_WELCOME = 'Hi! How can I help you today?'
+
+// Only these presets have rules of their own in the shared surface CSS
+const SURFACE_THEME_CLASS: Record<string, string> = {
+  GLASS: 'theme-glass',
+  TERMINAL: 'theme-terminal',
+}
 
 const input = ref('')
 const setupError = ref('')
 const scrollEl = ref<HTMLElement | null>(null)
+
+// The test chat wears the agent's widget theme (the same tokens and surface CSS
+// as the real widget), so it reads as the chat their visitors will get.
+const themeVars = computed(() =>
+  themeCssVars(props.customization?.chat_style, props.customization ?? undefined)
+)
+const themeClass = computed(() => SURFACE_THEME_CLASS[props.customization?.chat_style ?? ''] ?? '')
+
+const avatarUrl = computed(() =>
+  props.customization?.photo_url
+    ? resolveUploadUrl(props.customization.photo_url)
+    : orbSvgDataUri(props.agentName, props.customization?.customization_metadata?.orb_variant)
+)
+
+const welcome = computed(() => props.customization?.welcome_message?.trim() || DEFAULT_WELCOME)
+
+// Their own quick actions when they've set some, as the widget would show them
+const starters = computed(() => {
+  const own = (props.customization?.quick_actions ?? []).filter(a => a?.trim())
+  return own.length ? own : STARTER_QUESTIONS
+})
+
+const chatError = computed(() => setupError.value || connectionError.value || '')
+
+const showStarters = computed(() =>
+  !messages.value.length && !loading.value && !connecting.value && !chatError.value
+)
+
+const presence = computed(() => {
+  if (connecting.value) return 'Connecting to your agent…'
+  return chatError.value ? 'Offline' : 'Online · replies instantly'
+})
 
 // Knowledge ingestion runs in the background. While it's queued/processing the
 // agent can still answer general questions; we poll the queue and let the user
@@ -185,54 +230,77 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
       </span>
     </div>
 
-    <div class="test-chat">
-      <div v-if="connecting" class="chat-state">Connecting to your agent…</div>
-      <div v-else-if="setupError || connectionError" class="chat-state error">
-        {{ setupError || connectionError }}
-      </div>
+    <div class="test-window chat-container cm-surface" :class="themeClass" :style="themeVars">
+      <div class="chat-panel">
+        <div class="chat-header">
+          <img :src="avatarUrl" :alt="agentName" class="header-avatar" />
+          <div class="header-info">
+            <h3>{{ agentName }}</h3>
+            <span class="status">
+              <span class="status-indicator" :class="{ online: !connecting && !chatError }"></span>
+              <span class="status-text">{{ presence }}</span>
+            </span>
+          </div>
+        </div>
 
-      <div ref="scrollEl" class="chat-scroll">
-        <div
-          v-if="!messages.length && !loading && !connecting && !setupError && !connectionError"
-          class="starters"
-        >
-          <p class="starters-label">Try one of these</p>
+        <div ref="scrollEl" class="chat-messages">
+          <div v-if="!chatError" class="message agent-message">
+            <img :src="avatarUrl" alt="" class="cm-msg-avatar-img" />
+            <div class="message-bubble">{{ welcome }}</div>
+          </div>
+          <div
+            v-for="(msg, i) in messages"
+            :key="i"
+            class="message"
+            :class="msg.message_type === 'user' ? 'user-message' : 'agent-message'"
+          >
+            <img v-if="msg.message_type !== 'user'" :src="avatarUrl" alt="" class="cm-msg-avatar-img" />
+            <div class="message-bubble" v-html="formatMessage(msg.message || '')"></div>
+          </div>
+          <div v-if="loading" class="message agent-message">
+            <img :src="avatarUrl" alt="" class="cm-msg-avatar-img" />
+            <div class="message-bubble typing" aria-label="Typing">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            </div>
+          </div>
+          <p v-if="chatError" class="chat-error" role="alert">{{ chatError }}</p>
+        </div>
+
+        <div v-if="showStarters" class="cm-quick-actions-bar">
           <button
-            v-for="question in STARTER_QUESTIONS"
+            v-for="question in starters"
             :key="question"
             type="button"
-            class="starter"
+            class="cm-quick-action starter"
             @click="askStarter(question)"
           >
             {{ question }}
           </button>
         </div>
-        <div
-          v-for="(msg, i) in messages"
-          :key="i"
-          class="bubble-row"
-          :class="msg.message_type === 'user' ? 'from-user' : 'from-bot'"
-        >
-          <div class="bubble" v-html="formatMessage(msg.message || '')"></div>
-        </div>
-        <div v-if="loading" class="bubble-row from-bot">
-          <div class="bubble typing">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <div class="chat-compose">
-      <input
-        v-model="input"
-        class="text-input"
-        type="text"
-        placeholder="Ask your agent anything…"
-        :disabled="connecting || !!setupError"
-        @keydown.enter.prevent="handleSend"
-      />
-      <button type="button" class="send-btn" :disabled="connecting || loading || !!setupError" @click="handleSend" aria-label="Send">↑</button>
+        <form class="chat-input" @submit.prevent="handleSend">
+          <div class="message-input">
+            <input
+              v-model="input"
+              type="text"
+              placeholder="Type a message…"
+              aria-label="Message your agent"
+              :disabled="connecting || !!setupError"
+            />
+            <button
+              type="submit"
+              class="send-button"
+              :disabled="connecting || loading || !!setupError"
+              aria-label="Send"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <div class="step-actions">
@@ -334,111 +402,90 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
   to { transform: rotate(360deg); }
 }
 
-.test-chat {
-  background: var(--bg);
-  border: 1px solid var(--o10);
-  border-radius: var(--radius-input);
+/* Structure only: colours, radii and fonts come from the shared widget surface
+   (widget-surface.css + the --cm-* vars), exactly as on the real widget. */
+.test-window {
+  border: 1px solid var(--cm-border);
+  border-radius: var(--cm-radius);
+  box-shadow: 0 24px 60px -30px var(--cm-glow);
   overflow: hidden;
 }
 
-.chat-state {
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--o08);
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 440px;
 }
 
-.chat-state.error {
-  color: var(--error-color);
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
 }
 
-.chat-scroll {
-  height: 300px;
+.header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.header-info h3 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cm-muted);
+}
+
+.chat-messages {
+  flex: 1;
   overflow-y: auto;
-  padding: 18px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.starters {
+.message {
+  display: flex;
+}
+
+.user-message {
+  justify-content: flex-end;
+}
+
+.chat-error {
   margin: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.starters-label {
-  margin: 0 0 2px;
+  max-width: 320px;
+  text-align: center;
   font-size: 13px;
-  color: var(--muted);
-}
-
-.starter {
-  padding: 9px 16px;
-  background: var(--surface);
-  border: 1px solid var(--o12);
-  border-radius: 999px;
-  color: var(--text);
-  font-size: 13.5px;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.starter:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
-}
-
-.starter:focus-visible {
-  outline: none;
-  box-shadow: var(--ring-focus);
-}
-
-.bubble-row {
-  display: flex;
-  max-width: 85%;
-}
-
-.from-user {
-  align-self: flex-end;
-}
-
-.from-bot {
-  align-self: flex-start;
-}
-
-.bubble {
-  padding: 10px 14px;
-  font-size: 13.5px;
-  line-height: 1.5;
-  border-radius: 14px 14px 14px 4px;
-}
-
-.from-bot .bubble {
-  background: var(--surface);
-  border: 1px solid var(--o08);
-  color: var(--text);
-}
-
-.from-user .bubble {
-  background: var(--accent-solid);
-  color: var(--on-accent-solid);
-  border-radius: 14px 14px 4px 14px;
+  color: var(--cm-muted);
 }
 
 .typing {
   display: flex;
   gap: 4px;
+  padding: 14px;
 }
 
 .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--muted2);
+  background: var(--cm-muted);
   animation: bounce 1.4s infinite ease-in-out;
 }
 
@@ -450,44 +497,54 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
   40% { transform: scale(1); }
 }
 
-.chat-compose {
+.cm-quick-actions-bar {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 12px;
 }
 
-.text-input {
+.cm-quick-action:focus-visible {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: 2px;
+}
+
+.chat-input {
+  padding: 12px 16px 14px;
+}
+
+.message-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.message-input input {
   flex: 1;
   min-width: 0;
-  padding: 14px 16px;
-  background: var(--bg);
-  border: 1px solid var(--o12);
-  border-radius: var(--radius-input);
-  color: var(--text);
-  font-size: 15px;
-  font-family: var(--font-sans);
+  height: 42px;
+  padding: 0 14px;
   outline: none;
+}
+
+.message-input input:disabled {
+  opacity: 0.6;
+}
+
+.send-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: var(--transition-fast);
 }
 
-.text-input:focus {
-  border-color: var(--accent-ink);
-  box-shadow: var(--ring-focus);
-}
-
-.send-btn {
-  flex-shrink: 0;
-  width: 50px;
-  background: var(--accent-solid);
-  color: var(--on-accent-solid);
-  border: none;
-  border-radius: var(--radius-input);
-  font-size: 18px;
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.send-btn:hover:not(:disabled) {
+.send-button:hover:not(:disabled) {
   filter: brightness(1.05);
+}
+
+.send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .step-actions {
@@ -532,11 +589,6 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
 
 .btn-accent:hover {
   filter: brightness(1.05);
-}
-
-.send-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .arrow {
