@@ -16,7 +16,7 @@ limitations under the License.
 
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import { showPlanLimitError } from '@/utils/planLimitToast'
+import { isKnowledgeSourceLimit, showPlanLimitError } from '@/utils/planLimitToast'
 import type {
   KnowledgeItem,
   KnowledgeLinkedAgent,
@@ -34,12 +34,14 @@ export type SourceStatus = 'queued' | 'crawling' | 'synced' | 'error'
 // 'page' indexes only that URL; the rest map to the backend's crawl scopes.
 export type CrawlScope = 'page' | 'path' | 'host' | 'domain'
 
-// What the add-source modal submits; discriminated by `type`.
-export type AddSourcePayload =
+// What the add-source modal submits; discriminated by `type`. `agentId` is the
+// agent picked on the org page; the agent tab always adds to its own agent.
+export type AddSourcePayload = (
   | { type: 'website'; url: string; scope: CrawlScope }
   | { type: 'sitemap'; url: string }
   | { type: 'pdf'; files: File[] }
   | { type: 'text'; title: string; content: string }
+) & { agentId?: string }
 
 /** A knowledge source enriched with lazily-loaded, grouped sub-page content. */
 export interface ExplorerSource {
@@ -521,7 +523,11 @@ export function useKnowledgeExplorer(
       },
     })
 
-  const linkedAgentId = mode === 'agent' ? agentId : undefined
+  const agentLink = mode === 'agent' ? agentId : undefined
+
+  // The plan's source cap refused the last add: the modal offers to replace an
+  // existing source instead of a dead end. Holds the server's message.
+  const sourceLimit = ref<string | null>(null)
 
   // Handle add/urls responses that report duplicates instead of throwing.
   const throwIfError = (res: { error?: string } | undefined) => {
@@ -533,6 +539,8 @@ export function useKnowledgeExplorer(
   // background; text is indexed immediately. Toasts announce the outcome.
   const submitSource = async (payload: AddSourcePayload): Promise<boolean> => {
     error.value = null
+    sourceLimit.value = null
+    const linkedAgentId = payload.agentId ?? agentLink
     try {
       if (payload.type === 'website') {
         throwIfError(
@@ -572,10 +580,37 @@ export function useKnowledgeExplorer(
       // reserved for the read/edit pane), so the user doesn't see it twice.
       const msg = err instanceof Error ? err.message : 'Failed to add source'
       console.error('Failed to add source:', err)
+      if (isKnowledgeSourceLimit(msg)) {
+        // The org's sources are the ones that count, whichever mode this is
+        sourceLimit.value = msg
+        await loadOrgSources()
+        return false
+      }
       // Plan caps get the offer toast when one applies; other failures the plain one
       void showPlanLimitError('Could not add source', msg)
       return false
     }
+  }
+
+  // Make room under the source cap: delete `replacedId` (and its pages), then add.
+  const replaceSource = async (replacedId: number, payload: AddSourcePayload): Promise<boolean> => {
+    try {
+      await knowledgeService.deleteKnowledge(replacedId)
+    } catch (err: unknown) {
+      console.error('Failed to replace source:', err)
+      toast.error('Could not replace source', {
+        description: err instanceof Error ? err.message : undefined,
+      })
+      return false
+    }
+    if (selectedSourceId.value === replacedId) {
+      selectedSourceId.value = null
+      selectedPageId.value = null
+    }
+    const added = await submitSource(payload)
+    // The old source is gone either way; a failed add must not leave it listed
+    if (!added) await Promise.all([fetchSources(), fetchQueue()])
+    return added
   }
 
   const refresh = async () => {
@@ -639,6 +674,7 @@ export function useKnowledgeExplorer(
     isLoadingOrgSources,
     orgSourcesError,
     linkingIds,
+    sourceLimit,
     // computed
     selectedSource,
     selectedPage,
@@ -660,6 +696,7 @@ export function useKnowledgeExplorer(
     deletePage,
     deleteSource,
     submitSource,
+    replaceSource,
     openLinkPicker,
     linkSource,
     unlinkSource,

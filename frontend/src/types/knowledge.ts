@@ -37,6 +37,14 @@ export interface KnowledgeLinkedAgent {
   name: string
 }
 
+// A source the add dialog can replace when the plan's source cap is reached,
+// with the agents that would lose it.
+export interface ReplaceableSource {
+  id: number
+  name: string
+  usedBy: string[]
+}
+
 export interface KnowledgeItem {
   id: number
   name: string
@@ -51,7 +59,8 @@ export interface PaginatedKnowledgeResponse {
   pagination: {
     page: number
     page_size: number
-    total_count: number
+    // Sources in the whole list, not just this page (backend: "total")
+    total: number
     total_pages: number
   }
 }

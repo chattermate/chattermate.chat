@@ -135,7 +135,7 @@ describe('StepTeach - plan source cap', () => {
     planLimits.mockReturnValue({ maxKnowledgeSources: 1 })
     getKnowledgeByOrganization.mockResolvedValue({
       knowledge: [{ id: 1, name: 'https://elsewhere.com' }],
-      pagination: { total_pages: 1, total_count: 1 }
+      pagination: { total_pages: 1, total: 1 }
     })
     const wrapper = await mountStep()
 

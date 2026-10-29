@@ -20,6 +20,7 @@ import {
   type ExplorerSource,
   type AddSourcePayload,
 } from '@/composables/useKnowledgeExplorer'
+import { useAgentKnowledgeCoverage } from '@/composables/useAgentKnowledgeCoverage'
 import KnowledgeSourceTree from './KnowledgeSourceTree.vue'
 import KnowledgePageDetail from './KnowledgePageDetail.vue'
 import KnowledgePageEditor from './KnowledgePageEditor.vue'
@@ -47,6 +48,27 @@ const props = withDefaults(
 )
 
 const ex = useKnowledgeExplorer(props.mode, props.agentId, props.organizationId)
+const coverage = useAgentKnowledgeCoverage(props.mode, props.organizationId)
+
+// Agents answer only from linked sources: say so when this one has none and
+// none is on its way (a failed crawl doesn't count)
+const crawlInFlight = computed(() =>
+  ex.queueItems.value.some((q) => q.status === 'pending' || q.status === 'processing'),
+)
+const agentHasNoKnowledge = computed(
+  () =>
+    props.mode === 'agent' &&
+    coverage.loaded.value &&
+    !ex.isLoading.value &&
+    !ex.error.value &&
+    ex.sources.value.length === 0 &&
+    !crawlInFlight.value,
+)
+// On the org page, a source no agent uses is easy to miss
+const flagUnlinked = computed(() => props.mode === 'org' && coverage.orgAgents.value.length > 0)
+const replaceable = computed(() =>
+  ex.orgSources.value.map((s) => ({ id: s.id, name: s.name, usedBy: (s.agents || []).map((a) => a.name) })),
+)
 
 // Add-source modal state.
 const addOpen = ref(false)
@@ -74,7 +96,13 @@ const largestSubpageCount = computed(() => {
 })
 
 function openAdd() {
+  ex.sourceLimit.value = null
   addOpen.value = true
+}
+
+function closeAdd() {
+  addOpen.value = false
+  ex.sourceLimit.value = null
 }
 
 async function onSubmitSource(payload: AddSourcePayload) {
@@ -83,6 +111,16 @@ async function onSubmitSource(payload: AddSourcePayload) {
   try {
     const ok = await ex.submitSource(payload)
     if (ok) addOpen.value = false
+  } finally {
+    isSubmittingSource.value = false
+  }
+}
+
+async function onReplaceSource(replacedId: number, payload: AddSourcePayload) {
+  if (isSubmittingSource.value) return
+  isSubmittingSource.value = true
+  try {
+    if (await ex.replaceSource(replacedId, payload)) addOpen.value = false
   } finally {
     isSubmittingSource.value = false
   }
@@ -148,6 +186,7 @@ async function runConfirm() {
 
 onMounted(() => {
   ex.refresh()
+  coverage.load()
   ex.startPolling()
 })
 
@@ -188,6 +227,20 @@ onUnmounted(() => {
       :largest-subpage-count="largestSubpageCount"
     />
 
+    <div v-if="agentHasNoKnowledge" class="banner banner--warn" role="status">
+      <span>
+        This agent isn’t using any knowledge, so it can only give general answers.
+        <template v-if="coverage.orgSourceCount.value">
+          Your organization has {{ coverage.orgSourceCount.value }}
+          {{ coverage.orgSourceCount.value === 1 ? 'source' : 'sources' }} it could use.
+        </template>
+      </span>
+      <button v-if="coverage.orgSourceCount.value" class="banner__action" type="button" @click="ex.openLinkPicker">
+        Link knowledge
+      </button>
+      <button v-else class="banner__action" type="button" @click="openAdd">Add a source</button>
+    </div>
+
     <div v-if="ex.error.value" class="banner" role="alert">
       {{ ex.error.value }}
       <button class="banner__close" type="button" aria-label="Dismiss" @click="ex.error.value = null">×</button>
@@ -202,6 +255,7 @@ onUnmounted(() => {
         :query="ex.query.value"
         :status-of="ex.sourceStatus"
         :page-rows-of="ex.pageRows"
+        :flag-unlinked="flagUnlinked"
         @update:query="ex.query.value = $event"
         @toggle="ex.toggleSource"
         @select="(source, pageId) => ex.selectPage(source, pageId)"
@@ -261,8 +315,12 @@ onUnmounted(() => {
     <KnowledgeAddSourceModal
       v-if="addOpen"
       :submitting="isSubmittingSource"
-      @close="addOpen = false"
+      :agents="mode === 'org' ? coverage.orgAgents.value : []"
+      :limit-message="ex.sourceLimit.value"
+      :replaceable="replaceable"
+      @close="closeAdd"
       @submit="onSubmitSource"
+      @replace="onReplaceSource"
     />
 
     <KnowledgeLinkModal
@@ -388,6 +446,29 @@ onUnmounted(() => {
   border-radius: 11px;
   color: var(--c-coral);
   font-size: 13.5px;
+}
+
+.banner--warn {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--text);
+}
+
+.banner__action {
+  flex-shrink: 0;
+  padding: 7px 13px;
+  border-radius: 9px;
+  border: 1px solid var(--o14);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.banner__action:hover {
+  border-color: var(--accent-ink);
 }
 
 .banner__close {

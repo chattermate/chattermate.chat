@@ -143,7 +143,7 @@ const checkHasKnowledge = async () => {
   if (knowledgeProcessing.value) return
   try {
     const page = await knowledgeService.getKnowledgeByAgent(props.agentId, 1, 1)
-    noKnowledge.value = !(page?.pagination?.total_count || page?.knowledge?.length)
+    noKnowledge.value = !(page?.pagination?.total || page?.knowledge?.length)
   } catch (err) {
     console.error('Failed to check agent knowledge:', err)
   }

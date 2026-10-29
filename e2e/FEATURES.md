@@ -34,6 +34,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Knowledge | Add text → answer is grounded in it (real search) | `specs/knowledge/knowledge-answer.spec.ts` | P1 | ✅ |
 | Knowledge | Deleted knowledge stops reaching the model; one agent's never reaches another's | `specs/knowledge/knowledge-lifecycle.spec.ts` | P1 | ✅ |
 | Knowledge | An uploaded PDF is indexed by the knowledge worker and answered from | `specs/knowledge/knowledge-pdf.spec.ts` | P2 | ✅ |
+| Knowledge | An agent with no knowledge warns and links an org source from the warning; the Knowledge page asks which agent a source is for, and tags one added for none | `specs/knowledge/knowledge-agent-linking.spec.ts` | P1 | ✅ |
 | AI config | Rejected key is reported (exact message) and agents keep working; the saved key is the one used | `specs/settings/ai-config.org.spec.ts` | P1 | ✅ |
 | Tickets | AI opens a ticket → listed → agent changes status | `specs/tickets/ai-ticket.spec.ts` | P1 | ✅ |
 | Tickets | Resolving tells the customer in their chat | `specs/tickets/ai-ticket.spec.ts` | P1 | ✅ |

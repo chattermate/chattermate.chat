@@ -43,6 +43,7 @@ from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from app.core.config import settings
 from app.utils.domain_check import bare_host, domain_resolves
 from app.services import knowledge_vector_links
+from app.services.knowledge_source_agent import resolve_source_agent
 from sqlalchemy.orm import Session
 from app.core.s3 import upload_file_to_s3, get_s3_signed_url
 from app.core.file_validation import read_validated, safe_filename, PDF_MAGIC
@@ -218,17 +219,8 @@ async def upload_pdf_files(
                 detail=f"Too many files: at most {MAX_PDF_FILES} per request",
             )
 
-        # Validate the agent (format + ownership) once, up front.
-        agent_uuid = None
-        if agent_id:
-            try:
-                agent_uuid = UUID(agent_id)
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid agent_id")
-            agent = AgentRepository(db).get_agent(agent_uuid)
-            if not agent or agent.organization_id != org_uuid:
-                # 404 (not 403) so we don't reveal another org's agent existence.
-                raise HTTPException(status_code=404, detail="Agent not found")
+        # Validated up front; a lone agent gets sources added without one.
+        agent_uuid = resolve_source_agent(db, org_uuid, agent_id)
 
         # Bound for the non-enterprise path (resolve_plan_max_links below).
         subscription = None
@@ -461,17 +453,8 @@ async def add_urls(
         if current_user.organization_id != request.org_id:
             raise HTTPException(status_code=403, detail="Unauthorized access to organization")
 
-        # Validate the agent (format + ownership) once, up front.
-        agent_uuid = None
-        if request.agent_id:
-            try:
-                agent_uuid = UUID(request.agent_id)
-            except (ValueError, TypeError):
-                raise HTTPException(status_code=400, detail="Invalid agent_id")
-            agent = AgentRepository(db).get_agent(agent_uuid)
-            if not agent or agent.organization_id != request.org_id:
-                # 404 (not 403) so we don't reveal another org's agent existence.
-                raise HTTPException(status_code=404, detail="Agent not found")
+        # Validated up front; a lone agent gets sources added without one.
+        agent_uuid = resolve_source_agent(db, request.org_id, request.agent_id)
 
         # Bound for the non-enterprise path (resolve_plan_max_links below).
         subscription = None
@@ -594,16 +577,8 @@ async def add_text_source(
         if current_user.organization_id != request.org_id:
             raise HTTPException(status_code=403, detail="Unauthorized access to organization")
 
-        # Validate the agent (format + ownership) up front.
-        agent_uuid = None
-        if request.agent_id:
-            try:
-                agent_uuid = UUID(request.agent_id)
-            except (ValueError, TypeError):
-                raise HTTPException(status_code=400, detail="Invalid agent_id")
-            agent = AgentRepository(db).get_agent(agent_uuid)
-            if not agent or agent.organization_id != request.org_id:
-                raise HTTPException(status_code=404, detail="Agent not found")
+        # Validated up front; a lone agent gets sources added without one.
+        agent_uuid = resolve_source_agent(db, request.org_id, request.agent_id)
 
         knowledge_repo = KnowledgeRepository(db)
 

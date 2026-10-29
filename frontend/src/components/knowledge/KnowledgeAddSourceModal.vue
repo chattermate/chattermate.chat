@@ -16,20 +16,34 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AddSourcePayload, CrawlScope } from '@/composables/useKnowledgeExplorer'
+import type { KnowledgeLinkedAgent, ReplaceableSource } from '@/types/knowledge'
+import KnowledgeSourceLimitPanel from './KnowledgeSourceLimitPanel.vue'
 
 type SourceKind = 'website' | 'sitemap' | 'pdf' | 'text'
 
 const props = withDefaults(
   defineProps<{
     submitting?: boolean
+    // The org page passes the organization's agents: with several, the new
+    // source must name the one that answers from it.
+    agents?: KnowledgeLinkedAgent[]
+    // Set when the plan's source cap refused this add: offer a replacement.
+    limitMessage?: string | null
+    replaceable?: ReplaceableSource[]
   }>(),
-  { submitting: false },
+  { submitting: false, agents: () => [], limitMessage: null, replaceable: () => [] },
 )
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'submit', payload: AddSourcePayload): void
+  (e: 'replace', replacedId: number, payload: AddSourcePayload): void
 }>()
+
+// Value of the "None for now" choice; agent ids are UUIDs, so it cannot clash.
+const NO_AGENT = 'none'
+const agentChoice = ref('')
+const mustPickAgent = computed(() => props.agents.length > 1)
 
 const kind = ref<SourceKind>('website')
 const url = ref('')
@@ -52,6 +66,7 @@ const submitLabel = computed(() => (kind.value === 'text' ? 'Add page' : 'Add to
 
 const canSubmit = computed(() => {
   if (props.submitting) return false
+  if (mustPickAgent.value && !agentChoice.value) return false
   if (kind.value === 'website' || kind.value === 'sitemap') return url.value.trim().length > 0
   if (kind.value === 'pdf') return files.value.length > 0
   return title.value.trim().length > 0 && content.value.trim().length > 0
@@ -135,17 +150,23 @@ function onDrop(event: DragEvent) {
   if (pdfs.length) files.value = pdfs
 }
 
+function buildPayload(): AddSourcePayload {
+  const agentId = mustPickAgent.value && agentChoice.value !== NO_AGENT ? agentChoice.value : undefined
+  const target = agentId ? { agentId } : {}
+  if (kind.value === 'website') return { type: 'website', url: normalizeUrl(url.value), scope: scope.value, ...target }
+  if (kind.value === 'sitemap') return { type: 'sitemap', url: normalizeUrl(url.value), ...target }
+  if (kind.value === 'pdf') return { type: 'pdf', files: files.value, ...target }
+  return { type: 'text', title: title.value.trim(), content: content.value, ...target }
+}
+
 function submit() {
   if (!canSubmit.value) return
-  if (kind.value === 'website') {
-    emit('submit', { type: 'website', url: normalizeUrl(url.value), scope: scope.value })
-  } else if (kind.value === 'sitemap') {
-    emit('submit', { type: 'sitemap', url: normalizeUrl(url.value) })
-  } else if (kind.value === 'pdf') {
-    emit('submit', { type: 'pdf', files: files.value })
-  } else {
-    emit('submit', { type: 'text', title: title.value.trim(), content: content.value })
-  }
+  emit('submit', buildPayload())
+}
+
+function replace(replacedId: number) {
+  if (!canSubmit.value) return
+  emit('replace', replacedId, buildPayload())
 }
 </script>
 
@@ -238,6 +259,31 @@ function submit() {
           <textarea id="kb-add-content" v-model="content" class="textarea"
             placeholder="Paste or type the content your agents should learn…"></textarea>
         </template>
+
+        <!-- Agents answer only from sources linked to them -->
+        <template v-if="mustPickAgent">
+          <label class="field-label" for="kb-add-agent">WHICH AGENT ANSWERS FROM IT</label>
+          <select id="kb-add-agent" v-model="agentChoice" class="text-input">
+            <option value="" disabled>Choose an agent</option>
+            <option v-for="agent in agents" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
+            <option :value="NO_AGENT">None for now</option>
+          </select>
+          <p v-if="agentChoice === NO_AGENT" class="scope__hint">
+            No agent will use it until you link it from an agent’s Knowledge tab.
+          </p>
+        </template>
+        <p v-else-if="agents.length === 1" class="scope__hint agent-note">
+          {{ agents[0].name }} will answer from this source.
+        </p>
+
+        <KnowledgeSourceLimitPanel
+          v-if="limitMessage"
+          :message="limitMessage"
+          :sources="replaceable"
+          :busy="submitting"
+          :can-replace="canSubmit"
+          @replace="replace"
+        />
       </div>
 
       <div class="foot">
@@ -593,5 +639,9 @@ function submit() {
 
 .btn--primary:hover:not(:disabled) {
   filter: brightness(1.05);
+}
+
+.agent-note {
+  margin-top: 14px;
 }
 </style>

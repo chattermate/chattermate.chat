@@ -27,6 +27,7 @@ from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from app.knowledge.login_wall import AUTH_URL_MESSAGE
 from app.models.agent import Agent, AgentType
+from app.models.organization import Organization
 from uuid import UUID, uuid4
 from app.api import knowledge as knowledge_router
 from app.core.auth import get_current_user, require_permissions
@@ -1225,3 +1226,80 @@ class TestKnowledgeLinkAgentIsOrgScoped:
 
         assert response.status_code == 404
         assert response.json()["detail"] == "Agent not found"
+
+
+class TestSourcesGoToTheLoneAgent:
+    """Agents answer only from linked sources, so a source added without an agent
+    in a one-agent organization is linked to that agent instead of sitting unused."""
+
+    def _agent(self, db, org, name):
+        agent = Agent(id=uuid4(), name=name, agent_type=AgentType.CUSTOMER_SUPPORT,
+                      instructions=["x"], organization_id=org.id, is_active=True)
+        db.add(agent)
+        db.commit()
+        return agent
+
+    def _add_site(self, client, org, **extra):
+        return client.post("/api/v1/knowledge/add/urls", json={
+            "org_id": str(org.id), "websites": ["https://example.com"], **extra})
+
+    def _queued_agent(self, db):
+        return db.query(KnowledgeQueue).one().agent_id
+
+    def test_a_site_added_without_an_agent_goes_to_the_only_agent(self, client, db, test_organization, test_agent):
+        assert self._add_site(client, test_organization).status_code == 200
+        assert self._queued_agent(db) == test_agent.id
+
+    def test_an_inactive_only_agent_still_gets_it(self, client, db, test_organization):
+        agent = self._agent(db, test_organization, "Paused")
+        agent.is_active = False
+        db.commit()
+        self._add_site(client, test_organization)
+        assert self._queued_agent(db) == agent.id
+
+    def test_with_several_agents_it_stays_unlinked(self, client, db, test_organization, test_agent):
+        self._agent(db, test_organization, "Sales")
+        self._add_site(client, test_organization)
+        assert self._queued_agent(db) is None
+
+    def test_with_no_agents_it_stays_unlinked(self, client, db, test_organization):
+        self._add_site(client, test_organization)
+        assert self._queued_agent(db) is None
+
+    def test_an_explicit_agent_wins_over_the_guess(self, client, db, test_organization, test_agent):
+        sales = self._agent(db, test_organization, "Sales")
+        self._add_site(client, test_organization, agent_id=str(sales.id))
+        assert self._queued_agent(db) == sales.id
+
+    def test_another_orgs_agent_is_not_found(self, client, db, test_organization, test_agent):
+        other = Organization(id=uuid4(), name="Other", domain="other-lone.example.com", timezone="UTC")
+        db.add(other)
+        db.commit()
+        foreign = self._agent(db, other, "Foreign")
+        response = self._add_site(client, test_organization, agent_id=str(foreign.id))
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Agent not found"
+        assert db.query(KnowledgeQueue).count() == 0
+
+    def test_a_malformed_agent_id_is_refused(self, client, db, test_organization, test_agent):
+        response = self._add_site(client, test_organization, agent_id="not-a-uuid")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid agent_id"
+
+    def test_pasted_text_goes_to_the_only_agent(self, client, db, test_organization, test_agent):
+        created = MagicMock(id=7, source="Refunds", source_type=SourceType.CUSTOM)
+        with patch.object(knowledge_router.page_editor, "create_text_source", return_value=created) as create:
+            response = client.post("/api/v1/knowledge/add/text", json={
+                "org_id": str(test_organization.id), "title": "Refunds", "content": "14 days."})
+        assert response.status_code == 200
+        assert create.call_args.args[-1] == test_agent.id
+
+    def test_an_uploaded_pdf_goes_to_the_only_agent(self, client, db, test_organization, test_agent):
+        with patch('app.core.config.settings.S3_FILE_STORAGE', False):
+            response = client.post(
+                "/api/v1/knowledge/upload/pdf",
+                files=[("files", ("menu.pdf", io.BytesIO(b"%PDF-1.4 x"), "application/pdf"))],
+                data={"org_id": str(test_organization.id)},
+            )
+        assert response.status_code == 200
+        assert self._queued_agent(db) == test_agent.id
