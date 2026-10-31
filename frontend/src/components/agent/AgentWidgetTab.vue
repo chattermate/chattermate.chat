@@ -18,7 +18,9 @@ limitations under the License.
 import { computed, toRef } from 'vue'
 import { toast } from 'vue-sonner'
 import type { Agent } from '@/types/agent'
-import { buildWidgetCsp, buildWidgetEmbed, widgetFrameSources } from '@/utils/widgetEmbed'
+import { AI_BUILDERS, buildAiInstallPrompt, buildWidgetCsp, buildWidgetEmbed, widgetFrameSources } from '@/utils/widgetEmbed'
+import AiInstallPromptButton from '@/components/agent/AiInstallPromptButton.vue'
+import AiInstallPromptPreview from '@/components/agent/AiInstallPromptPreview.vue'
 import { useWidgetFrameHost } from '@/composables/useWidgetFrameHost'
 import WidgetAllowedDomains from './WidgetAllowedDomains.vue'
 
@@ -56,6 +58,11 @@ const requiresTokenAuth = computed(() => {
 // The exact snippet the Copy button produces (see buildWidgetEmbed) — rendered
 // in the preview so what you see always matches what you copy.
 const embedCode = computed(() => buildWidgetEmbed(props.widget?.id ?? '', requiresTokenAuth.value))
+// For an AI website builder to add it. Offered with the plain snippet only: a
+// token-auth install needs backend work no site builder can do from a prompt.
+const aiInstallPrompt = computed(() =>
+  props.widget?.id && !requiresTokenAuth.value ? buildAiInstallPrompt(embedCode.value) : '',
+)
 
 // For sites that set a Content-Security-Policy: these give the chat its own frame
 const { frameHost, loaded: frameHostLoaded } = useWidgetFrameHost(toRef(() => props.widget?.id))
@@ -254,6 +261,11 @@ const { data } = await response.json();
                 </svg>
               </button>
             </div>
+            <div class="ai-install">
+              <AiInstallPromptButton :prompt="aiInstallPrompt" size="compact" />
+              <span class="ai-hint">For {{ AI_BUILDERS }}.</span>
+            </div>
+            <AiInstallPromptPreview :prompt="aiInstallPrompt" class="ai-preview" />
             <div class="info-box">
               <div class="info-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -697,5 +709,22 @@ const { data } = await response.json();
   .iframe-preview {
     height: 350px;
   }
+}
+
+.ai-install {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ai-hint {
+  font-size: 12.5px;
+  color: var(--muted2);
+}
+
+.ai-preview {
+  margin-top: 12px;
 }
 </style> 

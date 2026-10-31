@@ -108,6 +108,8 @@ const moduleImports = {
   // server-side step the wizard resumes at (nothing / null in open source)
   setupProgressBar: '/src/modules/enterprise/components/setup/SetupProgressBar.vue',
   widgetInstallStatus: '/src/modules/enterprise/components/setup/WidgetInstallStatus.vue',
+  // "Set this up from your AI coding tool" on the wizard's Create step (nothing in open source)
+  aiToolSetupNudge: '/src/modules/enterprise/components/setup/AiToolSetupNudge.vue',
   setupService: '/src/modules/enterprise/utils/setupService.ts',
 }
 

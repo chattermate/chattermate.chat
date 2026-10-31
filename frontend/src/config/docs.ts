@@ -17,3 +17,4 @@ limitations under the License.
 // Public product docs. One place, so a docs move is a one-line change.
 export const DOCS_URL = 'https://docs.chattermate.chat'
 export const WIDGET_INSTALL_GUIDE_URL = `${DOCS_URL}/features/widget`
+export const CLI_DOCS_URL = `${DOCS_URL}/features/cli`

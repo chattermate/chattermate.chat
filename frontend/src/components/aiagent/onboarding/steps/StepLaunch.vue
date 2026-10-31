@@ -15,11 +15,13 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
-import { toast } from 'vue-sonner'
-import { buildWidgetEmbed } from '@/utils/widgetEmbed'
+import { computed } from 'vue'
+import { AI_BUILDERS, buildAiInstallPrompt, buildWidgetEmbed } from '@/utils/widgetEmbed'
 import { WIDGET_INSTALL_GUIDE_URL } from '@/config/docs'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useCopyFeedback } from '@/composables/useCopyFeedback'
+import AiInstallPromptButton from '@/components/agent/AiInstallPromptButton.vue'
+import AiInstallPromptPreview from '@/components/agent/AiInstallPromptPreview.vue'
 
 const props = defineProps<{
   widgetId: string | null
@@ -34,6 +36,7 @@ const emit = defineEmits<{
 const widgetSnippet = computed(() =>
   props.widgetId ? buildWidgetEmbed(props.widgetId, false) : '',
 )
+const aiInstallPrompt = computed(() => buildAiInstallPrompt(widgetSnippet.value))
 
 // Where the widget is live, or blocked (enterprise module; nothing in open source)
 const { enterpriseComponent, moduleImports } = useEnterpriseFeatures()
@@ -57,29 +60,15 @@ const developerMailto = computed(() => {
 })
 
 // The button itself says it worked, for a moment; a failure gets a toast.
-const COPIED_FOR_MS = 2000
-const copied = ref(false)
-let copiedTimer: ReturnType<typeof setTimeout> | undefined
-onBeforeUnmount(() => clearTimeout(copiedTimer))
-
-const copySnippet = async () => {
-  try {
-    await navigator.clipboard.writeText(widgetSnippet.value)
-    copied.value = true
-    clearTimeout(copiedTimer)
-    copiedTimer = setTimeout(() => (copied.value = false), COPIED_FOR_MS)
-  } catch (err) {
-    console.error('Failed to copy:', err)
-    toast.error('Failed to copy to clipboard')
-  }
-}
+const { copied, copy } = useCopyFeedback()
+const copySnippet = () => copy(widgetSnippet.value)
 </script>
 
 <template>
   <div class="step">
     <header class="step-head">
       <h2 class="step-title">Go live</h2>
-      <p class="step-sub">Embed this snippet on your site to start chatting with visitors.</p>
+      <p class="step-sub">Paste this snippet on your site, or have your AI website builder add it for you.</p>
     </header>
 
     <div class="snippet">
@@ -90,18 +79,24 @@ const copySnippet = async () => {
       </button>
     </div>
 
-    <div class="snippet-actions">
-      <a v-if="developerMailto" class="action-btn" :href="developerMailto">
-        <font-awesome-icon icon="fa-regular fa-envelope" aria-hidden="true" />
-        Email it to my developer
-      </a>
-      <a class="action-btn" :href="WIDGET_INSTALL_GUIDE_URL" target="_blank" rel="noopener">
-        <font-awesome-icon icon="fa-solid fa-book-open" aria-hidden="true" />
-        Install guide
-        <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" class="external" aria-hidden="true" />
-        <span class="sr-only">(opens in a new tab)</span>
-      </a>
+    <div class="snippet-help">
+      <div class="snippet-actions">
+        <AiInstallPromptButton :prompt="aiInstallPrompt" />
+        <a v-if="developerMailto" class="action-btn" :href="developerMailto">
+          <font-awesome-icon icon="fa-regular fa-envelope" aria-hidden="true" />
+          Email it to my developer
+        </a>
+        <a class="action-btn" :href="WIDGET_INSTALL_GUIDE_URL" target="_blank" rel="noopener">
+          <font-awesome-icon icon="fa-solid fa-book-open" aria-hidden="true" />
+          Install guide
+          <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" class="external" aria-hidden="true" />
+          <span class="sr-only">(opens in a new tab)</span>
+        </a>
+      </div>
+      <p class="ai-hint">Works with {{ AI_BUILDERS }}.</p>
     </div>
+
+    <AiInstallPromptPreview :prompt="aiInstallPrompt" />
 
     <WidgetInstallStatus :widget-id="widgetId" />
 
@@ -192,6 +187,18 @@ const copySnippet = async () => {
 .copy-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.snippet-help {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted2);
 }
 
 .snippet-actions {
