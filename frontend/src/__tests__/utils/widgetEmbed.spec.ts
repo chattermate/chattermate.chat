@@ -16,7 +16,8 @@ limitations under the License.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { buildWidgetCsp, buildWidgetEmbed, widgetFrameSources } from '@/utils/widgetEmbed'
+import { buildAiInstallPrompt, buildWidgetCsp, buildWidgetEmbed, widgetFrameSources } from '@/utils/widgetEmbed'
+import { WIDGET_INSTALL_GUIDE_URL } from '@/config/docs'
 // The snippet's exact text, pinned so other code that builds it can match it.
 import golden from '../fixtures/widget-snippet.txt?raw'
 
@@ -98,5 +99,28 @@ describe('widgetFrameSources', () => {
 
   it('is just the API when the widget is framed there', () => {
     expect(widgetFrameSources(null)).toEqual(['https://chat.example.com'])
+  })
+})
+
+describe('buildAiInstallPrompt', () => {
+  const SNIPPET = "<script>\n  window.chattermateId = 'w-1';\n</script>"
+
+  it('carries the exact snippet, where it goes and the install guide', () => {
+    const prompt = buildAiInstallPrompt(SNIPPET)
+    expect(prompt).toContain(SNIPPET)
+    expect(prompt).toContain('</body>')
+    expect(prompt).toContain(WIDGET_INSTALL_GUIDE_URL)
+    expect(prompt).toContain('Change nothing else on the site.')
+  })
+
+  it('says where it belongs in the common site builders', () => {
+    const prompt = buildAiInstallPrompt(SNIPPET)
+    expect(prompt).toContain('index.html')
+    expect(prompt).toContain('next/script')
+    expect(prompt).toContain('WordPress')
+  })
+
+  it('is empty when there is nothing to install', () => {
+    expect(buildAiInstallPrompt('')).toBe('')
   })
 })
