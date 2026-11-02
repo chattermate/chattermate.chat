@@ -48,6 +48,9 @@ class PeopleStats(BaseModel):
     # Engaged-but-unidentified browser sessions — the lead-capture funnel's
     # raw top, shown as a count beside the tabs, not as directory rows.
     anonymous: int = 0
+    # Users the business's app signed in (identity token): its own customers,
+    # behind their own tab.
+    signed_in: int = 0
     new_leads_7d: int
     customers: int
     synced_to_crm: int = 0  # phase 1: always 0

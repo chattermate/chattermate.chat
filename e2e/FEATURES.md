@@ -32,6 +32,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Journeys | Leaving the editor with unsaved changes asks first; Keep editing / Leave | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
 | Journeys | The editor blocks a step with no title; a key already taken is refused and stays unsaved | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
 | Journeys | The tab lines up with the agent header; the editor fits a phone | `specs/journeys/journey-editor.spec.ts` | P2 | ✅ |
+| People | A user the site's app signed in, who only followed a journey, is on the Signed in tab (not the lead directory) with the journey's progress | `specs/leads/signed-in-people.spec.ts` | P1 | ✅ |
 | Widget chat | Customer gets the AI answer | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | History survives a reload | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | The dashboard's iframe snippet chats (its socket comes from the API's own origin) | `specs/widget/iframe-snippet.spec.ts` | P1 | ✅ |

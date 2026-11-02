@@ -84,7 +84,7 @@ async def list_people(
     search: Optional[str] = Query(None),
     page: PageNumber = 1,
     page_size: int = Query(20, ge=1, le=100),
-    view: str = Query("identified", pattern="^(identified|anonymous)$"),
+    view: str = Query("identified", pattern="^(identified|anonymous|signed_in)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -92,7 +92,8 @@ async def list_people(
 
     The default view is identified people (real email, phone, or a qualifying
     capture); anonymous browser sessions live behind view=anonymous — they are
-    a lead-capture funnel signal, not directory content."""
+    a lead-capture funnel signal, not directory content — and users the app
+    signed in live behind view=signed_in."""
     _require_people_access(current_user, db)
     items, total = PeopleRepository(db).list_people(
         current_user.organization_id, stage=stage, search=search, page=page,

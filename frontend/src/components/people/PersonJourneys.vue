@@ -47,9 +47,9 @@ function outcome(step: PersonJourney['steps'][number]): string {
 </script>
 
 <template>
-  <template v-if="!locked && journeys.length">
-    <div class="pj-title">JOURNEYS</div>
-    <div v-for="journey in journeys" :key="journey.journey_id" class="pj">
+  <section v-if="!locked && journeys.length" aria-labelledby="person-journeys-title">
+    <div id="person-journeys-title" class="pj-title">JOURNEYS</div>
+    <div v-for="journey in journeys" :key="journey.journey_id" class="pj" role="group" :aria-label="journey.journey_name">
       <div class="pj-top">
         <span class="pj-name">{{ journey.journey_name }}</span>
         <span class="pj-status" :class="journey.status">{{ statusLabel[journey.status] }}</span>
@@ -63,7 +63,7 @@ function outcome(step: PersonJourney['steps'][number]): string {
       </ol>
       <p v-if="journey.goal_at" class="pj-goal">Goal reached {{ when(journey.goal_at) }}</p>
     </div>
-  </template>
+  </section>
 </template>
 
 <style scoped>

@@ -150,6 +150,38 @@ def test_authenticated_customers_excluded(repo, db, test_organization_id):
     assert stats["total_people"] == 1  # the authenticated customer is not counted
 
 
+def test_signed_in_view_lists_app_users_apart_from_leads(repo, db, test_organization_id, test_agent):
+    """Users the business's app signed in (identity token) have a view of their
+    own: they count there once they chat or follow a journey, never in the
+    lead directory, and are ordered by whichever they did last."""
+    from datetime import datetime, timedelta, timezone
+    from app.models.journey import Journey, JourneyProgress
+
+    _customer(db, test_organization_id, email="lead@acme.com", full_name="Lead", lead_stage=LeadStage.LEAD)
+    chatter = _customer(db, test_organization_id, email="chatter@app.com", full_name="Chatter", is_authenticated=True)
+    walker = _customer(db, test_organization_id, chatted=False, email="walker@app.com",
+                       full_name="Walker", is_authenticated=True)
+    _customer(db, test_organization_id, chatted=False, email="idle@app.com", is_authenticated=True)
+
+    journey = Journey(organization_id=test_organization_id, agent_id=test_agent.id, key="tour", name="Tour",
+                      status="live", definition={"steps": []})
+    db.add(journey); db.commit()
+    db.add(JourneyProgress(journey_id=journey.id, agent_id=test_agent.id, customer_id=walker.id, journey_version=1,
+                           last_seen_at=datetime.now(timezone.utc) + timedelta(minutes=5)))
+    db.commit()
+
+    items, total = repo.list_people(test_organization_id, view="signed_in")
+    # Walker never typed but followed a journey since; the idle user did neither.
+    assert [i["email"] for i in items] == ["walker@app.com", "chatter@app.com"]
+    assert total == 2
+    assert {i["email"] for i in repo.list_people(test_organization_id)[0]} == {"lead@acme.com"}
+
+    stats = repo.get_stats(test_organization_id)
+    assert stats["signed_in"] == 2
+    assert stats["total_people"] == 1
+    assert chatter.id in {i["id"] for i in items}
+
+
 def test_merged_rows_hidden_and_resolved(repo, db, test_organization_id):
     target = _customer(db, test_organization_id, email="t@acme.com", full_name="Target",
                        lead_stage=LeadStage.LEAD)
