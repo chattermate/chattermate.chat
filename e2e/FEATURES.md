@@ -21,6 +21,10 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | In-app actions | A dropped connection mid-action still runs it exactly once | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
 | In-app actions | No actions on a widget not limited to the site, or once turned off | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
 | In-app actions | A site message is answered with a chip; page context reaches the agent as data; a pasted password is held back | `specs/actions/site-messages.spec.ts` | P1 | ✅ |
+| Journeys | A journey opens by itself and moves on app events and an action chip, then finishes, without calling the model | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A reply to a step reaches the agent with the step's message, stored once; the step stays until done | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The visitor skips a step, or hides the guide for good | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The funnel shows how far visitors got, per step | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Widget chat | Customer gets the AI answer | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | History survives a reload | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | The dashboard's iframe snippet chats (its socket comes from the API's own origin) | `specs/widget/iframe-snippet.spec.ts` | P1 | ✅ |

@@ -568,6 +568,30 @@ export class ChatWidget {
     return this.frame.getByRole('button', { name: text, exact: true })
   }
 
+  /** "Step 2 of 3 · Title" above the message box while a journey runs. */
+  get journeyProgress(): Locator {
+    return this.frame.getByRole('status', { name: /^Step \d+ of \d+$/ })
+  }
+
+  async skipJourneyStep(): Promise<void> {
+    await step('Customer skips the step', async () => {
+      await this.journeyProgress.getByRole('button', { name: 'Skip' }).click()
+    })
+  }
+
+  async hideJourney(): Promise<void> {
+    await step('Customer hides the guide', async () => {
+      await this.journeyProgress.getByRole('button', { name: 'Hide guide' }).click()
+    })
+  }
+
+  /** The site's own code reporting something the user did: ChatterMate.notify(event). */
+  async siteReports(event: string): Promise<void> {
+    await step(`The site reports "${event}"`, async () => {
+      await this.page.evaluate((name) => (window as unknown as { ChatterMate: { notify: (e: string) => void } }).ChatterMate.notify(name), event)
+    })
+  }
+
   async typeOnly(text: string): Promise<void> {
     await this.messageInput.fill(text)
   }

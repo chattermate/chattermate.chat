@@ -51,6 +51,21 @@ export class AgentsPage {
     return this.page.getByRole('heading', { name: "Let's get your first agent live" })
   }
 
+  /** The agent's Journeys tab, then the funnel of one journey. */
+  async openJourneyFunnel(agentId: string, journeyName: string): Promise<void> {
+    await step(`Open the funnel of "${journeyName}"`, async () => {
+      await this.openAgent(agentId, 'journeys')
+      const row = this.page.getByRole('row').filter({ has: this.page.getByRole('button', { name: journeyName, exact: true }) })
+      await row.getByRole('button', { name: 'Funnel', exact: true }).click()
+      await expect(this.page.getByRole('heading', { name: journeyName })).toBeVisible()
+    })
+  }
+
+  /** A step's bar in the funnel, named "<done> of <reached> done". */
+  funnelStep(title: string): Locator {
+    return this.page.getByRole('row').filter({ has: this.page.getByRole('button', { name: title, exact: true }) }).getByRole('img')
+  }
+
   card(name: string): Locator {
     return this.page.getByRole('heading', { name, exact: true })
   }
