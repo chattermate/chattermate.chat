@@ -80,6 +80,7 @@ const PAGE_TITLES: Record<string, string> = {
     '/settings/widget-apps': 'Widget Apps',
     '/settings/ai-config': 'AI Configuration',
     '/settings/user': 'User Settings',
+    '/settings/access-tokens': 'CLI & API tokens',
 }
 const pageTitle = computed(() => PAGE_TITLES[route.path] || '')
 

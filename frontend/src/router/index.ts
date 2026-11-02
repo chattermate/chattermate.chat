@@ -265,6 +265,16 @@ const allRoutes = hasEnterpriseModule
         },
       },
       {
+        path: '/settings/access-tokens',
+        name: 'access-tokens',
+        component: loadEnterpriseComponent(moduleImports.accessTokensView),
+        meta: {
+          requiresAuth: true,
+          layout: 'dashboard',
+          title: 'CLI & API tokens',
+        },
+      },
+      {
         path: '/settings/subscription/setup/:planId',
         name: 'billing-setup',
         component: loadEnterpriseComponent(moduleImports.billingSetupView),
