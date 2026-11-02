@@ -67,6 +67,9 @@ const details = computed(() =>
 
 <style scoped>
 .cm-action-confirm {
+  /* The message list is a scrolling flex column: without this the card shrinks
+     to fit a short panel and its overflow:hidden clips Apply off. */
+  flex-shrink: 0;
   margin: 4px 0 8px;
   border: 1px solid var(--cm-hairline);
   border-radius: var(--cm-radius);

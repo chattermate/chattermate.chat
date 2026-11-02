@@ -776,6 +776,12 @@ watch(() => messages.value, (newMessages) => {
     })
 }, { deep: true })
 
+// The confirm card and a page or journey message sit after the messages, so a
+// new one is below the fold unless the list follows it.
+watch([pendingConfirm, hostPrompt], ([confirm, prompt]) => {
+    if (confirm || prompt) nextTick(() => scrollToBottom())
+})
+
 // Watch for connection status changes to set up event listeners when needed
 watch(connectionStatus, (newStatus, oldStatus) => {
     if (newStatus === 'connected' && oldStatus !== 'connected') {

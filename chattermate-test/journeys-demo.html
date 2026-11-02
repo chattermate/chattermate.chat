@@ -21,7 +21,7 @@
     button { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
     button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
     .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); }
-    .layout { display: grid; grid-template-columns: 200px minmax(0, 1fr) 380px; min-height: calc(100vh - 57px); }
+    .layout { display: grid; grid-template-columns: 180px 360px minmax(0, 1fr); min-height: calc(100vh - 57px); }
     nav { padding: 16px 12px; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; gap: 2px; }
     nav a { padding: 8px 10px; border-radius: 8px; color: var(--ink); text-decoration: none; }
     nav a.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
@@ -38,7 +38,8 @@
     .empty { color: var(--muted); padding: 16px; background: var(--panel); border: 1px dashed var(--line); border-radius: 12px; }
     .status-sent { color: var(--ok); font-weight: 600; }
     .status-draft { color: var(--warn); font-weight: 600; }
-    aside { border-left: 1px solid var(--line); background: var(--panel); padding: 16px; overflow-y: auto; max-height: calc(100vh - 57px); position: sticky; top: 0; }
+    /* Scenarios sit left of the app so the chat, docked bottom-right, never covers them. */
+    aside { border-right: 1px solid var(--line); background: var(--panel); padding: 16px; overflow-y: auto; max-height: calc(100vh - 57px); position: sticky; top: 0; }
     aside h2 { font-size: 15px; margin: 0 0 4px; }
     aside .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
     .scenario { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
@@ -57,7 +58,7 @@
     .modal.on { display: flex; }
     .modal > div { background: #fff; border-radius: 14px; padding: 22px; width: 340px; }
     .setup-missing { margin: 40px; padding: 20px; background: #fff4ed; border: 1px solid #fec84b; border-radius: 12px; }
-    @media (max-width: 1100px) { .layout { grid-template-columns: 180px minmax(0, 1fr); } aside { grid-column: 1 / -1; max-height: none; position: static; border-left: none; border-top: 1px solid var(--line); } }
+    @media (max-width: 1100px) { .layout { grid-template-columns: 160px minmax(0, 1fr); } aside { grid-column: 1 / -1; grid-row: 2; max-height: none; position: static; border-right: none; border-top: 1px solid var(--line); } }
   </style>
 </head>
 <body>
@@ -84,7 +85,6 @@
       <a href="/app/reports" data-route>Reports</a>
       <a href="/app/settings" data-route>Settings</a>
     </nav>
-    <main id="view" aria-live="polite"></main>
     <aside aria-label="Test scenarios">
       <h2>Test scenarios</h2>
       <p class="hint">Each one says what to do and what the AI should do. Tick it off when it behaves. The log below shows every action, event and context update the page sends.</p>
@@ -94,6 +94,7 @@
         <ol id="log"></ol>
       </div>
     </aside>
+    <main id="view" aria-live="polite"></main>
   </div>
 
   <div class="modal" id="checkout" role="dialog" aria-label="Checkout">

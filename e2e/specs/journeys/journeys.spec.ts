@@ -92,6 +92,30 @@ test.describe('Journeys', () => {
     expect(request.tools).toEqual(expect.arrayContaining(['open_page', 'send_invoice']))
   })
 
+  test('a chip whose action asks first shows the card, and Apply runs it and moves on @journeys', async ({ agent, widget, adminApi, llm }) => {
+    await declareAction(adminApi, agent.id, 'set_currency')
+    await createJourney(adminApi, agent.id, {
+      key: 'currency', name: 'Currency', autoOpen: true, steps: [{
+        id: 'currency', title: 'Pick your currency', message: 'Which currency do you bill in?',
+        chips: [{ label: 'Use GBP', kind: 'action', value: 'set_currency' }],
+        allowed_actions: ['set_currency'],
+        done_when: [{ kind: 'action', value: 'set_currency' }],
+      }, STEPS[2]],
+    })
+
+    // A short window: the card must still show its buttons, not be squeezed.
+    await widget.page.setViewportSize({ width: 1280, height: 560 })
+    await widget.embed({ withActions: true })
+    await expect(widget.journeyProgress).toContainText('Step 1 of 2')
+    await widget.replyChip('Use GBP').click()
+    await expect(widget.actionConfirm('Set default currency').getByRole('button', { name: 'Keep current' })).toBeInViewport()
+    await widget.approveAction('Set default currency')
+    // The chip runs the action with no arguments; the site's code picks its default.
+    await expect(widget.appActionRuns).toHaveText('1')
+    await expect(widget.journeyProgress).toContainText('Step 2 of 2')
+    expect(await llm.requests(agent)).toHaveLength(0)
+  })
+
   test('the visitor can skip a step or hide the guide @journeys', async ({ agent, widget, adminApi }) => {
     await createJourney(adminApi, agent.id, { key: 'skippable', name: 'Skippable', steps: STEPS, autoOpen: true })
 
