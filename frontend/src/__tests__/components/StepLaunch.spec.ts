@@ -49,6 +49,22 @@ describe('StepLaunch', () => {
     expect(wrapper.find('.install-slot').text()).toBe('w-1')
   })
 
+  it('offers a prompt for an AI website builder with the real snippet', async () => {
+    const wrapper = await mountStep()
+    expect(wrapper.find('.ai-prompt-btn').exists()).toBe(true)
+    const prompt = wrapper.find('.prompt-text').text()
+    expect(prompt).toContain("window.chattermateId = 'w-1'")
+    expect(prompt).toContain(WIDGET_INSTALL_GUIDE_URL)
+    // The preview stays closed until asked for
+    expect(wrapper.find('details').attributes('open')).toBeUndefined()
+  })
+
+  it('offers no AI prompt without a widget', async () => {
+    const wrapper = await mountStep(null)
+    expect(wrapper.find('.ai-prompt-btn').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('details').exists()).toBe(false)
+  })
+
   it('offers no mailto without a widget', async () => {
     const wrapper = await mountStep(null)
     expect(wrapper.find('a[href^="mailto:"]').exists()).toBe(false)

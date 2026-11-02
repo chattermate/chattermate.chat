@@ -27,7 +27,9 @@ import type { Agent } from '@/types/agent'
 // Lazy-load the provider setup form — only needed on OSS builds without ChatterMate AI
 const AISetup = defineAsyncComponent(() => import('@/components/ai/AISetup.vue'))
 
-const { hasEnterpriseModule } = useEnterpriseFeatures()
+const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+// Setting this up from an AI coding tool instead (enterprise; nothing in open source)
+const AiToolSetupNudge = enterpriseComponent(moduleImports.aiToolSetupNudge)
 
 // Bundled preset avatars (frontend/src/assets/avatars/avatar-*.png)
 const avatarModules = import.meta.glob('@/assets/avatars/avatar-*.png', {
@@ -315,6 +317,9 @@ const onAiConfigured = async () => {
         <h2 class="step-title">Create your agent</h2>
         <p class="step-sub">Give it a name and a personality. You can refine everything later.</p>
       </header>
+
+      <!-- Only before the agent exists: it sets the whole thing up from scratch -->
+      <AiToolSetupNudge v-if="!existingAgent" />
 
       <div class="field">
         <label class="field-label" for="onb-agent-name">Agent name</label>
