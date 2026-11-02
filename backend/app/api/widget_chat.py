@@ -64,6 +64,7 @@ from app.services.host_action_runtime import (
     offered_actions, replay_open_call, start_paused_turn, waiting_on_page,
 )
 from app.services.widget_reply import create_widget_agent, deliver_ai_reply, emit_bot_typing, widget_agent_kwargs
+from app.services.host_prompt import clean_host_prompt, store_host_prompt
 from app.services.widget_identity import can_act_as, may_stand_for
 from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
@@ -81,6 +82,7 @@ except ImportError:
     HAS_ENTERPRISE = False
 
 from app.utils.sanitize import sanitize_message
+from app.utils.secret_redaction import redact_secrets
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -421,6 +423,10 @@ async def handle_widget_chat(sid, data):
         
         # Sanitize message to prevent XSS attacks
         message = sanitize_message(original_message)
+        # Passwords, keys and card numbers never reach storage or the model.
+        message, _ = redact_secrets(message)
+        # A message the page showed (ChatterMate.prompt) that this one answers.
+        host_prompt = clean_host_prompt(data.get('host_prompt'))
         
         files = data.get('files', [])  # List of file objects with base64 content
         
@@ -551,6 +557,12 @@ async def handle_widget_chat(sid, data):
         is_first_customer_message = not ChatRepository(db).has_customer_messages(session_id)
         if is_first_customer_message:
             await notify_new_chat(db, active_session)
+
+        if host_prompt:
+            store_host_prompt(db, session, host_prompt)
+            session['host_prompt'] = host_prompt
+        else:
+            session.pop('host_prompt', None)
 
         # A human-only agent answers nothing: no model, no workflow, and no
         # transfer either — the chat was never with the AI, so there is nothing

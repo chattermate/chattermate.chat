@@ -15,7 +15,9 @@ limitations under the License.
 */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createHostActionsClient, PAGE_GRACE_MS, type ActionRequest } from '@/webclient/actions/hostActionsClient'
+import {
+  createHostActionsClient, PAGE_GRACE_MS, PROMPT_MAX_SUGGESTIONS, toHostPrompt, type ActionRequest,
+} from '@/webclient/actions/hostActionsClient'
 
 const request = (overrides: Partial<ActionRequest> = {}): ActionRequest => ({
   call_id: 'call-1',
@@ -167,5 +169,25 @@ describe('confirming', () => {
     vi.advanceTimersByTime(60_000)
     expect(emitted).toEqual([])
     expect(confirm).toHaveBeenLastCalledWith(null)
+  })
+})
+
+describe('page prompts', () => {
+  it('passes a valid prompt to the widget', () => {
+    const onPrompt = vi.fn()
+    const client = createHostActionsClient({
+      postToHost: () => {}, emit: () => {}, trustedHostOrigin: () => null,
+      onConfirmChange: () => {}, onPrompt,
+    })
+    expect(client.handleHostMessage({ type: 'HOST_PROMPT', message: 'Need help?', suggestions: ['Yes'], open: true })).toBe(true)
+    expect(onPrompt).toHaveBeenCalledWith({ message: 'Need help?', suggestions: ['Yes'], open: true })
+  })
+
+  it('drops empty prompts and trims suggestions', () => {
+    expect(toHostPrompt({ message: '  ' })).toBeNull()
+    expect(toHostPrompt({ message: 5 })).toBeNull()
+    const prompt = toHostPrompt({ message: 'Hi', suggestions: ['a', '', 3, 'b', 'c', 'd', 'e'] })!
+    expect(prompt.suggestions).toEqual(['a', 'b', 'c', 'd'].slice(0, PROMPT_MAX_SUGGESTIONS))
+    expect(prompt.open).toBe(false)
   })
 })

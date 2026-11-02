@@ -41,6 +41,12 @@ class MessageSource(str, enum.Enum):
     HUMAN = "human"
     SYSTEM = "system"   # canned notices: handover, limits, errors, tickets
     APP = "app"         # an external app, through a channel extension
+    HOST = "host"       # the embedding page, through ChatterMate.prompt()
+    JOURNEY = "journey" # a journey step's opening message
+
+
+# Messages that cost no AI, so they never count toward the plan's message limit.
+UNMETERED_SOURCES = frozenset({MessageSource.APP.value, MessageSource.HOST.value, MessageSource.JOURNEY.value})
 
 
 # The most choices one reply can offer the customer: WhatsApp's list-message

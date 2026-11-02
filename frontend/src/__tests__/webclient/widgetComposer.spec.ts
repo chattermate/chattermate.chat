@@ -147,7 +147,7 @@ describe('the composer while a reply is in flight', () => {
 
         // ...and it must not be lost either.
         expect(sendMessage).toHaveBeenCalledWith(
-            'and one more thing', expect.anything(), expect.anything()
+            'and one more thing', expect.anything(), expect.anything(), {}
         )
 
         wrapper.unmount()

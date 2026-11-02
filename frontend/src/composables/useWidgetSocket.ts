@@ -672,7 +672,7 @@ export function useWidgetSocket() {
     }
 
     // Send message function
-    const sendMessage = async (newMessage: string, email: string, files: Array<{content: string, filename: string, content_type: string, size: number}> = []) => {
+    const sendMessage = async (newMessage: string, email: string, files: Array<{content: string, filename: string, content_type: string, size: number}> = [], extra: Record<string, unknown> = {}) => {
         if (!socket || (!newMessage.trim() && files.length === 0)) return
         
         // Add user message to display with temporary blob URLs for images
@@ -715,6 +715,7 @@ export function useWidgetSocket() {
 
         // Emit to socket WITH files (files will be uploaded on backend)
         socket.emit('chat', {
+            ...extra,
             message: newMessage,
             email: email,
             files: files  // Send files with base64 content

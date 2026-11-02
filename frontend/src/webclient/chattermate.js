@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createHostActions } from './loader/hostActions.js'
+import { createPushLayout, sheetCss } from './loader/pushLayout.js'
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
@@ -62,6 +63,9 @@ window.chattermateConfig;
     displayMode: 'floating', // 'floating' | 'sidebar-left' | 'sidebar-right' | 'search-bar'
     launcher: true, // false hides the built-in launcher (site uses its own trigger/API)
     sidebarWidth: 420, // Panel width in the sidebar display modes
+    layout: 'overlay', // 'overlay' | 'push': in sidebar modes, push moves pushTarget aside
+    pushTarget: null, // CSS selector of the page content the push layout makes room in
+    mobileMode: 'fullscreen', // 'fullscreen' | 'sheet' (a bottom sheet on phones)
     searchBarWidth: 320, // Trigger bar width in search-bar mode
     searchPlaceholder: 'Ask anything...',
     zIndex: 999999, // Stacking base; related layers offset from it (badge -1, mobile chrome +1/+2)
@@ -215,8 +219,11 @@ window.chattermateConfig;
   // The page's in-app actions and context (ChatterMate.registerActions/setContext).
   // Only reaches the frame once it has mounted; announced again on every mount.
   const hostActions = createHostActions(function (message) {
-    if (widgetMounted) postToFrame(message)
+    if (!widgetMounted) return false
+    postToFrame(message)
+    return true
   }, (function () { try { return window.sessionStorage } catch (e) { return null } })())
+  const pushLayout = createPushLayout(window)
   // Only the widget frame may talk to the loader: the right window, and the right
   // origin - which is only known once it says hello, so until then hello is all it
   // may say (hostile sibling frames can reach us, and a frame could be somewhere
@@ -1209,6 +1216,8 @@ window.chattermateConfig;
         }
       }
 
+      ${config.mobileMode === 'sheet' ? sheetCss(config.containerId) : ''}
+
       ${config.launcher ? '' : `
       /* Launcher hidden by config — the site opens the chat with its own trigger or
          the JS API. Last in the sheet so it also beats the mobile .mobile-closed
@@ -1516,12 +1525,24 @@ window.chattermateConfig;
     let iframe = null
     let initiationMessageElement = null
 
+    // Push layout: an open drawer makes room in the page's own content (see pushLayout.js).
+    function applyPush() {
+      const mode = config.displayMode
+      const drawer = mode === 'sidebar-left' || mode === 'sidebar-right'
+      pushLayout.apply(isOpen && drawer && config.layout === 'push', {
+        pushTarget: config.pushTarget,
+        side: mode === 'sidebar-left' ? 'left' : 'right',
+        width: config.sidebarWidth,
+      })
+    }
+
     function toggleChat() {
       isOpen = !isOpen
       container.classList.toggle('active')
       backdrop.classList.toggle('active', isOpen)
       button.classList.toggle('active')
       mobileCloseButton.classList.toggle('active')
+      applyPush()
       if (isOpen) {
         config.hasOpened = true
         config.unreadCount = 0
@@ -2155,6 +2176,7 @@ window.chattermateConfig;
     // Handle window resize to update mobile behavior
     function handleResize() {
       const isMobile = isMobileDevice()
+      applyPush() // crossing the phone width starts or stops pushing
       
       if (isMobile && !isOpen) {
         // On mobile when closed, show the button
@@ -2413,6 +2435,15 @@ window.chattermateConfig;
     if (isNumber(options.sidebarWidth)) {
       setDevConfig('sidebarWidth', Math.max(280, options.sidebarWidth))
     }
+    if (options.layout === 'push' || options.layout === 'overlay') {
+      setDevConfig('layout', options.layout)
+    }
+    if (typeof options.pushTarget === 'string' && options.pushTarget) {
+      setDevConfig('pushTarget', options.pushTarget)
+    }
+    if (options.mobileMode === 'sheet' || options.mobileMode === 'fullscreen') {
+      setDevConfig('mobileMode', options.mobileMode)
+    }
     if (isNumber(options.zIndex)) {
       setDevConfig('zIndex', Math.max(1, Math.floor(options.zIndex)))
     }
@@ -2653,6 +2684,12 @@ window.chattermateConfig;
     registerActions: function (map) { hostActions.register(map) },
     // Page state the agent may use, e.g. setContext({ plan: 'free', step: 'billing' }).
     setContext: function (context) { hostActions.setContext(context) },
+    // Show a message from the page, e.g. prompt({ message: 'Need help with billing?',
+    // suggestions: ['Yes please'], open: true }). Nothing is stored unless the visitor replies.
+    prompt: function (options) {
+      hostActions.prompt(options)
+      if (options && options.open === true) withController(function () { controller.open() })
+    },
     // SPA login: identify(token) switches the widget to that visitor.
     identify: function (token) { setIdentity(token) },
     // SPA logout: back to an anonymous visitor, previous conversation dropped.

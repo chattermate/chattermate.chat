@@ -29,6 +29,7 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
+from app.services.host_prompt import host_prompt_context
 from app.services.lead_capture import record_lead_from_response
 
 logger = get_logger(__name__)
@@ -64,9 +65,17 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = ())
         customer_id=session['customer_id'],
         session_id=session['session_id'],
         source=session.get('source'),
-        extra_context=host_extra_context(session.get('host_context'), bool(actions)),
+        extra_context=_joined(
+            host_extra_context(session.get('host_context'), bool(actions)),
+            host_prompt_context(session.get('host_prompt')),
+        ),
         host_action_functions=build_action_functions(actions) or None,
     )
+
+
+def _joined(*parts: Optional[str]) -> Optional[str]:
+    text = "\n\n".join(p for p in parts if p)
+    return text or None
 
 
 async def create_widget_agent(agent_kwargs: dict) -> ChatAgent:

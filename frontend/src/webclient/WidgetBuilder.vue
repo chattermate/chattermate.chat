@@ -24,6 +24,7 @@ import { renderMarkdown } from './markdown'
 import AskAiPanel from './AskAiPanel.vue'
 import NewChatConfirm from './NewChatConfirm.vue'
 import ActionConfirmCard from './ActionConfirmCard.vue'
+import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
@@ -35,6 +36,7 @@ import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
 import { useHostActions } from '../composables/useHostActions'
+import type { HostPrompt } from './actions/hostActionsClient'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
@@ -103,8 +105,14 @@ const {
     emit: emitSocketEvent
 } = useWidgetSocket()
 
-// In-app actions the embedding page registered (ChatterMate.registerActions).
-const { pendingConfirm, approveAction, declineAction } = useHostActions({ on: onSocketEvent, emit: emitSocketEvent })
+// In-app actions the embedding page registered (ChatterMate.registerActions), and
+// a message it asked us to show (ChatterMate.prompt). The prompt lives outside
+// `messages` so loading history can't wipe it; it joins the chat once answered.
+const hostPrompt = ref<HostPrompt | null>(null)
+const { pendingConfirm, approveAction, declineAction } = useHostActions(
+    { on: onSocketEvent, emit: emitSocketEvent },
+    (prompt) => { hostPrompt.value = prompt },
+)
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
 // to the bottom as text grows.
@@ -463,8 +471,12 @@ const placeholderText = computed(() => {
 const pendingSend = ref(false)
 
 // Update the sendMessage function
+// A pasted password, key or card number is held back (the server also hides them).
+const secretInMessage = computed(() => looksSecret(newMessage.value))
+
 const sendMessage = async () => {
     if (!newMessage.value.trim() && uploadedAttachments.value.length === 0) return
+    if (secretInMessage.value) return
 
     if (loading.value && hasStartedChat.value) {
         pendingSend.value = true
@@ -484,8 +496,22 @@ const sendMessage = async () => {
         size: file.size
     }))
 
+    // A page prompt being answered is stored with the reply (it never was before).
+    const answeredPrompt = hostPrompt.value
+    hostPrompt.value = null
+    if (answeredPrompt) {
+        messages.value.push({
+            message: answeredPrompt.message,
+            message_type: 'bot',
+            created_at: new Date().toISOString(),
+            session_id: '',
+            attributes: { source: 'host' },
+        } as any)
+    }
+
     // Send message with files in a single emit
-    await socketSendMessage(newMessage.value, emailInput.value, files)
+    await socketSendMessage(newMessage.value, emailInput.value, files,
+        answeredPrompt ? { host_prompt: answeredPrompt.message } : {})
 
     // Clean up temporary object URLs
     uploadedAttachments.value.forEach(file => {
@@ -2131,7 +2157,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         :class="{ 'aurora-send': isAuroraStyle }"
                         :style="userBubbleStyles"
                         @click="sendMessage"
-                        :disabled="!newMessage.trim() || !isMessageInputEnabled"
+                        :disabled="!newMessage.trim() || !isMessageInputEnabled || secretInMessage"
                     >
                         <svg v-if="isAuroraStyle" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 19V5M12 5L5 12M12 5L19 12" stroke="currentColor" stroke-width="2"
@@ -2881,6 +2907,12 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                     </div>
                 </template>
 
+                <div v-if="hostPrompt" class="message agent-message cm-welcome-row cm-host-prompt">
+                    <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
+                    <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
+                    <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ hostPrompt.message }}</div>
+                </div>
+
                 <ActionConfirmCard
                     v-if="pendingConfirm"
                     :pending="pendingConfirm"
@@ -2905,6 +2937,18 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </div>
                     </template>
                 </div>
+            </div>
+
+            <!-- Reply chips for a message the page showed (ChatterMate.prompt) -->
+            <div v-if="hostPrompt && hostPrompt.suggestions.length" class="cm-quick-actions-bar">
+                <button
+                    v-for="suggestion in hostPrompt.suggestions"
+                    :key="suggestion"
+                    type="button"
+                    class="cm-quick-action"
+                    :disabled="!isMessageInputEnabled"
+                    @click="sendQuickAction(suggestion)"
+                >{{ suggestion }}</button>
             </div>
 
             <!-- Quick actions (shown on open, just above the input — comp layout) -->
@@ -3020,7 +3064,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         :class="{ 'ask-anything-send': isAskAnythingStyle }"
                         :style="userBubbleStyles"
                         @click="sendMessage"
-                        :disabled="(!newMessage.trim() && uploadedAttachments.length === 0) || !isMessageInputEnabled"
+                        :disabled="(!newMessage.trim() && uploadedAttachments.length === 0) || !isMessageInputEnabled || secretInMessage"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2"
@@ -3028,6 +3072,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </svg>
                     </button>
                 </div>
+                <p v-if="secretInMessage" class="cm-secret-hint" role="alert">{{ SECRET_WARNING }}</p>
             </div>
 
             <!-- New Conversation Section (Shown when conversation is ended in workflow) -->
@@ -3618,6 +3663,12 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 .message-input input:disabled {
     background-color: rgba(0, 0, 0, 0.05);
     cursor: not-allowed;
+}
+
+.cm-secret-hint {
+    margin: 6px 4px 0;
+    font-size: 12px;
+    color: var(--cm-muted);
 }
 
 .send-button {

@@ -49,6 +49,26 @@ export interface PendingConfirm {
   preview: ActionPreview | null
 }
 
+/** A message the embedding page shows in the chat (ChatterMate.prompt). */
+export interface HostPrompt {
+  message: string
+  suggestions: string[]
+  open: boolean
+}
+
+/** Longest prompt the widget shows, and how many reply chips it offers. */
+export const PROMPT_MAX_CHARS = 2000
+export const PROMPT_MAX_SUGGESTIONS = 4
+
+export function toHostPrompt(data: Record<string, unknown>): HostPrompt | null {
+  if (typeof data.message !== 'string' || !data.message.trim()) return null
+  const suggestions = Array.isArray(data.suggestions)
+    ? data.suggestions.filter((s): s is string => typeof s === 'string' && !!s.trim())
+        .map((s) => s.slice(0, 80)).slice(0, PROMPT_MAX_SUGGESTIONS)
+    : []
+  return { message: data.message.slice(0, PROMPT_MAX_CHARS), suggestions, open: data.open === true }
+}
+
 export interface HostActionsDeps {
   /** Post a message to the embedding page. */
   postToHost: (message: Record<string, unknown>) => void
@@ -58,6 +78,8 @@ export interface HostActionsDeps {
   trustedHostOrigin: () => string | null
   /** Called whenever the card to show changes (null hides it). */
   onConfirmChange: (pending: PendingConfirm | null) => void
+  /** The page asked the widget to show a message. */
+  onPrompt?: (prompt: HostPrompt) => void
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
 }
@@ -142,6 +164,11 @@ export function createHostActionsClient(deps: HostActionsDeps) {
       case 'HOST_CONTEXT':
         setContext(data.context)
         return true
+      case 'HOST_PROMPT': {
+        const prompt = toHostPrompt(data)
+        if (prompt) deps.onPrompt?.(prompt)
+        return true
+      }
       case 'ACTION_PREVIEW_DONE': {
         const request = previews.get(String(data.callId))
         if (!request) return true

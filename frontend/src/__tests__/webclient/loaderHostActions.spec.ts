@@ -162,3 +162,21 @@ describe('loader host actions storage', () => {
     expect(done.map((m) => m.status)).toEqual(['error', 'ok'])
   })
 })
+
+describe('ChatterMate.prompt', () => {
+  beforeEach(resetPage)
+  afterEach(cleanupPage)
+
+  it('holds a prompt until the widget mounts, then shows it once', async () => {
+    await loadLoader()
+    api().prompt({ message: 'Need help with billing?', suggestions: ['Yes please'] })
+    api().prompt({ message: '' })
+    handshake()
+    const post = spyOnFrame()
+    fromFrame({ type: 'WIDGET_READY' })
+    const prompts = post.mock.calls.map(([m]: any) => m).filter((m: any) => m.type === 'HOST_PROMPT')
+    expect(prompts).toEqual([{ type: 'HOST_PROMPT', message: 'Need help with billing?', suggestions: ['Yes please'], open: false }])
+    fromFrame({ type: 'WIDGET_READY' })
+    expect(post.mock.calls.filter(([m]: any) => m.type === 'HOST_PROMPT')).toHaveLength(1)
+  })
+})

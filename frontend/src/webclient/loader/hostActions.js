@@ -53,9 +53,12 @@ function errorText(error) {
   return 'The action failed.'
 }
 
+// postToFrame(message) returns true when the message was sent (the widget is up).
 export function createHostActions(postToFrame, storage) {
   const handlers = Object.create(null)
   let context = null
+  // A prompt given before the widget mounted, shown once it does.
+  let pendingPrompt = null
 
   // [[callId, answer], ...], newest last.
   function readAll() {
@@ -88,6 +91,19 @@ export function createHostActions(postToFrame, storage) {
   function announce() {
     postToFrame({ type: 'HOST_ACTIONS', names: Object.keys(handlers) })
     if (context) postToFrame({ type: 'HOST_CONTEXT', context })
+    if (pendingPrompt && postToFrame(pendingPrompt)) pendingPrompt = null
+  }
+
+  // ChatterMate.prompt({ message, suggestions, open }): a message from the page.
+  function prompt(options) {
+    if (!options || typeof options.message !== 'string' || !options.message.trim()) return
+    const message = {
+      type: 'HOST_PROMPT',
+      message: options.message,
+      suggestions: Array.isArray(options.suggestions) ? options.suggestions : [],
+      open: options.open === true,
+    }
+    if (!postToFrame(message)) pendingPrompt = message
   }
 
   function register(map) {
@@ -171,5 +187,5 @@ export function createHostActions(postToFrame, storage) {
     return false
   }
 
-  return { register: register, setContext: setContext, announce: announce, handleFrameMessage: handleFrameMessage }
+  return { register: register, setContext: setContext, prompt: prompt, announce: announce, handleFrameMessage: handleFrameMessage }
 }
