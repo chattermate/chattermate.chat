@@ -1663,6 +1663,7 @@ window.chattermateConfig;
       window.removeEventListener('message', handleFrameMessage)
       window.removeEventListener('popstate', reportPage)
       window.removeEventListener('hashchange', reportPage)
+      unwatchHistory()
       // The nudge is appended to <body>, not to our container, and it runs a
       // typewriter interval that would keep ticking on a detached node.
       if (initiationMessageElement) {
@@ -1959,6 +1960,31 @@ window.chattermateConfig;
       if (widgetMounted) postToFrame({ type: 'HOST_PAGE', url: window.location.href })
     }
 
+    // SPA routers move on with history.pushState/replaceState, which fire no
+    // event, so journeys keyed to a page would never see the visitor arrive.
+    // Wrap both while the widget is up; unwrap only what is still ours, in case
+    // the site wrapped them again after us.
+    const historyWrappers = {}
+    function watchHistory() {
+      ;['pushState', 'replaceState'].forEach(function (name) {
+        const original = window.history[name]
+        if (typeof original !== 'function' || historyWrappers[name]) return
+        const wrapped = function () {
+          const result = original.apply(this, arguments)
+          reportPage()
+          return result
+        }
+        historyWrappers[name] = { original: original, wrapped: wrapped }
+        window.history[name] = wrapped
+      })
+    }
+    function unwatchHistory() {
+      Object.keys(historyWrappers).forEach(function (name) {
+        if (window.history[name] === historyWrappers[name].wrapped) window.history[name] = historyWrappers[name].original
+        delete historyWrappers[name]
+      })
+    }
+
     // Token + unread-count updates from the widget frame. Registered once for the
     // page: the frame is replaced on every identity change (see reloadWidget), and
     // registering per load would stack a duplicate handler each time.
@@ -2143,6 +2169,7 @@ window.chattermateConfig;
     window.addEventListener('message', handleFrameMessage)
     window.addEventListener('popstate', reportPage)
     window.addEventListener('hashchange', reportPage)
+    watchHistory()
 
     // Start prefetching immediately
     prefetchWidget()
