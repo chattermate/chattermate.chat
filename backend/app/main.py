@@ -30,6 +30,7 @@ from app.api import sso as sso_api
 from app.api import user_identities as user_identities_api
 # Import widget_chat to register socket.io event handlers for /widget namespace
 from app.api import widget_chat  # noqa: F401 - imported for side effects (socket.io handlers registration)
+from app.api import widget_actions  # noqa: F401 - registers the host-action socket handlers
 from fastapi import FastAPI, BackgroundTasks
 from app.core.config import settings, verify_secret_configuration
 from app.core.encryption import verify_encryption_key

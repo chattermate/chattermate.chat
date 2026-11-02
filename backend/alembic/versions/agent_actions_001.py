@@ -60,6 +60,8 @@ def upgrade() -> None:
         sa.Column('status', sa.String(16), nullable=False, server_default='pending'),
         sa.Column('confirmed', sa.Boolean(), nullable=True),
         sa.Column('args_hash', sa.String(64), nullable=False),
+        sa.Column('args_ciphertext', sa.Text(), nullable=True),
+        sa.Column('result_ciphertext', sa.Text(), nullable=True),
         sa.Column('error_code', sa.String(48), nullable=True),
         sa.Column('latency_ms', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -68,7 +70,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['agent_id'], ['agents.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['action_id'], ['agent_actions.id'], ondelete='SET NULL'),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('tool_call_id', name='uq_agent_action_calls_tool_call_id'),
+        sa.UniqueConstraint('run_id', 'tool_call_id', name='uq_agent_action_calls_run_tool_call'),
     )
     op.create_index('ix_agent_action_calls_organization_id', 'agent_action_calls', ['organization_id'])
     op.create_index('ix_agent_action_calls_session_status', 'agent_action_calls', ['session_id', 'status'])

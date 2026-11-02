@@ -94,13 +94,14 @@ class AgentAction(Base):
 class AgentActionCall(Base):
     """One call the model made to a host action, kept for auditing and so a
     paused run can resume on any worker. Never stores raw arguments: only a
-    hash, because they may hold visitor data."""
+    hash plus an encrypted copy, because they may hold visitor data; the copy is
+    what lets a later call be sent, or a call be replayed after a reconnect."""
 
     __tablename__ = "agent_action_calls"
     __table_args__ = (
         Index("ix_agent_action_calls_session_status", "session_id", "status"),
         Index("ix_agent_action_calls_run", "run_id"),
-        UniqueConstraint("tool_call_id", name="uq_agent_action_calls_tool_call_id"),
+        UniqueConstraint("run_id", "tool_call_id", name="uq_agent_action_calls_run_tool_call"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -110,12 +111,16 @@ class AgentActionCall(Base):
     action_name = Column(String(64), nullable=False)
     session_id = Column(UUID(as_uuid=True), nullable=False)
     run_id = Column(String(64), nullable=False)
-    # The model's tool-call id; doubles as the call id the widget sees.
+    # The model's tool-call id. Only unique within a run (some providers reuse
+    # ids like call_0), so the widget is given this row's id instead.
     tool_call_id = Column(String(128), nullable=False)
     seq = Column(Integer, nullable=False)
     status = Column(String(16), nullable=False, default=ActionCallStatus.PENDING.value, server_default=ActionCallStatus.PENDING.value)
     confirmed = Column(Boolean, nullable=True)
     args_hash = Column(String(64), nullable=False)
+    args_ciphertext = Column(Text, nullable=True)
+    # What the model will read for this call (encrypted; may echo visitor data).
+    result_ciphertext = Column(Text, nullable=True)
     error_code = Column(String(48), nullable=True)
     latency_ms = Column(Integer, nullable=True)
 

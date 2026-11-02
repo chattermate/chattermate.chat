@@ -230,6 +230,15 @@ class Settings(BaseSettings):
     ACTION_TIMEOUT_DEFAULT_S: int = int(os.getenv("ACTION_TIMEOUT_DEFAULT_S", "20"))
     ACTION_TIMEOUT_MAX_S: int = int(os.getenv("ACTION_TIMEOUT_MAX_S", "120"))
     ACTION_RESULT_MAX_BYTES: int = int(os.getenv("ACTION_RESULT_MAX_BYTES", "16384"))
+    # Extra seconds past a call's own timeout before the server gives up on it.
+    ACTION_GRACE_S: int = int(os.getenv("ACTION_GRACE_S", "10"))
+    # How long the visitor has to approve an action before it counts as declined.
+    ACTION_CONFIRM_TIMEOUT_S: int = int(os.getenv("ACTION_CONFIRM_TIMEOUT_S", "300"))
+    # Times one reply may pause for host actions before it must answer.
+    ACTION_PAUSES_PER_TURN: int = int(os.getenv("ACTION_PAUSES_PER_TURN", "3"))
+    # Host context passed with ChatterMate.setContext.
+    HOST_CONTEXT_MAX_BYTES: int = int(os.getenv("HOST_CONTEXT_MAX_BYTES", "4096"))
+    HOST_CONTEXT_MAX_KEYS: int = int(os.getenv("HOST_CONTEXT_MAX_KEYS", "50"))
 
     # Chars of previous-turn history re-sent to the model each turn. Tool
     # results from earlier turns are always stubbed out (see

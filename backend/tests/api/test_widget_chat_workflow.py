@@ -19,6 +19,7 @@ import asyncio
 import pytest
 from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from app.models.agent import Agent, AgentType
+from app.services import host_action_runtime, widget_reply
 from app.models.chat_history import ChatHistory
 from app.models.workflow import Workflow, WorkflowStatus
 from app.models.workflow_node import WorkflowNode, NodeType
@@ -217,6 +218,8 @@ def one_message_session(db, test_workflow, test_agent, test_customer, test_ai_co
         "conversation_scope": VERIFIED_SCOPE,
     })
     monkeypatch.setattr(widget_chat, "sio", sio)
+    monkeypatch.setattr(widget_reply, "sio", sio)
+    monkeypatch.setattr(host_action_runtime, "sio", sio)
     monkeypatch.setattr(message_delivery, "sio", sio)
     serve_socket_db(monkeypatch, db)
     monkeypatch.setattr(widget_chat, "notify_new_chat", AsyncMock())
