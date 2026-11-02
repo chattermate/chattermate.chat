@@ -62,7 +62,9 @@ vi.mock('@/composables/useWidgetSocket', () => ({
         onWorkflowState: vi.fn(),
         onWorkflowProceeded: vi.fn(),
         setToken: vi.fn(),
-        setWidgetId: vi.fn()
+        setWidgetId: vi.fn(),
+        on: vi.fn(),
+        emit: vi.fn()
     })
 }))
 

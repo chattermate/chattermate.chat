@@ -51,6 +51,9 @@ export function useWidgetSocket() {
     const humanAgent = ref<HumanAgent>({})
     const currentForm = ref<any>(null)
     const currentSessionId = ref<string>('')
+    // Listeners other widget features add (see `on`). Re-attached to every new
+    // socket, so they survive a reconnect that builds a fresh connection.
+    const extraListeners: Array<[string, (...args: any[]) => void]> = []
 
     // The typing indicator is driven solely by the server's `bot_typing`
     // event. The widget never guesses: a reply it optimistically waited for is
@@ -375,6 +378,7 @@ export function useWidgetSocket() {
         })
 
         socket.on('error', handleError)
+        for (const [event, listener] of extraListeners) socket.on(event, listener)
         socket.on('chat_history', handleChatHistory)
         socket.on('rating_submitted', handleRatingSubmitted)
         socket.on('display_form', handleDisplayForm)
@@ -801,6 +805,17 @@ export function useWidgetSocket() {
         onWorkflowProceededCallback = null
     }
 
+    /** Listen to a socket event, now and on every later connection. */
+    const on = (event: string, listener: (...args: any[]) => void) => {
+        extraListeners.push([event, listener])
+        socket?.on(event, listener)
+    }
+
+    /** Send an event on the current connection, if there is one. */
+    const emit = (event: string, data: unknown) => {
+        socket?.emit(event, data)
+    }
+
     return {
         messages,
         loading,
@@ -829,6 +844,8 @@ export function useWidgetSocket() {
         onWorkflowProceeded,
         currentSessionId,
         setToken,
-        setWidgetId
+        setWidgetId,
+        on,
+        emit
     }
 }

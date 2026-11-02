@@ -1,0 +1,171 @@
+/*
+Copyright 2024-2026 ChatterMate
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createHostActionsClient, PAGE_GRACE_MS, type ActionRequest } from '@/webclient/actions/hostActionsClient'
+
+const request = (overrides: Partial<ActionRequest> = {}): ActionRequest => ({
+  call_id: 'call-1',
+  name: 'open_page',
+  label: 'Go to a page',
+  args: { path: '/billing' },
+  confirm: 'never',
+  timeout_s: 5,
+  ...overrides,
+})
+
+function setup(origin: string | null = 'https://app.example.com') {
+  const posted: Record<string, unknown>[] = []
+  const emitted: [string, any][] = []
+  const confirm = vi.fn()
+  const client = createHostActionsClient({
+    postToHost: (m) => posted.push(m),
+    emit: (e, d) => emitted.push([e, d]),
+    trustedHostOrigin: () => origin,
+    onConfirmChange: confirm,
+  })
+  return { client, posted, emitted, confirm }
+}
+
+beforeEach(() => vi.useRealTimers())
+
+describe('announcing', () => {
+  it('sends the page actions with its origin', () => {
+    const { client, emitted } = setup()
+    client.handleHostMessage({ type: 'HOST_ACTIONS', names: ['open_page', 7] })
+    expect(emitted).toEqual([['actions_available', { names: ['open_page'], host_origin: 'https://app.example.com' }]])
+  })
+
+  it('sends nothing for an untrusted page', () => {
+    const { client, emitted } = setup(null)
+    client.handleHostMessage({ type: 'HOST_ACTIONS', names: ['open_page'] })
+    expect(emitted).toEqual([])
+  })
+
+  it('re-announces actions and context on a new connection', () => {
+    const { client, emitted } = setup()
+    client.handleHostMessage({ type: 'HOST_ACTIONS', names: ['open_page'] })
+    client.handleHostMessage({ type: 'HOST_CONTEXT', context: { plan: 'free' } })
+    emitted.length = 0
+    client.announce()
+    expect(emitted.map(([e]) => e)).toEqual(['actions_available', 'set_context'])
+  })
+
+  it('ignores a context that is not an object', () => {
+    const { client, emitted } = setup()
+    client.handleHostMessage({ type: 'HOST_CONTEXT', context: ['x'] })
+    expect(emitted).toEqual([])
+  })
+
+  it('leaves other messages to the widget', () => {
+    const { client } = setup()
+    expect(client.handleHostMessage({ type: 'HOST_PAGE' })).toBe(false)
+  })
+})
+
+describe('running', () => {
+  it('runs a never-ask action straight away and reports the result', () => {
+    const { client, posted, emitted } = setup()
+    client.handleRequest(request())
+    expect(posted).toEqual([{ type: 'ACTION_RUN', callId: 'call-1', name: 'open_page', args: { path: '/billing' }, timeoutS: 5 }])
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'ok', result: { ok: true } })
+    expect(emitted).toEqual([['action_result', { call_id: 'call-1', status: 'ok', confirmed: undefined, result: { ok: true }, error: undefined }]])
+  })
+
+  it('reports a page error and drops a late duplicate', () => {
+    const { client, emitted } = setup()
+    client.handleRequest(request())
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'error', error: 'No access' })
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'ok' })
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0][1]).toMatchObject({ status: 'error', error: 'No access' })
+  })
+
+  it('treats an unknown status from the page as an error', () => {
+    const { client, emitted } = setup()
+    client.handleRequest(request())
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'weird' })
+    expect(emitted[0][1].status).toBe('error')
+  })
+
+  it('gives up on a page that never answers', () => {
+    vi.useFakeTimers()
+    const { client, emitted } = setup()
+    client.handleRequest(request({ timeout_s: 5 }))
+    vi.advanceTimersByTime(5000 + PAGE_GRACE_MS)
+    expect(emitted).toEqual([['action_result', { call_id: 'call-1', status: 'timeout', confirmed: undefined }]])
+  })
+
+  it('ignores a malformed request', () => {
+    const { client, posted } = setup()
+    client.handleRequest({} as ActionRequest)
+    expect(posted).toEqual([])
+  })
+})
+
+describe('confirming', () => {
+  it('asks first for an always-ask action, then runs it approved', () => {
+    const { client, posted, emitted, confirm } = setup()
+    client.handleRequest(request({ confirm: 'always' }))
+    expect(posted).toEqual([])
+    expect(confirm).toHaveBeenLastCalledWith({ request: expect.objectContaining({ call_id: 'call-1' }), preview: null })
+    client.approve()
+    expect(confirm).toHaveBeenLastCalledWith(null)
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'ok' })
+    expect(emitted[0][1]).toMatchObject({ status: 'ok', confirmed: true })
+  })
+
+  it('reports a decline without running anything', () => {
+    const { client, posted, emitted } = setup()
+    client.handleRequest(request({ confirm: 'always' }))
+    client.decline()
+    expect(posted).toEqual([])
+    expect(emitted).toEqual([['action_result', { call_id: 'call-1', status: 'declined', confirmed: false }]])
+  })
+
+  it('shows before and after when the page says it would overwrite', () => {
+    const { client, posted, confirm } = setup()
+    client.handleRequest(request({ confirm: 'when_overwriting' }))
+    expect(posted[0]).toMatchObject({ type: 'ACTION_PREVIEW', callId: 'call-1' })
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: { before: 'A', after: 'B' } })
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ preview: { before: 'A', after: 'B' } }))
+  })
+
+  it('runs without asking when nothing would be overwritten', () => {
+    const { client, posted, confirm } = setup()
+    client.handleRequest(request({ confirm: 'when_overwriting' }))
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: null })
+    expect(confirm).not.toHaveBeenCalled()
+    expect(posted[1]).toMatchObject({ type: 'ACTION_RUN', callId: 'call-1' })
+  })
+
+  it('approve and decline do nothing without a card', () => {
+    const { client, emitted } = setup()
+    client.approve()
+    client.decline()
+    expect(emitted).toEqual([])
+  })
+
+  it('dispose clears timers and the card', () => {
+    vi.useFakeTimers()
+    const { client, emitted, confirm } = setup()
+    client.handleRequest(request())
+    client.dispose()
+    vi.advanceTimersByTime(60_000)
+    expect(emitted).toEqual([])
+    expect(confirm).toHaveBeenLastCalledWith(null)
+  })
+})

@@ -23,6 +23,7 @@ import {
 import { renderMarkdown } from './markdown'
 import AskAiPanel from './AskAiPanel.vue'
 import NewChatConfirm from './NewChatConfirm.vue'
+import ActionConfirmCard from './ActionConfirmCard.vue'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
@@ -33,6 +34,7 @@ import { hostSharesIdentity, isFramed, setHostPageUrl, tokenStoreFor } from './f
 import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
+import { useHostActions } from '../composables/useHostActions'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
@@ -96,8 +98,13 @@ const {
     setToken,
     setWidgetId,
     onSessionState,
-    onReauthorize
+    onReauthorize,
+    on: onSocketEvent,
+    emit: emitSocketEvent
 } = useWidgetSocket()
+
+// In-app actions the embedding page registered (ChatterMate.registerActions).
+const { pendingConfirm, approveAction, declineAction } = useHostActions({ on: onSocketEvent, emit: emitSocketEvent })
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
 // to the bottom as text grows.
@@ -2874,9 +2881,16 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                     </div>
                 </template>
 
+                <ActionConfirmCard
+                    v-if="pendingConfirm"
+                    :pending="pendingConfirm"
+                    @approve="approveAction"
+                    @decline="declineAction"
+                />
+
                 <!-- Loading indicator: "reading knowledge base" only when citations
                      are enabled; otherwise a plain typing indicator. -->
-                <div v-if="loading" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
+                <div v-if="loading && !pendingConfirm" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
                     <template v-if="showCitations">
                         <div class="reading-bars" aria-hidden="true">
                             <span></span><span></span><span></span>

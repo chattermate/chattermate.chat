@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { createHostActions } from './loader/hostActions.js'
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
@@ -211,6 +212,11 @@ window.chattermateConfig;
     const target = frameWindow()
     if (target && frameOrigin) target.postMessage(message, frameOrigin)
   }
+  // The page's in-app actions and context (ChatterMate.registerActions/setContext).
+  // Only reaches the frame once it has mounted; announced again on every mount.
+  const hostActions = createHostActions(function (message) {
+    if (widgetMounted) postToFrame(message)
+  }, (function () { try { return window.sessionStorage } catch (e) { return null } })())
   // Only the widget frame may talk to the loader: the right window, and the right
   // origin - which is only known once it says hello, so until then hello is all it
   // may say (hostile sibling frames can reach us, and a frame could be somewhere
@@ -1955,8 +1961,10 @@ window.chattermateConfig;
       }
       if (event.data.type === 'WIDGET_READY') {
         onWidgetReady()
+        hostActions.announce()
         return
       }
+      if (hostActions.handleFrameMessage(event.data)) return
       if (event.data.type === 'WIDGET_ERROR') {
         onWidgetError(String(event.data.code || ''))
         return
@@ -2640,6 +2648,11 @@ window.chattermateConfig;
     },
     showLauncher: function () { setLauncherVisible(true) },
     hideLauncher: function () { setLauncherVisible(false) },
+    // In-app actions: registerActions({ open_page: async ({ path }) => ({ ok: true }) }).
+    // Only actions declared on the agent's Actions tab are used.
+    registerActions: function (map) { hostActions.register(map) },
+    // Page state the agent may use, e.g. setContext({ plan: 'free', step: 'billing' }).
+    setContext: function (context) { hostActions.setContext(context) },
     // SPA login: identify(token) switches the widget to that visitor.
     identify: function (token) { setIdentity(token) },
     // SPA logout: back to an anonymous visitor, previous conversation dropped.
