@@ -32,7 +32,7 @@ vi.mock('@/utils/permissions', () => ({ permissionChecks: { canManageAgents: () 
 import AgentJourneysTab from '@/components/agent/journeys/AgentJourneysTab.vue'
 import JourneyEditor from '@/components/agent/journeys/JourneyEditor.vue'
 import {
-  audienceSummary, blankJourney, formatDuration, journeyProblems, renderPreview, startSummary, stepProblems, unknownVariables,
+  audienceSummary, blankJourney, conditionSource, formatDuration, journeyProblems, renderPreview, startSummary, stepProblems, unknownVariables,
 } from '@/components/agent/journeys/journeyModel'
 
 const journey = (overrides: Record<string, unknown> = {}) => ({
@@ -74,6 +74,14 @@ describe('journey model', () => {
     const step = { ...blankJourney().definition.steps[0], message: 'Hi {{user.first_name}} on {{ctx.plan}} with {{ctx.bank_name}}' }
     expect(unknownVariables(step, new Set(['plan']), {})).toEqual(['ctx.bank_name'])
     expect(unknownVariables(step, new Set(['plan']), { 'ctx.bank_name': 'your bank' })).toEqual([])
+  })
+
+  it('says where each kind of condition gets its value', () => {
+    expect(conditionSource('event', 'invoice_sent')).toEqual({ text: 'Your page reports it:', code: "ChatterMate.notify('invoice_sent')" })
+    expect(conditionSource('ctx', ' plan ').code).toBe('ChatterMate.setContext({ plan: … })')
+    expect(conditionSource('ctx', '').text).toContain('not verified')
+    expect(conditionSource('user', 'email').text).toContain('identity token')
+    expect(conditionSource('url', '/x').code).toBeUndefined()
   })
 
   it('formats durations in their two largest units', () => {
@@ -184,6 +192,14 @@ describe('JourneyEditor', () => {
     expect(wrapper.find('[role="alert"]').text()).toContain('Fill in every condition.')
     await picker.setValue('send_invoice')
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('tells the business how its page sends what a condition checks', async () => {
+    const wrapper = mountEditor()
+    await wrapper.find('#done-kind-0').setValue('event')
+    await wrapper.find('#done-value-0').setValue('invoice_sent')
+    expect(wrapper.find('#done-source-0').text()).toContain("ChatterMate.notify('invoice_sent')")
+    expect(wrapper.find('#done-value-0').attributes('aria-describedby')).toBe('done-source-0')
   })
 
   it('allows the action a chip runs on its step', async () => {

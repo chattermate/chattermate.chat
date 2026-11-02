@@ -16,7 +16,7 @@ limitations under the License.
 <script setup lang="ts">
 /** An editable list of conditions (triggers, done-when, audience rules). */
 import type { Condition, ConditionKind } from '@/types/journeys'
-import { CONDITION_KINDS, OPERATORS } from './journeyModel'
+import { CONDITION_KINDS, OPERATORS, conditionSource } from './journeyModel'
 
 const model = defineModel<Condition[]>({ required: true })
 const props = defineProps<{
@@ -72,7 +72,7 @@ function remove(index: number) {
           <option v-for="name in actionNames" :key="name" :value="name">{{ name }}</option>
         </select>
         <input v-else :id="`${idPrefix}-value-${index}`" class="input mono" :value="condition.value" :placeholder="placeholder(condition.kind)"
-          aria-label="Value" @input="update(index, { value: ($event.target as HTMLInputElement).value.trim() })" />
+          aria-label="Value" :aria-describedby="`${idPrefix}-source-${index}`" @input="update(index, { value: ($event.target as HTMLInputElement).value.trim() })" />
         <template v-if="isField(condition)">
           <select class="input op" :value="condition.op ?? 'exists'" aria-label="Comparison"
             @change="update(index, { op: ($event.target as HTMLSelectElement).value as Condition['op'] })">
@@ -83,6 +83,10 @@ function remove(index: number) {
         </template>
         <button type="button" class="remove" :aria-label="`Remove condition ${index + 1}`" @click="remove(index)">✕</button>
       </div>
+      <p :id="`${idPrefix}-source-${index}`" class="source">
+        {{ conditionSource(condition.kind, condition.value).text }}
+        <code v-if="conditionSource(condition.kind, condition.value).code">{{ conditionSource(condition.kind, condition.value).code }}</code>
+      </p>
     </template>
     <button type="button" class="add" @click="add">+ {{ addLabel }}</button>
   </div>
@@ -97,6 +101,8 @@ function remove(index: number) {
 .row.field .operand { grid-column: 2; grid-row: 2; }
 .row .remove { grid-column: 3; grid-row: 1; }
 .mono { font-family: var(--font-mono); font-size: 13px; }
+.source { margin: -2px 0 0; font-size: 12px; color: var(--muted2); line-height: 1.5; }
+.source code { font-family: var(--font-mono); font-size: 11.5px; color: var(--code); background: var(--o06); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
 .joiner { font-size: 11.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted2); }
 .remove { background: none; border: none; color: var(--muted2); cursor: pointer; border-radius: 8px; padding: 6px; }
 .remove:hover { color: var(--c-coral); }

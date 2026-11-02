@@ -35,6 +35,22 @@ export const CONDITION_KINDS: { value: ConditionKind; label: string }[] = [
   { value: 'action', label: 'Action succeeds' },
 ]
 
+/**
+ * Where a condition's value comes from, so the editor can tell the business
+ * what its page or server has to send. Page fields are the page's word for
+ * it; user fields come from the identity token the business's server signs.
+ */
+export function conditionSource(kind: ConditionKind, value: string): { text: string; code?: string } {
+  const name = value.trim()
+  switch (kind) {
+    case 'url': return { text: 'The widget reads the page address by itself.' }
+    case 'event': return { text: 'Your page reports it:', code: `ChatterMate.notify('${name || 'invoice_sent'}')` }
+    case 'ctx': return { text: 'Your page sends it (not verified):', code: `ChatterMate.setContext({ ${name || 'plan'}: … })` }
+    case 'user': return { text: 'From the identity token your server signs: name, first_name, email, or a custom_data key.' }
+    case 'action': return { text: 'When this action runs and succeeds, from a chip or the agent.' }
+  }
+}
+
 export const OPERATORS = [
   { value: 'exists', label: 'is set' },
   { value: 'eq', label: 'is' },
