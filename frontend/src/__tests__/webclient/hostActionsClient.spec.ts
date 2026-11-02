@@ -190,14 +190,45 @@ describe('page prompts', () => {
       onConfirmChange: () => {}, onPrompt,
     })
     expect(client.handleHostMessage({ type: 'HOST_PROMPT', message: 'Need help?', suggestions: ['Yes'], open: true })).toBe(true)
-    expect(onPrompt).toHaveBeenCalledWith({ message: 'Need help?', suggestions: ['Yes'], open: true })
+    expect(onPrompt).toHaveBeenCalledWith({ message: 'Need help?', chips: [{ label: 'Yes', kind: 'text', value: 'Yes' }], open: true, source: 'host' })
   })
 
   it('drops empty prompts and trims suggestions', () => {
     expect(toHostPrompt({ message: '  ' })).toBeNull()
     expect(toHostPrompt({ message: 5 })).toBeNull()
     const prompt = toHostPrompt({ message: 'Hi', suggestions: ['a', '', 3, 'b', 'c', 'd', 'e'] })!
-    expect(prompt.suggestions).toEqual(['a', 'b', 'c', 'd'].slice(0, PROMPT_MAX_SUGGESTIONS))
+    expect(prompt.chips.map((c) => c.label)).toEqual(['a', 'b', 'c', 'd'].slice(0, PROMPT_MAX_SUGGESTIONS))
     expect(prompt.open).toBe(false)
+  })
+})
+
+describe('local runs (journey action chips)', () => {
+  const chip = { label: 'Use GBP', kind: 'action' as const, value: 'set_currency',
+                 action: { label: 'Set currency', confirm: 'never' as const, timeout_s: 5 } }
+
+  it('runs on the page and reports to the callback, not the server', () => {
+    const { client, posted, emitted } = setup()
+    const done = vi.fn()
+    client.runLocal(chip, done)
+    const run = posted.find((m) => m.type === 'ACTION_RUN')!
+    expect(run).toMatchObject({ name: 'set_currency', args: {} })
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: run.callId, status: 'ok' })
+    expect(done).toHaveBeenCalledWith('ok')
+    expect(emitted).toEqual([])
+  })
+
+  it('asks first when the action says so, and a no is told to the callback', () => {
+    const { client, emitted } = setup()
+    const done = vi.fn()
+    client.runLocal({ ...chip, action: { ...chip.action, confirm: 'always' } }, done)
+    client.decline()
+    expect(done).toHaveBeenCalledWith('declined')
+    expect(emitted).toEqual([])
+  })
+
+  it('ignores a text chip', () => {
+    const { client, posted } = setup()
+    client.runLocal({ label: 'Hi', kind: 'text', value: 'Hi' }, vi.fn())
+    expect(posted).toEqual([])
   })
 })

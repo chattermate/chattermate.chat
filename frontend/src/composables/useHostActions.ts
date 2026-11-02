@@ -63,5 +63,5 @@ export function useHostActions(socket: SocketHooks, onPrompt?: (prompt: HostProm
     client.dispose()
   })
 
-  return { pendingConfirm, approveAction: client.approve, declineAction: client.decline }
+  return { pendingConfirm, approveAction: client.approve, declineAction: client.decline, runLocalAction: client.runLocal }
 }

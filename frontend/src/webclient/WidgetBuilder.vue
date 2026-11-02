@@ -36,7 +36,8 @@ import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
 import { useHostActions } from '../composables/useHostActions'
-import type { HostPrompt } from './actions/hostActionsClient'
+import type { HostPrompt, PageChip } from './actions/hostActionsClient'
+import { useJourneys } from '../composables/useJourneys'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
@@ -109,10 +110,30 @@ const {
 // a message it asked us to show (ChatterMate.prompt). The prompt lives outside
 // `messages` so loading history can't wipe it; it joins the chat once answered.
 const hostPrompt = ref<HostPrompt | null>(null)
-const { pendingConfirm, approveAction, declineAction } = useHostActions(
+const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHostActions(
     { on: onSocketEvent, emit: emitSocketEvent },
     (prompt) => { hostPrompt.value = prompt },
 )
+
+// Journeys the agent runs on this site: a step's message and chips share the
+// page-message slot above; notices (a step's "then", the finish) join the chat.
+const { journeyProgress, runChip, skipStep, noteActivity } = useJourneys({
+    on: onSocketEvent,
+    emit: emitSocketEvent,
+    showPrompt: (prompt) => { hostPrompt.value = prompt },
+    addNotice: (text) => {
+        messages.value.push({
+            message: text,
+            message_type: 'bot',
+            created_at: new Date().toISOString(),
+            session_id: '',
+            attributes: { source: 'journey' },
+        } as any)
+    },
+    runLocalAction,
+})
+
+const onPageChip = (chip: PageChip) => runChip(chip, sendQuickAction)
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
 // to the bottom as text grows.
@@ -496,7 +517,8 @@ const sendMessage = async () => {
         size: file.size
     }))
 
-    // A page prompt being answered is stored with the reply (it never was before).
+    noteActivity()
+    // A page message being answered is stored with the reply (it never was before).
     const answeredPrompt = hostPrompt.value
     hostPrompt.value = null
     if (answeredPrompt) {
@@ -505,13 +527,13 @@ const sendMessage = async () => {
             message_type: 'bot',
             created_at: new Date().toISOString(),
             session_id: '',
-            attributes: { source: 'host' },
+            attributes: { source: answeredPrompt.source },
         } as any)
     }
 
     // Send message with files in a single emit
     await socketSendMessage(newMessage.value, emailInput.value, files,
-        answeredPrompt ? { host_prompt: answeredPrompt.message } : {})
+        answeredPrompt ? { host_prompt: answeredPrompt.message, host_prompt_source: answeredPrompt.source } : {})
 
     // Clean up temporary object URLs
     uploadedAttachments.value.forEach(file => {
@@ -2939,16 +2961,20 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                 </div>
             </div>
 
-            <!-- Reply chips for a message the page showed (ChatterMate.prompt) -->
-            <div v-if="hostPrompt && hostPrompt.suggestions.length" class="cm-quick-actions-bar">
+            <!-- A journey step's progress, and reply chips for a page message or step -->
+            <div v-if="journeyProgress" class="cm-journey-progress" role="status" :aria-label="`Step ${journeyProgress.index + 1} of ${journeyProgress.count}`">
+                <span>Step {{ journeyProgress.index + 1 }} of {{ journeyProgress.count }}<template v-if="journeyProgress.title"> · {{ journeyProgress.title }}</template></span>
+                <button v-if="journeyProgress.skippable" type="button" class="cm-journey-skip" @click="skipStep">Skip</button>
+            </div>
+            <div v-if="hostPrompt && hostPrompt.chips.length" class="cm-quick-actions-bar">
                 <button
-                    v-for="suggestion in hostPrompt.suggestions"
-                    :key="suggestion"
+                    v-for="chip in hostPrompt.chips"
+                    :key="chip.label"
                     type="button"
                     class="cm-quick-action"
                     :disabled="!isMessageInputEnabled"
-                    @click="sendQuickAction(suggestion)"
-                >{{ suggestion }}</button>
+                    @click="onPageChip(chip)"
+                >{{ chip.label }}</button>
             </div>
 
             <!-- Quick actions (shown on open, just above the input — comp layout) -->
@@ -3663,6 +3689,26 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 .message-input input:disabled {
     background-color: rgba(0, 0, 0, 0.05);
     cursor: not-allowed;
+}
+
+.cm-journey-progress {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 12px 6px;
+    font-size: 12px;
+    color: var(--cm-muted);
+}
+
+.cm-journey-skip {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    color: var(--cm-muted);
+    font-size: 12px;
+    text-decoration: underline;
+    cursor: pointer;
 }
 
 .cm-secret-hint {

@@ -1986,6 +1986,11 @@ window.chattermateConfig;
         return
       }
       if (hostActions.handleFrameMessage(event.data)) return
+      if (event.data.type === 'WIDGET_OPEN_REQUEST') {
+        // A journey step that opens the chat by itself (once per step).
+        if (!isOpen) toggleChat()
+        return
+      }
       if (event.data.type === 'WIDGET_ERROR') {
         onWidgetError(String(event.data.code || ''))
         return
@@ -2684,6 +2689,10 @@ window.chattermateConfig;
     registerActions: function (map) { hostActions.register(map) },
     // Page state the agent may use, e.g. setContext({ plan: 'free', step: 'billing' }).
     setContext: function (context) { hostActions.setContext(context) },
+    // Tell journeys something happened in the app, e.g. notify('invoice_sent').
+    notify: function (event) { hostActions.notify(event) },
+    // Start a journey from the app's own code, e.g. startJourney('first_invoice').
+    startJourney: function (key) { hostActions.startJourney(key) },
     // Show a message from the page, e.g. prompt({ message: 'Need help with billing?',
     // suggestions: ['Yes please'], open: true }). Nothing is stored unless the visitor replies.
     prompt: function (options) {

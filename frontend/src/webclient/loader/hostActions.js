@@ -61,6 +61,9 @@ export function createHostActions(postToFrame, storage) {
   let pendingPrompt = null
   // Calls running right now: a replay that arrives meanwhile must not start a second run.
   const inFlight = new Set()
+  // App events and a journey start given before the widget mounted, sent once it does.
+  const pendingSignals = []
+  const PENDING_SIGNALS_KEPT = 20
 
   // [[callId, answer], ...], newest last.
   function readAll() {
@@ -94,6 +97,23 @@ export function createHostActions(postToFrame, storage) {
     postToFrame({ type: 'HOST_ACTIONS', names: Object.keys(handlers) })
     if (context) postToFrame({ type: 'HOST_CONTEXT', context })
     if (pendingPrompt && postToFrame(pendingPrompt)) pendingPrompt = null
+    while (pendingSignals.length && postToFrame(pendingSignals[0])) pendingSignals.shift()
+  }
+
+  function signal(message) {
+    if (postToFrame(message)) return
+    pendingSignals.push(message)
+    if (pendingSignals.length > PENDING_SIGNALS_KEPT) pendingSignals.shift()
+  }
+
+  // ChatterMate.notify('invoice_sent'): something happened in the app (journeys listen).
+  function notify(event) {
+    if (typeof event === 'string' && NAME_PATTERN.test(event)) signal({ type: 'HOST_EVENT', event: event })
+  }
+
+  // ChatterMate.startJourney('first_invoice'): start a journey from the app's own code.
+  function startJourney(key) {
+    if (typeof key === 'string' && NAME_PATTERN.test(key)) signal({ type: 'HOST_JOURNEY_START', key: key })
   }
 
   // ChatterMate.prompt({ message, suggestions, open }): a message from the page.
@@ -192,5 +212,8 @@ export function createHostActions(postToFrame, storage) {
     return false
   }
 
-  return { register: register, setContext: setContext, prompt: prompt, announce: announce, handleFrameMessage: handleFrameMessage }
+  return {
+    register: register, setContext: setContext, prompt: prompt, notify: notify, startJourney: startJourney,
+    announce: announce, handleFrameMessage: handleFrameMessage,
+  }
 }

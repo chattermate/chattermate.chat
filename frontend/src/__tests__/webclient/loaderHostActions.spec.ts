@@ -83,6 +83,7 @@ describe('loader host actions', () => {
     actions.register({ slow: run })
     actions.handleFrameMessage({ type: 'ACTION_RUN', callId: 'c1', name: 'slow', args: {} })
     actions.handleFrameMessage({ type: 'ACTION_RUN', callId: 'c1', name: 'slow', args: {} })
+    await flush() // the handler starts on a microtask
     finish('done')
     await flush()
     expect(run).toHaveBeenCalledTimes(1)
@@ -190,5 +191,30 @@ describe('ChatterMate.prompt', () => {
     expect(prompts).toEqual([{ type: 'HOST_PROMPT', message: 'Need help with billing?', suggestions: ['Yes please'], open: false }])
     fromFrame({ type: 'WIDGET_READY' })
     expect(post.mock.calls.filter(([m]: any) => m.type === 'HOST_PROMPT')).toHaveLength(1)
+  })
+})
+
+describe('ChatterMate.notify and startJourney', () => {
+  beforeEach(resetPage)
+  afterEach(cleanupPage)
+
+  it('reach the frame once it mounts, in order; bad names are dropped', async () => {
+    await loadLoader()
+    api().notify('invoice_sent')
+    api().notify('Bad Name')
+    api().startJourney('first_invoice')
+    handshake()
+    const post = spyOnFrame()
+    fromFrame({ type: 'WIDGET_READY' })
+    const signals = post.mock.calls.map(([m]: any) => m).filter((m: any) => ['HOST_EVENT', 'HOST_JOURNEY_START'].includes(m.type))
+    expect(signals).toEqual([{ type: 'HOST_EVENT', event: 'invoice_sent' }, { type: 'HOST_JOURNEY_START', key: 'first_invoice' }])
+  })
+
+  it('opens the chat when the frame asks', async () => {
+    await loadLoader()
+    bringUp()
+    expect(api().isOpen()).toBe(false)
+    fromFrame({ type: 'WIDGET_OPEN_REQUEST' })
+    expect(api().isOpen()).toBe(true)
   })
 })

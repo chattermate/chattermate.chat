@@ -49,11 +49,21 @@ export interface PendingConfirm {
   preview: ActionPreview | null
 }
 
-/** A message the embedding page shows in the chat (ChatterMate.prompt). */
+/** A reply chip: sends its text, or runs one of the page's actions. */
+export interface PageChip {
+  label: string
+  kind: 'text' | 'action'
+  value: string
+  /** For action chips: how the widget asks and how long the page gets. */
+  action?: { label: string; confirm: ConfirmPolicy; timeout_s: number }
+}
+
+/** A message shown in the chat on the page's behalf: its prompt(), or a journey step. */
 export interface HostPrompt {
   message: string
-  suggestions: string[]
+  chips: PageChip[]
   open: boolean
+  source: 'host' | 'journey'
 }
 
 /** Longest prompt the widget shows, and how many reply chips it offers. */
@@ -62,11 +72,12 @@ export const PROMPT_MAX_SUGGESTIONS = 4
 
 export function toHostPrompt(data: Record<string, unknown>): HostPrompt | null {
   if (typeof data.message !== 'string' || !data.message.trim()) return null
-  const suggestions = Array.isArray(data.suggestions)
+  const chips: PageChip[] = Array.isArray(data.suggestions)
     ? data.suggestions.filter((s): s is string => typeof s === 'string' && !!s.trim())
-        .map((s) => s.slice(0, 80)).slice(0, PROMPT_MAX_SUGGESTIONS)
+        .map((s) => ({ label: s.slice(0, 80), kind: 'text' as const, value: s.slice(0, 500) }))
+        .slice(0, PROMPT_MAX_SUGGESTIONS)
     : []
-  return { message: data.message.slice(0, PROMPT_MAX_CHARS), suggestions, open: data.open === true }
+  return { message: data.message.slice(0, PROMPT_MAX_CHARS), chips, open: data.open === true, source: 'host' }
 }
 
 export interface HostActionsDeps {
@@ -96,6 +107,8 @@ export function createHostActionsClient(deps: HostActionsDeps) {
   let pending: PendingConfirm | null = null
   // Calls the page is running: their give-up timer, and whether the visitor approved them.
   const waiting = new Map<string, { timer: unknown; confirmed: boolean | null }>()
+  // Calls the widget itself started (a journey's action chip): told to a callback, not the server.
+  const local = new Map<string, (status: ActionStatus) => void>()
   const previews = new Map<string, ActionRequest>()
 
   /** Tell the server what this page offers. Sent again on every connection. */
@@ -119,6 +132,12 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     const running = waiting.get(callId)
     if (running) clearTimer(running.timer)
     waiting.delete(callId)
+    const done = local.get(callId)
+    if (done) {
+      local.delete(callId)
+      done(status)
+      return
+    }
     const confirmed = running?.confirmed ?? undefined
     deps.emit('action_result', { call_id: callId, status, confirmed, ...extra })
   }
@@ -211,17 +230,39 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     if (!pending) return
     const { request } = pending
     setPending(null)
+    const done = local.get(request.call_id)
+    if (done) {
+      local.delete(request.call_id)
+      done('declined')
+      return
+    }
     deps.emit('action_result', { call_id: request.call_id, status: 'declined', confirmed: false })
+  }
+
+  /** Run an action the widget itself started (a chip), with the same asking first. */
+  function runLocal(chip: PageChip, onDone: (status: ActionStatus) => void) {
+    if (chip.kind !== 'action' || !chip.action) return
+    const callId = `chip-${chip.value}-${Date.now()}`
+    local.set(callId, onDone)
+    handleRequest({
+      call_id: callId,
+      name: chip.value,
+      label: chip.action.label,
+      args: {},
+      confirm: chip.action.confirm,
+      timeout_s: chip.action.timeout_s,
+    })
   }
 
   function dispose() {
     for (const running of waiting.values()) clearTimer(running.timer)
     waiting.clear()
     previews.clear()
+    local.clear()
     setPending(null)
   }
 
-  return { announce, handleRequest, handleHostMessage, approve, decline, dispose }
+  return { announce, handleRequest, handleHostMessage, approve, decline, runLocal, dispose }
 }
 
 export type HostActionsClient = ReturnType<typeof createHostActionsClient>
