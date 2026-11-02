@@ -44,6 +44,20 @@ def test_functions_are_external_and_carry_the_schema():
     assert fn.parameters["properties"]["path"]["type"] == "string"
 
 
+def test_action_tools_stay_non_strict_under_structured_output():
+    """agno makes every tool strict when the agent answers in a structured
+    format; OpenAI then refuses a business's own schema (no additionalProperties:
+    false, optional properties). The tool must reach the model as declared."""
+    [fn] = build_action_functions([_action()])
+    # What agno's Agent does to each Function when response_model is set.
+    fn.process_entrypoint(strict=True)
+    if fn.strict is None:
+        fn.strict = True
+    sent = fn.to_dict()
+    assert sent["strict"] is False
+    assert sent["parameters"] == {"type": "object", "properties": {"path": {"type": "string"}}}
+
+
 def test_sensitive_form_note_reaches_the_tool_description():
     [fn] = build_action_functions([_action(sensitive_form=True)])
     assert "Never pass such details" in fn.description

@@ -48,6 +48,12 @@ def build_action_functions(actions: Iterable[AgentAction]) -> List[Function]:
             description=model_description(action),
             parameters=action.parameters,
             external_execution=True,
+            # agno marks every tool strict when the agent answers in a structured
+            # format, and OpenAI then refuses a schema that isn't in strict shape
+            # (additionalProperties: false, every property required). A business
+            # writes its own schema, and the server validates the arguments
+            # against it anyway, so these stay non-strict.
+            strict=False,
         )
         for action in actions
     ]
