@@ -111,6 +111,16 @@ describe('running', () => {
     expect(emitted).toEqual([['action_result', { call_id: 'call-1', status: 'timeout', confirmed: undefined }]])
   })
 
+  it('ignores a replay of a call already running or on screen', () => {
+    const { client, posted, confirm } = setup()
+    client.handleRequest(request())
+    client.handleRequest(request())
+    expect(posted.filter((m) => m.type === 'ACTION_RUN')).toHaveLength(1)
+    client.handleRequest(request({ call_id: 'call-2', confirm: 'always' }))
+    client.handleRequest(request({ call_id: 'call-2', confirm: 'always' }))
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+
   it('ignores a malformed request', () => {
     const { client, posted } = setup()
     client.handleRequest({} as ActionRequest)

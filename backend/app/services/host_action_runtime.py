@@ -65,6 +65,11 @@ ACTIONS_LIMIT_NOTE = (
 UNFINISHED_REPLY = "I couldn't finish that in the app. Please try again."
 
 
+def _uuid(value: Any) -> UUID:
+    """Socket sessions hold ids as UUIDs or strings, depending on where they came from."""
+    return value if isinstance(value, UUID) else UUID(str(value))
+
+
 def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
@@ -84,7 +89,7 @@ def register_page_actions(db: Session, session: dict, names: Iterable[str]) -> L
     """Record which declared, enabled actions this page supplied code for, and
     return their names. Unknown or disabled names are ignored."""
     repo = AgentActionRepository(db)
-    actions = repo.enabled_by_names(UUID(session['agent_id']), names)
+    actions = repo.enabled_by_names(_uuid(session['agent_id']), names)
     repo.touch_registered(actions)
     offered = [a.name for a in actions]
     session[OFFERED_KEY] = offered
@@ -95,7 +100,7 @@ def offered_actions(db: Session, session: dict) -> List[AgentAction]:
     """The actions to give the model this turn: what the page registered and
     is still declared and enabled."""
     names = session.get(OFFERED_KEY) or []
-    return AgentActionRepository(db).enabled_by_names(UUID(session['agent_id']), names)
+    return AgentActionRepository(db).enabled_by_names(_uuid(session['agent_id']), names)
 
 
 # --- Pausing and dispatching -------------------------------------------------
@@ -132,11 +137,11 @@ async def start_paused_turn(sid: str, session: dict, paused: PausedTurn,
     by_name = {a.name: a for a in actions}
     rows = [
         AgentActionCall(
-            organization_id=UUID(session['org_id']),
-            agent_id=UUID(session['agent_id']),
+            organization_id=_uuid(session['org_id']),
+            agent_id=_uuid(session['agent_id']),
             action_id=by_name[call.tool_name].id if call.tool_name in by_name else None,
             action_name=call.tool_name or '',
-            session_id=UUID(session['session_id']),
+            session_id=_uuid(session['session_id']),
             run_id=paused.run_id,
             tool_call_id=call.tool_call_id,
             seq=index,
@@ -154,7 +159,7 @@ async def start_paused_turn(sid: str, session: dict, paused: PausedTurn,
 async def replay_open_call(sid: str, session_id: str, db: Session) -> None:
     """After a reconnect, send the call the reply is still waiting on again.
     The page caches results by call id, so a call it already ran is not run twice."""
-    call = AgentActionCallRepository(db).open_call(UUID(session_id))
+    call = AgentActionCallRepository(db).open_call(_uuid(session_id))
     if call is not None and not _expired(call, db):
         await _dispatch(sid, call, db)
 
@@ -184,7 +189,7 @@ def _expired(call: AgentActionCall, db: Session) -> bool:
 def waiting_on_page(db: Session, session_id: str) -> bool:
     """True while a reply is waiting for the page to answer an action. Stale
     calls are given up on here, so a page that went away never blocks the chat."""
-    call = AgentActionCallRepository(db).open_call(UUID(session_id))
+    call = AgentActionCallRepository(db).open_call(_uuid(session_id))
     return call is not None and not _expired(call, db)
 
 
@@ -214,7 +219,7 @@ async def handle_page_result(sid: str, session: dict, data: dict, db: Session) -
         return
 
     repo = AgentActionCallRepository(db)
-    call = repo.get(call_id, UUID(session['session_id']))
+    call = repo.get(call_id, _uuid(session['session_id']))
     # Only the call that was sent may be answered: an answer for a later one
     # (or two at once) would resume the reply early, or twice.
     if call is not None and _first_pending_id(repo, call.run_id) != call.id:
@@ -282,7 +287,7 @@ def _actions_for_resume(db: Session, session: dict, run_id: str) -> List[AgentAc
     still have the tools its own earlier calls refer to."""
     called = [c.action_name for c in AgentActionCallRepository(db).batch(run_id)]
     names = set(session.get(OFFERED_KEY) or []) | set(called)
-    return AgentActionRepository(db).enabled_by_names(UUID(session['agent_id']), names)
+    return AgentActionRepository(db).enabled_by_names(_uuid(session['agent_id']), names)
 
 
 def _store_unfinished_reply(session: dict, db: Session) -> ChatResponse:

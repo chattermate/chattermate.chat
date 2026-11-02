@@ -143,6 +143,9 @@ export function createHostActionsClient(deps: HostActionsDeps) {
   /** The server asks the page to run an action. */
   function handleRequest(request: ActionRequest) {
     if (!request || typeof request.call_id !== 'string') return
+    // A replay (after a reconnect) of a call already running, previewing or on screen.
+    if (waiting.has(request.call_id) || previews.has(request.call_id)
+      || pending?.request.call_id === request.call_id) return
     if (request.confirm === 'always') {
       setPending({ request, preview: null })
       return

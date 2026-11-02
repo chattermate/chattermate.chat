@@ -28,7 +28,9 @@ def get_owned_agent(db: Session, agent_id: UUID, organization_id: UUID, for_upda
     the rest of the transaction, to serialise count-then-insert checks."""
     query = db.query(Agent).filter(Agent.id == agent_id)
     if for_update:
-        query = query.with_for_update()
+        # OF agents: Agent eager-joins its relationships, and Postgres refuses to
+        # lock the nullable side of those outer joins.
+        query = query.with_for_update(of=Agent)
     agent = query.first()
     if not agent or agent.organization_id != organization_id:
         raise HTTPException(status_code=404, detail="Agent not found")

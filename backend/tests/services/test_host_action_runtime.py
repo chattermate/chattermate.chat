@@ -59,8 +59,9 @@ def actions(db, test_agent):
 
 @pytest.fixture
 def session(test_agent, test_customer):
+    # As a live socket session holds it: the org id as a UUID, the rest as strings.
     return {
-        "widget_id": "w", "org_id": str(test_agent.organization_id), "agent_id": str(test_agent.id),
+        "widget_id": "w", "org_id": test_agent.organization_id, "agent_id": str(test_agent.id),
         "customer_id": str(test_customer.id), "session_id": str(uuid4()),
     }
 

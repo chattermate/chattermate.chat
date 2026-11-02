@@ -31,6 +31,12 @@ export interface EmbedOptions {
    * fresh conversation token. Counted in tokenRequests.
    */
   tokenProvider?: () => Promise<string>
+  /** The site registers its in-app actions (open_page, send_invoice, set_currency, slow_open, fail_task). */
+  withActions?: boolean
+  /** ChatterMate.setContext(context) from the site's code. */
+  context?: Record<string, unknown>
+  /** ChatterMate.prompt(prompt) from the site's code. */
+  prompt?: { message: string; suggestions?: string[]; open?: boolean }
 }
 
 type JsApiMethod = 'open' | 'close' | 'toggle' | 'isOpen' | 'showLauncher' | 'hideLauncher' | 'identify' | 'logout'
@@ -192,6 +198,9 @@ export class ChatWidget {
       if (options.token) params.set('token', options.token)
       if (options.withTriggerButton) params.set('trigger', '1')
       if (options.snippet) params.set('snippet', options.snippet)
+      if (options.withActions) params.set('actions', '1')
+      if (options.context) params.set('context', JSON.stringify(options.context))
+      if (options.prompt) params.set('prompt', JSON.stringify(options.prompt))
       if (options.tokenProvider) {
         params.set('tokenProvider', '1')
         await this.answerTokenRequests(options.tokenProvider)
@@ -513,6 +522,54 @@ export class ChatWidget {
 
   get ratingThanks(): Locator {
     return this.frame.getByText('Thank you for your rating!')
+  }
+
+  /** The card asking the visitor before the site runs an action, named after the action. */
+  actionConfirm(label: string): Locator {
+    return this.frame.getByRole('group', { name: label })
+  }
+
+  async approveAction(label: string): Promise<void> {
+    await step(`Customer approves "${label}"`, async () => {
+      await this.actionConfirm(label).getByRole('button', { name: 'Apply' }).click()
+    })
+  }
+
+  async declineAction(label: string, button: 'Cancel' | 'Keep current' = 'Cancel'): Promise<void> {
+    await step(`Customer says no to "${label}"`, async () => {
+      await this.actionConfirm(label).getByRole('button', { name: button }).click()
+    })
+  }
+
+  /** What the site's own app shows (services/customer-site HOST_ACTIONS_SCRIPT). */
+  get appStatus(): Locator {
+    return this.page.getByRole('status', { name: 'App status' })
+  }
+
+  get appActionRuns(): Locator {
+    return this.page.getByLabel('Action runs')
+  }
+
+  get appCurrency(): Locator {
+    return this.page.getByLabel('Currency')
+  }
+
+  /** Shown under the message box when it looks like a password or key. */
+  get secretWarning(): Locator {
+    return this.frame.getByRole('alert').filter({ hasText: "Please don't paste passwords or keys here." })
+  }
+
+  get sendButton(): Locator {
+    return this.frame.getByRole('button', { name: 'Send message' })
+  }
+
+  /** A reply chip under a message the site showed (ChatterMate.prompt). */
+  replyChip(text: string): Locator {
+    return this.frame.getByRole('button', { name: text, exact: true })
+  }
+
+  async typeOnly(text: string): Promise<void> {
+    await this.messageInput.fill(text)
   }
 
   get ratingPrompt(): Locator {

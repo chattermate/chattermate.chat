@@ -58,7 +58,36 @@ interface Embed {
   strictCspFrameSrc: string | null
   /** Scripts by this nonce only (no 'unsafe-inline'); null allows inline scripts. */
   scriptNonce: string | null
+  /** Register the e2e in-app actions (see HOST_ACTIONS_SCRIPT). */
+  actions: boolean
+  /** ChatterMate.setContext(...) with this JSON. */
+  context: string | null
+  /** ChatterMate.prompt(...) with this JSON. */
+  prompt: string | null
 }
+
+// The site's own app code for in-app actions: what each action does is visible on the
+// page (App status, Action runs, Currency), so a test can see it happened, and how often.
+const HOST_ACTIONS_SCRIPT = `
+      (function () {
+        var status = document.getElementById('app-status')
+        var runs = document.getElementById('app-runs')
+        var currency = document.getElementById('app-currency')
+        function ran(text) { runs.textContent = String(Number(runs.textContent) + 1); status.textContent = text }
+        ChatterMate.registerActions({
+          open_page: async function (args) { ran('Opened ' + args.path); return { ok: true, path: args.path } },
+          send_invoice: async function (args) { ran('Sent invoice to ' + args.to); return { sent: true } },
+          set_currency: {
+            preview: async function (args) { return currency.textContent === args.code ? null : { before: currency.textContent, after: args.code } },
+            run: async function (args) { currency.textContent = args.code; ran('Currency is ' + args.code); return { currency: args.code } },
+          },
+          slow_open: function (args) {
+            status.textContent = 'Working'
+            return new Promise(function (resolve) { setTimeout(function () { ran('Opened ' + args.path); resolve({ ok: true }) }, 1500) })
+          },
+          fail_task: async function () { throw new Error('No permission for that') },
+        })
+      })()`
 
 /** A hardened merchant's policy: our script and API allowed, frames only as given. */
 function strictCsp(loader: string, frameSrc: string, nonce: string | null): string {
@@ -103,6 +132,12 @@ function page(embed: Embed): string {
       ? 'window.chattermateConfig = Object.assign({}, window.chattermateConfig, { tokenProvider: function () { return window.chattermateE2eToken() } });'
       : '',
   ].filter(Boolean).join('\n      ')
+  // After the loader: the page's own code calling the JS API. JSON is parsed here too.
+  const appCode = [
+    embed.actions ? HOST_ACTIONS_SCRIPT : '',
+    embed.context ? `ChatterMate.setContext(${JSON.stringify(JSON.parse(embed.context))});` : '',
+    embed.prompt ? `ChatterMate.prompt(${JSON.stringify(JSON.parse(embed.prompt))});` : '',
+  ].filter(Boolean).join('\n      ')
   const csp = embed.strictCspFrameSrc === null ? ''
     : `<meta http-equiv="Content-Security-Policy" content="${strictCsp(embed.loader, embed.strictCspFrameSrc, embed.scriptNonce)}">`
   const nonce = embed.scriptNonce ? ` nonce="${embed.scriptNonce}"` : ''
@@ -116,6 +151,8 @@ function page(embed: Embed): string {
       ${globals}
     </script>
     <script src="${embed.loader}"${nonce}></script>
+    ${embed.actions ? '<p>App status: <span id="app-status" role="status" aria-label="App status">Ready</span></p><p>Action runs: <span id="app-runs" aria-label="Action runs">0</span></p><p>Currency: <span id="app-currency" aria-label="Currency">USD</span></p>' : ''}
+    ${appCode ? `<script${nonce}>${appCode}</script>` : ''}
   </body>
 </html>`
 }
@@ -148,6 +185,9 @@ function serve(listenPort: number, loader: string, legacy: boolean): void {
         loader: legacy && params.get('loader') === 'current' ? loaderUrl : loader,
         strictCspFrameSrc: ['strict', 'nonce'].includes(params.get('csp') ?? '') ? (params.get('frameSrc') ?? '') : null,
         scriptNonce: params.get('csp') === 'nonce' ? randomBytes(16).toString('base64') : null,
+        actions: params.get('actions') === '1',
+        context: params.get('context'),
+        prompt: params.get('prompt'),
       })
     } catch {
       res.writeHead(400, { 'content-type': 'text/plain' }).end('config is not valid JSON')

@@ -77,6 +77,18 @@ describe('loader host actions', () => {
     expect(done[1]).toEqual(done[0])
   })
 
+  it('does not start a second run of a call still running', async () => {
+    let finish: (v: string) => void = () => {}
+    const run = vi.fn(() => new Promise<string>((resolve) => { finish = resolve }))
+    actions.register({ slow: run })
+    actions.handleFrameMessage({ type: 'ACTION_RUN', callId: 'c1', name: 'slow', args: {} })
+    actions.handleFrameMessage({ type: 'ACTION_RUN', callId: 'c1', name: 'slow', args: {} })
+    finish('done')
+    await flush()
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(posted.filter((m) => m.type === 'ACTION_DONE')).toHaveLength(1)
+  })
+
   it('previews with the handler, or null without one', async () => {
     actions.register({
       set_currency: { run: async () => 1, preview: async () => ({ before: 'USD', after: 'GBP' }) },

@@ -59,6 +59,8 @@ export function createHostActions(postToFrame, storage) {
   let context = null
   // A prompt given before the widget mounted, shown once it does.
   let pendingPrompt = null
+  // Calls running right now: a replay that arrives meanwhile must not start a second run.
+  const inFlight = new Set()
 
   // [[callId, answer], ...], newest last.
   function readAll() {
@@ -140,6 +142,7 @@ export function createHostActions(postToFrame, storage) {
       postToFrame(Object.assign({ type: 'ACTION_DONE', callId: callId }, cached))
       return
     }
+    if (inFlight.has(callId)) return
     const handler = handlers[message.name]
     if (!handler) {
       // Not cached: the page may register it before a replay.
@@ -147,6 +150,7 @@ export function createHostActions(postToFrame, storage) {
       return
     }
     let answer
+    inFlight.add(callId)
     try {
       const result = await withTimeout(Promise.resolve().then(function () {
         return handler.run(message.args || {})
@@ -157,6 +161,7 @@ export function createHostActions(postToFrame, storage) {
         ? { status: 'timeout' }
         : { status: 'error', error: errorText(error) }
     }
+    inFlight.delete(callId)
     writeCached(callId, answer)
     postToFrame(Object.assign({ type: 'ACTION_DONE', callId: callId }, answer))
   }
