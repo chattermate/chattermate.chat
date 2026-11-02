@@ -104,6 +104,8 @@ const moduleImports = {
   supportChatButton: '/src/modules/enterprise/components/support/SupportChatButton.vue',
   // External apps driving channel conversations (settings page)
   appIntegrationsView: '/src/modules/enterprise/views/AppIntegrationsView.vue',
+  // Personal access tokens for the CLI and API (settings page)
+  accessTokensView: '/src/modules/enterprise/views/AccessTokensView.vue',
   // Setup progress: the "Finish setup" bar, where the widget is live, and the
   // server-side step the wizard resumes at (nothing / null in open source)
   setupProgressBar: '/src/modules/enterprise/components/setup/SetupProgressBar.vue',
