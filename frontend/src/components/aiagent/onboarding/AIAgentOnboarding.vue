@@ -15,7 +15,7 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { userService } from '@/services/user'
 import { agentService } from '@/services/agent'
 import { widgetService } from '@/services/widget'
@@ -33,7 +33,9 @@ const emit = defineEmits<{
 }>()
 
 const onboarding = useOnboardingState()
-const { loadModule, moduleImports } = useEnterpriseFeatures()
+const { loadModule, moduleImports, enterpriseComponent } = useEnterpriseFeatures()
+// The hosted setup assistant beside the wizard; renders nothing in open source.
+const SetupAssistant = enterpriseComponent(moduleImports.setupAssistant)
 
 // The wizard step to reopen at for each server-side stage
 const WIZARD_STEP_FOR: Record<string, OnboardingStepIndex> = {
@@ -147,6 +149,31 @@ const completeAndAdvance = (step: OnboardingStepIndex, next: OnboardingStepIndex
   currentStep.value = next
 }
 
+// The assistant's names for the steps, and back.
+const STEP_KEYS = ['create', 'teach', 'test', 'launch'] as const
+type StepKey = typeof STEP_KEYS[number]
+const stepKey = computed<StepKey>(() => STEP_KEYS[currentStep.value])
+
+// Bumped when the assistant changed something the open step shows, so it
+// reloads with the new values.
+const refreshKey = ref(0)
+const handleAssistantChange = async () => {
+  if (agentId.value) {
+    try {
+      createdAgent.value = await agentService.getAgentById(agentId.value)
+    } catch (err) {
+      console.error('Failed to reload the agent after the assistant changed it:', err)
+    }
+  }
+  refreshKey.value += 1
+}
+
+const handleAssistantStep = (key: StepKey) => {
+  const index = STEP_KEYS.indexOf(key) as OnboardingStepIndex
+  if (index > 0 && !agentId.value) return
+  goTo(index)
+}
+
 const handleSkip = () => {
   onboarding.skip(orgId)
   emit('complete')
@@ -189,13 +216,14 @@ const handleFinish = () => {
     <div class="onb-card">
       <StepCreate
         v-if="currentStep === 0"
-        :key="createdAgent ? createdAgent.id : 'new'"
+        :key="(createdAgent ? createdAgent.id : 'new') + refreshKey"
         :existing-agent="createdAgent"
         @created="handleCreated"
         @skip="handleSkip"
       />
       <StepTeach
         v-else-if="currentStep === 1 && agentId"
+        :key="'teach' + refreshKey"
         :agent-id="agentId"
         :organization-id="orgId"
         @next="completeAndAdvance(1, 2)"
@@ -203,6 +231,7 @@ const handleFinish = () => {
       />
       <StepTest
         v-else-if="currentStep === 2 && agentId"
+        :key="'test' + refreshKey"
         :agent-id="agentId"
         :agent-name="agentName"
         :widget-id="widgetId"
@@ -213,12 +242,23 @@ const handleFinish = () => {
       />
       <StepLaunch
         v-else-if="currentStep === 3"
+        :key="'launch' + refreshKey"
         :widget-id="widgetId"
         :agent-type="agentType"
         @finish="handleFinish"
         @back="goTo(2)"
       />
     </div>
+
+    <SetupAssistant
+      :step="stepKey"
+      :agent-id="agentId"
+      :widget-id="widgetId"
+      :org-id="orgId"
+      @agent-created="handleCreated"
+      @changed="handleAssistantChange"
+      @go-to-step="handleAssistantStep"
+    />
   </div>
 </template>
 

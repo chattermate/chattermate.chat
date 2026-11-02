@@ -109,6 +109,8 @@ const moduleImports = {
   setupProgressBar: '/src/modules/enterprise/components/setup/SetupProgressBar.vue',
   widgetInstallStatus: '/src/modules/enterprise/components/setup/WidgetInstallStatus.vue',
   setupService: '/src/modules/enterprise/utils/setupService.ts',
+  // The setup assistant docked beside the onboarding wizard (nothing in open source)
+  setupAssistant: '/src/modules/enterprise/components/setup/SetupAssistantDock.vue',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */
