@@ -32,6 +32,7 @@ import AgentInstructionsTab from './AgentInstructionsTab.vue'
 import AgentWorkflowTab from './AgentWorkflowTab.vue'
 import AgentMCPToolsTab from './AgentMCPToolsTab.vue'
 import AgentLeadCaptureTab from './AgentLeadCaptureTab.vue'
+import AgentActionsTab from './actions/AgentActionsTab.vue'
 import { Cropper, CircleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
 import { useAgentChat } from '@/composables/useAgentChat'
@@ -808,7 +809,7 @@ onMounted(async () => {
     // Check if we should switch to knowledge tab based on URL query parameter
     const urlParams = new URLSearchParams(window.location.search)
     const tab = urlParams.get('tab')
-    if (tab && ['agent', 'preview', 'knowledge', 'integrations', 'mcp-tools', 'widget', 'advanced', 'workflow-builder', 'customization'].includes(tab)) {
+    if (tab && ['agent', 'preview', 'knowledge', 'integrations', 'mcp-tools', 'actions', 'widget', 'advanced', 'workflow-builder', 'customization'].includes(tab)) {
         activeTab.value = tab
     } else if (agentData.value.use_workflow === true) {
         // Show workflow builder tab by default when using workflow
@@ -1055,6 +1056,13 @@ onMounted(async () => {
                             MCP Tools
                             <font-awesome-icon v-if="hasEnterpriseModule && isMCPLocked" icon="fa-solid fa-lock" class="lock-icon-small" />
                         </button>
+                        <button
+                            class="tab-button"
+                            :class="{ 'active': activeTab === 'actions' }"
+                            @click="switchTab('actions')"
+                        >
+                            Actions
+                        </button>
                         <button 
                             class="tab-button" 
                             :class="{ 'active': activeTab === 'widget' }"
@@ -1202,6 +1210,11 @@ onMounted(async () => {
                             <AgentMCPToolsTab
                                 :agent-id="agentData.id"
                             />
+                        </div>
+
+                        <!-- Actions Tab -->
+                        <div v-if="activeTab === 'actions'" class="tab-content">
+                            <AgentActionsTab :agent-id="agentData.id" />
                         </div>
 
                         <!-- Widget Tab -->

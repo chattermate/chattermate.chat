@@ -1,0 +1,28 @@
+/* Controls shared by the agent Actions tab and its editor. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--o14);
+  background: var(--o06);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn.accent { background: var(--accent-solid); border-color: transparent; color: var(--on-accent-solid); font-weight: 600; }
+.btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+.btn.danger { background: var(--coral-bg); border-color: var(--coral-border); color: var(--c-coral); font-weight: 600; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+.input:focus { outline: none; border-color: var(--accent-ink); box-shadow: var(--ring-focus); }

@@ -223,6 +223,14 @@ class Settings(BaseSettings):
     # so the budget can stay tight. AGENT_RUN_TIMEOUT is the real safety net.
     AGENT_TOOL_CALL_LIMIT: int = int(os.getenv("AGENT_TOOL_CALL_LIMIT", "5"))
 
+    # In-app actions: things a widget agent may ask the host page to do for the
+    # signed-in visitor (see app.agents.host_actions). Every limit lives here.
+    ACTION_MAX_PER_AGENT: int = int(os.getenv("ACTION_MAX_PER_AGENT", "30"))
+    ACTION_SCHEMA_MAX_BYTES: int = int(os.getenv("ACTION_SCHEMA_MAX_BYTES", "8192"))
+    ACTION_TIMEOUT_DEFAULT_S: int = int(os.getenv("ACTION_TIMEOUT_DEFAULT_S", "20"))
+    ACTION_TIMEOUT_MAX_S: int = int(os.getenv("ACTION_TIMEOUT_MAX_S", "120"))
+    ACTION_RESULT_MAX_BYTES: int = int(os.getenv("ACTION_RESULT_MAX_BYTES", "16384"))
+
     # Chars of previous-turn history re-sent to the model each turn. Tool
     # results from earlier turns are always stubbed out (see
     # app.agents.history_memory); this bounds what remains by dropping the oldest
