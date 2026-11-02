@@ -42,6 +42,7 @@ from app.repositories.agent_action_call import AgentActionCallRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.widget import WidgetRepository
 from app.services.widget_embed_policy import allows_embedder
+from app.services.journey_runtime import step_actions_hint
 from app.services.widget_journeys import sync_journey
 from app.services.widget_reply import WIDGET_NAMESPACE, build_widget_agent, deliver_ai_reply, emit_bot_typing
 
@@ -263,7 +264,7 @@ async def resume_reply(sid: str, session: dict, run_id: str, results: Dict[str, 
 
     await emit_bot_typing(session['session_id'])
     actions = _actions_for_resume(db, session, run_id)
-    agent = await build_widget_agent(session, actions)
+    agent = await build_widget_agent(session, actions, step_actions_hint(db, session, actions))
     try:
         response = await agent.continue_response(
             run_id, results,

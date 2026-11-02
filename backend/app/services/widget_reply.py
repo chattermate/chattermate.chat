@@ -50,9 +50,11 @@ async def emit_bot_typing(session_id: str) -> None:
                    room=session_id, namespace=WIDGET_NAMESPACE)
 
 
-def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = ()) -> dict:
+def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
+                        journey_hint: Optional[str] = None) -> dict:
     """Everything ChatAgent needs for this socket session, read up front so a
-    caller can release its database connection before the slow agent build."""
+    caller can release its database connection before the slow agent build.
+    `journey_hint` names the actions that finish the user's journey step."""
     ai_config = session['ai_config']
     actions = list(host_actions)
     return dict(
@@ -67,6 +69,7 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = ())
         source=session.get('source'),
         extra_context=_joined(
             host_extra_context(session.get('host_context'), bool(actions)),
+            journey_hint,
             host_prompt_context(session.get('host_prompt')),
         ),
         host_action_functions=build_action_functions(actions) or None,
@@ -82,10 +85,11 @@ async def create_widget_agent(agent_kwargs: dict) -> ChatAgent:
     return await ChatAgent.create_async(**agent_kwargs)
 
 
-async def build_widget_agent(session: dict, host_actions: Iterable[AgentAction] = ()) -> ChatAgent:
+async def build_widget_agent(session: dict, host_actions: Iterable[AgentAction] = (),
+                             journey_hint: Optional[str] = None) -> ChatAgent:
     """The ChatAgent for this socket session, with the host page's actions and
     context when the page supplied any."""
-    return await create_widget_agent(widget_agent_kwargs(session, host_actions))
+    return await create_widget_agent(widget_agent_kwargs(session, host_actions, journey_hint))
 
 
 def _response_payload(response: ChatResponse, session_id: str) -> dict:

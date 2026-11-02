@@ -111,8 +111,8 @@ const nudgeOn = computed({
     </section>
 
     <section class="section">
-      <h4>Actions</h4>
-      <p class="hint">Chips on this step can run these.</p>
+      <h4>Suggested actions</h4>
+      <p class="hint">Chips can run these, and the agent is told they finish this step. It can still do anything else the user asks.</p>
       <p v-if="!actions.length" class="hint">No actions yet. Add them on the Actions tab.</p>
       <label v-for="action in actions" :key="action.name" class="action" :class="{ on: allowed.has(action.name) }">
         <input type="checkbox" :checked="allowed.has(action.name)" @change="toggleAction(action.name)" />

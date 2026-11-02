@@ -24,7 +24,7 @@ from app.models.schemas.agent_action import AgentActionCreate
 from app.models.schemas.journey import JourneyWrite
 from app.repositories.agent_action import AgentActionRepository
 from app.repositories.journey import JourneyProgressRepository, JourneyRepository
-from app.services.journey_runtime import JourneyRunner, user_fields
+from app.services.journey_runtime import JourneyRunner, step_actions_hint, user_fields
 
 
 def _steps():
@@ -227,6 +227,37 @@ def test_plan_without_journeys_shows_nothing(db, session, test_agent):
     with patch("app.services.journey_runtime.journeys_allowed", return_value=False):
         assert _runner(db, session, "https://app.x/dashboard").sync() is None
         assert _runner(db, session).start("first_invoice") is None
+
+
+def test_step_actions_hint_names_the_offered_actions_that_finish_the_step(db, session, test_agent, action):
+    other = AgentActionRepository(db).create(test_agent.organization_id, test_agent.id, AgentActionCreate(
+        name="open_page", label="Open a page", description="Opens one.", confirm="never"))
+    journey = _journey(db, test_agent)
+    # No journey yet: nothing to suggest.
+    assert step_actions_hint(db, session, [action, other]) is None
+
+    _runner(db, session, "https://app.x/dashboard").sync()
+    hint = step_actions_hint(db, session, [action, other])
+    assert '"Set your currency"' in hint and "set_currency (Set default currency)" in hint
+    # A suggestion only: other actions are still offered, just not named for the step.
+    assert "open_page" not in hint and "anything else" in hint
+    # The page didn't register the step's action this turn: nothing to suggest.
+    assert step_actions_hint(db, session, [other]) is None
+    # A paused journey suggests nothing.
+    JourneyRepository(db).set_status(journey, JourneyStatus.PAUSED)
+    assert step_actions_hint(db, session, [action]) is None
+    JourneyRepository(db).set_status(journey, JourneyStatus.LIVE)
+
+    # The step after it allows no actions.
+    _runner(db, session, "https://app.x/dashboard").sync(actions=["set_currency"])
+    assert step_actions_hint(db, session, [action, other]) is None
+
+
+def test_step_actions_hint_follows_the_plan(db, session, test_agent, action):
+    _journey(db, test_agent)
+    _runner(db, session, "https://app.x/dashboard").sync()
+    with patch("app.services.journey_runtime.journeys_allowed", return_value=False):
+        assert step_actions_hint(db, session, [action]) is None
 
 
 def test_user_fields_from_the_person():

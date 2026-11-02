@@ -26,6 +26,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.agent_action import AgentAction
 from app.models.customer import Customer
 from app.models.journey import Journey, JourneyProgress, JourneyStatus, ProgressStatus
 from app.models.schemas.journey import JourneyDefinition, Step
@@ -164,6 +165,18 @@ class JourneyRunner:
         self.dismiss()
         progress = self._begin(journey)
         return self._advance(progress, signals) if progress else None
+
+    def current_step(self) -> Optional[Tuple[Journey, Step]]:
+        """The live journey and step this user is on now, without moving them."""
+        if not self.allowed():
+            return None
+        progress = self.progress.active(self.agent_id, self.customer_id)
+        journey = self._live(progress)
+        definition = _definition(journey) if journey else None
+        if definition is None:
+            return None
+        index = step_index(definition, progress.current_step_id)
+        return (journey, definition.steps[index]) if index is not None else None
 
     # --- internals -------------------------------------------------------
 
@@ -322,3 +335,25 @@ def _notice(notice: Optional[Tuple[str, str]]) -> Optional[dict]:
     if not notice or not notice[1]:
         return None
     return {"kind": notice[0], "text": notice[1]}
+
+
+def step_actions_hint(db: Session, session: dict, offered: Iterable[AgentAction]) -> Optional[str]:
+    """Prompt text naming which of this turn's actions finish the step the user
+    is on. A suggestion, never a limit: the user can still ask for anything the
+    agent can do, and every action keeps its own confirm policy."""
+    offered = list(offered)
+    if not offered or not session.get("customer_id"):
+        return None
+    found = JourneyRunner(db, session).current_step()
+    if found is None:
+        return None
+    journey, step = found
+    suggested = [a for a in offered if a.name in step.allowed_actions]
+    if not suggested:
+        return None
+    names = ", ".join(f"{a.name} ({a.label})" for a in suggested)
+    return (
+        f'The user is on the step "{step.title}" of the app\'s guide "{journey.name}". '
+        f"These actions finish it: {names}. When the user wants help with this step, "
+        "offer or use one; they can still ask for anything else."
+    )

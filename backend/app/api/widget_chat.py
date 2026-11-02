@@ -64,6 +64,7 @@ from app.services.host_action_runtime import (
     offered_actions, replay_open_call, start_paused_turn, waiting_on_page,
 )
 from app.services.widget_reply import create_widget_agent, deliver_ai_reply, emit_bot_typing, widget_agent_kwargs
+from app.services.journey_runtime import step_actions_hint
 from app.services.host_prompt import clean_host_prompt, store_host_prompt
 from app.services.widget_identity import can_act_as, may_stand_for
 from app.services.message_delivery import deliver_to_customer
@@ -618,7 +619,7 @@ async def handle_widget_chat(sid, data):
             await emit_bot_typing(session_id)
             logger.debug(f"Initializing chat agent for model {session['ai_config'].model_type}")
             host_actions = offered_actions(db, session)
-            agent_kwargs = widget_agent_kwargs(session, host_actions)
+            agent_kwargs = widget_agent_kwargs(session, host_actions, step_actions_hint(db, session, host_actions))
             # Everything the model call needs is read: let the connection go
             # rather than hold it through the call
             release_connection(db)

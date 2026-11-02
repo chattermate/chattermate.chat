@@ -74,6 +74,24 @@ test.describe('Journeys', () => {
     await expect(widget.journeyProgress).toContainText('Step 1 of 1')
   })
 
+  test("the agent is told which actions finish the user's step, without losing the others @journeys", async ({ agent, widget, adminApi, llm }) => {
+    await declareAction(adminApi, agent.id, 'open_page')
+    await declareAction(adminApi, agent.id, 'send_invoice')
+    await createJourney(adminApi, agent.id, { key: 'invoices', name: 'Invoices', steps: STEPS.slice(1, 2), autoOpen: true })
+    await llm.script(agent, (s) => s.otherwise().reply('I can open it for you.'))
+
+    await widget.embed({ withActions: true })
+    await expect(widget.journeyProgress).toContainText('Step 1 of 1')
+    await widget.send('How do I get there?')
+    await expect(widget.lastAgentMessage()).toHaveText('I can open it for you.', AI_REPLY)
+
+    const request = (await llm.requests(agent)).at(-1)!
+    expect(request.system).toContain('These actions finish it: open_page (Go to a page).')
+    expect(request.system).not.toContain('send_invoice (')
+    // A suggestion, not a limit: the agent still has every action the page offers.
+    expect(request.tools).toEqual(expect.arrayContaining(['open_page', 'send_invoice']))
+  })
+
   test('the visitor can skip a step or hide the guide @journeys', async ({ agent, widget, adminApi }) => {
     await createJourney(adminApi, agent.id, { key: 'skippable', name: 'Skippable', steps: STEPS, autoOpen: true })
 
