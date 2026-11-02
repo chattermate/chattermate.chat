@@ -2687,6 +2687,8 @@ window.chattermateConfig;
     // In-app actions: registerActions({ open_page: async ({ path }) => ({ ok: true }) }).
     // Only actions declared on the agent's Actions tab are used.
     registerActions: function (map) { hostActions.register(map) },
+    // Drop every registered action, the page context and unsent events.
+    unregisterActions: function () { hostActions.reset() },
     // Page state the agent may use, e.g. setContext({ plan: 'free', step: 'billing' }).
     setContext: function (context) { hostActions.setContext(context) },
     // Tell journeys something happened in the app, e.g. notify('invoice_sent').

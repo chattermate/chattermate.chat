@@ -109,6 +109,17 @@ describe('loader host actions', () => {
     expect(posted).toEqual([{ type: 'HOST_CONTEXT', context: { plan: 'free', when: '1970-01-01T00:00:00.000Z' } }])
   })
 
+  it('forgets every action and the context on reset', async () => {
+    actions.register({ open_page: async () => ({ ok: true }) })
+    actions.setContext({ plan: 'free' })
+    posted.length = 0
+    actions.reset()
+    expect(posted).toEqual([{ type: 'HOST_ACTIONS', names: [] }, { type: 'HOST_CONTEXT', context: {} }])
+    actions.handleFrameMessage({ type: 'ACTION_RUN', callId: 'c9', name: 'open_page', args: {}, timeoutS: 5 })
+    await flush()
+    expect(posted.at(-1)).toMatchObject({ type: 'ACTION_DONE', callId: 'c9', status: 'error' })
+  })
+
   it('leaves other frame messages alone', () => {
     expect(actions.handleFrameMessage({ type: 'UNREAD_COUNT' })).toBe(false)
   })

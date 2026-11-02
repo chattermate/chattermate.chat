@@ -155,9 +155,13 @@ type StepKey = typeof STEP_KEYS[number]
 const stepKey = computed<StepKey>(() => STEP_KEYS[currentStep.value])
 
 // Bumped when the assistant changed something the open step shows, so it
-// reloads with the new values.
+// reloads with the new values. Only then: a reload drops what is being typed.
 const refreshKey = ref(0)
-const handleAssistantChange = async () => {
+const AREAS_SHOWN: Record<StepKey, string[]> = {
+  create: ['agent', 'look'], teach: ['knowledge'], test: ['agent', 'look'], launch: ['widget'],
+}
+const handleAssistantChange = async (area: string) => {
+  if (!AREAS_SHOWN[stepKey.value].includes(area)) return
   if (agentId.value) {
     try {
       createdAgent.value = await agentService.getAgentById(agentId.value)
@@ -256,6 +260,7 @@ const handleFinish = () => {
       :widget-id="widgetId"
       :org-id="orgId"
       @agent-created="handleCreated"
+      @widget-created="handleWidgetCreated"
       @changed="handleAssistantChange"
       @go-to-step="handleAssistantStep"
     />

@@ -138,6 +138,17 @@ export function createHostActions(postToFrame, storage) {
     announce()
   }
 
+  // Forget what the page gave: its actions, context and unsent signals. For a
+  // page that hands the widget to another agent (our dashboard does).
+  function reset() {
+    Object.keys(handlers).forEach(function (name) { delete handlers[name] })
+    context = null
+    pendingPrompt = null
+    pendingSignals.length = 0
+    announce()
+    postToFrame({ type: 'HOST_CONTEXT', context: {} })
+  }
+
   function setContext(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return
     context = toJson(value)
@@ -214,6 +225,6 @@ export function createHostActions(postToFrame, storage) {
 
   return {
     register: register, setContext: setContext, prompt: prompt, notify: notify, startJourney: startJourney,
-    announce: announce, handleFrameMessage: handleFrameMessage,
+    announce: announce, handleFrameMessage: handleFrameMessage, reset: reset,
   }
 }
