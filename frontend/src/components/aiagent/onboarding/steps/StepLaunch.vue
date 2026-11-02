@@ -39,7 +39,7 @@ const widgetSnippet = computed(() =>
 const aiInstallPrompt = computed(() => buildAiInstallPrompt(widgetSnippet.value))
 
 // Where the widget is live, or blocked (enterprise module; nothing in open source)
-const { enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const { enterpriseComponent, moduleImports, hasEnterpriseModule } = useEnterpriseFeatures()
 const WidgetInstallStatus = enterpriseComponent(moduleImports.widgetInstallStatus)
 
 // Built in the browser and handed to the user's own mail app: nothing is sent
@@ -68,7 +68,11 @@ const copySnippet = () => copy(widgetSnippet.value)
   <div class="step">
     <header class="step-head">
       <h2 class="step-title">Go live</h2>
-      <p class="step-sub">Paste this snippet on your site, or have your AI website builder add it for you.</p>
+      <p class="step-sub">
+        {{ hasEnterpriseModule
+          ? 'Paste this snippet on your site, or have your AI website builder add it for you.'
+          : 'Paste this snippet on your site.' }}
+      </p>
     </header>
 
     <div class="snippet">
@@ -81,7 +85,7 @@ const copySnippet = () => copy(widgetSnippet.value)
 
     <div class="snippet-help">
       <div class="snippet-actions">
-        <AiInstallPromptButton :prompt="aiInstallPrompt" />
+        <AiInstallPromptButton v-if="hasEnterpriseModule" :prompt="aiInstallPrompt" />
         <a v-if="developerMailto" class="action-btn" :href="developerMailto">
           <font-awesome-icon icon="fa-regular fa-envelope" aria-hidden="true" />
           Email it to my developer
@@ -93,10 +97,10 @@ const copySnippet = () => copy(widgetSnippet.value)
           <span class="sr-only">(opens in a new tab)</span>
         </a>
       </div>
-      <p class="ai-hint">Works with {{ AI_BUILDERS }}.</p>
+      <p v-if="hasEnterpriseModule" class="ai-hint">Works with {{ AI_BUILDERS }}.</p>
     </div>
 
-    <AiInstallPromptPreview :prompt="aiInstallPrompt" />
+    <AiInstallPromptPreview v-if="hasEnterpriseModule" :prompt="aiInstallPrompt" />
 
     <WidgetInstallStatus :widget-id="widgetId" />
 

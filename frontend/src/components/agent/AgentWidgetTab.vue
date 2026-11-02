@@ -22,6 +22,7 @@ import { AI_BUILDERS, buildAiInstallPrompt, buildWidgetCsp, buildWidgetEmbed, wi
 import AiInstallPromptButton from '@/components/agent/AiInstallPromptButton.vue'
 import AiInstallPromptPreview from '@/components/agent/AiInstallPromptPreview.vue'
 import { useWidgetFrameHost } from '@/composables/useWidgetFrameHost'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import WidgetAllowedDomains from './WidgetAllowedDomains.vue'
 
 interface Widget {
@@ -58,8 +59,10 @@ const requiresTokenAuth = computed(() => {
 // The exact snippet the Copy button produces (see buildWidgetEmbed) — rendered
 // in the preview so what you see always matches what you copy.
 const embedCode = computed(() => buildWidgetEmbed(props.widget?.id ?? '', requiresTokenAuth.value))
-// For an AI website builder to add it. Offered with the plain snippet only: a
-// token-auth install needs backend work no site builder can do from a prompt.
+// For an AI website builder to add it (hosted edition only). Offered with the
+// plain snippet only: a token-auth install needs backend work no site builder
+// can do from a prompt.
+const { hasEnterpriseModule } = useEnterpriseFeatures()
 const aiInstallPrompt = computed(() =>
   props.widget?.id && !requiresTokenAuth.value ? buildAiInstallPrompt(embedCode.value) : '',
 )
@@ -261,11 +264,11 @@ const { data } = await response.json();
                 </svg>
               </button>
             </div>
-            <div class="ai-install">
+            <div v-if="hasEnterpriseModule" class="ai-install">
               <AiInstallPromptButton :prompt="aiInstallPrompt" size="compact" />
               <span class="ai-hint">For {{ AI_BUILDERS }}.</span>
             </div>
-            <AiInstallPromptPreview :prompt="aiInstallPrompt" class="ai-preview" />
+            <AiInstallPromptPreview v-if="hasEnterpriseModule" :prompt="aiInstallPrompt" class="ai-preview" />
             <div class="info-box">
               <div class="info-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
