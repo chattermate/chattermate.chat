@@ -73,16 +73,32 @@ export function createJourneyClient(deps: JourneyDeps) {
     nudgeTimer = null
   }
 
-  function scheduleNudge(view: JourneyView) {
+  // The step the timer counts for, so a re-sync of the same step (every
+  // setContext or route change) doesn't restart the countdown.
+  let timedStep: string | null = null
+  let lastNudge: { stepId: string; nudge: NonNullable<JourneyView['nudge']> } | null = null
+
+  function startTimer() {
     stopNudge()
-    const nudge = view.nudge
-    if (!nudge || !view.step_id || nudgedStep === view.step_id) return
-    const stepId = view.step_id
+    const current = lastNudge
+    if (!current || nudgedStep === current.stepId) return
+    timedStep = current.stepId
     nudgeTimer = setTimer(() => {
       nudgeTimer = null
-      nudgedStep = stepId // once per step
-      deps.addNotice(nudge.message, 'message')
-    }, nudge.after_min * MINUTE_MS)
+      nudgedStep = current.stepId // once per step
+      deps.addNotice(current.nudge.message, 'message')
+    }, current.nudge.after_min * MINUTE_MS)
+  }
+
+  function scheduleNudge(view: JourneyView) {
+    lastNudge = view.nudge && view.step_id ? { stepId: view.step_id, nudge: view.nudge } : null
+    if (!lastNudge) {
+      stopNudge()
+      timedStep = null
+      return
+    }
+    if (timedStep === lastNudge.stepId && nudgeTimer !== null) return
+    startTimer()
   }
 
   function handleState(payload: { view: JourneyView | null }) {
@@ -90,6 +106,8 @@ export function createJourneyClient(deps: JourneyDeps) {
     if (view?.notice?.text) deps.addNotice(view.notice.text, view.notice.kind)
     if (!view || view.finished || view.waiting) {
       stopNudge()
+      lastNudge = null
+      timedStep = null
       deps.showStep(null, null)
       if (view?.finished && view.message) deps.addNotice(view.message, 'message')
       return
@@ -107,9 +125,9 @@ export function createJourneyClient(deps: JourneyDeps) {
     scheduleNudge(view)
   }
 
-  /** The visitor did something: the nudge waits again. */
+  /** The visitor did something: the nudge's countdown starts over. */
   function activity() {
-    stopNudge()
+    if (nudgeTimer !== null) startTimer()
   }
 
   return {

@@ -58,7 +58,14 @@ const worst = computed(() => {
 
 async function showStuck(stepId: string) {
   stuckStep.value = stepId
-  stuck.value = await journeysService.stuckUsers(props.agentId, props.journey.id, stepId)
+  stuck.value = []
+  try {
+    const users = await journeysService.stuckUsers(props.agentId, props.journey.id, stepId)
+    // Another step was picked while this one loaded.
+    if (stuckStep.value === stepId) stuck.value = users
+  } catch {
+    if (stuckStep.value === stepId) error.value = "Couldn't load the users on this step."
+  }
 }
 
 async function downloadCsv() {

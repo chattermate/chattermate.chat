@@ -226,6 +226,23 @@ describe('local runs (journey action chips)', () => {
     expect(emitted).toEqual([])
   })
 
+  it('runs one at a time: a second click while one runs is refused', () => {
+    const { client, posted } = setup()
+    expect(client.runLocal(chip, vi.fn())).toBe(true)
+    expect(client.runLocal(chip, vi.fn())).toBe(false)
+    expect(posted.filter((m) => m.type === 'ACTION_RUN')).toHaveLength(1)
+  })
+
+  it("gives way to the agent's confirm: the chip ends declined, the server's card shows", () => {
+    const { client, emitted } = setup()
+    const done = vi.fn()
+    client.runLocal({ ...chip, action: { ...chip.action, confirm: 'always' } }, done)
+    client.handleRequest({ call_id: 'call-9', name: 'send_invoice', label: 'Send', args: {}, confirm: 'always', timeout_s: 5 })
+    expect(done).toHaveBeenCalledWith('declined')
+    client.decline()
+    expect(emitted).toEqual([['action_result', { call_id: 'call-9', status: 'declined', confirmed: false }]])
+  })
+
   it('ignores a text chip', () => {
     const { client, posted } = setup()
     client.runLocal({ label: 'Hi', kind: 'text', value: 'Hi' }, vi.fn())

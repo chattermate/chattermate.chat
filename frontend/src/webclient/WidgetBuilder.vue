@@ -117,9 +117,10 @@ const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHost
 
 // Journeys the agent runs on this site: a step's message and chips share the
 // page-message slot above; notices (a step's "then", the finish) join the chat.
-const { journeyProgress, runChip, skipStep, noteActivity } = useJourneys({
+const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivity } = useJourneys({
     on: onSocketEvent,
     emit: emitSocketEvent,
+    currentPrompt: () => hostPrompt.value,
     showPrompt: (prompt) => { hostPrompt.value = prompt },
     addNotice: (text) => {
         messages.value.push({
@@ -134,6 +135,16 @@ const { journeyProgress, runChip, skipStep, noteActivity } = useJourneys({
 })
 
 const onPageChip = (chip: PageChip) => runChip(chip, sendQuickAction)
+
+// The server sends a step's message on every sync until the step is done, and a
+// reply doesn't finish a step. Once it is in the chat (answered, or in the
+// loaded history) it isn't shown — or stored — a second time.
+const visiblePrompt = computed(() => {
+    const prompt = hostPrompt.value
+    if (!prompt || prompt.source !== 'journey') return prompt
+    const inChat = messages.value.some(m => m.message_type === 'bot' && m.message === prompt.message)
+    return inChat ? null : prompt
+})
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
 // to the bottom as text grows.
@@ -519,7 +530,7 @@ const sendMessage = async () => {
 
     noteActivity()
     // A page message being answered is stored with the reply (it never was before).
-    const answeredPrompt = hostPrompt.value
+    const answeredPrompt = visiblePrompt.value
     hostPrompt.value = null
     if (answeredPrompt) {
         messages.value.push({
@@ -2929,10 +2940,10 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                     </div>
                 </template>
 
-                <div v-if="hostPrompt" class="message agent-message cm-welcome-row cm-host-prompt">
+                <div v-if="visiblePrompt" class="message agent-message cm-welcome-row cm-host-prompt">
                     <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
                     <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
-                    <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ hostPrompt.message }}</div>
+                    <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ visiblePrompt.message }}</div>
                 </div>
 
                 <ActionConfirmCard
@@ -2965,14 +2976,15 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             <div v-if="journeyProgress" class="cm-journey-progress" role="status" :aria-label="`Step ${journeyProgress.index + 1} of ${journeyProgress.count}`">
                 <span>Step {{ journeyProgress.index + 1 }} of {{ journeyProgress.count }}<template v-if="journeyProgress.title"> · {{ journeyProgress.title }}</template></span>
                 <button v-if="journeyProgress.skippable" type="button" class="cm-journey-skip" @click="skipStep">Skip</button>
+                <button type="button" class="cm-journey-skip" @click="dismissJourney">Hide guide</button>
             </div>
-            <div v-if="hostPrompt && hostPrompt.chips.length" class="cm-quick-actions-bar">
+            <div v-if="visiblePrompt && visiblePrompt.chips.length" class="cm-quick-actions-bar">
                 <button
-                    v-for="chip in hostPrompt.chips"
+                    v-for="chip in visiblePrompt.chips"
                     :key="chip.label"
                     type="button"
                     class="cm-quick-action"
-                    :disabled="!isMessageInputEnabled"
+                    :disabled="!isMessageInputEnabled || chipBusy || !!pendingConfirm"
                     @click="onPageChip(chip)"
                 >{{ chip.label }}</button>
             </div>

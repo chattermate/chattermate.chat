@@ -31,8 +31,10 @@ import { audienceSummary, startSummary } from './journeyModel'
 
 const props = defineProps<{ agentId: string }>()
 
-type View = { kind: 'list' } | { kind: 'gallery' } | { kind: 'edit'; journey: Journey | null } | { kind: 'funnel'; journey: Journey }
+type View = { kind: 'list' } | { kind: 'gallery' } | { kind: 'edit'; journey: Journey | null; stepId?: string } | { kind: 'funnel'; journey: Journey }
 const view = ref<View>({ kind: 'list' })
+// The step open in the editor, so saving doesn't jump back to the first one.
+const currentStepId = ref<string | undefined>()
 const templates = ref<JourneyTemplate[]>([])
 const contextKeys = ref<ContextKey[]>([])
 const pendingDelete = ref<Journey | null>(null)
@@ -67,7 +69,7 @@ async function run<T>(work: () => Promise<T>, success?: string): Promise<T | und
 
 async function handleSave(input: JourneyInput) {
   const saved = await run(() => save(input, editing.value?.id), 'Journey saved')
-  if (saved) view.value = { kind: 'edit', journey: saved }
+  if (saved) view.value = { kind: 'edit', journey: saved, stepId: currentStepId.value }
 }
 
 async function useTemplate(key: string) {
@@ -146,10 +148,11 @@ const statusLabel = (journey: Journey) => ({ live: 'Live', paused: 'Paused', dra
       @use="useTemplate" @blank="view = { kind: 'edit', journey: null }" @back="view = { kind: 'list' }" />
 
     <JourneyEditor v-else-if="view.kind === 'edit'" :journey="editing" :actions="actions" :context-keys="contextKeys"
-      :journeys="journeys" :saving="saving" :read-only="!canManage" @save="handleSave" @back="view = { kind: 'list' }" />
+      :journeys="journeys" :saving="saving" :read-only="!canManage" :initial-step-id="view.stepId"
+      @save="handleSave" @back="view = { kind: 'list' }" @step="currentStepId = $event" />
 
     <JourneyFunnel v-else-if="view.kind === 'funnel'" :agent-id="agentId" :journey="view.journey"
-      @back="view = { kind: 'list' }" @open-step="view = { kind: 'edit', journey: (view as any).journey }" />
+      @back="view = { kind: 'list' }" @open-step="view = { kind: 'edit', journey: view.journey, stepId: $event }" />
 
     <BaseModal v-if="pendingDelete" title="Delete journey?" @close="pendingDelete = null">
       <p class="modal-text">{{ pendingDelete.name }} stops for every user, and its funnel is lost.</p>

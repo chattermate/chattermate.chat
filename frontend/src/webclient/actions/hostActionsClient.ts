@@ -143,6 +143,13 @@ export function createHostActionsClient(deps: HostActionsDeps) {
   }
 
   function setPending(next: PendingConfirm | null) {
+    // A chip's card gives way to the agent's: the server is waiting on its
+    // answer, and the chip's run ends as declined rather than hanging.
+    const replaced = pending && next ? local.get(pending.request.call_id) : undefined
+    if (replaced && pending) {
+      local.delete(pending.request.call_id)
+      replaced('declined')
+    }
     pending = next
     deps.onConfirmChange(next)
   }
@@ -239,9 +246,11 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     deps.emit('action_result', { call_id: request.call_id, status: 'declined', confirmed: false })
   }
 
-  /** Run an action the widget itself started (a chip), with the same asking first. */
-  function runLocal(chip: PageChip, onDone: (status: ActionStatus) => void) {
-    if (chip.kind !== 'action' || !chip.action) return
+  /** Run an action the widget itself started (a chip), with the same asking
+   *  first. False when it can't start now: another call is running or asking. */
+  function runLocal(chip: PageChip, onDone: (status: ActionStatus) => void): boolean {
+    if (chip.kind !== 'action' || !chip.action) return false
+    if (pending || local.size > 0 || waiting.size > 0 || previews.size > 0) return false
     const callId = `chip-${chip.value}-${Date.now()}`
     local.set(callId, onDone)
     handleRequest({
@@ -252,6 +261,7 @@ export function createHostActionsClient(deps: HostActionsDeps) {
       confirm: chip.action.confirm,
       timeout_s: chip.action.timeout_s,
     })
+    return true
   }
 
   function dispose() {

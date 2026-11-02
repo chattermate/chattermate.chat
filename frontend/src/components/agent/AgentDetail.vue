@@ -694,7 +694,7 @@ onMounted(async () => {
     const urlParams = new URLSearchParams(window.location.search)
     const tab = urlParams.get('tab')
     // A link to a tab the plan locks opens its upgrade modal over the Agent tab.
-    const lockedTabs: Record<string, GateKey> = { 'lead-capture': 'lead-capture', 'mcp-tools': 'mcp', journeys: 'journeys', advanced: 'advanced' }
+    const lockedTabs: Record<string, GateKey> = { 'lead-capture': 'lead-capture', 'mcp-tools': 'mcp', journeys: 'journeys', advanced: 'advanced', 'workflow-builder': 'workflow' }
     if (tab && lockedTabs[tab] && isLocked(lockedTabs[tab])) {
         activeTab.value = 'agent'
         upgradeModalType.value = lockedTabs[tab]

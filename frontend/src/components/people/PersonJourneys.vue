@@ -15,7 +15,7 @@ limitations under the License.
 -->
 <script setup lang="ts">
 /** One person's journeys: each step, when they reached it and how it ended. */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { format } from 'date-fns'
 import { journeysService } from '@/services/journeys'
 import { useFeatureLock } from '@/composables/useFeatureLock'
@@ -24,10 +24,10 @@ import type { PersonJourney } from '@/types/journeys'
 const props = defineProps<{ customerId: string }>()
 const journeys = ref<PersonJourney[]>([])
 const { isLocked } = useFeatureLock()
-const locked = isLocked('journeys')
+const locked = computed(() => isLocked('journeys'))
 
 onMounted(async () => {
-  if (locked) return
+  if (locked.value) return
   try {
     journeys.value = await journeysService.forPerson(props.customerId)
   } catch {

@@ -42,7 +42,7 @@ export const FEATURE_GATES = {
     name: 'Lead Capture',
     title: 'Unlock Lead Capture',
     description: 'Lead Capture lets your agent collect and qualify contact details from visitors — with triggers, qualifying questions, and custom fields — then routes qualified leads to your team.',
-    bullets: ['Conversational lead capture', 'Qualifying questions', 'Custom fields', 'CRM sync'],
+    bullets: ['Conversational lead capture', 'Qualifying questions', 'Custom fields', 'Qualified-lead routing'],
   },
   journeys: {
     feature: 'journeys',

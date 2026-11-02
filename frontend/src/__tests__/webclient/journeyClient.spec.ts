@@ -71,9 +71,23 @@ describe('journey client', () => {
     vi.advanceTimersByTime(10 * 60_000)
     expect(addNotice).toHaveBeenCalledTimes(1)
 
+    // Activity starts the countdown over; it doesn't cancel the nudge.
     client.handleState({ view: step({ step_id: 'next', nudge }) })
+    vi.advanceTimersByTime(2 * 60_000)
     client.activity()
-    vi.advanceTimersByTime(10 * 60_000)
+    vi.advanceTimersByTime(2 * 60_000)
+    expect(addNotice).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(60_000)
+    expect(addNotice).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps counting when the same step is synced again', () => {
+    const { client, addNotice } = setup()
+    const nudge = { after_min: 3, message: 'Still there?' }
+    client.handleState({ view: step({ nudge }) })
+    vi.advanceTimersByTime(2 * 60_000)
+    client.handleState({ view: step({ nudge }) }) // a setContext or route change
+    vi.advanceTimersByTime(60_000)
     expect(addNotice).toHaveBeenCalledTimes(1)
   })
 

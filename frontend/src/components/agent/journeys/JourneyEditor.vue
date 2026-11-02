@@ -35,8 +35,10 @@ const props = defineProps<{
   journeys: Journey[]
   saving: boolean
   readOnly?: boolean
+  /** Open on this step (from the funnel). */
+  initialStepId?: string | null
 }>()
-const emit = defineEmits<{ (e: 'save', input: JourneyInput): void; (e: 'back'): void }>()
+const emit = defineEmits<{ (e: 'save', input: JourneyInput): void; (e: 'back'): void; (e: 'step', stepId: string): void }>()
 
 const draft = ref<JourneyInput>(blankJourney())
 const selected = ref(0)
@@ -49,11 +51,14 @@ function reset() {
     key: source.key, name: source.name, status: source.status, priority: source.priority, auto_open: source.auto_open,
     goal_event: source.goal_event, template_key: source.template_key, definition: source.definition,
   }))
-  selected.value = 0
+  const at = draft.value.definition.steps.findIndex(step => step.id === props.initialStepId)
+  selected.value = Math.max(0, at)
   dirty.value = false
 }
 watch(() => props.journey, reset, { immediate: true })
 watch(draft, () => { dirty.value = true }, { deep: true, flush: 'sync' })
+// So a save can bring the editor back on the step being edited.
+watch(selected, (index) => { const id = draft.value.definition.steps[index]?.id; if (id) emit('step', id) })
 
 const steps = computed(() => draft.value.definition.steps)
 const current = computed({
@@ -104,15 +109,21 @@ function setFallback(variable: string, value: string) {
 
 function save() {
   if (problems.value.length || props.saving || props.readOnly) return
+  // "Unsaved" stays until the saved journey comes back as the prop (reset): a
+  // save the API refuses must not look saved.
   emit('save', JSON.parse(JSON.stringify(draft.value)))
-  dirty.value = false
+}
+
+function back() {
+  if (dirty.value && !props.readOnly && !window.confirm('Leave without saving your changes?')) return
+  emit('back')
 }
 </script>
 
 <template>
   <div class="editor">
     <header class="head">
-      <button type="button" class="btn ghost" aria-label="Back to journeys" @click="emit('back')">← Journeys</button>
+      <button type="button" class="btn ghost" aria-label="Back to journeys" @click="back">← Journeys</button>
       <input id="journey-name" v-model="draft.name" class="input name" aria-label="Journey name" maxlength="120" :disabled="readOnly" />
       <input id="journey-key" v-model.trim="draft.key" class="input key" aria-label="Journey key" :disabled="readOnly || !!journey" />
       <span class="spacer"></span>
