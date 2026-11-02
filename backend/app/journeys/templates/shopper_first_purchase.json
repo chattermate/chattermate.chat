@@ -1,0 +1,107 @@
+{
+  "key": "shopper_first_purchase",
+  "name": "Shopper: first purchase",
+  "group": "Commerce",
+  "summary": "For store visitors without an account: a quick finder, a pick, and help at checkout.",
+  "goal_event": "first_order_placed",
+  "needs_actions": {
+    "add_to_cart": "never"
+  },
+  "definition": {
+    "audience": {
+      "kind": "everyone"
+    },
+    "start": {
+      "kind": "url",
+      "value": "/collections/*"
+    },
+    "steps": [
+      {
+        "id": "finder",
+        "title": "Quick finder",
+        "message": "Not sure which one? Answer three questions and I'll suggest one.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "finder_completed"
+          },
+          {
+            "kind": "action",
+            "value": "add_to_cart"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Start",
+            "value": "Help me choose"
+          },
+          {
+            "label": "Just browsing",
+            "value": "Just browsing"
+          }
+        ]
+      },
+      {
+        "id": "pick",
+        "title": "Your pick",
+        "message": "Try {{ctx.recommended_product}}. Add it to your cart?",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "add_to_cart"
+          },
+          {
+            "kind": "event",
+            "value": "cart_updated"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Add to cart",
+            "kind": "action",
+            "value": "add_to_cart"
+          }
+        ],
+        "allowed_actions": [
+          "add_to_cart"
+        ]
+      },
+      {
+        "id": "checkout",
+        "title": "Checkout help",
+        "message": "Questions about shipping or returns?",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "checkout_started"
+          }
+        ],
+        "skippable": true,
+        "triggers": [
+          {
+            "kind": "url",
+            "value": "/cart*"
+          }
+        ],
+        "chips": [
+          {
+            "label": "Shipping time",
+            "value": "How long does shipping take?"
+          },
+          {
+            "label": "Returns",
+            "value": "What is your returns policy?"
+          }
+        ]
+      }
+    ],
+    "finish": {
+      "message": ""
+    },
+    "variable_fallbacks": {
+      "ctx.recommended_product": "our most popular pick"
+    }
+  }
+}

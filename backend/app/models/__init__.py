@@ -41,6 +41,9 @@ from app.models.customer import LeadStage
 from app.models.agent_action import (
     AgentAction, AgentActionCall, ActionConfirmPolicy, ActionCallStatus,
 )
+from app.models.journey import (
+    Journey, JourneyProgress, JourneyStepProgress, AgentContextKey, JourneyStatus, ProgressStatus,
+)
 from app.models.lead_capture import (
     LeadCaptureConfig, LeadCaptureResponse,
     LeadAssignmentMode, CrmSyncTarget,
@@ -109,6 +112,12 @@ __all__ = [
     "AgentActionCall",
     "ActionConfirmPolicy",
     "ActionCallStatus",
+    "Journey",
+    "JourneyProgress",
+    "JourneyStepProgress",
+    "AgentContextKey",
+    "JourneyStatus",
+    "ProgressStatus",
     "LeadCaptureConfig",
     "LeadCaptureResponse",
     "LeadAssignmentMode",

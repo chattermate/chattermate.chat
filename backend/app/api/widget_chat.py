@@ -559,7 +559,7 @@ async def handle_widget_chat(sid, data):
             await notify_new_chat(db, active_session)
 
         if host_prompt:
-            store_host_prompt(db, session, host_prompt)
+            store_host_prompt(db, session, host_prompt, data.get('host_prompt_source'))
             session['host_prompt'] = host_prompt
         else:
             session.pop('host_prompt', None)

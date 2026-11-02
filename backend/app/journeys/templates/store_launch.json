@@ -1,0 +1,116 @@
+{
+  "key": "store_launch",
+  "name": "Store launch",
+  "group": "Commerce",
+  "summary": "From first product to a live store, with a test order before launch.",
+  "goal_event": "store_launched",
+  "needs_actions": {
+    "create_sample_product": "never",
+    "launch_store": "always"
+  },
+  "definition": {
+    "audience": {
+      "kind": "new_users"
+    },
+    "start": {
+      "kind": "url",
+      "value": "/admin*"
+    },
+    "steps": [
+      {
+        "id": "product",
+        "title": "Add a product",
+        "message": "Add your first product: a title, a price and a photo.",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "create_sample_product"
+          },
+          {
+            "kind": "ctx",
+            "value": "products_count",
+            "op": "gte",
+            "operand": 1
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Add a sample product",
+            "kind": "action",
+            "value": "create_sample_product"
+          }
+        ],
+        "allowed_actions": [
+          "create_sample_product"
+        ]
+      },
+      {
+        "id": "payments",
+        "title": "Set up payments",
+        "message": "Turn on payments so customers can pay.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "payments_enabled"
+          }
+        ],
+        "skippable": true
+      },
+      {
+        "id": "shipping",
+        "title": "Shipping",
+        "message": "Where do you ship?",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "shipping_set"
+          }
+        ],
+        "skippable": true
+      },
+      {
+        "id": "test_order",
+        "title": "Test order",
+        "message": "Place a test order to check checkout works.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "test_order_completed"
+          }
+        ],
+        "skippable": true
+      },
+      {
+        "id": "launch",
+        "title": "Launch",
+        "message": "Your store is password-protected. Launch it?",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "launch_store"
+          },
+          {
+            "kind": "event",
+            "value": "store_launched"
+          }
+        ],
+        "skippable": false,
+        "chips": [
+          {
+            "label": "Launch store",
+            "kind": "action",
+            "value": "launch_store"
+          }
+        ],
+        "allowed_actions": [
+          "launch_store"
+        ]
+      }
+    ],
+    "finish": {
+      "message": "Your store is live!"
+    },
+    "variable_fallbacks": {}
+  }
+}

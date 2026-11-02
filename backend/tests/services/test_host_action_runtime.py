@@ -30,7 +30,7 @@ from app.models.chat_history import ChatHistory
 from app.models.schemas.agent_action import AgentActionCreate
 from app.repositories.agent_action import AgentActionRepository
 from app.repositories.agent_action_call import AgentActionCallRepository
-from app.services import host_action_runtime as runtime, widget_reply
+from app.services import host_action_runtime as runtime, widget_journeys, widget_reply
 
 
 @pytest.fixture
@@ -40,6 +40,7 @@ def sio(monkeypatch):
     mock.save_session = AsyncMock()
     monkeypatch.setattr(runtime, "sio", mock)
     monkeypatch.setattr(widget_reply, "sio", mock)
+    monkeypatch.setattr(widget_journeys, "sio", mock)
     return mock
 
 

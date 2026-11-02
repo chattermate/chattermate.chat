@@ -37,7 +37,15 @@ def clean_host_prompt(value: Any) -> Optional[str]:
     return text or None
 
 
-def store_host_prompt(db, session: dict, text: str) -> None:
+# Who showed the message: the page's own prompt(), or a journey step.
+PROMPT_SOURCES = {MessageSource.HOST.value, MessageSource.JOURNEY.value}
+
+
+def prompt_source(value: Any) -> str:
+    return value if value in PROMPT_SOURCES else MessageSource.HOST.value
+
+
+def store_host_prompt(db, session: dict, text: str, source: str = MessageSource.HOST.value) -> None:
     ChatRepository(db).create_message({
         "message": text,
         "message_type": "bot",
@@ -45,7 +53,7 @@ def store_host_prompt(db, session: dict, text: str) -> None:
         "organization_id": session['org_id'],
         "agent_id": session['agent_id'],
         "customer_id": session['customer_id'],
-        "attributes": {"source": MessageSource.HOST.value},
+        "attributes": {"source": prompt_source(source)},
     })
 
 

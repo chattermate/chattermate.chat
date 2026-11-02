@@ -26,7 +26,7 @@ from app.models.schemas.agent_action import AgentActionCreate
 from app.repositories.agent_action import AgentActionRepository
 from app.repositories.agent_action_call import AgentActionCallRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
-from app.services import host_action_runtime, widget_reply
+from app.services import host_action_runtime, widget_journeys, widget_reply
 from tests.socket_db import serve_socket_db
 
 
@@ -36,7 +36,7 @@ def sio(monkeypatch):
     mock.emit = AsyncMock()
     mock.save_session = AsyncMock()
     mock.get_session = AsyncMock()
-    for module in (widget_actions, widget_chat, widget_reply, host_action_runtime):
+    for module in (widget_actions, widget_chat, widget_reply, host_action_runtime, widget_journeys):
         monkeypatch.setattr(module, "sio", mock)
     return mock
 

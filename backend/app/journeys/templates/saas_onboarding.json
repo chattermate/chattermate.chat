@@ -1,0 +1,120 @@
+{
+  "key": "saas_onboarding",
+  "name": "SaaS onboarding",
+  "group": "Get started",
+  "summary": "Take a new signup from first login to their first real result.",
+  "goal_event": "first_record_created",
+  "needs_actions": {
+    "create_sample_record": "never",
+    "invite_member": "always"
+  },
+  "definition": {
+    "audience": {
+      "kind": "new_users"
+    },
+    "start": {
+      "kind": "url",
+      "value": "/dashboard*"
+    },
+    "steps": [
+      {
+        "id": "welcome",
+        "title": "Welcome",
+        "message": "Hi {{user.first_name}}, I'll help you get set up. It takes about five minutes.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "profile_opened"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Let's go",
+            "value": "Let's go"
+          },
+          {
+            "label": "Later",
+            "value": "Later"
+          }
+        ]
+      },
+      {
+        "id": "profile",
+        "title": "Complete your profile",
+        "message": "Add your company name and logo so things look right.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "profile_completed"
+          }
+        ],
+        "skippable": true,
+        "triggers": [
+          {
+            "kind": "url",
+            "value": "/settings/profile*"
+          }
+        ]
+      },
+      {
+        "id": "first_record",
+        "title": "Create your first record",
+        "message": "Create your first one, or I can add a sample to look at.",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "create_sample_record"
+          },
+          {
+            "kind": "event",
+            "value": "first_record_created"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Add a sample",
+            "kind": "action",
+            "value": "create_sample_record"
+          }
+        ],
+        "allowed_actions": [
+          "create_sample_record"
+        ]
+      },
+      {
+        "id": "invite",
+        "title": "Invite your team",
+        "message": "Work goes better together. Who should join you?",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "invite_member"
+          },
+          {
+            "kind": "event",
+            "value": "member_invited"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Invite someone",
+            "kind": "action",
+            "value": "invite_member"
+          }
+        ],
+        "allowed_actions": [
+          "invite_member"
+        ]
+      }
+    ],
+    "finish": {
+      "message": "You're all set, {{user.first_name}}."
+    },
+    "variable_fallbacks": {
+      "user.first_name": "there"
+    }
+  }
+}

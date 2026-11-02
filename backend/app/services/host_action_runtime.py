@@ -42,6 +42,7 @@ from app.repositories.agent_action_call import AgentActionCallRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.widget import WidgetRepository
 from app.services.widget_embed_policy import allows_embedder
+from app.services.widget_journeys import sync_journey
 from app.services.widget_reply import WIDGET_NAMESPACE, build_widget_agent, deliver_ai_reply, emit_bot_typing
 
 logger = get_logger(__name__)
@@ -237,7 +238,10 @@ async def handle_page_result(sid: str, session: dict, data: dict, db: Session) -
         # Unknown, already answered, or given up on: a duplicate or late result.
         return
 
-    if status != ActionCallStatus.OK:
+    if status == ActionCallStatus.OK:
+        # A step can be done by this action succeeding.
+        await sync_journey(sid, session, db, actions=[call.action_name])
+    else:
         repo.skip_pending(call.run_id)
     batch = repo.batch(call.run_id)
     next_call = next((c for c in batch if c.status == ActionCallStatus.PENDING.value), None)

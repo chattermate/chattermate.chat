@@ -240,6 +240,14 @@ class Settings(BaseSettings):
     HOST_CONTEXT_MAX_BYTES: int = int(os.getenv("HOST_CONTEXT_MAX_BYTES", "4096"))
     HOST_CONTEXT_MAX_KEYS: int = int(os.getenv("HOST_CONTEXT_MAX_KEYS", "50"))
 
+    # Journeys: step-by-step guides a widget agent runs for the site's users.
+    JOURNEY_MAX_STEPS: int = int(os.getenv("JOURNEY_MAX_STEPS", "10"))
+    JOURNEY_MAX_PER_AGENT: int = int(os.getenv("JOURNEY_MAX_PER_AGENT", "20"))
+    # "New users": first seen (or signed up, when the token says) this many days ago.
+    JOURNEY_NEW_USER_DAYS: int = int(os.getenv("JOURNEY_NEW_USER_DAYS", "14"))
+    # Journey and action-call rows older than this are deleted by the purge job.
+    JOURNEY_DATA_RETENTION_DAYS: int = int(os.getenv("JOURNEY_DATA_RETENTION_DAYS", "365"))
+
     # Chars of previous-turn history re-sent to the model each turn. Tool
     # results from earlier turns are always stubbed out (see
     # app.agents.history_memory); this bounds what remains by dropping the oldest

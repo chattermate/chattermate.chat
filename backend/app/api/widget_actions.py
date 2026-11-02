@@ -24,12 +24,15 @@ The server sends:
   action_request {call_id, name, label, args, confirm, timeout_s}
 """
 
+from uuid import UUID
+
 from app.agents.host_actions.tools import clean_host_context
 from app.core.auth_utils import widget_socket_identity
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.database import close_session, session_off_loop
+from app.repositories.journey import AgentContextKeyRepository
 from app.services.host_action_runtime import (
     OFFERED_KEY, handle_page_result, page_may_offer_actions, register_page_actions,
 )
@@ -39,7 +42,7 @@ from app.services.widget_reply import WIDGET_NAMESPACE
 logger = get_logger(__name__)
 
 
-async def _session_or_refuse(sid: str):
+async def authenticated_session(sid: str):
     session = await sio.get_session(sid, namespace=WIDGET_NAMESPACE)
     widget_id, org_id, _ = widget_socket_identity(session)
     if not widget_id or not org_id or not session.get('session_id'):
@@ -58,7 +61,7 @@ def _names(data) -> list:
 @sio.on('actions_available', namespace=WIDGET_NAMESPACE)
 @socket_rate_limit(namespace=WIDGET_NAMESPACE)
 async def handle_actions_available(sid, data):
-    session = await _session_or_refuse(sid)
+    session = await authenticated_session(sid)
     if session is None:
         return
     db = await session_off_loop()
@@ -81,17 +84,27 @@ async def handle_actions_available(sid, data):
 @sio.on('set_context', namespace=WIDGET_NAMESPACE)
 @socket_rate_limit(namespace=WIDGET_NAMESPACE)
 async def handle_set_context(sid, data):
-    session = await _session_or_refuse(sid)
+    session = await authenticated_session(sid)
     if session is None:
         return
     session['host_context'] = clean_host_context((data or {}).get('context') if isinstance(data, dict) else None)
     await sio.save_session(sid, session, namespace=WIDGET_NAMESPACE)
+    if not session['host_context']:
+        return
+    db = await session_off_loop()
+    try:
+        # The editor lists the fields pages send, for {{ctx.*}} and rules.
+        AgentContextKeyRepository(db).record(UUID(str(session['agent_id'])), session['host_context'].keys(), 'context')
+    except Exception as e:
+        logger.error(f"Recording context keys failed for sid {sid}: {e}")
+    finally:
+        close_session(db)
 
 
 @sio.on('action_result', namespace=WIDGET_NAMESPACE)
 @socket_rate_limit(namespace=WIDGET_NAMESPACE)
 async def handle_action_result(sid, data):
-    session = await _session_or_refuse(sid)
+    session = await authenticated_session(sid)
     if session is None:
         return
     if not isinstance(data, dict):
