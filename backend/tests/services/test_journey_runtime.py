@@ -81,8 +81,11 @@ def test_start_shows_the_first_step_once(db, session, test_agent, action):
     assert view["message"] == "Hi Maya, pick a currency."
     assert view["chips"][0] == {"label": "Use GBP", "kind": "action", "value": "set_currency",
                                 "action": {"label": "Set default currency", "confirm": "when_overwriting", "timeout_s": 20}}
+    assert view["fresh"] is True
+    # Shown again after a reload (it isn't in the chat until answered), but not fresh.
     again = _runner(db, session, "https://app.x/dashboard").sync()
-    assert again["step_id"] == "currency" and again["message"] is None
+    assert again["step_id"] == "currency" and again["message"] == "Hi Maya, pick a currency."
+    assert again["fresh"] is False
 
 
 def test_an_action_chip_for_a_missing_action_is_dropped(db, session, test_agent):

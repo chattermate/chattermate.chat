@@ -296,10 +296,11 @@ class JourneyRunner:
         row = self.progress.step(progress, step.id)
         if row.reached_at is None:
             return {**base, "finished": False, "waiting": True, "step_index": index, "message": None}
-        message = None
-        if row.shown_at is None:
-            # Each step's opening message is shown once.
-            message = render(step.message, signals, fallbacks) or None
+        # The message is sent every time (it isn't in the chat until answered, so a
+        # reload must show it again); `fresh` marks its first showing, which is
+        # when the panel may open by itself.
+        fresh = row.shown_at is None
+        if fresh:
             row.shown_at = _now()
             self.progress.commit()
         return {
@@ -309,7 +310,8 @@ class JourneyRunner:
             "step_id": step.id,
             "step_index": index,
             "title": step.title,
-            "message": message,
+            "message": render(step.message, signals, fallbacks) or None,
+            "fresh": fresh,
             "chips": _chips(self.db, journey, step, signals, fallbacks),
             "skippable": step.skippable,
             "nudge": step.nudge.model_dump() if step.nudge else None,
