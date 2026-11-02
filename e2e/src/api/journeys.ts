@@ -22,6 +22,8 @@ export interface Journey {
   id: string
   key: string
   name: string
+  status: 'draft' | 'live' | 'paused'
+  definition: { steps: Array<JourneyStep & { chips: Array<{ label: string; kind: 'text' | 'action'; value: string }>; allowed_actions: string[] }> }
 }
 
 /** A live journey on the agent, as the Journeys tab saves one. */
@@ -44,4 +46,9 @@ export async function createJourney(
       },
     },
   })
+}
+
+/** The agent's journeys, highest priority first. */
+export async function listJourneys(api: ApiClient, agentId: string): Promise<Journey[]> {
+  return api.get<Journey[]>(`/agent/${agentId}/journeys`)
 }

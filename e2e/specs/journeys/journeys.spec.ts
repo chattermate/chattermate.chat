@@ -90,7 +90,7 @@ test.describe('Journeys', () => {
     await expect(widget.journeyProgress).toBeHidden()
   })
 
-  test('the funnel shows how far visitors got @journeys', async ({ agent, widget, adminApi, agentsPage }) => {
+  test('the funnel shows how far visitors got, who is stuck, and opens a step @journeys', async ({ agent, widget, adminApi, agentsPage, journeysTab }) => {
     await createJourney(adminApi, agent.id, { key: 'funnel', name: 'Funnel journey', steps: STEPS, autoOpen: true })
 
     await widget.embed({ withActions: true })
@@ -102,5 +102,11 @@ test.describe('Journeys', () => {
     await expect(agentsPage.funnelStep('Open billing')).toHaveAccessibleName('1 of 1 done')
     await expect(agentsPage.funnelStep('Open the invoices page')).toHaveAccessibleName('0 of 1 done')
     await expect(agentsPage.funnelStep('Send an invoice')).toHaveAccessibleName('0 of 0 done')
+    await expect(journeysTab.kpi('Started')).toContainText('1')
+    await expect(journeysTab.kpi('Finished all steps')).toContainText('0')
+
+    await journeysTab.showStuck('Open the invoices page')
+    await expect(journeysTab.stuckUsers).toContainText('Users on this step · 1')
+    await journeysTab.openStepFromFunnel('Open the invoices page')
   })
 })
