@@ -32,7 +32,7 @@ vi.mock('@/utils/permissions', () => ({ permissionChecks: { canManageAgents: () 
 import AgentJourneysTab from '@/components/agent/journeys/AgentJourneysTab.vue'
 import JourneyEditor from '@/components/agent/journeys/JourneyEditor.vue'
 import {
-  audienceSummary, blankJourney, journeyProblems, renderPreview, startSummary, stepProblems, unknownVariables,
+  audienceSummary, blankJourney, formatDuration, journeyProblems, renderPreview, startSummary, stepProblems, unknownVariables,
 } from '@/components/agent/journeys/journeyModel'
 
 const journey = (overrides: Record<string, unknown> = {}) => ({
@@ -74,6 +74,16 @@ describe('journey model', () => {
     const step = { ...blankJourney().definition.steps[0], message: 'Hi {{user.first_name}} on {{ctx.plan}} with {{ctx.bank_name}}' }
     expect(unknownVariables(step, new Set(['plan']), {})).toEqual(['ctx.bank_name'])
     expect(unknownVariables(step, new Set(['plan']), { 'ctx.bank_name': 'your bank' })).toEqual([])
+  })
+
+  it('formats durations in their two largest units', () => {
+    expect(formatDuration(null)).toBe('—')
+    expect(formatDuration(42.4)).toBe('42s')
+    expect(formatDuration(200)).toBe('3m 20s')
+    expect(formatDuration(180)).toBe('3m')
+    expect(formatDuration(7500)).toBe('2h 5m')
+    expect(formatDuration(86400)).toBe('1d')
+    expect(formatDuration(97200)).toBe('1d 3h')
   })
 })
 
@@ -125,8 +135,9 @@ describe('AgentJourneysTab', () => {
 describe('JourneyEditor', () => {
   const mountEditor = (props: Record<string, unknown> = {}) => mount(JourneyEditor, {
     props: { journey: journey(), actions: [{ name: 'send_invoice', confirm: 'always' }], contextKeys: [], journeys: [], saving: false, ...props },
-    global: { stubs: { 'font-awesome-icon': true } },
+    global: { stubs: { teleport: true, 'font-awesome-icon': true } },
   })
+  const button = (wrapper: ReturnType<typeof mountEditor>, text: string) => wrapper.findAll('button').find((b) => b.text() === text)!
 
   it('saves the whole journey', async () => {
     const wrapper = mountEditor()
@@ -160,6 +171,49 @@ describe('JourneyEditor', () => {
     ;(fallback.element as HTMLInputElement).value = 'your bank'
     await fallback.trigger('change')
     expect(wrapper.text()).not.toContain("ctx.bank_name isn't in your page context yet")
+  })
+
+  it('clears a condition when its kind changes, and picks a declared action for "Action succeeds"', async () => {
+    const wrapper = mountEditor()
+    expect((wrapper.find('#done-value-0').element as HTMLInputElement).value).not.toBe('')
+    await wrapper.find('#done-kind-0').setValue('action')
+    const picker = wrapper.find('#done-value-0')
+    expect(picker.element.tagName).toBe('SELECT')
+    expect((picker.element as HTMLSelectElement).value).toBe('')
+    expect(picker.findAll('option').map((o) => o.text())).toEqual(['Pick an action', 'send_invoice'])
+    expect(wrapper.find('[role="alert"]').text()).toContain('Fill in every condition.')
+    await picker.setValue('send_invoice')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('allows the action a chip runs on its step', async () => {
+    const wrapper = mountEditor()
+    await button(wrapper, '+ Add chip').trigger('click')
+    await wrapper.find('input[aria-label="Chip 1 label"]').setValue('Send it')
+    await wrapper.find('select[aria-label="Chip 1 does"]').setValue('action')
+    await wrapper.find('select[aria-label="Chip 1 action"]').setValue('send_invoice')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    await button(wrapper, 'Save').trigger('click')
+    const [saved] = wrapper.emitted('save')![0] as any[]
+    expect(saved.definition.steps[0].allowed_actions).toEqual(['send_invoice'])
+    expect(wrapper.find('.preview-chip').text()).toBe('Send it')
+  })
+
+  it('asks before leaving with unsaved changes, and leaves straight away without', async () => {
+    const wrapper = mountEditor()
+    await wrapper.find('[aria-label="Back to journeys"]').trigger('click')
+    expect(wrapper.emitted('back')).toHaveLength(1)
+
+    await wrapper.find('#step-title').setValue('Changed')
+    await wrapper.find('[aria-label="Back to journeys"]').trigger('click')
+    expect(wrapper.text()).toContain('Leave without saving?')
+    await button(wrapper, 'Keep editing').trigger('click')
+    expect(wrapper.text()).not.toContain('Leave without saving?')
+    expect(wrapper.emitted('back')).toHaveLength(1)
+
+    await wrapper.find('[aria-label="Back to journeys"]').trigger('click')
+    await button(wrapper, 'Leave').trigger('click')
+    expect(wrapper.emitted('back')).toHaveLength(2)
   })
 
   it('is read-only for viewers', () => {

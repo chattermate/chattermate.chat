@@ -696,7 +696,8 @@ onMounted(async () => {
     // A link to a tab the plan locks opens its upgrade modal over the Agent tab.
     const lockedTabs: Record<string, GateKey> = { 'lead-capture': 'lead-capture', 'mcp-tools': 'mcp', journeys: 'journeys', advanced: 'advanced', 'workflow-builder': 'workflow' }
     if (tab && lockedTabs[tab] && isLocked(lockedTabs[tab])) {
-        activeTab.value = 'agent'
+        // switchTab so the URL names the tab on show, not the locked one.
+        switchTab('agent')
         upgradeModalType.value = lockedTabs[tab]
         showUpgradeModal.value = true
     } else if (tab && ['agent', 'preview', 'knowledge', 'integrations', 'lead-capture', 'mcp-tools', 'actions', 'journeys', 'widget', 'advanced', 'workflow-builder', 'customization'].includes(tab)) {

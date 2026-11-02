@@ -20,6 +20,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { journeysService } from '@/services/journeys'
 import { apiErrorMessage } from '@/utils/apiError'
 import type { Funnel, Journey, StuckUser } from '@/types/journeys'
+import { formatDuration } from './journeyModel'
 
 const props = defineProps<{ agentId: string; journey: Journey }>()
 const emit = defineEmits<{ (e: 'back'): void; (e: 'openStep', stepId: string): void }>()
@@ -43,11 +44,6 @@ onMounted(load)
 watch(days, load)
 
 const percent = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0)
-const duration = (seconds: number | null) => {
-  if (seconds === null) return '—'
-  const minutes = Math.floor(seconds / 60)
-  return minutes ? `${minutes}m ${Math.round(seconds % 60)}s` : `${Math.round(seconds)}s`
-}
 
 /** The step that loses the most users, to point at. */
 const worst = computed(() => {
@@ -94,10 +90,10 @@ async function downloadCsv() {
     <p v-if="error" class="error">{{ error }}</p>
     <template v-else-if="funnel">
       <div class="kpis">
-        <div class="kpi"><span>Started</span><b>{{ funnel.started }}</b></div>
-        <div class="kpi"><span>Finished all steps</span><b>{{ funnel.finished }}</b><small>{{ percent(funnel.finished, funnel.started) }}% of started</small></div>
-        <div class="kpi"><span>Goal reached</span><b>{{ funnel.goal_reached }}</b><small>{{ journey.goal_event || 'no goal set' }}</small></div>
-        <div class="kpi"><span>Median time to finish</span><b>{{ duration(funnel.median_seconds_to_finish) }}</b></div>
+        <div class="kpi" role="group" aria-label="Started"><span>Started</span><b>{{ funnel.started }}</b></div>
+        <div class="kpi" role="group" aria-label="Finished all steps"><span>Finished all steps</span><b>{{ funnel.finished }}</b><small>{{ percent(funnel.finished, funnel.started) }}% of started</small></div>
+        <div class="kpi" role="group" aria-label="Goal reached"><span>Goal reached</span><b>{{ funnel.goal_reached }}</b><small>{{ journey.goal_event || 'no goal set' }}</small></div>
+        <div class="kpi" role="group" aria-label="Median time to finish"><span>Median time to finish</span><b>{{ formatDuration(funnel.median_seconds_to_finish) }}</b></div>
       </div>
 
       <table class="table">
@@ -117,7 +113,7 @@ async function downloadCsv() {
             <td class="num">{{ step.reached }}</td>
             <td class="num">{{ step.done }}</td>
             <td class="num">{{ percent(step.dropped, step.reached) }}%</td>
-            <td class="num">{{ duration(step.median_seconds) }}</td>
+            <td class="num">{{ formatDuration(step.median_seconds) }}</td>
             <td><button v-if="step.dropped" type="button" class="link" @click="showStuck(step.step_id)">Who's stuck</button></td>
           </tr>
         </tbody>
@@ -157,7 +153,7 @@ async function downloadCsv() {
 .table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .table th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted2); padding: 8px; }
 .table td { padding: 10px 8px; border-top: 1px solid var(--o06); }
-.num { text-align: right; font-family: var(--font-mono); }
+.table .num { text-align: right; font-family: var(--font-mono); }
 tr.worst { background: var(--coral-bg); }
 .worst-tag { margin-left: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; color: var(--c-coral); }
 .bar { position: relative; height: 16px; min-width: 120px; }

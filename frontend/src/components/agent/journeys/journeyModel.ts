@@ -170,3 +170,18 @@ export function journeyProblems(journey: JourneyInput): string[] {
   if (journey.definition.start.kind !== 'manual' && !journey.definition.start.value) problems.push('Say which page or event starts it.')
   return problems
 }
+
+const UNITS: [number, string][] = [[86400, 'd'], [3600, 'h'], [60, 'm'], [1, 's']]
+
+/** A time span in its two largest units ("1d 3h", "4m 20s"); "—" when there is none. */
+export function formatDuration(seconds: number | null): string {
+  if (seconds === null) return '—'
+  const total = Math.round(seconds)
+  if (total < 60) return `${total}s`
+  const i = UNITS.findIndex(([size]) => total >= size)
+  const [big, bigUnit] = UNITS[i]
+  const [small, smallUnit] = UNITS[i + 1]
+  const whole = `${Math.floor(total / big)}${bigUnit}`
+  const rest = Math.floor((total % big) / small)
+  return rest ? `${whole} ${rest}${smallUnit}` : whole
+}

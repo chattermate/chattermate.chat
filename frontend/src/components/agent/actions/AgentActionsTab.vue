@@ -80,7 +80,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="actions-tab">
+  <section class="agent-tab actions-tab" aria-label="Actions">
     <div class="tab-head">
       <div>
         <h3 class="tab-title">Actions</h3>
@@ -169,15 +169,12 @@ onMounted(load)
         <button class="btn danger" @click="confirmDelete">Delete</button>
       </template>
     </BaseModal>
-  </div>
+  </section>
 </template>
 
 <style scoped src="./actions.css"></style>
 <style scoped>
 .actions-tab { display: flex; flex-direction: column; gap: 18px; }
-.tab-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.tab-title { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
-.tab-sub { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 620px; line-height: 1.5; }
 .state { font-size: 14px; color: var(--muted); }
 .state.error { color: var(--c-coral); }
 .actions-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
@@ -234,12 +231,20 @@ onMounted(load)
 .link { background: none; border: none; color: var(--accent-ink); cursor: pointer; font-weight: 500; }
 .modal-text { margin: 0; font-size: 14px; color: var(--text3); line-height: 1.5; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-@media (max-width: 1100px) {
+/* Sized by the space the tab really has (the sidebar and the open editor
+   both take width), not by the viewport. */
+.actions-tab { container: actions-tab / inline-size; }
+.actions-grid > section { container: actions-list / inline-size; min-width: 0; }
+@container actions-tab (max-width: 900px) {
   .actions-grid.editing { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 768px) {
-  .row { grid-template-columns: minmax(0, 1fr) auto auto; }
+/* Too narrow for every column: drop Label and Seen, keep the controls. */
+@container actions-list (max-width: 720px) {
+  .row { grid-template-columns: minmax(0, 1fr) 150px 56px 36px; }
   .row > :nth-child(2), .row > :nth-child(4) { display: none; }
-  .row.head > :nth-child(5), .row.head > :nth-child(6) { display: none; }
+}
+@container actions-list (max-width: 420px) {
+  .row { grid-template-columns: minmax(0, 1fr) 56px 36px; }
+  .row > :nth-child(3) { display: none; }
 }
 </style>

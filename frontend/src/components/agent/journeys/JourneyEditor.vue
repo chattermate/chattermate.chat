@@ -19,6 +19,7 @@ limitations under the License.
  * preview of the open step against sample context. Saved whole.
  */
 import { computed, ref, watch } from 'vue'
+import BaseModal from '@/components/common/BaseModal.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import type { AgentAction } from '@/types/agentActions'
 import type { ContextKey, Journey, JourneyInput, JourneyStep } from '@/types/journeys'
@@ -44,6 +45,7 @@ const draft = ref<JourneyInput>(blankJourney())
 const selected = ref(0)
 const sampleText = ref('{\n  "first_name": "Maya",\n  "plan": "free"\n}')
 const dirty = ref(false)
+const confirmingLeave = ref(false)
 
 function reset() {
   const source = props.journey ?? blankJourney()
@@ -65,6 +67,8 @@ const current = computed({
   get: () => steps.value[selected.value],
   set: (step: JourneyStep) => { draft.value.definition.steps[selected.value] = step },
 })
+/** A chip still being typed has no label yet; the preview shows only what a user would see. */
+const previewChips = computed(() => current.value?.chips.filter((chip) => chip.label.trim()) ?? [])
 const knownKeys = computed(() => new Set(props.contextKeys.map((k) => k.key)))
 const otherJourneys = computed(() => props.journeys.filter((j) => j.key !== draft.value.key).map((j) => ({ key: j.key, name: j.name })))
 
@@ -115,7 +119,12 @@ function save() {
 }
 
 function back() {
-  if (dirty.value && !props.readOnly && !window.confirm('Leave without saving your changes?')) return
+  if (dirty.value && !props.readOnly) confirmingLeave.value = true
+  else emit('back')
+}
+
+function leave() {
+  confirmingLeave.value = false
   emit('back')
 }
 </script>
@@ -164,7 +173,7 @@ function back() {
       </label>
       <div v-if="draft.definition.audience.kind !== 'everyone'" class="rules">
         <p class="hint" v-if="draft.definition.audience.kind === 'new_users'">New users: first seen in the last 14 days, or signed up then if your page says so. Rules below narrow it further.</p>
-        <ConditionList v-model="draft.definition.audience.rules" :kinds="['ctx', 'user']" joiner="and" add-label="Add rule" id-prefix="audience" />
+        <ConditionList v-model="draft.definition.audience.rules" :kinds="['ctx', 'user']" joiner="and" add-label="Add rule" id-prefix="audience" label="Audience rules" />
         <p class="hint">Rules on page fields aren't verified. Use user fields for anything that must be trusted.</p>
       </div>
     </fieldset>
@@ -172,9 +181,9 @@ function back() {
     <div class="grid">
       <aside class="steps">
         <div class="col-head">Steps · {{ steps.length }}</div>
-        <ol>
+        <ol aria-label="Steps">
           <li v-for="(step, i) in steps" :key="step.id" :class="{ sel: i === selected, bad: problemsByStep[i].length }">
-            <button type="button" class="step-btn" @click="selected = i">
+            <button type="button" class="step-btn" :aria-label="step.title || `Step ${i + 1}`" :aria-current="i === selected ? 'step' : undefined" @click="selected = i">
               <span class="dot">{{ problemsByStep[i].length ? '!' : i + 1 }}</span>
               <span class="step-title">{{ step.title }}</span>
             </button>
@@ -215,26 +224,37 @@ function back() {
           <textarea v-model="sampleText" class="input mono" rows="5" spellcheck="false" aria-label="Sample context" />
         </label>
         <div class="bubble" aria-label="Preview message">{{ previewMessage || 'This step has no message.' }}</div>
-        <div v-if="current?.chips.length" class="preview-chips">
-          <span v-for="chip in current.chips" :key="chip.label" class="preview-chip">{{ renderPreview(chip.label, sample, draft.definition.variable_fallbacks) }}</span>
+        <div v-if="previewChips.length" class="preview-chips">
+          <span v-for="(chip, i) in previewChips" :key="i" class="preview-chip">{{ renderPreview(chip.label, sample, draft.definition.variable_fallbacks) }}</span>
         </div>
         <p class="hint">Step {{ selected + 1 }} of {{ steps.length }}. Actions don't run here.</p>
       </aside>
     </div>
+
+    <BaseModal v-if="confirmingLeave" title="Leave without saving?" @close="confirmingLeave = false">
+      <p class="modal-text">Your changes to this journey will be lost.</p>
+      <template #actions>
+        <button type="button" class="btn ghost" @click="confirmingLeave = false">Keep editing</button>
+        <button type="button" class="btn danger" @click="leave">Leave</button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
 <style scoped src="../actions/actions.css"></style>
 <style scoped>
 .editor { display: flex; flex-direction: column; gap: 16px; }
+.modal-text { margin: 0; font-size: 14px; color: var(--text3); line-height: 1.5; }
 .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .name { max-width: 320px; font-weight: 600; }
 .key { max-width: 200px; font-family: var(--font-mono); font-size: 13px; }
 .spacer { flex: 1; }
 .unsaved { font-size: 12.5px; color: var(--c-warn); }
-.settings { border: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
-.setting { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text3); }
-.setting .input { width: auto; min-width: 140px; }
+/* A fieldset is as wide as its widest row unless told otherwise, which on a
+   phone pushed the start value and the hints past the edge. */
+.settings { border: none; margin: 0; padding: 0; min-width: 0; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.setting { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--text3); min-width: 0; max-width: 100%; }
+.setting .input { width: auto; min-width: 140px; max-width: 100%; }
 .setting.toggle { gap: 10px; }
 .rules { width: 100%; display: flex; flex-direction: column; gap: 8px; }
 .code { font-family: var(--font-mono); font-size: 12px; color: var(--code); background: var(--o06); padding: 4px 8px; border-radius: 6px; }

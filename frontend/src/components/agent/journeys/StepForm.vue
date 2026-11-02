@@ -35,6 +35,7 @@ const props = defineProps<{
 const set = (patch: Partial<JourneyStep>) => { step.value = { ...step.value, ...patch } }
 
 const allowed = computed(() => new Set(step.value.allowed_actions))
+const actionNames = computed(() => props.actions.map((a) => a.name))
 
 function toggleAction(name: string) {
   const next = new Set(allowed.value)
@@ -44,7 +45,11 @@ function toggleAction(name: string) {
 }
 
 function setChip(index: number, patch: Partial<JourneyChip>) {
-  set({ chips: step.value.chips.map((c, i) => (i === index ? { ...c, ...patch } : c)) })
+  const chips = step.value.chips.map((c, i) => (i === index ? { ...c, ...patch } : c))
+  const chip = chips[index]
+  // A chip may only run an action the step allows, so picking one allows it.
+  const picked = chip.kind === 'action' && chip.value && !allowed.value.has(chip.value)
+  set(picked ? { chips, allowed_actions: [...allowed.value, chip.value] } : { chips })
 }
 
 const addChip = () => set({ chips: [...step.value.chips, { label: '', kind: 'text', value: '' }] })
@@ -74,7 +79,7 @@ const nudgeOn = computed({
       <h4>Trigger</h4>
       <p class="hint">User is on this step when… (any one is enough; none: right after the last step)</p>
       <ConditionList :model-value="step.triggers" :kinds="['url', 'event', 'ctx', 'user']" joiner="or"
-        add-label="Add condition" id-prefix="trigger" @update:model-value="set({ triggers: $event })" />
+        add-label="Add condition" id-prefix="trigger" label="Trigger" @update:model-value="set({ triggers: $event })" />
     </section>
 
     <section class="section">
@@ -107,7 +112,7 @@ const nudgeOn = computed({
 
     <section class="section">
       <h4>Actions</h4>
-      <p class="hint">The agent may run these on this step.</p>
+      <p class="hint">Chips on this step can run these.</p>
       <p v-if="!actions.length" class="hint">No actions yet. Add them on the Actions tab.</p>
       <label v-for="action in actions" :key="action.name" class="action" :class="{ on: allowed.has(action.name) }">
         <input type="checkbox" :checked="allowed.has(action.name)" @change="toggleAction(action.name)" />
@@ -119,7 +124,7 @@ const nudgeOn = computed({
     <section class="section">
       <h4>Done when</h4>
       <ConditionList :model-value="step.done_when" :kinds="['action', 'event', 'ctx', 'user']" joiner="or"
-        add-label="Add condition" id-prefix="done" @update:model-value="set({ done_when: $event })" />
+        add-label="Add condition" id-prefix="done" label="Done when" :action-names="actionNames" @update:model-value="set({ done_when: $event })" />
       <div class="then">
         <span class="label">Then</span>
         <select id="step-then" class="input" :value="step.then.kind" aria-label="Then"
@@ -166,12 +171,16 @@ const nudgeOn = computed({
 .textarea { resize: vertical; line-height: 1.5; }
 .mono { font-family: var(--font-mono); font-size: 13px; }
 .chips { display: flex; flex-direction: column; gap: 8px; }
-.chip-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1.3fr) 32px; gap: 8px; }
+/* Label on its own line, then what it does: fits the narrow step column at any width. */
+.chip-row { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 32px; gap: 8px; }
+.chip-row > :first-child { grid-column: 1 / 3; }
+.chip-row > .remove { grid-column: 3; grid-row: 1; }
 .action { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 12px; cursor: pointer; }
 .action.on { background: var(--accent-bg-06); border-color: var(--accent-border); }
 .action input { accent-color: var(--accent-solid); }
 .action-name { font-family: var(--font-mono); font-size: 13px; }
-.then { display: grid; grid-template-columns: auto 220px minmax(0, 1fr); gap: 10px; align-items: start; }
+.then { display: grid; grid-template-columns: auto minmax(0, 220px); gap: 10px; align-items: start; }
+.then > .textarea { grid-column: 1 / -1; }
 .label { font-size: 13px; font-weight: 500; color: var(--text3); padding-top: 9px; }
 .nudge { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; color: var(--text3); }
 .narrow { width: 70px; }
@@ -179,6 +188,6 @@ const nudgeOn = computed({
 .remove:hover { color: var(--c-coral); }
 .add { align-self: flex-start; background: none; border: none; color: var(--accent-ink); font-size: 13px; font-weight: 500; cursor: pointer; padding: 0; }
 @media (max-width: 768px) {
-  .chip-row, .then { grid-template-columns: minmax(0, 1fr); }
+  .then { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

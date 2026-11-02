@@ -89,7 +89,7 @@ const statusLabel = (journey: Journey) => ({ live: 'Live', paused: 'Paused', dra
 </script>
 
 <template>
-  <div class="journeys-tab">
+  <section class="agent-tab journeys-tab" aria-label="Journeys">
     <template v-if="view.kind === 'list'">
       <div class="tab-head">
         <div>
@@ -161,15 +161,12 @@ const statusLabel = (journey: Journey) => ({ live: 'Live', paused: 'Paused', dra
         <button type="button" class="btn danger" @click="confirmDelete">Delete</button>
       </template>
     </BaseModal>
-  </div>
+  </section>
 </template>
 
 <style scoped src="../actions/actions.css"></style>
 <style scoped>
 .journeys-tab { display: flex; flex-direction: column; gap: 16px; }
-.tab-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.tab-title { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
-.tab-sub { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 620px; line-height: 1.5; }
 .row { display: flex; align-items: center; gap: 10px; }
 .state { color: var(--muted); }
 .state.error { color: var(--c-coral); }

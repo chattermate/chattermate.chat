@@ -97,7 +97,7 @@ function submit() {
 </script>
 
 <template>
-  <form class="action-editor" @submit.prevent="submit">
+  <form class="action-editor" aria-label="Action" @submit.prevent="submit">
     <fieldset class="editor-body" :disabled="readOnly">
     <header class="editor-head">
       <h4>{{ action ? action.name : 'New action' }}</h4>
