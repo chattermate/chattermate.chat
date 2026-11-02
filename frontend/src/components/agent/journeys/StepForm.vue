@@ -179,7 +179,7 @@ const nudgeOn = computed({
 .action.on { background: var(--accent-bg-06); border-color: var(--accent-border); }
 .action input { accent-color: var(--accent-solid); }
 .action-name { font-family: var(--font-mono); font-size: 13px; }
-.then { display: grid; grid-template-columns: auto minmax(0, 220px); gap: 10px; align-items: start; }
+.then { display: grid; grid-template-columns: max-content minmax(0, 220px); gap: 10px; align-items: start; }
 .then > .textarea { grid-column: 1 / -1; }
 .label { font-size: 13px; font-weight: 500; color: var(--text3); padding-top: 9px; }
 .nudge { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; color: var(--text3); }
