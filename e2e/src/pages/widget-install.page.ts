@@ -30,9 +30,13 @@ export class WidgetInstallPage {
     return this.page.getByText(/^Add the ChatterMate chat widget to every page/)
   }
 
+  get whatGetsCopied(): Locator {
+    return this.page.getByText('What gets copied', { exact: true })
+  }
+
   async showWhatGetsCopied(): Promise<void> {
     await step('Open "What gets copied"', async () => {
-      await this.page.getByText('What gets copied', { exact: true }).click()
+      await this.whatGetsCopied.click()
     })
   }
 
