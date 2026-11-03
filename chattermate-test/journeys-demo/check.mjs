@@ -64,8 +64,17 @@ async function guide() {
   const plan = frame().getByRole('region', { name: /^Guide: / })
   if (!(await plan.count())) return '(no guide)'
   const name = (await plan.getAttribute('aria-label')).replace(/^Guide: /, '')
-  const now = frame().locator('.cm-plan [aria-current="step"]')
+  // The folded plan names the step the user is on; a finished one names none.
+  const now = plan.locator('.cm-plan-now')
   return `${name} › ${(await now.count()) ? (await now.innerText()).trim() : 'done'}`
+}
+/** Hide the guide from the plan card (folded by default, so open it first). */
+async function hideGuide() {
+  const plan = frame().getByRole('region', { name: /^Guide: / })
+  if (!(await plan.count())) return
+  const toggle = plan.getByRole('button', { expanded: false })
+  if (await toggle.count()) await toggle.click()
+  await plan.getByRole('button', { name: 'Hide guide' }).click()
 }
 const actions = async () => (await page.locator('#log li.action, #log li.error').allInnerTexts()).reverse().map((l) => l.replace(/^.*?(ACTION|ERROR)\s+/, ''))
 const expandScenarios = () => page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true }))
@@ -100,7 +109,7 @@ await scenario('3 typed request uses the suggested action', 'create_client runs;
   return { pass: ran.some((a) => a.startsWith('create_client →')), reply: await lastReply(), actions: ran }
 })
 
-await scenario('4 navigation reaches a URL step', 'open_page navigates; Step 3 appears', async () => {
+await scenario('4 navigation reaches a URL step', 'open_page navigates; the plan moves to Send your first invoice', async () => {
   await say('Take me to my invoices')
   await settle()
   await page.waitForTimeout(2000)
@@ -164,7 +173,7 @@ await scenario('9 journey from code, with an audience', 'only Maya (user.plan = 
 await scenario('10 event-started journey for Pro', 'Leo on Reports gets Reports tip; Export my data runs', async () => {
   await open('leo')
   await openChat()
-  await frame().getByRole('button', { name: 'Hide guide' }).click().catch(() => {})
+  await hideGuide()
   await page.getByRole('link', { name: 'Reports' }).click()
   await page.waitForTimeout(3500)
   await openChat()
