@@ -14,9 +14,9 @@ test.describe('Signed-in users in People', () => {
 
     // They never type: the journey alone is their activity.
     await widget.embed({ token: await issueConversationToken(adminApi, apiKey, widget.widgetId, widget.customer) })
-    await expect(widget.journeyProgress).toContainText('Step 1 of 2')
+    await expect(widget.journeyProgress).toContainText('Open billing')
     await widget.siteReports('billing_opened')
-    await expect(widget.journeyProgress).toContainText('Step 2 of 2')
+    await expect(widget.journeyProgress).toContainText('Send an invoice')
 
     await peoplePage.goto()
     await peoplePage.search(widget.customer.email)

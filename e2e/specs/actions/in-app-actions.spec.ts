@@ -77,8 +77,10 @@ test.describe('In-app actions', () => {
     const card = widget.actionConfirm('Set default currency')
     await expect(card).toContainText('USD')
     await expect(card).toContainText('GBP')
-    await widget.declineAction('Set default currency', 'Keep current')
+    await expect(card.getByRole('button', { name: 'Change to GBP' })).toBeVisible()
+    await widget.declineAction('Set default currency', 'Keep USD')
 
+    await expect(widget.actionReceipt('Kept USD')).toBeVisible()
     await expect(widget.lastAgentMessage()).toHaveText('Kept your currency.', AI_REPLY)
     await expect(widget.appCurrency).toHaveText('USD')
   })

@@ -529,16 +529,23 @@ export class ChatWidget {
     return this.frame.getByRole('group', { name: label })
   }
 
+  /** The card's buttons say what happens ("Send an invoice", "Change to GBP"); the first one goes ahead. */
   async approveAction(label: string): Promise<void> {
     await step(`Customer approves "${label}"`, async () => {
-      await this.actionConfirm(label).getByRole('button', { name: 'Apply' }).click()
+      await this.actionConfirm(label).getByRole('button').first().click()
     })
   }
 
-  async declineAction(label: string, button: 'Cancel' | 'Keep current' = 'Cancel'): Promise<void> {
+  /** "Not now", or "Keep <current value>" when the action would overwrite something. */
+  async declineAction(label: string, button = 'Not now'): Promise<void> {
     await step(`Customer says no to "${label}"`, async () => {
       await this.actionConfirm(label).getByRole('button', { name: button }).click()
     })
+  }
+
+  /** The chat's line about what an action did: "Set default currency: USD → GBP", "Kept USD". */
+  actionReceipt(text: string): Locator {
+    return this.frame.getByRole('status').filter({ hasText: text })
   }
 
   /** What the site's own app shows (services/customer-site HOST_ACTIONS_SCRIPT). */
@@ -568,19 +575,27 @@ export class ChatWidget {
     return this.frame.getByRole('button', { name: text, exact: true })
   }
 
-  /** "Step 2 of 3 · Title" above the message box while a journey runs. */
+  /** The journey's plan, pinned to the top of the chat: its name, the step the visitor is on, "1 of 3". */
   get journeyProgress(): Locator {
-    return this.frame.getByRole('status', { name: /^Step \d+ of \d+$/ })
+    return this.frame.getByRole('region', { name: /^Guide: / })
+  }
+
+  /** Folded by default; its steps, Skip and Hide show once opened. */
+  async openJourneyPlan(): Promise<void> {
+    const toggle = this.journeyProgress.getByRole('button', { expanded: false })
+    if (await toggle.count()) await toggle.click()
   }
 
   async skipJourneyStep(): Promise<void> {
     await step('Customer skips the step', async () => {
-      await this.journeyProgress.getByRole('button', { name: 'Skip' }).click()
+      await this.openJourneyPlan()
+      await this.journeyProgress.getByRole('button', { name: 'Skip this step' }).click()
     })
   }
 
   async hideJourney(): Promise<void> {
     await step('Customer hides the guide', async () => {
+      await this.openJourneyPlan()
       await this.journeyProgress.getByRole('button', { name: 'Hide guide' }).click()
     })
   }

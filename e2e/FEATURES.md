@@ -24,7 +24,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | In-app actions | Actions tab: the form refuses a bad name or JSON, saves, turns an action off and deletes it | `specs/actions/actions-tab.spec.ts` | P1 | ✅ |
 | In-app actions | Actions tab: a name already taken is refused by the server and the form stays open | `specs/actions/actions-tab.spec.ts` | P1 | ✅ |
 | In-app actions | Actions tab: switches and delete buttons stay in view beside the open form; the tab fits a phone | `specs/actions/actions-tab.spec.ts` | P2 | ✅ |
-| Journeys | A journey opens by itself and moves on app events and an action chip, then finishes, without calling the model | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A journey opens by itself with its plan, moves on app events and a tapped reply (shown as the visitor's answer, with a line saying what the action did), then finishes, without calling the model; keeping a value leaves the step and offers the reply again | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | A reply to a step reaches the agent with the step's message, stored once; the step stays until done | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The agent is told which actions finish the user's step, and still has every other action | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The visitor skips a step, or hides the guide for good | `specs/journeys/journeys.spec.ts` | P1 | ✅ |

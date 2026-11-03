@@ -41,20 +41,26 @@ test.describe('Journeys', () => {
 
     // Opens by itself on the first step.
     await widget.embed({ withActions: true })
-    await expect(widget.journeyProgress).toContainText('Step 1 of 3 · Open billing')
+    await expect(widget.journeyProgress).toContainText('Open billing')
+    await expect(widget.journeyProgress).toContainText('0 of 3')
     await expect(widget.agentMessages.last()).toHaveText('Welcome! Start by opening your billing settings.')
 
     await widget.siteReports('billing_opened')
-    await expect(widget.journeyProgress).toContainText('Step 2 of 3')
+    await expect(widget.journeyProgress).toContainText('Open the invoices page')
+    await expect(widget.journeyProgress).toContainText('1 of 3')
     await expect(widget.agentMessages.last()).toHaveText('Now let me open your invoices for you.')
 
-    // The chip runs the site's action without asking the model.
+    // The reply runs the site's action without asking the model; it reads as the
+    // visitor's answer, and the chat says what the action did.
     await widget.replyChip('Open it for me').click()
     await expect(widget.appActionRuns).toHaveText('1')
-    await expect(widget.journeyProgress).toContainText('Step 3 of 3 · Send an invoice')
+    await expect(widget.customerMessages.last()).toHaveText('Open it for me')
+    await expect(widget.actionReceipt('Go to a page: done')).toBeVisible()
+    await expect(widget.journeyProgress).toContainText('Send an invoice')
 
     await widget.siteReports('invoice_sent')
-    await expect(widget.journeyProgress).toBeHidden()
+    // The finished plan stays, ticked off, until the visitor hides it.
+    await expect(widget.journeyProgress).toContainText('Done')
     await expect(widget.lastAgentMessage()).toHaveText("You're all set!")
     expect(await llm.requests(agent)).toHaveLength(0)
   })
@@ -64,14 +70,14 @@ test.describe('Journeys', () => {
     await llm.script(agent, (s) => s.otherwise().reply('Billing is under Settings.'))
 
     await widget.embed()
-    await expect(widget.journeyProgress).toContainText('Step 1 of 1')
+    await expect(widget.journeyProgress).toContainText('Open billing')
     await widget.send('Where is that?')
 
     await expect(widget.lastAgentMessage()).toHaveText('Billing is under Settings.', AI_REPLY)
     // The step's message joined the conversation once, and the model saw what was answered.
     await expect(widget.agentMessages.filter({ hasText: 'Start by opening your billing settings.' })).toHaveCount(1)
     expect((await llm.requests(agent)).at(-1)!.system).toContain('Start by opening your billing settings.')
-    await expect(widget.journeyProgress).toContainText('Step 1 of 1')
+    await expect(widget.journeyProgress).toContainText('0 of 1')
   })
 
   test("the agent is told which actions finish the user's step, without losing the others @journeys", async ({ agent, widget, adminApi, llm }) => {
@@ -81,7 +87,7 @@ test.describe('Journeys', () => {
     await llm.script(agent, (s) => s.otherwise().reply('I can open it for you.'))
 
     await widget.embed({ withActions: true })
-    await expect(widget.journeyProgress).toContainText('Step 1 of 1')
+    await expect(widget.journeyProgress).toContainText('Open the invoices page')
     await widget.send('How do I get there?')
     await expect(widget.lastAgentMessage()).toHaveText('I can open it for you.', AI_REPLY)
 
@@ -92,7 +98,7 @@ test.describe('Journeys', () => {
     expect(request.tools).toEqual(expect.arrayContaining(['open_page', 'send_invoice']))
   })
 
-  test('a chip whose action asks first shows the card, and Apply runs it and moves on @journeys', async ({ agent, widget, adminApi, llm }) => {
+  test('a reply whose action asks first shows the card; keeping the value leaves the step, changing it moves on @journeys', async ({ agent, widget, adminApi, llm }) => {
     await declareAction(adminApi, agent.id, 'set_currency')
     await createJourney(adminApi, agent.id, {
       key: 'currency', name: 'Currency', autoOpen: true, steps: [{
@@ -106,13 +112,23 @@ test.describe('Journeys', () => {
     // A short window: the card must still show its buttons, not be squeezed.
     await widget.page.setViewportSize({ width: 1280, height: 560 })
     await widget.embed({ withActions: true })
-    await expect(widget.journeyProgress).toContainText('Step 1 of 2')
+    await expect(widget.journeyProgress).toContainText('Pick your currency')
     await widget.replyChip('Use GBP').click()
-    await expect(widget.actionConfirm('Set default currency').getByRole('button', { name: 'Keep current' })).toBeInViewport()
+    await expect(widget.actionConfirm('Set default currency').getByRole('button', { name: 'Keep USD' })).toBeInViewport()
+
+    // Keeping it runs nothing, says so, and offers the reply again.
+    await widget.declineAction('Set default currency', 'Keep USD')
+    await expect(widget.actionReceipt('Kept USD')).toBeVisible()
+    await expect(widget.appActionRuns).toHaveText('0')
+    await expect(widget.journeyProgress).toContainText('Pick your currency')
+
+    await widget.replyChip('Use GBP').click()
     await widget.approveAction('Set default currency')
     // The chip runs the action with no arguments; the site's code picks its default.
     await expect(widget.appActionRuns).toHaveText('1')
-    await expect(widget.journeyProgress).toContainText('Step 2 of 2')
+    await expect(widget.actionReceipt('Set default currency: done')).toBeVisible()
+    await expect(widget.journeyProgress).toContainText('Send an invoice')
+    await expect(widget.journeyProgress).toContainText('1 of 2')
     expect(await llm.requests(agent)).toHaveLength(0)
   })
 
@@ -120,9 +136,9 @@ test.describe('Journeys', () => {
     await createJourney(adminApi, agent.id, { key: 'skippable', name: 'Skippable', steps: STEPS, autoOpen: true })
 
     await widget.embed({ withActions: true })
-    await expect(widget.journeyProgress).toContainText('Step 1 of 3')
+    await expect(widget.journeyProgress).toContainText('Open billing')
     await widget.skipJourneyStep()
-    await expect(widget.journeyProgress).toContainText('Step 2 of 3')
+    await expect(widget.journeyProgress).toContainText('Open the invoices page')
 
     await widget.hideJourney()
     await expect(widget.journeyProgress).toBeHidden()
@@ -136,9 +152,9 @@ test.describe('Journeys', () => {
     await createJourney(adminApi, agent.id, { key: 'funnel', name: 'Funnel journey', steps: STEPS, autoOpen: true })
 
     await widget.embed({ withActions: true })
-    await expect(widget.journeyProgress).toContainText('Step 1 of 3')
+    await expect(widget.journeyProgress).toContainText('Open billing')
     await widget.siteReports('billing_opened')
-    await expect(widget.journeyProgress).toContainText('Step 2 of 3')
+    await expect(widget.journeyProgress).toContainText('Open the invoices page')
 
     await agentsPage.openJourneyFunnel(agent.id, 'Funnel journey')
     await expect(agentsPage.funnelStep('Open billing')).toHaveAccessibleName('1 of 1 done')

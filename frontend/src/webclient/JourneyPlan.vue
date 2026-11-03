@@ -41,6 +41,9 @@ const steps = computed(() =>
 </script>
 
 <template>
+  <!-- The pin spans the chat's full width in its colour, so nothing shows
+       around the card's corners as messages scroll under it. -->
+  <div class="cm-plan-pin">
   <section class="cm-plan" :class="{ finished: progress.finished }" :aria-label="`Guide: ${progress.name}`">
     <button type="button" class="cm-plan-head" :aria-expanded="open" @click="open = !open">
       <span class="cm-plan-label">
@@ -74,15 +77,20 @@ const steps = computed(() =>
       </div>
     </template>
   </section>
+  </div>
 </template>
 
 <style scoped>
-.cm-plan {
+.cm-plan-pin {
   position: sticky;
-  top: 0;
+  top: calc(-1 * var(--space-md, 16px));
   z-index: 1;
   flex-shrink: 0;
-  margin: 0 0 10px;
+  margin: calc(-1 * var(--space-md, 16px)) calc(-1 * var(--space-md, 16px)) 4px;
+  padding: var(--space-md, 16px) var(--space-md, 16px) 6px;
+  background: var(--cm-card);
+}
+.cm-plan {
   padding: 8px 12px 10px;
   border: 1px solid var(--cm-hairline);
   border-radius: var(--cm-radius);

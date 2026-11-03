@@ -204,7 +204,7 @@ describe('JourneyEditor', () => {
 
   it('allows the action a chip runs on its step', async () => {
     const wrapper = mountEditor()
-    await button(wrapper, '+ Add chip').trigger('click')
+    await button(wrapper, '+ Add reply').trigger('click')
     await wrapper.find('input[aria-label="Chip 1 label"]').setValue('Send it')
     await wrapper.find('select[aria-label="Chip 1 does"]').setValue('action')
     await wrapper.find('select[aria-label="Chip 1 action"]').setValue('send_invoice')

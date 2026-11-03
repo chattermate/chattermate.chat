@@ -103,7 +103,7 @@ export class AgentJourneysTab {
 
   async addChip(label: string, runs: { action: string } | { text: string }): Promise<void> {
     await step(`Add the chip "${label}"`, async () => {
-      await this.page.getByRole('button', { name: '+ Add chip' }).click()
+      await this.page.getByRole('button', { name: '+ Add reply' }).click()
       const n = await this.page.getByRole('textbox', { name: /^Chip \d+ label$/ }).count()
       await this.page.getByRole('textbox', { name: `Chip ${n} label` }).fill(label)
       if ('action' in runs) {

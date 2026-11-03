@@ -90,7 +90,7 @@ const nudgeOn = computed({
       <p class="hint" v-pre>Use {{user.first_name}} or {{ctx.anything}} the page sends.</p>
       <div class="chips">
         <div v-for="(chip, i) in step.chips" :key="i" class="chip-row">
-          <input class="input" :value="chip.label" :aria-label="`Chip ${i + 1} label`" placeholder="Chip label" maxlength="80"
+          <input class="input" :value="chip.label" :aria-label="`Chip ${i + 1} label`" placeholder="As the user would say it" maxlength="80"
             @input="setChip(i, { label: ($event.target as HTMLInputElement).value })" />
           <select class="input" :value="chip.kind" :aria-label="`Chip ${i + 1} does`"
             @change="setChip(i, { kind: ($event.target as HTMLSelectElement).value as JourneyChip['kind'], value: '' })">
@@ -106,13 +106,14 @@ const nudgeOn = computed({
             @input="setChip(i, { value: ($event.target as HTMLInputElement).value })" />
           <button type="button" class="remove" :aria-label="`Remove chip ${i + 1}`" @click="removeChip(i)">✕</button>
         </div>
-        <button v-if="step.chips.length < MAX_CHIPS" type="button" class="add" @click="addChip">+ Add chip</button>
+        <button v-if="step.chips.length < MAX_CHIPS" type="button" class="add" @click="addChip">+ Add reply</button>
       </div>
+      <p v-if="step.chips.length" class="hint">Replies show on the user's side of the chat, so write them as the user would say them: "Switch to GBP".</p>
     </section>
 
     <section class="section">
       <h4>Suggested actions</h4>
-      <p class="hint">Chips can run these, and the agent is told they finish this step. It can still do anything else the user asks.</p>
+      <p class="hint">Replies can run these, and the agent is told they finish this step. It can still do anything else the user asks.</p>
       <p v-if="!actions.length" class="hint">No actions yet. Add them on the Actions tab.</p>
       <label v-for="action in actions" :key="action.name" class="action" :class="{ on: allowed.has(action.name) }">
         <input type="checkbox" :checked="allowed.has(action.name)" @change="toggleAction(action.name)" />
