@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from agno.agent import Agent
+from jsonschema.validators import Draft202012Validator
 from agno.memory.v2.memory import Memory
 from agno.models.response import ToolExecution
 
@@ -64,6 +65,23 @@ def result_text(status: ActionCallStatus, result: Any = None, error: Optional[st
         body = OUTCOME_TEXT[status]
         if error:
             body = f"{body} {error}"
+    return visitor_data_block(RESULT_LABEL, body, limit=settings.ACTION_RESULT_MAX_BYTES)
+
+
+def argument_problem(schema: Optional[Dict[str, Any]], args: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Why the model's arguments don't fit the action's schema, or None when they do."""
+    if not schema:
+        return None
+    error = next(iter(Draft202012Validator(schema).iter_errors(args or {})), None)
+    if error is None:
+        return None
+    where = ".".join(str(p) for p in error.absolute_path)
+    return (f"{where}: {error.message}" if where else error.message)[:200]
+
+
+def invalid_args_text(problem: str) -> str:
+    """The tool message for a call that never reached the page, fenced as data."""
+    body = f"Not run: the arguments don't match this action's schema ({problem}). Fix them and call it again."
     return visitor_data_block(RESULT_LABEL, body, limit=settings.ACTION_RESULT_MAX_BYTES)
 
 

@@ -88,6 +88,23 @@ test.describe('In-app actions', () => {
     await expect(widget.appCurrency).toHaveText('USD')
   })
 
+  test('arguments that break the action\'s schema never reach the site @actions', async ({ agent, widget, llm, adminApi }) => {
+    await declareAction(adminApi, agent.id, 'set_currency', { confirm: 'never' })
+    await llm.script(agent, (s) => s
+      .when(/currency/i).callTool('set_currency', { code: 42 }).thenReply('I could not change it.')
+      .otherwise().reply('Happy to help!'))
+
+    await widget.embed({ withActions: true })
+    await widget.open()
+    await widget.send('Change my currency')
+
+    await expect(widget.lastAgentMessage()).toHaveText('I could not change it.', AI_REPLY)
+    await expect(widget.appActionRuns).toHaveText('0')
+    await expect(widget.appCurrency).toHaveText('USD')
+    // The model is told what to fix, not that the site failed.
+    expect((await llm.requests(agent)).at(-1)!.toolResults.join('\n')).toContain("don't match this action's schema")
+  })
+
   test('two actions in a row each run, in order @actions', async ({ agent, widget, llm, adminApi }) => {
     await declareAction(adminApi, agent.id, 'open_page')
     await declareAction(adminApi, agent.id, 'set_currency', { confirm: 'never' })

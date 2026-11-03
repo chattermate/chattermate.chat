@@ -176,6 +176,45 @@ async def test_a_failure_skips_the_rest_and_resumes(db, sio, session, actions, r
     assert [r.status for r in AgentActionCallRepository(db).batch("run-1")] == ["declined", "skipped"]
 
 
+@pytest.fixture
+def strict_action(db, test_agent):
+    return AgentActionRepository(db).create(test_agent.organization_id, test_agent.id, AgentActionCreate(
+        name="set_currency", label="Change currency", description="Changes it.",
+        parameters={"type": "object", "properties": {"code": {"type": "string", "enum": ["USD", "GBP"]}},
+                    "required": ["code"]}))
+
+
+@pytest.mark.asyncio
+async def test_arguments_that_break_the_schema_never_reach_the_page(db, sio, session, strict_action, resumed):
+    await runtime.start_paused_turn("sid", session, _paused(("c1", "set_currency", {"code": "rm -rf"})),
+                                    [strict_action], db)
+    assert _emitted(sio, "action_request") == []
+    results = resumed.call_args.args[3]
+    assert "don't match this action's schema" in results["c1"] and "code" in results["c1"]
+    [row] = AgentActionCallRepository(db).batch("run-1")
+    assert (row.status, row.error_code) == ("error", "invalid_arguments")
+
+
+@pytest.mark.asyncio
+async def test_a_bad_later_call_is_settled_after_a_good_one(db, sio, session, actions, strict_action, resumed):
+    await runtime.start_paused_turn("sid", session, _paused(("c1", "open_page", {}), ("c2", "set_currency", {})),
+                                    list(actions.values()) + [strict_action], db)
+    await runtime.handle_page_result("sid", session, _result(db, "c1", "ok", result={"ok": 1}), db)
+    # Only the first call went to the page; the second was missing its required code.
+    assert [r["name"] for r in _emitted(sio, "action_request")] == ["open_page"]
+    results = resumed.call_args.args[3]
+    assert "'code' is a required property" in results["c2"]
+
+
+@pytest.mark.asyncio
+async def test_arguments_that_fit_are_sent(db, sio, session, strict_action, resumed):
+    await runtime.start_paused_turn("sid", session, _paused(("c1", "set_currency", {"code": "GBP"})),
+                                    [strict_action], db)
+    [request] = _emitted(sio, "action_request")
+    assert request["args"] == {"code": "GBP"}
+    resumed.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_duplicate_and_unknown_results_are_ignored(db, sio, session, actions, resumed):
     await runtime.start_paused_turn("sid", session, _paused(("c1", "open_page", {})), list(actions.values()), db)

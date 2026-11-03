@@ -31,7 +31,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.agents.chat_agent import ChatResponse
-from app.agents.host_actions.turns import PausedTurn, args_hash, result_text
+from app.agents.host_actions.turns import PausedTurn, args_hash, argument_problem, invalid_args_text, result_text
 from app.core.encryption import decrypt_value, encrypt_value
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -133,6 +133,19 @@ async def _dispatch(sid: str, call: AgentActionCall, db: Session) -> None:
     await sio.emit('action_request', _request_payload(call, action), to=sid, namespace=WIDGET_NAMESPACE)
 
 
+async def _send(sid: str, session: dict, call: AgentActionCall, db: Session) -> None:
+    """Send a call to the page, unless its arguments don't fit the action's
+    schema: then the page never sees it and the model is told what to fix."""
+    action = AgentActionRepository(db).get(call.agent_id, call.action_id) if call.action_id else None
+    problem = argument_problem(action.parameters, _call_args(call)) if action else None
+    if problem is None:
+        await sio.emit('action_request', _request_payload(call, action), to=sid, namespace=WIDGET_NAMESPACE)
+        return
+    logger.info(f"Action {call.action_name} call {call.id} not sent: {problem}")
+    await _settle(sid, session, call, ActionCallStatus.ERROR, invalid_args_text(problem),
+                  error_code='invalid_arguments', confirmed=None, db=db)
+
+
 async def start_paused_turn(sid: str, session: dict, paused: PausedTurn,
                             actions: Iterable[AgentAction], db: Session, pause_number: int = 1) -> None:
     """Record the calls of a paused step and send the first one to the page."""
@@ -155,7 +168,7 @@ async def start_paused_turn(sid: str, session: dict, paused: PausedTurn,
     AgentActionCallRepository(db).record_pending(rows)
     session[PAUSES_KEY] = pause_number
     await sio.save_session(sid, session, namespace=WIDGET_NAMESPACE)
-    await _dispatch(sid, rows[0], db)
+    await _send(sid, session, rows[0], db)
 
 
 async def replay_open_call(sid: str, session_id: str, db: Session) -> None:
@@ -228,15 +241,24 @@ async def handle_page_result(sid: str, session: dict, data: dict, db: Session) -
         return
     error = data.get('error')[:200] if isinstance(data.get('error'), str) else None
     confirmed = data.get('confirmed') if isinstance(data.get('confirmed'), bool) else None
-    text = result_text(status, data.get('result'), error)
-    claimed = call is not None and repo.claim(
+    if call is not None:
+        await _settle(sid, session, call, status, result_text(status, data.get('result'), error),
+                      error_code=error[:48] if error else None, confirmed=confirmed, db=db)
+
+
+async def _settle(sid: str, session: dict, call: AgentActionCall, status: ActionCallStatus, text: str,
+                  *, error_code: Optional[str], confirmed: Optional[bool], db: Session) -> None:
+    """Record one call's outcome, then send the next call or resume the reply
+    once the whole step has an outcome."""
+    repo = AgentActionCallRepository(db)
+    claimed = repo.claim(
         call, status,
-        error_code=error[:48] if error else None,
+        error_code=error_code,
         confirmed=confirmed,
         result_ciphertext=encrypt_value(text),
     )
     if not claimed:
-        # Unknown, already answered, or given up on: a duplicate or late result.
+        # Already answered, or given up on: a duplicate or late result.
         return
 
     if status == ActionCallStatus.OK:
@@ -247,7 +269,7 @@ async def handle_page_result(sid: str, session: dict, data: dict, db: Session) -
     batch = repo.batch(call.run_id)
     next_call = next((c for c in batch if c.status == ActionCallStatus.PENDING.value), None)
     if next_call is not None:
-        await _dispatch(sid, next_call, db)
+        await _send(sid, session, next_call, db)
         return
 
     results = {c.tool_call_id: decrypt_value(c.result_ciphertext) if c.result_ciphertext else None for c in batch}
