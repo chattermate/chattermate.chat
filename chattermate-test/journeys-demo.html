@@ -255,7 +255,7 @@
       dashboard: () => `
         <h1>Dashboard</h1><p class="sub">Welcome back${app.userName ? ', ' + esc(app.userName.split(' ')[0]) : ''}.</p>
         <div class="cards">
-          <div class="card">Currency<b>${app.currency}</b></div>
+          <div class="card">Currency<b>${esc(app.currency)}</b></div>
           <div class="card">Clients<b>${app.clients.length}</b></div>
           <div class="card">Invoices sent<b>${app.invoices.filter((i) => i.status === 'sent').length}</b></div>
         </div>
@@ -267,21 +267,21 @@
       invoices: () => `
         <h1>Invoices</h1><p class="sub">Drafts and sent invoices.</p>
         <div class="row"><a href="/app/invoices/new" data-route>+ New invoice</a><button type="button" data-do="send">Send latest draft</button></div>
-        ${rows(app.invoices, [['Number', (i) => i.id], ['Client', (i) => esc(i.client)], ['Amount', (i) => i.amount + ' ' + i.currency], ['Status', (i) => '<span class="status-' + i.status + '">' + i.status + '</span>']])}`,
+        ${rows(app.invoices, [['Number', (i) => esc(i.id)], ['Client', (i) => esc(i.client)], ['Amount', (i) => esc(i.amount + ' ' + i.currency)], ['Status', (i) => '<span class="status-' + esc(i.status) + '">' + esc(i.status) + '</span>']])}`,
       'invoices/new': () => `
         <h1>New invoice</h1><p class="sub">Pick a client and an amount.</p>
         ${app.clients.length ? '' : '<div class="empty">Add a client first.</div>'}
         <div class="row"><select id="inv-client">${app.clients.map((c) => '<option>' + esc(c.name) + '</option>').join('')}</select>
-        <input id="inv-amount" type="number" value="100" min="1"><span>${app.currency}</span>
+        <input id="inv-amount" type="number" value="100" min="1"><span>${esc(app.currency)}</span>
         <button type="button" class="primary" data-do="draft">Save draft</button></div>`,
       reports: () => `
         <h1>Reports</h1><p class="sub">Your numbers. Opening this page tells journeys <code>reports_opened</code>.</p>
-        <div class="cards"><div class="card">Billed<b>${app.invoices.filter((i) => i.status === 'sent').reduce((s, i) => s + i.amount, 0)} ${app.currency}</b></div></div>`,
+        <div class="cards"><div class="card">Billed<b>${app.invoices.filter((i) => i.status === 'sent').reduce((s, i) => s + i.amount, 0)} ${esc(app.currency)}</b></div></div>`,
       settings: () => `
         <h1>Settings</h1><p class="sub">Account defaults.</p>
-        <div class="row"><label>Default currency <select id="currency">${['USD', 'GBP', 'EUR', 'INR'].map((c) => '<option' + (c === app.currency ? ' selected' : '') + '>' + c + '</option>').join('')}</select></label>
+        <div class="row"><label>Default currency <select id="currency">${['USD', 'GBP', 'EUR', 'INR'].map((c) => '<option' + (c === app.currency ? ' selected' : '') + '>' + esc(c) + '</option>').join('')}</select></label>
         <button type="button" class="primary" data-do="currency">Save</button></div>
-        <p class="sub">Plan: ${app.plan || 'none (anonymous)'} ${app.plan === 'free' ? '<button type="button" data-do="upgrade">Upgrade</button>' : ''}</p>`,
+        <p class="sub">Plan: ${esc(app.plan || 'none (anonymous)')} ${app.plan === 'free' ? '<button type="button" data-do="upgrade">Upgrade</button>' : ''}</p>`,
     }
 
     let lastPage = null
