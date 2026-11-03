@@ -121,15 +121,20 @@ export function createJourneyClient(deps: JourneyDeps) {
     startTimer()
   }
 
+  // A finished plan stays, all ticked, until the visitor hides it: the next
+  // sync has no journey to report, and must not take it away.
+  let finishedPlan = false
+
   function handleState(payload: { view: JourneyView | null }) {
     const view = payload?.view ?? null
     if (view?.notice?.text) deps.addNotice(view.notice.text, view.notice.kind)
+    if (!view && finishedPlan) return
+    finishedPlan = !!view?.finished && !!view.journey_name
     if (!view || view.finished || view.waiting) {
       stopNudge()
       lastNudge = null
       timedStep = null
-      // A finished plan stays, all ticked; one waiting on its next step still
-      // shows where the user is; none at all (hidden, or never started) goes.
+      // One waiting on its next step still shows where the user is.
       const progress = view?.journey_name ? progressOf(view, !!view.finished) : null
       deps.showStep(null, progress)
       if (view?.finished && view.message) deps.addNotice(view.message, 'message')
@@ -153,7 +158,11 @@ export function createJourneyClient(deps: JourneyDeps) {
     activity,
     sync: (signal: { url?: string | null; event?: string; action?: string } = {}) => deps.emit('journey_sync', signal),
     skip: () => deps.emit('journey_skip', {}),
-    dismiss: () => deps.emit('journey_dismiss', {}),
+    dismiss: () => {
+      finishedPlan = false
+      deps.showStep(null, null)
+      deps.emit('journey_dismiss', {})
+    },
     start: (key: string) => deps.emit('journey_start', { key }),
     dispose: stopNudge,
   }

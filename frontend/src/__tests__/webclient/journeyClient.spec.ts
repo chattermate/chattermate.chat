@@ -70,6 +70,17 @@ describe('journey client', () => {
     expect(plans[2]).toMatchObject({ index: 3, count: 3, finished: true })
   })
 
+  it('keeps a finished plan through later empty syncs, until hidden', () => {
+    const { client, showStep } = setup()
+    client.handleState({ view: step({ finished: true, message: null }) })
+    client.handleState({ view: null })
+    expect(showStep).toHaveBeenCalledTimes(1)
+    client.dismiss()
+    expect(showStep).toHaveBeenLastCalledWith(null, null)
+    client.handleState({ view: null })
+    expect(showStep).toHaveBeenLastCalledWith(null, null)
+  })
+
   it('falls back to the step count for a server that sends no titles', () => {
     const { client, showStep } = setup()
     client.handleState({ view: step({ step_titles: undefined }) })

@@ -15,8 +15,9 @@ limitations under the License.
 -->
 <script setup lang="ts">
 /**
- * A journey as a plan the guide works through: one card at the top of the
- * chat that ticks steps off as they're done and folds away once finished.
+ * A journey as a plan the guide works through: a slim card pinned to the top
+ * of the chat with where the user is and how far along; tapping it shows every
+ * step, ticked off as it's done, with Skip and Hide.
  */
 import { computed, ref, watch } from 'vue'
 import type { JourneyProgress } from './journeys/journeyClient'
@@ -24,7 +25,8 @@ import type { JourneyProgress } from './journeys/journeyClient'
 const props = defineProps<{ progress: JourneyProgress }>()
 const emit = defineEmits<{ (e: 'skip'): void; (e: 'hide'): void }>()
 
-const open = ref(!props.progress.finished)
+// Folded by default: pinned open it would cover the conversation it sits over.
+const open = ref(false)
 watch(() => props.progress.finished, (finished) => { if (finished) open.value = false })
 
 const done = computed(() => Math.min(props.progress.index, props.progress.count))
@@ -41,7 +43,10 @@ const steps = computed(() =>
 <template>
   <section class="cm-plan" :class="{ finished: progress.finished }" :aria-label="`Guide: ${progress.name}`">
     <button type="button" class="cm-plan-head" :aria-expanded="open" @click="open = !open">
-      <span class="cm-plan-name">{{ progress.name }}</span>
+      <span class="cm-plan-label">
+        <span class="cm-plan-name">{{ progress.name }}</span>
+        <span v-if="!progress.finished && progress.title" class="cm-plan-now">{{ progress.title }}</span>
+      </span>
       <span class="cm-plan-count">{{ progress.finished ? 'Done' : `${done} of ${progress.count}` }}</span>
       <svg class="cm-plan-chevron" :class="{ open }" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg>
     </button>
@@ -63,7 +68,7 @@ const steps = computed(() =>
           <span v-if="step.state === 'done'" class="cm-visually-hidden">(done)</span>
         </li>
       </ol>
-      <div v-if="!progress.finished" class="cm-plan-actions">
+      <div class="cm-plan-actions">
         <button v-if="progress.skippable" type="button" @click="emit('skip')">Skip this step</button>
         <button type="button" @click="emit('hide')">Hide guide</button>
       </div>
@@ -78,7 +83,7 @@ const steps = computed(() =>
   z-index: 1;
   flex-shrink: 0;
   margin: 0 0 10px;
-  padding: 10px 12px;
+  padding: 8px 12px 10px;
   border: 1px solid var(--cm-hairline);
   border-radius: var(--cm-radius);
   background: var(--cm-card);
@@ -99,7 +104,10 @@ const steps = computed(() =>
   text-align: left;
   cursor: pointer;
 }
-.cm-plan-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-plan-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cm-plan-name, .cm-plan-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-plan-name { font-weight: 600; }
+.cm-plan-now { color: var(--cm-muted); font-size: 12px; }
 .cm-plan-count { color: var(--cm-muted); font-size: 12px; }
 .cm-plan-chevron { color: var(--cm-muted); transition: transform .2s; }
 .cm-plan-chevron.open { transform: rotate(180deg); }
