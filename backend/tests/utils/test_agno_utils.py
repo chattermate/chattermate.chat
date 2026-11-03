@@ -43,7 +43,7 @@ class TestCreateModel:
             mock_openai.assert_called_once_with(
                 api_key="test-api-key", 
                 id="gpt-4", 
-                max_tokens=2000,
+                max_completion_tokens=2000,
                 response_format={"type": "json_object"}
             )
             assert result == mock_model
@@ -63,9 +63,40 @@ class TestCreateModel:
             mock_openai.assert_called_once_with(
                 api_key="test-api-key", 
                 id="gpt-3.5-turbo", 
-                max_tokens=1000
+                max_completion_tokens=1000
             )
             assert result == mock_model
+
+    def test_create_model_openai_reasoning_model_gets_effort_none(self):
+        """Listed reasoning models only call tools over Chat Completions at
+        reasoning_effort "none"; it must be sent, longest prefix winning."""
+        with patch("app.utils.agno_utils.OpenAIChat") as mock_openai:
+            agno_utils.create_model(
+                model_type="CHATTERMATE",
+                api_key="test-api-key",
+                model_name="GPT-6-Luna",
+                max_tokens=800,
+                response_format={"type": "json_object"}
+            )
+
+            mock_openai.assert_called_once_with(
+                api_key="test-api-key",
+                id="GPT-6-Luna",
+                max_completion_tokens=800,
+                reasoning_effort="none",
+                response_format={"type": "json_object"}
+            )
+
+    def test_create_model_openai_unlisted_model_gets_no_effort(self):
+        """Older models reject reasoning_effort, so it is only sent when listed."""
+        with patch("app.utils.agno_utils.OpenAIChat") as mock_openai:
+            agno_utils.create_model(
+                model_type="OPENAI",
+                api_key="test-api-key",
+                model_name="gpt-6.1-terra"
+            )
+
+            assert "reasoning_effort" not in mock_openai.call_args.kwargs
 
     def test_create_model_openai_compatible(self):
         """Test creating an OPENAI_COMPATIBLE model passes base_url through"""
@@ -132,7 +163,7 @@ class TestCreateModel:
             mock_openai.assert_called_once_with(
                 api_key="test-api-key", 
                 id="chattermate-model", 
-                max_tokens=1000
+                max_completion_tokens=1000
             )
             assert result == mock_model
 
@@ -167,13 +198,14 @@ class TestCreateModel:
             result = agno_utils.create_model(
                 model_type="DEEPSEEK",
                 api_key="test-api-key",
-                model_name="deepseek-chat"
+                model_name="deepseek-flash"
             )
             
             mock_deepseek.assert_called_once_with(
                 api_key="test-api-key", 
-                id="deepseek-chat", 
-                max_tokens=1000
+                id="deepseek-flash", 
+                max_tokens=1000,
+                request_params={"extra_body": {"thinking": {"type": "disabled"}}}
             )
             assert result == mock_model
 
@@ -514,7 +546,7 @@ class TestEdgeCases:
             mock_openai.assert_called_once_with(
                 api_key="", 
                 id="", 
-                max_tokens=1000
+                max_completion_tokens=1000
             )
             assert result == mock_model
 
@@ -534,7 +566,7 @@ class TestEdgeCases:
             mock_openai.assert_called_once_with(
                 api_key="test-key", 
                 id="gpt-4", 
-                max_tokens=4000
+                max_completion_tokens=4000
             )
             assert result == mock_model
 
@@ -554,7 +586,7 @@ class TestEdgeCases:
             mock_openai.assert_called_once_with(
                 api_key="test-key", 
                 id="gpt-4", 
-                max_tokens=0
+                max_completion_tokens=0
             )
             assert result == mock_model
 
@@ -574,3 +606,30 @@ class TestEdgeCases:
 
             mock_create_model.assert_called_once_with("", "", "", base_url=None)
             assert result is True 
+
+class TestModelRequestOverrides:
+    """Thinking is switched off where the model allows it (see MODEL_REQUEST_OVERRIDES)."""
+
+    def test_claude_sonnet_5_disables_thinking(self):
+        assert agno_utils.model_request_overrides("ANTHROPIC", "claude-sonnet-5") == {
+            "thinking": {"type": "disabled"}}
+
+    def test_claude_sonnet_5_5_is_not_caught_by_the_sonnet_5_prefix(self):
+        # Sonnet 5.5 rejects thinking "disabled" with a 400.
+        assert agno_utils.model_request_overrides("ANTHROPIC", "claude-sonnet-5-5") == {}
+
+    def test_deepseek_disables_thinking_for_every_model(self):
+        assert agno_utils.model_request_overrides("DEEPSEEK", "deepseek-flash") == {
+            "request_params": {"extra_body": {"thinking": {"type": "disabled"}}}}
+
+    def test_chattermate_uses_the_openai_entries(self):
+        assert agno_utils.model_request_overrides("CHATTERMATE", "gpt-6-luna") == {
+            "reasoning_effort": "none"}
+
+    def test_unknown_provider_or_model_gets_nothing(self):
+        assert agno_utils.model_request_overrides("GROQ", "openai/gpt-oss-120b") == {}
+        assert agno_utils.model_request_overrides("OPENAI", "gpt-4o-mini") == {}
+
+    def test_overrides_are_copies(self):
+        agno_utils.model_request_overrides("DEEPSEEK", "deepseek-flash")["request_params"]["x"] = 1
+        assert "x" not in agno_utils.model_request_overrides("DEEPSEEK", "deepseek-flash")["request_params"]

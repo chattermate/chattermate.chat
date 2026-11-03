@@ -20,7 +20,11 @@ dependency on litellm's model map; unknown models fall back to a per-provider
 floor, and FAQ_CONTEXT_TOKENS_OVERRIDE forces a value for anything exotic.
 """
 
+from typing import Dict, Optional, TypeVar
+
 from app.core.config import settings
+
+T = TypeVar("T")
 
 # Conservative floors when the model name is unrecognised. Keys match
 # AIModelType values, uppercased.
@@ -42,6 +46,8 @@ _FALLBACK_TOKENS = 8_000
 # Lowercase model-name prefixes; the longest matching prefix wins so
 # "gpt-4o" beats "gpt-4" and "mistral-large" beats "mistral".
 _MODEL_PREFIX_TOKENS = {
+    "gpt-6": 1_050_000,
+    "gpt-5.6": 1_050_000,
     "gpt-5": 400_000,
     "gpt-4.1": 1_000_000,
     "gpt-4o": 128_000,
@@ -78,17 +84,23 @@ _MAX_FAQS_PER_BATCH = 40
 _CHARS_PER_FAQ = 3_000  # scale FAQ yield with batch size so density stays flat
 
 
+def longest_prefix_match(model_name: str, table: Dict[str, T]) -> Optional[T]:
+    """Value of the longest lowercase prefix in table that model_name starts with."""
+    name = (model_name or "").casefold()
+    best = None
+    for prefix, value in table.items():
+        if name.startswith(prefix) and (best is None or len(prefix) > best[0]):
+            best = (len(prefix), value)
+    return best[1] if best else None
+
+
 def context_tokens_for(model_type: str, model_name: str) -> int:
     """Best-known context window (tokens) for the configured model."""
     if settings.FAQ_CONTEXT_TOKENS_OVERRIDE > 0:
         return settings.FAQ_CONTEXT_TOKENS_OVERRIDE
-    name = (model_name or "").casefold()
-    best = None
-    for prefix, tokens in _MODEL_PREFIX_TOKENS.items():
-        if name.startswith(prefix) and (best is None or len(prefix) > best[0]):
-            best = (len(prefix), tokens)
-    if best:
-        return best[1]
+    tokens = longest_prefix_match(model_name, _MODEL_PREFIX_TOKENS)
+    if tokens is not None:
+        return tokens
     return _PROVIDER_DEFAULT_TOKENS.get((model_type or "").upper(), _FALLBACK_TOKENS)
 
 

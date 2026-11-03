@@ -14,12 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import copy
 import re
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from openai import AsyncOpenAI, OpenAI
 from app.core.logger import get_logger
 from app.core.config import settings
+from app.core.model_catalog import MODEL_REQUEST_OVERRIDES
+from app.utils.model_context import longest_prefix_match
 from app.core.outbound_http import guarded_async_http_client, guarded_http_client
 from app.core.outbound_policy import check_outbound_target, public_only
 from app.utils.agno_patches import apply_agno_patches
@@ -50,6 +53,28 @@ class PinnedOpenAIChat(OpenAIChat):
                               "http_client": guarded_async_http_client(follow_redirects=True)})
 
 
+def model_request_overrides(model_type: str, model_name: str) -> Dict[str, Any]:
+    """Extra agno model kwargs the catalog sets for this model, if any."""
+    provider = 'OPENAI' if model_type.upper() == 'CHATTERMATE' else model_type.upper()
+    overrides = longest_prefix_match(model_name, MODEL_REQUEST_OVERRIDES.get(provider, {}))
+    return copy.deepcopy(overrides) if overrides else {}
+
+
+def openai_request_kwargs(model_type: str, model_name: str, max_tokens: int, response_format: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """OpenAIChat kwargs for a native OpenAI model.
+
+    max_completion_tokens, not max_tokens: OpenAI's reasoning models reject
+    max_tokens on Chat Completions, and every other OpenAI chat model accepts
+    max_completion_tokens. OPENAI_COMPATIBLE endpoints keep max_tokens — not
+    every OpenAI-shaped server knows the newer name.
+    """
+    kwargs: Dict[str, Any] = {"max_completion_tokens": max_tokens,
+                              **model_request_overrides(model_type, model_name)}
+    if response_format:
+        kwargs["response_format"] = response_format
+    return kwargs
+
+
 def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int = 1000, response_format: Optional[Dict[str, Any]] = None, base_url: Optional[str] = None) -> Any:
     """
     Create and return the specified model based on model_type.
@@ -72,10 +97,8 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
 
     try:
         if model_type == 'OPENAI' or model_type == 'CHATTERMATE': # own model for enterprise customers
-            if response_format:
-                return OpenAIChat(api_key=api_key, id=model_name, max_tokens=max_tokens, response_format=response_format)
-            else:
-                return OpenAIChat(api_key=api_key, id=model_name, max_tokens=max_tokens)
+            return OpenAIChat(api_key=api_key, id=model_name,
+                              **openai_request_kwargs(model_type, model_name, max_tokens, response_format))
         elif model_type == 'OPENAI_COMPATIBLE':
             if not base_url:
                 raise ValueError("base_url is required for OPENAI_COMPATIBLE")
@@ -89,10 +112,12 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
                 return model_cls(api_key=api_key, id=model_name, base_url=base_url, max_tokens=max_tokens)
         elif model_type == 'ANTHROPIC':
             from agno.models.anthropic import Claude
-            return Claude(api_key=api_key, id=model_name, max_tokens=max_tokens)
+            return Claude(api_key=api_key, id=model_name, max_tokens=max_tokens,
+                          **model_request_overrides(model_type, model_name))
         elif model_type == 'DEEPSEEK':
             from agno.models.deepseek import DeepSeek
-            return DeepSeek(api_key=api_key, id=model_name, max_tokens=max_tokens)
+            return DeepSeek(api_key=api_key, id=model_name, max_tokens=max_tokens,
+                            **model_request_overrides(model_type, model_name))
         elif model_type == 'GOOGLE':
             from agno.models.google import Gemini
             # Gemini's agno model exposes max_output_tokens, not max_tokens.

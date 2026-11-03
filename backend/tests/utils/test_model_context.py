@@ -25,6 +25,8 @@ from app.utils.model_context import (
 def test_longest_prefix_wins():
     assert context_tokens_for("OPENAI", "gpt-4o-mini") == 128_000
     assert context_tokens_for("OPENAI", "gpt-4") == 8_000  # bare gpt-4, not gpt-4o
+    assert context_tokens_for("OPENAI", "gpt-6-luna") == 1_050_000
+    assert context_tokens_for("OPENAI", "gpt-5.6-luna") == 1_050_000  # not gpt-5's 400k
     assert context_tokens_for("MISTRAL", "mistral-large-latest") == 128_000
     assert context_tokens_for("MISTRAL", "mistral-small") == 32_000
 

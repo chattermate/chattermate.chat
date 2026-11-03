@@ -18,6 +18,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from typing import List, Union
 from app.core.logger import get_logger
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.database import get_db, release_connection
 from app.models.user import User, UserGroup
 from app.core.auth import (
@@ -732,7 +733,7 @@ async def generate_instructions(
         if HAS_ENTERPRISE:
             # Use Groq/OpenAI with keys from env for ChatterMate model
             model_type = 'OPENAI'
-            model_name = os.getenv('CHATTERMATE_MODEL_NAME', 'gpt-4o-mini')
+            model_name = os.getenv('CHATTERMATE_MODEL_NAME', DEFAULT_CHATTERMATE_MODEL)
             api_key = os.getenv('CHATTERMATE_API_KEY', '')
             
             if not api_key:
