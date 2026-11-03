@@ -157,6 +157,12 @@ export function useNavItems() {
             label: 'User Settings',
             show: true,
           },
+          {
+            to: '/settings/access-tokens',
+            icon: 'key',
+            label: 'CLI & API tokens',
+            show: hasEnterpriseModule,
+          },
         ],
       },
     ]

@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 import { getApiUrl } from '@/config/api'
+import { WIDGET_INSTALL_GUIDE_URL } from '@/config/docs'
 
 // The loader (chattermate.min.js) is served by THIS frontend, so resolve its
 // origin at snippet-generation time from where the dashboard is running — no
@@ -75,6 +76,30 @@ export function buildWidgetEmbed(widgetId: string, requireTokenAuth?: boolean): 
   window.chattermateBaseUrl = '${apiUrl}';
 <\/script>
 <script src="${loaderOrigin}/webclient/chattermate.min.js"><\/script>`
+}
+
+/** The AI website builders the install prompt is for, as the hints name them. */
+export const AI_BUILDERS = 'Lovable, Bolt, v0, Cursor, Framer AI and similar tools'
+
+/**
+ * A prompt for an AI website builder (Lovable, Bolt, v0, Cursor...) that adds
+ * the widget for the user: the exact snippet and where it belongs. Empty when
+ * there is no snippet to install.
+ */
+export function buildAiInstallPrompt(snippet: string): string {
+  if (!snippet) return ''
+  return [
+    'Add the ChatterMate chat widget to every page of my website.',
+    'Paste this snippet just before the closing </body> tag:',
+    '',
+    snippet,
+    '',
+    '- React or Vite: add it once to index.html, not inside a component.',
+    '- Next.js: load it with next/script in the root layout.',
+    '- WordPress: use a header and footer code plugin.',
+    '- Change nothing else on the site.',
+    `Install guide: ${WIDGET_INSTALL_GUIDE_URL}`,
+  ].join('\n')
 }
 
 /**

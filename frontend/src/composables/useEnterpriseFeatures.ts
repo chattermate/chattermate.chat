@@ -104,10 +104,14 @@ const moduleImports = {
   supportChatButton: '/src/modules/enterprise/components/support/SupportChatButton.vue',
   // External apps driving channel conversations (settings page)
   appIntegrationsView: '/src/modules/enterprise/views/AppIntegrationsView.vue',
+  // Personal access tokens for the CLI and API (settings page)
+  accessTokensView: '/src/modules/enterprise/views/AccessTokensView.vue',
   // Setup progress: the "Finish setup" bar, where the widget is live, and the
   // server-side step the wizard resumes at (nothing / null in open source)
   setupProgressBar: '/src/modules/enterprise/components/setup/SetupProgressBar.vue',
   widgetInstallStatus: '/src/modules/enterprise/components/setup/WidgetInstallStatus.vue',
+  // "Set this up from your AI coding tool" on the wizard's Create step (nothing in open source)
+  aiToolSetupNudge: '/src/modules/enterprise/components/setup/AiToolSetupNudge.vue',
   setupService: '/src/modules/enterprise/utils/setupService.ts',
   // The setup assistant docked beside the onboarding wizard (nothing in open source)
   setupAssistant: '/src/modules/enterprise/components/setup/SetupAssistantDock.vue',

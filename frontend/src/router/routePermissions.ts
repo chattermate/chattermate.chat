@@ -59,6 +59,8 @@ export const ROUTE_PERMISSIONS: Record<string, readonly string[]> = {
   // Everyone can reach their own profile, and 403 must never deny itself or
   // the guard has nowhere to send anyone.
   '/settings/user': [],
+  // Each user manages only their own tokens
+  '/settings/access-tokens': [],
   '/403': [],
 }
 

@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
 // The live/blocked status is an enterprise component (tested there): stub
-// the slot so this spec covers the open-source step only.
+// the slot so this spec covers the open-source step only. The AI builder
+// prompt is hosted-only, so the edition can be switched per test.
+const edition = vi.hoisted(() => ({ enterprise: true }))
 vi.mock('@/composables/useEnterpriseFeatures', async () => {
   const { defineComponent, h } = await import('vue')
   const Slot = defineComponent({
@@ -12,6 +14,7 @@ vi.mock('@/composables/useEnterpriseFeatures', async () => {
   })
   return {
     useEnterpriseFeatures: () => ({
+      hasEnterpriseModule: edition.enterprise,
       moduleImports: { widgetInstallStatus: 'install-status' },
       enterpriseComponent: () => Slot,
     }),
@@ -47,6 +50,38 @@ describe('StepLaunch', () => {
   it('hands the widget to the install status slot', async () => {
     const wrapper = await mountStep()
     expect(wrapper.find('.install-slot').text()).toBe('w-1')
+  })
+
+  it('offers a prompt for an AI website builder with the real snippet', async () => {
+    const wrapper = await mountStep()
+    expect(wrapper.find('.ai-prompt-btn').exists()).toBe(true)
+    const prompt = wrapper.find('.prompt-text').text()
+    expect(prompt).toContain("window.chattermateId = 'w-1'")
+    expect(prompt).toContain(WIDGET_INSTALL_GUIDE_URL)
+    // The preview stays closed until asked for
+    expect(wrapper.find('details').attributes('open')).toBeUndefined()
+  })
+
+  it('open source offers no AI builder prompt, and its subtitle says nothing of one', async () => {
+    edition.enterprise = false
+    try {
+      const wrapper = await mountStep()
+      expect(wrapper.find('.ai-prompt-btn').exists()).toBe(false)
+      expect(wrapper.find('.ai-hint').exists()).toBe(false)
+      expect(wrapper.find('details').exists()).toBe(false)
+      expect(wrapper.find('.step-sub').text()).toBe('Paste this snippet on your site.')
+      // The snippet, mailto and guide are still there
+      expect(wrapper.find('.copy-btn').exists()).toBe(true)
+      expect(wrapper.find('a[href^="mailto:"]').exists()).toBe(true)
+    } finally {
+      edition.enterprise = true
+    }
+  })
+
+  it('offers no AI prompt without a widget', async () => {
+    const wrapper = await mountStep(null)
+    expect(wrapper.find('.ai-prompt-btn').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('details').exists()).toBe(false)
   })
 
   it('offers no mailto without a widget', async () => {
