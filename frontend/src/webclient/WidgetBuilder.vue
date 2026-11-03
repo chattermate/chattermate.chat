@@ -24,6 +24,10 @@ import { renderMarkdown } from './markdown'
 import AskAiPanel from './AskAiPanel.vue'
 import NewChatConfirm from './NewChatConfirm.vue'
 import ActionConfirmCard from './ActionConfirmCard.vue'
+import ActionReceiptLine from './ActionReceiptLine.vue'
+import JourneyPlan from './JourneyPlan.vue'
+import SuggestedReplies from './SuggestedReplies.vue'
+import { useActionReceipts } from '../composables/useActionReceipts'
 import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
@@ -110,9 +114,12 @@ const {
 // a message it asked us to show (ChatterMate.prompt). The prompt lives outside
 // `messages` so loading history can't wipe it; it joins the chat once answered.
 const hostPrompt = ref<HostPrompt | null>(null)
+// Each action leaves a line in the chat saying what it did.
+const { receipts, addReceipt, receiptsAfter } = useActionReceipts(messages)
 const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHostActions(
     { on: onSocketEvent, emit: emitSocketEvent },
     (prompt) => { hostPrompt.value = prompt },
+    addReceipt,
 )
 
 // Journeys the agent runs on this site: a step's message and chips share the
@@ -134,7 +141,28 @@ const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivi
     runLocalAction,
 })
 
-const onPageChip = (chip: PageChip) => runChip(chip, sendQuickAction)
+// A tapped reply reads as the visitor's answer. A text one goes through the
+// normal send; an action one runs straight away, so the step's message and the
+// reply join the chat here, and its receipt follows when the page is done.
+const onPageChip = (chip: PageChip) => {
+    if (chip.kind === 'action' && !chipBusy.value && !pendingConfirm.value) {
+        const prompt = visiblePrompt.value
+        const now = new Date().toISOString()
+        if (prompt) {
+            messages.value.push({ message: prompt.message, message_type: 'bot', created_at: now, session_id: '', attributes: { source: prompt.source } } as any)
+        }
+        messages.value.push({ message: chip.label, message_type: 'user', created_at: now, session_id: '', attributes: { source: 'journey' } } as any)
+    }
+    runChip(chip, sendQuickAction)
+}
+
+// A step's replies stay offered until the step moves on, so a declined or failed
+// action can be tried again; they make way while anything else is under way.
+const replyChips = computed(() => {
+    const prompt = hostPrompt.value
+    if (!prompt?.chips.length || pendingConfirm.value || loading.value) return []
+    return prompt.chips
+})
 
 // The server sends a step's message on every sync until the step is done, and a
 // reply doesn't finish a step. Once it is in the chat (answered, or in the
@@ -778,8 +806,8 @@ watch(() => messages.value, (newMessages) => {
 
 // The confirm card and a page or journey message sit after the messages, so a
 // new one is below the fold unless the list follows it.
-watch([pendingConfirm, hostPrompt], ([confirm, prompt]) => {
-    if (confirm || prompt) nextTick(() => scrollToBottom())
+watch([pendingConfirm, hostPrompt, () => receipts.value.length], ([confirm, prompt, receiptCount]) => {
+    if (confirm || prompt || receiptCount) nextTick(() => scrollToBottom())
 })
 
 // Watch for connection status changes to set up event listeners when needed
@@ -2535,6 +2563,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             />
 
             <div v-show="!showEmailGate" class="chat-messages" ref="messagesContainer" role="log" aria-label="Messages">
+                <JourneyPlan v-if="journeyProgress" :progress="journeyProgress" @skip="skipStep" @hide="dismissJourney" />
                 <!-- Welcome message on open (cleared after the first send). Quick actions
                      render as a bar above the input — see below. -->
                 <div v-if="showWelcomeBlock" class="cm-welcome-block">
@@ -2944,6 +2973,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </div>
                         </div>
                     </div>
+                    <ActionReceiptLine v-for="(receipt, r) in receiptsAfter(index + 1)" :key="`receipt-${index}-${r}`" :receipt="receipt" />
                 </template>
 
                 <div v-if="visiblePrompt" class="message agent-message cm-welcome-row cm-host-prompt">
@@ -2951,6 +2981,13 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                     <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
                     <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ visiblePrompt.message }}</div>
                 </div>
+
+                <SuggestedReplies
+                    v-if="replyChips.length"
+                    :chips="replyChips"
+                    :disabled="!isMessageInputEnabled || chipBusy"
+                    @pick="onPageChip"
+                />
 
                 <ActionConfirmCard
                     v-if="pendingConfirm"
@@ -2976,23 +3013,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </div>
                     </template>
                 </div>
-            </div>
-
-            <!-- A journey step's progress, and reply chips for a page message or step -->
-            <div v-if="journeyProgress" class="cm-journey-progress" role="status" :aria-label="`Step ${journeyProgress.index + 1} of ${journeyProgress.count}`">
-                <span>Step {{ journeyProgress.index + 1 }} of {{ journeyProgress.count }}<template v-if="journeyProgress.title"> · {{ journeyProgress.title }}</template></span>
-                <button v-if="journeyProgress.skippable" type="button" class="cm-journey-skip" @click="skipStep">Skip</button>
-                <button type="button" class="cm-journey-skip" @click="dismissJourney">Hide guide</button>
-            </div>
-            <div v-if="visiblePrompt && visiblePrompt.chips.length" class="cm-quick-actions-bar">
-                <button
-                    v-for="chip in visiblePrompt.chips"
-                    :key="chip.label"
-                    type="button"
-                    class="cm-quick-action"
-                    :disabled="!isMessageInputEnabled || chipBusy || !!pendingConfirm"
-                    @click="onPageChip(chip)"
-                >{{ chip.label }}</button>
             </div>
 
             <!-- Quick actions (shown on open, just above the input — comp layout) -->
@@ -3707,26 +3727,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 .message-input input:disabled {
     background-color: rgba(0, 0, 0, 0.05);
     cursor: not-allowed;
-}
-
-.cm-journey-progress {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin: 0 12px 6px;
-    font-size: 12px;
-    color: var(--cm-muted);
-}
-
-.cm-journey-skip {
-    background: none;
-    border: none;
-    padding: 2px 4px;
-    color: var(--cm-muted);
-    font-size: 12px;
-    text-decoration: underline;
-    cursor: pointer;
 }
 
 .cm-secret-hint {

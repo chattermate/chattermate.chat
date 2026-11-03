@@ -49,6 +49,25 @@ export interface PendingConfirm {
   preview: ActionPreview | null
 }
 
+/** How an action ended, for the line the chat shows about it. */
+export interface ActionOutcome {
+  label: string
+  status: ActionStatus
+  /** What changed, when the page previewed it (asks-if-overwriting actions). */
+  preview: ActionPreview | null
+  /** The page's own one-line account of what it did: `summary` in its result. */
+  summary: string | null
+  error: string | null
+}
+
+/** Longest summary a page's result can put in the chat. */
+export const SUMMARY_MAX_CHARS = 140
+
+function summaryOf(result: unknown): string | null {
+  const summary = result && typeof result === 'object' ? (result as Record<string, unknown>).summary : null
+  return typeof summary === 'string' && summary.trim() ? summary.trim().slice(0, SUMMARY_MAX_CHARS) : null
+}
+
 /** A reply chip: sends its text, or runs one of the page's actions. */
 export interface PageChip {
   label: string
@@ -91,6 +110,8 @@ export interface HostActionsDeps {
   onConfirmChange: (pending: PendingConfirm | null) => void
   /** The page asked the widget to show a message. */
   onPrompt?: (prompt: HostPrompt) => void
+  /** An action finished, however it ended. */
+  onOutcome?: (outcome: ActionOutcome) => void
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
 }
@@ -105,8 +126,10 @@ export function createHostActionsClient(deps: HostActionsDeps) {
   let names: string[] = []
   let context: Record<string, unknown> | null = null
   let pending: PendingConfirm | null = null
-  // Calls the page is running: their give-up timer, and whether the visitor approved them.
-  const waiting = new Map<string, { timer: unknown; confirmed: boolean | null }>()
+  // Calls the page is running: their give-up timer, whether the visitor approved
+  // them, and what the chat says about them once they end.
+  interface Running { timer: unknown; confirmed: boolean | null; label: string; preview: ActionPreview | null }
+  const waiting = new Map<string, Running>()
   // Calls the widget itself started (a journey's action chip): told to a callback, not the server.
   const local = new Map<string, (status: ActionStatus) => void>()
   const previews = new Map<string, ActionRequest>()
@@ -128,9 +151,22 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     if (context) deps.emit('set_context', { context })
   }
 
+  function tell(label: string, status: ActionStatus, preview: ActionPreview | null, extra: Record<string, unknown> = {}) {
+    deps.onOutcome?.({
+      label,
+      status,
+      preview,
+      summary: status === 'ok' ? summaryOf(extra.result) : null,
+      error: typeof extra.error === 'string' && extra.error ? extra.error : null,
+    })
+  }
+
   function report(callId: string, status: ActionStatus, extra: Record<string, unknown> = {}) {
     const running = waiting.get(callId)
-    if (running) clearTimer(running.timer)
+    if (running) {
+      clearTimer(running.timer)
+      tell(running.label, status, running.preview, extra)
+    }
     waiting.delete(callId)
     const done = local.get(callId)
     if (done) {
@@ -154,9 +190,14 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     deps.onConfirmChange(next)
   }
 
-  function runOnPage(request: ActionRequest, confirmed: boolean | null) {
+  function runOnPage(request: ActionRequest, confirmed: boolean | null, preview: ActionPreview | null = null) {
     const ms = Math.max(1, request.timeout_s) * 1000 + PAGE_GRACE_MS
-    waiting.set(request.call_id, { timer: setTimer(() => report(request.call_id, 'timeout'), ms), confirmed })
+    waiting.set(request.call_id, {
+      timer: setTimer(() => report(request.call_id, 'timeout'), ms),
+      confirmed,
+      label: request.label,
+      preview,
+    })
     deps.postToHost({
       type: 'ACTION_RUN',
       callId: request.call_id,
@@ -227,16 +268,17 @@ export function createHostActionsClient(deps: HostActionsDeps) {
   /** The visitor approved the card. */
   function approve() {
     if (!pending) return
-    const { request } = pending
+    const { request, preview } = pending
     setPending(null)
-    runOnPage(request, true)
+    runOnPage(request, true, preview)
   }
 
   /** The visitor said no: the action does not run. */
   function decline() {
     if (!pending) return
-    const { request } = pending
+    const { request, preview } = pending
     setPending(null)
+    tell(request.label, 'declined', preview)
     const done = local.get(request.call_id)
     if (done) {
       local.delete(request.call_id)

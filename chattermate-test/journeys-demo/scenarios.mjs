@@ -71,14 +71,14 @@ export const JOURNEYS = [
       steps: [
         {
           id: 'currency', title: 'Pick your currency', skippable: true,
-          message: 'Hi {{user.first_name}}! First, which currency do you bill in? You are on {{ctx.currency}}.',
-          chips: [actionChip('Use GBP', 'set_currency'), textChip('Use euros', 'Please switch me to EUR')],
+          message: "Hi {{user.first_name}}, let's get your first invoice out. Your invoices are in {{ctx.currency}} right now. Is that the currency you bill in?",
+          chips: [actionChip('Switch to GBP', 'set_currency'), textChip('I bill in euros', 'I bill in euros, please switch me to EUR')],
           allowed_actions: ['set_currency'],
           done_when: [action('set_currency'), event('currency_set')],
         },
         {
           id: 'client', title: 'Add your first client', skippable: true,
-          message: 'Next, add a client to invoice. I can add a sample one, or tell me who it is.',
+          message: "Who's your first client? Give me a name and email, or I can add a sample one to try things out.",
           chips: [actionChip('Add a sample client', 'create_client')],
           allowed_actions: ['create_client'],
           done_when: [event('client_created'), { kind: 'ctx', value: 'clients_count', op: 'gte', operand: 1 }],
@@ -86,11 +86,11 @@ export const JOURNEYS = [
         {
           id: 'invoice', title: 'Send your first invoice', skippable: false,
           triggers: [url('/app/invoices*')],
-          message: 'Last step: draft an invoice and send it. Want me to do it?',
-          chips: [actionChip('Draft one for me', 'create_invoice_draft'), actionChip('Send it', 'send_invoice')],
+          message: 'What is the first invoice for? Tell me the amount, or I can draft one for 100 to start.',
+          chips: [actionChip('Draft one for me', 'create_invoice_draft'), actionChip('Send my latest draft', 'send_invoice')],
           allowed_actions: ['create_invoice_draft', 'send_invoice'],
           done_when: [event('invoice_sent')],
-          nudge: { after_min: 1, message: 'Still there? I can draft and send it for you.' },
+          nudge: { after_min: 1, message: 'Still there? Tell me the amount and I can draft and send it for you.' },
         },
       ],
     },
@@ -108,7 +108,7 @@ export const JOURNEYS = [
         {
           id: 'value', title: 'See what Pro adds', skippable: true,
           message: 'Your trial ends soon. You have sent {{ctx.invoices_count}} invoices. Pro keeps them unlimited and adds reminders.',
-          chips: [actionChip('Upgrade to Pro', 'start_checkout'), textChip('What does Pro cost?')],
+          chips: [actionChip('Upgrade me to Pro', 'start_checkout'), textChip('What does Pro cost?')],
           allowed_actions: ['start_checkout'],
           done_when: [event('subscription_started')],
         },
@@ -126,8 +126,8 @@ export const JOURNEYS = [
       steps: [
         {
           id: 'export', title: 'Export your numbers', skippable: true,
-          message: 'Tip: you can export every client and invoice as a CSV. Want one?',
-          chips: [actionChip('Export now', 'export_data')],
+          message: 'You can export every client and invoice as a CSV. Want one now?',
+          chips: [actionChip('Export my data', 'export_data')],
           allowed_actions: ['export_data'],
           done_when: [action('export_data'), event('export_done')],
         },

@@ -28,6 +28,8 @@ export interface JourneyView {
   journey_name: string
   auto_open: boolean
   step_count: number
+  /** Every step's title, in order: the plan the chat shows. */
+  step_titles?: string[]
   finished: boolean
   waiting?: boolean
   step_id?: string
@@ -42,15 +44,33 @@ export interface JourneyView {
 }
 
 export interface JourneyProgress {
+  name: string
+  /** The step the user is on; equal to `titles.length` once finished. */
   index: number
   count: number
+  titles: string[]
   title: string
   skippable: boolean
+  finished: boolean
+}
+
+function progressOf(view: JourneyView, finished: boolean): JourneyProgress {
+  const titles = view.step_titles?.length ? view.step_titles : []
+  const count = titles.length || view.step_count
+  return {
+    name: view.journey_name,
+    index: finished ? count : view.step_index ?? 0,
+    count,
+    titles,
+    title: view.title ?? titles[view.step_index ?? 0] ?? '',
+    skippable: !finished && !view.waiting && !!view.skippable,
+    finished,
+  }
 }
 
 export interface JourneyDeps {
   emit: (event: string, data: unknown) => void
-  /** Show (or clear, with null) the step's message and chips. */
+  /** Show (or clear, with null) the step's message and chips, and the plan. */
   showStep: (prompt: HostPrompt | null, progress: JourneyProgress | null) => void
   /** Add a one-off message to the chat (a notice, the finish message, a nudge). */
   addNotice: (text: string, kind: 'message' | 'block') => void
@@ -108,19 +128,17 @@ export function createJourneyClient(deps: JourneyDeps) {
       stopNudge()
       lastNudge = null
       timedStep = null
-      deps.showStep(null, null)
+      // A finished plan stays, all ticked; one waiting on its next step still
+      // shows where the user is; none at all (hidden, or never started) goes.
+      const progress = view?.journey_name ? progressOf(view, !!view.finished) : null
+      deps.showStep(null, progress)
       if (view?.finished && view.message) deps.addNotice(view.message, 'message')
       return
     }
     const prompt: HostPrompt | null = view.message
       ? { message: view.message, chips: view.chips ?? [], open: false, source: 'journey' }
       : null
-    deps.showStep(prompt, {
-      index: view.step_index ?? 0,
-      count: view.step_count,
-      title: view.title ?? '',
-      skippable: !!view.skippable,
-    })
+    deps.showStep(prompt, progressOf(view, false))
     if (view.fresh && view.auto_open) deps.openChat()
     scheduleNudge(view)
   }

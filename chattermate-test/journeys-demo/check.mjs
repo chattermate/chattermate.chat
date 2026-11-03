@@ -59,7 +59,14 @@ async function settle(ms = 40000) {
   return 'timeout'
 }
 const lastReply = async () => (await frame().locator('.agent-message').allInnerTexts()).slice(-1)[0] || ''
-const guide = async () => (await frame().getByText(/Step \d of \d/).allInnerTexts().catch(() => [])).join(' | ') || '(no guide)'
+/** Where the plan card says the user is: "First invoice › Add your first client", or "… › done". */
+async function guide() {
+  const plan = frame().getByRole('region', { name: /^Guide: / })
+  if (!(await plan.count())) return '(no guide)'
+  const name = (await plan.getAttribute('aria-label')).replace(/^Guide: /, '')
+  const now = frame().locator('.cm-plan [aria-current="step"]')
+  return `${name} › ${(await now.count()) ? (await now.innerText()).trim() : 'done'}`
+}
 const actions = async () => (await page.locator('#log li.action, #log li.error').allInnerTexts()).reverse().map((l) => l.replace(/^.*?(ACTION|ERROR)\s+/, ''))
 const expandScenarios = () => page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true }))
 
@@ -75,14 +82,15 @@ async function scenario(name, expectation, run) {
   if (outDir) await page.screenshot({ path: `${outDir}/${name.replace(/\W+/g, '_')}.png` })
 }
 
-await scenario('2 chip asks before overwriting', 'Use GBP shows USD → GBP; Apply moves to step 2', async () => {
+await scenario('2 reply asks before overwriting', 'Switch to GBP shows USD → GBP; Change to GBP moves to step 2 with a receipt', async () => {
   await open('maya')
   await openChat()
-  await frame().getByRole('button', { name: 'Use GBP' }).click()
-  await card().getByRole('button', { name: 'Apply' }).click()
+  await frame().getByRole('button', { name: 'Switch to GBP' }).click()
+  await card().getByRole('button', { name: 'Change to GBP' }).click()
   await page.waitForTimeout(2500)
   const g = await guide()
-  return { pass: g.includes('Step 2 of 3'), guide: g, actions: await actions() }
+  const receipt = await frame().getByText('Set default currency: USD → GBP').isVisible().catch(() => false)
+  return { pass: g.endsWith('Add your first client') && receipt, guide: g, receipt, actions: await actions() }
 })
 
 await scenario('3 typed request uses the suggested action', 'create_client runs; the step completes', async () => {
@@ -97,20 +105,20 @@ await scenario('4 navigation reaches a URL step', 'open_page navigates; Step 3 a
   await settle()
   await page.waitForTimeout(2000)
   const g = await guide()
-  return { pass: page.url().endsWith('/app/invoices') && g.includes('Step 3 of 3'), url: page.url(), guide: g }
+  return { pass: page.url().endsWith('/app/invoices') && g.endsWith('Send your first invoice'), url: page.url(), guide: g }
 })
 
-await scenario('5 always-ask: decline, then approve', 'send_invoice waits for a click; Cancel is respected; Apply sends and finishes', async () => {
+await scenario('5 always-ask: decline, then approve', 'send_invoice waits for a click; Not now is respected; Send an invoice sends and finishes', async () => {
   await say('Draft a 250 invoice for Globex and send it')
   const first = await settle()
   if (first !== 'card') return { pass: false, why: 'no confirm card', reply: await lastReply() }
-  await card().getByRole('button', { name: 'Cancel' }).click()
+  await card().getByRole('button', { name: 'Not now' }).click()
   const afterCancel = await settle(25000)
   const reSent = afterCancel === 'card'
   const declinedReply = await lastReply()
-  if (reSent) await card().getByRole('button', { name: 'Cancel' }).click()
+  if (reSent) await card().getByRole('button', { name: 'Not now' }).click()
   await say('Ok, send it now please')
-  if ((await settle()) === 'card') await card().getByRole('button', { name: 'Apply' }).click()
+  if ((await settle()) === 'card') await card().getByRole('button', { name: 'Send an invoice' }).click()
   await settle(25000)
   const sent = (await actions()).some((a) => a.startsWith('send_invoice →'))
   return { pass: !reSent && sent, declinedReply, sent, finish: await lastReply(), guide: await guide() }
@@ -153,7 +161,7 @@ await scenario('9 journey from code, with an audience', 'only Maya (user.plan = 
   return { pass: seen.maya.includes('See what Pro adds') && !seen.leo.includes('Pro adds') && !seen.anon.includes('Pro adds'), ...seen }
 })
 
-await scenario('10 event-started journey for Pro', 'Leo on Reports gets Reports tip; Export now runs', async () => {
+await scenario('10 event-started journey for Pro', 'Leo on Reports gets Reports tip; Export my data runs', async () => {
   await open('leo')
   await openChat()
   await frame().getByRole('button', { name: 'Hide guide' }).click().catch(() => {})
@@ -161,7 +169,7 @@ await scenario('10 event-started journey for Pro', 'Leo on Reports gets Reports 
   await page.waitForTimeout(3500)
   await openChat()
   const g = await guide()
-  await frame().getByRole('button', { name: 'Export now' }).click()
+  await frame().getByRole('button', { name: 'Export my data' }).click()
   await page.waitForTimeout(3500)
   return { pass: g.includes('Export your numbers') && (await actions()).some((a) => a.startsWith('export_data →')), guide: g }
 })

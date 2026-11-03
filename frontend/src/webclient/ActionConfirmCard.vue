@@ -20,6 +20,7 @@ limitations under the License.
  */
 import { computed } from 'vue'
 import type { PendingConfirm } from './actions/hostActionsClient'
+import { confirmWording } from './actions/receipts'
 
 const props = defineProps<{ pending: PendingConfirm }>()
 const emit = defineEmits<{ (e: 'approve'): void; (e: 'decline'): void }>()
@@ -31,15 +32,26 @@ function show(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
 }
 
+/** "invoice_id" → "Invoice id": argument names read as labels. */
+function readable(key: string): string {
+  const words = key.replace(/[_-]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 /** The arguments as short "key: value" lines, for the always-ask card. */
 const details = computed(() =>
-  Object.entries(props.pending.request.args || {}).map(([key, value]) => ({ key, value: show(value) })),
+  Object.entries(props.pending.request.args || {}).map(([key, value]) => ({ key: readable(key), value: show(value) })),
+)
+
+/** The buttons say what happens: "Send an invoice" / "Not now", "Change to GBP" / "Keep USD". */
+const wording = computed(() =>
+  confirmWording(props.pending.request.label, props.pending.preview?.before, props.pending.preview?.after, overwriting.value),
 )
 </script>
 
 <template>
   <div class="cm-action-confirm" role="group" :aria-label="pending.request.label">
-    <div class="cm-action-head">{{ pending.request.label }}</div>
+    <div class="cm-action-head">{{ pending.request.label }}?</div>
     <template v-if="overwriting">
       <div class="cm-action-row before">
         <span class="cm-action-tag">Current</span>
@@ -57,10 +69,8 @@ const details = computed(() =>
       </template>
     </dl>
     <div class="cm-action-buttons">
-      <button type="button" class="cm-action-apply" @click="emit('approve')">Apply</button>
-      <button type="button" class="cm-action-cancel" @click="emit('decline')">
-        {{ overwriting ? 'Keep current' : 'Cancel' }}
-      </button>
+      <button type="button" class="cm-action-apply" @click="emit('approve')">{{ wording.approve }}</button>
+      <button type="button" class="cm-action-cancel" @click="emit('decline')">{{ wording.decline }}</button>
     </div>
   </div>
 </template>

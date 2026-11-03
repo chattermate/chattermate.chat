@@ -28,7 +28,10 @@ describe('ActionConfirmCard', () => {
     const wrapper = mount(ActionConfirmCard, { props: { pending: pending() } })
     expect(wrapper.text()).toContain('Send an invoice')
     expect(wrapper.find('dl').text()).toContain('a@b.co')
-    expect(wrapper.find('.cm-action-cancel').text()).toBe('Cancel')
+    expect(wrapper.find('.cm-action-head').text()).toBe('Send an invoice?')
+    expect(wrapper.find('dt').text()).toBe('To')
+    expect(wrapper.find('.cm-action-apply').text()).toBe('Send an invoice')
+    expect(wrapper.find('.cm-action-cancel').text()).toBe('Not now')
     await wrapper.find('.cm-action-apply').trigger('click')
     expect(wrapper.emitted('approve')).toHaveLength(1)
   })
@@ -37,9 +40,17 @@ describe('ActionConfirmCard', () => {
     const wrapper = mount(ActionConfirmCard, { props: { pending: pending({ before: 'USD', after: { code: 'GBP' } }) } })
     expect(wrapper.find('.before').text()).toContain('USD')
     expect(wrapper.find('.after').text()).toContain('GBP')
-    expect(wrapper.find('.cm-action-cancel').text()).toBe('Keep current')
+    // An object can't be quoted on a button, so the wording stays generic.
+    expect(wrapper.find('.cm-action-apply').text()).toBe('Change it')
+    expect(wrapper.find('.cm-action-cancel').text()).toBe('Keep USD')
     await wrapper.find('.cm-action-cancel').trigger('click')
     expect(wrapper.emitted('decline')).toHaveLength(1)
+  })
+
+  it('names both values on the buttons when they are short', () => {
+    const wrapper = mount(ActionConfirmCard, { props: { pending: pending({ before: 'USD', after: 'GBP' }) } })
+    expect(wrapper.find('.cm-action-apply').text()).toBe('Change to GBP')
+    expect(wrapper.find('.cm-action-cancel').text()).toBe('Keep USD')
   })
 
   it('renders page text as text, never HTML', () => {

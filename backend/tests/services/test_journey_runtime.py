@@ -78,6 +78,7 @@ def test_start_shows_the_first_step_once(db, session, test_agent, action):
     _journey(db, test_agent)
     view = _runner(db, session, "https://app.x/dashboard").sync()
     assert view["step_id"] == "currency" and view["step_index"] == 0 and view["step_count"] == 2
+    assert view["step_titles"] == [s["title"] for s in _steps()]
     assert view["message"] == "Hi Maya, pick a currency."
     assert view["chips"][0] == {"label": "Use GBP", "kind": "action", "value": "set_currency",
                                 "action": {"label": "Set default currency", "confirm": "when_overwriting", "timeout_s": 20}}

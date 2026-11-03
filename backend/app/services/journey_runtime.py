@@ -298,7 +298,8 @@ class JourneyRunner:
               signals: Signals, notice: Optional[Tuple[str, str]]) -> Optional[dict]:
         fallbacks = definition.variable_fallbacks
         base = {"journey_key": journey.key, "journey_name": journey.name, "auto_open": journey.auto_open,
-                "step_count": len(definition.steps), "notice": _notice(notice)}
+                "step_count": len(definition.steps), "step_titles": [s.title for s in definition.steps],
+                "notice": _notice(notice)}
         if progress.status == ProgressStatus.FINISHED.value:
             message = render(definition.finish.message, signals, fallbacks)
             return {**base, "finished": True, "message": message or None}

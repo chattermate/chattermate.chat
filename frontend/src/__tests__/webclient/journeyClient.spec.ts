@@ -29,6 +29,7 @@ function setup() {
 
 const step = (overrides: Partial<JourneyView> = {}): JourneyView => ({
   journey_key: 'first_invoice', journey_name: 'First invoice', auto_open: true, step_count: 3,
+  step_titles: ['Set your currency', 'Add a client', 'Send an invoice'],
   finished: false, waiting: false, step_id: 'currency', step_index: 0, title: 'Set your currency',
   message: 'Pick a currency.', fresh: true, chips: [{ label: 'Later', kind: 'text', value: 'Later' }],
   skippable: true, nudge: null, notice: null, ...overrides,
@@ -40,7 +41,10 @@ describe('journey client', () => {
     client.handleState({ view: step() })
     expect(showStep).toHaveBeenCalledWith(
       { message: 'Pick a currency.', chips: [{ label: 'Later', kind: 'text', value: 'Later' }], open: false, source: 'journey' },
-      { index: 0, count: 3, title: 'Set your currency', skippable: true })
+      {
+        name: 'First invoice', index: 0, count: 3, title: 'Set your currency', skippable: true, finished: false,
+        titles: ['Set your currency', 'Add a client', 'Send an invoice'],
+      })
     expect(openChat).toHaveBeenCalledTimes(1)
     client.handleState({ view: step({ fresh: false }) })
     expect(openChat).toHaveBeenCalledTimes(1)
@@ -59,6 +63,17 @@ describe('journey client', () => {
     client.handleState({ view: step({ finished: true, message: 'All done!', notice: { kind: 'block', text: '`npm i`' } }) })
     expect(showStep.mock.calls.every(([prompt]) => prompt === null)).toBe(true)
     expect(addNotice.mock.calls).toEqual([['`npm i`', 'block'], ['All done!', 'message']])
+    // The plan: gone with no journey, kept while waiting, all ticked once finished.
+    const plans = showStep.mock.calls.map(([, progress]) => progress)
+    expect(plans[0]).toBeNull()
+    expect(plans[1]).toMatchObject({ index: 0, finished: false, skippable: false })
+    expect(plans[2]).toMatchObject({ index: 3, count: 3, finished: true })
+  })
+
+  it('falls back to the step count for a server that sends no titles', () => {
+    const { client, showStep } = setup()
+    client.handleState({ view: step({ step_titles: undefined }) })
+    expect(showStep.mock.calls[0][1]).toMatchObject({ count: 3, titles: [], title: 'Set your currency' })
   })
 
   it('nudges once per step after the idle time, unless the visitor acts', () => {

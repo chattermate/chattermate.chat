@@ -16,7 +16,7 @@ limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  createHostActionsClient, PAGE_GRACE_MS, PROMPT_MAX_SUGGESTIONS, toHostPrompt, type ActionRequest,
+  createHostActionsClient, PAGE_GRACE_MS, SUMMARY_MAX_CHARS, PROMPT_MAX_SUGGESTIONS, toHostPrompt, type ActionOutcome, type ActionRequest,
 } from '@/webclient/actions/hostActionsClient'
 
 const request = (overrides: Partial<ActionRequest> = {}): ActionRequest => ({
@@ -33,13 +33,15 @@ function setup(origin: string | null = 'https://app.example.com') {
   const posted: Record<string, unknown>[] = []
   const emitted: [string, any][] = []
   const confirm = vi.fn()
+  const outcomes: ActionOutcome[] = []
   const client = createHostActionsClient({
     postToHost: (m) => posted.push(m),
     emit: (e, d) => emitted.push([e, d]),
     trustedHostOrigin: () => origin,
     onConfirmChange: confirm,
+    onOutcome: (o) => outcomes.push(o),
   })
-  return { client, posted, emitted, confirm }
+  return { client, posted, emitted, confirm, outcomes }
 }
 
 beforeEach(() => vi.useRealTimers())
@@ -247,5 +249,48 @@ describe('local runs (journey action chips)', () => {
     const { client, posted } = setup()
     client.runLocal({ label: 'Hi', kind: 'text', value: 'Hi' }, vi.fn())
     expect(posted).toEqual([])
+  })
+})
+
+describe('outcomes (the chat\'s line about each action)', () => {
+  it('tells how a run ended, with the page\'s own summary', () => {
+    const { client, outcomes } = setup()
+    client.handleRequest(request())
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'ok', result: { summary: '  Opened billing ' } })
+    expect(outcomes).toEqual([{ label: 'Go to a page', status: 'ok', preview: null, summary: 'Opened billing', error: null }])
+  })
+
+  it('carries the approved preview and a page error', () => {
+    const { client, outcomes } = setup()
+    client.handleRequest(request({ confirm: 'when_overwriting', label: 'Set currency' }))
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: { before: 'USD', after: 'GBP' } })
+    client.approve()
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'error', error: 'Locked' })
+    expect(outcomes).toEqual([{ label: 'Set currency', status: 'error', preview: { before: 'USD', after: 'GBP' }, summary: null, error: 'Locked' }])
+  })
+
+  it('tells a decline, and a chip\'s run the same way', () => {
+    const { client, outcomes } = setup()
+    client.runLocal({ label: 'Send it', kind: 'action', value: 'send', action: { label: 'Send an invoice', confirm: 'always', timeout_s: 5 } }, vi.fn())
+    client.decline()
+    expect(outcomes.map((o) => [o.label, o.status])).toEqual([['Send an invoice', 'declined']])
+  })
+
+  it('tells a timeout', () => {
+    vi.useFakeTimers()
+    const { client, outcomes } = setup()
+    client.handleRequest(request())
+    vi.advanceTimersByTime(5000 + PAGE_GRACE_MS)
+    expect(outcomes[0].status).toBe('timeout')
+  })
+
+  it('ignores a summary that is not text and caps a long one', () => {
+    const { client, outcomes } = setup()
+    client.handleRequest(request())
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'ok', result: { summary: 42 } })
+    client.handleRequest(request({ call_id: 'call-2' }))
+    client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-2', status: 'ok', result: { summary: 'x'.repeat(500) } })
+    expect(outcomes[0].summary).toBeNull()
+    expect(outcomes[1].summary).toHaveLength(SUMMARY_MAX_CHARS)
   })
 })

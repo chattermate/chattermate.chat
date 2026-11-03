@@ -18,7 +18,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import { hostOrigin, postToHost } from '../webclient/host-bridge'
 import { isFramed } from '../webclient/frame-session'
 import {
-  createHostActionsClient, type ActionRequest, type HostPrompt, type PendingConfirm,
+  createHostActionsClient, type ActionOutcome, type ActionRequest, type HostPrompt, type PendingConfirm,
 } from '../webclient/actions/hostActionsClient'
 
 interface SocketHooks {
@@ -31,7 +31,11 @@ interface SocketHooks {
  * widget socket and to the embedding page. Must be called during setup, so the
  * page's HOST_ACTIONS (sent once the widget mounts) is never missed.
  */
-export function useHostActions(socket: SocketHooks, onPrompt?: (prompt: HostPrompt) => void) {
+export function useHostActions(
+  socket: SocketHooks,
+  onPrompt?: (prompt: HostPrompt) => void,
+  onOutcome?: (outcome: ActionOutcome) => void,
+) {
   const pendingConfirm = ref<PendingConfirm | null>(null)
 
   const client = createHostActionsClient({
@@ -45,6 +49,7 @@ export function useHostActions(socket: SocketHooks, onPrompt?: (prompt: HostProm
     },
     onConfirmChange: (pending) => { pendingConfirm.value = pending },
     onPrompt,
+    onOutcome,
   })
 
   socket.on('action_request', (request: ActionRequest) => client.handleRequest(request))
