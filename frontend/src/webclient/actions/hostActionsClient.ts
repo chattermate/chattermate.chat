@@ -47,6 +47,29 @@ export interface PendingConfirm {
   request: ActionRequest
   /** Set for "asks if overwriting": what changes. */
   preview: ActionPreview | null
+  /** For "always asks": the page's own account of what will happen
+   *  ("To: billing@acme.example"), shown instead of the raw arguments. */
+  details: ActionDetail[] | null
+}
+
+export interface ActionDetail {
+  key: string
+  value: string
+}
+
+/** Most detail lines a page can put on a card, and the longest value. */
+export const DETAILS_MAX = 8
+export const DETAIL_MAX_CHARS = 200
+
+/** The `details` a page's preview gave for an always-ask action: scalar values only. */
+export function detailsOf(preview: unknown): ActionDetail[] | null {
+  const details = preview && typeof preview === 'object' ? (preview as Record<string, unknown>).details : null
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return null
+  const lines = Object.entries(details as Record<string, unknown>)
+    .filter(([key, value]) => key.trim() && ['string', 'number', 'boolean'].includes(typeof value) && String(value).trim())
+    .slice(0, DETAILS_MAX)
+    .map(([key, value]) => ({ key: key.trim().slice(0, 60), value: String(value).trim().slice(0, DETAIL_MAX_CHARS) }))
+  return lines.length ? lines : null
 }
 
 /** How an action ended, for the line the chat shows about it. */
@@ -214,7 +237,11 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     if (waiting.has(request.call_id) || previews.has(request.call_id)
       || pending?.request.call_id === request.call_id) return
     if (request.confirm === 'always') {
-      setPending({ request, preview: null })
+      // The card shows at once; the page may then say what the call will do,
+      // which matters most for a chip, whose call carries no arguments.
+      setPending({ request, preview: null, details: null })
+      previews.set(request.call_id, request)
+      deps.postToHost({ type: 'ACTION_PREVIEW', callId: request.call_id, name: request.name, args: request.args })
       return
     }
     if (request.confirm === 'when_overwriting') {
@@ -243,8 +270,17 @@ export function createHostActionsClient(deps: HostActionsDeps) {
         const request = previews.get(String(data.callId))
         if (!request) return true
         previews.delete(request.call_id)
+        if (request.confirm === 'always') {
+          // Only onto the card still asking about this call; it may be answered already.
+          const details = detailsOf(data.preview)
+          if (details && pending?.request.call_id === request.call_id) {
+            pending = { ...pending, details }
+            deps.onConfirmChange(pending)
+          }
+          return true
+        }
         const preview = data.preview as ActionPreview | null
-        if (preview && typeof preview === 'object') setPending({ request, preview })
+        if (preview && typeof preview === 'object') setPending({ request, preview, details: null })
         else runOnPage(request, null)
         return true
       }
@@ -270,6 +306,7 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     if (!pending) return
     const { request, preview } = pending
     setPending(null)
+    previews.delete(request.call_id)
     runOnPage(request, true, preview)
   }
 
@@ -278,6 +315,7 @@ export function createHostActionsClient(deps: HostActionsDeps) {
     if (!pending) return
     const { request, preview } = pending
     setPending(null)
+    previews.delete(request.call_id)
     tell(request.label, 'declined', preview)
     const done = local.get(request.call_id)
     if (done) {

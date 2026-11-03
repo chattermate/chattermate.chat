@@ -76,7 +76,10 @@ const HOST_ACTIONS_SCRIPT = `
         function ran(text) { runs.textContent = String(Number(runs.textContent) + 1); status.textContent = text }
         ChatterMate.registerActions({
           open_page: async function (args) { ran('Opened ' + args.path); return { ok: true, path: args.path } },
-          send_invoice: async function (args) { ran('Sent invoice to ' + args.to); return { sent: true } },
+          send_invoice: {
+            preview: async function (args) { return { details: { Invoice: 'INV-7', To: args.to } } },
+            run: async function (args) { ran('Sent invoice to ' + args.to); return { sent: true } },
+          },
           set_currency: {
             preview: async function (args) { return currency.textContent === args.code ? null : { before: currency.textContent, after: args.code } },
             run: async function (args) { currency.textContent = args.code; ran('Currency is ' + args.code); return { currency: args.code } },

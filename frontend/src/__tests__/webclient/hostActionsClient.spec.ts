@@ -16,7 +16,7 @@ limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  createHostActionsClient, PAGE_GRACE_MS, SUMMARY_MAX_CHARS, PROMPT_MAX_SUGGESTIONS, toHostPrompt, type ActionOutcome, type ActionRequest,
+  createHostActionsClient, detailsOf, DETAILS_MAX, DETAIL_MAX_CHARS, PAGE_GRACE_MS, SUMMARY_MAX_CHARS, PROMPT_MAX_SUGGESTIONS, toHostPrompt, type ActionOutcome, type ActionRequest,
 } from '@/webclient/actions/hostActionsClient'
 
 const request = (overrides: Partial<ActionRequest> = {}): ActionRequest => ({
@@ -134,8 +134,9 @@ describe('confirming', () => {
   it('asks first for an always-ask action, then runs it approved', () => {
     const { client, posted, emitted, confirm } = setup()
     client.handleRequest(request({ confirm: 'always' }))
-    expect(posted).toEqual([])
-    expect(confirm).toHaveBeenLastCalledWith({ request: expect.objectContaining({ call_id: 'call-1' }), preview: null })
+    // Asked for details, but nothing runs until the visitor approves.
+    expect(posted).toEqual([{ type: 'ACTION_PREVIEW', callId: 'call-1', name: 'open_page', args: { path: '/billing' } }])
+    expect(confirm).toHaveBeenLastCalledWith({ request: expect.objectContaining({ call_id: 'call-1' }), preview: null, details: null })
     client.approve()
     expect(confirm).toHaveBeenLastCalledWith(null)
     client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-1', status: 'ok' })
@@ -146,7 +147,7 @@ describe('confirming', () => {
     const { client, posted, emitted } = setup()
     client.handleRequest(request({ confirm: 'always' }))
     client.decline()
-    expect(posted).toEqual([])
+    expect(posted.filter((m) => m.type === 'ACTION_RUN')).toEqual([])
     expect(emitted).toEqual([['action_result', { call_id: 'call-1', status: 'declined', confirmed: false }]])
   })
 
@@ -164,6 +165,44 @@ describe('confirming', () => {
     client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: null })
     expect(confirm).not.toHaveBeenCalled()
     expect(posted[1]).toMatchObject({ type: 'ACTION_RUN', callId: 'call-1' })
+  })
+
+  it('adds the page\'s details to an always-ask card', () => {
+    const { client, confirm } = setup()
+    client.handleRequest(request({ confirm: 'always' }))
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: { details: { To: 'billing@acme.example', Amount: 100 } } })
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({
+      preview: null,
+      details: [{ key: 'To', value: 'billing@acme.example' }, { key: 'Amount', value: '100' }],
+    }))
+  })
+
+  it('keeps the card as it is when the page gives no details', () => {
+    const { client, confirm } = setup()
+    client.handleRequest(request({ confirm: 'always' }))
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: { before: 'A', after: 'B' } })
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: null })
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops details that arrive after the card was answered', () => {
+    const { client, confirm, posted } = setup()
+    client.handleRequest(request({ confirm: 'always' }))
+    client.approve()
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId: 'call-1', preview: { details: { To: 'x' } } })
+    expect(confirm).toHaveBeenLastCalledWith(null)
+    expect(posted.filter((m) => m.type === 'ACTION_RUN')).toHaveLength(1)
+  })
+
+  it('a chip\'s card takes its details without being declined', () => {
+    const { client, confirm } = setup()
+    const done = vi.fn()
+    client.runLocal({ label: 'Send it', kind: 'action', value: 'send_invoice', action: { label: 'Send an invoice', confirm: 'always', timeout_s: 5 } }, done)
+    const callId = (confirm.mock.calls[0][0] as { request: ActionRequest }).request.call_id
+    client.handleHostMessage({ type: 'ACTION_PREVIEW_DONE', callId, preview: { details: { Invoice: 'INV-001' } } })
+    expect(done).not.toHaveBeenCalled()
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ details: [{ key: 'Invoice', value: 'INV-001' }] }))
   })
 
   it('approve and decline do nothing without a card', () => {
@@ -292,5 +331,20 @@ describe('outcomes (the chat\'s line about each action)', () => {
     client.handleHostMessage({ type: 'ACTION_DONE', callId: 'call-2', status: 'ok', result: { summary: 'x'.repeat(500) } })
     expect(outcomes[0].summary).toBeNull()
     expect(outcomes[1].summary).toHaveLength(SUMMARY_MAX_CHARS)
+  })
+})
+
+describe('detailsOf', () => {
+  it('keeps short scalar lines only', () => {
+    expect(detailsOf(null)).toBeNull()
+    expect(detailsOf({ details: ['a'] })).toBeNull()
+    expect(detailsOf({ details: { A: {}, B: '  ', ' ': 'x' } })).toBeNull()
+    expect(detailsOf({ details: { Paid: true, ' To ': ' a@b.co ' } })).toEqual([{ key: 'Paid', value: 'true' }, { key: 'To', value: 'a@b.co' }])
+  })
+
+  it('caps how many lines and how long each value is', () => {
+    const many = Object.fromEntries(Array.from({ length: DETAILS_MAX + 3 }, (_, i) => [`K${i}`, 'v']))
+    expect(detailsOf({ details: many })).toHaveLength(DETAILS_MAX)
+    expect(detailsOf({ details: { Note: 'x'.repeat(DETAIL_MAX_CHARS + 50) } })![0].value).toHaveLength(DETAIL_MAX_CHARS)
   })
 })

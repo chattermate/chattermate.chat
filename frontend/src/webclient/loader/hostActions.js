@@ -18,7 +18,8 @@ limitations under the License.
 //
 // ChatterMate.registerActions({ name: handler }) — a handler is an async
 // function (args) => result, or { run, preview } where preview(args) returns
-// { before, after } (or null) for actions that ask before overwriting.
+// { before, after } (or null) for actions that ask before overwriting, and
+// { details: { To: 'a@b.co', Amount: '100 GBP' } } for actions that always ask.
 // ChatterMate.setContext({...}) — page state the agent may use (not verified).
 //
 // The widget frame asks for a run with ACTION_RUN; the result goes back as

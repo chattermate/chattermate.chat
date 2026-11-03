@@ -18,9 +18,10 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ActionConfirmCard from '@/webclient/ActionConfirmCard.vue'
 
-const pending = (preview: unknown = null) => ({
+const pending = (preview: unknown = null, details: Array<{ key: string; value: string }> | null = null) => ({
   request: { call_id: 'c1', name: 'send_invoice', label: 'Send an invoice', args: { to: 'a@b.co', amount: 120 }, confirm: 'always' as const, timeout_s: 5 },
   preview: preview as any,
+  details,
 })
 
 describe('ActionConfirmCard', () => {
@@ -34,6 +35,13 @@ describe('ActionConfirmCard', () => {
     expect(wrapper.find('.cm-action-cancel').text()).toBe('Not now')
     await wrapper.find('.cm-action-apply').trigger('click')
     expect(wrapper.emitted('approve')).toHaveLength(1)
+  })
+
+  it('shows the page\'s details instead of the arguments', () => {
+    const wrapper = mount(ActionConfirmCard, { props: { pending: pending(null, [{ key: 'Invoice', value: 'INV-001' }, { key: 'To', value: '<b>x</b>' }]) } })
+    expect(wrapper.findAll('dt').map((d) => d.text())).toEqual(['Invoice', 'To'])
+    expect(wrapper.find('dl').text()).not.toContain('a@b.co')
+    expect(wrapper.find('b').exists()).toBe(false)
   })
 
   it('shows before and after when overwriting', async () => {

@@ -38,9 +38,10 @@ function readable(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-/** The arguments as short "key: value" lines, for the always-ask card. */
+/** For the always-ask card: what the page says will happen, else the arguments as "key: value" lines. */
 const details = computed(() =>
-  Object.entries(props.pending.request.args || {}).map(([key, value]) => ({ key: readable(key), value: show(value) })),
+  props.pending.details
+  ?? Object.entries(props.pending.request.args || {}).map(([key, value]) => ({ key: readable(key), value: show(value) })),
 )
 
 /** The buttons say what happens: "Send an invoice" / "Not now", "Change to GBP" / "Keep USD". */

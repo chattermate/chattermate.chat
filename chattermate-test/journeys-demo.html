@@ -219,7 +219,14 @@
         },
         create_client: wrap('create_client', ({ name, email }) => addClient(name, email)),
         create_invoice_draft: wrap('create_invoice_draft', ({ client, amount }) => draftInvoice(client, amount)),
-        send_invoice: wrap('send_invoice', () => sendLatestDraft()),
+        send_invoice: {
+          // Always asks: this says on the card which invoice goes where.
+          preview: async () => {
+            const draft = [...app.invoices].reverse().find((i) => i.status === 'draft')
+            return draft ? { details: { Invoice: draft.id, To: draft.email, Amount: draft.amount + ' ' + draft.currency } } : null
+          },
+          run: wrap('send_invoice', () => sendLatestDraft()),
+        },
         start_checkout: wrap('start_checkout', () => { $('#checkout').classList.add('on'); return { opened: 'checkout', summary: 'Opened checkout' } }),
         export_data: wrap('export_data', () => {
           if (app.plan !== 'pro') throw new Error('Exports are a Pro feature')

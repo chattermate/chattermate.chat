@@ -30,7 +30,7 @@ test.describe('In-app actions', () => {
     expect(resumed.lastUser).toBe('Take me to billing')
   })
 
-  test('an always-ask action waits for the visitor, and a no stops it @actions', async ({ agent, widget, llm, adminApi }) => {
+  test('an always-ask action shows what the site will do, waits for the visitor, and a no stops it @actions', async ({ agent, widget, llm, adminApi }) => {
     await declareAction(adminApi, agent.id, 'send_invoice')
     await llm.script(agent, (s) => s
       .when(/invoice/i).callTool('send_invoice', { to: 'ada@example.com' }).thenReply('Okay, I did not send it.')
@@ -40,7 +40,10 @@ test.describe('In-app actions', () => {
     await widget.open()
     await widget.send('Send the invoice to Ada')
 
-    await expect(widget.actionConfirm('Send an invoice')).toContainText('ada@example.com')
+    // The site says which invoice goes where, in its own words.
+    const card = widget.actionConfirm('Send an invoice')
+    await expect(card).toContainText('INV-7')
+    await expect(card).toContainText('ada@example.com')
     await widget.declineAction('Send an invoice')
 
     await expect(widget.lastAgentMessage()).toHaveText('Okay, I did not send it.', AI_REPLY)
