@@ -121,6 +121,9 @@ await scenario('5 always-ask: decline, then approve', 'send_invoice waits for a 
   await say('Draft a 250 invoice for Globex and send it')
   const first = await settle()
   if (first !== 'card') return { pass: false, why: 'no confirm card', reply: await lastReply() }
+  // The page fills in which draft goes where.
+  const details = await card().locator('dl').innerText({ timeout: 5000 }).catch(() => '')
+  if (!/INV-\d+/.test(details) || !details.includes('@')) return { pass: false, why: 'card has no page details', details }
   await card().getByRole('button', { name: 'Not now' }).click()
   const afterCancel = await settle(25000)
   const reSent = afterCancel === 'card'
@@ -130,7 +133,7 @@ await scenario('5 always-ask: decline, then approve', 'send_invoice waits for a 
   if ((await settle()) === 'card') await card().getByRole('button', { name: 'Send an invoice' }).click()
   await settle(25000)
   const sent = (await actions()).some((a) => a.startsWith('send_invoice →'))
-  return { pass: !reSent && sent, declinedReply, sent, finish: await lastReply(), guide: await guide() }
+  return { pass: !reSent && sent, details, declinedReply, sent, finish: await lastReply(), guide: await guide() }
 })
 
 await scenario('6 off-topic mid-journey', 'answers the refund policy, runs nothing', async () => {
