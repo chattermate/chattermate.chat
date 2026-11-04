@@ -7296,7 +7296,7 @@ const dg = ["aria-label"], hg = { class: "cm-action-head" }, pg = { class: "cm-a
       ], 10, Ig)
     ]));
   }
-}), Vg = /* @__PURE__ */ Ds(qg, [["__scopeId", "data-v-d3301221"]]), Kg = {
+}), Vg = /* @__PURE__ */ Ds(qg, [["__scopeId", "data-v-016d08e3"]]), Kg = {
   class: "cm-replies",
   role: "group",
   "aria-label": "Suggested replies"
@@ -7409,10 +7409,10 @@ function bc() {
 }
 const Ns = {
   get API_URL() {
-    return bc().API_URL || void 0 || "https://api.chattermate.chat/api/v1";
+    return bc().API_URL || "https://api.chattermate.chat/api/v1";
   },
   get WS_URL() {
-    return bc().WS_URL || void 0 || "wss://api.chattermate.chat";
+    return bc().WS_URL || "wss://api.chattermate.chat";
   }
 };
 function ji(e) {
@@ -12014,8 +12014,8 @@ const tv = {
       rs(() => {
         gn();
       });
-    }, { deep: !0 }), bt([vt, ze, () => Lt.value.length], ([d, m, h]) => {
-      (d || m || h) && rs(() => gn());
+    }, { deep: !0 }), bt([vt, ze, () => Lt.value.length, u], ([d, m, h, J]) => {
+      (d || m || h || J) && rs(() => gn());
     }), bt(O, (d, m) => {
       d === "connected" && m !== "connected" && z(100);
     }), bt(() => l.value.length, (d, m) => {
@@ -12495,7 +12495,7 @@ const tv = {
         title: "Close",
         onClick: Ln
       }, "×"),
-      m[20] || (m[20] = Ts('<div class="widget-unavailable-card" data-v-47d8ee75><div class="widget-unavailable-icon-wrapper" data-v-47d8ee75><svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" data-v-47d8ee75><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" data-v-47d8ee75></path><path d="M9 12l2 2 4-4" data-v-47d8ee75></path></svg></div><h2 class="widget-unavailable-title" data-v-47d8ee75>Chat Unavailable</h2><p class="widget-unavailable-message" data-v-47d8ee75> This chat widget is not currently configured. Please contact the website administrator to enable chat support. </p><div class="widget-unavailable-footer" data-v-47d8ee75><svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-47d8ee75><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-47d8ee75></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-47d8ee75><span class="cm-powered-prefix" data-v-47d8ee75>Powered by </span><strong class="cm-brand" data-v-47d8ee75>ChatterMate</strong></a></div></div>', 1))
+      m[20] || (m[20] = Ts('<div class="widget-unavailable-card" data-v-939d55b6><div class="widget-unavailable-icon-wrapper" data-v-939d55b6><svg class="widget-unavailable-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" data-v-939d55b6><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" data-v-939d55b6></path><path d="M9 12l2 2 4-4" data-v-939d55b6></path></svg></div><h2 class="widget-unavailable-title" data-v-939d55b6>Chat Unavailable</h2><p class="widget-unavailable-message" data-v-939d55b6> This chat widget is not currently configured. Please contact the website administrator to enable chat support. </p><div class="widget-unavailable-footer" data-v-939d55b6><svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-939d55b6><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-939d55b6></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-939d55b6><span class="cm-powered-prefix" data-v-939d55b6>Powered by </span><strong class="cm-brand" data-v-939d55b6>ChatterMate</strong></a></div></div>', 1))
     ])) : Kt.value ? (k(), A("div", nv, [
       g("button", {
         type: "button",
@@ -12505,7 +12505,7 @@ const tv = {
         onClick: Ln
       }, "×"),
       g("div", sv, [
-        m[21] || (m[21] = Ts('<div class="auth-error-header" data-v-47d8ee75><svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-v-47d8ee75><circle cx="12" cy="12" r="10" data-v-47d8ee75></circle><line x1="12" y1="8" x2="12" y2="12" data-v-47d8ee75></line><line x1="12" y1="16" x2="12.01" y2="16" data-v-47d8ee75></line></svg><h2 data-v-47d8ee75>Authentication Error</h2></div>', 1)),
+        m[21] || (m[21] = Ts('<div class="auth-error-header" data-v-939d55b6><svg class="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-v-939d55b6><circle cx="12" cy="12" r="10" data-v-939d55b6></circle><line x1="12" y1="8" x2="12" y2="12" data-v-939d55b6></line><line x1="12" y1="16" x2="12.01" y2="16" data-v-939d55b6></line></svg><h2 data-v-939d55b6>Authentication Error</h2></div>', 1)),
         g("p", rv, Z(Ht.value), 1),
         g("button", {
           class: "auth-error-refresh-btn",
@@ -12518,7 +12518,7 @@ const tv = {
       style: Ee({ ...x(dr), ...$f.value, ...Nf.value })
     }, [
       Re.value ? (k(), A("div", iv, m[22] || (m[22] = [
-        Ts('<div class="loading-spinner" data-v-47d8ee75><div class="dot" data-v-47d8ee75></div><div class="dot" data-v-47d8ee75></div><div class="dot" data-v-47d8ee75></div></div><div class="loading-text" data-v-47d8ee75>Initializing chat...</div>', 2)
+        Ts('<div class="loading-spinner" data-v-939d55b6><div class="dot" data-v-939d55b6></div><div class="dot" data-v-939d55b6></div><div class="dot" data-v-939d55b6></div></div><div class="loading-text" data-v-939d55b6>Initializing chat...</div>', 2)
       ]))) : re("", !0),
       !Re.value && x(O) !== "connected" ? (k(), A("div", {
         key: 1,
@@ -12654,7 +12654,7 @@ const tv = {
           class: "powered-by-welcome",
           style: Ee(x(rn))
         }, m[27] || (m[27] = [
-          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-47d8ee75><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-47d8ee75></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-47d8ee75><span class="cm-powered-prefix" data-v-47d8ee75>Powered by </span><strong class="cm-brand" data-v-47d8ee75>ChatterMate</strong></a>', 2)
+          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-939d55b6><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-939d55b6></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-939d55b6><span class="cm-powered-prefix" data-v-939d55b6>Powered by </span><strong class="cm-brand" data-v-939d55b6>ChatterMate</strong></a>', 2)
         ]), 4)
       ], 6)) : re("", !0),
       Nn.value && _s.value ? (k(), A("div", {
@@ -12678,7 +12678,7 @@ const tv = {
           class: "powered-by-landing",
           style: Ee(x(rn))
         }, m[28] || (m[28] = [
-          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-47d8ee75><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-47d8ee75></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-47d8ee75><span class="cm-powered-prefix" data-v-47d8ee75>Powered by </span><strong class="cm-brand" data-v-47d8ee75>ChatterMate</strong></a>', 2)
+          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-939d55b6><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-939d55b6></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-939d55b6><span class="cm-powered-prefix" data-v-939d55b6>Powered by </span><strong class="cm-brand" data-v-939d55b6>ChatterMate</strong></a>', 2)
         ]), 4)
       ], 4)) : an.value && _t.value ? (k(), A("div", {
         key: 6,
@@ -12807,7 +12807,7 @@ const tv = {
           class: "powered-by-landing",
           style: Ee(x(rn))
         }, m[30] || (m[30] = [
-          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-47d8ee75><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-47d8ee75></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-47d8ee75><span class="cm-powered-prefix" data-v-47d8ee75>Powered by </span><strong class="cm-brand" data-v-47d8ee75>ChatterMate</strong></a>', 2)
+          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-939d55b6><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-939d55b6></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-939d55b6><span class="cm-powered-prefix" data-v-939d55b6>Powered by </span><strong class="cm-brand" data-v-939d55b6>ChatterMate</strong></a>', 2)
         ]), 4)
       ], 4)) : !cl.value && se.value && !wo.value ? (k(), A("div", {
         key: 7,
@@ -13576,7 +13576,7 @@ const tv = {
           class: "powered-by",
           style: Ee(x(rn))
         }, m[51] || (m[51] = [
-          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-47d8ee75><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-47d8ee75></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-47d8ee75></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-47d8ee75><span class="cm-powered-prefix" data-v-47d8ee75>Powered by </span><strong class="cm-brand" data-v-47d8ee75>ChatterMate</strong></a>', 2)
+          Ts('<svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" data-v-939d55b6><path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E" data-v-939d55b6></path><circle cx="19.7" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="30" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle><circle cx="40.3" cy="30" r="4.3" fill="#0B0C10" data-v-939d55b6></circle></svg><a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener" data-v-939d55b6><span class="cm-powered-prefix" data-v-939d55b6>Powered by </span><strong class="cm-brand" data-v-939d55b6>ChatterMate</strong></a>', 2)
         ]), 4)
       ], 6)) : re("", !0),
       gs.value ? (k(), A("div", t0, [
@@ -13638,7 +13638,7 @@ const tv = {
       ])) : re("", !0)
     ], 6)) : (k(), A("div", u0));
   }
-}), h0 = /* @__PURE__ */ Ds(d0, [["__scopeId", "data-v-47d8ee75"]]);
+}), h0 = /* @__PURE__ */ Ds(d0, [["__scopeId", "data-v-939d55b6"]]);
 window.process || (window.process = { env: { NODE_ENV: "production" } });
 async function p0() {
   if (!await y_()) return;

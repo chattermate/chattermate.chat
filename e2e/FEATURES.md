@@ -27,6 +27,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Journeys | A journey opens by itself with its plan, moves on app events and a tapped reply (shown as the visitor's answer, with a line saying what the action did), then finishes, without calling the model; keeping a value leaves the step and offers the reply again | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | A reply to a step reaches the agent with the step's message, stored once; the step stays until done | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The agent is told which actions finish the user's step, and still has every other action | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | After sending, the list follows down to the typing bubble; the pinned guide adds no sideways scroll | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The visitor skips a step, or hides the guide for good | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The funnel shows how far visitors got, per step, who is stuck on a step, and opens that step | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | Build from a template: sample-context preview, "Action succeeds" picks a declared action, an action chip allows it, save, put live | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |

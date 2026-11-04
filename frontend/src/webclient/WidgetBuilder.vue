@@ -804,10 +804,10 @@ watch(() => messages.value, (newMessages) => {
     })
 }, { deep: true })
 
-// The confirm card and a page or journey message sit after the messages, so a
-// new one is below the fold unless the list follows it.
-watch([pendingConfirm, hostPrompt, () => receipts.value.length], ([confirm, prompt, receiptCount]) => {
-    if (confirm || prompt || receiptCount) nextTick(() => scrollToBottom())
+// The confirm card, a page or journey message and the typing bubble sit after
+// the messages, so a new one is below the fold unless the list follows it.
+watch([pendingConfirm, hostPrompt, () => receipts.value.length, loading], ([confirm, prompt, receiptCount, typing]) => {
+    if (confirm || prompt || receiptCount || typing) nextTick(() => scrollToBottom())
 })
 
 // Watch for connection status changes to set up event listeners when needed
