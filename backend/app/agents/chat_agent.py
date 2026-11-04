@@ -19,7 +19,7 @@ from typing import Optional, Type
 from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
-from app.channels.constants import is_widget_channel
+from app.channels.constants import MessageSource, is_widget_channel
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
 from app.database import get_db, SessionLocal, engine, release_connection
@@ -1423,7 +1423,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                         "organization_id": org_id,
                         "agent_id": agent_id,
                         "customer_id": customer_id,
-                        "attributes": guardrail_verdict.as_attributes()
+                        "attributes": {**guardrail_verdict.as_attributes(), "source": MessageSource.SYSTEM.value}
                     })
                     return blocked_response
 
@@ -1654,7 +1654,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "organization_id": org_id,
                     "agent_id": agent_id,
                     "customer_id": customer_id,
-                    "attributes": {"error": str(e)}
+                    "attributes": {"error": str(e), "source": MessageSource.SYSTEM.value}
                 })
         except Exception as store_error:
             logger.error(f"Failed to store error message: {str(store_error)}")

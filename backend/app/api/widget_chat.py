@@ -52,7 +52,7 @@ from app.services.file_storage import resolve_public_url
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
 from app.repositories.agent import AgentRepository
-from app.services.agent_rooms import is_org_inbox_room, may_join_org_inbox
+from app.services.agent_rooms import USER_MESSAGE, is_org_inbox_room, may_join_org_inbox, relay_stored_message
 from app.services.chat_notifications import notify_new_chat
 from app.services.contact_capture import retain_unstored_email
 from app.services.human_routing import (
@@ -63,7 +63,14 @@ from app.services.human_routing import (
 from app.services.host_action_runtime import (
     offered_actions, replay_open_call, start_paused_turn, waiting_on_page,
 )
-from app.services.widget_reply import create_widget_agent, deliver_ai_reply, emit_bot_typing, widget_agent_kwargs
+from app.services.ai_access import plan_allows_ai, tell_customer_ai_is_off
+from app.services.widget_reply import (
+    create_widget_agent,
+    deliver_ai_reply,
+    emit_bot_typing,
+    send_handoff_contact_form,
+    widget_agent_kwargs,
+)
 from app.services.journey_runtime import step_actions_hint
 from app.services.host_prompt import clean_host_prompt, store_host_prompt
 from app.services.widget_identity import can_act_as, may_stand_for
@@ -71,16 +78,8 @@ from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
 from app.services.ticket_csat import record_conversation_rating
 from app.repositories.jira import JiraRepository
-from app.models.ai_config import AIModelType
 from app.services.workflow_execution import WorkflowExecutionService
 
-
-# Try to import enterprise modules
-try:
-    from app.enterprise.services.message_limit import check_message_limit
-    HAS_ENTERPRISE = True
-except ImportError:
-    HAS_ENTERPRISE = False
 
 from app.utils.sanitize import sanitize_message
 from app.utils.secret_redaction import redact_secrets
@@ -271,13 +270,6 @@ async def widget_connect(sid, environ, auth):
         if not ai_config:
             _refuse_connection('AI configuration required', 'ai_config_missing')
         
-        message_limit_reached = False
-        # Check message limits if enterprise module is available
-        if HAS_ENTERPRISE and ai_config.model_type == AIModelType.CHATTERMATE:
-            if not check_message_limit(db, org_id):
-                message_limit_reached = True
-
-        
         session_repo = SessionToAgentRepository(db)
                 
         # Resume only a conversation this token's scope created
@@ -350,7 +342,6 @@ async def widget_connect(sid, environ, auth):
             'enable_rate_limiting': enable_rate_limiting,
             'overall_limit_per_ip': overall_limit_per_ip,
             'requests_per_sec': requests_per_sec,
-            'message_limit_reached': message_limit_reached,
             # Cached like use_workflow: read once per connection so the
             # human-only check costs no query per message.
             'ai_replies_enabled': agent.ai_replies_enabled if agent else True,
@@ -515,15 +506,6 @@ async def handle_widget_chat(sid, data):
         own_session = _own_session(session_repo, session, active_only=False)
         active_session = own_session if own_session and own_session.status in ACTIVE_STATUSES else None
 
-        # Check message limit from session
-        if HAS_ENTERPRISE and session.get('message_limit_reached') and active_session and active_session.user_id is None:
-            logger.error(f"Message limit reached")
-            await sio.emit('error', {
-                    'error': 'Unable to process your message. Please contact support.',
-                    'type': 'message_limit_exceeded'
-            }, to=sid, namespace='/widget')
-            return
-
         if not active_session:
             # Reopen this socket's own closed session - unless the visitor has
             # since started a newer one, which is where they should be. Only
@@ -572,7 +554,12 @@ async def handle_widget_chat(sid, data):
         # exactly like a chat a human already holds. notify_new_chat above has
         # already told the team it is waiting.
         # Older sessions predate the cached flag, so default to answering.
-        ai_replies_enabled = session.get('ai_replies_enabled', True)
+        agent_uses_ai = session.get('ai_replies_enabled', True)
+        # The plan can switch the AI off too, for this message only. Read per
+        # message, not at connect: a socket can stay open past the limit.
+        plan_allows = (not agent_uses_ai or active_session.user_id is not None
+                       or plan_allows_ai(db, org_id, session['ai_config'].model_type))
+        ai_replies_enabled = agent_uses_ai and plan_allows
 
         # Check if agent uses workflow and no human agent has taken over
         if ai_replies_enabled and active_session.workflow_id and active_session.user_id is None:
@@ -638,7 +625,7 @@ async def handle_widget_chat(sid, data):
                 # The page runs the action; the reply follows its answer.
                 await start_paused_turn(sid, session, response, host_actions, db)
                 return
-        elif active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
+        elif plan_allows and active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
             await emit_bot_typing(session_id)
             logger.debug(f"Transferring chat to human for session {session_id}")
             # Get response from agent transfer ai agent
@@ -671,6 +658,7 @@ async def handle_widget_chat(sid, data):
             chat_history = await chat_repo.get_session_history(session_id)
             jira_repo = JiraRepository(db)
             agent_data = jira_repo.get_agent_with_jira_config(session['agent_id']) if session['agent_id'] else None
+            queued_notice_source = {}
             if agent_data is not None and getattr(agent_data, 'groups', None):
                 availability_response = await get_agent_availability_response(
                     agent=agent_data,
@@ -690,6 +678,8 @@ async def handle_widget_chat(sid, data):
                 # Only reachable now that a chat can be queued without a group:
                 # human-only agents, and Hand to my team.
                 availability_response = {"message": QUEUED_FOR_HUMAN_NOTICE}
+                # A canned line: no model wrote it, so it doesn't count as a reply
+                queued_notice_source = {"source": MessageSource.SYSTEM.value}
 
                 # Create ChatResponse object
             response_content = ChatResponse(
@@ -718,7 +708,8 @@ async def handle_widget_chat(sid, data):
                     "end_chat_reason": response_content.end_chat_reason.value if response_content.end_chat_reason else None,
                     "end_chat_description": response_content.end_chat_description,
                     "request_rating": response_content.request_rating,
-                    "shopify_output": response_content.shopify_output
+                    "shopify_output": response_content.shopify_output,
+                    **queued_notice_source,
                                     }
                 })
             response = response_content
@@ -845,9 +836,11 @@ async def handle_widget_chat(sid, data):
             # otherwise the visitor sends into what looks like a dead widget.
             # Only on the opening message: after that the thread is visibly a
             # conversation with people in it.
-            if is_first_customer_message and not ai_replies_enabled:
+            if is_first_customer_message and not agent_uses_ai:
                 await notify_customer(db, active_session, HUMAN_ONLY_ACK,
                                       channels_only=False)
+            elif agent_uses_ai and not plan_allows and await tell_customer_ai_is_off(db, active_session):
+                await send_handoff_contact_form(session, db)
 
             return # don't do anything if the session is closed or the user has already taken over
         
@@ -1529,8 +1522,9 @@ async def handle_get_workflow_state(sid):
         chat_history = await chat_repo.get_session_history(session_id)
         has_history = len(chat_history) > 0
 
-        # If agent uses workflow, handle workflow state
-        if active_session.workflow_id:
+        # If agent uses workflow, handle workflow state. Its nodes can call the
+        # model, so it starts only while the plan allows the AI.
+        if active_session.workflow_id and plan_allows_ai(db, org_id, session['ai_config'].model_type):
             current_node_id = active_session.current_node_id
             
             # If no current node and no history - start from beginning by executing workflow
@@ -1797,6 +1791,10 @@ async def handle_proceed_workflow(sid, data):
 
         if not active_session or not active_session.workflow_id:
             raise ValueError("No active workflow session found")
+
+        # Its nodes can call the model: the visitor's next message reaches the team
+        if not plan_allows_ai(db, org_id, session['ai_config'].model_type):
+            return
 
         # Simply update to next node and execute it
         workflow_service = WorkflowExecutionService(db)
@@ -2092,6 +2090,22 @@ async def handle_form_submission(sid, data):
                     'type': 'validation_error'
                 }, to=sid, namespace='/widget')
                 return
+
+        # The next nodes can call the model. What the visitor filled in still
+        # reaches the team.
+        if not plan_allows_ai(db, org_id, session['ai_config'].model_type):
+            stored = ChatRepository(db).create_message({
+                "message": sanitize_message("\n".join(f"{name}: {value}" for name, value in form_data.items())),
+                "message_type": "user",
+                "session_id": session_id,
+                "organization_id": org_id,
+                "agent_id": session['agent_id'],
+                "customer_id": customer_id,
+            })
+            await relay_stored_message(active_session, stored, USER_MESSAGE)
+            if await tell_customer_ai_is_off(db, active_session):
+                await send_handoff_contact_form(session, db)
+            return
 
         # Submit form through workflow service
         workflow_service = WorkflowExecutionService(db)

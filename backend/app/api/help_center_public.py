@@ -36,7 +36,9 @@ from app.core.error_handlers import ClientSafeHTTPException, install_error_handl
 from app.database import get_db, release_connection
 from app.models.faq import FAQ
 from app.models.help_center import HelpCenterSettings
+from app.repositories.ai_config import AIConfigRepository
 from app.repositories.faq import FAQRepository
+from app.services.ai_access import plan_allows_ai
 from app.services.file_storage import resolve_public_url
 from app.services.help_center_content import (
     excerpt,
@@ -99,6 +101,7 @@ templates = Jinja2Templates(directory="app/templates")
 PAGE_CACHE_CONTROL = "public, max-age=60"
 ASK_LIMIT_PER_MINUTE = 10
 ASK_LIMIT_PER_DAY = 100
+ASK_AI_PAUSED = "AI answers are paused right now. Please contact the team, or browse the articles here."
 
 # Paths robots.txt keeps crawlers off. The articles themselves stay fully
 # crawlable ("Allow: /"); these are the non-content paths only:
@@ -336,6 +339,9 @@ async def ask(payload: AskRequest, request: Request, db: Session = Depends(get_d
     # request's session let its connection go first, or it would hold one for the
     # whole wait for a slot and the answer (anyone can ask, no sign-in)
     organization_id, agent_id = row.organization_id, row.agent_id
+    ai_config = AIConfigRepository(db).get_active_config(organization_id)
+    if ai_config and not plan_allows_ai(db, organization_id, ai_config.model_type):
+        return {"answer": ASK_AI_PAUSED}
     release_connection(db)
     answer = await answer_question(organization_id, agent_id, payload.question)
     if not answer:

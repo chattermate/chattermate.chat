@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.help_center_public import public_app
+from app.api.help_center_public import ASK_AI_PAUSED, public_app
 from app.core.config import settings
 from app.core.help_center_host import HelpCenterHostMiddleware, is_help_center_host
 from app.database import get_db
@@ -467,6 +467,19 @@ def test_ask_answers_and_rate_limits(client, db, test_organization, help_center,
     with patch("app.api.help_center_public.allow_request", return_value=False):
         limited = client.post("/ask", json={"question": "again?"}, headers={"host": HOST})
         assert limited.status_code == 429
+
+
+def test_ask_stops_at_the_plan_limit_without_calling_the_model(
+    client, db, test_organization, help_center, test_agent, test_ai_config
+):
+    help_center.agent_id = test_agent.id
+    db.commit()
+    with patch("app.api.help_center_public.plan_allows_ai", return_value=False), \
+         patch("app.api.help_center_public.answer_question", new=AsyncMock()) as answer:
+        response = client.post("/ask", json={"question": "Where do I log in?"}, headers={"host": HOST})
+    assert response.status_code == 200
+    assert response.json()["answer"] == ASK_AI_PAUSED
+    answer.assert_not_awaited()
 
 
 def test_ask_holds_no_connection_while_the_ai_answers(client, db, test_organization, help_center, test_agent):
