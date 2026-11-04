@@ -77,6 +77,6 @@ def feature_limit(db: Session, organization_id: UUID, key: str) -> Optional[int]
     if not HAS_ENTERPRISE:
         return None
     subscription = require_accessible_subscription(db, organization_id)
-    plan = PlanRepository(db).get(str(subscription.plan_id))
+    plan = PlanRepository(db).get(subscription.plan_id)
     value = (plan.features or {}).get(key) if plan else None
     return value if isinstance(value, int) and not isinstance(value, bool) else None
