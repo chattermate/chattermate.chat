@@ -8,7 +8,9 @@ const getAgentById = vi.fn()
 let enterprise = true
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
-    moduleImports: { setupService: 'setup-service' },
+    moduleImports: { setupService: 'setup-service', setupAssistant: 'setup-assistant' },
+    // The setup assistant renders nothing here.
+    enterpriseComponent: () => ({ render: () => null }),
     loadModule: async () => (enterprise ? { setupService: { getProgress: () => getProgress() } } : null),
   })
 }))

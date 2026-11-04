@@ -46,6 +46,7 @@ limitations under the License.
 from agno.models.base import Model
 
 from app.core.logger import get_logger
+from app.utils.agno_continue_patch import install_continue_patch
 from app.utils.agno_eval_guard import install_eval_guard
 
 logger = get_logger(__name__)
@@ -120,6 +121,7 @@ def apply_agno_patches() -> None:
     # Idempotent on its own, so it sits before the flag check: the guard must be
     # in place whichever call reaches here first.
     install_eval_guard()
+    install_continue_patch()
 
     if getattr(Model.create_tool_call_limit_error_result, _PATCHED_FLAG, False):
         return

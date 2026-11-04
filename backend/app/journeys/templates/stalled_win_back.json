@@ -1,0 +1,68 @@
+{
+  "key": "stalled_win_back",
+  "name": "Stalled-user win-back",
+  "group": "Growth & lifecycle",
+  "summary": "Offer to finish the step a user got stuck on, or ask what's blocking them.",
+  "goal_event": null,
+  "needs_actions": {
+    "finish_setup_step": "when_overwriting"
+  },
+  "definition": {
+    "audience": {
+      "kind": "rules",
+      "rules": [
+        {
+          "kind": "ctx",
+          "value": "stalled_step",
+          "op": "exists"
+        }
+      ]
+    },
+    "start": {
+      "kind": "url",
+      "value": "/*"
+    },
+    "steps": [
+      {
+        "id": "resume",
+        "title": "Resume",
+        "message": "You were setting up {{ctx.stalled_step}}. Want me to finish it for you?",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "finish_setup_step"
+          },
+          {
+            "kind": "event",
+            "value": "stalled_step_done"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Do it for me",
+            "kind": "action",
+            "value": "finish_setup_step"
+          },
+          {
+            "label": "What's blocking me?",
+            "value": "Something is blocking me"
+          },
+          {
+            "label": "Not relevant",
+            "value": "That's not relevant to me"
+          }
+        ],
+        "allowed_actions": [
+          "finish_setup_step"
+        ]
+      }
+    ],
+    "finish": {
+      "message": "Done. You're back on track."
+    },
+    "variable_fallbacks": {
+      "ctx.stalled_step": "your account"
+    }
+  }
+}

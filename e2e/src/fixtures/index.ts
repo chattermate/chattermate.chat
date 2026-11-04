@@ -11,6 +11,8 @@ import { FakeLlm, scenarioMarker, type ScriptedAgent } from '../fakes/llm'
 import { attachDiagnostics, startDiagnostics } from './diagnostics'
 import { readOrgState, type OrgState } from '../org-state'
 import { AgentsPage } from '../pages/agents.page'
+import { AgentActionsTab } from '../pages/agent-actions.page'
+import { AgentJourneysTab } from '../pages/agent-journeys.page'
 import { AiConfigPage } from '../pages/ai-config.page'
 import { Dashboard } from '../pages/dashboard.page'
 import { HumanAgentsPage } from '../pages/human-agents.page'
@@ -122,6 +124,10 @@ interface TestFixtures {
   sidebar: Sidebar
   aiConfigPage: AiConfigPage
   agentsPage: AgentsPage
+  /** The agent editor's Actions tab. */
+  actionsTab: AgentActionsTab
+  /** The agent editor's Journeys tab. */
+  journeysTab: AgentJourneysTab
   knowledgePage: KnowledgePage
   ticketsPage: TicketsPage
   peoplePage: PeoplePage
@@ -274,6 +280,8 @@ export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
   sidebar: async ({ page }, use) => use(new Sidebar(page)),
   aiConfigPage: async ({ page }, use) => use(new AiConfigPage(page)),
   agentsPage: async ({ page }, use) => use(new AgentsPage(page)),
+  actionsTab: async ({ page }, use) => use(new AgentActionsTab(page)),
+  journeysTab: async ({ page }, use) => use(new AgentJourneysTab(page)),
   knowledgePage: async ({ page }, use) => use(new KnowledgePage(page)),
   ticketsPage: async ({ page }, use) => use(new TicketsPage(page)),
   peoplePage: async ({ page }, use) => use(new PeoplePage(page)),

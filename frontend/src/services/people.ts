@@ -34,7 +34,7 @@ export interface ListPeopleParams {
   search?: string
   page?: number
   page_size?: number
-  /** 'identified' (default) or 'anonymous' — the identity split */
+  /** 'identified' (default), 'anonymous' or 'signed_in' — the identity split */
   view?: string
 }
 

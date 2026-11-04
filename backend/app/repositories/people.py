@@ -17,7 +17,7 @@ limitations under the License.
 from sqlalchemy.orm import Session
 import re
 
-from sqlalchemy import and_, func, or_, desc, exists
+from sqlalchemy import and_, func, or_, desc, exists, select, union_all
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, Tuple, List
 from uuid import UUID
@@ -35,6 +35,7 @@ from app.models.chat_history import ChatHistory
 from app.models.lead_capture import LeadCaptureResponse
 from app.models.session_to_agent import SessionToAgent
 from app.models.agent import Agent
+from app.models.journey import JourneyProgress
 from app.repositories.chat import ChatRepository
 
 
@@ -114,20 +115,40 @@ class PeopleRepository:
             clauses.append(Customer.phone.like(f"%{digits.lstrip('+')}%"))
         return or_(*clauses)
 
+    @staticmethod
+    def _journey_activity(org_id: UUID):
+        """(customer, when) for every journey a user of this org is on."""
+        return (
+            select(JourneyProgress.customer_id.label("cid"), JourneyProgress.last_seen_at.label("at"))
+            .join(Agent, Agent.id == JourneyProgress.agent_id)
+            .where(Agent.organization_id == org_id)
+        )
+
+    def _last_activity(self, org_id: UUID, with_journeys: bool):
+        """Latest activity per customer (one aggregate row each — no N+1): their
+        last chat message and, for signed-in users, their last journey step too —
+        an app user can follow a journey without ever typing."""
+        events = select(ChatHistory.customer_id.label("cid"), ChatHistory.created_at.label("at")) \
+            .where(ChatHistory.organization_id == org_id)
+        if with_journeys:
+            events = union_all(events, self._journey_activity(org_id))
+        events = events.subquery()
+        return (
+            select(events.c.cid, func.max(events.c.at).label("last"))
+            .group_by(events.c.cid)
+            .subquery()
+        )
+
     def list_people(
         self, org_id: UUID, stage: Optional[str] = None, search: Optional[str] = None,
         page: int = 1, page_size: int = 20, view: str = "identified",
     ) -> Tuple[List[dict], int]:
-        # Latest activity per customer (one aggregate row per customer — no N+1).
-        last_activity_sq = (
-            self.db.query(
-                ChatHistory.customer_id.label("cid"),
-                func.max(ChatHistory.created_at).label("last"),
-            )
-            .filter(ChatHistory.organization_id == org_id)
-            .group_by(ChatHistory.customer_id)
-            .subquery()
-        )
+        """view: "identified" (the lead directory), "anonymous" (engaged but
+        unidentified browser sessions) or "signed_in" (users the business's app
+        vouched for with an identity token — its own customers, kept apart from
+        the leads its agents captured)."""
+        signed_in = view == "signed_in"
+        last_activity_sq = self._last_activity(org_id, with_journeys=signed_in)
         # Customers who have at least one qualifying capture.
         qualified_sq = (
             self.db.query(LeadCaptureResponse.customer_id.label("cid"))
@@ -146,20 +167,23 @@ class PeopleRepository:
             .filter(Customer.organization_id == org_id)
             # Hide rows merged into another customer — the target row represents them.
             .filter(Customer.merged_into_customer_id.is_(None))
-            # Exclude integration-authenticated people (identified via generate-token) —
-            # they're the business's existing customers, not leads the agent captured.
-            .filter(Customer.is_authenticated.is_(False))
-            # Only people who actually engaged (have chat history) — drops the huge tail of
-            # empty widget-loads that created a customer but never sent a message.
+            # Integration-authenticated people (identified via generate-token) are
+            # the business's existing customers, not leads the agent captured:
+            # they have a view of their own and stay out of the lead directory.
+            .filter(Customer.is_authenticated.is_(signed_in))
+            # Only people who actually engaged (chatted, or for signed-in users
+            # followed a journey) — drops the huge tail of empty widget-loads
+            # that created a customer and did nothing.
             .filter(last_activity_sq.c.cid.isnot(None))
         )
 
         # Identity split: the directory shows identified people; anonymous
         # browser sessions are a funnel signal behind an explicit view, not
         # the page (prod data: 5,873 of one org's 5,876 rows were anonymous).
+        # Signed-in users are identified by the app itself.
         if view == "anonymous":
             q = q.filter(~self._identified(qualified_sq.c.cid))
-        else:
+        elif not signed_in:
             q = q.filter(self._identified(qualified_sq.c.cid))
 
         if stage and stage != "all":
@@ -217,6 +241,10 @@ class PeopleRepository:
         anonymous = self.db.query(func.count(Customer.id)).filter(
             Customer.organization_id == org_id, not_merged, organic, engaged,
             ~identified).scalar() or 0
+        on_a_journey = Customer.id.in_(self._journey_activity(org_id).with_only_columns(JourneyProgress.customer_id))
+        signed_in = self.db.query(func.count(Customer.id)).filter(
+            Customer.organization_id == org_id, not_merged, Customer.is_authenticated.is_(True),
+            or_(engaged, on_a_journey)).scalar() or 0
         new_leads = self.db.query(func.count(Customer.id)).filter(
             Customer.organization_id == org_id,
             not_merged, organic,
@@ -231,6 +259,7 @@ class PeopleRepository:
         return {
             "total_people": total,
             "anonymous": anonymous,
+            "signed_in": signed_in,
             "new_leads_7d": new_leads,
             "customers": customers,
             "synced_to_crm": 0,

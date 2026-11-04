@@ -151,6 +151,16 @@ function faulted(req: ChatRequest, fault: Fault, record: RecordedRequest) {
   return completion(req, { content: '{"message": "this reply is cut off' })
 }
 
+/** Tool results the model has had since the customer's last message: how far a tool sequence got. */
+function toolResultsSinceLastUser(messages: ChatRequest['messages']): number {
+  let count = 0
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') break
+    if (messages[i].role === 'tool') count++
+  }
+  return count
+}
+
 async function answer(req: ChatRequest, authorization: string) {
   const scenarioId = selectScenario(req)
   const lastUserMsg = [...req.messages].reverse().find((m) => m.role === 'user')
@@ -180,17 +190,20 @@ async function answer(req: ChatRequest, authorization: string) {
 
   const usage = rule?.reply.usage
   let body
-  if (rule?.toolCall && lastRole !== 'tool') {
-    if (!tools.includes(rule.toolCall.name)) {
-      throw new HttpError(422, `scenario '${scenarioId}' wants tool '${rule.toolCall.name}' but the request only offers [${tools.join(', ')}]`)
+  const calls = rule?.toolCalls ?? (rule?.toolCall ? [rule.toolCall] : [])
+  const hops = toolResultsSinceLastUser(req.messages)
+  const nextCall = hops < calls.length ? calls[hops] : null
+  if (nextCall) {
+    if (!tools.includes(nextCall.name)) {
+      throw new HttpError(422, `scenario '${scenarioId}' wants tool '${nextCall.name}' but the request only offers [${tools.join(', ')}]`)
     }
-    record.answeredWith = `tool_call:${rule.toolCall.name}`
+    record.answeredWith = `tool_call:${nextCall.name}`
     body = completion(req, {
       content: null,
       tool_calls: [{
-        id: `call_e2e_${Date.now()}`,
+        id: `call_e2e_${Date.now()}_${hops}`,
         type: 'function',
-        function: { name: rule.toolCall.name, arguments: JSON.stringify(rule.toolCall.arguments) },
+        function: { name: nextCall.name, arguments: JSON.stringify(nextCall.arguments) },
       }],
     })
   } else if (format && format.type !== 'text') {

@@ -44,8 +44,10 @@ const pageSize = 20
 const loading = ref(false)
 const stage = ref<'all' | 'visitor' | 'lead' | 'customer'>('all')
 // The identity split: the directory shows identified people; anonymous
-// browser sessions are a funnel count behind their own tab.
-const view = ref<'identified' | 'anonymous'>('identified')
+// browser sessions are a funnel count behind their own tab, and so are the
+// users the business's app signed in (its own customers, not captured leads).
+type PeopleViewKind = 'identified' | 'anonymous' | 'signed_in'
+const view = ref<PeopleViewKind>('identified')
 const search = ref('')
 const selectedId = ref<string | null>(null)
 
@@ -90,7 +92,7 @@ async function loadList() {
 }
 
 function setStage(s: typeof stage.value) { stage.value = s; view.value = 'identified'; page.value = 1; loadList() }
-function showAnonymous() { view.value = 'anonymous'; stage.value = 'all'; page.value = 1; loadList() }
+function showView(v: Exclude<PeopleViewKind, 'identified'>) { view.value = v; stage.value = 'all'; page.value = 1; loadList() }
 function nextPage() { if (page.value < totalPages.value) { page.value++; loadList() } }
 function prevPage() { if (page.value > 1) { page.value--; loadList() } }
 
@@ -190,8 +192,11 @@ onMounted(() => {
         <button v-for="s in STAGES" :key="s.value" class="pv-tab" :class="{ on: view === 'identified' && stage === s.value }" @click="setStage(s.value)">{{ s.label }}</button>
         <!-- Anonymous sessions are a lead-capture funnel signal, not directory
              content — an explicit tab, never the default view. -->
-        <button class="pv-tab pv-tab-anon" :class="{ on: view === 'anonymous' }" @click="showAnonymous()">
+        <button class="pv-tab pv-tab-anon" :class="{ on: view === 'anonymous' }" @click="showView('anonymous')">
           Anonymous<span v-if="stats?.anonymous" class="pv-tab-count">{{ stats.anonymous }}</span>
+        </button>
+        <button class="pv-tab" :class="{ on: view === 'signed_in' }" @click="showView('signed_in')">
+          Signed in<span v-if="stats?.signed_in" class="pv-tab-count">{{ stats.signed_in }}</span>
         </button>
       </div>
       <input class="pv-search" v-model="search" placeholder="Search name, email or company…" />
@@ -235,7 +240,9 @@ onMounted(() => {
           <span class="rcards-value">{{ p.synced ? 'Synced' : '—' }}</span>
         </span>
       </button>
-      <div v-if="!loading && items.length === 0" class="pv-empty">No people match this filter.</div>
+      <div v-if="!loading && items.length === 0" class="pv-empty">
+        {{ view === 'signed_in' ? 'No signed-in users yet. They show here once your app identifies them to the chat.' : 'No people match this filter.' }}
+      </div>
       <div v-if="loading" class="pv-empty">Loading…</div>
       <div class="pv-foot">
         <span>{{ total }} people</span>
@@ -337,7 +344,7 @@ onMounted(() => {
 
   .pv-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
 
-  /* Five stage tabs don't fit 375px — swipe them instead of wrapping */
+  /* Six tabs don't fit 375px — swipe them instead of wrapping */
   .pv-tabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .pv-tabs::-webkit-scrollbar { display: none; }
   .pv-tab { flex-shrink: 0; padding: 8px 12px; }

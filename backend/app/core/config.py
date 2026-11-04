@@ -223,6 +223,31 @@ class Settings(BaseSettings):
     # so the budget can stay tight. AGENT_RUN_TIMEOUT is the real safety net.
     AGENT_TOOL_CALL_LIMIT: int = int(os.getenv("AGENT_TOOL_CALL_LIMIT", "5"))
 
+    # In-app actions: things a widget agent may ask the host page to do for the
+    # signed-in visitor (see app.agents.host_actions). Every limit lives here.
+    ACTION_MAX_PER_AGENT: int = int(os.getenv("ACTION_MAX_PER_AGENT", "30"))
+    ACTION_SCHEMA_MAX_BYTES: int = int(os.getenv("ACTION_SCHEMA_MAX_BYTES", "8192"))
+    ACTION_TIMEOUT_DEFAULT_S: int = int(os.getenv("ACTION_TIMEOUT_DEFAULT_S", "20"))
+    ACTION_TIMEOUT_MAX_S: int = int(os.getenv("ACTION_TIMEOUT_MAX_S", "120"))
+    ACTION_RESULT_MAX_BYTES: int = int(os.getenv("ACTION_RESULT_MAX_BYTES", "16384"))
+    # Extra seconds past a call's own timeout before the server gives up on it.
+    ACTION_GRACE_S: int = int(os.getenv("ACTION_GRACE_S", "10"))
+    # How long the visitor has to approve an action before it counts as declined.
+    ACTION_CONFIRM_TIMEOUT_S: int = int(os.getenv("ACTION_CONFIRM_TIMEOUT_S", "300"))
+    # Times one reply may pause for host actions before it must answer.
+    ACTION_PAUSES_PER_TURN: int = int(os.getenv("ACTION_PAUSES_PER_TURN", "3"))
+    # Host context passed with ChatterMate.setContext.
+    HOST_CONTEXT_MAX_BYTES: int = int(os.getenv("HOST_CONTEXT_MAX_BYTES", "4096"))
+    HOST_CONTEXT_MAX_KEYS: int = int(os.getenv("HOST_CONTEXT_MAX_KEYS", "50"))
+
+    # Journeys: step-by-step guides a widget agent runs for the site's users.
+    JOURNEY_MAX_STEPS: int = int(os.getenv("JOURNEY_MAX_STEPS", "10"))
+    JOURNEY_MAX_PER_AGENT: int = int(os.getenv("JOURNEY_MAX_PER_AGENT", "20"))
+    # "New users": first seen (or signed up, when the token says) this many days ago.
+    JOURNEY_NEW_USER_DAYS: int = int(os.getenv("JOURNEY_NEW_USER_DAYS", "14"))
+    # Journey and action-call rows older than this are deleted by the purge job.
+    JOURNEY_DATA_RETENTION_DAYS: int = int(os.getenv("JOURNEY_DATA_RETENTION_DAYS", "365"))
+
     # Chars of previous-turn history re-sent to the model each turn. Tool
     # results from earlier turns are always stubbed out (see
     # app.agents.history_memory); this bounds what remains by dropping the oldest

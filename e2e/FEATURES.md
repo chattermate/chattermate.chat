@@ -16,6 +16,24 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on refusals: an unknown address is told to ask for an invite; an account the provider can't vouch for isn't linked and the password still works; cancelling at the provider; a deep link survives the round trip; the return link can't be replayed in another browser | `specs/auth/sso.spec.ts` | P1 | ✅ |
 | Team | The Agent role is refused every admin API; sees channels without secrets; assigned-only sees just its group's handovers | `specs/team/permissions.spec.ts` | P1 | ✅ |
+| In-app actions | The agent runs a site action and answers from its result; two actions in a row; a failing action is reported; arguments that break the schema never reach the site | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | Always-ask shows what the site says it will do and waits for the visitor (no stops it, yes runs it once); an overwrite shows current vs new | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | A dropped connection mid-action still runs it exactly once | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | No actions on a widget not limited to the site, or once turned off | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | A site message is answered with a chip; page context reaches the agent as data; a pasted password is held back | `specs/actions/site-messages.spec.ts` | P1 | ✅ |
+| In-app actions | Actions tab: the form refuses a bad name or JSON, saves, turns an action off and deletes it | `specs/actions/actions-tab.spec.ts` | P1 | ✅ |
+| In-app actions | Actions tab: a name already taken is refused by the server and the form stays open | `specs/actions/actions-tab.spec.ts` | P1 | ✅ |
+| In-app actions | Actions tab: switches and delete buttons stay in view beside the open form; the tab fits a phone | `specs/actions/actions-tab.spec.ts` | P2 | ✅ |
+| Journeys | A journey opens by itself with its plan, moves on app events and a tapped reply (shown as the visitor's answer, with a line saying what the action did), then finishes, without calling the model; keeping a value leaves the step and offers the reply again | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A reply to a step reaches the agent with the step's message, stored once; the step stays until done | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The agent is told which actions finish the user's step, and still has every other action | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The visitor skips a step, or hides the guide for good | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The funnel shows how far visitors got, per step, who is stuck on a step, and opens that step | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | Build from a template: sample-context preview, "Action succeeds" picks a declared action, an action chip allows it, save, put live | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
+| Journeys | Leaving the editor with unsaved changes asks first; Keep editing / Leave | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
+| Journeys | The editor blocks a step with no title; a key already taken is refused and stays unsaved | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
+| Journeys | The tab lines up with the agent header; the editor fits a phone | `specs/journeys/journey-editor.spec.ts` | P2 | ✅ |
+| People | A user the site's app signed in, who only followed a journey, is on the Signed in tab (not the lead directory) with the journey's progress | `specs/leads/signed-in-people.spec.ts` | P1 | ✅ |
 | Widget chat | Customer gets the AI answer | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | History survives a reload | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | The dashboard's iframe snippet chats (its socket comes from the API's own origin) | `specs/widget/iframe-snippet.spec.ts` | P1 | ✅ |

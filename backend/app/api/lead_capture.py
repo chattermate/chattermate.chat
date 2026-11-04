@@ -22,7 +22,7 @@ from app.core.logger import get_logger
 from app.database import get_db
 from app.core.auth import require_any_permission, require_permissions
 from app.models.user import User
-from app.models.agent import Agent
+from app.services.agent_ownership import get_owned_agent
 from app.repositories.lead_capture import LeadCaptureConfigRepository
 from app.models.schemas.lead_capture import (
     LeadCaptureConfigUpdate, LeadCaptureConfigResponse,
@@ -57,14 +57,6 @@ def check_lead_capture_access(current_user: User, db: Session) -> None:
         )
 
 
-def _get_owned_agent(agent_id: UUID, current_user: User, db: Session) -> Agent:
-    agent = db.query(Agent).filter(Agent.id == agent_id).first()
-    # Return 404 for both missing and cross-org agents (don't reveal existence).
-    if not agent or agent.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    return agent
-
-
 @router.get("/{agent_id}/lead-capture", response_model=LeadCaptureConfigResponse)
 async def get_lead_capture_config(
     agent_id: UUID,
@@ -74,7 +66,7 @@ async def get_lead_capture_config(
 ):
     """Fetch the agent's lead-capture config, lazily creating a default (OFF) row."""
     try:
-        _get_owned_agent(agent_id, current_user, db)
+        get_owned_agent(db, agent_id, current_user.organization_id)
         config = LeadCaptureConfigRepository(db).get_or_create(agent_id)
         return config
     except HTTPException:
@@ -93,7 +85,7 @@ async def update_lead_capture_config(
 ):
     """Full-replace the agent's lead-capture config (whole tab saved at once)."""
     try:
-        _get_owned_agent(agent_id, current_user, db)
+        get_owned_agent(db, agent_id, current_user.organization_id)
         check_lead_capture_access(current_user, db)
         # Assignment target (stored-only in phase 1) must belong to this org — reject
         # cross-org user ids so the routing FK can never dangle when routing ships.

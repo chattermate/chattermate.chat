@@ -113,6 +113,8 @@ const moduleImports = {
   // "Set this up from your AI coding tool" on the wizard's Create step (nothing in open source)
   aiToolSetupNudge: '/src/modules/enterprise/components/setup/AiToolSetupNudge.vue',
   setupService: '/src/modules/enterprise/utils/setupService.ts',
+  // The setup assistant docked beside the onboarding wizard (nothing in open source)
+  setupAssistant: '/src/modules/enterprise/components/setup/SetupAssistantDock.vue',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */

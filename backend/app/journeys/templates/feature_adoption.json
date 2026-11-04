@@ -1,0 +1,85 @@
+{
+  "key": "feature_adoption",
+  "name": "New feature adoption",
+  "group": "Growth & lifecycle",
+  "summary": "Mention a new feature where it helps, once, and offer to try it.",
+  "goal_event": "feature_used",
+  "needs_actions": {
+    "try_feature": "never",
+    "make_default": "when_overwriting"
+  },
+  "definition": {
+    "audience": {
+      "kind": "everyone"
+    },
+    "start": {
+      "kind": "event",
+      "value": "feature_page_opened"
+    },
+    "steps": [
+      {
+        "id": "try",
+        "title": "Try it",
+        "message": "New: {{ctx.feature_name}}. Want to try it on {{ctx.current_item}}?",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "try_feature"
+          },
+          {
+            "kind": "event",
+            "value": "feature_used"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Try it now",
+            "kind": "action",
+            "value": "try_feature"
+          },
+          {
+            "label": "Not now",
+            "value": "Not now"
+          }
+        ],
+        "allowed_actions": [
+          "try_feature"
+        ]
+      },
+      {
+        "id": "default",
+        "title": "Make it default",
+        "message": "Make it the default from now on?",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "make_default"
+          },
+          {
+            "kind": "event",
+            "value": "feature_default_set"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Make default",
+            "kind": "action",
+            "value": "make_default"
+          }
+        ],
+        "allowed_actions": [
+          "make_default"
+        ]
+      }
+    ],
+    "finish": {
+      "message": ""
+    },
+    "variable_fallbacks": {
+      "ctx.feature_name": "a new feature",
+      "ctx.current_item": "this"
+    }
+  }
+}
