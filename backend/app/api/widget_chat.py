@@ -274,7 +274,7 @@ async def widget_connect(sid, environ, auth):
         message_limit_reached = False
         # Check message limits if enterprise module is available
         if HAS_ENTERPRISE and ai_config.model_type == AIModelType.CHATTERMATE:
-            if not await check_message_limit(db, org_id, sid, sio):
+            if not check_message_limit(db, org_id):
                 message_limit_reached = True
 
         

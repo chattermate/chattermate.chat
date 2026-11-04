@@ -457,7 +457,7 @@ async def _within_message_limit(db: Session, org_id: str, ai_config) -> bool:
     if not (HAS_ENTERPRISE and ai_config.model_type == AIModelType.CHATTERMATE):
         return True
     try:
-        return await check_message_limit(db, org_id, None, None)
+        return check_message_limit(db, org_id)
     except Exception as e:
         logger.error(f"Message limit check failed (allowing message): {e}")
         return True
