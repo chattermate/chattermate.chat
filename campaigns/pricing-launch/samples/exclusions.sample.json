@@ -1,0 +1,6 @@
+{
+  "domains": ["chattermate.chat", "example.com"],
+  "emails": ["someone-who-asked-to-unsubscribe@example.org"],
+  "email_prefixes": ["internal-test+"],
+  "org_names": ["Internal test org"]
+}

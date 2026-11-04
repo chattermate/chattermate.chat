@@ -1,0 +1,6 @@
+[
+  {"user_id": "00000000-0000-4000-8000-000000000001", "email": "priya@acme-store.test", "full_name": "Priya Nair",
+   "org_id": "00000000-0000-4000-8000-0000000000a1", "org_name": "Acme Store", "trial_end": "2026-11-18", "legacy_free": true},
+  {"user_id": "00000000-0000-4000-8000-000000000002", "email": "sam@brightdesk.test", "full_name": "test",
+   "org_id": "00000000-0000-4000-8000-0000000000a2", "org_name": "asdf", "trial_end": "2026-11-18", "legacy_free": false}
+]

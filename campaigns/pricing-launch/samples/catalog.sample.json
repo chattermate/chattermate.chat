@@ -1,0 +1,15 @@
+{
+  "sample": true,
+  "plans": {
+    "Free": {"usd": 0, "inr": 0, "max_messages": 50, "trial_days": null,
+             "features": {"help_center": false, "ai_ticketing": false}},
+    "Free (legacy)": {"usd": 0, "inr": 0, "max_messages": 300, "trial_days": null,
+                      "features": {"help_center": false, "ai_ticketing": false}},
+    "Starter": {"usd": 4.99, "inr": 399, "max_messages": 1000, "trial_days": null,
+                "features": {"help_center": false, "ai_ticketing": false}},
+    "Growth": {"usd": 9.99, "inr": 799, "max_messages": 2500, "trial_days": 14,
+               "features": {"help_center": true, "ai_ticketing": true}},
+    "Pro": {"usd": 24.99, "inr": 1999, "max_messages": 7500, "trial_days": null,
+            "features": {"help_center": true, "ai_ticketing": true}}
+  }
+}

@@ -1,0 +1,10 @@
+[
+  {"user_id": "00000000-0000-4000-8000-000000000005", "email": "a@quiet-shop.test", "full_name": "Ana Silva",
+   "org_id": "00000000-0000-4000-8000-0000000000a5", "org_name": "Quiet Shop", "last_month_replies": 12, "has_channels": false},
+  {"user_id": "00000000-0000-4000-8000-000000000006", "email": "b@busy-shop.test", "full_name": "Ben Ito",
+   "org_id": "00000000-0000-4000-8000-0000000000a6", "org_name": "Busy Shop", "last_month_replies": 46, "has_channels": false},
+  {"user_id": "00000000-0000-4000-8000-000000000007", "email": "c@channel-shop.test", "full_name": "Cleo Ray",
+   "org_id": "00000000-0000-4000-8000-0000000000a7", "org_name": "Channel Shop", "last_month_replies": 12, "has_channels": true},
+  {"user_id": "00000000-0000-4000-8000-000000000008", "email": "d@idle-shop.test", "full_name": "Dev Shah",
+   "org_id": "00000000-0000-4000-8000-0000000000a8", "org_name": "Idle Shop", "last_month_replies": 0, "has_channels": false}
+]

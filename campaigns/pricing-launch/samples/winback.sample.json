@@ -1,0 +1,8 @@
+[
+  {"user_id": "00000000-0000-4000-8000-000000000003", "email": "dana@lakeside-club.test", "full_name": "Dana Moore",
+   "org_id": "00000000-0000-4000-8000-0000000000a3", "org_name": "Lakeside Club", "old_plan": "Pro", "old_price": 9.99,
+   "trial_end": "2026-12-06", "knowledge_sources": 4},
+  {"user_id": "00000000-0000-4000-8000-000000000004", "email": "lee@northpath.test", "full_name": "Lee Park",
+   "org_id": "00000000-0000-4000-8000-0000000000a4", "org_name": "North Path", "old_plan": "Base", "old_price": 3.99,
+   "trial_end": "2026-12-06", "knowledge_sources": 0}
+]

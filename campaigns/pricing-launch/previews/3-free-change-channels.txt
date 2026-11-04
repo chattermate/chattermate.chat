@@ -1,0 +1,20 @@
+Subject: Your free plan changes on 31 Jan
+
+Your free plan changes on 31 Jan.
+
+Hi Cleo,
+
+From 31 Jan 2027 the free plan includes 50 AI replies a month, down from 300. Last month Channel Shop used 12 AI replies.
+
+Your connected channels stay connected and messages keep reaching your inbox, but on Free the AI won't answer them. To keep it answering there, Growth is $9.99 a month for 2,500 replies.
+
+If you reach 50, your AI pauses until the next month. Your inbox keeps working and no message is lost.
+
+See plans: https://chattermate.chat/pricing/
+
+Runix
+ChatterMate
+
+--
+You're getting this because you have a ChatterMate account. Prefer to run it yourself? ChatterMate is open source. Self-host it for free.
+Unsubscribe: https://api.chattermate.chat/api/v1/enterprise/email/unsubscribe?t=preview

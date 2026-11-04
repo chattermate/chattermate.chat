@@ -1,0 +1,19 @@
+Subject: Your old price is back
+
+Hi Dana,
+
+You used ChatterMate on Pro at $9.99 a month. We've redone our pricing, and $9.99 is back.
+
+- Growth at $9.99: 2,500 AI replies a month, your whole team, WhatsApp and the other channels, workflows and the help center.
+- The AI is much better than when you left, with guardrails and AI ticketing.
+
+Your first month is on us. I've switched Lakeside Club to Growth for 30 days, until 6 Dec 2026. Your old setup and knowledge are still there. Log in here (https://app.chattermate.chat).
+
+If something made you leave, I'd like to hear it. Just reply.
+
+Runix
+ChatterMate
+
+--
+You're getting this because you have a ChatterMate account. Prefer to run it yourself? ChatterMate is open source. Self-host it for free.
+Unsubscribe: https://api.chattermate.chat/api/v1/enterprise/email/unsubscribe?t=preview

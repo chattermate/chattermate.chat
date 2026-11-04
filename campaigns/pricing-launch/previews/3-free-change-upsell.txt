@@ -1,0 +1,20 @@
+Subject: Your free plan changes on 31 Jan
+
+Your free plan changes on 31 Jan.
+
+Hi Ben,
+
+From 31 Jan 2027 the free plan includes 50 AI replies a month, down from 300. Last month Busy Shop used 46 AI replies.
+
+To keep your AI answering, Starter is $4.99 a month for 1,000 replies.
+
+If you reach 50, your AI pauses until the next month. Your inbox keeps working and no message is lost.
+
+See plans: https://chattermate.chat/pricing/
+
+Runix
+ChatterMate
+
+--
+You're getting this because you have a ChatterMate account. Prefer to run it yourself? ChatterMate is open source. Self-host it for free.
+Unsubscribe: https://api.chattermate.chat/api/v1/enterprise/email/unsubscribe?t=preview

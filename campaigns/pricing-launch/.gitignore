@@ -1,0 +1,4 @@
+# Real people and real send logs. This repo is public: never commit these.
+data/
+previews/private/
+__pycache__/
