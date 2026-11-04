@@ -132,6 +132,23 @@ test.describe('Journeys', () => {
     expect(await llm.requests(agent)).toHaveLength(0)
   })
 
+  test('the list follows a sent message down to the typing bubble, under the pinned guide @journeys', async ({ agent, widget, adminApi, llm }) => {
+    const longReply = 'Here is what to do next, one thing at a time. '.repeat(8).trim()
+    await llm.script(agent, (s) => s.otherwise().after(1500).reply(longReply))
+    await createJourney(adminApi, agent.id, { key: 'first_invoice', name: 'First invoice', steps: STEPS, autoOpen: true })
+
+    await widget.embed()
+    await expect(widget.journeyProgress).toContainText('Open billing')
+    for (const question of ['First question', 'Second question']) {
+      await widget.send(question)
+      await expect(widget.lastAgentMessage()).toHaveText(longReply, AI_REPLY)
+    }
+
+    await widget.send('Third question')
+    await expect(widget.typingBubble).toBeInViewport({ ratio: 1 })
+    expect(await widget.scrollsSideways()).toBe(false)
+  })
+
   test('the visitor can skip a step or hide the guide @journeys', async ({ agent, widget, adminApi }) => {
     await createJourney(adminApi, agent.id, { key: 'skippable', name: 'Skippable', steps: STEPS, autoOpen: true })
 

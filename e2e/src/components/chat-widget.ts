@@ -493,6 +493,16 @@ export class ChatWidget {
     return this.frame.getByRole('log', { name: 'Messages' })
   }
 
+  /** The bubble shown while the agent writes its reply. */
+  get typingBubble(): Locator {
+    return this.frame.locator('.typing-indicator') // no accessible name of its own
+  }
+
+  /** Whether the message list has picked up a sideways scrollbar. */
+  async scrollsSideways(): Promise<boolean> {
+    return this.messageLog.evaluate((list) => list.scrollWidth > list.clientWidth)
+  }
+
   /** Bot and human-agent replies — the widget renders both the same way. */
   get agentMessages(): Locator {
     return this.messageLog.locator('.message.agent-message .message-bubble')

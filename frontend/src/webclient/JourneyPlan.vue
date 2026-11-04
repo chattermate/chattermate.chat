@@ -86,8 +86,8 @@ const steps = computed(() =>
   top: calc(-1 * var(--space-md, 16px));
   z-index: 1;
   flex-shrink: 0;
-  margin: calc(-1 * var(--space-md, 16px)) calc(-1 * var(--space-md, 16px)) 4px;
-  padding: var(--space-md, 16px) var(--space-md, 16px) 6px;
+  margin: calc(-1 * var(--space-md, 16px)) 0 4px;
+  padding: var(--space-md, 16px) 0 6px;
   background: var(--cm-card);
 }
 .cm-plan {
