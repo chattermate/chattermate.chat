@@ -20,13 +20,21 @@ import type { QueueItem } from '@/types/knowledge'
 
 export const LEARNING_POLL_MS = 5000
 
+/** Uploads are stored under a random prefix nobody chose. */
+export const withoutUploadPrefix = (name: string) => name.replace(/^[0-9a-f]{32}_/, '')
+
+export const isBeingRead = (item: { status: string }) =>
+  item.status === 'pending' || item.status === 'processing'
+
 export const isPdfSource = (item: QueueItem) => item.source_type.startsWith('pdf')
 
 /** What a queue row is called on screen: a site or sitemap as is, a PDF by its
- *  own name, without the path and the random prefix uploads are stored under. */
+ *  own name, without the path, the signature on an S3 link, or the upload
+ *  prefix. */
 export const queueItemName = (item: QueueItem) => {
   if (!isPdfSource(item)) return item.source
-  return (item.source.split('/').pop() ?? item.source).replace(/^[0-9a-f]{32}_/, '')
+  const [path] = item.source.split('?')
+  return withoutUploadPrefix(path.split('/').pop() || item.source)
 }
 
 /**
@@ -38,9 +46,7 @@ export function useLearningWatch(
   queueItems: Ref<QueueItem[]>,
   onFinished: (ids: number[]) => void,
 ) {
-  const learning = computed(() =>
-    queueItems.value.filter((q) => q.status === 'pending' || q.status === 'processing'),
-  )
+  const learning = computed(() => queueItems.value.filter(isBeingRead))
   let timer: ReturnType<typeof setInterval> | null = null
 
   const stop = () => {

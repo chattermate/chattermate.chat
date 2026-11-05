@@ -19,7 +19,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
 import { useStagedSourceCap } from '@/composables/useStagedSourceCap'
 import { useCrawlCheck } from '@/composables/useCrawlCheck'
-import { isPdfSource, queueItemName, useLearningWatch } from '@/composables/useLearningWatch'
+import { isPdfSource, queueItemName, useLearningWatch, withoutUploadPrefix } from '@/composables/useLearningWatch'
 import TeachTextFallback from './TeachTextFallback.vue'
 import type { QueueItem } from '@/types/knowledge'
 import { organizationService } from '@/services/organization'
@@ -323,7 +323,7 @@ const handleTextAdded = () => {
     <ul v-if="knowledgeItems.length" class="source-list indexed" aria-label="Already added">
       <li v-for="item in knowledgeItems" :key="item.id" class="source-row">
         <font-awesome-icon icon="fa-solid fa-check" class="source-icon done" aria-hidden="true" />
-        <span class="source-name">{{ item.name }}</span>
+        <span class="source-name">{{ withoutUploadPrefix(item.name) }}</span>
         <span class="source-tag">indexed</span>
       </li>
     </ul>
@@ -343,7 +343,7 @@ const handleTextAdded = () => {
     <p v-if="uploadError" class="step-error" role="alert">{{ uploadError }}</p>
 
     <div v-if="crawlFailure" class="crawl-failure">
-      <p class="step-error" role="alert">We couldn't read {{ crawlFailure.source }}. {{ crawlFailure.reason }}</p>
+      <p class="step-error" role="alert">We couldn't read {{ queueItemName(crawlFailure) }}. {{ crawlFailure.reason }}</p>
       <TeachTextFallback
         v-if="showTextFallback"
         :agent-id="agentId"

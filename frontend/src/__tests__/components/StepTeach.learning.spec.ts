@@ -109,6 +109,28 @@ describe('StepTeach while sources are read', () => {
     expect(queueItemName(row(1, 'pending', { source, source_type }))).toBe(source)
   })
 
+  it('names a PDF kept in S3 without the signature on its link', () => {
+    const source = 'https://bucket.s3.amazonaws.com/knowledge/org/1818d52a33ba48668068120f9ed38698_menu.pdf?X-Amz-Signature=abc&X-Amz-Expires=3600'
+    expect(queueItemName(row(1, 'pending', { source, source_type: 'pdf_url' }))).toBe('menu.pdf')
+  })
+
+  it('falls back to the link for a PDF address with no file name', () => {
+    const source = 'https://acme.example/download/?id=7'
+    expect(queueItemName(row(1, 'pending', { source, source_type: 'pdf_url' }))).toBe(source)
+  })
+
+  it('names a failed PDF by its file name, not its signed link', async () => {
+    const source = 'https://bucket.s3.amazonaws.com/org/1818d52a33ba48668068120f9ed38698_menu.pdf?X-Amz-Signature=abc'
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { source, source_type: 'pdf_url' })))
+    await mountStep()
+
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'failed', { source, source_type: 'pdf_url', reason: 'It could not be read.' })))
+    await nextPoll()
+
+    expect(failure().text()).toContain("We couldn't read menu.pdf. It could not be read.")
+    expect(failure().text()).not.toContain('X-Amz')
+  })
+
   it('names a PDF linked from the web by its file name', () => {
     expect(queueItemName(row(1, 'pending', { source: 'https://pedalco.example.com/docs/menu.pdf', source_type: 'pdf_url' }))).toBe('menu.pdf')
   })
@@ -132,6 +154,16 @@ describe('StepTeach while sources are read', () => {
     const calls = getAgentQueueItems.mock.calls.length
     await nextPoll()
     expect(getAgentQueueItems).toHaveBeenCalledTimes(calls)
+  })
+
+  it('lists an indexed PDF by the name they gave it', async () => {
+    getKnowledgeByAgent.mockResolvedValue({
+      knowledge: [{ id: 2, name: '1818d52a33ba48668068120f9ed38698_menu' }],
+      pagination: { total_pages: 1, total: 1 },
+    })
+    await mountStep()
+
+    expect(done()).toEqual(['menu'])
   })
 
   it('says why a site could not be read, even with another source already indexed', async () => {

@@ -98,6 +98,11 @@ export class SetupWizard {
     return this.page.getByRole('list', { name: 'Learning' }).getByText(name)
   }
 
+  /** A source on the Teach step that has been read. */
+  indexedSource(name: string): Locator {
+    return this.page.getByRole('list', { name: 'Already added' }).getByText(name)
+  }
+
   /** The Teach step saying a source could not be read. */
   readFailure(name: string): Locator {
     return this.page.getByRole('alert').filter({ hasText: `We couldn't read ${name}` })
