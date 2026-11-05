@@ -40,6 +40,8 @@ from app.agents.structured_output import (
     salvage_groq_json_error,
 )
 from app.agents.transfer_agent import get_agent_availability_response
+from app.agents.channel_products import with_product_list
+from app.agents.handover_prompt import TOOLS_OR_PERSON_RULES, ticket_criteria
 from app.agents.guardrail_policy import (
     GuardrailContext,
     apply_guardrail_policy,
@@ -514,11 +516,16 @@ class ChatAgent(ChatAgentMCPMixin):
         # Initialize tools
         self.tools = []
         
+        # Tools attach whether or not this agent can hand over: a handover is one
+        # more way out of the conversation, and the prompt says which to use
+        # (TOOLS_OR_PERSON_RULES).
+        has_session = bool(self.agent_id and self.org_id and self.session_id)
+
         # Ticket tools: an agent's explicit Jira config wins (existing orgs
         # keep their Jira flow unchanged); native AI ticketing is the default
         # for everyone else. Never both — two create-ticket functions would
         # confuse the model.
-        if self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and self.agent_data and self.agent_data.jira_enabled:
+        if has_session and self.agent_data and self.agent_data.jira_enabled:
             try:
                 self.jira_tools = JiraTools(
                     agent_id=self.agent_id,
@@ -528,7 +535,7 @@ class ChatAgent(ChatAgentMCPMixin):
                 self.tools.append(self.jira_tools)
             except Exception as e:
                 logger.error(f"Failed to initialize Jira tools: {e}")
-        elif self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and self.ticketing_enabled:
+        elif has_session and self.ticketing_enabled:
             try:
                 from app.tools.ticket_toolkit import TicketTools
                 self.ticket_tools = TicketTools(
@@ -541,7 +548,7 @@ class ChatAgent(ChatAgentMCPMixin):
                 logger.error(f"Failed to initialize ticket tools: {e}")
         
         # Add Shopify tools if agent has Shopify enabled
-        if self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and shopify_config and shopify_config.enabled:
+        if has_session and shopify_config and shopify_config.enabled:
             try:
                 self.shopify_tools = ShopifyTools(
                     agent_id=self.agent_id,
@@ -777,9 +784,13 @@ Keep your responses concise and focused. Provide clear, actionable information i
             else:
                 system_message += f"\n{end_chat_without_rating}"
             
+            # Without a group the handover is dropped at the end of the turn, so a
+            # ticket stays the way to reach the team
+            can_reach_a_person = bool(self.transfer_to_human and getattr(self.agent_data, 'groups', None))
+
             # Add native ticketing instructions when AI ticketing drives the
             # ticket tools (explicit agent Jira config takes precedence below)
-            if self.ticketing_enabled and not self.transfer_to_human and not (self.agent_data and self.agent_data.jira_enabled):
+            if self.ticketing_enabled and not (self.agent_data and self.agent_data.jira_enabled):
                 # For an already-identified customer, hand the agent their known
                 # email/name so it passes them straight to create_ticket instead
                 # of asking the customer to repeat details we already have.
@@ -805,17 +816,18 @@ Keep your responses concise and focused. Provide clear, actionable information i
                         "customer_email and customer_name. Never invent an email or name; if the "
                         "customer declines, create the ticket without them."
                     )
+                when_to_ticket = ticket_criteria(
+                    can_reach_a_person,
+                    "The issue is a technical problem you cannot resolve from the knowledge base",
+                    "The user explicitly asks for a ticket or escalation",
+                )
                 ticket_instructions = f"""
                 You have access to native support-ticket tools:
                 1. check_existing_ticket — check if this conversation already has a ticket (always call this first)
                 2. create_ticket — open a support ticket that the team's AI investigator and humans will work on
                 3. get_ticket_status — look up a ticket's current status
 
-                Only create a ticket if:
-                - The issue is a technical problem you cannot resolve from the knowledge base
-                - The user explicitly asks for a ticket or escalation
-                - You've tried to resolve the issue but were unable to do so
-                - No ticket already exists for this conversation
+                {when_to_ticket}
 
                 {identity_instruction}
 
@@ -825,8 +837,13 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 system_message += "\n\n" + ticket_instructions
                 self.jira_instructions_added = True
             # Add Jira instructions if Jira is enabled (and native ticketing is not)
-            elif self.agent_data and self.agent_data.jira_enabled and not self.transfer_to_human:
-                jira_instructions = """
+            elif self.agent_data and self.agent_data.jira_enabled:
+                when_to_ticket = ticket_criteria(
+                    can_reach_a_person,
+                    "The issue is complex and requires human intervention",
+                    "The user explicitly requests to create a ticket",
+                )
+                jira_instructions = f"""
                 You have access to Jira integration tools. You can use these tools to:
                 1. Create a Jira ticket for issues that need further attention
                 2. Check if a ticket already exists for the current conversation
@@ -840,11 +857,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 - ticket_description: A detailed description of the issue (required if create_ticket is true)
                 - ticket_priority: The priority level of the ticket (optional, defaults to "Medium")
 
-                Only create a ticket if:
-                - The issue is complex and requires human intervention
-                - The user explicitly requests to create a ticket
-                - You've tried to resolve the issue but were unable to do so
-                - No ticket already exists for this conversation
+                {when_to_ticket}
                 """
                 system_message += "\n\n" + jira_instructions
                 self.jira_instructions_added = True
@@ -897,6 +910,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 """
                 system_message += "\n\n" + mcp_instructions
                 self.mcp_instructions_added = True
+
+            # Settles the overlap between the lists above, so it comes after them
+            if self.transfer_to_human and (self.tools or host_action_functions):
+                system_message += "\n\n" + TOOLS_OR_PERSON_RULES
         else:
             system_message = [
                 "You are a helpful customer service agent.",
@@ -1520,7 +1537,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
         if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
             response_content.message = remove_urls_from_message(response_content.message)
             logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
-        
+
+        if not is_widget_channel(self.channel):
+            response_content.message = with_product_list(response_content.message, response_content.shopify_output)
+
         # Handle end chat and rating request
         if response_content.end_chat:
             response_content = await self._handle_end_chat(response_content, session_id, db)
