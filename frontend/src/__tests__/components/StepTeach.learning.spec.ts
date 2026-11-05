@@ -23,7 +23,7 @@ vi.mock('@/services/knowledge', () => ({
   }
 }))
 vi.mock('@/utils/storage', () => ({
-  subscriptionStorage: { getPlanLimits: () => null }
+  subscriptionStorage: { getPlanLimits: () => ({ maxKnowledgeSources: 0 }) }
 }))
 
 import StepTeach from '@/components/aiagent/onboarding/steps/StepTeach.vue'
