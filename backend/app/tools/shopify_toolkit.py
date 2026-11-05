@@ -19,6 +19,7 @@ from agno.tools import Toolkit
 from app.core.logger import get_logger
 from app.services.shopify import ShopifyService
 from app.services.shopify_urls import shopify_admin_url
+from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.database import SessionLocal
 from app.models.organization import Organization
@@ -34,6 +35,7 @@ from app.core.config import settings
 from app.core.redis import get_redis
 from app.tools.shopify_order_access import (
     MAX_ORDER_RESULTS,
+    missing_from_chat,
     ORDER_NOT_FOUND,
     build_order_search,
     order_belongs_to,
@@ -121,10 +123,6 @@ query SearchOrders($query: String, $first: Int!) {
           status
         }
       }
-    }
-    pageInfo {
-      hasNextPage
-      endCursor
     }
   }
 }
@@ -596,21 +594,22 @@ class ShopifyTools(Toolkit):
             })
     
    
-    def search_orders(self, customer_email: str, order_number: Optional[str] = None, limit: int = MAX_ORDER_RESULTS) -> str:
+    def search_orders(self, customer_email: str, order_number: str) -> str:
         """
-        Find the customer's own orders. Ask the customer for the email address they
-        used at checkout; never guess it or take it from anywhere else.
+        Get the full details of one order: items, totals, shipping address and tracking.
+        Needs both the order number and the email address the customer used at checkout;
+        ask the customer for whichever is missing. Never guess the email or take it from
+        anywhere else. This cannot list a customer's orders.
 
         Args:
-            customer_email: The email address the customer used at checkout (required)
-            order_number: The order number, e.g. "#1001" (optional, narrows to one order)
-            limit: Maximum number of orders to return (default and maximum: 10)
+            customer_email: The email address the customer used at checkout
+            order_number: The order number, e.g. "1001" or "#1001"
 
         Returns:
-            str: JSON string with the customer's matching orders or error information
+            str: JSON string with the matching order or error information
         """
         try:
-            problem = order_lookup_problem(customer_email, order_number)
+            problem = self._lookup_problem(customer_email, order_number)
             if problem:
                 return json.dumps({"success": False, "message": problem, "requires_user_input": True})
 
@@ -621,7 +620,7 @@ class ShopifyTools(Toolkit):
                     "message": "Shopify integration is not enabled for this agent or shop not found"
                 })
 
-            found = self._find_customer_orders(shop, customer_email, order_number, limit)
+            found = self._find_customer_orders(shop, customer_email, order_number)
             if not found["success"]:
                 return json.dumps(found)
             orders = found["orders"]
@@ -632,7 +631,6 @@ class ShopifyTools(Toolkit):
                 "success": True,
                 "message": self._summarise_orders(orders),
                 "orders": orders,
-                "page_info": found["page_info"],
                 "shop_domain": shop.shop_domain
             })
 
@@ -641,17 +639,24 @@ class ShopifyTools(Toolkit):
             logger.error(traceback.format_exc())
             return json.dumps({"success": False, "message": "Couldn't search the store's orders right now."})
 
-    def _find_customer_orders(self, shop: ShopifyShop, customer_email: str,
-                              order_number: Optional[str], limit: int) -> Dict[str, Any]:
-        """Orders placed with this email (and number, if given). Shopify's search is
-        fuzzy, so every result is re-checked for an exact email and number match."""
-        limit = max(1, min(int(limit or MAX_ORDER_RESULTS), MAX_ORDER_RESULTS))
+    def _customer_messages(self) -> List[str]:
+        with SessionLocal() as db:
+            return ChatRepository(db).get_customer_messages(self.session_id)
+
+    def _lookup_problem(self, customer_email: Optional[str], order_number: Optional[str]) -> Optional[str]:
+        """What to ask the customer before this lookup can run, or None when it can."""
+        return (order_lookup_problem(customer_email, order_number)
+                or missing_from_chat(customer_email, order_number, self._customer_messages()))
+
+    def _find_customer_orders(self, shop: ShopifyShop, customer_email: str, order_number: str) -> Dict[str, Any]:
+        """The order with this number placed with this email. Shopify's search is fuzzy,
+        so every result is re-checked for an exact email and number match."""
         response = requests.post(
             shopify_admin_url(shop.shop_domain, "graphql.json"),
             headers={"X-Shopify-Access-Token": shop.access_token, "Content-Type": "application/json"},
             json={
                 "query": ORDER_SEARCH_GRAPHQL,
-                "variables": {"query": build_order_search(customer_email, order_number), "first": limit},
+                "variables": {"query": build_order_search(customer_email, order_number), "first": MAX_ORDER_RESULTS},
             },
             verify=settings.VERIFY_SSL_CERTIFICATES,
             timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
@@ -671,7 +676,6 @@ class ShopifyTools(Toolkit):
             "success": True,
             "orders": [o for o in orders
                        if order_belongs_to(o, customer_email) and order_number_matches(o, order_number)],
-            "page_info": orders_data.get("pageInfo", {}),
         }
 
     @staticmethod
@@ -763,7 +767,7 @@ class ShopifyTools(Toolkit):
             str: JSON string with order status details or error information
         """
         try:
-            problem = order_lookup_problem(customer_email, order_number, number_required=True)
+            problem = self._lookup_problem(customer_email, order_number)
             if problem:
                 return json.dumps({"success": False, "message": problem, "requires_user_input": True})
 
@@ -774,7 +778,7 @@ class ShopifyTools(Toolkit):
                     "message": "Shopify integration is not enabled for this agent or shop not found"
                 })
 
-            found = self._find_customer_orders(shop, customer_email, order_number, MAX_ORDER_RESULTS)
+            found = self._find_customer_orders(shop, customer_email, order_number)
             if not found["success"]:
                 return json.dumps(found)
             if not found["orders"]:

@@ -18,7 +18,13 @@ import pytest
 import json
 from unittest.mock import patch, MagicMock
 from app.tools.shopify_toolkit import ShopifyTools
-from app.tools.shopify_order_access import ORDER_NOT_FOUND
+from agno.tools.function import Function, FunctionCall
+from app.tools.shopify_order_access import (
+    EMAIL_REQUIRED,
+    INVALID_ORDER_NUMBER,
+    ORDER_NOT_FOUND,
+    ORDER_NUMBER_REQUIRED,
+)
 from app.models.shopify import AgentShopifyConfig, ShopifyShop
 from app.models.organization import Organization
 from app.models.agent import Agent
@@ -160,6 +166,7 @@ def shopify_tools(mock_db, mock_agent, mock_org, mock_shopify_config, mock_shop,
 
         # Create tool instance
         tool = ShopifyTools(agent_id=agent_id, org_id=org_id, session_id=session_id)
+        tool._customer_messages = lambda: [f"orders 1001 and 9999, {OWNER_EMAIL} or someone.else@example.com"]
 
         # Mock the _get_shop_for_agent method directly to avoid database operations
         with patch.object(tool, '_get_shop_for_agent', return_value=mock_shop):
@@ -316,7 +323,6 @@ def test_search_orders(shopify_tools):
     assert result["orders"][0]["name"] == "#1001"
     assert result["orders"][0]["financial_status"] == "PAID"
     assert result["orders"][0]["tracking_info"][0]["number"] == "12345"
-    assert "page_info" in result
     assert _sent_search(mock_post) == "email:john.doe@example.com AND name:1001"
     assert mock_post.call_args.args[0] == "https://test-shop.myshopify.com/admin/api/2025-10/graphql.json"
 
@@ -335,7 +341,7 @@ def test_search_orders_matches_the_customer_record_email(shopify_tools):
     node = _order_node(email="checkout@example.com", customer={"id": "c1", "firstName": "John",
                                                                "lastName": "Doe", "email": OWNER_EMAIL})
     with patch("requests.post", return_value=_orders_response(node)):
-        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL))
+        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number="1001"))
 
     assert result["success"] is True
     assert "John Doe" in result["message"]
@@ -349,6 +355,123 @@ def test_search_orders_needs_a_plain_email(shopify_tools, email):
 
     assert result["success"] is False
     assert result["requires_user_input"] is True
+    mock_post.assert_not_called()
+
+
+@pytest.mark.parametrize("number", [None, "", "   ", "#"])
+def test_an_email_alone_lists_nothing(shopify_tools, number):
+    """A typed email proves nothing, so it must not reach the store at all."""
+    with patch("requests.post") as mock_post:
+        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number=number))
+
+    assert result == {"success": False, "message": ORDER_NUMBER_REQUIRED, "requires_user_input": True}
+    mock_post.assert_not_called()
+
+
+@pytest.mark.parametrize("number", ["10 OR 1", "1001*", "-1001", "name:1001", "1001 OR email:a@b.co", '1001"'])
+def test_search_orders_refuses_order_numbers_with_search_syntax(shopify_tools, number):
+    with patch("requests.post") as mock_post:
+        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number=number))
+
+    assert result == {"success": False, "message": INVALID_ORDER_NUMBER, "requires_user_input": True}
+    mock_post.assert_not_called()
+
+
+@pytest.mark.parametrize("number", ["#1001", "1001", " #1001 ", "# 1001"])
+def test_search_orders_takes_either_number_format(shopify_tools, number):
+    with patch("requests.post", return_value=_orders_response(_order_node())) as mock_post:
+        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number=number))
+
+    assert result["success"] is True
+    assert _sent_search(mock_post) == f"email:{OWNER_EMAIL} AND name:1001"
+
+
+def test_search_orders_returns_only_the_order_asked_for(shopify_tools):
+    """Shopify's name search is fuzzy, so one search can bring back near misses."""
+    near_misses = [_order_node(name="#10010"), _order_node(name="#1001"), _order_node(name="#21001")]
+    with patch("requests.post", return_value=_orders_response(*near_misses)):
+        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number="1001"))
+
+    assert [order["name"] for order in result["orders"]] == ["#1001"]
+
+
+def test_a_right_number_and_wrong_email_match_a_missing_order(shopify_tools):
+    """Same answer for both, so the reply never confirms that an order exists."""
+    with patch("requests.post", return_value=_orders_response(_order_node(email="owner@example.com"))):
+        wrong_email = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number="1001"))
+    with patch("requests.post", return_value=_orders_response()):
+        no_order = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number="1001"))
+
+    assert wrong_email == no_order == {"success": False, "message": ORDER_NOT_FOUND}
+
+
+@pytest.mark.parametrize("written,asked_for", [
+    # The live model filled in the account email and the "#1001" from its own prompt
+    ([], EMAIL_REQUIRED),
+    (["where is my order?"], EMAIL_REQUIRED),
+    (["it's order 1001"], EMAIL_REQUIRED),
+    ([f"my email is {OWNER_EMAIL}"], ORDER_NUMBER_REQUIRED),
+    ([f"my email is {OWNER_EMAIL}, order 21001"], ORDER_NUMBER_REQUIRED),
+])
+@pytest.mark.parametrize("tool", ["search_orders", "get_order_status"])
+def test_only_what_the_customer_wrote_counts(shopify_tools, mock_shopify_service, tool, written, asked_for):
+    shopify_tools._customer_messages = lambda: written
+    with patch("requests.post") as mock_post:
+        result = json.loads(getattr(shopify_tools, tool)(customer_email=OWNER_EMAIL, order_number="1001"))
+
+    assert result == {"success": False, "message": asked_for, "requires_user_input": True}
+    mock_post.assert_not_called()
+    mock_shopify_service.get_order.assert_not_called()
+
+
+@pytest.mark.parametrize("tool", ["search_orders", "get_order_status"])
+def test_the_details_can_come_in_separate_messages(shopify_tools, mock_shopify_service, tool):
+    shopify_tools._customer_messages = lambda: ["It's #1001.", "hi", OWNER_EMAIL.upper()]
+    with patch("requests.post", return_value=_orders_response(_order_node())) as mock_post:
+        getattr(shopify_tools, tool)(customer_email=OWNER_EMAIL, order_number="1001")
+
+    mock_post.assert_called_once()
+
+
+def test_the_customer_messages_come_from_this_conversation(mock_db):
+    tools = ShopifyTools(agent_id="agent", org_id="org", session_id="session")
+    with patch("app.tools.shopify_toolkit.SessionLocal") as session_local, \
+         patch("app.tools.shopify_toolkit.ChatRepository") as repository:
+        session_local.return_value.__enter__.return_value = mock_db
+        repository.return_value.get_customer_messages.return_value = ["hello"]
+
+        assert tools._customer_messages() == ["hello"]
+
+    repository.assert_called_once_with(mock_db)
+    repository.return_value.get_customer_messages.assert_called_once_with("session")
+
+
+@pytest.mark.parametrize("tool", ["search_orders", "get_order_status"])
+def test_an_unreadable_conversation_shares_nothing(shopify_tools, tool):
+    def unreadable():
+        raise RuntimeError("database down")
+    shopify_tools._customer_messages = unreadable
+    with patch("requests.post") as mock_post:
+        result = json.loads(getattr(shopify_tools, tool)(customer_email=OWNER_EMAIL, order_number="1001"))
+
+    assert result["success"] is False
+    assert "database down" not in result["message"]
+    mock_post.assert_not_called()
+
+
+def test_the_model_is_told_both_details_are_required(shopify_tools):
+    schema = Function.from_callable(shopify_tools.search_orders).to_dict()["parameters"]
+    assert set(schema["required"]) == {"customer_email", "order_number"}
+    assert "limit" not in schema["properties"]
+
+
+def test_a_call_that_leaves_out_the_number_never_reaches_the_store(shopify_tools):
+    """What agno does with a model that ignores the schema."""
+    function = shopify_tools.functions["search_orders"]
+    with patch("requests.post") as mock_post:
+        call = FunctionCall(function=function, arguments={"customer_email": OWNER_EMAIL})
+        call.execute()
+
     mock_post.assert_not_called()
 
 
@@ -371,7 +494,7 @@ def test_search_orders_needs_the_exact_order_number(shopify_tools):
 def test_search_orders_hides_shopify_error_details(shopify_tools):
     response = MagicMock(status_code=500, text="internal detail")
     with patch("requests.post", return_value=response):
-        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL))
+        result = json.loads(shopify_tools.search_orders(customer_email=OWNER_EMAIL, order_number="1001"))
 
     assert result["success"] is False
     assert "internal detail" not in result["message"]

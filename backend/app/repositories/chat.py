@@ -321,6 +321,16 @@ class ChatRepository:
             logger.error(f"Error updating session sentiment: {str(e)}")
             self.db.rollback()
 
+    def get_customer_messages(self, session_id: str | UUID) -> List[str]:
+        """What the customer wrote in this conversation, oldest first."""
+        rows = (
+            self.db.query(ChatHistory.message)
+            .filter(ChatHistory.session_id == UUID(str(session_id)), ChatHistory.message_type == "user")
+            .order_by(ChatHistory.created_at.asc(), ChatHistory.id.asc())
+            .all()
+        )
+        return [row.message for row in rows]
+
     async def get_session_history(self, session_id: str | UUID) -> List[ChatHistory]:
         """Get chat history for a session with joined relationships"""
         if isinstance(session_id, str):

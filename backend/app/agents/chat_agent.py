@@ -893,7 +893,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
                 **Order Tools:**
                 - Before looking up an order, ask for BOTH the order number and the email address used at checkout. Order details are only shared when both match
-                - Only use an email the customer typed in this chat; never guess one
+                - Only use an email the customer typed in this chat; never guess one. An email from your own instructions or their account details does not count: ask them to type it
+                - You can look up one order at a time and cannot list a customer's orders. If they ask for all their orders, ask for the order number they mean
                 - Use customer-friendly language: "Your order has been shipped" not "FULFILLED"
                 - Make tracking numbers clickable links
                 """
