@@ -35,7 +35,8 @@ from app.repositories.customer import CustomerRepository
 from app.repositories.journey import JourneyProgressRepository, JourneyRepository
 from app.services.journey_access import journeys_allowed
 from app.services.journey_engine import (
-    Signals, any_holds, audience_matches, done_label, is_new_user, render, start_matches, step_index, step_reached,
+    Signals, any_holds, audience_matches, condition_holds, done_label, is_new_user, render, start_matches, step_index,
+    step_reached,
 )
 
 USER_SCALARS = (str, int, float, bool)
@@ -85,10 +86,12 @@ def _definition(journey: Journey) -> Optional[JourneyDefinition]:
 
 def _chips(db: Session, journey: Journey, step: Step, signals: Signals, fallbacks: Dict[str, str]) -> List[dict]:
     """Reply chips, with what the widget needs to run an action chip. A chip for
-    an action that is gone or off is left out."""
+    an action that is gone or off is left out, and so is one its hide_when hides."""
     actions = {a.name: a for a in AgentActionRepository(db).enabled_by_names(journey.agent_id, step.allowed_actions)}
     chips = []
     for chip in step.chips:
+        if chip.hide_when and condition_holds(chip.hide_when, signals):
+            continue
         item = {"label": render(chip.label, signals, fallbacks), "kind": chip.kind, "value": chip.value}
         if chip.kind == "action":
             action = actions.get(chip.value)

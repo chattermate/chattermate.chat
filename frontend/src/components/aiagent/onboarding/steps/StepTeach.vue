@@ -19,6 +19,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
 import { useStagedSourceCap } from '@/composables/useStagedSourceCap'
 import { useCrawlCheck } from '@/composables/useCrawlCheck'
+import { isPdfSource, queueItemName, useLearningWatch } from '@/composables/useLearningWatch'
 import TeachTextFallback from './TeachTextFallback.vue'
 import type { QueueItem } from '@/types/knowledge'
 import { organizationService } from '@/services/organization'
@@ -86,10 +87,17 @@ const continueLabel = computed(() => {
   return crawlFailure.value && nothingStaged.value ? 'Continue without it' : 'Continue'
 })
 
+// A source sent from here or by the setup assistant stays on the step while it
+// is read, then turns into an indexed row or says why it couldn't be read. A
+// failure already on screen stays: it may hold text they are pasting.
+const handleLearned = async (ids: number[]) => {
+  const failed = queueItems.value.find((q) => ids.includes(q.id) && q.status === 'failed')
+  await fetchKnowledge()
+  if (failed && !crawlFailure.value) setFailure(failed)
+}
+const { learning: crawling } = useLearningWatch(props.agentId, queueItems, handleLearned)
+
 // Crawls still running count against the cap too (the server counts them).
-const crawling = computed(() =>
-  queueItems.value.filter((q) => q.status === 'pending' || q.status === 'processing'),
-)
 const inUseCount = computed(() => orgTotalCount.value + crawling.value.length)
 const { fitToCap } = useStagedSourceCap(inUseCount, urls, files)
 
@@ -298,6 +306,19 @@ const handleTextAdded = () => {
       </li>
     </ul>
 
+    <!-- Sent, and being read now -->
+    <ul v-if="crawling.length" class="source-list learning" aria-label="Learning">
+      <li v-for="item in crawling" :key="item.id" class="source-row">
+        <font-awesome-icon
+          :icon="isPdfSource(item) ? 'fa-solid fa-file-pdf' : 'fa-solid fa-globe'"
+          class="source-icon"
+          aria-hidden="true"
+        />
+        <span class="source-name">{{ queueItemName(item) }}</span>
+        <span class="source-tag pending">learning…</span>
+      </li>
+    </ul>
+
     <!-- Already indexed for this agent -->
     <ul v-if="knowledgeItems.length" class="source-list indexed" aria-label="Already added">
       <li v-for="item in knowledgeItems" :key="item.id" class="source-row">
@@ -460,6 +481,10 @@ const handleTextAdded = () => {
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--accent-ink);
+}
+
+.source-tag.pending {
+  color: var(--muted);
 }
 
 .source-remove {
