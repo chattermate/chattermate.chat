@@ -74,3 +74,42 @@ def test_write_checks_key_and_goal():
     with pytest.raises(ValidationError, match="goal"):
         JourneyWrite(key="first_invoice", goal_event="Sent!", **base)
     assert JourneyWrite(key="first_invoice", goal_event="", **base).goal_event is None
+
+
+def _chip_step(hide_when):
+    chip = {"label": "Read my site", "value": "Read my site", "hide_when": hide_when}
+    return {"id": "a", "title": "A", "chips": [chip], "done_when": [{"kind": "event", "value": "done"}]}
+
+
+@pytest.mark.parametrize("hide_when", [
+    {"kind": "ctx", "value": "sources_learning", "op": "gt", "operand": 0},
+    {"kind": "user", "value": "plan", "op": "eq", "operand": "pro"},
+    {"kind": "url", "value": "/settings/*"},
+    None,
+])
+def test_a_chip_can_be_hidden_by_something_lasting(hide_when):
+    JourneyDefinition.model_validate({"steps": [_chip_step(hide_when)]})
+
+
+@pytest.mark.parametrize("kind", ["event", "action"])
+def test_a_chip_cannot_be_hidden_by_a_passing_signal(kind):
+    with pytest.raises(ValidationError, match="only be hidden"):
+        JourneyDefinition.model_validate({"steps": [_chip_step({"kind": kind, "value": "done"})]})
+
+
+def test_a_chip_hidden_by_a_bad_field_is_refused():
+    with pytest.raises(ValidationError, match="not a field name"):
+        JourneyDefinition.model_validate({"steps": [_chip_step({"kind": "ctx", "value": "Not A Field"})]})
+
+
+def test_a_chip_without_a_rule_saves_as_it_always_did():
+    step = {"id": "a", "title": "A", "chips": [{"label": "Later", "value": "Later"}],
+            "done_when": [{"kind": "event", "value": "done"}]}
+    dumped = JourneyDefinition.model_validate({"steps": [step]}).model_dump(mode="json")
+    assert dumped["steps"][0]["chips"] == [{"label": "Later", "kind": "text", "value": "Later"}]
+
+
+def test_a_chip_keeps_its_rule_when_saved():
+    rule = {"kind": "ctx", "value": "sources_learning", "op": "gt", "operand": 0}
+    dumped = JourneyDefinition.model_validate({"steps": [_chip_step(rule)]}).model_dump(mode="json")
+    assert dumped["steps"][0]["chips"][0]["hide_when"] == rule

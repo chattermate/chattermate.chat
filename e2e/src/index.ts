@@ -15,7 +15,7 @@ export { createArticle, enableHelpCenter, helpCenterChat, setArticleStatus, setH
 export { connectEmail, listChannelAccounts } from './api/channels'
 export { currentAiConfig, restoreAi, useFakeLlm, type AiConfig } from './api/ai'
 export { createAgent, enableLeadCapture } from './api/agents'
-export { addKnowledgeText, deleteKnowledge, unfinishedKnowledge, uploadKnowledgePdf } from './api/knowledge'
+export { addKnowledgeText, clearKnowledgeQueue, deleteKnowledge, unfinishedKnowledge, uploadKnowledgePdf } from './api/knowledge'
 export { createWidget, loadWidgetFrom, openFramedWidgetFrom, requestFrameAfterHop, requestFrameFrom, setAllowedDomains } from './api/widgets'
 export { textPdf } from './support/pdf'
 export { conversationTokenExpiry, createWidgetApp, issueConversationToken, revokeConversationToken, tokenRunningOut } from './api/widget-apps'

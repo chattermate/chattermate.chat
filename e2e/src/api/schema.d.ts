@@ -6185,6 +6185,7 @@ export interface components {
             kind: "text" | "action";
             /** Value */
             value: string;
+            hide_when?: components["schemas"]["Condition"] | null;
         };
         /**
          * Condition

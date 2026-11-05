@@ -26,6 +26,7 @@ import { widgetService } from '@/services/widget'
 import { knowledgeService } from '@/services/knowledge'
 import { useOnboardingTestChat } from '@/composables/useOnboardingTestChat'
 import { newestPerSource } from '@/composables/useCrawlCheck'
+import { isBeingRead } from '@/composables/useLearningWatch'
 import type { QueueItem } from '@/types/knowledge'
 import type { AgentCustomization } from '@/types/agent'
 
@@ -124,7 +125,7 @@ const checkKnowledgeStatus = async () => {
   try {
     const data = await knowledgeService.getAgentQueueItems(props.agentId)
     const items = (data?.queue_items ?? []) as QueueItem[]
-    const pending = items.filter(i => i.status === 'pending' || i.status === 'processing').length
+    const pending = items.filter(isBeingRead).length
     failure.value = newestPerSource(items).find(i => i.status === 'failed') ?? null
     const wasProcessing = knowledgeProcessing.value
     knowledgeProcessing.value = pending > 0
