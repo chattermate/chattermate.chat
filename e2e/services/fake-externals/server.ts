@@ -416,6 +416,31 @@ function shopifyOrderNode(order: ShopifyOrder) {
   }
 }
 
+function shopifyProduct(id: number, title: string, variants: { id: number; onSale: boolean }[]) {
+  return {
+    id: `gid://shopify/Product/${id}`,
+    title,
+    handle: title.toLowerCase().replaceAll(' ', '-'),
+    description: title,
+    productType: 'E2E',
+    vendor: 'E2E',
+    totalInventory: 5,
+    tags: [],
+    priceRangeV2: { minVariantPrice: { amount: '40.00', currencyCode: 'USD' }, maxVariantPrice: { amount: '40.00', currencyCode: 'USD' } },
+    images: { edges: [] },
+    variants: { edges: variants.map((v) => ({ node: { id: `gid://shopify/ProductVariant/${v.id}`, availableForSale: v.onSale } })) },
+  }
+}
+
+// One to buy, one that sells out after the search (the site's cart refuses variant 222),
+// one with sizes to choose, and one not on sale.
+const shopifyProducts = [
+  shopifyProduct(1, 'E2E Mug', [{ id: 111, onSale: true }]),
+  shopifyProduct(2, 'E2E Cap', [{ id: 222, onSale: true }]),
+  shopifyProduct(3, 'E2E Shirt', [{ id: 331, onSale: true }, { id: 332, onSale: true }]),
+  shopifyProduct(4, 'E2E Poster', [{ id: 444, onSale: false }]),
+]
+
 function shopify({ action, body }: Call): Answer {
   if (action === 'access_token') {
     const seed = String(body?.subject_token ?? body?.code ?? '')
@@ -431,6 +456,9 @@ function shopify({ action, body }: Call): Answer {
     const order = { id: String(parseInt(digest(`${email}#${number}`).slice(0, 8), 16)), number, email }
     remember(shopifyOrders, order.id, order)
     return ok({ data: { orders: { edges: email ? [{ node: shopifyOrderNode(order) }] : [], pageInfo: { hasNextPage: false, endCursor: null } } } })
+  }
+  if (query.includes('query SearchProducts')) {
+    return ok({ data: { products: { edges: shopifyProducts.map((node) => ({ node })), pageInfo: { hasNextPage: false, endCursor: null } } } })
   }
   if (query.includes('query GetOrder')) {
     const order = shopifyOrders.get(String(variables.id ?? '').split('/').at(-1) ?? '')

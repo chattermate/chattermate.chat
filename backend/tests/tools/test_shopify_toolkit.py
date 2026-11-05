@@ -17,7 +17,7 @@ limitations under the License.
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-from app.tools.shopify_toolkit import ShopifyTools
+from app.tools.shopify_toolkit import ShopifyTools, cart_variant_id, product_from_node
 from agno.tools.function import Function, FunctionCall
 from app.tools.shopify_order_access import (
     EMAIL_REQUIRED,
@@ -715,3 +715,72 @@ def test_api_error(shopify_tools, mock_shopify_service):
     # Assert
     assert result["success"] is False
     assert "error" in result["message"].lower() 
+
+def _variant(variant_id="111", available=True):
+    return {"node": {"id": f"gid://shopify/ProductVariant/{variant_id}", "availableForSale": available}}
+
+
+@pytest.mark.parametrize("variants,expected", [
+    ({"edges": [_variant()]}, "111"),
+    ({"edges": [_variant(available=False)]}, None),
+    # More than one variant: the customer has to pick on the product page
+    ({"edges": [_variant("111"), _variant("222")]}, None),
+    ({"edges": []}, None),
+    ({"edges": [{"node": {"availableForSale": True}}]}, None),
+    (None, None),
+])
+def test_cart_variant_id(variants, expected):
+    assert cart_variant_id({"variants": variants}) == expected
+
+
+def test_a_product_with_no_variant_data_has_no_cart_variant():
+    assert cart_variant_id({}) is None
+
+
+def test_product_from_node_copes_with_missing_fields():
+    product = product_from_node({"id": "gid://shopify/Product/5", "title": "Board"})
+
+    assert product["id"] == "5"
+    assert product["title"] == "Board"
+    assert product["image"] is None
+    assert product["price"] is None
+    assert product["cart_variant_id"] is None
+
+
+def test_product_from_node_flattens_a_full_node():
+    product = product_from_node({
+        "id": "gid://shopify/Product/5",
+        "handle": "board",
+        "priceRangeV2": {"minVariantPrice": {"amount": "10.00", "currencyCode": "USD"},
+                         "maxVariantPrice": {"amount": "20.00", "currencyCode": "USD"}},
+        "images": {"edges": [{"node": {"url": "https://cdn.example/a.png"}}]},
+        "variants": {"edges": [_variant()]},
+    })
+
+    assert product["price"] == "10.00"
+    assert product["price_max"] == "20.00"
+    assert product["currency"] == "USD"
+    assert product["image"] == {"src": "https://cdn.example/a.png"}
+    assert product["cart_variant_id"] == "111"
+
+
+@pytest.mark.parametrize("call", [
+    lambda tools: tools.search_products("board"),
+    lambda tools: tools.recommend_products(product_type="board"),
+    lambda tools: tools.recommend_products(product_id="5"),
+])
+def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools, call):
+    node = {"id": "gid://shopify/Product/9", "title": "Board", "handle": "board",
+            "productType": "board", "tags": [], "variants": {"edges": [_variant()]}}
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"data": {"product": node, "products": {
+        "edges": [{"node": node}], "pageInfo": {"hasNextPage": False}}}}
+
+    with patch("requests.post", return_value=response) as mock_post, \
+         patch("requests.get", return_value=response), \
+         patch("app.tools.shopify_toolkit.get_redis") as get_redis:
+        call(shopify_tools)
+
+    assert "variants(first: 2)" in mock_post.call_args.kwargs["json"]["query"]
+    cached = json.loads(get_redis.return_value.setex.call_args.args[2])
+    assert cached["products"][0]["cart_variant_id"] == "111"

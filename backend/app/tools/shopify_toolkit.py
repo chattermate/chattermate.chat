@@ -145,6 +145,41 @@ def create_minimal_product(product: dict) -> dict:
         "tags": product.get("tags", [])
     }
 
+def cart_variant_id(node: dict) -> Optional[str]:
+    """The variant one click can add: only for a product with a single variant that
+    is on sale. With several, picking one for the customer could buy the wrong size."""
+    edges = (node.get("variants") or {}).get("edges") or []
+    variant = (edges[0].get("node") or {}) if len(edges) == 1 else {}
+    if not variant.get("id") or not variant.get("availableForSale"):
+        return None
+    return variant["id"].split("/")[-1]
+
+
+def product_from_node(node: dict) -> dict:
+    """Flatten one GraphQL product node into the shape the cache and cards use."""
+    images = (node.get("images") or {}).get("edges") or []
+    image_url = (images[0].get("node") or {}).get("url") if images else None
+    price_range = node.get("priceRangeV2") or {}
+    min_variant_price = price_range.get("minVariantPrice") or {}
+    return {
+        "id": node["id"].split("/")[-1] if node.get("id") else None,
+        "title": node.get("title"),
+        "description": node.get("description"),
+        "handle": node.get("handle"),
+        "product_type": node.get("productType"),
+        "vendor": node.get("vendor"),
+        "total_inventory": node.get("totalInventory"),
+        "price": min_variant_price.get("amount"),
+        "price_max": (price_range.get("maxVariantPrice") or {}).get("amount"),
+        "currency": min_variant_price.get("currencyCode"),
+        "image": {"src": image_url} if image_url else None,
+        "tags": node.get("tags"),
+        "created_at": node.get("createdAt"),
+        "updated_at": node.get("updatedAt"),
+        "cart_variant_id": cart_variant_id(node),
+    }
+
+
 class ShopifyTools(Toolkit):
     def __init__(self, agent_id: str, org_id: str, session_id: str):
         super().__init__(name="shopify_tools")
@@ -400,6 +435,7 @@ class ShopifyTools(Toolkit):
                     productType
                     vendor
                     totalInventory
+                    variants(first: 2) { edges { node { id availableForSale } } }
                     priceRangeV2 {
                       minVariantPrice {
                         amount
@@ -489,42 +525,7 @@ class ShopifyTools(Toolkit):
             edges = products_data.get("edges", [])
             page_info = products_data.get("pageInfo", {})
             
-            # Extract products from edges
-            products = []
-            for edge in edges:
-                node = edge.get("node", {})
-                
-                # Extract the first image URL if available
-                image_url = None
-                images = node.get("images", {}).get("edges", [])
-                if images and len(images) > 0:
-                    image_url = images[0].get("node", {}).get("url")
-                
-                # Extract price information
-                price_range = node.get("priceRangeV2", {})
-                min_price = price_range.get("minVariantPrice", {}).get("amount")
-                max_price = price_range.get("maxVariantPrice", {}).get("amount")
-                currency_code = price_range.get("minVariantPrice", {}).get("currencyCode")
-                
-                # Transform to product structure
-                transformed_product = {
-                    "id": node.get("id").split("/")[-1] if node.get("id") else None,
-                    "title": node.get("title"),
-                    "description": node.get("description"),
-                    "handle": node.get("handle"),
-                    "product_type": node.get("productType"),
-                    "vendor": node.get("vendor"),
-                    "total_inventory": node.get("totalInventory"),
-                    "price": min_price,
-                    "price_max": max_price,
-                    "currency": currency_code,
-                    "image": {"src": image_url} if image_url else None,
-                    "tags": node.get("tags"),
-                    "created_at": node.get("createdAt"),
-                    "updated_at": node.get("updatedAt")
-                }
-                
-                products.append(transformed_product)
+            products = [product_from_node(edge.get("node", {})) for edge in edges]
             
             # Check if search was successful
             if products:
@@ -991,6 +992,7 @@ class ShopifyTools(Toolkit):
                         productType
                         vendor
                         totalInventory
+                        variants(first: 2) {{ edges {{ node {{ id availableForSale }} }} }}
                         priceRangeV2 {{
                           minVariantPrice {{
                             amount
@@ -1060,6 +1062,7 @@ class ShopifyTools(Toolkit):
                         productType
                         vendor
                         totalInventory
+                        variants(first: 2) { edges { node { id availableForSale } } }
                         priceRangeV2 {
                           minVariantPrice {
                             amount
@@ -1137,42 +1140,7 @@ class ShopifyTools(Toolkit):
             edges = products_data.get("edges", [])
             page_info = products_data.get("pageInfo", {})
             
-            # Extract products from edges
-            products = []
-            for edge in edges:
-                node = edge.get("node", {})
-                
-                # Extract the first image URL if available
-                image_url = None
-                images = node.get("images", {}).get("edges", [])
-                if images and len(images) > 0:
-                    image_url = images[0].get("node", {}).get("url")
-                
-                # Extract price information
-                price_range = node.get("priceRangeV2", {})
-                min_price = price_range.get("minVariantPrice", {}).get("amount")
-                max_price = price_range.get("maxVariantPrice", {}).get("amount")
-                currency_code = price_range.get("minVariantPrice", {}).get("currencyCode")
-                
-                # Transform to product structure
-                transformed_product = {
-                    "id": node.get("id").split("/")[-1] if node.get("id") else None,
-                    "title": node.get("title"),
-                    "description": node.get("description"),
-                    "handle": node.get("handle"),
-                    "product_type": node.get("productType"),
-                    "vendor": node.get("vendor"),
-                    "total_inventory": node.get("totalInventory"),
-                    "price": min_price,
-                    "price_max": max_price,
-                    "currency": currency_code,
-                    "image": {"src": image_url} if image_url else None,
-                    "tags": node.get("tags"),
-                    "created_at": node.get("createdAt"),
-                    "updated_at": node.get("updatedAt")
-                }
-                
-                products.append(transformed_product)
+            products = [product_from_node(edge.get("node", {})) for edge in edges]
             
             # Filter out the original product_id if it was part of the criteria and fetch limit allowed
             if product_id and search_limit > limit:

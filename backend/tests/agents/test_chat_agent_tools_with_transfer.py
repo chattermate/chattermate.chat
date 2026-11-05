@@ -134,6 +134,9 @@ class TestPromptMatchesTheTools:
         assert "ShopifyTools" in tool_names(agent)
         assert "you have access to shopify tools" in prompt_of(agent).lower()
 
+    def test_the_agent_never_claims_to_have_changed_the_cart(self):
+        assert "you cannot add anything to a customer's cart" in prompt_of(build_agent(shopify=True)).lower()
+
     def test_ticket_instructions_stay_with_handover_on(self):
         prompt = prompt_of(build_agent(ticketing=True)).lower()
         assert "native support-ticket tools" in prompt
