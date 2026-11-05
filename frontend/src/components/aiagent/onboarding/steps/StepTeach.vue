@@ -27,6 +27,8 @@ import { organizationService } from '@/services/organization'
 const props = defineProps<{
   agentId: string
   organizationId: string
+  /** The assistant added a source: move on by itself once it has been read. */
+  followAssistant?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -94,8 +96,18 @@ const handleLearned = async (ids: number[]) => {
   const failed = queueItems.value.find((q) => ids.includes(q.id) && q.status === 'failed')
   await fetchKnowledge()
   if (failed && !crawlFailure.value) setFailure(failed)
+  moveOnIfLearned()
 }
 const { learning: crawling } = useLearningWatch(props.agentId, queueItems, handleLearned)
+
+// The assistant has said to try the agent, and that happens on the next step.
+// Anything unsent or unresolved here stays theirs to deal with.
+const moveOnIfLearned = () => {
+  const settled = !crawling.value.length && !crawlFailure.value && !busy.value && nothingStaged.value
+  const learned = props.followAssistant && knowledgeItems.value.length > 0 && settled
+  if (learned) emit('next')
+  return learned
+}
 
 // Crawls still running count against the cap too (the server counts them).
 const inUseCount = computed(() => orgTotalCount.value + crawling.value.length)
@@ -195,6 +207,8 @@ const restoreLastFailure = () => {
 onMounted(async () => {
   // Prefill after the fetch so the dedupe check can see what is already indexed.
   await fetchKnowledge()
+  // Pasted text is learned at once, so nothing is left to wait for.
+  if (moveOnIfLearned()) return
   await prefillFromOrgDomain()
   restoreLastFailure()
 })

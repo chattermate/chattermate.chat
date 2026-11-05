@@ -23,7 +23,7 @@ vi.mock('@/services/knowledge', () => ({
   }
 }))
 vi.mock('@/utils/storage', () => ({
-  subscriptionStorage: { getPlanLimits: () => null }
+  subscriptionStorage: { getPlanLimits: () => ({ maxKnowledgeSources: 0 }) }
 }))
 
 import StepTeach from '@/components/aiagent/onboarding/steps/StepTeach.vue'
@@ -40,9 +40,9 @@ const indexed = { knowledge: [{ id: 1, name: SITE }], pagination: { total_pages:
 
 let wrapper: VueWrapper<any>
 
-const mountStep = async () => {
+const mountStep = async (props: { followAssistant?: boolean } = {}) => {
   wrapper = mount(StepTeach, {
-    props: { agentId: 'agent-1', organizationId: 'org-1' },
+    props: { agentId: 'agent-1', organizationId: 'org-1', ...props },
     global: { plugins: [createPinia()], stubs: { 'font-awesome-icon': true } },
     attachTo: document.body,
   })
@@ -226,6 +226,125 @@ describe('StepTeach while sources are read', () => {
 
     expect(failure().text()).toContain('First.')
     expect(wrapper.findComponent({ name: 'TeachTextFallback' }).exists()).toBe(true)
+  })
+
+  describe('after the assistant added a source', () => {
+    const follow = { followAssistant: true }
+    const movedOn = () => wrapper.emitted('next')?.length ?? 0
+    const other = 'https://docs.pedalco.example.com'
+
+    const finishReading = async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'completed')))
+      getKnowledgeByAgent.mockResolvedValue(indexed)
+      await nextPoll()
+    }
+
+    it('moves on once the site has been read', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+      await mountStep(follow)
+      expect(movedOn()).toBe(0)
+
+      await finishReading()
+
+      expect(movedOn()).toBe(1)
+    })
+
+    it('stays when the assistant had no part in it', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+      await mountStep()
+
+      await finishReading()
+
+      expect(movedOn()).toBe(0)
+      expect(done()).toEqual([SITE])
+    })
+
+    it('moves on at once for text, which is learned as it is added', async () => {
+      getKnowledgeByAgent.mockResolvedValue(indexed)
+      await mountStep(follow)
+
+      expect(movedOn()).toBe(1)
+      expect(getOrganization).not.toHaveBeenCalled()
+    })
+
+    it('stays when the site could not be read, and says why', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+      await mountStep(follow)
+
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'failed', { reason: 'Not found.' })))
+      await nextPoll()
+
+      expect(movedOn()).toBe(0)
+      expect(failure().text()).toContain('Not found.')
+    })
+
+    it('stays when one source was read and another failed', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(2, 'pending', { source: other }), row(1, 'processing')))
+      await mountStep(follow)
+
+      getAgentQueueItems.mockResolvedValue(queue(row(2, 'failed', { source: other, reason: 'Not found.' }), row(1, 'completed')))
+      getKnowledgeByAgent.mockResolvedValue(indexed)
+      await nextPoll()
+
+      expect(movedOn()).toBe(0)
+      expect(failure().text()).toContain('Not found.')
+    })
+
+    it('waits for the last source', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(2, 'pending', { source: other }), row(1, 'processing')))
+      await mountStep(follow)
+
+      getAgentQueueItems.mockResolvedValue(queue(row(2, 'pending', { source: other }), row(1, 'completed')))
+      getKnowledgeByAgent.mockResolvedValue(indexed)
+      await nextPoll()
+      expect(movedOn()).toBe(0)
+
+      getAgentQueueItems.mockResolvedValue(queue(row(2, 'completed', { source: other }), row(1, 'completed')))
+      await nextPoll()
+      expect(movedOn()).toBe(1)
+    })
+
+    it('stays when finishing left nothing learned', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+      await mountStep(follow)
+
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'completed')))
+      await nextPoll()
+
+      expect(movedOn()).toBe(0)
+    })
+
+    it('leaves an address they typed but have not sent', async () => {
+      getOrganization.mockResolvedValue({ domain: null })
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+      await mountStep(follow)
+      await wrapper.find('input[type="text"]').setValue('https://shop.pedalco.example.com')
+
+      await finishReading()
+
+      expect(movedOn()).toBe(0)
+      expect((wrapper.find('input[type="text"]').element as HTMLInputElement).value).toBe('https://shop.pedalco.example.com')
+    })
+
+    it('leaves a source they staged', async () => {
+      getOrganization.mockResolvedValue({ domain: null })
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+      await mountStep(follow)
+      await wrapper.find('input[type="text"]').setValue('https://shop.pedalco.example.com')
+      await wrapper.findAll('button').find((b) => b.text() === 'Add')!.trigger('click')
+      await flushPromises()
+
+      await finishReading()
+
+      expect(movedOn()).toBe(0)
+      expect(staged()).toEqual(['https://shop.pedalco.example.com'])
+    })
+
+    it('does nothing with no knowledge at all', async () => {
+      await mountStep(follow)
+
+      expect(movedOn()).toBe(0)
+    })
   })
 
   it('stops polling when the step goes away mid-crawl', async () => {

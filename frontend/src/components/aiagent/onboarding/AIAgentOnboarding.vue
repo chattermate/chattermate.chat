@@ -108,6 +108,7 @@ onMounted(async () => {
 })
 
 const goTo = (step: OnboardingStepIndex) => {
+  followAssistant.value = false
   currentStep.value = step
   onboarding.goTo(orgId, step)
 }
@@ -157,11 +158,15 @@ const stepKey = computed<StepKey>(() => STEP_KEYS[currentStep.value])
 // Bumped when the assistant changed something the open step shows, so it
 // reloads with the new values. Only then: a reload drops what is being typed.
 const refreshKey = ref(0)
+// The assistant taught the agent from Teach, so Teach moves on when it's done.
+// Coming back to the step by hand ends that.
+const followAssistant = ref(false)
 const AREAS_SHOWN: Record<StepKey, string[]> = {
   create: ['agent', 'look'], teach: ['knowledge'], test: ['agent', 'look'], launch: ['widget'],
 }
 const handleAssistantChange = async (area: string) => {
   if (!AREAS_SHOWN[stepKey.value].includes(area)) return
+  if (area === 'knowledge') followAssistant.value = true
   if (agentId.value) {
     try {
       createdAgent.value = await agentService.getAgentById(agentId.value)
@@ -230,6 +235,7 @@ const handleFinish = () => {
         :key="'teach' + refreshKey"
         :agent-id="agentId"
         :organization-id="orgId"
+        :follow-assistant="followAssistant"
         @next="completeAndAdvance(1, 2)"
         @back="goTo(0)"
       />
