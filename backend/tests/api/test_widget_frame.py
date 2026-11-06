@@ -34,7 +34,7 @@ from app.models.agent import Agent
 from app.models.customer import Customer
 from app.models.organization import Organization
 from app.models.widget import Widget
-from app.services import conversation_token
+from app.services import conversation_token, widget_bootstrap
 
 
 @pytest.fixture
@@ -305,6 +305,21 @@ class TestDataPageEmbedding:
 
 
 class TestBootstrap:
+    def test_the_plan_decides_on_the_branding(self, client, test_widget, monkeypatch):
+        monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: True)
+        assert bootstrap(client, test_widget).json()["hideBranding"] is True
+
+    def test_branding_stays_by_default(self, client, test_widget, monkeypatch):
+        monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: False)
+        assert bootstrap(client, test_widget).json()["hideBranding"] is False
+
+    def test_a_plan_without_workflows_boots_a_plain_chat(self, client, db, test_widget, test_agent, monkeypatch):
+        test_agent.use_workflow = True
+        test_agent.active_workflow_id = uuid.uuid4()
+        monkeypatch.setattr(widget_bootstrap, "plan_feature_on", lambda *a: False)
+
+        assert bootstrap(client, test_widget).json()["workflow"] is False
+
     def test_a_new_visitor_gets_an_anonymous_token_and_the_widget_data(self, client, test_widget, test_agent):
         response = bootstrap(client, test_widget)
 
@@ -313,7 +328,7 @@ class TestBootstrap:
         data = response.json()
         assert set(data) == {
             "widgetId", "agentName", "customization", "customerId", "initialToken",
-            "customer", "workflow", "allowAttachments", "presence",
+            "customer", "workflow", "allowAttachments", "presence", "hideBranding",
         }
         assert data["widgetId"] == test_widget.id
         assert data["agentName"] == (test_agent.display_name or test_agent.name)

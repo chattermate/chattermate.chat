@@ -34,6 +34,7 @@ from app.models.agent import Agent
 from app.models.widget import Widget
 from app.repositories.agent import AgentRepository
 from app.services import conversation_token
+from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on, plan_hides_branding
 from app.utils.business_hours import is_within_business_hours
 
 logger = get_logger(__name__)
@@ -62,6 +63,14 @@ class WidgetSession:
     customer_id: Optional[str]
     token: str
     presence: dict
+    runs_workflow: bool
+    hide_branding: bool
+
+
+def agent_runs_workflow(db: Session, agent: Agent) -> bool:
+    """Whether visitors get the agent's workflow, which its plan can take away."""
+    return (bool(agent.use_workflow and agent.active_workflow_id)
+            and plan_feature_on(db, agent.organization_id, WORKFLOW_FEATURE))
 
 
 def find_widget(db: Session, widget_id: str) -> Widget:
@@ -141,7 +150,9 @@ def open_session(db: Session, widget: Widget, token: Optional[str], source: Opti
         # no customer yet keeps its conversation key
         token = mint_widget_token(widget.id, conversation_key(token_payload), source=source)
 
-    return WidgetSession(widget=widget, agent=agent, customer_id=customer_id, token=token, presence=_presence(agent))
+    return WidgetSession(widget=widget, agent=agent, customer_id=customer_id, token=token, presence=_presence(agent),
+                         runs_workflow=agent_runs_workflow(db, agent),
+                         hide_branding=plan_hides_branding(db, agent.organization_id))
 
 
 async def _customization(agent: Agent) -> dict:
@@ -187,7 +198,8 @@ async def initial_data(session: WidgetSession) -> dict:
         "customerId": session.customer_id or "",
         "initialToken": session.token or "",
         "customer": {},
-        "workflow": bool(agent.use_workflow and agent.active_workflow_id),
+        "workflow": session.runs_workflow,
         "allowAttachments": bool(agent.allow_attachments),
         "presence": session.presence,
+        "hideBranding": session.hide_branding,
     }

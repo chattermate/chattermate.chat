@@ -63,7 +63,8 @@ from app.services.human_routing import (
 from app.services.host_action_runtime import (
     offered_actions, replay_open_call, start_paused_turn, waiting_on_page,
 )
-from app.services.ai_access import plan_allows_ai, tell_customer_ai_is_off
+from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
+from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
 from app.services.widget_reply import (
     create_widget_agent,
     deliver_ai_reply,
@@ -561,8 +562,10 @@ async def handle_widget_chat(sid, data):
                        or plan_allows_ai(db, org_id, session['ai_config'].model_type))
         ai_replies_enabled = agent_uses_ai and plan_allows
 
-        # Check if agent uses workflow and no human agent has taken over
-        if ai_replies_enabled and active_session.workflow_id and active_session.user_id is None:
+        # Check if agent uses workflow and no human agent has taken over. A plan
+        # without workflows falls through to the normal AI agent below.
+        if (ai_replies_enabled and active_session.workflow_id and active_session.user_id is None
+                and plan_feature_on(db, org_id, WORKFLOW_FEATURE)):
             await emit_bot_typing(session_id)
             # Handle workflow chat using the dedicated service
             workflow_chat_service = WorkflowChatService(db)
@@ -1522,9 +1525,8 @@ async def handle_get_workflow_state(sid):
         chat_history = await chat_repo.get_session_history(session_id)
         has_history = len(chat_history) > 0
 
-        # If agent uses workflow, handle workflow state. Its nodes can call the
-        # model, so it starts only while the plan allows the AI.
-        if active_session.workflow_id and plan_allows_ai(db, org_id, session['ai_config'].model_type):
+        # If agent uses workflow, handle workflow state, while the plan allows it
+        if active_session.workflow_id and workflow_may_run(db, org_id, session['ai_config'].model_type):
             current_node_id = active_session.current_node_id
             
             # If no current node and no history - start from beginning by executing workflow
@@ -1792,8 +1794,8 @@ async def handle_proceed_workflow(sid, data):
         if not active_session or not active_session.workflow_id:
             raise ValueError("No active workflow session found")
 
-        # Its nodes can call the model: the visitor's next message reaches the team
-        if not plan_allows_ai(db, org_id, session['ai_config'].model_type):
+        # The visitor's next message goes to the normal agent, or the team
+        if not workflow_may_run(db, org_id, session['ai_config'].model_type):
             return
 
         # Simply update to next node and execute it
@@ -2091,9 +2093,9 @@ async def handle_form_submission(sid, data):
                 }, to=sid, namespace='/widget')
                 return
 
-        # The next nodes can call the model. What the visitor filled in still
-        # reaches the team.
-        if not plan_allows_ai(db, org_id, session['ai_config'].model_type):
+        # The workflow can't carry on. What the visitor filled in still reaches
+        # the team.
+        if not workflow_may_run(db, org_id, session['ai_config'].model_type):
             stored = ChatRepository(db).create_message({
                 "message": sanitize_message("\n".join(f"{name}: {value}" for name, value in form_data.items())),
                 "message_type": "user",
@@ -2103,7 +2105,9 @@ async def handle_form_submission(sid, data):
                 "customer_id": customer_id,
             })
             await relay_stored_message(active_session, stored, USER_MESSAGE)
-            if await tell_customer_ai_is_off(db, active_session):
+            if plan_allows_ai(db, org_id, session['ai_config'].model_type):
+                await acknowledge_form(db, active_session)
+            elif await tell_customer_ai_is_off(db, active_session):
                 await send_handoff_contact_form(session, db)
             return
 

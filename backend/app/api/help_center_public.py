@@ -39,6 +39,7 @@ from app.models.help_center import HelpCenterSettings
 from app.repositories.ai_config import AIConfigRepository
 from app.repositories.faq import FAQRepository
 from app.services.ai_access import plan_allows_ai
+from app.services.feature_gate import plan_hides_branding
 from app.services.file_storage import resolve_public_url
 from app.services.help_center_content import (
     excerpt,
@@ -140,7 +141,7 @@ def _base_path(request: Request) -> str:
     return request.scope.get("help_center", {}).get("base_path", "")
 
 
-async def _chrome_context(row: HelpCenterSettings, base_path: str = "") -> dict:
+async def _chrome_context(db: Session, row: HelpCenterSettings, base_path: str = "") -> dict:
     """Shared header/footer/widget context used by every rendered page.
 
     `base_path` is the URL prefix templates prepend to internal links: "" for
@@ -156,6 +157,7 @@ async def _chrome_context(row: HelpCenterSettings, base_path: str = "") -> dict:
         "logo_url": await resolve_public_url(row.logo_url) if row.logo_url else None,
         "favicon_url": await resolve_public_url(row.favicon_url) if row.favicon_url else None,
         "header_links": row.header_links or [],
+        "hide_branding": plan_hides_branding(db, row.organization_id),
         "widget_id": widget_id_for(row),
         # The widget LOADER (chattermate.min.js) is served by the frontend, while
         # the widget APP it pulls in (/assets/widget.js) is served from
@@ -215,7 +217,7 @@ async def index(request: Request, q: str = "", db: Session = Depends(get_db)):
     social = _social_context(row, site)
     published = [faq for _category, faqs in groups for faq in faqs]
     context = {
-        **await _chrome_context(row, _base_path(request)),
+        **await _chrome_context(db, row, _base_path(request)),
         **social,
         "request": request,
         "groups": card_groups,
@@ -306,7 +308,7 @@ async def _render_article(
     social = _social_context(row, site)
     crumbs = breadcrumbs(row, faq, base_path, site)
     context = {
-        **await _chrome_context(row, base_path),
+        **await _chrome_context(db, row, base_path),
         **social,
         "request": request,
         "article": article_view,

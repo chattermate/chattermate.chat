@@ -1304,6 +1304,9 @@ const isHandedOverToHuman = computed(() => !!humanAgent.value?.human_agent_name)
 const presence = computed(() =>
   presenceLine(window.__INITIAL_DATA__?.presence, isHandedOverToHuman.value))
 
+// The plan decides, so a page with no answer yet keeps the branding.
+const showBranding = computed(() => !window.__INITIAL_DATA__?.hideBranding)
+
 const canUploadMore = computed(() => {
   // Attachments only allowed when:
   // 1. allow_attachments setting is enabled
@@ -2072,7 +2075,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             <p class="widget-unavailable-message">
                 This chat widget is not currently configured. Please contact the website administrator to enable chat support.
             </p>
-            <div class="widget-unavailable-footer">
+            <div v-if="showBranding" class="widget-unavailable-footer">
                 <svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
@@ -2157,6 +2160,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             :loading="loading"
             :show-citations="showCitations"
             :disclaimer="showAiDisclaimer ? AI_DISCLAIMER_TEXT : ''"
+            :show-branding="showBranding"
             :active="hostVisible"
             :hotkey="askAiHotkey"
             :can-start-new-chat="canStartNewChat"
@@ -2239,7 +2243,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             </div>
 
             <!-- Powered by footer for welcome message -->
-            <div class="powered-by-welcome" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by-welcome" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
@@ -2271,7 +2275,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                 </div>
             </div>
             <!-- Powered by footer for landing page -->
-            <div class="powered-by-landing" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by-landing" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
@@ -2434,7 +2438,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                 </div>
             </div>
             <!-- Powered by footer for form -->
-            <div class="powered-by-landing" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by-landing" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
@@ -3159,7 +3163,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             </div>
 
             <!-- Powered by footer -->
-            <div class="powered-by" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>

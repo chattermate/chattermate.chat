@@ -30,6 +30,7 @@ from app.agents.history_memory import BoundedHistoryMemory, run_with_overflow_re
 from app.agents.host_actions.turns import fill_results, paused_run_tools, paused_turn
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services.feature_gate import LEAD_CAPTURE_FEATURE, plan_feature_on
 from app.services.widget_identity import trusts_identity_in_session
 from app.models.session_to_agent import SessionStatus
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse, TransferReasonType, EndChatReasonType
@@ -461,7 +462,7 @@ class ChatAgent(ChatAgentMCPMixin):
                 try:
                     from app.repositories.lead_capture import LeadCaptureConfigRepository
                     lcc = LeadCaptureConfigRepository(db).get_by_agent(agent_id)
-                    if lcc:
+                    if lcc and plan_feature_on(db, org_id, LEAD_CAPTURE_FEATURE):
                         self.lead_capture_enabled = bool(lcc.enabled)
                         self.lead_capture_fields = lcc.fields or []
                         self.lead_capture_require_consent = bool(lcc.require_consent)

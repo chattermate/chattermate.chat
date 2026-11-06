@@ -24,7 +24,7 @@ from app.models.session_to_agent import SessionStatus
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import ai_access, host_action_runtime, message_delivery, widget_reply
-from app.services.ai_access import AI_OFF_NOTICE
+from app.services.ai_access import AI_OFF_ATTRIBUTE, AI_OFF_NOTICE, FORM_RECEIVED_NOTICE
 from tests.socket_db import serve_socket_db
 
 
@@ -65,6 +65,12 @@ def chat(db, test_widget, test_ai_config, test_customer, sio, monkeypatch):
 
 def plan_says(monkeypatch, allowed):
     monkeypatch.setattr(widget_chat, "plan_allows_ai", lambda *a, **k: allowed)
+    monkeypatch.setattr(ai_access, "plan_allows_ai", lambda *a, **k: allowed)
+
+
+def plan_has_workflows(monkeypatch, allowed):
+    monkeypatch.setattr(widget_chat, "plan_feature_on", lambda *a, **k: allowed)
+    monkeypatch.setattr(ai_access, "plan_feature_on", lambda *a, **k: allowed)
 
 
 async def send(text="hello"):
@@ -203,3 +209,65 @@ class TestWidgetWithAiOff:
         history = await ChatRepository(db).get_session_history(str(chat.session_id))
         assert history[0].message == "email: a@b.co"
         assert history[1].message == AI_OFF_NOTICE
+
+
+@pytest.mark.asyncio
+class TestWidgetOnAPlanWithoutWorkflows:
+    @pytest.fixture(autouse=True)
+    def workflow_session(self, chat, monkeypatch):
+        plan_says(monkeypatch, True)
+        plan_has_workflows(monkeypatch, False)
+        chat.workflow_id = uuid4()
+        chat.current_node_id = uuid4()
+
+    async def test_the_normal_agent_answers_instead(self, chat, sio):
+        with patch("app.api.widget_chat.WorkflowChatService") as workflow_chat:
+            create_async, _ = await send()
+
+        workflow_chat.assert_not_called()
+        create_async.assert_awaited_once()
+
+    async def test_the_workflow_is_back_when_the_plan_is(self, chat, sio, monkeypatch):
+        plan_has_workflows(monkeypatch, True)
+        with patch("app.api.widget_chat.WorkflowChatService") as workflow_chat:
+            workflow_chat.return_value.handle_workflow_chat = AsyncMock(return_value=None)
+            create_async, _ = await send()
+
+        workflow_chat.return_value.handle_workflow_chat.assert_awaited_once()
+        create_async.assert_not_awaited()
+
+    async def test_a_widget_asking_for_the_workflow_is_told_to_chat(self, chat, sio):
+        execution = await start_workflow()
+
+        execution.assert_not_called()
+        states = [call[0][1] for call in sio.emit.call_args_list if call[0][0] == 'workflow_state']
+        assert [state['type'] for state in states] == ['ready']
+
+    async def test_it_does_not_advance(self, chat, sio):
+        with patch("app.api.widget_chat.WorkflowExecutionService") as execution:
+            await widget_chat.handle_proceed_workflow("sid", {})
+
+        execution.assert_not_called()
+
+    async def test_a_form_left_open_still_reaches_the_team(self, db, chat, sio, monkeypatch):
+        workflow = MagicMock(nodes=[MagicMock(id=chat.current_node_id, form_fields=[])])
+        monkeypatch.setattr("app.repositories.workflow.WorkflowRepository.get_workflow_with_nodes_and_connections",
+                            lambda self, workflow_id: workflow)
+
+        with patch("app.api.widget_chat.WorkflowExecutionService") as execution:
+            await widget_chat.handle_form_submission("sid", {"form_data": {"email": "a@b.co"}})
+
+        execution.assert_not_called()
+        history = await ChatRepository(db).get_session_history(str(chat.session_id))
+        assert [row.message for row in history] == ["email: a@b.co", FORM_RECEIVED_NOTICE]
+        # The AI is still on: a real stop later in this chat still gets its notice
+        assert not ChatRepository(db).has_message_flag(str(chat.session_id), AI_OFF_ATTRIBUTE)
+        assert "display_form" not in event_names(sio)
+
+    async def test_a_person_holding_the_chat_is_untouched(self, chat, sio, test_user):
+        chat.user_id = test_user.id
+        with patch("app.api.widget_chat.WorkflowChatService") as workflow_chat:
+            create_async, _ = await send()
+
+        workflow_chat.assert_not_called()
+        create_async.assert_not_awaited()

@@ -724,3 +724,15 @@ def test_path_dispatch_slug_url_redirects_with_the_base_path(
 
     assert r.status_code == 301
     assert r.headers["location"] == f"/help/test-org{MIGRATED_PATH}"
+
+
+class TestBranding:
+    def page(self, client, help_center, monkeypatch, hidden):
+        monkeypatch.setattr("app.api.help_center_public.plan_hides_branding", lambda *a: hidden)
+        return client.get("/", headers={"host": HOST})
+
+    def test_shown_by_default(self, client, help_center, monkeypatch):
+        assert 'class="hc-powered"' in self.page(client, help_center, monkeypatch, False).text
+
+    def test_a_plan_with_custom_branding_removes_it(self, client, help_center, monkeypatch):
+        assert 'class="hc-powered"' not in self.page(client, help_center, monkeypatch, True).text

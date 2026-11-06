@@ -625,6 +625,8 @@ onMounted(async () => {
       // Map common error reasons to user-friendly messages
       if (reason === 'cancelled') {
         errorMessage = `${name} connection was cancelled`
+      } else if (reason === 'plan_required') {
+        errorMessage = "Your plan doesn't include channels. Upgrade to connect one."
       } else if (reason === 'invalid_state') {
         errorMessage = 'Authentication session expired or is invalid'
       } else if (reason.includes('unauthorized')) {

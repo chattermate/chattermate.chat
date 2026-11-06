@@ -26,6 +26,7 @@ from app.models.mcp_tool import MCPTransportType
 from app.models.schemas.mcp_tool import MAX_USAGE_GUIDANCE_CHARS
 from app.core.logger import get_logger
 from app.core.outbound_policy import check_outbound_target
+from app.services.feature_gate import MCP_TOOLS_FEATURE, plan_feature_on
 from app.tools.mcp_connection import HeldConnection
 from app.tools.mcp_outbound import remote_params_classes
 from app.core.config import settings
@@ -156,6 +157,8 @@ class MCPToolsManager:
             return []
         try:
             with SessionLocal() as db:
+                if not plan_feature_on(db, org_id, MCP_TOOLS_FEATURE):
+                    return []
                 configs = MCPToolRepository(db).get_by_ids(org_id, tool_ids)
         except Exception as e:
             logger.error(f"Failed to load MCP tools {tool_ids} for org {org_id}: {e}")
@@ -180,6 +183,8 @@ class MCPToolsManager:
         try:
             # Get MCP tools for this agent from database
             with SessionLocal() as db:
+                if not plan_feature_on(db, org_id, MCP_TOOLS_FEATURE):
+                    return self.mcp_tools
                 mcp_tool_repo = MCPToolRepository(db)
                 agent_mcp_tools = mcp_tool_repo.get_agent_mcp_tools(agent_id)
         except Exception as e:
