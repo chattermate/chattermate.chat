@@ -20,6 +20,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 
 import MetaChannelConnect from '../../../components/integrations/MetaChannelConnect.vue'
 import channelsService from '../../../services/channels'
+import { toast } from 'vue-sonner'
 
 vi.mock('vue-sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock('../../../services/channels', () => ({
@@ -29,7 +30,7 @@ vi.mock('../../../services/agent', () => ({ agentService: { getOrganizationAgent
 // The manual form, as when Meta's one-click signup isn't offered
 vi.mock('../../../composables/useMetaSignup', () => ({
   useMetaSignup: () => ({
-    signupEnabled: ref(false), signingUp: ref(false), showManualForm: ref(true), signupPages: ref([]),
+    checkSignup: vi.fn(), signupChecked: ref(true), signupEnabled: ref(false), signingUp: ref(false), showManualForm: ref(true), signupPages: ref([]),
     connectingPage: ref(false), copy: { intro: '', cta: '' }, startSignup: vi.fn(), onPageSelected: vi.fn(),
   }),
 }))
@@ -50,12 +51,18 @@ const fill = async (wrapper: ReturnType<typeof mount>, values: Record<string, st
 describe('MetaChannelConnect app secret', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('connects without a secret and sends none', async () => {
-    vi.mocked(channelsService.connectWhatsApp).mockResolvedValue({ ...OWN_APP_ACCOUNT, webhook_url: undefined } as any)
+  it('refuses to connect without a secret', async () => {
     const wrapper = mount(MetaChannelConnect, { props: { channel: 'whatsapp' }, global: { stubs: { 'font-awesome-icon': true } } })
-    await fill(wrapper, { phone_number_id: 'PN9', access_token: 'EAAG-x' })
-    expect(channelsService.connectWhatsApp).toHaveBeenCalledWith({ phone_number_id: 'PN9', access_token: 'EAAG-x' })
-    expect(wrapper.text()).not.toContain('Callback URL')
+    await fill(wrapper, { phone_number_id: 'PN9', access_token: 'EAAG-x', app_secret: '   ' })
+    expect(channelsService.connectWhatsApp).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith('Please fill in: App secret')
+  })
+
+  it('asks for the secret on Messenger too', async () => {
+    const wrapper = mount(MetaChannelConnect, { props: { channel: 'messenger' }, global: { stubs: { 'font-awesome-icon': true } } })
+    await fill(wrapper, { page_id: 'PAGE9', page_access_token: 'EAAG-p' })
+    expect(channelsService.connectMessenger).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith('Please fill in: App secret')
   })
 
   it('sends the secret and shows where webhooks go', async () => {

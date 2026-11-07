@@ -62,10 +62,14 @@ const resumePoint = async () => {
   if (record.agentId) return record
   const server = await serverProgress()
   if (!server?.agent_id || !(server.step in WIZARD_STEP_FOR)) return record
+  const step = WIZARD_STEP_FOR[server.step]
+  // Reaching a step means the ones before it are done, or Finish would leave
+  // the resume banner up.
   return onboarding.patch(orgId, {
     agentId: server.agent_id,
     widgetId: server.widget_id,
-    currentStep: WIZARD_STEP_FOR[server.step],
+    currentStep: step,
+    completedSteps: Array.from({ length: step }, (_, i) => i),
   })
 }
 
@@ -180,6 +184,16 @@ const handleAssistantChange = async (area: string) => {
 const handleAssistantStep = (key: StepKey) => {
   const index = STEP_KEYS.indexOf(key) as OnboardingStepIndex
   if (index > 0 && !agentId.value) return
+  // Moving on counts the same as each passed step's own button; going back
+  // finishes nothing.
+  if (index > currentStep.value) {
+    followAssistant.value = false
+    const from = currentStep.value
+    for (let step = from; step < index; step++) {
+      completeAndAdvance(step as OnboardingStepIndex, index)
+    }
+    return
+  }
   goTo(index)
 }
 
