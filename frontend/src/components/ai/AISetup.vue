@@ -148,15 +148,10 @@ const currentPlan = computed(() => currentSubscription.value?.plan)
 const currentPlanMessageLimit = computed(() => {
   const plan = currentPlan.value
   if (!plan || !plan.max_messages) {
-    return 'Unlimited messages/month'
+    return 'Unlimited AI replies'
   }
   
-  // Format the number with commas for better readability
-  const formattedLimit = plan.max_messages.toLocaleString()
-  
-  // Don't show "per seat" if max_agents is 1 (single agent plan)
-  const perSeatText = plan.max_agents === 1 ? '' : ' per seat'
-  return `${formattedLimit} messages/month${perSeatText}`
+  return `${plan.max_messages.toLocaleString()} AI replies a month`
 })
 
 const currentPlanName = computed(() => {
@@ -456,11 +451,11 @@ const chatterMateButtonText = computed(() => {
                 <div class="upgrade-info">
                   <div class="upgrade-icon">⚡</div>
                   <div class="upgrade-text">
-                    <div class="upgrade-title">Want more messages?</div>
+                    <div class="upgrade-title">Want more AI replies?</div>
                     <div class="upgrade-description">
-                      Upgrade to {{ nextUpgradePlan.name }} for 
-                      {{ nextUpgradePlan.max_messages ? nextUpgradePlan.max_messages.toLocaleString() : 'unlimited' }} 
-                      messages/month{{ nextUpgradePlan.max_agents === 1 ? '' : ' per seat' }}
+                      Upgrade to {{ nextUpgradePlan.name }} for
+                      {{ nextUpgradePlan.max_messages ? nextUpgradePlan.max_messages.toLocaleString() : 'unlimited' }}
+                      AI replies a month
                     </div>
                   </div>
                 </div>

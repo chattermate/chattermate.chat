@@ -36,6 +36,7 @@ import { updateUserStatus } from '@/services/users'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { myAvatarUrl } from '@/config/api'
 import { useBreakpoint } from '@/composables/useBreakpoint'
+import { planDisplayName, planShortName, trialLabel, TRIAL_ENDING_SOON_DAYS } from '@/utils/planDisplay'
 
 const props = defineProps<{
     hideSidebar?: boolean
@@ -99,6 +100,15 @@ const currentPlan = computed(() => subscriptionStore.value.currentPlan)
 const isLoadingPlan = computed(() => subscriptionStore.value.isLoadingPlan)
 const isInTrial = computed(() => subscriptionStore.value.isInTrial)
 const trialDaysLeft = computed(() => subscriptionStore.value.trialDaysLeft)
+const planName = computed(() => planDisplayName(currentPlan.value?.plan))
+// "(yearly)" is noise in a header badge
+const trialBadgeText = computed(() => trialLabel(planShortName(planName.value), trialDaysLeft.value))
+const trialEndingSoon = computed(() => trialDaysLeft.value <= TRIAL_ENDING_SOON_DAYS)
+/** Paid tiers share one badge style; Free stays neutral. */
+const planBadgeTone = computed(() => {
+    const type = currentPlan.value?.plan?.type
+    return type && type !== 'free' ? 'paid' : 'free'
+})
 
 const userAvatarSrc = computed(() => {
   if (!currentUser.value?.profile_pic) return userAvatar
@@ -311,10 +321,10 @@ const openNotificationsFromSheet = () => {
                             <div v-else-if="isInTrial" class="trial-info">
                                 <span
                                     class="trial-badge"
-                                    :class="{ clickable: canManageSubscription }"
+                                    :class="{ clickable: canManageSubscription, 'ending-soon': trialEndingSoon }"
                                     @click="canManageSubscription && navigateToUpgrade()"
                                 >
-                                    Trial ({{ trialDaysLeft }} days left)
+                                    {{ trialBadgeText }}
                                 </span>
                             </div>
                         </div>
@@ -340,9 +350,9 @@ const openNotificationsFromSheet = () => {
                                     <div class="user-info" v-if="isSidebarOpen">
                                         <span class="name">{{ userName }}</span>
                                         <div class="plan-info">
-                                            <span class="plan-badge" :class="currentPlan?.plan?.type">
+                                            <span class="plan-badge" :class="planBadgeTone">
                                                 <span class="plan-icon">⚡</span>
-                                                {{ currentPlan?.plan?.name || '' }}
+                                                {{ planName }}
                                             </span>
                                         </div>
                                     </div>
@@ -852,14 +862,9 @@ const openNotificationsFromSheet = () => {
     color: var(--text3);
 }
 
-.plan-badge.pro {
-    background: linear-gradient(45deg, #000000, #333333);
-    color: white;
-}
-
-.plan-badge.enterprise {
-    background: linear-gradient(45deg, var(--accent-solid), var(--accent-solid));
-    color: white;
+.plan-badge.paid {
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
 }
 
 .plan-icon {
@@ -914,8 +919,8 @@ const openNotificationsFromSheet = () => {
 }
 
 .trial-badge {
-    background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid));
-    color: white;
+    background: var(--accent-solid);
+    color: var(--on-accent-solid);
     padding: 4px 12px;
     border-radius: 12px;
     font-size: 0.875rem;
@@ -931,6 +936,12 @@ const openNotificationsFromSheet = () => {
 
 .trial-badge.clickable {
     cursor: pointer;
+}
+
+.trial-badge.ending-soon {
+    background: var(--warning-bg);
+    color: var(--warning-color);
+    box-shadow: inset 0 0 0 1px var(--warning-border);
 }
 
 .message-limit-banner {

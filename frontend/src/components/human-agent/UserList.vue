@@ -68,6 +68,12 @@ const { hasEnterpriseModule } = useEnterpriseFeatures()
 const currentSubscription = computed(() => subscriptionStorage.getCurrentSubscription())
 const isSubscriptionActive = computed(() => subscriptionStorage.isSubscriptionActive())
 const currentUserCount = computed(() => users.value.filter(user => user.is_active).length)
+const maxUsers = computed(() => (currentSubscription.value ? subscriptionStorage.getFeatureLimit('max_users') : null))
+const teamLimitText = computed(() =>
+  maxUsers.value === null
+    ? 'Upgrade your plan to add team members.'
+    : `Your plan includes ${maxUsers.value} team member${maxUsers.value === 1 ? '' : 's'}. Upgrade to add more.`
+)
 
 // Check if user creation is locked due to limits (only if enterprise module exists)
 const isUserCreationLocked = computed(() => {
@@ -80,19 +86,10 @@ const isUserCreationLocked = computed(() => {
     return true
   }
   
-  // Check if max_users feature exists in subscription
-  const hasMaxUsersFeature = subscriptionStorage.hasFeature('max_users')
-  if (!hasMaxUsersFeature) {
-    return false // No user limits if feature doesn't exist
-  }
-  
-  // Get max users from subscription quantity (this is the user seat limit)
-  const maxUsers = currentSubscription.value.quantity
-  if (maxUsers === null || maxUsers === undefined) {
-    return false // Unlimited users
-  }
-  
-  return currentUserCount.value >= maxUsers
+  // The plan's team limit (the same max_users the server enforces);
+  // no limit means unlimited
+  const limit = maxUsers.value
+  return limit !== null && currentUserCount.value >= limit
 })
 
 // Show upgrade modal state
@@ -551,32 +548,13 @@ onMounted(async () => {
     <div v-if="hasEnterpriseModule && showUpgradeModal" class="upgrade-modal-overlay" @click="closeUpgradeModal">
       <div class="upgrade-modal" @click.stop>
         <div class="upgrade-modal-header">
-          <h3>User Limit Reached</h3>
+          <h3>Team limit reached</h3>
           <button class="close-button" @click="closeUpgradeModal">×</button>
         </div>
         <div class="upgrade-modal-content">
           <p class="upgrade-description">
-            You've reached your plan's user limit ({{ currentUserCount }}/{{ currentSubscription?.quantity }}). 
-            Upgrade your plan to add more users and unlock additional features.
+            {{ teamLimitText }}
           </p>
-          <div class="upgrade-features">
-            <div class="feature-item">
-              <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-              <span>More user seats for your team</span>
-            </div>
-            <div class="feature-item">
-              <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-              <span>Advanced user management features</span>
-            </div>
-            <div class="feature-item">
-              <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-              <span>Enhanced collaboration tools</span>
-            </div>
-            <div class="feature-item">
-              <font-awesome-icon icon="fa-solid fa-check" class="feature-icon" />
-              <span>Priority support</span>
-            </div>
-          </div>
         </div>
         <div class="upgrade-modal-footer">
           <button class="upgrade-button primary" @click="handleUpgrade">
@@ -1051,23 +1029,6 @@ onMounted(async () => {
   color: var(--muted);
   line-height: 1.6;
   margin-bottom: var(--space-lg);
-}
-
-.upgrade-features {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.feature-icon {
-  color: var(--accent-ink);
-  font-size: 0.875rem;
 }
 
 .upgrade-modal-footer {

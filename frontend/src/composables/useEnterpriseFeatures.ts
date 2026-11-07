@@ -52,6 +52,9 @@ interface SubscriptionStore {
   isInTrial: boolean
   trialDaysLeft: number
   fetchCurrentPlan: () => Promise<void>
+  /** The plan catalog, once fetched (absent in the open-source build). */
+  availablePlans?: readonly Plan[]
+  fetchPlans?: () => Promise<void>
 }
 
 interface MessageLimitStatus {
@@ -169,13 +172,13 @@ export const useEnterpriseFeatures = () => {
     if (messageCount >= messageLimit) {
       return {
         type: 'error',
-        message: 'Message limit exceeded! Switch to your own model or upgrade plan.',
+        message: 'AI replies are paused until you upgrade or your usage resets.',
         percentage: 100,
       }
     } else if (usagePercentage >= 90) {
       return {
         type: 'warning',
-        message: `Approaching message limit (${Math.round(usagePercentage)}%). Consider upgrading your plan.`,
+        message: `You've used ${Math.round(usagePercentage)}% of this period's AI replies.`,
         percentage: usagePercentage,
       }
     }

@@ -18,6 +18,7 @@ limitations under the License.
 import { computed, ref, watch, onMounted } from 'vue'
 import { checkShopifyConnection } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
+import { useUpgradePlan } from '@/composables/useUpgradePlan'
 
 interface JiraProject {
   id: string;
@@ -99,6 +100,8 @@ const props = defineProps({
     default: ''
   }
 })
+
+const { upgradeText: ticketingUpgradeText } = useUpgradePlan('ai_ticketing')
 
 // Local state for Shopify connection
 const shopifyConnected = ref(false)
@@ -305,7 +308,7 @@ onMounted(async () => {
           </div>
           <label
             class="switch"
-            v-tooltip="ticketingLocked ? 'Available on the Pro plan — upgrade to enable AI ticketing.' : 'Turn native AI ticketing on or off for this agent'"
+            v-tooltip="ticketingLocked ? `${ticketingUpgradeText} to turn on AI ticketing.` : 'Turn native AI ticketing on or off for this agent'"
           >
             <input
               type="checkbox"
@@ -317,8 +320,7 @@ onMounted(async () => {
           </label>
         </div>
         <p v-if="ticketingLocked" class="helper-text">
-          AI Ticketing is a Pro-plan feature.
-          <router-link to="/settings/subscription" class="connect-link">Upgrade to enable</router-link>
+          <router-link to="/settings/subscription" class="connect-link">{{ ticketingUpgradeText }}</router-link> to turn on AI ticketing.
         </p>
         <p v-else class="helper-text">
           When on, this agent creates tickets during chats; Jira auto-ticketing below takes

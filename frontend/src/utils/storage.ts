@@ -27,7 +27,8 @@ interface BasePlan {
   max_knowledge_sources?: number
   max_sub_pages?: number
   data_retention_days?: number
-  features?: Record<string, boolean>
+  /** Flags, plus numeric limits such as max_users (null = no limit). */
+  features?: Record<string, boolean | number | null>
 }
 
 interface BaseSubscription {
@@ -186,20 +187,27 @@ export const subscriptionStorage = {
     return Boolean(subscription.plan.features[featureName])
   },
 
+  /** A numeric limit the plan sets in its features (max_users), or null
+   *  when the plan sets none - which means unlimited. */
+  getFeatureLimit(name: string): number | null {
+    const value = this.getCurrentSubscription()?.plan?.features?.[name]
+    return typeof value === 'number' ? value : null
+  },
+
   // Check multiple features at once
   hasFeatures(featureNames: string[]): { [key: string]: boolean } {
     const subscription = this.getCurrentSubscription()
     const result: { [key: string]: boolean } = {}
     
     featureNames.forEach(featureName => {
-      result[featureName] = subscription?.plan?.features?.[featureName] || false
+      result[featureName] = Boolean(subscription?.plan?.features?.[featureName])
     })
     
     return result
   },
 
   // Get all available features for the current plan
-  getAllFeatures(): { [key: string]: boolean } {
+  getAllFeatures(): Record<string, boolean | number | null> {
     const subscription = this.getCurrentSubscription()
     return subscription?.plan?.features || {}
   },
@@ -226,8 +234,9 @@ export const subscriptionStorage = {
       return now <= trialEnd
     }
     
-    // For active subscriptions
-    return subscription.status === 'active'
+    // Active, or past due: the server keeps a past-due org on its paid plan
+    // while the payment is retried, so its features stay unlocked here too
+    return subscription.status === 'active' || subscription.status === 'past_due'
   },
 
   // Get plan limits
