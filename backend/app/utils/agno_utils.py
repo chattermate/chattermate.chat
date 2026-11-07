@@ -50,6 +50,29 @@ class PinnedOpenAIChat(OpenAIChat):
                               "http_client": guarded_async_http_client(follow_redirects=True)})
 
 
+_GEMINI_MAJOR = re.compile(r'^(?:models/)?gemini-(\d+)', re.IGNORECASE)
+
+
+def gemini_thinking_kwargs(model_name: str) -> Optional[Dict[str, Any]]:
+    """Low thinking for Gemini 3 and later, nothing for older models.
+
+    Thinking cannot be switched off on Gemini 3+ and its tokens count against
+    max_output_tokens, which our agents keep at 1000-2000 — at the default level
+    the thoughts can use up the budget and the reply comes back cut short or
+    empty. 2.5 models take thinking_budget instead and reject thinking_level.
+
+    Passed as generative_model_kwargs because agno copies those into a fresh
+    config per request; generation_config is updated in place, so request-time
+    fields such as the tool list would stick to it between rounds.
+    """
+    from google.genai.types import ThinkingConfig, ThinkingLevel
+
+    match = _GEMINI_MAJOR.match(model_name.strip())
+    if not match or int(match.group(1)) < 3:
+        return None
+    return {"thinking_config": ThinkingConfig(thinking_level=ThinkingLevel.LOW)}
+
+
 def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int = 1000, response_format: Optional[Dict[str, Any]] = None, base_url: Optional[str] = None) -> Any:
     """
     Create and return the specified model based on model_type.
@@ -96,7 +119,8 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
         elif model_type == 'GOOGLE':
             from agno.models.google import Gemini
             # Gemini's agno model exposes max_output_tokens, not max_tokens.
-            return Gemini(api_key=api_key, id=model_name, max_output_tokens=max_tokens)
+            return Gemini(api_key=api_key, id=model_name, max_output_tokens=max_tokens,
+                          generative_model_kwargs=gemini_thinking_kwargs(model_name))
         elif model_type == 'GOOGLEVERTEX':
             from agno.models.vertexai import Gemini
             return Gemini(api_key=api_key, id=model_name, max_tokens=max_tokens)

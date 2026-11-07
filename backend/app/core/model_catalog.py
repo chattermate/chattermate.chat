@@ -90,12 +90,19 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "requires_api_key": True,
         "custom_allowed": True,
         "api_key_url": "https://aistudio.google.com/app/apikey",
-        # gemini-2.0-flash is shut down; use bare 2.5 IDs (avoid -latest/-preview).
+        # Gemini 3+ work with tools only because of the thought-signature patch in
+        # app.utils.agno_gemini_patches (agno 1.7.6 drops the signature and the
+        # second tool call of a turn then fails with a 400). Google only serves the
+        # 2.5 models to keys that have used them before, so a new key needs a 3+
+        # model. Use bare IDs (avoid -latest/-preview); gemini-2.0-flash is shut down.
         "models": [
+            _m("gemini-4-argon", "Gemini 4 Argon"),
+            _m("gemini-3.8-flash", "Gemini 3.8 Flash"),
+            _m("gemini-3.5-flash", "Gemini 3.5 Flash"),
+            _m("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite"),
             _m("gemini-2.5-pro", "Gemini 2.5 Pro"),
             _m("gemini-2.5-flash", "Gemini 2.5 Flash"),
             _m("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite"),
-            _m("gemini-3.5-flash", "Gemini 3.5 Flash"),
         ],
     },
     "MISTRAL": {

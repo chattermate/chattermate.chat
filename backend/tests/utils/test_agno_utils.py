@@ -192,9 +192,33 @@ class TestCreateModel:
             mock_gemini.assert_called_once_with(
                 api_key="test-api-key",
                 id="gemini-pro",
-                max_output_tokens=1000  # Gemini's agno model uses max_output_tokens
+                max_output_tokens=1000,  # Gemini's agno model uses max_output_tokens
+                generative_model_kwargs=None,  # pre-3 model: no thinking level
             )
             assert result == mock_model
+
+    def test_create_model_google_3_plus_thinks_low(self):
+        """Gemini 3+ thinking can't be turned off and eats max_output_tokens."""
+        from google.genai.types import ThinkingLevel
+
+        with patch("agno.models.google.Gemini") as mock_gemini:
+            agno_utils.create_model(
+                model_type="GOOGLE", api_key="k", model_name="gemini-3.5-flash"
+            )
+            kwargs = mock_gemini.call_args.kwargs["generative_model_kwargs"]
+            assert kwargs["thinking_config"].thinking_level == ThinkingLevel.LOW
+
+    @pytest.mark.parametrize("name,expected", [
+        ("gemini-2.5-flash", False),
+        ("gemini-pro", False),
+        ("gemini-3.5-flash-lite", True),
+        ("gemini-3.8-flash", True),
+        ("gemini-4-argon", True),
+        ("models/gemini-4-argon", True),
+        ("Gemini-10-ultra", True),
+    ])
+    def test_gemini_thinking_kwargs_by_version(self, name, expected):
+        assert (agno_utils.gemini_thinking_kwargs(name) is not None) is expected
 
     def test_create_model_googlevertex(self):
         """Test creating Google Vertex AI model (should trigger import error)"""
