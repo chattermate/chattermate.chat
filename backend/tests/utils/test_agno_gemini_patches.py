@@ -15,11 +15,13 @@ limitations under the License.
 """
 
 import json
+import logging
 
 import pytest
 
 pytest.importorskip("google.genai")
 
+from agno.agent import Agent
 from agno.models.base import Model
 from agno.models.google import Gemini
 from agno.models.message import Message
@@ -31,7 +33,11 @@ from google.genai.types import (
     Part,
 )
 
-from app.utils.agno_gemini_patches import SKIP_SIGNATURE, apply_gemini_patches
+from app.utils.agno_gemini_patches import (
+    SKIP_SIGNATURE,
+    _restore_signatures,
+    apply_gemini_patches,
+)
 
 SIG_A = b"\x01signature-a\xff"
 SIG_B = b"\x02signature-b\xfe"
@@ -40,7 +46,7 @@ SIG_B = b"\x02signature-b\xfe"
 @pytest.fixture
 def gemini():
     apply_gemini_patches()
-    return Gemini(id="gemini-3.5-flash", api_key="test")
+    return Gemini(id="gemini-3.8-flash", api_key="test")
 
 
 def _response(*parts):
@@ -258,6 +264,92 @@ def test_signatures_reach_the_assistant_message_via_agno(gemini):
 
     assert assistant.provider_data == model_response.provider_data
     assert assistant.tool_calls == model_response.tool_calls
+
+
+def test_gemini_2_5_never_gets_the_bypass():
+    """2.5 doesn't enforce signatures and isn't documented to accept the
+    bypass value, so an unsigned call there is sent exactly as before."""
+    apply_gemini_patches()
+    model = Gemini(id="gemini-2.5-flash-lite", api_key="test")
+    tool_call = {"id": "c1", "type": "function", "function": {"name": "a", "arguments": "{}"}}
+    contents, _ = model._format_messages(
+        [
+            Message(role="user", content="hi"),
+            Message(role="assistant", tool_calls=[tool_call]),
+            _tool_result(tool_call),
+        ]
+    )
+
+    assert _call_parts(contents)[0].thought_signature is None
+
+
+def test_misaligned_history_is_left_alone(gemini, caplog):
+    """If agno's formatting ever stops producing one content per calling
+    message, no signature may land on the wrong call."""
+    _, assistant = _roundtrip(gemini, _response(_call_part("search", SIG_A)))
+    contents = [
+        Content(role="user", parts=[Part(text="hi")]),
+        Content(role="model", parts=[_call_part("search")]),
+        Content(role="model", parts=[_call_part("other")]),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        _restore_signatures([Message(role="user", content="hi"), assistant], contents, True)
+
+    assert "did not line up" in caplog.text
+    assert [p.thought_signature for p in _call_parts(contents)] == [None, None]
+
+
+@pytest.mark.asyncio
+async def test_real_agno_streaming_loop_with_stored_history(tmp_path):
+    """Drive agno's own streaming run loop, with storage and history, across two
+    runs: every call in the current turn goes back with its own signature, and
+    earlier turns (whose provider_data storage drops) get no bypass."""
+    from agno.storage.sqlite import SqliteStorage
+
+    apply_gemini_patches()
+    sent = []
+    script = []
+
+    async def fake_stream(self, messages, **kwargs):
+        contents, _ = self._format_messages(messages)
+        sent.append([p.thought_signature for p in _call_parts(contents)])
+        yield script.pop(0)
+
+    def lookup(q: str) -> str:
+        """Look something up."""
+        return "result " + q
+
+    storage = SqliteStorage(table_name="runs", db_file=str(tmp_path / "s.db"))
+
+    def agent():
+        return Agent(
+            model=Gemini(id="gemini-3.8-flash", api_key="test"),
+            tools=[lookup],
+            add_history_to_messages=True,
+            storage=storage,
+            session_id="s1",
+        )
+
+    original_stream = Gemini.ainvoke_stream
+    Gemini.ainvoke_stream = fake_stream
+    try:
+        script[:] = [
+            _response(_call_part("lookup", SIG_A)),
+            _response(_call_part("lookup", SIG_B)),
+            _response(Part(text="done")),
+        ]
+        async for _ in await agent().arun("hi", stream=True):
+            pass
+        assert sent == [[], [SIG_A], [SIG_A, SIG_B]]
+
+        sent.clear()
+        script[:] = [_response(Part(text="again"))]
+        async for _ in await agent().arun("and again", stream=True):
+            pass
+        assert sent == [[None, None]]
+    finally:
+        Gemini.ainvoke_stream = original_stream
 
 
 def test_apply_is_idempotent():

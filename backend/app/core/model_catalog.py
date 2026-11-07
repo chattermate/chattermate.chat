@@ -60,6 +60,11 @@ def _m(value: str, label: str) -> CatalogModel:
 # unset. OpenAI's named successor to gpt-4o-mini, and cheaper per token.
 DEFAULT_CHATTERMATE_MODEL = "gpt-6-luna"
 
+# Gemini 3+'s thinking level; see MODEL_REQUEST_OVERRIDES["GOOGLE"].
+_GEMINI_LOW_THINKING: Dict[str, Any] = {
+    "generative_model_kwargs": {"thinking_config": {"thinking_level": "low"}},
+}
+
 # Extra agno model kwargs, by provider then lowercase model ID. Most current
 # models think by default, and agno 1.7.6 can't carry that thinking through a
 # tool loop — it drops OpenAI-style reasoning_content and keeps only one Claude
@@ -93,8 +98,8 @@ MODEL_REQUEST_OVERRIDES: Dict[str, Dict[str, Dict[str, Any]]] = {
         # generative_model_kwargs, which agno copies into a fresh config per
         # request; generation_config is updated in place, so the tool list would
         # stick to it between rounds.
-        "gemini-3*": {"generative_model_kwargs": {"thinking_config": {"thinking_level": "low"}}},
-        "gemini-4*": {"generative_model_kwargs": {"thinking_config": {"thinking_level": "low"}}},
+        "gemini-3*": _GEMINI_LOW_THINKING,
+        "gemini-4*": _GEMINI_LOW_THINKING,
     },
     "DEEPSEEK": {
         # With thinking on (the default), any request carrying tools is a 400

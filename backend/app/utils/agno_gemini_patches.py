@@ -32,8 +32,13 @@ limitations under the License.
 # One provider_data key per call ("<prefix><call id>") rather than one nested
 # dict: the streaming loop merges each delta's provider_data with dict.update, so
 # a nested dict from a later chunk would replace an earlier one.
+#
+# Signatures last for the run only: agno's Message.to_dict leaves provider_data
+# out, so calls replayed from stored history go back unsigned. Gemini validates
+# only the current turn, so that costs a little context, never a 400.
 
 import base64
+import re
 from typing import Dict, List, Optional
 
 from agno.models.message import Message
@@ -51,6 +56,16 @@ SIGNATURE_KEY_PREFIX = "gemini_thought_signature:"
 # current turn — the only one Gemini validates — and only when the real one is
 # missing, because Google warns it degrades the model's reasoning.
 SKIP_SIGNATURE = b"skip_thought_signature_validator"
+
+# Signatures are enforced from Gemini 3. 2.5 neither requires them nor is
+# documented to accept the bypass, so it never gets one.
+_ENFORCING_MAJOR = 3
+_GEMINI_MAJOR = re.compile(r"gemini-(\d+)", re.IGNORECASE)
+
+
+def _enforces_signatures(model_id: str) -> bool:
+    match = _GEMINI_MAJOR.search(model_id or "")
+    return bool(match) and int(match.group(1)) >= _ENFORCING_MAJOR
 
 
 def _signature_key(call_id: str) -> str:
@@ -104,7 +119,7 @@ def _current_turn_start(contents: List) -> int:
     return 0
 
 
-def _restore_signatures(messages: List[Message], contents: List) -> None:
+def _restore_signatures(messages: List[Message], contents: List, bypass_unsigned: bool) -> None:
     """Put each replayed functionCall's signature back on its Part.
 
     Every assistant message with tool calls becomes exactly one "model" content
@@ -132,7 +147,7 @@ def _restore_signatures(messages: List[Message], contents: List) -> None:
                 part.thought_signature = signature
         # Parallel calls carry one signature, on the first part. If none of them
         # has one, the first part is the one Gemini checks.
-        if index >= turn_start and not any(p.thought_signature for p in call_parts):
+        if bypass_unsigned and index >= turn_start and not any(p.thought_signature for p in call_parts):
             call_parts[0].thought_signature = SKIP_SIGNATURE
 
 
@@ -154,7 +169,7 @@ def apply_gemini_patches() -> None:
 
     def _format_messages(self, messages):
         contents, system_message = original_format(self, messages)
-        _restore_signatures(messages, contents)
+        _restore_signatures(messages, contents, _enforces_signatures(self.id))
         return contents, system_message
 
     def parse_provider_response(self, response, **kwargs):
