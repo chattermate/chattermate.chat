@@ -8,7 +8,9 @@ const getAgentById = vi.fn()
 let enterprise = true
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
-    moduleImports: { setupService: 'setup-service' },
+    moduleImports: { setupService: 'setup-service', setupAssistant: 'setup-assistant' },
+    // The setup assistant renders nothing here.
+    enterpriseComponent: () => ({ render: () => null }),
     loadModule: async () => (enterprise ? { setupService: { getProgress: () => getProgress() } } : null),
   })
 }))
@@ -30,9 +32,20 @@ const stubs = {
     emits: ['created'],
     template: `<button class="step-create" @click="$emit('created', { id: 'agent-1', name: 'Tom', agent_type: 'CUSTOMER_SUPPORT' })" />`,
   },
-  StepTeach: { props: ['agentId'], template: '<div class="step-teach">{{ agentId }}</div>' },
+  StepTeach: {
+    props: ['agentId', 'followAssistant'],
+    emits: ['back'],
+    template: `<button class="step-teach" :data-follow="String(!!followAssistant)" @click="$emit('back')">{{ agentId }}</button>`,
+  },
   StepTest: { props: ['widgetId'], template: '<div class="step-test">{{ widgetId }}</div>' },
   StepLaunch: { props: ['widgetId'], template: '<div class="step-launch">{{ widgetId }}</div>' },
+  SetupAssistant: {
+    emits: ['changed'],
+    template: `<div class="assistant">
+      <button class="taught" @click="$emit('changed', 'knowledge')" />
+      <button class="restyled" @click="$emit('changed', 'look')" />
+    </div>`,
+  },
 }
 
 const mountWizard = async () => {
@@ -63,6 +76,43 @@ describe('AIAgentOnboarding - where it resumes', () => {
     getProgress.mockResolvedValue({ step: 'launch', agent_id: 'agent-9', widget_id: 'w-9', hidden: false })
     const wrapper = await mountWizard()
     expect(wrapper.find('.step-launch').exists()).toBe(true)
+  })
+
+  describe('Teach following the assistant', () => {
+    const atTeach = async () => {
+      getProgress.mockResolvedValue({ step: 'teach', agent_id: 'agent-9', widget_id: 'w-9', hidden: false })
+      return mountWizard()
+    }
+    const following = (wrapper: Awaited<ReturnType<typeof mountWizard>>) =>
+      wrapper.find('.step-teach').attributes('data-follow')
+    const click = async (wrapper: Awaited<ReturnType<typeof mountWizard>>, selector: string) => {
+      await wrapper.find(selector).trigger('click')
+      await flushPromises()
+    }
+
+    it('does not by default', async () => {
+      expect(following(await atTeach())).toBe('false')
+    })
+
+    it('does once the assistant has changed the knowledge', async () => {
+      const wrapper = await atTeach()
+      await click(wrapper, '.taught')
+      expect(following(wrapper)).toBe('true')
+    })
+
+    it('does not for a change that is not about knowledge', async () => {
+      const wrapper = await atTeach()
+      await click(wrapper, '.restyled')
+      expect(following(wrapper)).toBe('false')
+    })
+
+    it('stops when they come back to the step by hand', async () => {
+      const wrapper = await atTeach()
+      await click(wrapper, '.taught')
+      await click(wrapper, '.step-teach')
+      await click(wrapper, '.step-create')
+      expect(following(wrapper)).toBe('false')
+    })
   })
 
   it('starts at Create when the org has no agent', async () => {

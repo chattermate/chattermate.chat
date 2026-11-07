@@ -109,6 +109,9 @@ razorpay
 # points at the wrong problem. Lift this together with the agno 2.x upgrade.
 mcp<2
 
+# Validates the argument schemas customers declare for in-app actions.
+jsonschema>=4.20,<5
+
 # UV tool runner for Python-based MCP servers
 uv
 

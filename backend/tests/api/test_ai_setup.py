@@ -16,7 +16,7 @@ limitations under the License.
 
 import pytest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from app.models.user import User
@@ -26,6 +26,7 @@ from app.models.permission import Permission, role_permissions
 from uuid import uuid4
 from app.api import ai_setup as ai_setup_router
 from app.core.auth import get_current_user, require_permissions
+from app.core.security import decrypt_api_key
 from app.models.schemas.ai_config import AIConfigCreate, AIConfigUpdate
 from pydantic import SecretStr
 from app.database import get_db
@@ -542,6 +543,37 @@ def test_update_ai_config_openai_compatible_base_url_only_validates_existing_key
     assert response.status_code == 200
     data = response.json()
     assert data["config"]["model_type"] == "OPENAI_COMPATIBLE"
+
+@pytest.mark.parametrize("payload", [
+    {"model_type": "OPENAI_COMPATIBLE", "model_name": "x", "base_url": "https://attacker.example/v1"},
+    {"model_type": "OPENAI", "model_name": "gpt-4o-mini"},
+])
+def test_leaving_the_hosted_model_needs_your_own_key(client, db, test_user, test_ai_config, payload):
+    """The stored key is the platform's: it must never reach a URL the request
+    names, or keep working under a provider the quota doesn't meter."""
+    test_ai_config.model_type = AIModelType.CHATTERMATE
+    db.commit()
+    with patch("app.api.ai_setup.ChatAgent.test_api_key", new=AsyncMock(return_value=True)) as tested:
+        response = client.put("/api/ai/config", json=payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["type"] == "api_key_required"
+    tested.assert_not_awaited()
+    db.refresh(test_ai_config)
+    assert test_ai_config.model_type == AIModelType.CHATTERMATE
+
+
+def test_leaving_the_hosted_model_with_your_own_key_works(client, db, test_user, test_ai_config):
+    test_ai_config.model_type = AIModelType.CHATTERMATE
+    db.commit()
+    with patch("app.api.ai_setup.ChatAgent.test_api_key", new=AsyncMock(return_value=True)):
+        response = client.put("/api/ai/config", json={
+            "model_type": "OPENAI", "model_name": "gpt-4o-mini", "api_key": "sk-mine"})
+
+    assert response.status_code == 200
+    db.refresh(test_ai_config)
+    assert decrypt_api_key(test_ai_config.encrypted_api_key) == "sk-mine"
+
 
 def test_update_ai_config_not_found(client, db, test_user):
     """Test updating AI config when none exists"""

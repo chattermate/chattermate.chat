@@ -32,6 +32,10 @@ import AgentInstructionsTab from './AgentInstructionsTab.vue'
 import AgentWorkflowTab from './AgentWorkflowTab.vue'
 import AgentMCPToolsTab from './AgentMCPToolsTab.vue'
 import AgentLeadCaptureTab from './AgentLeadCaptureTab.vue'
+import AgentActionsTab from './actions/AgentActionsTab.vue'
+import AgentJourneysTab from './journeys/AgentJourneysTab.vue'
+import { FEATURE_GATES, type GateKey } from './featureGates'
+import { useFeatureLock } from '@/composables/useFeatureLock'
 import { Cropper, CircleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
 import { useAgentChat } from '@/composables/useAgentChat'
@@ -376,7 +380,7 @@ const showTips = ref(false)
 // Dialog state for upgrade modal
 const router = useRouter()
 const showUpgradeModal = ref(false)
-const upgradeModalType = ref<'workflow' | 'mcp' | 'advanced' | 'lead-capture'>('workflow')
+const upgradeModalType = ref<GateKey>('workflow')
 
 const openTips = () => {
     showTips.value = true
@@ -396,12 +400,7 @@ const handleUpgrade = () => {
 }
 
 /** The feature the gate notice unlocks, by type - never derived from UI copy. */
-const gateFeatureLabel = computed(() => ({
-    workflow: 'Workflow',
-    mcp: 'MCP Tools',
-    advanced: 'Advanced Settings',
-    'lead-capture': 'Lead Capture',
-}[upgradeModalType.value] ?? 'this feature'))
+const gateFeatureLabel = computed(() => FEATURE_GATES[upgradeModalType.value].name)
 
 // Tab switching function
 const switchTab = (tab: string) => {
@@ -418,134 +417,20 @@ const hasWorkflowFeature = computed(() => {
     return subscriptionStorage.hasFeature('workflow')
 })
 
-// Check if subscription is active
-const isSubscriptionActive = computed(() => {
-    return subscriptionStorage.isSubscriptionActive()
-})
+// Paid agent features (see featureGates.ts). OSS deployments are never locked.
+const { isLocked } = useFeatureLock()
+const isWorkflowLocked = computed(() => isLocked('workflow'))
+const isMCPLocked = computed(() => isLocked('mcp'))
+const isAdvancedLocked = computed(() => isLocked('advanced'))
+const isTicketingLocked = computed(() => isLocked('ticketing'))
+const isLeadCaptureLocked = computed(() => isLocked('lead-capture'))
+const isJourneysLocked = computed(() => isLocked('journeys'))
 
-// Determine if workflow is locked (feature not available or subscription not active)
-const isWorkflowLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasWorkflowFeature.value || !isSubscriptionActive.value
-})
-
-// Check if MCP tools feature is available in current plan
-const hasMCPFeature = computed(() => {
-    return subscriptionStorage.hasFeature('mcp_tools')
-})
-
-// Determine if MCP tools is locked
-const isMCPLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasMCPFeature.value || !isSubscriptionActive.value
-})
-
-// Check if advanced features are available in current plan
-const hasAdvancedFeature = computed(() => {
-    return subscriptionStorage.hasFeature('advanced_settings')
-})
-
-// Determine if advanced tab is locked
-const isAdvancedLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasAdvancedFeature.value || !isSubscriptionActive.value
-})
-
-// AI Ticketing is a Pro-plan feature (the 'ai_ticketing' flag is true only for
-// Pro/Enterprise). Lock the per-agent toggle when the plan lacks it; OSS is
-// never locked.
-const hasTicketingFeature = computed(() => {
-    return subscriptionStorage.hasFeature('ai_ticketing')
-})
-const isTicketingLocked = computed(() => {
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasTicketingFeature.value || !isSubscriptionActive.value
-})
-
-// Check if lead capture feature is available in current plan (Pro+ only)
-const hasLeadCaptureFeature = computed(() => {
-    return subscriptionStorage.hasFeature('lead_capture')
-})
-
-// Determine if lead capture is locked. Lead Capture is a Pro-plan feature — the
-// 'lead_capture' flag is true only for Pro/Enterprise (not Free/Base), matching the
-// backend gate (check_feature_availability). OSS deployments are never locked.
-const isLeadCaptureLocked = computed(() => {
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasLeadCaptureFeature.value || !isSubscriptionActive.value
-})
-
-// Computed properties for dynamic modal content
-const modalTitle = computed(() => {
-    switch (upgradeModalType.value) {
-        case 'workflow':
-            return 'Unlock Workflow Features'
-        case 'mcp':
-            return 'Unlock MCP Tools'
-        case 'advanced':
-            return 'Unlock Advanced Settings'
-        case 'lead-capture':
-            return 'Unlock Lead Capture'
-        default:
-            return 'Unlock Premium Features'
-    }
-})
-
-const modalDescription = computed(() => {
-    switch (upgradeModalType.value) {
-        case 'workflow':
-            return 'Workflow mode allows you to create sophisticated automation flows with conditional logic, multiple steps, and advanced integrations.'
-        case 'mcp':
-            return 'MCP Tools enable integration with Model Context Protocol servers to extend your agent\'s capabilities with external data sources and services.'
-        case 'advanced':
-            return 'Advanced settings provide fine-grained control over your agent\'s behavior, performance tuning, and enterprise-grade configuration options.'
-        case 'lead-capture':
-            return 'Lead Capture lets your agent collect and qualify contact details from visitors — with triggers, qualifying questions, and custom fields — then routes qualified leads to your team.'
-        default:
-            return 'Upgrade your plan to access premium features and unlock the full potential of your AI agent.'
-    }
-})
-
-const modalFeatures = computed(() => {
-    switch (upgradeModalType.value) {
-        case 'workflow':
-            return [
-                'Visual workflow builder',
-                'Conditional logic & branching',
-                'Advanced integrations',
-                'Custom automation flows'
-            ]
-        case 'mcp':
-            return [
-                'Connect to MCP servers',
-                'External data integration',
-                'Custom tool extensions',
-                'Protocol-based communication'
-            ]
-        case 'advanced':
-            return [
-                'Performance optimization',
-                'Custom system prompts',
-                'Enterprise configurations',
-                'Advanced debugging tools'
-            ]
-        default:
-            return ['Premium features', 'Advanced capabilities', 'Enhanced functionality', 'Priority support']
-    }
-})
+// The upgrade modal's copy, by gate
+const modalGate = computed(() => FEATURE_GATES[upgradeModalType.value])
+const modalTitle = computed(() => modalGate.value.title)
+const modalDescription = computed(() => modalGate.value.description)
+const modalFeatures = computed(() => modalGate.value.bullets)
 
 // Determine if we should show workflow or general tab
 const showWorkflowTab = computed(() => {
@@ -808,7 +693,14 @@ onMounted(async () => {
     // Check if we should switch to knowledge tab based on URL query parameter
     const urlParams = new URLSearchParams(window.location.search)
     const tab = urlParams.get('tab')
-    if (tab && ['agent', 'preview', 'knowledge', 'integrations', 'mcp-tools', 'widget', 'advanced', 'workflow-builder', 'customization'].includes(tab)) {
+    // A link to a tab the plan locks opens its upgrade modal over the Agent tab.
+    const lockedTabs: Record<string, GateKey> = { 'lead-capture': 'lead-capture', 'mcp-tools': 'mcp', journeys: 'journeys', advanced: 'advanced', 'workflow-builder': 'workflow' }
+    if (tab && lockedTabs[tab] && isLocked(lockedTabs[tab])) {
+        // switchTab so the URL names the tab on show, not the locked one.
+        switchTab('agent')
+        upgradeModalType.value = lockedTabs[tab]
+        showUpgradeModal.value = true
+    } else if (tab && ['agent', 'preview', 'knowledge', 'integrations', 'lead-capture', 'mcp-tools', 'actions', 'journeys', 'widget', 'advanced', 'workflow-builder', 'customization'].includes(tab)) {
         activeTab.value = tab
     } else if (agentData.value.use_workflow === true) {
         // Show workflow builder tab by default when using workflow
@@ -1055,6 +947,22 @@ onMounted(async () => {
                             MCP Tools
                             <font-awesome-icon v-if="hasEnterpriseModule && isMCPLocked" icon="fa-solid fa-lock" class="lock-icon-small" />
                         </button>
+                        <button
+                            class="tab-button"
+                            :class="{ 'active': activeTab === 'actions' }"
+                            @click="switchTab('actions')"
+                        >
+                            Actions
+                        </button>
+                        <button
+                            class="tab-button"
+                            :class="{ 'active': activeTab === 'journeys', 'locked': isJourneysLocked }"
+                            @click="isJourneysLocked ? (upgradeModalType = 'journeys', showUpgradeModal = true) : switchTab('journeys')"
+                            :title="isJourneysLocked ? 'Upgrade your plan to unlock Journeys' : 'Journeys'"
+                        >
+                            Journeys
+                            <font-awesome-icon v-if="hasEnterpriseModule && isJourneysLocked" icon="fa-solid fa-lock" class="lock-icon-small" />
+                        </button>
                         <button 
                             class="tab-button" 
                             :class="{ 'active': activeTab === 'widget' }"
@@ -1202,6 +1110,16 @@ onMounted(async () => {
                             <AgentMCPToolsTab
                                 :agent-id="agentData.id"
                             />
+                        </div>
+
+                        <!-- Actions Tab -->
+                        <div v-if="activeTab === 'actions'" class="tab-content">
+                            <AgentActionsTab :agent-id="agentData.id" />
+                        </div>
+
+                        <!-- Journeys Tab -->
+                        <div v-if="activeTab === 'journeys' && !isJourneysLocked" class="tab-content">
+                            <AgentJourneysTab :agent-id="agentData.id" />
                         </div>
 
                         <!-- Widget Tab -->

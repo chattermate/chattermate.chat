@@ -27,6 +27,9 @@ self.APP_CONFIG = {
   // Google Tag Manager container (enables purchase/checkout analytics)
   GTM_ID: "${VITE_GTM_ID:-}",
 
+  // Widget of the setup assistant docked beside onboarding; blank turns it off
+  SETUP_WIDGET_ID: "${VITE_SETUP_WIDGET_ID:-}",
+
   // Google Fonts API
   GOOGLE_FONTS_API_KEY: "${VITE_GOOGLE_FONTS_API_KEY:-}",
   

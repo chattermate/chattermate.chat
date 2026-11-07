@@ -22,6 +22,7 @@ copied across the API layer (lead_capture, mcp_tool, workflow, ...) — new
 features should gate through here instead of minting another copy.
 """
 
+from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -64,3 +65,18 @@ def check_feature_access(db: Session, organization_id: UUID, feature: str, upgra
     subscription = require_accessible_subscription(db, organization_id)
     if not PlanRepository(db).check_feature_availability(str(subscription.plan_id), feature):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=upgrade_message)
+
+
+def feature_limit(db: Session, organization_id: UUID, key: str) -> Optional[int]:
+    """A numeric plan limit such as ``max_actions``, or None for no limit.
+
+    None on OSS, and when the plan does not set the key. Raises like
+    ``check_feature_access`` when the org has no accessible subscription, so
+    admin endpoints report "No active subscription" instead of guessing.
+    """
+    if not HAS_ENTERPRISE:
+        return None
+    subscription = require_accessible_subscription(db, organization_id)
+    plan = PlanRepository(db).get(str(subscription.plan_id))
+    value = (plan.features or {}).get(key) if plan else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None

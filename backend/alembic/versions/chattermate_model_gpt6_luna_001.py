@@ -17,7 +17,7 @@ limitations under the License.
 """move managed ChatterMate AI configs off the GPT-4o family
 
 Revision ID: chattermate_model_gpt6_luna_001
-Revises: auth_session_method_001
+Revises: journeys_001
 Create Date: 2026-11-02
 
 OpenAI shuts down gpt-4o, gpt-4o-mini, gpt-4.1 and gpt-4.1-mini on
@@ -37,7 +37,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'chattermate_model_gpt6_luna_001'
-down_revision = 'auth_session_method_001'
+down_revision = 'journeys_001'
 branch_labels = None
 depends_on = None
 

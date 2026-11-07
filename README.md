@@ -1,14 +1,39 @@
-# ChatterMate - Open Source AI Customer Support Chatbot Platform
+<p align="center">
+  <img src=".github/images/logo.svg" width="96" alt="ChatterMate logo">
+</p>
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![npm version](https://img.shields.io/npm/v/chattermate-deploy.svg)](https://www.npmjs.com/package/chattermate-deploy)
-[![Docker Pulls](https://img.shields.io/docker/pulls/chattermate/backend.svg)](https://hub.docker.com/r/chattermate/backend)
+<h1 align="center">ChatterMate - Open Source AI Customer Support Chatbot Platform</h1>
 
-![ChatterMate Logo](frontend/public/assets/images/logo.svg)
+<p align="center">
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="https://www.npmjs.com/package/chattermate-deploy"><img src="https://img.shields.io/npm/v/chattermate-deploy.svg" alt="npm version"></a>
+  <a href="https://hub.docker.com/r/chattermate/backend"><img src="https://img.shields.io/docker/pulls/chattermate/backend.svg" alt="Docker Pulls"></a>
+</p>
 
-> **Open-source AI customer support platform with human handoff.** A no-code AI chatbot for 24/7 customer service automation — multi-model AI (OpenAI, Anthropic Claude, Google Gemini, Mistral, xAI Grok, DeepSeek, Groq), intelligent AI-to-human handover, **Shopify & e-commerce support**, Slack and Jira integrations, visual workflow builder, and a fully themeable chat widget. Use the free hosted service or self-host it as an **open-source alternative to Intercom, Zendesk, and Chatbase**.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/images/inbox-dark.webp">
+    <img src=".github/images/inbox-light.webp" alt="ChatterMate shared inbox: AI and human agents answering customers from the web widget, WhatsApp, Messenger, Instagram and Telegram">
+  </picture>
+</p>
+
+> **Open-source AI customer support platform with human handoff.** ChatterMate is an open source AI chatbot that answers customers 24/7 from your knowledge base, hands complex conversations to your team in one shared inbox, and works across your website, **WhatsApp, Instagram, Messenger, Telegram, Slack, SMS and email** (omnichannel). It captures and qualifies leads, generates an **AI help center**, calls your tools over **MCP**, and runs on the model you choose (OpenAI, Anthropic Claude, Google Gemini, Mistral, xAI Grok, DeepSeek, Groq or any OpenAI-compatible endpoint). Use the free hosted service or self-host it as an **open-source alternative to Intercom, Zendesk, Chatbase and Chatwoot**.
 
 **[Documentation](https://docs.chattermate.chat)** | **[Live Demo](https://chattermate.chat)** | **[Free Signup](https://app.chattermate.chat)** | **[Shopify App](https://apps.shopify.com/chattermate-chat)** | **[WordPress Plugin](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip)**
+
+### Works with the tools you already use
+
+**Channels** — ![Web widget](https://img.shields.io/badge/Web_widget-0B0C10?style=flat-square) ![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?style=flat-square&logo=whatsapp&logoColor=white) ![Messenger](https://img.shields.io/badge/Messenger-0084FF?style=flat-square&logo=messenger&logoColor=white) ![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=flat-square&logo=instagram&logoColor=white) ![Slack](https://img.shields.io/badge/Slack-4A154B?style=flat-square) ![Telegram](https://img.shields.io/badge/Telegram-26A5E4?style=flat-square&logo=telegram&logoColor=white) ![LINE](https://img.shields.io/badge/LINE-00C300?style=flat-square&logo=line&logoColor=white) ![SMS](https://img.shields.io/badge/SMS-F22F46?style=flat-square) ![Email](https://img.shields.io/badge/Email-EA4335?style=flat-square&logo=gmail&logoColor=white)
+
+**Commerce & CMS** — ![Shopify](https://img.shields.io/badge/Shopify-7AB55C?style=flat-square&logo=shopify&logoColor=white) ![WordPress](https://img.shields.io/badge/WordPress-21759B?style=flat-square&logo=wordpress&logoColor=white)
+
+**CRM & tickets** — ![HubSpot](https://img.shields.io/badge/HubSpot-FF7A59?style=flat-square&logo=hubspot&logoColor=white) ![Pipedrive](https://img.shields.io/badge/Pipedrive-1A1A1A?style=flat-square) ![Jira](https://img.shields.io/badge/Jira-0052CC?style=flat-square&logo=jira&logoColor=white) ![Webhooks](https://img.shields.io/badge/Webhooks-555555?style=flat-square)
+
+**Data & tools for the AI** — ![MCP](https://img.shields.io/badge/MCP_servers-000000?style=flat-square&logo=modelcontextprotocol&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white) ![Sentry](https://img.shields.io/badge/Sentry-362D59?style=flat-square&logo=sentry&logoColor=white) ![Elasticsearch](https://img.shields.io/badge/Elasticsearch-005571?style=flat-square&logo=elasticsearch&logoColor=white)
+
+**AI models** — ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat-square) ![Anthropic Claude](https://img.shields.io/badge/Anthropic_Claude-191919?style=flat-square&logo=anthropic&logoColor=white) ![Google Gemini](https://img.shields.io/badge/Google_Gemini-8E75B2?style=flat-square&logo=googlegemini&logoColor=white) ![Mistral](https://img.shields.io/badge/Mistral-FA520F?style=flat-square&logo=mistralai&logoColor=white) ![xAI Grok](https://img.shields.io/badge/xAI_Grok-000000?style=flat-square&logo=x&logoColor=white) ![DeepSeek](https://img.shields.io/badge/DeepSeek-4D6BFE?style=flat-square&logo=deepseek&logoColor=white) ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square)
+
+Every integration ships in the open-source codebase — see [Integrations](#integrations) for setup.
 
 ---
 
@@ -16,9 +41,10 @@
 
 - [Why ChatterMate?](#why-chattermate)
 - [Features](#features)
+  - [Workflow Builder](#workflow-builder) · [AI Lead Capture](#ai-lead-capture) · [AI-Generated Help Center](#ai-generated-help-center) · [MCP Tools](#connect-any-mcp-server) · [Bring Your Own Model](#bring-your-own-model) · [Chat Customization](#chat-widget-customization) · [AI Ticketing](#ai-ticketing)
 - [Integrations](#integrations)
 - [ChatterMate vs. Intercom, Zendesk & Chatbase](#chattermate-vs-intercom-zendesk--chatbase)
-- [Demo](#demo)
+- [Screenshots](#screenshots)
 - [Quick Start](#quick-start)
 - [Installation](#installation-methods)
 - [Deployment](#deployment)
@@ -35,7 +61,7 @@ ChatterMate is a **no-code AI customer support platform** that enables businesse
 
 **Perfect for:** e-commerce and Shopify stores, SaaS companies, help desks, customer success teams, and any business looking to automate customer support while maintaining a human touch.
 
-![ChatterMate AI chat widget on an e-commerce store](.github/images/chat-widget.webp)
+![ChatterMate AI chat widget answering an order-tracking question on an online store](.github/images/widget.webp)
 
 ---
 
@@ -57,12 +83,19 @@ ChatterMate is a **no-code AI customer support platform** that enables businesse
 | 🔑 **Widget Authentication** | **Token-based security** for embedded widgets. Support both public Q&A and private authenticated conversations. |
 | 💼 **Slack Integration** | Connect your **Slack workspace** for internal product support. Teams get AI-powered assistance directly in Slack channels. |
 | 🧩 **Visual Workflow Builder** | Design conversation flows with a **drag-and-drop interface**. Branching logic, conditional responses, and multi-step workflows without coding. |
+| 🎯 **AI Lead Capture** | The agent collects name, email, phone and company **during the conversation**, with consent, writes a qualification summary, and pushes the lead to **HubSpot** or **Pipedrive**. See [Lead Capture](#ai-lead-capture). |
+| 📚 **AI-Generated Help Center** | Turn your knowledge base into a **public, SEO-friendly help center** — FAQs are generated by AI, reviewed, then published, with AI search and the chat assistant built in. See [Help Center](#ai-generated-help-center). |
+| 🧰 **MCP Tools** | Connect any **Model Context Protocol (MCP) server** so the agent can look up orders, query APIs and call your tools mid-conversation. See [MCP](#connect-any-mcp-server). |
+| 🎨 **Chat Customization** | Pick a chat design, set brand colours, avatar, welcome message and quick actions, with a **live preview**. See [Customization](#chat-widget-customization). |
 
 ### Workflow Builder
 
 Build sophisticated conversation flows visually with our intuitive workflow builder:
 
-![No-code AI chatbot workflow builder with drag-and-drop nodes and human handoff](.github/images/workflow-builder.webp)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/workflow-dark.webp">
+  <img src=".github/images/workflow-light.webp" alt="No-code AI chatbot workflow builder with a condition branching to an AI step or a human handoff">
+</picture>
 
 **Workflow Builder Features:**
 - **Drag-and-drop nodes** - AI responses, human handoff, conditions, and more
@@ -70,6 +103,89 @@ Build sophisticated conversation flows visually with our intuitive workflow buil
 - **Node types** - Start, AI Response, Human Transfer, Condition, End nodes
 - **Real-time preview** - Test workflows before deploying
 - **Version control** - Save and restore workflow versions
+
+### AI Lead Capture
+
+Turn support and sales chats into qualified leads without a form. When a visitor
+shows buying intent, the agent asks for their details in the conversation (with a
+consent step you can switch on), records them on the person's profile, and writes
+an **AI qualification summary** so your team knows who to call first.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/person-dark.webp">
+  <img src=".github/images/person-light.webp" alt="AI lead capture: a lead profile with captured contact details, company and an AI-written qualification summary">
+</picture>
+
+- **One profile per person** across the web widget, WhatsApp, Instagram, Messenger, Telegram and email, moving from *Visitor* → *Lead* → *Customer*
+- **Configurable fields** per agent — name, email, phone, company, or your own
+- **Source tracking** — the page or channel each lead came from
+- **CRM sync** — push leads to **HubSpot** or **Pipedrive**
+- **People view** to filter, search and follow up on every lead
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/people-dark.webp">
+  <img src=".github/images/people-light.webp" alt="People view listing captured leads with their stage, source channel and capture date">
+</picture>
+
+### AI-Generated Help Center
+
+Point ChatterMate at your website, docs or PDFs and it **generates FAQ articles
+with AI**, grouped into topics and linked back to their source. You review and
+publish them as a public **knowledge base / help center** — no separate help desk
+tool needed.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/faq-dark.webp">
+  <img src=".github/images/faq-light.webp" alt="Help center dashboard: AI-generated FAQs grouped by topic, each linked to its source page, ready to publish">
+</picture>
+
+- **AI-generated FAQs** from your knowledge base, or **import an existing help center**
+- **Review before publishing** — edit, regenerate, draft or publish each article
+- **SEO-friendly public pages** with per-article titles and meta descriptions
+- **AI search** over your articles, and the **chat assistant** on every page for anything they don't cover
+- **Your branding** — name, logo, colour and header links
+
+![Public AI-generated help center with topic navigation, search and a built-in chat assistant](.github/images/help-center.webp)
+
+### Connect Any MCP Server
+
+Give your AI agent real tools. Add any **Model Context Protocol (MCP)** server —
+over HTTP, SSE or stdio — and the agent can call it mid-conversation to look up an order,
+check stock, query an internal API or search logs. Add per-connector guidance so
+the agent knows *when* to use each tool, and test the connection from the
+dashboard.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/mcp-dark.webp">
+  <img src=".github/images/mcp-light.webp" alt="MCP tools tab: an order status MCP server connected to an AI agent">
+</picture>
+
+ChatterMate is also manageable **over MCP** itself — see the
+[MCP server docs](https://docs.chattermate.chat/features/mcp-server).
+
+### Bring Your Own Model
+
+Run your agents on the model you trust: **OpenAI, Anthropic Claude, Google
+Gemini, Mistral, xAI Grok, DeepSeek, Groq**, or any **OpenAI-compatible
+endpoint** (self-hosted, OpenRouter, Ollama…). Use your own API key, pick from
+the list or enter any model ID, and switch providers at any time without code
+changes.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/aiconfig-dark.webp">
+  <img src=".github/images/aiconfig-light.webp" alt="Bring your own AI model: choose OpenAI, Anthropic Claude, Gemini, Mistral, Grok, DeepSeek, Groq or an OpenAI-compatible endpoint">
+</picture>
+
+### Chat Widget Customization
+
+Make the chat widget look like part of your site: choose a chat design, set
+colours, avatar, fonts, welcome title and message, starter questions and quick
+actions, and see every change in the **live preview** before you save.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/customization-dark.webp">
+  <img src=".github/images/customization-light.webp" alt="Chat widget customization with chat design presets and a live preview of the branded widget">
+</picture>
 
 ### AI Ticketing
 
@@ -166,10 +282,17 @@ a team member's password stops working once they have signed in with SSO, and
 their password sessions end (it applies install-wide, so it is meant for
 single-organization installs).
 
-### Integrations
+---
+
+## Integrations
 
 **All of these are free and included** — every adapter ships in the
 open-source codebase, and self-hosting unlocks the lot.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/integrations-dark.webp">
+  <img src=".github/images/integrations-light.webp" alt="ChatterMate integrations page: Jira, Shopify, Slack, Telegram, WhatsApp, Messenger, Instagram, Email and SMS">
+</picture>
 
 What some of them need is **your own credentials**, because the integration
 talks to your account on someone else's platform:
@@ -240,17 +363,23 @@ Detailed comparisons: [ChatterMate vs Chatbase](https://chattermate.chat/chatter
 
 ---
 
-## Demo
-
-### Video Walkthrough
-[![ChatterMate Demo](https://img.youtube.com/vi/bk40VSS2BLU/0.jpg)](https://youtu.be/bk40VSS2BLU)
-[![ChatterMate Demo](https://img.youtube.com/vi/WyMQ8Poqn5E/0.jpg)](https://www.youtube.com/embed/WyMQ8Poqn5E?mute=1&loop=1&playlist=WyMQ8Poqn5E&rel=0&controls=1)
-
-### Shared Inbox with AI + Human Handoff
-![AI customer support shared inbox with human handoff](.github/images/inbox-human-handoff.webp)
+## Screenshots
 
 ### Analytics Dashboard
-![AI customer support analytics dashboard — resolution rate, CSAT, AI vs human performance](.github/images/analytics-dashboard.webp)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/analytics-dark.webp">
+  <img src=".github/images/analytics-light.webp" alt="AI customer support analytics dashboard: conversations, AI closures vs human transfers, and bot vs human ratings">
+</picture>
+
+### Tickets
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/tickets-dark.webp">
+  <img src=".github/images/tickets-light.webp" alt="AI ticketing: tickets raised from chat with status, priority, AI investigation state and SLA">
+</picture>
+
+Screenshots are from a self-hosted install loaded with demo data (a fictional outdoor-gear store).
 
 ---
 
@@ -584,7 +713,19 @@ Yes. Download the [WordPress plugin](https://github.com/chattermate/chattermate-
 Yes. Run the full stack (Postgres, Redis, backend, frontend) on your own infrastructure with `npm install -g chattermate-deploy` — see [Quick Start](#quick-start). Self-hosting gives you complete data ownership.
 
 **Which AI models does ChatterMate support?**
-OpenAI, Anthropic (Claude), Google Gemini, Mistral, xAI (Grok), DeepSeek, and Groq — bring your own API key, or enter a custom model ID for any model a provider supports. You can switch providers at any time without code changes.
+OpenAI, Anthropic (Claude), Google Gemini, Mistral, xAI (Grok), DeepSeek, Groq, and any OpenAI-compatible endpoint (self-hosted, OpenRouter, Ollama) — bring your own API key, or enter a custom model ID for any model a provider supports. You can switch providers at any time without code changes.
+
+**Can the AI chatbot capture and qualify leads?**
+Yes. With [AI lead capture](#ai-lead-capture) the agent collects contact details during the conversation (with optional consent), writes a qualification summary, and can push the lead to HubSpot or Pipedrive. It works on the web widget and on messaging channels like WhatsApp and Instagram.
+
+**Does ChatterMate work as a WhatsApp chatbot?**
+Yes. Connect WhatsApp Business (Cloud API), plus Instagram, Facebook Messenger, Telegram, LINE, Slack, SMS and email. Every channel shares the same AI agent, inbox, human handoff and workflows.
+
+**Can ChatterMate build a help center or knowledge base?**
+Yes. It generates FAQ articles from your website, docs and PDFs with AI, and you review and publish them as a public, SEO-friendly [help center](#ai-generated-help-center) with AI search and the chat assistant built in.
+
+**Does ChatterMate support MCP (Model Context Protocol)?**
+Yes, both ways. Your AI agents can call any MCP server as a tool ([details](#connect-any-mcp-server)), and ChatterMate itself can be configured through its own [MCP server](https://docs.chattermate.chat/features/mcp-server).
 
 ---
 
@@ -650,5 +791,5 @@ Contributions are accepted under Apache-2.0 with a [Developer Certificate of Ori
 </p>
 
 <p align="center">
-  <b>Keywords:</b> AI customer support, AI chatbot, Shopify chatbot, WordPress chatbot, WordPress chat plugin, ecommerce chatbot, customer support automation, open source help desk, live chat software, self-hosted chatbot, Intercom alternative, Zendesk alternative, Chatbase alternative, no-code chatbot builder, human handoff, Jira integration, Slack bot, multilingual chatbot
+  <b>Keywords:</b> AI customer support, AI chatbot, Shopify chatbot, WordPress chatbot, WordPress chat plugin, ecommerce chatbot, customer support automation, open source help desk, live chat software, self-hosted chatbot, Intercom alternative, Zendesk alternative, Chatbase alternative, no-code chatbot builder, human handoff, Jira integration, Slack bot, multilingual chatbot, open source AI chatbot, WhatsApp chatbot, Instagram chatbot, omnichannel customer support, AI lead capture, lead generation chatbot, AI help center, AI knowledge base, FAQ generator, MCP server, Model Context Protocol, bring your own LLM, OpenAI chatbot, Claude chatbot, Chatwoot alternative
 </p>

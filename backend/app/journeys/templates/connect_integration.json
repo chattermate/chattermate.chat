@@ -1,0 +1,107 @@
+{
+  "key": "connect_integration",
+  "name": "Connect an integration",
+  "group": "Developers & data",
+  "summary": "Pick a source, authorize it, map fields and run the first sync.",
+  "goal_event": "first_sync_completed",
+  "needs_actions": {
+    "start_oauth": "never",
+    "request_admin_approval": "always",
+    "save_mapping": "when_overwriting"
+  },
+  "definition": {
+    "audience": {
+      "kind": "everyone"
+    },
+    "start": {
+      "kind": "url",
+      "value": "/integrations*"
+    },
+    "steps": [
+      {
+        "id": "pick",
+        "title": "Pick a source",
+        "message": "Which tool do you want to connect?",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "source_picked"
+          }
+        ],
+        "skippable": true
+      },
+      {
+        "id": "authorize",
+        "title": "Authorize",
+        "message": "Connect {{ctx.source}}, or ask your admin to approve it.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "oauth_connected"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Connect",
+            "kind": "action",
+            "value": "start_oauth"
+          },
+          {
+            "label": "Ask my admin",
+            "kind": "action",
+            "value": "request_admin_approval"
+          }
+        ],
+        "allowed_actions": [
+          "start_oauth",
+          "request_admin_approval"
+        ]
+      },
+      {
+        "id": "map",
+        "title": "Map fields",
+        "message": "I matched most fields. A couple need you.",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "save_mapping"
+          },
+          {
+            "kind": "event",
+            "value": "mapping_saved"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Accept matches",
+            "kind": "action",
+            "value": "save_mapping"
+          }
+        ],
+        "allowed_actions": [
+          "save_mapping"
+        ]
+      },
+      {
+        "id": "sync",
+        "title": "First sync",
+        "message": "Running the first sync now.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "first_sync_completed"
+          }
+        ],
+        "skippable": false
+      }
+    ],
+    "finish": {
+      "message": "{{ctx.source}} is connected."
+    },
+    "variable_fallbacks": {
+      "ctx.source": "your tool"
+    }
+  }
+}

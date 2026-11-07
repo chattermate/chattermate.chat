@@ -187,6 +187,23 @@ describe('ChatterMate frame and lifecycle API', () => {
       expect(pages).toHaveLength(3)
       expect(pages[0]).toEqual([{ type: 'HOST_PAGE', url: window.location.href }, FRAME_ORIGIN])
     })
+
+    it('tells the frame when a single-page app routes with pushState or replaceState, until destroyed', async () => {
+      const start = window.location.href
+      await loadLoader()
+      bringUp()
+      const post = spyOnFrame()
+      const pages = () => post.mock.calls.filter(([m]) => (m as any).type === 'HOST_PAGE').map(([m]) => (m as any).url)
+
+      window.history.pushState({}, '', '/app/invoices')
+      window.history.replaceState({}, '', '/app/invoices/new')
+      expect(pages()).toEqual([`${window.location.origin}/app/invoices`, `${window.location.origin}/app/invoices/new`])
+
+      api().destroy()
+      window.history.pushState({}, '', '/app/settings')
+      expect(pages()).toHaveLength(2)
+      window.history.replaceState({}, '', start)
+    })
   })
 
   describe('before and after hello', () => {

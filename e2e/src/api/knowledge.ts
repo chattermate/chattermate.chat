@@ -45,6 +45,12 @@ export async function unfinishedKnowledge(
   return body.queue_items.map(({ source, status, error }) => ({ source, status, error }))
 }
 
+/** Takes the agent's sources off the queue, so no later worker pass reads them. */
+export async function clearKnowledgeQueue(api: ApiClient, agentId: string): Promise<void> {
+  const body = await api.get<{ queue_items: { id: number }[] }>(`/knowledge/queue/agent/${agentId}`)
+  await Promise.all(body.queue_items.map(({ id }) => api.delete(`/knowledge/queue/${id}`)))
+}
+
 export async function deleteKnowledge(api: ApiClient, knowledgeId: number): Promise<void> {
   await api.delete(`/knowledge/${knowledgeId}`)
 }

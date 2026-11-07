@@ -31,6 +31,12 @@ export interface EmbedOptions {
    * fresh conversation token. Counted in tokenRequests.
    */
   tokenProvider?: () => Promise<string>
+  /** The site registers its in-app actions (open_page, send_invoice, set_currency, slow_open, fail_task). */
+  withActions?: boolean
+  /** ChatterMate.setContext(context) from the site's code. */
+  context?: Record<string, unknown>
+  /** ChatterMate.prompt(prompt) from the site's code. */
+  prompt?: { message: string; suggestions?: string[]; open?: boolean }
 }
 
 type JsApiMethod = 'open' | 'close' | 'toggle' | 'isOpen' | 'showLauncher' | 'hideLauncher' | 'identify' | 'logout'
@@ -192,6 +198,9 @@ export class ChatWidget {
       if (options.token) params.set('token', options.token)
       if (options.withTriggerButton) params.set('trigger', '1')
       if (options.snippet) params.set('snippet', options.snippet)
+      if (options.withActions) params.set('actions', '1')
+      if (options.context) params.set('context', JSON.stringify(options.context))
+      if (options.prompt) params.set('prompt', JSON.stringify(options.prompt))
       if (options.tokenProvider) {
         params.set('tokenProvider', '1')
         await this.answerTokenRequests(options.tokenProvider)
@@ -484,6 +493,16 @@ export class ChatWidget {
     return this.frame.getByRole('log', { name: 'Messages' })
   }
 
+  /** The bubble shown while the agent writes its reply. */
+  get typingBubble(): Locator {
+    return this.frame.locator('.typing-indicator') // no accessible name of its own
+  }
+
+  /** Whether the message list has picked up a sideways scrollbar. */
+  async scrollsSideways(): Promise<boolean> {
+    return this.messageLog.evaluate((list) => list.scrollWidth > list.clientWidth)
+  }
+
   /** Bot and human-agent replies — the widget renders both the same way. */
   get agentMessages(): Locator {
     return this.messageLog.locator('.message.agent-message .message-bubble')
@@ -513,6 +532,93 @@ export class ChatWidget {
 
   get ratingThanks(): Locator {
     return this.frame.getByText('Thank you for your rating!')
+  }
+
+  /** The card asking the visitor before the site runs an action, named after the action. */
+  actionConfirm(label: string): Locator {
+    return this.frame.getByRole('group', { name: label })
+  }
+
+  /** The card's buttons say what happens ("Send an invoice", "Change to GBP"); the first one goes ahead. */
+  async approveAction(label: string): Promise<void> {
+    await step(`Customer approves "${label}"`, async () => {
+      await this.actionConfirm(label).getByRole('button').first().click()
+    })
+  }
+
+  /** "Not now", or "Keep <current value>" when the action would overwrite something. */
+  async declineAction(label: string, button = 'Not now'): Promise<void> {
+    await step(`Customer says no to "${label}"`, async () => {
+      await this.actionConfirm(label).getByRole('button', { name: button }).click()
+    })
+  }
+
+  /** The chat's line about what an action did: "Set default currency: USD → GBP", "Kept USD". */
+  actionReceipt(text: string): Locator {
+    return this.frame.getByRole('status').filter({ hasText: text })
+  }
+
+  /** What the site's own app shows (services/customer-site HOST_ACTIONS_SCRIPT). */
+  get appStatus(): Locator {
+    return this.page.getByRole('status', { name: 'App status' })
+  }
+
+  get appActionRuns(): Locator {
+    return this.page.getByLabel('Action runs')
+  }
+
+  get appCurrency(): Locator {
+    return this.page.getByLabel('Currency')
+  }
+
+  /** Shown under the message box when it looks like a password or key. */
+  get secretWarning(): Locator {
+    return this.frame.getByRole('alert').filter({ hasText: "Please don't paste passwords or keys here." })
+  }
+
+  get sendButton(): Locator {
+    return this.frame.getByRole('button', { name: 'Send message' })
+  }
+
+  /** A reply chip under a message the site showed (ChatterMate.prompt). */
+  replyChip(text: string): Locator {
+    return this.frame.getByRole('button', { name: text, exact: true })
+  }
+
+  /** The journey's plan, pinned to the top of the chat: its name, the step the visitor is on, "1 of 3". */
+  get journeyProgress(): Locator {
+    return this.frame.getByRole('region', { name: /^Guide: / })
+  }
+
+  /** Folded by default; its steps, Skip and Hide show once opened. */
+  async openJourneyPlan(): Promise<void> {
+    const toggle = this.journeyProgress.getByRole('button', { expanded: false })
+    if (await toggle.count()) await toggle.click()
+  }
+
+  async skipJourneyStep(): Promise<void> {
+    await step('Customer skips the step', async () => {
+      await this.openJourneyPlan()
+      await this.journeyProgress.getByRole('button', { name: 'Skip this step' }).click()
+    })
+  }
+
+  async hideJourney(): Promise<void> {
+    await step('Customer hides the guide', async () => {
+      await this.openJourneyPlan()
+      await this.journeyProgress.getByRole('button', { name: 'Hide guide' }).click()
+    })
+  }
+
+  /** The site's own code reporting something the user did: ChatterMate.notify(event). */
+  async siteReports(event: string): Promise<void> {
+    await step(`The site reports "${event}"`, async () => {
+      await this.page.evaluate((name) => (window as unknown as { ChatterMate: { notify: (e: string) => void } }).ChatterMate.notify(name), event)
+    })
+  }
+
+  async typeOnly(text: string): Promise<void> {
+    await this.messageInput.fill(text)
   }
 
   get ratingPrompt(): Locator {

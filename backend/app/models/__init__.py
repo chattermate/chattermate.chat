@@ -38,6 +38,12 @@ from app.models.workflow_connection import WorkflowConnection
 from app.models.mcp_tool import MCPTool, MCPToolToAgent, MCPTransportType
 from app.models.file_attachment import FileAttachment
 from app.models.customer import LeadStage
+from app.models.agent_action import (
+    AgentAction, AgentActionCall, ActionConfirmPolicy, ActionCallStatus,
+)
+from app.models.journey import (
+    Journey, JourneyProgress, JourneyStepProgress, AgentContextKey, JourneyStatus, ProgressStatus,
+)
 from app.models.lead_capture import (
     LeadCaptureConfig, LeadCaptureResponse,
     LeadAssignmentMode, CrmSyncTarget,
@@ -102,6 +108,16 @@ __all__ = [
     "MCPTransportType",
     "FileAttachment",
     "LeadStage",
+    "AgentAction",
+    "AgentActionCall",
+    "ActionConfirmPolicy",
+    "ActionCallStatus",
+    "Journey",
+    "JourneyProgress",
+    "JourneyStepProgress",
+    "AgentContextKey",
+    "JourneyStatus",
+    "ProgressStatus",
     "LeadCaptureConfig",
     "LeadCaptureResponse",
     "LeadAssignmentMode",

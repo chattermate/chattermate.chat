@@ -1,5 +1,5 @@
 import type { APIRequestContext } from '@playwright/test'
-import type { RecordedRequest, Reply, ScenarioRule, ScenarioSpec } from '../../services/fake-llm/protocol'
+import type { RecordedRequest, Reply, ScenarioRule, ScenarioSpec, ToolCall } from '../../services/fake-llm/protocol'
 import { env } from '../env'
 
 /** What a script needs to know about the agent it drives (see fixtures/resources.ts). */
@@ -83,9 +83,17 @@ class RuleBuilder {
 
   /** The model calls a backend tool first, then answers with `reply` once the result is back. */
   callTool(name: string, args: Record<string, unknown>) {
+    return this.callTools([{ name, arguments: args }])
+  }
+
+  /**
+   * The model calls these tools one after another (each once the previous result is
+   * back), then answers. Host actions pause the reply at each call.
+   */
+  callTools(calls: ToolCall[]) {
     return {
       thenReply: (message: string, fields?: Record<string, unknown>): Script =>
-        this.script.add({ match: this.match, toolCall: { name, arguments: args }, reply: { message, fields, usage: this.usage }, ...this.fault() }),
+        this.script.add({ match: this.match, toolCalls: calls, reply: { message, fields, usage: this.usage }, ...this.fault() }),
     }
   }
 }

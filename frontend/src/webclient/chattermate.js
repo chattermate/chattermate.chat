@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { createHostActions } from './loader/hostActions.js'
+import { createPushLayout, sheetCss } from './loader/pushLayout.js'
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
@@ -61,6 +63,9 @@ window.chattermateConfig;
     displayMode: 'floating', // 'floating' | 'sidebar-left' | 'sidebar-right' | 'search-bar'
     launcher: true, // false hides the built-in launcher (site uses its own trigger/API)
     sidebarWidth: 420, // Panel width in the sidebar display modes
+    layout: 'overlay', // 'overlay' | 'push': in sidebar modes, push moves pushTarget aside
+    pushTarget: null, // CSS selector of the page content the push layout makes room in
+    mobileMode: 'fullscreen', // 'fullscreen' | 'sheet' (a bottom sheet on phones)
     searchBarWidth: 320, // Trigger bar width in search-bar mode
     searchPlaceholder: 'Ask anything...',
     zIndex: 999999, // Stacking base; related layers offset from it (badge -1, mobile chrome +1/+2)
@@ -211,6 +216,14 @@ window.chattermateConfig;
     const target = frameWindow()
     if (target && frameOrigin) target.postMessage(message, frameOrigin)
   }
+  // The page's in-app actions and context (ChatterMate.registerActions/setContext).
+  // Only reaches the frame once it has mounted; announced again on every mount.
+  const hostActions = createHostActions(function (message) {
+    if (!widgetMounted) return false
+    postToFrame(message)
+    return true
+  }, (function () { try { return window.sessionStorage } catch (e) { return null } })())
+  const pushLayout = createPushLayout(window)
   // Only the widget frame may talk to the loader: the right window, and the right
   // origin - which is only known once it says hello, so until then hello is all it
   // may say (hostile sibling frames can reach us, and a frame could be somewhere
@@ -1203,6 +1216,8 @@ window.chattermateConfig;
         }
       }
 
+      ${config.mobileMode === 'sheet' ? sheetCss(config.containerId) : ''}
+
       ${config.launcher ? '' : `
       /* Launcher hidden by config — the site opens the chat with its own trigger or
          the JS API. Last in the sheet so it also beats the mobile .mobile-closed
@@ -1510,12 +1525,24 @@ window.chattermateConfig;
     let iframe = null
     let initiationMessageElement = null
 
+    // Push layout: an open drawer makes room in the page's own content (see pushLayout.js).
+    function applyPush() {
+      const mode = config.displayMode
+      const drawer = mode === 'sidebar-left' || mode === 'sidebar-right'
+      pushLayout.apply(isOpen && drawer && config.layout === 'push', {
+        pushTarget: config.pushTarget,
+        side: mode === 'sidebar-left' ? 'left' : 'right',
+        width: config.sidebarWidth,
+      })
+    }
+
     function toggleChat() {
       isOpen = !isOpen
       container.classList.toggle('active')
       backdrop.classList.toggle('active', isOpen)
       button.classList.toggle('active')
       mobileCloseButton.classList.toggle('active')
+      applyPush()
       if (isOpen) {
         config.hasOpened = true
         config.unreadCount = 0
@@ -1636,6 +1663,7 @@ window.chattermateConfig;
       window.removeEventListener('message', handleFrameMessage)
       window.removeEventListener('popstate', reportPage)
       window.removeEventListener('hashchange', reportPage)
+      unwatchHistory()
       // The nudge is appended to <body>, not to our container, and it runs a
       // typewriter interval that would keep ticking on a detached node.
       if (initiationMessageElement) {
@@ -1932,6 +1960,31 @@ window.chattermateConfig;
       if (widgetMounted) postToFrame({ type: 'HOST_PAGE', url: window.location.href })
     }
 
+    // SPA routers move on with history.pushState/replaceState, which fire no
+    // event, so journeys keyed to a page would never see the visitor arrive.
+    // Wrap both while the widget is up; unwrap only what is still ours, in case
+    // the site wrapped them again after us.
+    const historyWrappers = {}
+    function watchHistory() {
+      ;['pushState', 'replaceState'].forEach(function (name) {
+        const original = window.history[name]
+        if (typeof original !== 'function' || historyWrappers[name]) return
+        const wrapped = function () {
+          const result = original.apply(this, arguments)
+          reportPage()
+          return result
+        }
+        historyWrappers[name] = { original: original, wrapped: wrapped }
+        window.history[name] = wrapped
+      })
+    }
+    function unwatchHistory() {
+      Object.keys(historyWrappers).forEach(function (name) {
+        if (window.history[name] === historyWrappers[name].wrapped) window.history[name] = historyWrappers[name].original
+        delete historyWrappers[name]
+      })
+    }
+
     // Token + unread-count updates from the widget frame. Registered once for the
     // page: the frame is replaced on every identity change (see reloadWidget), and
     // registering per load would stack a duplicate handler each time.
@@ -1955,6 +2008,13 @@ window.chattermateConfig;
       }
       if (event.data.type === 'WIDGET_READY') {
         onWidgetReady()
+        hostActions.announce()
+        return
+      }
+      if (hostActions.handleFrameMessage(event.data)) return
+      if (event.data.type === 'WIDGET_OPEN_REQUEST') {
+        // A journey step that opens the chat by itself (once per step).
+        if (!isOpen) toggleChat()
         return
       }
       if (event.data.type === 'WIDGET_ERROR') {
@@ -2109,6 +2169,7 @@ window.chattermateConfig;
     window.addEventListener('message', handleFrameMessage)
     window.addEventListener('popstate', reportPage)
     window.addEventListener('hashchange', reportPage)
+    watchHistory()
 
     // Start prefetching immediately
     prefetchWidget()
@@ -2147,6 +2208,7 @@ window.chattermateConfig;
     // Handle window resize to update mobile behavior
     function handleResize() {
       const isMobile = isMobileDevice()
+      applyPush() // crossing the phone width starts or stops pushing
       
       if (isMobile && !isOpen) {
         // On mobile when closed, show the button
@@ -2405,6 +2467,15 @@ window.chattermateConfig;
     if (isNumber(options.sidebarWidth)) {
       setDevConfig('sidebarWidth', Math.max(280, options.sidebarWidth))
     }
+    if (options.layout === 'push' || options.layout === 'overlay') {
+      setDevConfig('layout', options.layout)
+    }
+    if (typeof options.pushTarget === 'string' && options.pushTarget) {
+      setDevConfig('pushTarget', options.pushTarget)
+    }
+    if (options.mobileMode === 'sheet' || options.mobileMode === 'fullscreen') {
+      setDevConfig('mobileMode', options.mobileMode)
+    }
     if (isNumber(options.zIndex)) {
       setDevConfig('zIndex', Math.max(1, Math.floor(options.zIndex)))
     }
@@ -2640,6 +2711,23 @@ window.chattermateConfig;
     },
     showLauncher: function () { setLauncherVisible(true) },
     hideLauncher: function () { setLauncherVisible(false) },
+    // In-app actions: registerActions({ open_page: async ({ path }) => ({ ok: true }) }).
+    // Only actions declared on the agent's Actions tab are used.
+    registerActions: function (map) { hostActions.register(map) },
+    // Drop every registered action, the page context and unsent events.
+    unregisterActions: function () { hostActions.reset() },
+    // Page state the agent may use, e.g. setContext({ plan: 'free', step: 'billing' }).
+    setContext: function (context) { hostActions.setContext(context) },
+    // Tell journeys something happened in the app, e.g. notify('invoice_sent').
+    notify: function (event) { hostActions.notify(event) },
+    // Start a journey from the app's own code, e.g. startJourney('first_invoice').
+    startJourney: function (key) { hostActions.startJourney(key) },
+    // Show a message from the page, e.g. prompt({ message: 'Need help with billing?',
+    // suggestions: ['Yes please'], open: true }). Nothing is stored unless the visitor replies.
+    prompt: function (options) {
+      hostActions.prompt(options)
+      if (options && options.open === true) withController(function () { controller.open() })
+    },
     // SPA login: identify(token) switches the widget to that visitor.
     identify: function (token) { setIdentity(token) },
     // SPA logout: back to an anonymous visitor, previous conversation dropped.

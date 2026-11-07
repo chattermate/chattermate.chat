@@ -54,7 +54,7 @@ const mountStep = async () => {
 const button = (label: string) => wrapper.findAll('button').find((b) => b.text() === label)
 const primary = () => wrapper.find('.btn-accent')
 const panel = () => wrapper.find('.crawl-failure')
-const staged = () => wrapper.findAll('.source-list:not(.indexed) .source-name').map((n) => n.text())
+const staged = () => wrapper.findAll('[aria-label="To add"] .source-name').map((n) => n.text())
 
 const clickContinue = async () => {
   await primary().trigger('click')

@@ -23,6 +23,12 @@ import {
 import { renderMarkdown } from './markdown'
 import AskAiPanel from './AskAiPanel.vue'
 import NewChatConfirm from './NewChatConfirm.vue'
+import ActionConfirmCard from './ActionConfirmCard.vue'
+import ActionReceiptLine from './ActionReceiptLine.vue'
+import JourneyPlan from './JourneyPlan.vue'
+import SuggestedReplies from './SuggestedReplies.vue'
+import { useActionReceipts } from '../composables/useActionReceipts'
+import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
@@ -33,6 +39,9 @@ import { hostSharesIdentity, isFramed, setHostPageUrl, tokenStoreFor } from './f
 import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
+import { useHostActions } from '../composables/useHostActions'
+import type { HostPrompt, PageChip } from './actions/hostActionsClient'
+import { useJourneys } from '../composables/useJourneys'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
@@ -96,8 +105,74 @@ const {
     setToken,
     setWidgetId,
     onSessionState,
-    onReauthorize
+    onReauthorize,
+    on: onSocketEvent,
+    emit: emitSocketEvent
 } = useWidgetSocket()
+
+// In-app actions the embedding page registered (ChatterMate.registerActions), and
+// a message it asked us to show (ChatterMate.prompt). The prompt lives outside
+// `messages` so loading history can't wipe it; it joins the chat once answered.
+const hostPrompt = ref<HostPrompt | null>(null)
+// Each action leaves a line in the chat saying what it did.
+const { receipts, addReceipt, receiptsAfter } = useActionReceipts(messages)
+const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHostActions(
+    { on: onSocketEvent, emit: emitSocketEvent },
+    (prompt) => { hostPrompt.value = prompt },
+    addReceipt,
+)
+
+// Journeys the agent runs on this site: a step's message and chips share the
+// page-message slot above; notices (a step's "then", the finish) join the chat.
+const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivity } = useJourneys({
+    on: onSocketEvent,
+    emit: emitSocketEvent,
+    currentPrompt: () => hostPrompt.value,
+    showPrompt: (prompt) => { hostPrompt.value = prompt },
+    addNotice: (text) => {
+        messages.value.push({
+            message: text,
+            message_type: 'bot',
+            created_at: new Date().toISOString(),
+            session_id: '',
+            attributes: { source: 'journey' },
+        } as any)
+    },
+    runLocalAction,
+})
+
+// A tapped reply reads as the visitor's answer. A text one goes through the
+// normal send; an action one runs straight away, so the step's message and the
+// reply join the chat here, and its receipt follows when the page is done.
+const onPageChip = (chip: PageChip) => {
+    if (chip.kind === 'action' && !chipBusy.value && !pendingConfirm.value) {
+        const prompt = visiblePrompt.value
+        const now = new Date().toISOString()
+        if (prompt) {
+            messages.value.push({ message: prompt.message, message_type: 'bot', created_at: now, session_id: '', attributes: { source: prompt.source } } as any)
+        }
+        messages.value.push({ message: chip.label, message_type: 'user', created_at: now, session_id: '', attributes: { source: 'journey' } } as any)
+    }
+    runChip(chip, sendQuickAction)
+}
+
+// A step's replies stay offered until the step moves on, so a declined or failed
+// action can be tried again; they make way while anything else is under way.
+const replyChips = computed(() => {
+    const prompt = hostPrompt.value
+    if (!prompt?.chips.length || pendingConfirm.value || loading.value) return []
+    return prompt.chips
+})
+
+// The server sends a step's message on every sync until the step is done, and a
+// reply doesn't finish a step. Once it is in the chat (answered, or in the
+// loaded history) it isn't shown — or stored — a second time.
+const visiblePrompt = computed(() => {
+    const prompt = hostPrompt.value
+    if (!prompt || prompt.source !== 'journey') return prompt
+    const inChat = messages.value.some(m => m.message_type === 'bot' && m.message === prompt.message)
+    return inChat ? null : prompt
+})
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
 // to the bottom as text grows.
@@ -456,8 +531,12 @@ const placeholderText = computed(() => {
 const pendingSend = ref(false)
 
 // Update the sendMessage function
+// A pasted password, key or card number is held back (the server also hides them).
+const secretInMessage = computed(() => looksSecret(newMessage.value))
+
 const sendMessage = async () => {
     if (!newMessage.value.trim() && uploadedAttachments.value.length === 0) return
+    if (secretInMessage.value) return
 
     if (loading.value && hasStartedChat.value) {
         pendingSend.value = true
@@ -477,8 +556,23 @@ const sendMessage = async () => {
         size: file.size
     }))
 
+    noteActivity()
+    // A page message being answered is stored with the reply (it never was before).
+    const answeredPrompt = visiblePrompt.value
+    hostPrompt.value = null
+    if (answeredPrompt) {
+        messages.value.push({
+            message: answeredPrompt.message,
+            message_type: 'bot',
+            created_at: new Date().toISOString(),
+            session_id: '',
+            attributes: { source: answeredPrompt.source },
+        } as any)
+    }
+
     // Send message with files in a single emit
-    await socketSendMessage(newMessage.value, emailInput.value, files)
+    await socketSendMessage(newMessage.value, emailInput.value, files,
+        answeredPrompt ? { host_prompt: answeredPrompt.message, host_prompt_source: answeredPrompt.source } : {})
 
     // Clean up temporary object URLs
     uploadedAttachments.value.forEach(file => {
@@ -709,6 +803,12 @@ watch(() => messages.value, (newMessages) => {
         scrollToBottom()
     })
 }, { deep: true })
+
+// The confirm card, a page or journey message and the typing bubble sit after
+// the messages, so a new one is below the fold unless the list follows it.
+watch([pendingConfirm, hostPrompt, () => receipts.value.length, loading], ([confirm, prompt, receiptCount, typing]) => {
+    if (confirm || prompt || receiptCount || typing) nextTick(() => scrollToBottom())
+})
 
 // Watch for connection status changes to set up event listeners when needed
 watch(connectionStatus, (newStatus, oldStatus) => {
@@ -2124,7 +2224,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         :class="{ 'aurora-send': isAuroraStyle }"
                         :style="userBubbleStyles"
                         @click="sendMessage"
-                        :disabled="!newMessage.trim() || !isMessageInputEnabled"
+                        :disabled="!newMessage.trim() || !isMessageInputEnabled || secretInMessage"
                     >
                         <svg v-if="isAuroraStyle" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 19V5M12 5L5 12M12 5L19 12" stroke="currentColor" stroke-width="2"
@@ -2463,6 +2563,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             />
 
             <div v-show="!showEmailGate" class="chat-messages" ref="messagesContainer" role="log" aria-label="Messages">
+                <JourneyPlan v-if="journeyProgress" :progress="journeyProgress" @skip="skipStep" @hide="dismissJourney" />
                 <!-- Welcome message on open (cleared after the first send). Quick actions
                      render as a bar above the input — see below. -->
                 <div v-if="showWelcomeBlock" class="cm-welcome-block">
@@ -2872,11 +2973,32 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </div>
                         </div>
                     </div>
+                    <ActionReceiptLine v-for="(receipt, r) in receiptsAfter(index + 1)" :key="`receipt-${index}-${r}`" :receipt="receipt" />
                 </template>
+
+                <div v-if="visiblePrompt" class="message agent-message cm-welcome-row cm-host-prompt">
+                    <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
+                    <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
+                    <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ visiblePrompt.message }}</div>
+                </div>
+
+                <SuggestedReplies
+                    v-if="replyChips.length"
+                    :chips="replyChips"
+                    :disabled="!isMessageInputEnabled || chipBusy"
+                    @pick="onPageChip"
+                />
+
+                <ActionConfirmCard
+                    v-if="pendingConfirm"
+                    :pending="pendingConfirm"
+                    @approve="approveAction"
+                    @decline="declineAction"
+                />
 
                 <!-- Loading indicator: "reading knowledge base" only when citations
                      are enabled; otherwise a plain typing indicator. -->
-                <div v-if="loading" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
+                <div v-if="loading && !pendingConfirm" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
                     <template v-if="showCitations">
                         <div class="reading-bars" aria-hidden="true">
                             <span></span><span></span><span></span>
@@ -3006,7 +3128,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         :class="{ 'ask-anything-send': isAskAnythingStyle }"
                         :style="userBubbleStyles"
                         @click="sendMessage"
-                        :disabled="(!newMessage.trim() && uploadedAttachments.length === 0) || !isMessageInputEnabled"
+                        :disabled="(!newMessage.trim() && uploadedAttachments.length === 0) || !isMessageInputEnabled || secretInMessage"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2"
@@ -3014,6 +3136,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </svg>
                     </button>
                 </div>
+                <p v-if="secretInMessage" class="cm-secret-hint" role="alert">{{ SECRET_WARNING }}</p>
             </div>
 
             <!-- New Conversation Section (Shown when conversation is ended in workflow) -->
@@ -3604,6 +3727,12 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 .message-input input:disabled {
     background-color: rgba(0, 0, 0, 0.05);
     cursor: not-allowed;
+}
+
+.cm-secret-hint {
+    margin: 6px 4px 0;
+    font-size: 12px;
+    color: var(--cm-muted);
 }
 
 .send-button {
