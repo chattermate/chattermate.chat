@@ -84,24 +84,33 @@ class TestShopifyGdprWebhooks:
 
         assert response.status_code == 400
 
-    def test_a_failure_does_not_echo_the_exception(self, client, signed, url):
-        """A JSON array parses fine, then payload.get() raises inside the handler.
-
-        The reply used to be f"Error processing webhook: {str(e)}", handing the
-        caller our exception text on an endpoint that anyone on the internet can
-        reach. Shopify only needs the acknowledgement.
-        """
+    def test_a_payload_that_is_not_an_object_is_a_400(self, client, signed, url):
+        """A JSON array parses, but is not a webhook. Rejected before any work."""
         response = client.post(
             url, content=json.dumps([]).encode(), headers={"Content-Type": "application/json"}
         )
 
-        assert response.status_code == 200
-        body = response.json()
-        assert body["success"] is False
-        assert body["message"] == "Error processing webhook"
-        # The AttributeError's text must not travel with it.
-        assert "attribute" not in response.text
-        assert "list" not in response.text
+        assert response.status_code == 400
+
+    def test_a_failure_does_not_echo_the_exception_and_asks_for_a_retry(self, client, signed, url):
+        """The reply used to be f"Error processing webhook: {str(e)}", handing the
+        caller our exception text on an endpoint anyone can reach. It is now a 500
+        with a fixed message: a failed erasure must be retried by Shopify."""
+        with patch(
+            "app.services.shopify_privacy.resolve_shop_organization",
+            side_effect=RuntimeError("secret internals: list has no attribute"),
+        ):
+            response = client.post(url, json=VALID_PAYLOAD)
+
+        assert response.status_code == 500
+        assert response.json() == {"success": False, "message": "Error processing webhook"}
+        assert "secret internals" not in response.text
+
+    def test_the_reply_never_repeats_the_customers_email_or_phone(self, client, signed, url):
+        response = client.post(url, json=VALID_PAYLOAD)
+
+        assert "someone@example.com" not in response.text
+        assert "+15550000000" not in response.text
 
 
 def test_an_uninstalled_stores_storefront_stops_being_allowed(client, signed, db, test_organization):
