@@ -52,7 +52,7 @@ const typeAndAdd = async (wrapper: any, url: string) => {
 }
 
 const staged = (wrapper: any) =>
-  wrapper.findAll('.source-list:not(.indexed) .source-name').map((n: any) => n.text())
+  wrapper.findAll('[aria-label="To add"] .source-name').map((n: any) => n.text())
 
 describe('StepTeach - only advances when the sources were accepted', () => {
   beforeEach(() => {

@@ -1,0 +1,48 @@
+/* Controls shared by the agent Actions and Journeys tabs and their editors. */
+
+/* The tab's own inset, like the neighbouring tabs (Lead Capture, MCP Tools):
+   the container leaves horizontal padding to each tab. */
+.agent-tab { padding: 0 var(--space-lg); max-width: 1200px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.tab-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.tab-title { margin: 0 0 6px; font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.3; }
+.tab-sub { margin: 0; font-size: 14px; color: var(--muted); max-width: 620px; line-height: 1.55; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--o14);
+  background: var(--o06);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn.accent { background: var(--accent-solid); border-color: transparent; color: var(--on-accent-solid); font-weight: 600; }
+.btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+.btn.danger { background: var(--coral-bg); border-color: var(--coral-border); color: var(--c-coral); font-weight: 600; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+.input:focus { outline: none; border-color: var(--accent-ink); box-shadow: var(--ring-focus); }
+/* The browser's own arrow sits on the border; draw one with room around it,
+   in the theme's muted ink. */
+select.input {
+  appearance: none;
+  padding-right: 34px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}

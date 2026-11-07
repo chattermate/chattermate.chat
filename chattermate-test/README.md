@@ -15,6 +15,26 @@ Use it in **Stub** mode (fake widget, no backend needed) or **Real** mode (set y
 widget ID + API URL on the gallery page). The Loader URL setting controls where
 `chattermate.min.js` comes from — the frontend dev server by default.
 
+## Journeys demo (Ledgerly)
+
+`journeys-demo.html` is a pretend invoicing app (a single-page app with real
+`pushState` routing) that embeds the widget with in-app actions, page context,
+app events, signed-in demo users (Maya on Free, Leo on Pro, or anonymous) and
+three journeys. The panel on the left lists 13 scenarios, each with what to do
+and what the AI should do, plus a log of every action, event and context update.
+
+1. Backend on `localhost:8000` and dashboard on `localhost:3000` running.
+2. Seed it (any dashboard login on that backend; its org needs Journeys):
+   `CM_EMAIL=you@example.com CM_PASSWORD=… node journeys-demo/seed.mjs`
+   It creates the "Ledgerly guide" agent, its actions and journeys, a widget
+   limited to `localhost:4100` and a widget app whose key signs demo users in.
+   Running it again updates them.
+3. `PORT=4100 FRONTEND_ORIGIN=http://localhost:3000 npm start`, then open
+   http://localhost:4100/app/dashboard. "New account" starts a person over.
+4. Optional: `node journeys-demo/check.mjs [screenshot-dir]` runs the scenarios
+   against the real model and prints PASS/FAIL with what the agent did (needs
+   `npm install` in `../e2e` for Playwright).
+
 ## Setup
 
 1. Install dependencies:

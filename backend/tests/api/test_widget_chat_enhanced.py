@@ -17,6 +17,7 @@ limitations under the License.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.models.widget import Widget
+from app.services import host_action_runtime, widget_reply
 from app.models.agent import Agent, AgentType
 from app.models.ai_config import AIConfig, AIModelType
 from app.models.customer import Customer
@@ -153,6 +154,10 @@ class TestHandleWidgetChat:
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
         
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
+        
         # Mock failed authentication
         mock_sio.get_session.return_value = {"test": "session"}
         monkeypatch.setattr(
@@ -180,6 +185,10 @@ class TestHandleWidgetChat:
         from app.api import widget_chat
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         
         # Mock successful authentication
         mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), "token")
@@ -210,6 +219,10 @@ class TestHandleWidgetChat:
         from app.api import widget_chat
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         serve_socket_db(monkeypatch, MagicMock())
         
         # Mock successful authentication but mismatched session data
@@ -246,6 +259,10 @@ class TestHandleWidgetChat:
         from app.api import widget_chat
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         serve_socket_db(monkeypatch, db)
         
         session_id = uuid4()
@@ -285,6 +302,10 @@ class TestHandleWidgetChat:
         from app.api import widget_chat
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         serve_socket_db(monkeypatch, db)
         
         session_id = uuid4()
@@ -346,6 +367,10 @@ class TestGetWidgetChatHistory:
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
         
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
+        
         # Mock failed authentication
         mock_sio.get_session.return_value = {"test": "session"}
         monkeypatch.setattr(
@@ -379,6 +404,10 @@ class TestGetWidgetChatHistory:
         from app.api import widget_chat
 
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         serve_socket_db(monkeypatch, db)
 
         mock_sio.get_session.return_value = {
@@ -412,6 +441,10 @@ class TestGetWidgetChatHistory:
         from app.api import widget_chat
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         serve_socket_db(monkeypatch, db)
         
         mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), "token")
@@ -447,6 +480,10 @@ class TestGetWidgetChatHistory:
         from app.api import widget_chat
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         serve_socket_db(monkeypatch, db)
         
         mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), "token")
@@ -521,6 +558,10 @@ class TestGetWidgetChatHistory:
         from app.api import widget_chat
         
         monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        
+        monkeypatch.setattr(widget_reply, "sio", mock_sio)
+        
+        monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
         serve_socket_db(monkeypatch, db)
         
         mock_auth_result = (str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), "token")

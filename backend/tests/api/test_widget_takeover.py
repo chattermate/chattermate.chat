@@ -30,7 +30,9 @@ from socketio.exceptions import ConnectionRefusedError
 
 from app.api import token as token_router
 from app.api import widget as widget_router
+from app.agents.chat_agent import ChatAgent
 from app.api import widget_chat
+from app.services import host_action_runtime, widget_reply
 from app.core.security import create_conversation_token
 from app.database import get_db
 from app.models.customer import Customer
@@ -71,6 +73,8 @@ def mock_sio():
 def socket(db, test_widget, test_ai_config, mock_sio, monkeypatch):
     """Connect a widget socket with a given token; returns its saved session."""
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
+    monkeypatch.setattr(widget_reply, "sio", mock_sio)
+    monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
     serve_socket_db(monkeypatch, db)
     monkeypatch.setattr(
         "app.repositories.widget.WidgetRepository.get_widget",
@@ -219,7 +223,7 @@ class TestOwnConversationOnly:
         db.commit()
         monkeypatch.setattr(widget_chat, "notify_new_chat", AsyncMock())
         monkeypatch.setattr(
-            widget_chat.ChatAgent, "create_async", AsyncMock(side_effect=RuntimeError("stop here"))
+            ChatAgent, "create_async", AsyncMock(side_effect=RuntimeError("stop here"))
         )
 
         mock_sio.get_session.return_value = victim

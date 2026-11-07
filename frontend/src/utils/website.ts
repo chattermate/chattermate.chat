@@ -33,3 +33,15 @@ export const websiteHost = (typed: string): string => {
 /** Whether what was typed (a bare host or a pasted URL) can be a website */
 export const looksLikeWebsite = (typed: string): boolean =>
   /^(?!-)[a-z0-9-]+(?<!-)(\.(?!-)[a-z0-9-]+(?<!-))+$/.test(websiteHost(typed))
+
+/**
+ * People type "docs.company.com", not "https://docs.company.com". Default the
+ * scheme so an address that is perfectly fine isn't refused for lacking one.
+ */
+export const withScheme = (url: string): string => {
+  const trimmed = url.trim()
+  if (!trimmed) return trimmed
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed
+  // Leading slashes would produce https:////host — drop them first.
+  return `https://${trimmed.replace(/^\/+/, '')}`
+}

@@ -222,11 +222,16 @@ build_frontend() {
     (cd "$src" && node_modules/.bin/vite build --outDir "$out" --emptyOutDir --logLevel warn) >&2
   fi
   # Runtime config: what docker-entrypoint.sh writes in a real deployment.
+  local setup_widget=""
+  if [[ "$EDITION" != oss && -f "$ENTERPRISE_E2E_DIR/.env.e2e" ]]; then
+    setup_widget="$(source "$ENTERPRISE_E2E_DIR/.env.e2e"; echo "${SETUP_WIDGET_ID:-}")"
+  fi
   cat > "$out/config.js" <<EOF
 self.APP_CONFIG = {
   API_URL: "http://127.0.0.1:$BACKEND_PORT/api/v1",
   WS_URL: "ws://127.0.0.1:$BACKEND_PORT",
   WIDGET_URL: "http://127.0.0.1:$BACKEND_PORT",
+  SETUP_WIDGET_ID: "$setup_widget",
   NODE_ENV: "production"
 };
 EOF

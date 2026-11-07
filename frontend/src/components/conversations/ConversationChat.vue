@@ -359,6 +359,16 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
                   icon="fa-solid fa-plug"
                   :label="`Sent by ${message.attributes?.app_name || 'an app'}`"
                 />
+                <MessageTag
+                  v-if="message.attributes?.source === 'journey'"
+                  icon="fa-solid fa-route"
+                  label="Journey step"
+                />
+                <MessageTag
+                  v-if="message.attributes?.source === 'host'"
+                  icon="fa-solid fa-window-maximize"
+                  label="Shown by the site"
+                />
                 <div v-html="renderMarkdown(message.message || '')"></div>
                 <QuickReplyChips :sent="message.attributes?.interactive_sent" />
                 

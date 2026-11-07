@@ -45,6 +45,11 @@ export interface ScenarioRule {
   match?: Pattern
   /** Ask the backend to run a tool first; `reply` is sent after the tool result comes back. */
   toolCall?: ToolCall
+  /**
+   * Several tools, one per round trip, in this order: the next is asked for each
+   * time a tool result comes back, and `reply` follows the last. Wins over toolCall.
+   */
+  toolCalls?: ToolCall[]
   reply: Reply
   fault?: Fault
 }

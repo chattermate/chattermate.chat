@@ -24,6 +24,7 @@ from app.core.auth import get_current_user, require_permissions
 from app.repositories.ai_config import AIConfigRepository
 from app.agents.chat_agent import ChatAgent
 from app.core.security import decrypt_api_key
+from app.services.usage_metering import model_is_hosted
 from app.models.schemas.ai_config import AIConfigCreate, AIConfigResponse, AISetupResponse, AIConfigUpdate
 from sqlalchemy.orm import Session
 import os
@@ -323,6 +324,7 @@ async def update_ai_config(
             
             logger.info(f"ChatterMate AI config updated for org {current_user.organization_id}")
         else:
+            require_own_key_to_leave_hosted(current_config, config_data)
             # For custom model, validate API key and/or base_url first if either is
             # changing in this request.
             require_allowed_base_url(config_data.base_url)
@@ -419,6 +421,21 @@ async def update_ai_config(
         raise HTTPException(
             status_code=500,
             detail="Failed to update AI configuration"
+        )
+
+
+def require_own_key_to_leave_hosted(current_config, config_data) -> None:
+    """A hosted config holds the platform's key, not the org's. Keeping it while
+    changing provider would hand our key to whatever base_url the request names,
+    and put our spend outside the plan's quota."""
+    if model_is_hosted(current_config.model_type) and not config_data.api_key:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "API key required",
+                "type": "api_key_required",
+                "details": "Enter your own API key to use this provider."
+            }
         )
 
 

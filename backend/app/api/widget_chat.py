@@ -26,7 +26,8 @@ from app.channels.constants import MessageSource
 from app.core.socketio import sio
 from app.core.logger import get_logger
 import traceback
-from app.agents.chat_agent import ChatAgent, ChatResponse
+from app.agents.chat_agent import ChatResponse
+from app.agents.host_actions.turns import PausedTurn
 from app.core.auth_utils import (
     authenticate_socket,
     authenticate_socket_conversation_token,
@@ -59,7 +60,12 @@ from app.services.human_routing import (
     QUEUED_FOR_HUMAN_NOTICE,
     notify_customer,
 )
-from app.services.lead_capture import record_lead_from_response
+from app.services.host_action_runtime import (
+    offered_actions, replay_open_call, start_paused_turn, waiting_on_page,
+)
+from app.services.widget_reply import create_widget_agent, deliver_ai_reply, emit_bot_typing, widget_agent_kwargs
+from app.services.journey_runtime import step_actions_hint
+from app.services.host_prompt import clean_host_prompt, store_host_prompt
 from app.services.widget_identity import can_act_as, may_stand_for
 from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
@@ -77,6 +83,7 @@ except ImportError:
     HAS_ENTERPRISE = False
 
 from app.utils.sanitize import sanitize_message
+from app.utils.secret_redaction import redact_secrets
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -84,19 +91,6 @@ logger = get_logger(__name__)
 # The inbox's own id for a message it sends (a UUID), echoed back on the
 # stored-message ack so it can match the row it became
 MAX_CLIENT_ID_LENGTH = 64
-
-
-async def _emit_bot_typing(session_id: str) -> None:
-    """Tell the widget a reply is actually being produced.
-
-    The widget owns no opinion about this: it shows the typing indicator only
-    between this event and the reply that follows. Every path that answers
-    nothing — a human-only agent, a chat someone has taken over, a closed
-    session — simply never calls this, so the indicator cannot be left spinning
-    over a conversation nobody is answering.
-    """
-    await sio.emit('bot_typing', {'session_id': session_id},
-                   room=session_id, namespace='/widget')
 
 # Rating feedback comes from an anonymous widget visitor and is stored, shown
 # to agents and copied onto the linked ticket's activity feed — bound it.
@@ -389,6 +383,9 @@ async def widget_connect(sid, environ, auth):
             'created': session_created
         }, to=sid, namespace='/widget')
 
+        # A reply paused on a host action survives a reconnect: send its call again.
+        await replay_open_call(sid, session_id, db)
+
         return True
 
     except SocketRefused:
@@ -427,6 +424,10 @@ async def handle_widget_chat(sid, data):
         
         # Sanitize message to prevent XSS attacks
         message = sanitize_message(original_message)
+        # Passwords, keys and card numbers never reach storage or the model.
+        message, _ = redact_secrets(message)
+        # A message the page showed (ChatterMate.prompt) that this one answers.
+        host_prompt = clean_host_prompt(data.get('host_prompt'))
         
         files = data.get('files', [])  # List of file objects with base64 content
         
@@ -558,6 +559,12 @@ async def handle_widget_chat(sid, data):
         if is_first_customer_message:
             await notify_new_chat(db, active_session)
 
+        if host_prompt:
+            store_host_prompt(db, session, host_prompt, data.get('host_prompt_source'))
+            session['host_prompt'] = host_prompt
+        else:
+            session.pop('host_prompt', None)
+
         # A human-only agent answers nothing: no model, no workflow, and no
         # transfer either — the chat was never with the AI, so there is nothing
         # to hand over. Every automated branch below is gated on this, leaving
@@ -569,7 +576,7 @@ async def handle_widget_chat(sid, data):
 
         # Check if agent uses workflow and no human agent has taken over
         if ai_replies_enabled and active_session.workflow_id and active_session.user_id is None:
-            await _emit_bot_typing(session_id)
+            await emit_bot_typing(session_id)
             # Handle workflow chat using the dedicated service
             workflow_chat_service = WorkflowChatService(db)
             response = await workflow_chat_service.handle_workflow_chat(
@@ -601,27 +608,22 @@ async def handle_widget_chat(sid, data):
                 }, room=session_id, namespace='/widget')
                 return
         elif ai_replies_enabled and active_session.status == SessionStatus.OPEN and active_session.user_id is None: # open and user has not taken over
-            await _emit_bot_typing(session_id)
+            # One reply at a time: while the page is running an action for the
+            # last one, a new message would start a second, crossing reply.
+            if waiting_on_page(db, session_id):
+                await sio.emit('error', {
+                    'error': 'Still waiting for the app to finish the last step.',
+                    'type': 'action_pending',
+                }, to=sid, namespace='/widget')
+                return
+            await emit_bot_typing(session_id)
             logger.debug(f"Initializing chat agent for model {session['ai_config'].model_type}")
-            ai_config = session['ai_config']
-            model = dict(
-                api_key=decrypt_api_key(ai_config.encrypted_api_key),
-                model_name=ai_config.model_name,
-                model_type=ai_config.model_type,
-                base_url=(ai_config.settings or {}).get('base_url'),
-            )
+            host_actions = offered_actions(db, session)
+            agent_kwargs = widget_agent_kwargs(session, host_actions, step_actions_hint(db, session, host_actions))
             # Everything the model call needs is read: let the connection go
             # rather than hold it through the call
             release_connection(db)
-            # Initialize chat agent with async factory method for MCP tools support
-            chat_agent = await ChatAgent.create_async(
-                **model,
-                org_id=org_id,
-                agent_id=session['agent_id'],
-                customer_id=customer_id,
-                session_id=session_id,
-                source=session.get('source')
-            )
+            chat_agent = await create_widget_agent(agent_kwargs)
             try:
                 # Get response from ai agent (this already handles end chat internally)
                 response = await chat_agent.get_response(
@@ -632,8 +634,12 @@ async def handle_widget_chat(sid, data):
                     customer_id=customer_id)
             finally:
                 await chat_agent.safe_cleanup_mcp_tools()
+            if isinstance(response, PausedTurn):
+                # The page runs the action; the reply follows its answer.
+                await start_paused_turn(sid, session, response, host_actions, db)
+                return
         elif active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
-            await _emit_bot_typing(session_id)
+            await emit_bot_typing(session_id)
             logger.debug(f"Transferring chat to human for session {session_id}")
             # Get response from agent transfer ai agent
             chat_repo = ChatRepository(db)
@@ -845,108 +851,8 @@ async def handle_widget_chat(sid, data):
 
             return # don't do anything if the session is closed or the user has already taken over
         
-        # Only emit response if we have a response object and message
-        if 'response' in locals() and response.message:
-            # Emit response to the specific room
-            response_payload = {
-                'message': response.message,
-                'type': 'chat_response',
-                'session_id': session_id,
-                'transfer_to_human': response.transfer_to_human,
-                'end_chat': response.end_chat,
-                'end_chat_reason': response.end_chat_reason.value if response.end_chat_reason else None,
-                'end_chat_description': response.end_chat_description,
-                'request_rating': response.request_rating,
-                # Initialize shopify_output to None. It will be populated if data exists.
-                'shopify_output': None,
-                # Knowledge-base citations (rendering is gated client-side by the agent's
-                # show_citations customization setting).
-                'sources': [s.model_dump() for s in response.sources] if getattr(response, 'sources', None) else None
-            }
-            
-            # Check if the response object has the structured shopify_output field
-            # and assign it directly if it's valid (should be a Pydantic model or dict)
-            if hasattr(response, 'shopify_output') and response.shopify_output:
-                # Assuming response.shopify_output is already the correct 
-                # ShopifyOutputData model instance from ChatResponse
-                # We need to convert it to a dict for JSON serialization
-                try:
-                    response_payload['shopify_output'] = response.shopify_output.model_dump(exclude_unset=True)
-                except AttributeError:
-                     # Handle cases where it might be a plain dict already (less likely but safe)
-                     if isinstance(response.shopify_output, dict):
-                         response_payload['shopify_output'] = response.shopify_output
-                     else:
-                         logger.warning(f"Unexpected type for shopify_output: {type(response.shopify_output)}")
-
-            await sio.emit('chat_response', response_payload, room=session_id, namespace='/widget')
-
-            # On human handoff, optionally collect the visitor's contact details (email/name)
-            # so the human agent can follow up. Fires for both a live transfer and the
-            # no-agents/ticket case (request_contact). Only asks for enabled + missing fields.
-            if response.transfer_to_human or getattr(response, 'request_contact', False):
-                try:
-                    from app.services.contact_capture import build_handoff_contact_form
-                    agent_repo = AgentRepository(db)
-                    handoff_agent = agent_repo.get_agent(session['agent_id'])
-                    customer = CustomerRepository(db).get_by_id(customer_id)
-                    if handoff_agent and customer:
-                        contact_form = build_handoff_contact_form(
-                            customer,
-                            collect_email=getattr(handoff_agent, 'handoff_collect_email', True),
-                            collect_name=getattr(handoff_agent, 'handoff_collect_name', True),
-                        )
-                        if contact_form:
-                            await sio.emit('display_form', {
-                                'form_data': contact_form,
-                                'session_id': session_id,
-                            }, room=session_id, namespace='/widget')
-                except Exception as contact_err:
-                    logger.error(f"Failed to emit handoff contact form: {contact_err}")
-
-            # Lead capture: the agent collected the details conversationally and set
-            # request_lead_capture (like transfer_to_human). Persist the structured
-            # lead_data + AI summary — no form. Skipped on transfer/handoff (the elif
-            # above takes precedence), but NOT on end_chat: the model naturally captures
-            # and signs off in the same turn, and this runs before the close block below.
-            # record_lead_capture enforces valid-email + consent and captures once.
-            elif getattr(response, 'request_lead_capture', False):
-                lc_resp = record_lead_from_response(
-                    db, response,
-                    organization_id=org_id,
-                    agent_id=session['agent_id'],
-                    customer_id=customer_id,
-                    session_id=session_id,
-                    page_url=session.get('page_url'),
-                    scope=session.get('conversation_scope'),
-                )
-                # If the capture merged this anonymous visitor into an existing
-                # customer (email already known), repoint the live socket session
-                # so the rest of this conversation writes to the merged customer.
-                # Isolated so a session-store failure can't skip the end_chat
-                # close block below.
-                if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
-                    try:
-                        session['customer_id'] = str(lc_resp.customer_id)
-                        await sio.save_session(sid, session, namespace='/widget')
-                        logger.info(
-                            f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
-                    except Exception as merge_err:
-                        logger.error(f"Failed to repoint socket session after merge: {merge_err}")
-
-            # If end_chat is true, close the session
-            if response.end_chat:
-                try:
-                    session_repo = SessionToAgentRepository(db)
-                    # Close the session with end_chat reason and description
-                    session_repo.close_session(
-                        session_id=session_id,
-                        reason=response.end_chat_reason.value if response.end_chat_reason else None,
-                        description=response.end_chat_description
-                    )
-                    logger.info(f"Session {session_id} closed due to end_chat with reason: {response.end_chat_reason}")
-                except Exception as close_error:
-                    logger.error(f"Error closing session {session_id}: {str(close_error)}")
+        if 'response' in locals():
+            await deliver_ai_reply(sid, session, response, db)
 
     except Exception as e:
         logger.error(f"Widget chat error for sid {sid}: {str(e)}")

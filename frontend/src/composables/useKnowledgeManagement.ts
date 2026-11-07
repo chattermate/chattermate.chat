@@ -17,6 +17,7 @@ limitations under the License.
 import { ref } from 'vue'
 import type { KnowledgeItem, KnowledgePage, QueueItem, KnowledgeContent } from '@/types/knowledge'
 import { knowledgeService } from '@/services/knowledge'
+import { withScheme } from '@/utils/website'
 
 export function useKnowledgeManagement(agentId: string, organizationId: string) {
   // Knowledge list state
@@ -162,17 +163,6 @@ export function useKnowledgeManagement(agentId: string, organizationId: string) 
       },
       null as string | null,
     )
-  }
-
-  // People type "docs.company.com", not "https://docs.company.com". Without a
-  // scheme new URL() throws and they get "Please enter a valid URL" for an
-  // address that is perfectly fine, so default the scheme before validating.
-  const withScheme = (url: string): string => {
-    const trimmed = url.trim()
-    if (!trimmed) return trimmed
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed
-    // Leading slashes would produce https:////host — drop them first.
-    return `https://${trimmed.replace(/^\/+/, '')}`
   }
 
   // URL validation
