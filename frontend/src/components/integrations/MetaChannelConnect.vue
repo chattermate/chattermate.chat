@@ -23,6 +23,7 @@ import type { Agent } from '@/types/agent'
 import MessengerPagePicker from './MessengerPagePicker.vue'
 import MetaOwnAppWebhook from './MetaOwnAppWebhook.vue'
 import { useMetaSignup } from '@/composables/useMetaSignup'
+import { apiErrorMessage } from '@/utils/apiError'
 
 const props = defineProps<{
   channel: 'whatsapp' | 'messenger' | 'instagram'
@@ -39,9 +40,9 @@ const emit = defineEmits<{
 const META_APPS_URL = 'https://developers.facebook.com/apps/'
 
 // Meta signs your own app's webhooks with its secret: without it a number or
-// Page from your app can send but never receives.
+// Page from your app can send but never receives, so it's required.
 const APP_SECRET_FIELD = {
-  key: 'app_secret', label: 'App secret (optional)', placeholder: 'App settings → Basic', secret: true,
+  key: 'app_secret', label: 'App secret', placeholder: 'App settings → Basic', secret: true,
 } as const
 
 // Per-channel copy + credential fields. The intro is split around the link
@@ -50,18 +51,18 @@ const META_FORMS = {
   whatsapp: {
     title: 'Connect WhatsApp',
     introBefore: 'From your Meta app (',
-    introAfter: ' → WhatsApp → API Setup), copy the phone number ID and a permanent access token. Add the app secret to receive messages.',
+    introAfter: ' → WhatsApp → API Setup), copy the phone number ID and a permanent access token, and the app secret from App settings → Basic.',
     fields: [
       { key: 'phone_number_id', label: 'Phone number ID', placeholder: '1234567890', secret: false },
       { key: 'access_token', label: 'Access token', placeholder: 'EAAG…', secret: true },
-      { key: 'waba_id', label: 'WhatsApp Business Account ID (optional)', placeholder: 'for webhook auto-subscribe', secret: false },
+      { key: 'waba_id', label: 'WhatsApp Business Account ID (optional)', placeholder: 'for webhook auto-subscribe', secret: false, optional: true },
       APP_SECRET_FIELD,
     ],
   },
   messenger: {
     title: 'Connect Messenger',
     introBefore: 'From your Meta app (',
-    introAfter: ' → Messenger → Settings), generate a page access token for the Facebook Page you want to connect. Add the app secret to receive messages.',
+    introAfter: ' → Messenger → Settings), generate a page access token for the Facebook Page you want to connect, and copy the app secret from App settings → Basic.',
     fields: [
       { key: 'page_id', label: 'Facebook Page ID', placeholder: '1234567890', secret: false },
       { key: 'page_access_token', label: 'Page access token', placeholder: 'EAAG…', secret: true },
@@ -80,6 +81,14 @@ const META_FORMS = {
 } as const
 
 const form = computed(() => META_FORMS[props.channel])
+// Reconnecting an account that isn't from the customer's own app (one-click
+// signup): its token is ChatterMate's, so there's no secret of theirs to enter.
+// Own-app accounts carry their webhook address, so they're the ones without it.
+const secretOptional = Boolean(props.existingAccount && !props.existingAccount.webhook_url)
+const fields = computed(() => form.value.fields.map(field => (
+  field.key === APP_SECRET_FIELD.key && secretOptional
+    ? { ...field, label: 'App secret (only if from your own Meta app)', optional: true }
+    : field)))
 const values = ref<Record<string, string>>({})
 const connecting = ref(false)
 const account = ref<ChannelAccount | null>(props.existingAccount ?? null)
@@ -91,6 +100,8 @@ const savingAgent = ref(false)
 // The three one-click logins live in their own composable; this component owns
 // the manual credentials form and agent assignment.
 const {
+  checkSignup,
+  signupChecked,
   signupEnabled,
   signingUp,
   showManualForm,
@@ -116,7 +127,7 @@ onMounted(async () => {
 })
 
 const connect = async () => {
-  const missing = form.value.fields.filter(f => !f.label.includes('optional') && !values.value[f.key]?.trim())
+  const missing = fields.value.filter(f => !('optional' in f && f.optional) && !values.value[f.key]?.trim())
   if (missing.length > 0) {
     toast.error(`Please fill in: ${missing.map(f => f.label).join(', ')}`)
     return
@@ -124,7 +135,7 @@ const connect = async () => {
   try {
     connecting.value = true
     const payload: any = Object.fromEntries(
-      form.value.fields
+      fields.value
         .map(f => [f.key, values.value[f.key]?.trim()])
         .filter(([, v]) => v)
     )
@@ -137,10 +148,17 @@ const connect = async () => {
     }
     toast.success(`Connected ${account.value.display_name || form.value.title.replace('Connect ', '')}`)
   } catch (error: any) {
-    toast.error(error?.response?.data?.detail || `Failed to connect ${props.channel}`)
+    toast.error(apiErrorMessage(error, `Failed to connect ${props.channel}`))
   } finally {
     connecting.value = false
   }
+}
+
+// Back to step 1, offering one-click when this deployment has it: a number
+// from one-click signup has no app secret to enter in the manual form.
+const reconnect = () => {
+  account.value = null
+  void checkSignup()
 }
 
 const saveAgent = async () => {
@@ -151,7 +169,7 @@ const saveAgent = async () => {
     toast.success('Agent assigned — this channel is live!')
     emit('connected', updated)
   } catch (error: any) {
-    toast.error(error?.response?.data?.detail || 'Failed to assign agent')
+    toast.error(apiErrorMessage(error, 'Failed to assign agent'))
   } finally {
     savingAgent.value = false
   }
@@ -177,6 +195,12 @@ const saveAgent = async () => {
           @select="onPageSelected"
         />
 
+        <!-- Until we know whether one-click is offered, neither form: showing
+             the manual one first makes it flash before one-click replaces it. -->
+        <div v-else-if="!signupChecked" class="meta-signup-checking" role="status" aria-label="Loading">
+          <font-awesome-icon icon="fa-solid fa-spinner" spin />
+        </div>
+
         <!-- One-click signup under ChatterMate's Meta app; the manual form
              stays available for anyone who already has their own credentials. -->
         <div v-else-if="signupEnabled && !showManualForm" class="meta-signup">
@@ -199,7 +223,7 @@ const saveAgent = async () => {
             class="meta-intro-link"
           >developers.facebook.com</a>{{ form.introAfter }}
         </p>
-        <div v-for="field in form.fields" :key="field.key" class="meta-field">
+        <div v-for="field in fields" :key="field.key" class="meta-field">
           <label class="meta-label" :for="`meta-${field.key}`">{{ field.label }}</label>
           <input
             :id="`meta-${field.key}`"
@@ -224,7 +248,7 @@ const saveAgent = async () => {
       <div v-else class="meta-modal-body">
         <div v-if="account.needs_reconnect" class="meta-reconnect">
           <p class="meta-reconnect-text">Meta stopped accepting this account's access. Reconnect to resume replies.</p>
-          <button class="meta-btn meta-btn-primary" @click="account = null">Reconnect</button>
+          <button class="meta-btn meta-btn-primary" @click="reconnect">Reconnect</button>
         </div>
         <p class="meta-intro">
           <strong>{{ account.display_name }}</strong> is connected.
@@ -379,6 +403,13 @@ const saveAgent = async () => {
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
+}
+
+.meta-signup-checking {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+  color: var(--text-muted);
 }
 
 .meta-signup-btn {
