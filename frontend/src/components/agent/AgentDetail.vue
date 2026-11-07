@@ -1270,7 +1270,7 @@ onMounted(async () => {
                         </div>
                     </div>
                     <!-- Live promo offer, when one applies to this organization -->
-                    <PromoGateNotice :feature="gateFeatureLabel" @claim="closeUpgradeModal" />
+                    <PromoGateNotice :feature="gateFeatureLabel" :feature-key="modalGate.feature" @claim="closeUpgradeModal" />
                 </div>
                 <div class="upgrade-modal-footer">
                     <button class="upgrade-button" @click="handleUpgrade">

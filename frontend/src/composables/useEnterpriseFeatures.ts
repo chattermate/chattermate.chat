@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { ref, readonly, defineComponent, defineAsyncComponent, h, computed } from 'vue'
+import { ref, readonly, defineComponent, defineAsyncComponent, h } from 'vue'
 import type { Component } from 'vue'
 
 // Create a proper Vue component for the fallback
@@ -57,12 +57,6 @@ interface SubscriptionStore {
   fetchPlans?: () => Promise<void>
 }
 
-interface MessageLimitStatus {
-  type: 'warning' | 'error'
-  message: string
-  percentage: number
-}
-
 interface SubscriptionGuard {
   subscriptionGuard: (to: any, from: any, next: any) => void
 }
@@ -103,6 +97,8 @@ const moduleImports = {
   promoUsageCard: '/src/modules/enterprise/components/promo/PromoUsageCard.vue',
   promoGateNotice: '/src/modules/enterprise/components/promo/PromoGateNotice.vue',
   promoLimitToast: '/src/modules/enterprise/components/promo/PromoLimitToast.vue',
+  // Connected channels on a plan without them: AI paused, inbox still on
+  channelsPausedNotice: '/src/modules/enterprise/components/promo/ChannelsPausedNotice.vue',
   // Help button for the hosted support chat (renders nothing in open source)
   supportChatButton: '/src/modules/enterprise/components/support/SupportChatButton.vue',
   // External apps driving channel conversations (settings page)
@@ -145,46 +141,6 @@ const defaultSubscriptionState: SubscriptionStore = {
 
 export const useEnterpriseFeatures = () => {
   const subscriptionStore = ref<SubscriptionStore>(defaultSubscriptionState)
-
-  const showMessageLimitWarning = computed(() => {
-    const plan = subscriptionStore.value.currentPlan
-    if (!plan?.plan) return false
-
-    const messageCount = plan.message_count || 0
-    const messageLimit = plan.message_limit
-
-    if (!messageLimit) return false
-
-    return messageCount >= messageLimit * 0.9
-  })
-
-  const messageLimitStatus = computed<MessageLimitStatus | null>(() => {
-    const plan = subscriptionStore.value.currentPlan
-    if (!plan?.plan) return null
-
-    const messageCount = plan.message_count || 0
-    const messageLimit = plan.message_limit
-
-    if (!messageLimit) return null
-
-    const usagePercentage = (messageCount / messageLimit) * 100
-
-    if (messageCount >= messageLimit) {
-      return {
-        type: 'error',
-        message: 'AI replies are paused until you upgrade or your usage resets.',
-        percentage: 100,
-      }
-    } else if (usagePercentage >= 90) {
-      return {
-        type: 'warning',
-        message: `You've used ${Math.round(usagePercentage)}% of this period's AI replies.`,
-        percentage: usagePercentage,
-      }
-    }
-
-    return null
-  })
 
   const modules = allEnterpriseModules
 
@@ -247,7 +203,5 @@ export const useEnterpriseFeatures = () => {
     moduleImports,
     enterpriseComponent,
     NotAvailableComponent,
-    showMessageLimitWarning,
-    messageLimitStatus,
   }
 }

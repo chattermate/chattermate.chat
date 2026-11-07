@@ -45,21 +45,32 @@ export const planShortName = (name: string | null | undefined): string =>
 /** "1 day", "3 days". */
 export const dayCount = (days: number): string => `${days} day${days === 1 ? '' : 's'}`
 
+/** "in 3 days", or "today" on the last one. */
+export const endsIn = (daysLeft: number): string => (daysLeft > 0 ? `in ${dayCount(daysLeft)}` : 'today')
+
 /** "Growth trial · 3 days left", or "Growth trial ends today". */
 export const trialLabel = (planName: string, daysLeft: number): string => {
   const name = planName ? `${planName} trial` : 'Trial'
   return daysLeft > 0 ? `${name} · ${dayCount(daysLeft)} left` : `${name} ends today`
 }
 
-/** The cheapest paid monthly plan that includes a feature, or null when no
- *  listed plan does. Upgrade lines name this plan rather than a fixed tier. */
-export const lowestPlanWith = <T extends CatalogPlan>(plans: readonly T[], feature: string): T | null =>
+/** The cheapest paid plan billed at `interval` that passes `test`, or null.
+ *  Upgrade lines name this plan rather than a fixed tier. */
+export const cheapestPaidPlan = <T extends CatalogPlan>(
+  plans: readonly T[],
+  test: (plan: T) => boolean,
+  interval: 'monthly' | 'yearly' = 'monthly',
+): T | null =>
   plans
-    .filter((plan) => plan.type !== 'free' && plan.billing_interval !== 'yearly' && plan.features?.[feature] === true)
+    .filter((plan) => plan.type !== 'free' && (plan.billing_interval ?? 'monthly') === interval && test(plan))
     .reduce<T | null>(
       (best, plan) => (best === null || (plan.price_per_agent ?? 0) < (best.price_per_agent ?? 0) ? plan : best),
       null,
     )
+
+/** The cheapest paid monthly plan that includes a feature, or null. */
+export const lowestPlanWith = <T extends CatalogPlan>(plans: readonly T[], feature: string): T | null =>
+  cheapestPaidPlan(plans, (plan) => plan.features?.[feature] === true)
 
 /** "Upgrade to Growth", or a generic line when the plan isn't known. */
 export const upgradeLabel = (planName: string | null): string =>

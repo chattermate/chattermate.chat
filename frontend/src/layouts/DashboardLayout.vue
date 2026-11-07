@@ -86,7 +86,7 @@ const PAGE_TITLES: Record<string, string> = {
 const pageTitle = computed(() => PAGE_TITLES[route.path] || '')
 
 // Initialize enterprise features
-const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, showMessageLimitWarning, messageLimitStatus, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
 // Promo strip / usage nudge / post-signup popup (enterprise only; empty in OSS)
 const PromoSurfaces = enterpriseComponent(moduleImports.promoSurfaces)
 // "Finish setup" bar until the org's agent is live (enterprise only; empty in OSS)
@@ -216,11 +216,8 @@ const navigateToUpgrade = () => {
     router.push('/settings/subscription')
 }
 
-// The usage warning is for everyone — an agent hitting a message ceiling needs
-// to know why replies stop. The two remedies are not: both lead to pages a
-// non-admin cannot open, so they rendered as doors into a 403.
+// The trial badge links to billing only for people who can open it
 const canManageSubscription = permissionChecks.canManageSubscription()
-const canViewAIConfig = permissionChecks.canViewAIConfig()
 
 // Computed for layout classes
 const layoutClasses = computed(() => ({
@@ -254,46 +251,9 @@ const openNotificationsFromSheet = () => {
 
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Message Limit Warning Banner -->
-            <div v-if="!props.hideHeader && hasEnterpriseModule && showMessageLimitWarning && messageLimitStatus" 
-                 class="message-limit-banner"
-                 :class="messageLimitStatus.type">
-                <div class="banner-content">
-                    <div class="banner-text">
-                        <span class="banner-icon" v-if="messageLimitStatus.type === 'error'">⚠️</span>
-                        <span class="banner-icon" v-else>ℹ️</span>
-                        {{ messageLimitStatus.message }}
-                    </div>
-                    <div v-if="canManageSubscription || canViewAIConfig" class="banner-actions">
-                        <button
-                            v-if="canManageSubscription"
-                            class="action-button"
-                            @click="navigateToUpgrade"
-                        >
-                            Upgrade Plan
-                        </button>
-                        <button
-                            v-if="canViewAIConfig"
-                            class="action-button secondary"
-                            @click="router.push('/settings/ai-config')"
-                        >
-                            Configure Own Model
-                        </button>
-                    </div>
-                </div>
-                <div class="usage-bar">
-                    <div class="usage-progress" 
-                         :style="{ width: `${Math.min(messageLimitStatus.percentage, 100)}%` }"
-                         :class="{ 'exceeded': messageLimitStatus.percentage >= 100 }">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Promo offer surfaces (strip, usage nudge, first-landing popup) -->
-            <PromoSurfaces
-                v-if="!props.hideHeader && hasEnterpriseModule"
-                :hide-usage-card="showMessageLimitWarning"
-            />
+            <!-- Plan and offer surfaces (strip, AI-reply usage, popup, limit toast);
+                 pages without the header still get the limit toast -->
+            <PromoSurfaces v-if="hasEnterpriseModule" :toasts-only="props.hideHeader" />
 
             <!-- Header -->
             <header v-if="!props.hideHeader" class="header">
@@ -944,89 +904,6 @@ const openNotificationsFromSheet = () => {
     box-shadow: inset 0 0 0 1px var(--warning-border);
 }
 
-.message-limit-banner {
-    position: relative;
-    padding: var(--space-md) var(--space-xl);
-    background: var(--warning-bg);
-    border-bottom: 1px solid var(--warning-color);
-    width: 100%;
-    overflow: hidden;
-}
-
-.message-limit-banner.error {
-    background: var(--error-bg);
-    border-bottom: 1px solid var(--error-color);
-}
-
-.banner-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-md);
-}
-
-.banner-text {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    font-weight: 500;
-    word-break: break-word;
-    flex: 1;
-}
-
-.banner-icon {
-    font-size: 1.2em;
-}
-
-.banner-actions {
-    display: flex;
-    gap: var(--space-sm);
-    flex-wrap: wrap;
-}
-
-.action-button {
-    padding: var(--space-xs) var(--space-sm);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    background: var(--accent-solid);
-    color: white;
-    transition: all 0.2s ease;
-}
-
-.action-button:hover {
-    transform: translateY(-1px);
-    filter: brightness(1.1);
-}
-
-.action-button.secondary {
-    background: var(--background-soft);
-    color: var(--text-color);
-    border: 1px solid var(--border-color);
-}
-
-.usage-bar {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: var(--background-mute);
-}
-
-.usage-progress {
-    height: 100%;
-    background: var(--warning-color);
-    transition: width 0.3s ease;
-}
-
-.usage-progress.exceeded {
-    background: var(--error-color);
-}
-
-/* Adjust main content to account for banner */
 .main-content {
     display: flex;
     flex-direction: column;
@@ -1079,22 +956,6 @@ const openNotificationsFromSheet = () => {
     
     .content {
         padding: var(--space-lg);
-    }
-    
-    .banner-content {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-sm);
-    }
-    
-    .banner-actions {
-        width: 100%;
-        justify-content: flex-start;
-    }
-    
-    .action-button {
-        padding: var(--space-xs) var(--space-md);
-        font-size: 0.8rem;
     }
     
     .plan-badge {
@@ -1233,25 +1094,6 @@ const openNotificationsFromSheet = () => {
         gap: var(--space-sm);
     }
     
-    .banner-content {
-        gap: var(--space-xs);
-    }
-    
-    .banner-text {
-        font-size: var(--text-sm);
-    }
-    
-    .banner-actions {
-        flex-direction: column;
-        width: 100%;
-    }
-    
-    .action-button {
-        width: 100%;
-        text-align: center;
-        padding: var(--space-sm);
-    }
-    
     .trial-badge {
         font-size: 0.7rem;
         padding: 2px 8px;
@@ -1314,31 +1156,6 @@ const openNotificationsFromSheet = () => {
     .notification-icon {
         width: 20px;
         height: 20px;
-    }
-    
-    .message-limit-banner {
-        padding: var(--space-sm);
-    }
-    
-    .banner-content {
-        gap: var(--space-xs);
-    }
-    
-    .banner-text {
-        font-size: var(--text-xs);
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-xs);
-    }
-    
-    .banner-icon {
-        font-size: 1em;
-    }
-    
-    .action-button {
-        font-size: 0.75rem;
-        padding: var(--space-xs) var(--space-sm);
-        white-space: nowrap;
     }
     
     .avatar {

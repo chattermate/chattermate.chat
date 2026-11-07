@@ -17,7 +17,9 @@ limitations under the License.
 import { describe, expect, it } from 'vitest'
 import { formatShortDate } from '@/utils/shortDate'
 import {
+  cheapestPaidPlan,
   dayCount,
+  endsIn,
   lowestPlanWith,
   planDisplayName,
   planShortName,
@@ -106,5 +108,33 @@ describe('formatShortDate', () => {
     expect(formatShortDate(null)).toBeNull()
     expect(formatShortDate('')).toBeNull()
     expect(formatShortDate('soon')).toBeNull()
+  })
+})
+
+describe('endsIn', () => {
+  it('counts down in days, then says today', () => {
+    expect(endsIn(2)).toBe('in 2 days')
+    expect(endsIn(1)).toBe('in 1 day')
+    expect(endsIn(0)).toBe('today')
+  })
+})
+
+describe('cheapestPaidPlan', () => {
+  const plans = [
+    { type: 'free', price_per_agent: 0, billing_interval: 'monthly' },
+    { type: 'pro', price_per_agent: 24.99, billing_interval: 'monthly' },
+    { type: 'growth', price_per_agent: 9.99, billing_interval: 'monthly' },
+    { type: 'growth', price_per_agent: 99.9, billing_interval: 'yearly' },
+  ]
+
+  it('picks the cheapest paid plan at the interval that passes the test', () => {
+    expect(cheapestPaidPlan(plans, () => true)?.price_per_agent).toBe(9.99)
+    expect(cheapestPaidPlan(plans, (p) => p.type === 'pro')?.price_per_agent).toBe(24.99)
+    expect(cheapestPaidPlan(plans, () => true, 'yearly')?.price_per_agent).toBe(99.9)
+  })
+
+  it('treats a plan with no interval as monthly, and finds nothing when none pass', () => {
+    expect(cheapestPaidPlan([{ type: 'starter', price_per_agent: 4.99 }], () => true)?.price_per_agent).toBe(4.99)
+    expect(cheapestPaidPlan(plans, () => false)).toBeNull()
   })
 })
