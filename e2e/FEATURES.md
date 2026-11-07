@@ -28,8 +28,10 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Journeys | A reply to a step reaches the agent with the step's message, stored once; the step stays until done | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The agent is told which actions finish the user's step, and still has every other action | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | After sending, the list follows down to the typing bubble; the pinned guide adds no sideways scroll | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A step that moves on during a reply waits for it; a later message (a human agent's) goes below the step's message, never above | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The visitor skips a step, or hides the guide for good | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | The funnel shows how far visitors got, per step, who is stuck on a step, and opens that step | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A step's replies stay after a plain answer and after a failed action, and its message shows once | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
 | Journeys | Build from a template: sample-context preview, "Action succeeds" picks a declared action, an action chip allows it, save, put live | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
 | Journeys | Leaving the editor with unsaved changes asks first; Keep editing / Leave | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
 | Journeys | The editor blocks a step with no title; a key already taken is refused and stays unsaved | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |

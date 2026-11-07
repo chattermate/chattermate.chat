@@ -40,8 +40,10 @@ const stubs = {
   StepTest: { props: ['widgetId'], template: '<div class="step-test">{{ widgetId }}</div>' },
   StepLaunch: { props: ['widgetId'], template: '<div class="step-launch">{{ widgetId }}</div>' },
   SetupAssistant: {
-    emits: ['changed'],
+    emits: ['changed', 'go-to-step'],
     template: `<div class="assistant">
+      <button class="to-launch" @click="$emit('go-to-step', 'launch')" />
+      <button class="to-teach" @click="$emit('go-to-step', 'teach')" />
       <button class="taught" @click="$emit('changed', 'knowledge')" />
       <button class="restyled" @click="$emit('changed', 'look')" />
     </div>`,
@@ -78,6 +80,12 @@ describe('AIAgentOnboarding - where it resumes', () => {
     expect(wrapper.find('.step-launch').exists()).toBe(true)
   })
 
+  it('counts the steps before the server-reported one as done, so Finish clears the resume banner', async () => {
+    getProgress.mockResolvedValue({ step: 'launch', agent_id: 'agent-9', widget_id: 'w-9', hidden: false })
+    await mountWizard()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)['org-1'].completedSteps).toEqual([0, 1, 2])
+  })
+
   describe('Teach following the assistant', () => {
     const atTeach = async () => {
       getProgress.mockResolvedValue({ step: 'teach', agent_id: 'agent-9', widget_id: 'w-9', hidden: false })
@@ -112,6 +120,42 @@ describe('AIAgentOnboarding - where it resumes', () => {
       await click(wrapper, '.step-teach')
       await click(wrapper, '.step-create')
       expect(following(wrapper)).toBe('false')
+    })
+  })
+
+  describe('the assistant moving the wizard', () => {
+    const atTest = async () => {
+      getProgress.mockResolvedValue({ step: 'test', agent_id: 'agent-9', widget_id: 'w-9', hidden: false })
+      return mountWizard()
+    }
+    const saved = () => Object.values(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}'))[0] as { completedSteps: number[]; currentStep: number }
+
+    it("counts one step on as that step done, like the step's own button", async () => {
+      const wrapper = await atTest()
+      await wrapper.find('.to-launch').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('.step-launch').exists()).toBe(true)
+      expect(saved().completedSteps).toContain(2)
+      expect(saved().currentStep).toBe(3)
+    })
+
+    it('counts every step it jumps over as done, so the resume banner goes after Finish', async () => {
+      getProgress.mockResolvedValue({ step: 'teach', agent_id: 'agent-9', widget_id: 'w-9', hidden: false })
+      const wrapper = await mountWizard()
+      await wrapper.find('.to-launch').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('.step-launch').exists()).toBe(true)
+      expect(saved().completedSteps).toEqual(expect.arrayContaining([1, 2]))
+      expect(saved().currentStep).toBe(3)
+    })
+
+    it('does not count going back as anything done', async () => {
+      const wrapper = await atTest()
+      await wrapper.find('.to-teach').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('.step-teach').exists()).toBe(true)
+      expect(saved().completedSteps).not.toContain(2)
+      expect(saved().currentStep).toBe(1)
     })
   })
 

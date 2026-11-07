@@ -80,6 +80,39 @@ test.describe('Journeys', () => {
     await expect(widget.journeyProgress).toContainText('0 of 1')
   })
 
+  test("a step's replies stay after a plain answer and after a failed action @journeys", async ({ agent, widget, adminApi, llm }) => {
+    await declareAction(adminApi, agent.id, 'open_page')
+    await declareAction(adminApi, agent.id, 'fail_task')
+    await createJourney(adminApi, agent.id, {
+      key: 'replies_stay',
+      name: 'Replies stay',
+      autoOpen: true,
+      steps: [{
+        id: 'page',
+        title: 'Open the invoices page',
+        message: 'Let me open your invoices for you.',
+        chips: [{ label: 'Open it for me', kind: 'action', value: 'open_page' }],
+        allowed_actions: ['open_page', 'fail_task'],
+        done_when: [{ kind: 'action', value: 'open_page' }],
+      }],
+    })
+    await llm.script(agent, (s) => s
+      .when(/task/i).callTool('fail_task', {}).thenReply('That did not work, sorry.')
+      .otherwise().reply('Invoices live under Billing.'))
+    await widget.embed({ withActions: true })
+    await expect(widget.replyChip('Open it for me')).toBeVisible()
+
+    await widget.send('Where are my invoices?')
+    await expect(widget.lastAgentMessage()).toHaveText('Invoices live under Billing.', AI_REPLY)
+    await expect(widget.replyChip('Open it for me')).toBeVisible()
+
+    await widget.send('Do the task')
+    await expect(widget.lastAgentMessage()).toHaveText('That did not work, sorry.', AI_REPLY)
+    await expect(widget.replyChip('Open it for me')).toBeVisible()
+    // Shown once, not again under the answers.
+    await expect(widget.agentMessages.filter({ hasText: 'Let me open your invoices for you.' })).toHaveCount(1)
+  })
+
   test("the agent is told which actions finish the user's step, without losing the others @journeys", async ({ agent, widget, adminApi, llm }) => {
     await declareAction(adminApi, agent.id, 'open_page')
     await declareAction(adminApi, agent.id, 'send_invoice')
@@ -149,6 +182,22 @@ test.describe('Journeys', () => {
     expect(await widget.scrollsSideways()).toBe(false)
   })
 
+  test('a step that moves on during a reply waits for it, then follows it @journeys', async ({ agent, widget, adminApi, llm }) => {
+    await createJourney(adminApi, agent.id, { key: 'first_invoice', name: 'First invoice', steps: STEPS, autoOpen: true })
+    await llm.script(agent, (s) => s.otherwise().after(2500).reply('Billing is under Settings.'))
+
+    await widget.embed()
+    await expect(widget.journeyProgress).toContainText('Open billing')
+    await widget.send('Where is that?')
+    await expect(widget.typingBubble).toBeVisible()
+    await widget.siteReports('billing_opened')
+    await expect(widget.journeyProgress).toContainText('Open the invoices page')
+    await expect(widget.agentMessages.filter({ hasText: 'Now let me open your invoices for you.' })).toHaveCount(0)
+
+    await expect(widget.lastAgentMessage()).toHaveText('Now let me open your invoices for you.', AI_REPLY)
+    await expect(widget.agentMessages.nth(-2)).toHaveText('Billing is under Settings.')
+  })
+
   test('the visitor can skip a step or hide the guide @journeys', async ({ agent, widget, adminApi }) => {
     await createJourney(adminApi, agent.id, { key: 'skippable', name: 'Skippable', steps: STEPS, autoOpen: true })
 
@@ -183,5 +232,32 @@ test.describe('Journeys', () => {
     await journeysTab.showStuck('Open the invoices page')
     await expect(journeysTab.stuckUsers).toContainText('Users on this step · 1')
     await journeysTab.openStepFromFunnel('Open the invoices page')
+  })
+})
+
+test.describe('Journeys with a teammate', () => {
+  test.use({ agentSettings: { transferToHuman: true } })
+
+  test.beforeEach(async ({ adminApi, widget }) => {
+    await setAllowedDomains(adminApi, widget.widgetId, [siteHost])
+  })
+
+  test("a message that arrives after a step's message goes below it @journeys", async ({ agent, widget, adminApi, llm, inbox }) => {
+    await createJourney(adminApi, agent.id, { key: 'first_invoice', name: 'First invoice', steps: STEPS, autoOpen: true })
+    await llm.script(agent, (s) => s.otherwise().handOver('Let me connect you with a teammate.'))
+
+    await widget.embed()
+    await widget.send('I want to talk to a human')
+    await widget.shareContactDetails()
+    await widget.siteReports('billing_opened')
+    await expect(widget.lastAgentMessage()).toHaveText('Now let me open your invoices for you.')
+
+    await inbox.goto()
+    await inbox.openConversationWith(widget.customer.name)
+    await inbox.takeOver()
+    await inbox.reply('Hi, this is Sam.')
+
+    await expect(widget.lastAgentMessage()).toHaveText('Hi, this is Sam.')
+    await expect(widget.agentMessages.nth(-2)).toHaveText('Now let me open your invoices for you.')
   })
 })
