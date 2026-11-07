@@ -1,7 +1,7 @@
 """encrypt integration tokens at rest; shopify compliance events
 
 Revision ID: integration_secrets_001
-Revises: journeys_001
+Revises: merge_reply_limits_gpt6_001
 Create Date: 2026-11-07
 
 Encrypts, in place, the integration secrets that were stored as plaintext:
@@ -27,7 +27,7 @@ from app.core.encryption import decrypt_json, decrypt_value, encrypt_json, encry
 
 # revision identifiers, used by Alembic.
 revision: str = 'integration_secrets_001'
-down_revision: Union[str, None] = 'journeys_001'
+down_revision: Union[str, None] = 'merge_reply_limits_gpt6_001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

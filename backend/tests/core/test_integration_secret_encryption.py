@@ -179,7 +179,7 @@ def _load_migration():
 
 @pytest.fixture
 def legacy_db():
-    """A database as it stood at journeys_001: the three tables, plaintext rows,
+    """A database as it stood before integration_secrets_001: the three tables, plaintext rows,
     and no compliance table yet."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     with engine.begin() as conn:

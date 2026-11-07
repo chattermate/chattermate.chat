@@ -4981,18 +4981,9 @@ export interface paths {
         put?: never;
         /**
          * Shopify Customers Data Request Webhook
-         * @description GDPR Compliance Webhook: Customer Data Request
-         *
-         *     This webhook is called when a customer requests access to their data.
-         *     You must provide the customer's data within a specified timeframe.
-         *
-         *     Shopify sends the following information:
-         *     - shop_id: The ID of the shop
-         *     - shop_domain: The shop's domain
-         *     - customer: Customer information including email, phone
-         *     - orders_requested: List of order IDs the customer has placed
-         *
-         *     Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
+         * @description A customer asked the merchant for their data. Records which of our
+         *     customer records it covers; the export is then sent to the merchant.
+         *     https://shopify.dev/docs/apps/build/privacy-law-compliance
          */
         post: operations["shopify_customers_data_request_webhook_api_v1_shopify_webhooks_customers_data_request_post"];
         delete?: never;
@@ -5012,18 +5003,8 @@ export interface paths {
         put?: never;
         /**
          * Shopify Customers Redact Webhook
-         * @description GDPR Compliance Webhook: Customer Data Erasure
-         *
-         *     This webhook is called when a customer requests their data to be deleted.
-         *     You must delete all customer data within a specified timeframe.
-         *
-         *     Shopify sends the following information:
-         *     - shop_id: The ID of the shop
-         *     - shop_domain: The shop's domain
-         *     - customer: Customer information including email, phone
-         *     - orders_to_redact: List of order IDs to redact
-         *
-         *     Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
+         * @description Erase one customer's conversations and personal data.
+         *     https://shopify.dev/docs/apps/build/privacy-law-compliance
          */
         post: operations["shopify_customers_redact_webhook_api_v1_shopify_webhooks_customers_redact_post"];
         delete?: never;
@@ -5043,16 +5024,8 @@ export interface paths {
         put?: never;
         /**
          * Shopify Shop Redact Webhook
-         * @description GDPR Compliance Webhook: Shop Data Erasure
-         *
-         *     This webhook is called 48 hours after a shop owner uninstalls your app.
-         *     You must delete all shop-related data.
-         *
-         *     Shopify sends the following information:
-         *     - shop_id: The ID of the shop
-         *     - shop_domain: The shop's domain
-         *
-         *     Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
+         * @description Sent 48 hours after uninstall: erase the store's visitor data.
+         *     https://shopify.dev/docs/apps/build/privacy-law-compliance
          */
         post: operations["shopify_shop_redact_webhook_api_v1_shopify_webhooks_shop_redact_post"];
         delete?: never;
