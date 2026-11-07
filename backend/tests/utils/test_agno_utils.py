@@ -242,9 +242,42 @@ class TestCreateModel:
             mock_gemini.assert_called_once_with(
                 api_key="test-api-key",
                 id="gemini-pro",
-                max_output_tokens=1000  # Gemini's agno model uses max_output_tokens
+                max_output_tokens=1000,  # Gemini's agno model uses max_output_tokens
             )
             assert result == mock_model
+
+    def test_create_model_google_3_plus_thinks_low(self):
+        """Gemini 3+ thinking can't be turned off and eats max_output_tokens."""
+        with patch("agno.models.google.Gemini") as mock_gemini:
+            agno_utils.create_model(
+                model_type="GOOGLE", api_key="k", model_name="gemini-3.8-flash"
+            )
+            kwargs = mock_gemini.call_args.kwargs["generative_model_kwargs"]
+            assert kwargs == {"thinking_config": {"thinking_level": "low"}}
+
+    @pytest.mark.parametrize("name,expected", [
+        ("gemini-2.5-flash", False),
+        ("gemini-2.5-pro", False),
+        ("gemini-pro", False),
+        ("gemini-3.5-flash-lite", True),
+        ("gemini-3.8-flash", True),
+        ("gemini-4-argon", True),
+        ("Gemini-4-Argon", True),
+    ])
+    def test_gemini_thinking_level_by_version(self, name, expected):
+        overrides = agno_utils.model_request_overrides("GOOGLE", name)
+        assert ("generative_model_kwargs" in overrides) is expected
+
+    def test_gemini_thinking_level_reaches_the_request(self):
+        """A plain dict in the table must still become a ThinkingConfig, and
+        building one request must not change the model for the next."""
+        from google.genai.types import ThinkingLevel
+
+        model = agno_utils.create_model("GOOGLE", "k", "gemini-4-argon")
+        for _ in range(2):
+            config = model.get_request_params()["config"]
+            assert config.thinking_config.thinking_level == ThinkingLevel.LOW
+        assert model.generative_model_kwargs == {"thinking_config": {"thinking_level": "low"}}
 
     def test_create_model_googlevertex(self):
         """Test creating Google Vertex AI model (should trigger import error)"""

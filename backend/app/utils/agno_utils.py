@@ -141,7 +141,8 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
         elif model_type == 'GOOGLE':
             from agno.models.google import Gemini
             # Gemini's agno model exposes max_output_tokens, not max_tokens.
-            return Gemini(api_key=api_key, id=model_name, max_output_tokens=max_tokens)
+            return Gemini(api_key=api_key, id=model_name, max_output_tokens=max_tokens,
+                          **model_request_overrides(model_type, model_name))
         elif model_type == 'GOOGLEVERTEX':
             from agno.models.vertexai import Gemini
             return Gemini(api_key=api_key, id=model_name, max_tokens=max_tokens)

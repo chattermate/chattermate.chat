@@ -60,6 +60,11 @@ def _m(value: str, label: str) -> CatalogModel:
 # unset. OpenAI's named successor to gpt-4o-mini, and cheaper per token.
 DEFAULT_CHATTERMATE_MODEL = "gpt-6-luna"
 
+# Gemini 3+'s thinking level; see MODEL_REQUEST_OVERRIDES["GOOGLE"].
+_GEMINI_LOW_THINKING: Dict[str, Any] = {
+    "generative_model_kwargs": {"thinking_config": {"thinking_level": "low"}},
+}
+
 # Extra agno model kwargs, by provider then lowercase model ID. Most current
 # models think by default, and agno 1.7.6 can't carry that thinking through a
 # tool loop — it drops OpenAI-style reasoning_content and keeps only one Claude
@@ -84,6 +89,17 @@ MODEL_REQUEST_OVERRIDES: Dict[str, Dict[str, Dict[str, Any]]] = {
         "claude-sonnet-5-5": {"thinking": {"type": "between_tools"}},
         # Accepted at effort high or below; Haiku 5.5 defaults to medium.
         "claude-haiku-5-5": {"thinking": {"type": "disabled"}},
+    },
+    "GOOGLE": {
+        # Gemini 3+ can't stop thinking, and the thoughts count against
+        # max_output_tokens; "low" keeps them inside the agents' budget. One
+        # switch for the whole family: thinking_level is how every 3+ model sets
+        # it, while 2.5 takes thinking_budget and gets nothing here. Set through
+        # generative_model_kwargs, which agno copies into a fresh config per
+        # request; generation_config is updated in place, so the tool list would
+        # stick to it between rounds.
+        "gemini-3*": _GEMINI_LOW_THINKING,
+        "gemini-4*": _GEMINI_LOW_THINKING,
     },
     "DEEPSEEK": {
         # With thinking on (the default), any request carrying tools is a 400
@@ -141,11 +157,15 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "requires_api_key": True,
         "custom_allowed": True,
         "api_key_url": "https://aistudio.google.com/app/apikey",
-        # Gemini 3 and later 400 on the second tool call of a turn: agno 1.7.6
-        # drops the thought_signature they require on replayed function calls.
-        # Until that is patched only 2.5 works — and Google now limits 2.5 to keys
-        # that have used it before. gemini-3.5-flash is gone (routes to 3.6).
+        # Gemini 3+ call tools only through the thought-signature patch in
+        # app.utils.agno_gemini_patches: agno 1.7.6 drops the signature and the
+        # second tool call of a turn then 400s. Google limits 2.5 to keys that
+        # have used it before, so a new key needs a 3+ model. gemini-3.5-flash is
+        # gone (routes to 3.6); gemini-2.0-flash is shut down.
         "models": [
+            _m("gemini-4-argon", "Gemini 4 Argon"),
+            _m("gemini-3.8-flash", "Gemini 3.8 Flash"),
+            _m("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite"),
             _m("gemini-2.5-pro", "Gemini 2.5 Pro"),
             _m("gemini-2.5-flash", "Gemini 2.5 Flash"),
             _m("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite"),

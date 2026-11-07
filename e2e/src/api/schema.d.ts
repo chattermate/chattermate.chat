@@ -5559,6 +5559,10 @@ export interface components {
              * @default 1
              */
             requests_per_sec: number;
+            /** Messages Per Customer Per Minute */
+            messages_per_customer_per_minute?: number | null;
+            /** Replies Per Customer Per Day */
+            replies_per_customer_per_day?: number | null;
             /**
              * Use Workflow
              * @default false
@@ -5811,6 +5815,10 @@ export interface components {
             overall_limit_per_ip?: number | null;
             /** Requests Per Sec */
             requests_per_sec?: number | null;
+            /** Messages Per Customer Per Minute */
+            messages_per_customer_per_minute?: number | null;
+            /** Replies Per Customer Per Day */
+            replies_per_customer_per_day?: number | null;
             /** Use Workflow */
             use_workflow?: boolean | null;
             /** Active Workflow Id */
@@ -5897,6 +5905,10 @@ export interface components {
             overall_limit_per_ip?: number | null;
             /** Requests Per Sec */
             requests_per_sec?: number | null;
+            /** Messages Per Customer Per Minute */
+            messages_per_customer_per_minute?: number | null;
+            /** Replies Per Customer Per Day */
+            replies_per_customer_per_day?: number | null;
             /**
              * Use Workflow
              * @default false
