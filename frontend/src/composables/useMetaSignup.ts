@@ -26,6 +26,7 @@ limitations under the License.
 
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import { apiErrorMessage } from '@/utils/apiError'
 import channelsService, {
   type ChannelAccount,
   type MessengerSignupPage,
@@ -69,6 +70,10 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
   // Offered only when the server says this deployment has a Meta app to onboard
   // under. Everyone else keeps the manual credentials form.
   const signupEnabled = ref(false)
+  // Whether the server has answered: until then neither form is shown, or the
+  // manual one would flash before one-click replaced it. Manage mode asks only
+  // once the customer chooses to reconnect.
+  const signupChecked = ref(false)
   const signingUp = ref(false)
   const showManualForm = ref(false)
 
@@ -86,36 +91,56 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
 
   const copy = SIGNUP_COPY[channel]
 
+  // Manage mode: a login here reconnects this account, so it must bring the
+  // same number or Page back rather than connect another one beside it
+  const reconnecting = existingAccount ?? null
+  const reconnectName = () => reconnecting?.display_name || reconnecting?.external_account_id || 'this account'
+
   const handleSignupMessage = (event: MessageEvent) => {
     const session = parseSignupMessage(event)
     if (session) signupSession.value = session
   }
 
-  onMounted(async () => {
-    if (existingAccount) return
-    try {
-      const config = await channelsService.getEmbeddedSignupConfig(channel)
-      if (!config.enabled || !config.app_id) return
-      // The Facebook logins are driven by a Login-for-Business configuration;
-      // Instagram Login has none, so requiring one here would hide its button.
-      if (channel !== 'instagram' && !config.config_id) return
-      // Empty for Instagram Login, which authorizes with the app id alone.
-      configId.value = config.config_id ?? ''
-      appId.value = config.app_id
-      graphVersion.value = config.graph_version
-      signupEnabled.value = true
+  /** Ask whether one-click is offered here. Idempotent: the modal asks on
+   *  open, and a manage-mode modal again when the customer reconnects. */
+  let checking: Promise<void> | null = null
+  const checkSignup = (): Promise<void> => {
+    checking ??= (async () => {
+      try {
+        const config = await channelsService.getEmbeddedSignupConfig(channel)
+        // The Facebook logins are driven by a Login-for-Business configuration;
+        // Instagram Login has none, so requiring one here would hide its button.
+        if (config.enabled && config.app_id && (channel === 'instagram' || config.config_id)) {
+          // Empty for Instagram Login, which authorizes with the app id alone.
+          configId.value = config.config_id ?? ''
+          appId.value = config.app_id
+          graphVersion.value = config.graph_version
+          signupEnabled.value = true
+        }
+      } catch (error) {
+        // Falling back to the manual form is a working path, not an error worth
+        // interrupting the user for.
+        console.error('One-click signup unavailable:', error)
+      }
+      // Answered: the button can show while the SDK below loads behind it
+      signupChecked.value = true
       // WhatsApp uses the JS SDK (Embedded Signup, which also reports its
       // result out of band via postMessage). The other two drive their own
       // OAuth popup, so they need neither the SDK nor the message listener.
-      if (channel === 'whatsapp') {
-        await loadMetaSdk(config.app_id, config.graph_version)
-        window.addEventListener('message', handleSignupMessage)
+      if (signupEnabled.value && channel === 'whatsapp') {
+        try {
+          await loadMetaSdk(appId.value, graphVersion.value)
+          window.addEventListener('message', handleSignupMessage)
+        } catch (error) {
+          console.error('Meta SDK failed to load:', error)
+        }
       }
-    } catch (error) {
-      // Falling back to the manual form is a working path, not an error worth
-      // interrupting the user for.
-      console.error('One-click signup unavailable:', error)
-    }
+    })()
+    return checking
+  }
+
+  onMounted(() => {
+    if (!existingAccount) void checkSignup()
   })
 
   onBeforeUnmount(() => window.removeEventListener('message', handleSignupMessage))
@@ -127,6 +152,13 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
       // is nothing to connect. Say so rather than appearing to do nothing.
       toast.error('WhatsApp signup did not complete', {
         description: 'No number was set up. Try again, or enter credentials manually.',
+      })
+      return
+    }
+    // Reconnecting: only the same number puts that account back to work
+    if (reconnecting && session.phone_number_id !== reconnecting.external_account_id) {
+      toast.error(`That's a different number, not ${reconnectName()}`, {
+        description: 'Sign in again and choose the same number to reconnect it.',
       })
       return
     }
@@ -151,6 +183,17 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
   const finishMessengerSignup = async (code: string, redirectUri: string) => {
     const { pages, signup_token } = await channelsService.listMessengerSignupPages(code, redirectUri)
     signupToken.value = signup_token
+    // Reconnecting: only the same Page puts that account back to work, so no picker
+    if (reconnecting) {
+      if (!pages.some((page) => page.id === reconnecting.external_account_id)) {
+        toast.error(`That login didn't include ${reconnectName()}`, {
+          description: 'Sign in again and select that Page to reconnect it.',
+        })
+        return
+      }
+      await connectPickedPage(reconnecting.external_account_id)
+      return
+    }
     // One Page needs no picker — connect it and go straight to agent assignment.
     if (pages.length === 1) {
       await connectPickedPage(pages[0].id)
@@ -165,7 +208,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
       connectingPage.value = true
       await connectPickedPage(pageId)
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || 'Could not connect that account')
+      toast.error(apiErrorMessage(error, 'Could not connect that account'))
     } finally {
       connectingPage.value = false
     }
@@ -182,7 +225,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     try {
       await finishWhatsAppSignup(code)
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || 'Could not finish connecting')
+      toast.error(apiErrorMessage(error, 'Could not finish connecting'))
     } finally {
       signingUp.value = false
     }
@@ -197,7 +240,7 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     } catch (error: any) {
       // The user closing the popup is not an error worth a toast.
       if (error?.message !== 'cancelled') {
-        toast.error(error?.response?.data?.detail || error?.message || 'Could not finish connecting')
+        toast.error(apiErrorMessage(error, error?.message || 'Could not finish connecting'))
       }
     } finally {
       signingUp.value = false
@@ -220,6 +263,14 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
     const code = await runInstagramLogin({ appId: appId.value, redirectUri })
     const account = await channelsService.connectInstagramLogin(code, redirectUri)
     onConnected(account)
+    // Instagram Login names its account only once it's connected: say so if it
+    // isn't the one being reconnected, which still needs it
+    if (reconnecting && account.external_account_id !== reconnecting.external_account_id) {
+      toast.warning(`Connected ${account.display_name || 'another account'}, not ${reconnectName()}`, {
+        description: `${reconnectName()} still needs reconnecting: sign in to that account.`,
+      })
+      return
+    }
     toast.success(`Connected ${account.display_name || 'Instagram'}`)
   })
 
@@ -244,6 +295,8 @@ export function useMetaSignup({ channel, existingAccount, onConnected }: MetaSig
   }
 
   return {
+    checkSignup,
+    signupChecked,
     signupEnabled,
     signingUp,
     showManualForm,

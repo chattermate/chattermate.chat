@@ -6,7 +6,7 @@ import { test, expect, channels, createGroup, connectEmail, listChannelAccounts,
 /** Admin-only operations, each with a body the endpoint would accept from an admin. */
 const ADMIN_ONLY: Array<{ method: string; path: string; data?: Record<string, unknown> }> = [
   { method: 'GET', path: '/ai/config' },
-  { method: 'POST', path: '/ai/setup', data: { model_type: 'OPENAI', model_name: 'gpt-4o', api_key: 'sk-test' } },
+  { method: 'POST', path: '/ai/setup', data: { model_type: 'OPENAI', model_name: 'gpt-6-luna', api_key: 'sk-test' } },
   { method: 'GET', path: '/users' },
   { method: 'POST', path: '/users', data: { email: 'blocked@e2e.example.com', full_name: 'Blocked', password: 'E2e-Blocked-Passw0rd!', role_id: 1 } },
   { method: 'GET', path: '/roles' },
