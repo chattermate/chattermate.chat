@@ -32,11 +32,17 @@ from app.core.logger import get_logger
 
 try:
     from app.enterprise.repositories.plan import PlanRepository
-    from app.enterprise.services.entitlements import feature_on
     from app.enterprise.services.feature_access import require_accessible_subscription
     HAS_ENTERPRISE = True
 except ImportError:
     HAS_ENTERPRISE = False
+
+# Apart from the rest: an enterprise module without it must still gate
+# everything above, not fall back to community mode.
+try:
+    from app.enterprise.services.entitlements import feature_on
+except ImportError:
+    feature_on = None
 
 logger = get_logger(__name__)
 
@@ -65,7 +71,7 @@ def feature_allowed(db: Session, organization_id: UUID, feature: str) -> bool:
 def _plan_says(db: Session, organization_id: UUID | str, feature: str, otherwise: bool) -> bool:
     """One cached read of the plan, or `otherwise` on community installs and
     when the lookup fails."""
-    if not HAS_ENTERPRISE:
+    if feature_on is None:
         return otherwise
     try:
         return feature_on(db, organization_id, feature)

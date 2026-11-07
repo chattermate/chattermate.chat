@@ -558,7 +558,9 @@ async def handle_widget_chat(sid, data):
         agent_uses_ai = session.get('ai_replies_enabled', True)
         # The plan can switch the AI off too, for this message only. Read per
         # message, not at connect: a socket can stay open past the limit.
-        plan_allows = (not agent_uses_ai or active_session.user_id is not None
+        # Asked for human-only agents as well: a queued chat's availability
+        # reply below is written by the model.
+        plan_allows = (active_session.user_id is not None
                        or plan_allows_ai(db, org_id, session['ai_config'].model_type))
         ai_replies_enabled = agent_uses_ai and plan_allows
 

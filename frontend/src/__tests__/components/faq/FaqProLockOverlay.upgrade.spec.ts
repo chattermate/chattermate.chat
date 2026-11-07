@@ -22,13 +22,21 @@ const store = vi.hoisted(() => ({
   fetchPlans: vi.fn(),
 }))
 
-vi.mock('@/composables/useEnterpriseFeatures', () => ({
-  useEnterpriseFeatures: () => ({
-    hasEnterpriseModule: true,
-    subscriptionStore: { value: store },
-    initializeSubscriptionStore: vi.fn().mockResolvedValue(undefined),
-  }),
-}))
+// Like the real composable: every call gets its own handle, empty until that
+// caller connects it to the shared store.
+vi.mock('@/composables/useEnterpriseFeatures', async () => {
+  const { ref } = await import('vue')
+  return {
+    useEnterpriseFeatures: () => {
+      const subscriptionStore = ref<Record<string, unknown>>({ availablePlans: [] })
+      return {
+        hasEnterpriseModule: true,
+        subscriptionStore,
+        initializeSubscriptionStore: vi.fn(async () => { subscriptionStore.value = store }),
+      }
+    },
+  }
+})
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 import FaqProLockOverlay from '@/components/faq/FaqProLockOverlay.vue'
@@ -65,6 +73,17 @@ describe('FaqProLockOverlay upgrade line', () => {
     await flushPromises()
 
     expect(store.fetchPlans).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the plan on a lock mounted after the first one too', async () => {
+    store.availablePlans = [plan('growth', 9.99, true)]
+
+    mount(FaqProLockOverlay, { props: { planAllowed: false } })
+    await flushPromises()
+    const later = mount(FaqProLockOverlay, { props: { planAllowed: false } })
+    await flushPromises()
+
+    expect(later.find('.btn-upgrade').text()).toBe('Upgrade to Growth')
   })
 
   it('stays generic with no catalog, and survives a failed refresh', async () => {

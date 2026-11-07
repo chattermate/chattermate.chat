@@ -35,11 +35,12 @@ export function resetUpgradePlanCatalog() {
 export function useUpgradePlan(feature: string) {
   const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore } = useEnterpriseFeatures()
 
-  onMounted(() => {
+  onMounted(async () => {
     if (!hasEnterpriseModule) return
-    catalogRefresh ??= initializeSubscriptionStore()
-      .then(() => subscriptionStore.value.fetchPlans?.())
-      .catch(() => undefined)
+    // Every caller has its own handle on the shared store: each one connects
+    // its own, and only the catalog fetch happens once.
+    await initializeSubscriptionStore().catch(() => undefined)
+    catalogRefresh ??= Promise.resolve(subscriptionStore.value.fetchPlans?.()).catch(() => undefined)
   })
 
   const planName = computed<string | null>(() => {

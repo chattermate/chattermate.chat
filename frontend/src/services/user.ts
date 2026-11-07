@@ -17,6 +17,7 @@ limitations under the License.
 import type { Role, User } from '@/types/user'
 import api from './api'
 import { uploadProfilePic } from './users'
+import { notifySignedOut } from '@/utils/sessionEvents'
 
 
 
@@ -50,6 +51,7 @@ export const userService = {
   clearCurrentUser() {
     this.userInfo = null
     localStorage.removeItem('user_info')
+    notifySignedOut()
   },
 
   isAuthenticated(): boolean {

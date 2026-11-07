@@ -45,9 +45,14 @@ def enterprise_says(monkeypatch, answer):
     return rule
 
 
+def community_install(monkeypatch):
+    monkeypatch.setattr(feature_gate, "HAS_ENTERPRISE", False)
+    monkeypatch.setattr(feature_gate, "feature_on", None, raising=False)
+
+
 class TestPlanFeatureOn:
     def test_community_installs_have_every_feature(self, monkeypatch):
-        monkeypatch.setattr(feature_gate, "HAS_ENTERPRISE", False)
+        community_install(monkeypatch)
         assert plan_feature_on(MagicMock(), "org", WORKFLOW_FEATURE) is True
 
     @pytest.mark.parametrize("answer", [True, False])
@@ -63,9 +68,18 @@ class TestPlanFeatureOn:
         assert plan_feature_on(MagicMock(), "org", WORKFLOW_FEATURE) is True
 
 
+    def test_an_enterprise_module_without_entitlements_still_gates_the_rest(self, monkeypatch):
+        """feature_on is imported on its own: missing, it must not switch the
+        older gates to community mode."""
+        monkeypatch.setattr(feature_gate, "HAS_ENTERPRISE", True)
+        monkeypatch.setattr(feature_gate, "feature_on", None, raising=False)
+        assert plan_feature_on(MagicMock(), "org", WORKFLOW_FEATURE) is True
+        assert feature_gate.HAS_ENTERPRISE is True
+
+
 class TestPlanHidesBranding:
     def test_community_installs_keep_it(self, monkeypatch):
-        monkeypatch.setattr(feature_gate, "HAS_ENTERPRISE", False)
+        community_install(monkeypatch)
         assert plan_hides_branding(MagicMock(), "org") is False
 
     @pytest.mark.parametrize("answer", [True, False])

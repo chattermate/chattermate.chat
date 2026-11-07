@@ -139,6 +139,21 @@ class TestWidgetWithAiOff:
 
         availability.assert_not_awaited()
 
+    async def test_a_human_only_agents_queued_chat_costs_no_model_call(self, db, chat, sio, monkeypatch):
+        plan_says(monkeypatch, False)
+        sio.get_session.return_value["ai_replies_enabled"] = False
+        chat.status = SessionStatus.TRANSFERRED
+        # With groups, the queued reply would be written by the availability model.
+        monkeypatch.setattr(widget_chat.JiraRepository, "get_agent_with_jira_config",
+                            lambda self, agent_id: MagicMock(groups=[MagicMock()]))
+
+        _, availability = await send()
+
+        availability.assert_not_awaited()
+        history = await ChatRepository(db).get_session_history(str(chat.session_id))
+        assert history[0].message_type == "user"
+        assert "chat_reply" in event_names(sio)
+
     async def test_a_chat_a_person_holds_never_asks_the_plan(self, db, chat, sio, test_user, monkeypatch):
         asked = MagicMock(return_value=False)
         monkeypatch.setattr(widget_chat, "plan_allows_ai", asked)
