@@ -127,6 +127,9 @@ class Agent(Base):
     enable_rate_limiting = Column(Boolean, default=False, nullable=True)
     overall_limit_per_ip = Column(Integer, default=100, nullable=True)
     requests_per_sec = Column(Float, default=1, nullable=True)
+    # Per customer, only messages that reach the model; null = no limit (see services/reply_limits).
+    messages_per_customer_per_minute = Column(Integer, nullable=True)
+    replies_per_customer_per_day = Column(Integer, nullable=True)
     use_workflow = Column(Boolean, default=False, nullable=True)
     active_workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id"), nullable=True)
     allow_attachments = Column(Boolean, default=False, nullable=False)
