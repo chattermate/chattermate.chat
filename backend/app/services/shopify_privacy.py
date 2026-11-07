@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -143,15 +144,19 @@ def handle_shop_redact(db: Session, payload: Dict[str, Any],
     ChatterMate account, not the store's data, and stay.
     """
     def work(organization_id: UUID):
+        shop_domain = payload.get("shop_domain")
         sessions = (
             db.query(SessionToAgent.session_id, SessionToAgent.customer_id)
             .filter(
                 SessionToAgent.organization_id == organization_id,
                 SessionToAgent.channel == SHOPIFY_CHANNEL,
+                # NULL is an agent since deleted: still this org's storefront data.
+                or_(SessionToAgent.agent_id.is_(None),
+                    SessionToAgent.agent_id.notin_(_agents_serving_other_shops(db, organization_id, shop_domain))),
             )
             .all()
         )
-        _delete_shop_row(db, payload.get("shop_domain"))
+        _delete_shop_row(db, shop_domain)
         if not sessions:
             return STATUS_NO_MATCH, ErasureResult()
         result = customer_erasure.erase_sessions(db, [s.session_id for s in sessions])
@@ -176,9 +181,11 @@ def handle_data_request(db: Session, payload: Dict[str, Any],
         customer = payload.get("customer") or {}
         customer_ids = customer_erasure.find_customer_ids(
             db, organization_id, customer.get("email"), customer.get("phone"))
+        found = ErasureResult()  # nothing erased; only the ids are recorded
         if not customer_ids:
-            return STATUS_NO_MATCH, {}
-        return STATUS_AWAITING_EXPORT, {"customer_ids": sorted(str(cid) for cid in customer_ids)}
+            return STATUS_NO_MATCH, found
+        found.details["customer_ids"] = sorted(str(cid) for cid in customer_ids)
+        return STATUS_AWAITING_EXPORT, found
 
     return _run(db, TOPIC_DATA_REQUEST, payload, webhook_id,
                 subject_ref=(payload.get("data_request") or {}).get("id")
@@ -196,17 +203,13 @@ def _run(db: Session, topic: str, payload: Dict[str, Any], webhook_id: Optional[
 
     shop_domain = payload.get("shop_domain")
     organization_id = resolve_shop_organization(db, shop_domain)
-    attachment_urls: List[str] = []
     if organization_id is None:
-        status, result = STATUS_NO_SHOP, {}
+        status, outcome = STATUS_NO_SHOP, ErasureResult()
         if topic == TOPIC_SHOP_REDACT:
             _delete_shop_row(db, shop_domain)
     else:
         status, outcome = work(organization_id)
-        if isinstance(outcome, ErasureResult):
-            result, attachment_urls = outcome.counts, outcome.attachment_urls
-        else:
-            result = outcome
+    result = outcome.record()
 
     db.add(ShopifyComplianceEvent(
         topic=topic,
@@ -228,7 +231,27 @@ def _run(db: Session, topic: str, payload: Dict[str, Any], webhook_id: Optional[
         return ComplianceOutcome(previous.status, previous.result or {}, duplicate=True)
 
     logger.info(f"Shopify {topic} for {shop_domain}: {status} {result}")
-    return ComplianceOutcome(status, result, attachment_urls=attachment_urls)
+    return ComplianceOutcome(status, result, attachment_urls=outcome.attachment_urls)
+
+
+def _agents_serving_other_shops(db: Session, organization_id: UUID,
+                                shop_domain: Optional[str]) -> List[UUID]:
+    """Agents wired to another store of the same organization. Sessions carry
+    the channel, not the store, so these are how one store's storefront
+    conversations are told apart from another's."""
+    rows = (
+        db.query(AgentShopifyConfig.agent_id)
+        .join(ShopifyShop, ShopifyShop.id == AgentShopifyConfig.shop_id)
+        .filter(ShopifyShop.organization_id == organization_id, ShopifyShop.shop_domain != shop_domain)
+        .all()
+    )
+    agent_ids = []
+    for row in rows:
+        try:
+            agent_ids.append(UUID(str(row.agent_id)))
+        except ValueError:
+            logger.warning(f"Agent Shopify config has a malformed agent id: {row.agent_id!r}")
+    return agent_ids
 
 
 def _delete_shop_row(db: Session, shop_domain: Optional[str]) -> None:

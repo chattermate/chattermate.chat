@@ -249,6 +249,42 @@ class TestShopRedact:
         assert left["customers"] == 1
         assert db.get(SessionToAgent, web_session) is not None
 
+    def test_another_store_of_the_same_organization_keeps_its_conversations(
+            self, client, db, shop, test_organization, test_agent):
+        """Sessions record the channel, not the store; the other store's agent
+        is what tells its storefront chats apart."""
+        from app.models.agent import AgentType
+        from app.repositories.agent import AgentRepository
+        other_agent = AgentRepository(db).create_agent(
+            name="Store B agent", agent_type=AgentType.CUSTOMER_SUPPORT,
+            instructions=["x"], org_id=test_organization.id)
+        store_b = ShopifyShop(shop_domain="store-b.myshopify.com", is_installed=True,
+                              organization_id=test_organization.id)
+        db.add(store_b)
+        db.commit()
+        db.add(AgentShopifyConfig(id="cfg-b", agent_id=str(other_agent.id), shop_id=str(store_b.id), enabled=True))
+        db.commit()
+        store_a_chat = seed_footprint(db, test_organization.id, test_agent.id, email="ada@example.com")
+        store_b_chat = seed_footprint(db, test_organization.id, other_agent.id, email="grace@example.com")
+        before = remaining(db, store_b_chat)
+        uninstall(client)
+
+        post(client, "shop/redact", {"shop_id": 954889, "shop_domain": SHOP})
+
+        assert remaining(db, store_a_chat) == {}
+        assert remaining(db, store_b_chat) == before
+
+    def test_a_session_whose_agent_was_deleted_is_still_erased(
+            self, client, db, shop, test_organization, test_agent):
+        from app.models.session_to_agent import SessionToAgent
+        fp = seed_footprint(db, test_organization.id, test_agent.id, email="ada@example.com")
+        db.query(SessionToAgent).update({SessionToAgent.agent_id: None})
+        db.commit()
+
+        post(client, "shop/redact", {"shop_id": 954889, "shop_domain": SHOP})
+
+        assert remaining(db, fp) == {}
+
     def test_a_shop_row_still_present_is_deleted_with_its_token_and_configs(
             self, client, db, shop, test_agent):
         db.add(AgentShopifyConfig(id="cfg-1", agent_id=str(test_agent.id), shop_id=str(shop.id), enabled=True))
@@ -303,6 +339,26 @@ class TestDataRequest:
 
 
 class TestOwnershipRecord:
+    def test_dashboard_disconnect_records_the_organization(
+            self, client, db, shop, test_organization, test_user, test_access_token):
+        """Disconnecting from the dashboard deletes the row too; a later redact
+        still has to find the organization."""
+        from app.core.auth import get_current_organization, require_permissions
+        from app.api import shopify as shopify_api
+        app.dependency_overrides[get_current_organization] = lambda: test_organization
+        try:
+            with patch.object(shopify_api.requests, "post"), \
+                 patch("app.api.shopify.refresh_allowed_storefronts"):
+                response = client.delete(f"/api/v1/shopify/shops/{shop.id}",
+                                         cookies={"access_token": test_access_token})
+        finally:
+            app.dependency_overrides.pop(get_current_organization, None)
+
+        assert response.status_code == 200, response.text
+        [record] = events(db, shopify_privacy.TOPIC_SHOP_DISCONNECTED)
+        assert record.organization_id == test_organization.id
+        assert shopify_privacy.resolve_shop_organization(db, SHOP) == test_organization.id
+
     def test_uninstall_records_the_organization(self, client, db, shop, test_organization):
         uninstall(client)
 

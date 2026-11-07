@@ -79,6 +79,12 @@ class ErasureResult:
     """Row counts per table, and attachment URLs still to delete from storage."""
     counts: Dict[str, int] = field(default_factory=dict)
     attachment_urls: List[str] = field(default_factory=list)
+    # Anything else worth keeping in the request's record (never personal data).
+    details: Dict[str, object] = field(default_factory=dict)
+
+    def record(self) -> Dict[str, object]:
+        """What the compliance record stores: row counts and any details."""
+        return {**self.counts, **self.details}
 
     def add(self, table: str, deleted: int) -> None:
         if deleted:

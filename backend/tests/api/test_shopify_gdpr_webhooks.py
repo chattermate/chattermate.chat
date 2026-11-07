@@ -92,6 +92,13 @@ class TestShopifyGdprWebhooks:
 
         assert response.status_code == 400
 
+    def test_a_customer_field_that_is_not_an_object_is_a_400(self, client, signed, url):
+        """It can never succeed, so it must not be a 500 Shopify keeps retrying."""
+        response = client.post(url, json={**VALID_PAYLOAD, "customer": "someone@example.com"})
+
+        assert response.status_code == 400
+        assert "someone@example.com" not in response.text
+
     def test_a_failure_does_not_echo_the_exception_and_asks_for_a_retry(self, client, signed, url):
         """The reply used to be f"Error processing webhook: {str(e)}", handing the
         caller our exception text on an endpoint anyone can reach. It is now a 500

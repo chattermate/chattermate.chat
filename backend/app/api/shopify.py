@@ -973,7 +973,9 @@ async def _handle_privacy_webhook(topic: str, request: Request, db: Session):
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         logger.error(f"Failed to parse {topic} webhook payload: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
-    if not isinstance(payload, dict):
+    # A malformed payload can never succeed, so it is a 400 (no retry), not
+    # a 500 that Shopify would keep retrying.
+    if not isinstance(payload, dict) or not isinstance(payload.get("customer") or {}, dict):
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     try:
