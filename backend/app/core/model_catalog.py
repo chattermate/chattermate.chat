@@ -60,13 +60,17 @@ def _m(value: str, label: str) -> CatalogModel:
 # unset. OpenAI's named successor to gpt-4o-mini, and cheaper per token.
 DEFAULT_CHATTERMATE_MODEL = "gpt-6-luna"
 
-# Extra agno model kwargs, by provider then lowercase model-name prefix (longest
-# wins). Most current models think by default, and agno 1.7.6 can't carry that
-# thinking through a tool loop — it drops OpenAI-style reasoning_content and
-# keeps only one Claude thinking block — and thinking also eats the small
-# max_tokens budgets the agents run on. So thinking is switched off wherever
-# the model allows it. Models absent here get no extra kwargs: older models
-# reject these parameters outright. CHATTERMATE uses the OPENAI entries.
+# Extra agno model kwargs, by provider then lowercase model ID. Most current
+# models think by default, and agno 1.7.6 can't carry that thinking through a
+# tool loop — it drops OpenAI-style reasoning_content and keeps only one Claude
+# thinking block — and thinking also eats the small max_tokens budgets the
+# agents run on. So thinking is switched off wherever the model allows it.
+#
+# A key matches that exact ID or a dated snapshot of it, never a later model
+# that shares the prefix: each new model's thinking switch has to be checked,
+# not assumed (Sonnet 5.5 rejects the "disabled" that Sonnet 5 takes). A key
+# ending in "*" matches every ID starting with the rest. Models absent here get
+# no extra kwargs: older models reject these parameters outright.
 MODEL_REQUEST_OVERRIDES: Dict[str, Dict[str, Dict[str, Any]]] = {
     "OPENAI": {
         # Chat Completions only calls tools at reasoning_effort "none".
@@ -76,15 +80,23 @@ MODEL_REQUEST_OVERRIDES: Dict[str, Dict[str, Dict[str, Any]]] = {
     },
     "ANTHROPIC": {
         "claude-sonnet-5": {"thinking": {"type": "disabled"}},
-        # Shadows the prefix above: Sonnet 5.5 rejects "disabled" with a 400.
-        "claude-sonnet-5-5": {},
+        # Sonnet 5.5 400s on "disabled"; between_tools is its off switch.
+        "claude-sonnet-5-5": {"thinking": {"type": "between_tools"}},
+        # Accepted at effort high or below; Haiku 5.5 defaults to medium.
         "claude-haiku-5-5": {"thinking": {"type": "disabled"}},
     },
     "DEEPSEEK": {
         # With thinking on (the default), any request carrying tools is a 400
         # unless every earlier turn's reasoning_content is sent back.
-        "deepseek": {"request_params": {"extra_body": {"thinking": {"type": "disabled"}}}},
+        "deepseek*": {"request_params": {"extra_body": {"thinking": {"type": "disabled"}}}},
     },
+}
+
+# Providers that speak another provider's API and so share its overrides: the
+# managed model is OpenAI, and gateways pass OpenAI's parameters through.
+OVERRIDE_PROVIDER_ALIASES: Dict[str, str] = {
+    "CHATTERMATE": "OPENAI",
+    "OPENAI_COMPATIBLE": "OPENAI",
 }
 
 
@@ -113,10 +125,11 @@ MODEL_CATALOG: Dict[str, CatalogProvider] = {
         "custom_allowed": True,
         "api_key_url": "https://console.anthropic.com/settings/keys",
         # Current-gen Claude IDs are complete stable strings — do NOT append a date.
-        # Opus 5.5, Sonnet 5.5 and Fable 5.1 are not listed: their thinking can't
-        # be switched off and agno 1.7.6 drops the extra thinking blocks they
-        # return between tool calls. Sonnet 4.6 retires 2027-02-17; Haiku 4.5 is
-        # past its retirement floor.
+        # Opus 5.5 and Fable 5.1 are not listed: their thinking can't be switched
+        # off and agno 1.7.6 drops the extra thinking blocks they return between
+        # tool calls. Sonnet 5.5 has an off switch (see MODEL_REQUEST_OVERRIDES)
+        # but is unlisted until tried live. Sonnet 4.6 retires 2027-02-17;
+        # Haiku 4.5 is past its retirement floor.
         "models": [
             _m("claude-sonnet-5", "Claude Sonnet 5"),
             _m("claude-opus-4-8", "Claude Opus 4.8"),

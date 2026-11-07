@@ -21,7 +21,7 @@ from agno.models.openai import OpenAIChat
 from openai import AsyncOpenAI, OpenAI
 from app.core.logger import get_logger
 from app.core.config import settings
-from app.core.model_catalog import MODEL_REQUEST_OVERRIDES
+from app.core.model_catalog import MODEL_REQUEST_OVERRIDES, OVERRIDE_PROVIDER_ALIASES
 from app.utils.model_context import longest_prefix_match
 from app.core.outbound_http import guarded_async_http_client, guarded_http_client
 from app.core.outbound_policy import check_outbound_target, public_only
@@ -53,23 +53,45 @@ class PinnedOpenAIChat(OpenAIChat):
                               "http_client": guarded_async_http_client(follow_redirects=True)})
 
 
+# Dated snapshot suffix: OpenAI's "-2026-08-01", Anthropic's "-20260801".
+_SNAPSHOT_SUFFIX = re.compile(r'-\d{4}-?\d{2}-?\d{2}$')
+
+
+def _lookup_override(model_name: str, table: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The table entry for this exact model or a dated snapshot of it, else the
+    longest matching "*" wildcard (see MODEL_REQUEST_OVERRIDES)."""
+    name = (model_name or '').casefold()
+    exact = table.get(_SNAPSHOT_SUFFIX.sub('', name))
+    if exact is not None:
+        return exact
+    wildcards = {key[:-1]: value for key, value in table.items() if key.endswith('*')}
+    return longest_prefix_match(name, wildcards)
+
+
 def model_request_overrides(model_type: str, model_name: str) -> Dict[str, Any]:
     """Extra agno model kwargs the catalog sets for this model, if any."""
-    provider = 'OPENAI' if model_type.upper() == 'CHATTERMATE' else model_type.upper()
-    overrides = longest_prefix_match(model_name, MODEL_REQUEST_OVERRIDES.get(provider, {}))
+    model_type = model_type.upper()
+    provider = OVERRIDE_PROVIDER_ALIASES.get(model_type, model_type)
+    if model_type == 'OPENAI_COMPATIBLE':
+        # Gateways prefix the vendor: OpenRouter's "openai/gpt-6-luna".
+        model_name = (model_name or '').rsplit('/', 1)[-1]
+    overrides = _lookup_override(model_name, MODEL_REQUEST_OVERRIDES.get(provider, {}))
     return copy.deepcopy(overrides) if overrides else {}
 
 
 def openai_request_kwargs(model_type: str, model_name: str, max_tokens: int, response_format: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """OpenAIChat kwargs for a native OpenAI model.
+    """OpenAIChat kwargs for an OpenAI-protocol model.
 
     max_completion_tokens, not max_tokens: OpenAI's reasoning models reject
     max_tokens on Chat Completions, and every other OpenAI chat model accepts
-    max_completion_tokens. OPENAI_COMPATIBLE endpoints keep max_tokens — not
-    every OpenAI-shaped server knows the newer name.
+    max_completion_tokens. An OPENAI_COMPATIBLE endpoint keeps max_tokens — not
+    every OpenAI-shaped server knows the newer name — unless it serves one of
+    those OpenAI reasoning models, which a gateway passes straight through.
     """
-    kwargs: Dict[str, Any] = {"max_completion_tokens": max_tokens,
-                              **model_request_overrides(model_type, model_name)}
+    overrides = model_request_overrides(model_type, model_name)
+    use_max_tokens = model_type.upper() == 'OPENAI_COMPATIBLE' and not overrides
+    kwargs: Dict[str, Any] = {"max_tokens" if use_max_tokens else "max_completion_tokens": max_tokens,
+                              **overrides}
     if response_format:
         kwargs["response_format"] = response_format
     return kwargs
@@ -106,10 +128,8 @@ def create_model(model_type: str, api_key: str, model_name: str, max_tokens: int
             check_outbound_target(base_url, "Base URL")
             base_url = re.sub(r'/chat/completions/?$', '', base_url.strip(), flags=re.IGNORECASE).rstrip('/')
             model_cls = PinnedOpenAIChat if public_only() else OpenAIChat
-            if response_format:
-                return model_cls(api_key=api_key, id=model_name, base_url=base_url, max_tokens=max_tokens, response_format=response_format)
-            else:
-                return model_cls(api_key=api_key, id=model_name, base_url=base_url, max_tokens=max_tokens)
+            return model_cls(api_key=api_key, id=model_name, base_url=base_url,
+                             **openai_request_kwargs(model_type, model_name, max_tokens, response_format))
         elif model_type == 'ANTHROPIC':
             from agno.models.anthropic import Claude
             return Claude(api_key=api_key, id=model_name, max_tokens=max_tokens,

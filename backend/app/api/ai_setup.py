@@ -111,7 +111,7 @@ async def setup_ai(
         
         # Check if using ChatterMate model
         if HAS_ENTERPRISE and config_data.model_type.lower() == 'chattermate' and config_data.model_name.lower() == 'chattermate':
-            # Use Groq as provider with keys from env
+            # Managed model: OpenAI, with the key and model from env
             model_type = AIModelType.CHATTERMATE
             model_name = os.getenv('CHATTERMATE_MODEL_NAME', DEFAULT_CHATTERMATE_MODEL)
             api_key = os.getenv('CHATTERMATE_API_KEY', '')
@@ -301,7 +301,7 @@ async def update_ai_config(
         
         # Check if using ChatterMate model
         if HAS_ENTERPRISE and config_data.model_type.lower() == 'chattermate' and config_data.model_name.lower() == 'chattermate':
-            # Use Groq as provider with keys from env
+            # Managed model: OpenAI, with the key and model from env
             model_type = AIModelType.CHATTERMATE
             model_name = os.getenv('CHATTERMATE_MODEL_NAME', DEFAULT_CHATTERMATE_MODEL)
             api_key = os.getenv('CHATTERMATE_API_KEY', '')

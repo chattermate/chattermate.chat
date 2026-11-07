@@ -731,7 +731,7 @@ async def generate_instructions(
         base_url = None
 
         if HAS_ENTERPRISE:
-            # Use Groq/OpenAI with keys from env for ChatterMate model
+            # Managed model: OpenAI, with the key and model from env
             model_type = 'OPENAI'
             model_name = os.getenv('CHATTERMATE_MODEL_NAME', DEFAULT_CHATTERMATE_MODEL)
             api_key = os.getenv('CHATTERMATE_API_KEY', '')

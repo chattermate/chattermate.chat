@@ -139,6 +139,24 @@ class TestCreateModel:
                 max_tokens=1000
             )
 
+    def test_create_model_openai_compatible_gateway_reasoning_model(self):
+        """A gateway serving an OpenAI reasoning model gets its OpenAI settings"""
+        with patch("app.utils.agno_utils.OpenAIChat") as mock_openai:
+            agno_utils.create_model(
+                model_type="OPENAI_COMPATIBLE",
+                api_key="test-api-key",
+                model_name="openai/gpt-6-luna",
+                base_url="https://openrouter.ai/api/v1"
+            )
+
+            mock_openai.assert_called_once_with(
+                api_key="test-api-key",
+                id="openai/gpt-6-luna",
+                base_url="https://openrouter.ai/api/v1",
+                max_completion_tokens=1000,
+                reasoning_effort="none"
+            )
+
     def test_create_model_openai_compatible_requires_base_url(self):
         """OPENAI_COMPATIBLE without a base_url raises"""
         with pytest.raises(HTTPException):
@@ -614,9 +632,31 @@ class TestModelRequestOverrides:
         assert agno_utils.model_request_overrides("ANTHROPIC", "claude-sonnet-5") == {
             "thinking": {"type": "disabled"}}
 
-    def test_claude_sonnet_5_5_is_not_caught_by_the_sonnet_5_prefix(self):
+    def test_claude_sonnet_5_5_uses_its_own_off_switch(self):
         # Sonnet 5.5 rejects thinking "disabled" with a 400.
-        assert agno_utils.model_request_overrides("ANTHROPIC", "claude-sonnet-5-5") == {}
+        assert agno_utils.model_request_overrides("ANTHROPIC", "claude-sonnet-5-5") == {
+            "thinking": {"type": "between_tools"}}
+
+    def test_later_model_sharing_a_prefix_gets_nothing(self):
+        # A future Sonnet 5.x must be checked, not assumed to take "disabled".
+        assert agno_utils.model_request_overrides("ANTHROPIC", "claude-sonnet-5-6") == {}
+        assert agno_utils.model_request_overrides("OPENAI", "gpt-6-luna-pro") == {}
+
+    def test_dated_snapshot_matches_its_model(self):
+        assert agno_utils.model_request_overrides("OPENAI", "gpt-6-luna-2026-08-01") == {
+            "reasoning_effort": "none"}
+        assert agno_utils.model_request_overrides("ANTHROPIC", "claude-sonnet-5-20260301") == {
+            "thinking": {"type": "disabled"}}
+
+    def test_model_id_case_is_ignored(self):
+        assert agno_utils.model_request_overrides("OPENAI", "GPT-6-Luna") == {
+            "reasoning_effort": "none"}
+
+    def test_gateway_vendor_prefix_is_stripped(self):
+        assert agno_utils.model_request_overrides("OPENAI_COMPATIBLE", "openai/gpt-6-sol") == {
+            "reasoning_effort": "none"}
+        assert agno_utils.model_request_overrides("OPENAI_COMPATIBLE", "anthropic/claude-sonnet-5") == {}
+        assert agno_utils.model_request_overrides("OPENAI_COMPATIBLE", "llama3") == {}
 
     def test_deepseek_disables_thinking_for_every_model(self):
         assert agno_utils.model_request_overrides("DEEPSEEK", "deepseek-flash") == {
