@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 import os
 
 from app.models.ai_config import AIModelType
-from app.core.model_catalog import is_known_provider, list_providers, requires_base_url
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL, is_known_provider, list_providers, requires_base_url
 from app.core.outbound_policy import OutboundTargetBlocked, check_outbound_target
 
 # Try to import enterprise modules
@@ -111,9 +111,9 @@ async def setup_ai(
         
         # Check if using ChatterMate model
         if HAS_ENTERPRISE and config_data.model_type.lower() == 'chattermate' and config_data.model_name.lower() == 'chattermate':
-            # Use Groq as provider with keys from env
+            # Managed model: OpenAI, with the key and model from env
             model_type = AIModelType.CHATTERMATE
-            model_name = os.getenv('CHATTERMATE_MODEL_NAME', 'gpt-4o-mini')
+            model_name = os.getenv('CHATTERMATE_MODEL_NAME', DEFAULT_CHATTERMATE_MODEL)
             api_key = os.getenv('CHATTERMATE_API_KEY', '')
         
             if not api_key:
@@ -301,9 +301,9 @@ async def update_ai_config(
         
         # Check if using ChatterMate model
         if HAS_ENTERPRISE and config_data.model_type.lower() == 'chattermate' and config_data.model_name.lower() == 'chattermate':
-            # Use Groq as provider with keys from env
+            # Managed model: OpenAI, with the key and model from env
             model_type = AIModelType.CHATTERMATE
-            model_name = os.getenv('CHATTERMATE_MODEL_NAME', 'gpt-4o-mini')
+            model_name = os.getenv('CHATTERMATE_MODEL_NAME', DEFAULT_CHATTERMATE_MODEL)
             api_key = os.getenv('CHATTERMATE_API_KEY', '')
             
             if not api_key:
