@@ -27,7 +27,7 @@ export class AiConfigPage {
       await this.page.getByRole('radio', { name: /OpenAI-compatible/ }).click()
       await this.page.getByLabel('Base URL').fill(settings.baseUrl)
       await this.page.getByLabel('Model Name').selectOption('__custom__')
-      await this.page.getByPlaceholder('Enter the exact model ID (e.g. gpt-4o)').fill(settings.model)
+      await this.page.getByPlaceholder('Enter the exact model ID (e.g. gpt-6-luna)').fill(settings.model)
       await this.page.getByLabel('API Key').fill(settings.apiKey)
       // Wait for the save itself; the "Saving..." label can come and go before a check sees it.
       const saved = this.page.waitForResponse((r) => /\/ai\/(setup|config)$/.test(new URL(r.url()).pathname) && r.request().method() !== 'GET')

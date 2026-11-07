@@ -643,7 +643,7 @@ const chatterMateButtonText = computed(() => {
                     type="text"
                     v-model="setupConfig.model"
                     required
-                    placeholder="Enter the exact model ID (e.g. gpt-4o)"
+                    placeholder="Enter the exact model ID (e.g. gpt-6-luna)"
                     class="form-control form-control-mono custom-model-input"
                   />
                   <p v-if="useCustomModel" class="key-hint">
