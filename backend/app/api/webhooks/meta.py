@@ -124,7 +124,10 @@ async def own_app_webhook(
     secret = _readable_secret(account)
     if secret is None:
         # Disconnected, never ours, or its secret can't be read: ack, so Meta
-        # doesn't disable the customer's webhook over retries — nothing is acted on
+        # doesn't disable the customer's webhook over retries — nothing is acted
+        # on. Logged: to the customer the messages just vanish.
+        logger.info(f"Meta webhook for account {account_id} ignored: no connected own-app account "
+                    f"({len(raw_body)} bytes)")
         return {"status": "ignored"}
     if not signed_by_any(raw_body, request.headers.get("x-hub-signature-256", ""), (secret,)):
         logger.warning(f"Meta webhook for account {account_id} rejected: bad signature ({len(raw_body)} bytes)")

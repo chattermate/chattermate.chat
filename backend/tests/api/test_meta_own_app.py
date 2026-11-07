@@ -185,9 +185,12 @@ class TestOwnAppWebhook:
         if state == "disconnected":
             ChannelAccountRepository(db).set_active(account, False)
         account_id = uuid4() if state == "unknown" else account.id
-        response, process, _ = _post(client, account_id, _wa_message())
+        with patch("app.api.webhooks.meta.logger") as logger:
+            response, process, _ = _post(client, account_id, _wa_message())
         assert (response.status_code, response.json()) == (200, {"status": "ignored"})
         process.assert_not_awaited()
+        # To the customer the messages just vanish: the log is the only trace
+        assert f"account {account_id} ignored" in logger.info.call_args.args[0]
 
     def test_an_unreadable_secret_is_acked_not_a_500(self, client, db, test_organization):
         """A 500 would make Meta retry for hours and disable the customer's webhook."""
@@ -303,13 +306,53 @@ class TestConnect:
         assert response.status_code == 502
         assert "Errno" not in response.json()["detail"]
 
-    def test_without_a_secret_nothing_changes(self, client, db):
-        response, check, graph_post = _connect_whatsapp(client, app_secret="  ")
-        assert response.status_code == 200
-        check.assert_not_awaited()
+    @pytest.mark.parametrize("app_secret", [None, "", "  "])
+    def test_their_apps_token_without_a_secret_is_refused(self, client, db, app_secret):
+        """Without it the number could send but never receive, so it isn't
+        connected at all."""
+        response, _, graph_post = _connect_whatsapp(client, app_secret=app_secret)
+        assert response.status_code == 400
+        assert "Enter your Meta app's secret" in response.json()["detail"]
         graph_post.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("whatsapp", "PN9") is None
+
+    def test_refused_without_the_secret_then_connected_with_it(self, client, db):
+        """The refusal leaves nothing half-done: entering the secret next connects normally."""
+        refused, _, _ = _connect_whatsapp(client, app_secret=None)
+        assert refused.status_code == 400
+        response, _, graph_post = _connect_whatsapp(client)
+        assert response.status_code == 200
+        assert _stored(db)[1]["app_secret"] == THEIR_SECRET
+        assert response.json()["webhook_url"].endswith(f"/webhooks/meta/{_stored(db)[0].id}")
+        graph_post.assert_awaited_once()
+
+    def test_an_app_that_insists_on_a_proof_is_refused_without_its_secret(self, client, db):
+        """Checked with our secret, a token from an app requiring proofs fails
+        Meta's proof check: that means a secret is missing, not a wrong one."""
+        response, _, _ = _connect_whatsapp(client, app_secret=None, app=PROOF_ERROR)
+        assert response.status_code == 400
+        assert "Enter your Meta app's secret" in response.json()["detail"]
+        assert ChannelAccountRepository(db).get_by_external_id("whatsapp", "PN9") is None
+
+    def test_our_own_apps_token_needs_no_secret(self, client, db, monkeypatch):
+        """A one-click number reconnected by hand: its token is ChatterMate's,
+        proven with our secret, and keeps the shared address."""
+        monkeypatch.setattr(settings, "META_APP_SECRET", "our-secret")
+        response, check, graph_post = _connect_whatsapp(client, app_secret=None, app=(True, {"id": OUR_APP_ID}))
+        assert response.status_code == 200
+        assert check.await_args.kwargs["params"]["appsecret_proof"] == hmac.new(
+            b"our-secret", b"EAAG-x", hashlib.sha256).hexdigest()
         assert response.json()["webhook_url"] is None
-        assert APP_ID_SETTING not in (_stored(db)[0].settings or {})
+        assert "app_secret" not in _stored(db)[1]
+        graph_post.assert_not_awaited()
+
+    def test_messenger_from_their_app_without_a_secret_is_refused(self, client, db):
+        with patch("app.api.channels.meta.debug_token", AsyncMock(return_value=(True, {
+                    "type": "PAGE", "profile_id": "PAGE9", "is_valid": True}))), \
+             patch("app.services.meta_own_app.graph_get", AsyncMock(return_value=(True, {"id": THEIR_APP_ID}))):
+            response = client.post(f"{BASE}/messenger", json={"page_id": "PAGE9", "page_access_token": "EAAG-p"})
+        assert response.status_code == 400
+        assert ChannelAccountRepository(db).get_by_external_id("messenger", "PAGE9") is None
 
     def test_chattermates_own_app_needs_no_address(self, client, db):
         """A self-hoster's number in the app ChatterMate runs on already
@@ -326,20 +369,25 @@ class TestConnect:
         assert response.json()["webhook_auto_configured"] is False
         assert response.json()["webhook_verify_token"]  # shown to paste by hand
 
-    def test_a_reconnect_without_the_secret_keeps_it_for_the_same_app(self, client, db):
+    def test_a_reconnect_checks_the_secret_against_the_new_token(self, client, db):
         _connect_whatsapp(client)
-        response, check, _ = _connect_whatsapp(client, app_secret=None, token="EAAG-rotated")
+        response, check, _ = _connect_whatsapp(client, token="EAAG-rotated")
         assert response.status_code == 200
         assert _stored(db)[1]["app_secret"] == THEIR_SECRET
-        # Checked again against the new token
         assert check.await_args.kwargs["params"]["appsecret_proof"] == hmac.new(
             THEIR_SECRET.encode(), b"EAAG-rotated", hashlib.sha256).hexdigest()
 
-    def test_a_reconnect_with_another_apps_token_asks_for_its_secret(self, client, db):
+    def test_a_reconnect_without_the_secret_keeps_the_old_connection(self, client, db):
         _connect_whatsapp(client)
-        response, _, _ = _connect_whatsapp(client, app_secret=None, app=PROOF_ERROR, token="EAAG-other-app")
+        response, _, _ = _connect_whatsapp(client, app_secret=None, token="EAAG-rotated")
         assert response.status_code == 400
-        assert "Enter the app secret again" in response.json()["detail"]
+        assert _stored(db)[1]["access_token"] == "EAAG-x"  # untouched
+
+    def test_a_reconnect_with_another_apps_token_and_the_old_secret_is_refused(self, client, db):
+        _connect_whatsapp(client)
+        response, _, _ = _connect_whatsapp(client, app=PROOF_ERROR, token="EAAG-other-app")
+        assert response.status_code == 400
+        assert "App settings → Basic" in response.json()["detail"]
         assert _stored(db)[1]["access_token"] == "EAAG-x"  # untouched
 
     def test_a_reconnect_from_another_app_moves_the_callback(self, client, db):

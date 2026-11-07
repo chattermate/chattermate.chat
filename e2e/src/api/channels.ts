@@ -15,7 +15,7 @@ export function connectTelegram(api: ApiClient, botToken: string): Promise<Chann
 }
 
 /** Manual WhatsApp Cloud API connect: a phone number id and a system-user token, plus the
- *  app secret when the number is in the customer's own Meta app. */
+ *  app secret, which a token from the customer's own Meta app can't connect without. */
 export function connectWhatsApp(api: ApiClient, phoneNumberId: string, accessToken: string, appSecret?: string): Promise<ChannelAccount> {
   return connect(api, '/channels/meta/whatsapp', { phone_number_id: phoneNumberId, access_token: accessToken, app_secret: appSecret })
 }
