@@ -16,13 +16,19 @@ limitations under the License.
 
 from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from typing import Annotated, List, Optional, Dict
 from enum import Enum
 from uuid import UUID
 from app.models.agent import AgentType
 from app.agents.guardrail_policy import GUARDRAIL_PROMPT_MAX
+from app.services.reply_limits import MAX_PER_DAY, MAX_PER_MINUTE
 from app.models.schemas.agent_customization import CustomizationResponse
 from app.models.schemas.user_group import UserGroupResponse
+
+# Per customer, counting only messages the AI answers; None = no limit.
+PerMinuteLimit = Annotated[Optional[int], Field(ge=1, le=MAX_PER_MINUTE)]
+PerDayLimit = Annotated[Optional[int], Field(ge=1, le=MAX_PER_DAY)]
+
 
 class KnowledgeItem(BaseModel):
     id: int
@@ -47,6 +53,8 @@ class AgentBase(BaseModel):
     enable_rate_limiting: bool = False
     overall_limit_per_ip: int = Field(default=100, description="Maximum number of requests allowed per IP address")
     requests_per_sec: float = Field(default=1.0, description="Number of requests allowed per second")
+    messages_per_customer_per_minute: PerMinuteLimit = None
+    replies_per_customer_per_day: PerDayLimit = None
     use_workflow: bool = False
     active_workflow_id: Optional[UUID] = None
     display_name: Optional[str] = None
@@ -88,6 +96,8 @@ class AgentUpdate(BaseModel):
     enable_rate_limiting: Optional[bool] = None
     overall_limit_per_ip: Optional[int] = None
     requests_per_sec: Optional[float] = None
+    messages_per_customer_per_minute: PerMinuteLimit = None
+    replies_per_customer_per_day: PerDayLimit = None
     use_workflow: Optional[bool] = None
     active_workflow_id: Optional[UUID] = None
     allow_attachments: Optional[bool] = None
@@ -142,6 +152,8 @@ class AgentResponse(BaseModel):
     enable_rate_limiting: Optional[bool] = None
     overall_limit_per_ip: Optional[int] = None
     requests_per_sec: Optional[float] = None
+    messages_per_customer_per_minute: Optional[int] = None
+    replies_per_customer_per_day: Optional[int] = None
     use_workflow: Optional[bool] = False
     active_workflow_id: Optional[UUID] = None
     allow_attachments: bool = False

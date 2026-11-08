@@ -51,6 +51,12 @@ APP_SECRET = "test-meta-secret"
 def client(db, test_user, test_organization, monkeypatch):
     monkeypatch.setattr(settings, "META_APP_SECRET", APP_SECRET)
     monkeypatch.setattr(settings, "META_WEBHOOK_VERIFY_TOKEN", "vtok")
+    # Manual connects ask Meta which app the token is from; here it is
+    # ChatterMate's own, which needs no secret and keeps the shared address
+    # (test_meta_own_app.py covers the customer's own app).
+    monkeypatch.setattr("app.services.meta_own_app.graph_get",
+                        AsyncMock(side_effect=lambda *a, **k: (True, {"id": settings.META_APP_ID or "OUR_APP"})))
+    monkeypatch.setattr(settings, "META_APP_ID", settings.META_APP_ID or "OUR_APP")
 
     # Reading templates is inbox work; SENDING one is a manage action — a
     # billable Meta message with opt-in obligations, gated like takeover and

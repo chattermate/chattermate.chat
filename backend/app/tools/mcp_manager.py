@@ -20,6 +20,7 @@ from time import monotonic
 from typing import List, Optional
 from agno.tools.mcp import MCPTools
 from app.channels.interactive_limits import InteractiveLimits
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.database import SessionLocal
 from app.repositories.mcp_tool import MCPToolRepository
 from app.models.mcp_tool import MCPTransportType
@@ -484,7 +485,7 @@ class ChatAgentMCPMixin:
     """
     
     @classmethod
-    async def create_async(cls, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI",
+    async def create_async(cls, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI",
                           org_id: str = None, agent_id: str = None, customer_id: str = None,
                           session_id: str = None, custom_system_prompt: str = None,
                           transfer_to_human: bool | None = None, source: str = None,

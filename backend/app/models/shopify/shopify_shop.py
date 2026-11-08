@@ -19,6 +19,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
+from app.core.encryption import EncryptedText
 from app.database import Base
 
 
@@ -28,7 +29,8 @@ class ShopifyShop(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     shop_domain = Column(String, nullable=False, unique=True, index=True)
-    access_token = Column(String, nullable=True)
+    # Encrypted at rest (app.core.encryption); rows from before read as plaintext.
+    access_token = Column(EncryptedText, nullable=True)
     scope = Column(String, nullable=True)
     is_installed = Column(Boolean, default=False)
     

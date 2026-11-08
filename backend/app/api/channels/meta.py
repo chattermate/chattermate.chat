@@ -43,6 +43,7 @@ from app.services.meta_own_app import (
     APP_SECRET_KEY,
     AppCheckUnavailable,
     AppSecretMismatch,
+    AppSecretRequired,
     OwnApp,
     leave_own_app,
     own_app_token,
@@ -343,15 +344,18 @@ def _own_app_credentials(own: OwnApp | None) -> dict:
     return {APP_SECRET_KEY: own.secret} if own else {}
 
 
-async def _own_app(access_token: str, entered_secret: str | None, previous) -> OwnApp | None:
+async def _own_app(access_token: str, secret: str | None) -> OwnApp | None:
     """resolve_own_app, with its failures as answers the form can show."""
     try:
-        return await resolve_own_app(access_token, entered_secret, previous)
+        return await resolve_own_app(access_token, secret)
+    except AppSecretRequired:
+        raise HTTPException(status_code=400, detail=(
+            "Enter your Meta app's secret, from App settings → Basic. Meta signs incoming "
+            "messages with it, so without it they can't reach ChatterMate.")) from None
     except AppSecretMismatch:
         raise HTTPException(status_code=400, detail=(
             "That app secret is not the one for the Meta app this token comes from. "
-            "Copy it from your app's App settings → Basic." if entered_secret else
-            "The app secret saved before doesn't match this token. Enter the app secret again.")) from None
+            "Copy it from your app's App settings → Basic.")) from None
     except AppCheckUnavailable as e:
         raise ClientSafeHTTPException(
             status_code=502, detail=f"Could not check the app secret with Meta, try again ({e})") from e
@@ -398,7 +402,7 @@ async def connect_whatsapp(
                             detail=f"Could not verify WhatsApp credentials: {data.get('error', {}).get('message', 'invalid token or phone_number_id')}")
 
     previous = _previous_account(db, organization, ChannelType.WHATSAPP.value, request.phone_number_id)
-    own = await _own_app(request.access_token, request.app_secret, previous)
+    own = await _own_app(request.access_token, request.app_secret)
     previous_token = own_app_token(previous)
 
     display = request.display_name or _whatsapp_display_name(data, request.phone_number_id)
@@ -510,7 +514,7 @@ async def connect_messenger(
             f"entered. Webhooks are routed by Page ID, so the two must match."))
 
     previous = _previous_account(db, organization, ChannelType.MESSENGER.value, request.page_id)
-    own = await _own_app(request.page_access_token, request.app_secret, previous)
+    own = await _own_app(request.page_access_token, request.app_secret)
     previous_token = own_app_token(previous)
 
     display_name = request.display_name or await _page_name(

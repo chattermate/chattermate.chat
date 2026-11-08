@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 from app.core.config import settings
 from app.models.journey import JourneyStatus
@@ -60,6 +60,25 @@ class Chip(BaseModel):
     kind: Literal["text", "action"] = "text"
     # The text it sends, or the action it runs.
     value: str = Field(min_length=1, max_length=500)
+    # Left out of the step while this holds, and back when it stops.
+    hide_when: Optional[Condition] = None
+
+    @field_validator("hide_when")
+    @classmethod
+    def _lasting(cls, value: Optional[Condition]) -> Optional[Condition]:
+        # Events and actions hold for one update, so the chip would flash off.
+        if value and value.kind in ("event", "action"):
+            raise ValueError("A chip can only be hidden by the page or a field value")
+        return value
+
+    @model_serializer(mode="wrap")
+    def _omit_unset(self, handler):
+        # An unset rule stays out of the stored definition, or saving an older
+        # journey would count as a change to it.
+        data = handler(self)
+        if data.get("hide_when") is None:
+            data.pop("hide_when", None)
+        return data
 
 
 class Then(BaseModel):

@@ -1880,3 +1880,23 @@ def test_view_agents_grants_the_reads(db, test_organization_id, test_agent: Agen
         assert client.put(f"/api/agents/{test_agent.id}", json={"name": "X"}).status_code == 403
     finally:
         app.dependency_overrides.clear()
+
+
+def test_reply_limits_round_trip_and_clear(client, db, test_user, test_agent):
+    """Per-customer reply limits save, come back in the response, and clear with null."""
+    response = client.put(
+        f"/api/agents/{test_agent.id}",
+        json={"messages_per_customer_per_minute": 6, "replies_per_customer_per_day": 40},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["messages_per_customer_per_minute"] == 6
+    assert body["replies_per_customer_per_day"] == 40
+    db.refresh(test_agent)
+    assert test_agent.replies_per_customer_per_day == 40
+
+    response = client.put(f"/api/agents/{test_agent.id}", json={"replies_per_customer_per_day": None})
+    assert response.json()["replies_per_customer_per_day"] is None
+    assert response.json()["messages_per_customer_per_minute"] == 6
+
+    assert client.put(f"/api/agents/{test_agent.id}", json={"replies_per_customer_per_day": 0}).status_code == 422

@@ -74,6 +74,7 @@ from app.services.widget_reply import (
 )
 from app.services.journey_runtime import step_actions_hint
 from app.services.host_prompt import clean_host_prompt, store_host_prompt
+from app.services.reply_limits import refuse_over_reply_limit
 from app.services.widget_identity import can_act_as, may_stand_for
 from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
@@ -343,6 +344,8 @@ async def widget_connect(sid, environ, auth):
             'enable_rate_limiting': enable_rate_limiting,
             'overall_limit_per_ip': overall_limit_per_ip,
             'requests_per_sec': requests_per_sec,
+            'messages_per_customer_per_minute': agent.messages_per_customer_per_minute if agent else None,
+            'replies_per_customer_per_day': agent.replies_per_customer_per_day if agent else None,
             # Cached like use_workflow: read once per connection so the
             # human-only check costs no query per message.
             'ai_replies_enabled': agent.ai_replies_enabled if agent else True,
@@ -607,6 +610,8 @@ async def handle_widget_chat(sid, data):
                     'error': 'Still waiting for the app to finish the last step.',
                     'type': 'action_pending',
                 }, to=sid, namespace='/widget')
+                return
+            if await refuse_over_reply_limit(sio, sid, session, session_id):
                 return
             await emit_bot_typing(session_id)
             logger.debug(f"Initializing chat agent for model {session['ai_config'].model_type}")

@@ -95,6 +95,38 @@ def test_an_action_chip_for_a_missing_action_is_dropped(db, session, test_agent)
     assert [c["label"] for c in view["chips"]] == ["Later"]
 
 
+def _hideable_journey(db, agent):
+    steps = _steps()
+    steps[0]["chips"] = [
+        {"label": "Read my site", "value": "Read my site",
+         "hide_when": {"kind": "ctx", "value": "sources_learning", "op": "gt", "operand": 0}},
+        {"label": "Paste text", "value": "Paste text"},
+    ]
+    return _journey(db, agent, steps=steps)
+
+
+@pytest.mark.parametrize("context, labels", [
+    ({}, ["Read my site", "Paste text"]),
+    ({"sources_learning": 0}, ["Read my site", "Paste text"]),
+    ({"sources_learning": 1}, ["Paste text"]),
+])
+def test_a_chip_shows_only_while_its_hide_when_does_not_hold(db, session, test_agent, context, labels):
+    _hideable_journey(db, test_agent)
+    session["host_context"] = context
+    view = _runner(db, session, "https://app.x/dashboard").sync()
+    assert [c["label"] for c in view["chips"]] == labels
+
+
+def test_a_hidden_chip_comes_back_when_the_condition_stops_holding(db, session, test_agent):
+    """A site that couldn't be read: they need the chip again."""
+    _hideable_journey(db, test_agent)
+    session["host_context"] = {"sources_learning": 1}
+    _runner(db, session, "https://app.x/dashboard").sync()
+    session["host_context"] = {"sources_learning": 0}
+    view = _runner(db, session, "https://app.x/dashboard").sync()
+    assert [c["label"] for c in view["chips"]] == ["Read my site", "Paste text"]
+
+
 def test_done_moves_on_and_waits_for_the_next_page(db, session, test_agent, action):
     _journey(db, test_agent)
     _runner(db, session, "https://app.x/dashboard").sync()
@@ -280,3 +312,10 @@ def test_funnel_counts_steps(db, session, test_agent, action):
     assert (first["reached"], first["done"], first["dropped"]) == (1, 1, 0)
     assert first["median_seconds"] is not None
     assert (second["reached"], second["done"]) == (0, 0)
+
+
+def test_saving_an_older_journey_unchanged_does_not_bump_its_version(db, test_agent):
+    journey = _journey(db, test_agent)
+    data = JourneyWrite(key=journey.key, name=journey.name, status=journey.status, priority=journey.priority,
+                        goal_event=journey.goal_event, definition=journey.definition)
+    assert JourneyRepository(db).update(journey, data).version == 1

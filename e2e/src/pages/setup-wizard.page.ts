@@ -93,6 +93,21 @@ export class SetupWizard {
     return this.page.getByLabel('Text about your business')
   }
 
+  /** A sent source on the Teach step, while it is being read. */
+  learningSource(name: string): Locator {
+    return this.page.getByRole('list', { name: 'Learning' }).getByText(name)
+  }
+
+  /** A source on the Teach step that has been read. */
+  indexedSource(name: string): Locator {
+    return this.page.getByRole('list', { name: 'Already added' }).getByText(name)
+  }
+
+  /** The Teach step saying a source could not be read. */
+  readFailure(name: string): Locator {
+    return this.page.getByRole('alert').filter({ hasText: `We couldn't read ${name}` })
+  }
+
   /** A staged source on the Teach step, e.g. the signup domain. */
   stagedSource(url: string): Locator {
     return this.page.getByRole('listitem').filter({ hasText: url })

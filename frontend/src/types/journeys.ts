@@ -29,6 +29,8 @@ export interface JourneyChip {
   label: string
   kind: 'text' | 'action'
   value: string
+  /** Left out of the step while this holds. */
+  hide_when?: Condition | null
 }
 
 export interface JourneyThen {

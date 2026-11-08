@@ -899,81 +899,8 @@ async def test_shopify_app_uninstalled_webhook_invalid_hmac(mock_verify_webhook,
     assert "Invalid webhook signature" in str(exc_info.value.detail)
 
 
-@pytest.mark.asyncio
-@patch('app.api.shopify.ShopifyHelperService.verify_shopify_webhook')
-async def test_shopify_customers_data_request_webhook_success(mock_verify_webhook, mock_db):
-    """Test customers data request webhook"""
-    # Arrange
-    mock_verify_webhook.return_value = True
-    
-    mock_request = MagicMock()
-    webhook_data = {
-        "shop_id": 12345,
-        "shop_domain": "test-shop.myshopify.com",
-        "customer": {"id": 67890}
-    }
-    
-    # Mock request body
-    mock_request.body = AsyncMock(return_value=json.dumps(webhook_data).encode())
-    
-    # Act
-    from app.api.shopify import shopify_customers_data_request_webhook
-    response = await shopify_customers_data_request_webhook(mock_request, mock_db)
-    
-    # Assert
-    assert response["success"] is True
-    assert "Customer data request received and logged" in response["message"]
-
-
-@pytest.mark.asyncio
-@patch('app.api.shopify.ShopifyHelperService.verify_shopify_webhook')
-async def test_shopify_customers_redact_webhook_success(mock_verify_webhook, mock_db):
-    """Test customers redact webhook"""
-    # Arrange
-    mock_verify_webhook.return_value = True
-    
-    mock_request = MagicMock()
-    webhook_data = {
-        "shop_id": 12345,
-        "shop_domain": "test-shop.myshopify.com",
-        "customer": {"id": 67890}
-    }
-    
-    # Mock request body
-    mock_request.body = AsyncMock(return_value=json.dumps(webhook_data).encode())
-    
-    # Act
-    from app.api.shopify import shopify_customers_redact_webhook
-    response = await shopify_customers_redact_webhook(mock_request, mock_db)
-    
-    # Assert
-    assert response["success"] is True
-    assert "Customer data redaction request received and logged" in response["message"]
-
-
-@pytest.mark.asyncio
-@patch('app.api.shopify.ShopifyHelperService.verify_shopify_webhook')
-async def test_shopify_shop_redact_webhook_success(mock_verify_webhook, mock_db):
-    """Test shop redact webhook"""
-    # Arrange
-    mock_verify_webhook.return_value = True
-    
-    mock_request = MagicMock()
-    webhook_data = {
-        "shop_id": 12345,
-        "shop_domain": "test-shop.myshopify.com"
-    }
-    
-    # Mock request body
-    mock_request.body = AsyncMock(return_value=json.dumps(webhook_data).encode())
-    
-    # Act
-    from app.api.shopify import shopify_shop_redact_webhook
-    response = await shopify_shop_redact_webhook(mock_request, mock_db)
-    
-    # Assert
-    assert response["success"] is True
-    assert "Shop data redacted successfully" in response["message"]
+# The privacy webhooks (customers/data_request, customers/redact, shop/redact)
+# are tested against a real database in test_shopify_privacy_webhooks.py.
 
 
 @pytest.mark.asyncio
