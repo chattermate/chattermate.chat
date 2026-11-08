@@ -3,7 +3,7 @@ Standalone lead-capture prompt test.
 
 Purpose: isolate whether the *prompt* makes the model actually ask for the
 visitor's contact details (and set request_lead_capture), independent of all the
-widget/socket/DB plumbing. It hits the real OpenAI model (gpt-4o-mini) using the
+widget/socket/DB plumbing. It hits the real OpenAI model (the managed ChatterMate default) using the
 exact production stack — agno Agent + ChatResponse structured output — with a
 HARDCODED system prompt and a scripted conversation.
 
@@ -19,10 +19,11 @@ import asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agno.agent import Agent
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.utils.agno_utils import create_model
 from app.models.schemas.chat import ChatResponse
 
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = DEFAULT_CHATTERMATE_MODEL
 # Org that owns the "Lead generation" agent — used to fetch a real decrypted key.
 DEFAULT_ORG_ID = "12da4eb2-b351-4669-8cc8-ef9c83a23998"
 

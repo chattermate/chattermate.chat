@@ -61,6 +61,11 @@ class AppSecretMismatch(Exception):
     """The secret isn't the one of the app that issued the token."""
 
 
+class AppSecretRequired(Exception):
+    """The token is from the customer's own app and no secret was given:
+    without it, messages to the number or Page could never be verified."""
+
+
 class AppCheckUnavailable(Exception):
     """Meta couldn't be asked (network, rate limit, an expired token…)."""
 
@@ -90,24 +95,25 @@ def own_app_webhook_url(account: ChannelAccount) -> str:
     return f"{webhooks_base_url()}/meta/{account.id}"
 
 
-async def resolve_own_app(access_token: str, entered_secret: Optional[str],
-                          previous: Optional[ChannelAccount]) -> Optional[OwnApp]:
-    """The customer's own app behind this token, proven with its secret —
-    the one entered, or else the one kept from the last connect (checked
-    again: the new token may be from another app). None without a secret, or
-    for ChatterMate's own app, whose webhooks the shared address already gets.
+async def resolve_own_app(access_token: str, entered_secret: Optional[str]) -> Optional[OwnApp]:
+    """The customer's own app behind this token, proven with its secret.
 
-    Raises AppSecretMismatch or AppCheckUnavailable."""
-    secret = entered_secret or (own_app_secret(previous) if previous is not None else None)
-    if not secret:
-        return None
-    proof = hmac.new(secret.encode(), access_token.encode(), hashlib.sha256).hexdigest()
+    None for ChatterMate's own app, whose webhooks the shared address already
+    gets. That is the only token that needs no secret (a number or Page from
+    one-click signup, reconnected by hand), so a missing one is checked with
+    ChatterMate's own secret: it proves only our app's tokens.
+
+    Raises AppSecretRequired, AppSecretMismatch or AppCheckUnavailable."""
+    secret = entered_secret or settings.META_APP_SECRET
+    params = {"fields": "id"}
+    if secret:
+        params["appsecret_proof"] = hmac.new(secret.encode(), access_token.encode(), hashlib.sha256).hexdigest()
     # /app (the token's own app) needs no permission on the Page or number
-    ok, data = await graph_get("app", access_token, params={"fields": "id", "appsecret_proof": proof})
+    ok, data = await graph_get("app", access_token, params=params)
     if not ok:
         error = data.get("error") if isinstance(data.get("error"), dict) else {}
         if _PROOF_ERROR in str(error.get("message", "")):
-            raise AppSecretMismatch()
+            raise AppSecretMismatch() if entered_secret else AppSecretRequired()
         # Meta's own errors carry a code; anything else is ours (a timeout,
         # a socket error) and stays in the log
         logger.warning(f"Could not check an app secret with Meta: {error.get('message')}")
@@ -115,7 +121,9 @@ async def resolve_own_app(access_token: str, entered_secret: Optional[str],
     app_id = str(data.get("id") or "")
     if not app_id or app_id == settings.META_APP_ID:
         return None
-    return OwnApp(app_id=app_id, secret=secret)
+    if not entered_secret:
+        raise AppSecretRequired()
+    return OwnApp(app_id=app_id, secret=entered_secret)
 
 
 async def sync_own_app(db: Session, account: ChannelAccount, own: Optional[OwnApp],

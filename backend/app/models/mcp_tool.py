@@ -16,6 +16,7 @@ limitations under the License.
 
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func, Enum as SQLEnum, Text, Boolean
 from sqlalchemy.orm import relationship
+from app.core.encryption import EncryptedJSON
 from app.database import Base
 import enum
 from sqlalchemy.dialects.postgresql import UUID, JSON
@@ -42,11 +43,13 @@ class MCPTool(Base):
     # For STDIO transport
     command = Column(String)  # e.g., "npx", "uvx", "node"
     args = Column(JSON)  # List of arguments, e.g., ["-y", "@modelcontextprotocol/server-filesystem"]
-    env_vars = Column(JSON)  # Environment variables as key-value pairs
+    # Environment variables as key-value pairs. They carry API keys, so the
+    # object is encrypted at rest; rows from before read back as plaintext.
+    env_vars = Column(EncryptedJSON)
     
     # For SSE/HTTP transports
     url = Column(String)  # Server URL
-    headers = Column(JSON)  # HTTP headers as key-value pairs
+    headers = Column(EncryptedJSON)  # HTTP headers (auth tokens); encrypted like env_vars
     timeout = Column(Integer)  # Connection timeout in seconds
     sse_read_timeout = Column(Integer)  # SSE read timeout in seconds
     terminate_on_close = Column(Boolean, default=True)  # For HTTP transport

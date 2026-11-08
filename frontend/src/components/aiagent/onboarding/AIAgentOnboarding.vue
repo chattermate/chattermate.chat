@@ -62,10 +62,14 @@ const resumePoint = async () => {
   if (record.agentId) return record
   const server = await serverProgress()
   if (!server?.agent_id || !(server.step in WIZARD_STEP_FOR)) return record
+  const step = WIZARD_STEP_FOR[server.step]
+  // Reaching a step means the ones before it are done, or Finish would leave
+  // the resume banner up.
   return onboarding.patch(orgId, {
     agentId: server.agent_id,
     widgetId: server.widget_id,
-    currentStep: WIZARD_STEP_FOR[server.step],
+    currentStep: step,
+    completedSteps: Array.from({ length: step }, (_, i) => i),
   })
 }
 
@@ -108,6 +112,7 @@ onMounted(async () => {
 })
 
 const goTo = (step: OnboardingStepIndex) => {
+  followAssistant.value = false
   currentStep.value = step
   onboarding.goTo(orgId, step)
 }
@@ -157,11 +162,15 @@ const stepKey = computed<StepKey>(() => STEP_KEYS[currentStep.value])
 // Bumped when the assistant changed something the open step shows, so it
 // reloads with the new values. Only then: a reload drops what is being typed.
 const refreshKey = ref(0)
+// The assistant taught the agent from Teach, so Teach moves on when it's done.
+// Coming back to the step by hand ends that.
+const followAssistant = ref(false)
 const AREAS_SHOWN: Record<StepKey, string[]> = {
   create: ['agent', 'look'], teach: ['knowledge'], test: ['agent', 'look'], launch: ['widget'],
 }
 const handleAssistantChange = async (area: string) => {
   if (!AREAS_SHOWN[stepKey.value].includes(area)) return
+  if (area === 'knowledge') followAssistant.value = true
   if (agentId.value) {
     try {
       createdAgent.value = await agentService.getAgentById(agentId.value)
@@ -175,6 +184,16 @@ const handleAssistantChange = async (area: string) => {
 const handleAssistantStep = (key: StepKey) => {
   const index = STEP_KEYS.indexOf(key) as OnboardingStepIndex
   if (index > 0 && !agentId.value) return
+  // Moving on counts the same as each passed step's own button; going back
+  // finishes nothing.
+  if (index > currentStep.value) {
+    followAssistant.value = false
+    const from = currentStep.value
+    for (let step = from; step < index; step++) {
+      completeAndAdvance(step as OnboardingStepIndex, index)
+    }
+    return
+  }
   goTo(index)
 }
 
@@ -230,6 +249,7 @@ const handleFinish = () => {
         :key="'teach' + refreshKey"
         :agent-id="agentId"
         :organization-id="orgId"
+        :follow-assistant="followAssistant"
         @next="completeAndAdvance(1, 2)"
         @back="goTo(0)"
       />

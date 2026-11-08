@@ -44,6 +44,7 @@ import { useWidgetSocket } from '../composables/useWidgetSocket'
 import { useHostActions } from '../composables/useHostActions'
 import type { HostPrompt, PageChip } from './actions/hostActionsClient'
 import { useJourneys } from '../composables/useJourneys'
+import { usePromptPlace } from '../composables/usePromptPlace'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
@@ -148,12 +149,8 @@ const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivi
 // reply join the chat here, and its receipt follows when the page is done.
 const onPageChip = (chip: PageChip) => {
     if (chip.kind === 'action' && !chipBusy.value && !pendingConfirm.value) {
-        const prompt = visiblePrompt.value
-        const now = new Date().toISOString()
-        if (prompt) {
-            messages.value.push({ message: prompt.message, message_type: 'bot', created_at: now, session_id: '', attributes: { source: prompt.source } } as any)
-        }
-        messages.value.push({ message: chip.label, message_type: 'user', created_at: now, session_id: '', attributes: { source: 'journey' } } as any)
+        if (visiblePrompt.value) addPromptToChat(visiblePrompt.value)
+        messages.value.push({ message: chip.label, message_type: 'user', created_at: new Date().toISOString(), session_id: '', attributes: { source: 'journey' } } as any)
     }
     runChip(chip, sendQuickAction)
 }
@@ -175,6 +172,21 @@ const visiblePrompt = computed(() => {
     const inChat = messages.value.some(m => m.message_type === 'bot' && m.message === prompt.message)
     return inChat ? null : prompt
 })
+
+// A reply still being written comes first: a step that moves on mid-reply waits
+// for it, then keeps its place in the chat as anything newer arrives.
+const shownPrompt = computed(() => (loading.value ? null : visiblePrompt.value))
+const promptPlace = usePromptPlace(messages, shownPrompt)
+
+const addPromptToChat = (prompt: HostPrompt) => {
+    messages.value.splice(promptPlace.index(), 0, {
+        message: prompt.message,
+        message_type: 'bot',
+        created_at: new Date().toISOString(),
+        session_id: '',
+        attributes: { source: prompt.source },
+    } as any)
+}
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
 // to the bottom as text grows.
@@ -561,16 +573,9 @@ const sendMessage = async () => {
     noteActivity()
     // A page message being answered is stored with the reply (it never was before).
     const answeredPrompt = visiblePrompt.value
-    hostPrompt.value = null
-    if (answeredPrompt) {
-        messages.value.push({
-            message: answeredPrompt.message,
-            message_type: 'bot',
-            created_at: new Date().toISOString(),
-            session_id: '',
-            attributes: { source: answeredPrompt.source },
-        } as any)
-    }
+    if (answeredPrompt) addPromptToChat(answeredPrompt)
+    // A journey step's replies stay until the step moves on; the server won't resend them after a plain answer.
+    if (hostPrompt.value?.source !== 'journey') hostPrompt.value = null
 
     // Send message with files in a single emit
     await socketSendMessage(newMessage.value, emailInput.value, files,
@@ -806,9 +811,9 @@ watch(() => messages.value, (newMessages) => {
     })
 }, { deep: true })
 
-// The confirm card, a page or journey message and the typing bubble sit after
+// The confirm card, a page or journey message and the typing bubble can sit after
 // the messages, so a new one is below the fold unless the list follows it.
-watch([pendingConfirm, hostPrompt, () => receipts.value.length, loading], ([confirm, prompt, receiptCount, typing]) => {
+watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading], ([confirm, prompt, receiptCount, typing]) => {
     if (confirm || prompt || receiptCount || typing) nextTick(() => scrollToBottom())
 })
 
@@ -2551,6 +2556,11 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                 </div>
 
                 <template v-for="(message, index) in messages" :key="index">
+                    <div v-if="promptPlace.isBefore(message)" class="message agent-message cm-welcome-row cm-host-prompt">
+                        <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
+                        <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
+                        <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ shownPrompt?.message }}</div>
+                    </div>
                     <div
                         :class="[
                             'message',
@@ -2956,10 +2966,10 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                     <ActionReceiptLine v-for="(receipt, r) in receiptsAfter(index + 1)" :key="`receipt-${index}-${r}`" :receipt="receipt" />
                 </template>
 
-                <div v-if="visiblePrompt" class="message agent-message cm-welcome-row cm-host-prompt">
+                <div v-if="promptPlace.isLast()" class="message agent-message cm-welcome-row cm-host-prompt">
                     <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
                     <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
-                    <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ visiblePrompt.message }}</div>
+                    <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ shownPrompt?.message }}</div>
                 </div>
 
                 <SuggestedReplies

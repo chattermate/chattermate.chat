@@ -19,6 +19,7 @@ from typing import Optional, Type
 from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import is_widget_channel
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
@@ -360,7 +361,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None):
+    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be

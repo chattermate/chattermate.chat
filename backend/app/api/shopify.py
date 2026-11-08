@@ -17,7 +17,7 @@ limitations under the License.
 import traceback
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from app.utils.domain_check import InvalidWebsite, website_update
 from app.repositories.organization import OrganizationRepository
@@ -42,6 +42,8 @@ from app.repositories.widget import WidgetRepository
 from app.services.shopify import ShopifyService
 from app.services.shopify_auth_service import ShopifyAuthService
 from app.services.shopify_helper_service import ShopifyHelperService
+from app.services import shopify_privacy
+from app.core.s3 import delete_file_from_s3
 from app.services.shopify_links import owned_by_another_org, refresh_allowed_storefronts, use_shop_domain_if_unset
 from app.services.shopify_session import require_shopify_session
 from app.services.shopify_urls import shopify_admin_url, shopify_oauth_token_url
@@ -386,6 +388,10 @@ async def delete_shop(
         logger.error(f"Error deleting agent Shopify configs: {str(e)}")
         # Continue with shop deletion even if config deletion fails
     
+    # The store's privacy webhooks can still arrive after this; they find
+    # the organization through this record. Committed by delete_shop().
+    shopify_privacy.remember_shop_owner(db, db_shop, shopify_privacy.TOPIC_SHOP_DISCONNECTED)
+
     # Delete the shop from our database
     success = shop_repository.delete_shop(shop_id)
     if not success:
@@ -909,7 +915,13 @@ async def shopify_app_uninstalled_webhook(
             logger.info(f"Deleted Shopify config for agent {config.agent_id}")
         
         logger.info(f"Deleted {deleted_configs} agent config(s) for shop {shop_domain}")
-        
+
+        # shop/redact arrives 48 hours from now and must still find this
+        # store's conversations; delete_shop() below commits this with it.
+        shopify_privacy.remember_shop_owner(
+            db, db_shop, shopify_privacy.TOPIC_APP_UNINSTALLED,
+            webhook_id=request_headers.get("X-Shopify-Webhook-Id"))
+
         # Delete the shop record from the database
         shop_repo.delete_shop(str(db_shop.id))
         logger.info(f"Deleted shop record for {shop_domain}")
@@ -940,271 +952,76 @@ async def shopify_app_uninstalled_webhook(
             "message": "An internal error occurred while processing the uninstall webhook."
         }
 
-@router.post("/webhooks/customers/data_request")
-async def shopify_customers_data_request_webhook(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """
-    GDPR Compliance Webhook: Customer Data Request
-    
-    This webhook is called when a customer requests access to their data.
-    You must provide the customer's data within a specified timeframe.
-    
-    Shopify sends the following information:
-    - shop_id: The ID of the shop
-    - shop_domain: The shop's domain
-    - customer: Customer information including email, phone
-    - orders_requested: List of order IDs the customer has placed
-    
-    Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
-    """
+# Shopify's mandatory privacy webhooks. The work lives in
+# app.services.shopify_privacy; these only verify, parse and acknowledge.
+# Anyone can reach them, so a failure answers with a fixed message, and a
+# reply never repeats the customer's email or phone.
+PRIVACY_HANDLERS = {
+    shopify_privacy.TOPIC_DATA_REQUEST: shopify_privacy.handle_data_request,
+    shopify_privacy.TOPIC_CUSTOMERS_REDACT: shopify_privacy.handle_customers_redact,
+    shopify_privacy.TOPIC_SHOP_REDACT: shopify_privacy.handle_shop_redact,
+}
+
+
+async def _handle_privacy_webhook(topic: str, request: Request, db: Session):
+    request_body = await request.body()
+    if not ShopifyHelperService.verify_shopify_webhook(request.headers, request_body):
+        logger.warning(f"Invalid webhook signature for {topic}")
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
     try:
-        # Get the request body and headers
-        request_body = await request.body()
-        request_headers = request.headers
-        
-        # Verify the webhook signature
-        if not ShopifyHelperService.verify_shopify_webhook(request_headers, request_body):
-            logger.warning("Invalid webhook signature for customers/data_request")
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        
-        # Parse the webhook payload
-        try:
-            payload = json.loads(request_body.decode('utf-8'))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse webhook payload: {str(e)}")
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
-        
-        shop_domain = payload.get('shop_domain')
-        customer = payload.get('customer', {})
-        customer_email = customer.get('email')
-        customer_phone = customer.get('phone')
-        orders_requested = payload.get('orders_requested', [])
-        
-        logger.info(f"Received customer data request for shop: {shop_domain}, customer: {customer_email}")
-        
-        # TODO: Implement data collection based on your data storage
-        # For now, we'll log the request and acknowledge receipt
-        # You should:
-        # 1. Collect all customer data you've stored (chat history, customer info, etc.)
-        # 2. Prepare it in a readable format (JSON, CSV, etc.)
-        # 3. Send it to the customer or make it available for download
-        # 4. Keep a record of the request for compliance
-        
-        logger.info(f"Customer data request details:")
-        logger.info(f"  - Shop: {shop_domain}")
-        logger.info(f"  - Customer Email: {customer_email}")
-        logger.info(f"  - Customer Phone: {customer_phone}")
-        logger.info(f"  - Orders: {orders_requested}")
-        
-        # In a production system, you would:
-        # 1. Query your chat_history table for this customer
-        # 2. Query any customer-specific data
-        # 3. Format and send the data to the customer
-        
-        # Return 200 OK to acknowledge receipt
-        return {
-            "success": True,
-            "message": "Customer data request received and logged",
-            "shop_domain": shop_domain,
-            "customer_email": customer_email
-        }
-        
-    except HTTPException:
-        raise
+        payload = json.loads(request_body.decode('utf-8'))
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.error(f"Failed to parse {topic} webhook payload: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    # A malformed payload can never succeed, so it is a 400 (no retry), not
+    # a 500 that Shopify would keep retrying.
+    if not isinstance(payload, dict) or not isinstance(payload.get("customer") or {}, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    try:
+        outcome = await run_in_threadpool(
+            PRIVACY_HANDLERS[topic], db, payload, request.headers.get("X-Shopify-Webhook-Id"))
     except Exception as e:
-        logger.error(f"Error processing customer data request webhook: {str(e)}")
+        db.rollback()
+        logger.error(f"Error processing {topic} webhook: {str(e)}")
         logger.error(traceback.format_exc())
-        return {
+        # A 5xx makes Shopify retry; an erasure that failed must be retried.
+        return JSONResponse(status_code=500, content={
             "success": False,
-            "message": "Error processing webhook"
-        }
+            "message": "Error processing webhook",
+        })
+
+    for url in outcome.attachment_urls:
+        await delete_file_from_s3(url)
+    if topic == shopify_privacy.TOPIC_SHOP_REDACT and not outcome.duplicate:
+        # shop/redact deletes a shop row the uninstall missed; its storefront
+        # must stop being an allowed widget origin, as on uninstall.
+        refresh_allowed_storefronts()
+    return {
+        "success": True,
+        "status": outcome.status,
+        "duplicate": outcome.duplicate,
+        "shop_domain": payload.get("shop_domain"),
+    }
+
+
+@router.post("/webhooks/customers/data_request")
+async def shopify_customers_data_request_webhook(request: Request, db: Session = Depends(get_db)):
+    """A customer asked the merchant for their data. Records which of our
+    customer records it covers; the export is then sent to the merchant.
+    https://shopify.dev/docs/apps/build/privacy-law-compliance"""
+    return await _handle_privacy_webhook(shopify_privacy.TOPIC_DATA_REQUEST, request, db)
+
 
 @router.post("/webhooks/customers/redact")
-async def shopify_customers_redact_webhook(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """
-    GDPR Compliance Webhook: Customer Data Erasure
-    
-    This webhook is called when a customer requests their data to be deleted.
-    You must delete all customer data within a specified timeframe.
-    
-    Shopify sends the following information:
-    - shop_id: The ID of the shop
-    - shop_domain: The shop's domain
-    - customer: Customer information including email, phone
-    - orders_to_redact: List of order IDs to redact
-    
-    Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
-    """
-    try:
-        # Get the request body and headers
-        request_body = await request.body()
-        request_headers = request.headers
-        
-        # Verify the webhook signature
-        if not ShopifyHelperService.verify_shopify_webhook(request_headers, request_body):
-            logger.warning("Invalid webhook signature for customers/redact")
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        
-        # Parse the webhook payload
-        try:
-            payload = json.loads(request_body.decode('utf-8'))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse webhook payload: {str(e)}")
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
-        
-        shop_domain = payload.get('shop_domain')
-        customer = payload.get('customer', {})
-        customer_email = customer.get('email')
-        customer_phone = customer.get('phone')
-        orders_to_redact = payload.get('orders_to_redact', [])
-        
-        logger.info(f"Received customer redact request for shop: {shop_domain}, customer: {customer_email}")
-        
-        # TODO: Implement data deletion based on your data storage
-        # For now, we'll log the request and acknowledge receipt
-        # You should:
-        # 1. Delete or anonymize all customer data (chat history, personal info, etc.)
-        # 2. Keep a minimal record for compliance (that the request was fulfilled)
-        # 3. Ensure the customer's data is no longer accessible
-        
-        logger.info(f"Customer redact request details:")
-        logger.info(f"  - Shop: {shop_domain}")
-        logger.info(f"  - Customer Email: {customer_email}")
-        logger.info(f"  - Customer Phone: {customer_phone}")
-        logger.info(f"  - Orders to redact: {orders_to_redact}")
-        
-        # In a production system, you would:
-        # 1. Find all chat_history records for this customer
-        # 2. Either delete them or anonymize the customer data
-        # 3. Remove any personally identifiable information (PII)
-        # 4. Keep a log that the request was fulfilled
-        
-        # Example pseudocode:
-        # chat_repo = ChatHistoryRepository(db)
-        # if customer_email:
-        #     chat_repo.delete_by_customer_email(customer_email, shop_domain)
-        # if customer_phone:
-        #     chat_repo.delete_by_customer_phone(customer_phone, shop_domain)
-        
-        # Return 200 OK to acknowledge receipt
-        return {
-            "success": True,
-            "message": "Customer data redaction request received and logged",
-            "shop_domain": shop_domain,
-            "customer_email": customer_email
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error processing customer redact webhook: {str(e)}")
-        logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "message": "Error processing webhook"
-        }
+async def shopify_customers_redact_webhook(request: Request, db: Session = Depends(get_db)):
+    """Erase one customer's conversations and personal data.
+    https://shopify.dev/docs/apps/build/privacy-law-compliance"""
+    return await _handle_privacy_webhook(shopify_privacy.TOPIC_CUSTOMERS_REDACT, request, db)
+
 
 @router.post("/webhooks/shop/redact")
-async def shopify_shop_redact_webhook(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """
-    GDPR Compliance Webhook: Shop Data Erasure
-
-    This webhook is called 48 hours after a shop owner uninstalls your app.
-    You must delete all shop-related data.
-
-    Shopify sends the following information:
-    - shop_id: The ID of the shop
-    - shop_domain: The shop's domain
-
-    Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
-    """
-    try:
-        # Get the request body and headers
-        request_body = await request.body()
-        request_headers = request.headers
-        
-        # Verify the webhook signature
-        if not ShopifyHelperService.verify_shopify_webhook(request_headers, request_body):
-            logger.warning("Invalid webhook signature for shop/redact")
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        
-        # Parse the webhook payload
-        try:
-            payload = json.loads(request_body.decode('utf-8'))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse webhook payload: {str(e)}")
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
-        
-        shop_domain = payload.get('shop_domain')
-        shop_id = payload.get('shop_id')
-        
-        logger.info(f"Received shop redact request for shop: {shop_domain} (ID: {shop_id})")
-        
-        # Initialize repositories
-        shop_repo = ShopifyShopRepository(db)
-        config_repo = AgentShopifyConfigRepository(db)
-        
-        # Find the shop in our database
-        db_shop = shop_repo.get_shop_by_domain(shop_domain)
-        
-        if not db_shop:
-            logger.warning(f"Shop not found in database: {shop_domain}")
-            # Return 200 anyway to acknowledge receipt
-            return {"success": True, "message": "Shop not found, no action needed"}
-        
-        logger.info(f"Found shop in database: {db_shop.id}")
-        
-        # Delete all agent configurations for this shop
-        configs = config_repo.get_configs_by_shop(str(db_shop.id))
-        deleted_configs = 0
-        
-        for config in configs:
-            config_repo.delete_agent_shopify_config(config.agent_id)
-            deleted_configs += 1
-            logger.info(f"Deleted Shopify config for agent {config.agent_id}")
-        
-        # TODO: Delete all shop-related data
-        # You should also:
-        # 1. Delete or anonymize all chat history related to this shop
-        # 2. Remove any customer data associated with this shop
-        # 3. Delete any cached product data
-        # 4. Remove any analytics data for this shop
-        
-        # Example pseudocode:
-        # chat_repo = ChatHistoryRepository(db)
-        # chat_repo.delete_by_shop(shop_domain)
-        # 
-        # customer_repo = CustomerRepository(db)
-        # customer_repo.delete_by_shop(shop_domain)
-        
-        # Delete the shop record from the database
-        shop_repo.delete_shop(str(db_shop.id))
-        logger.info(f"Deleted shop record for {shop_domain}")
-        
-        logger.info(f"Successfully redacted all data for shop {shop_domain}. Deleted {deleted_configs} config(s)")
-        
-        # Return 200 OK to acknowledge receipt
-        return {
-            "success": True,
-            "message": f"Shop data redacted successfully for {shop_domain}",
-            "shop_domain": shop_domain,
-            "configs_deleted": deleted_configs
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error processing shop redact webhook: {str(e)}")
-        logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "message": "Error processing webhook"
-        }
+async def shopify_shop_redact_webhook(request: Request, db: Session = Depends(get_db)):
+    """Sent 48 hours after uninstall: erase the store's visitor data.
+    https://shopify.dev/docs/apps/build/privacy-law-compliance"""
+    return await _handle_privacy_webhook(shopify_privacy.TOPIC_SHOP_REDACT, request, db)
