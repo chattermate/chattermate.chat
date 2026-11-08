@@ -37,7 +37,7 @@ from functools import lru_cache
 from typing import Any, Dict, Optional
 
 from cryptography.fernet import Fernet
-from sqlalchemy import Text
+from sqlalchemy import JSON, Text
 from sqlalchemy.types import TypeDecorator
 
 from app.core.config import ENCRYPTION_KEY_HINT, is_throwaway_environment
@@ -221,3 +221,22 @@ class EncryptedText(TypeDecorator):
 
     def process_result_value(self, value, dialect):
         return decrypt_value(value)
+
+
+class EncryptedJSON(TypeDecorator):
+    """JSON column whose value is stored as an ``encrypt_json`` marker object.
+
+    Storage stays JSON, so applying this to an existing JSON column needs no
+    schema change, and a plaintext object written before the change reads back
+    unchanged until the backfill reaches it. The whole value is one ciphertext:
+    nothing inside it can be queried in SQL, which is the point for secrets.
+    """
+
+    impl = JSON
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return encrypt_json(value)
+
+    def process_result_value(self, value, dialect):
+        return decrypt_json(value)
