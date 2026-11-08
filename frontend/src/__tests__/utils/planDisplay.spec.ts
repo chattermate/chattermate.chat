@@ -33,6 +33,12 @@ describe('planDisplayName', () => {
     expect(planDisplayName({ type: 'free', name: 'Free' })).toBe('Free')
   })
 
+  it('shows a customer on a retired paid plan the name they bought it under', () => {
+    expect(planDisplayName({ type: 'pro', name: 'Pro (legacy)' })).toBe('Pro')
+    expect(planDisplayName({ type: 'pro', name: 'Pro (yearly) (legacy)' })).toBe('Pro (yearly)')
+    expect(planDisplayName({ type: 'base', name: 'Base (Legacy)' })).toBe('Base')
+  })
+
   it('keeps a paid plan its own name, and is empty with no plan', () => {
     expect(planDisplayName({ type: 'growth', name: 'Growth' })).toBe('Growth')
     expect(planDisplayName(null)).toBe('')

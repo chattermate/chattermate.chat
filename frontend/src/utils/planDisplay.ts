@@ -32,10 +32,15 @@ export const FREE_PLAN_NAME = 'Free'
 /** A trial this close to its end is shown as ending soon. */
 export const TRIAL_ENDING_SOON_DAYS = 3
 
+/** "(legacy)" marks a retired catalog row for us; the customer on it
+ *  still has the plan they bought. */
+const LEGACY_SUFFIX = /\s*\(legacy\)/i
+
 /** Every free plan reads as "Free", whatever the catalog row is called
- *  (a hidden legacy Free plan is still the Free plan to the customer). */
+ *  (a hidden legacy Free plan is still the Free plan to the customer), and a
+ *  retired paid plan keeps the name it was sold under. */
 export const planDisplayName = (plan?: NamedPlan | null): string =>
-  plan?.type === 'free' ? FREE_PLAN_NAME : plan?.name ?? ''
+  plan?.type === 'free' ? FREE_PLAN_NAME : (plan?.name ?? '').replace(LEGACY_SUFFIX, '')
 
 /** "Growth (yearly)" -> "Growth", for copy that names the interval itself
  *  or doesn't need it (badges, "Keep Growth"). */
