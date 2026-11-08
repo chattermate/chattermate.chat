@@ -916,7 +916,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 self.mcp_instructions_added = True
 
             # Settles the overlap between the lists above, so it comes after them
-            if self.transfer_to_human and (self.tools or host_action_functions):
+            if can_reach_a_person and (self.tools or host_action_functions):
                 system_message += "\n\n" + TOOLS_OR_PERSON_RULES
         else:
             system_message = [

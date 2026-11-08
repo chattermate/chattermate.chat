@@ -208,6 +208,11 @@ class TestToolsOrAPerson:
         """The end of the turn drops a handover that has no group to go to."""
         assert broad_criterion in self.rules(groups=(), **kwargs)
 
+    def test_no_group_means_no_rules_that_promise_a_person(self):
+        """Without a group the handover is dropped, so "transfer straight away" would
+        leave the customer promised a person who never comes."""
+        assert "before you call any tool" not in self.rules(groups=(), shopify=True, ticketing=True)
+
     def test_host_actions_alone_still_get_the_rules(self):
         def open_invoice():
             """Open an invoice."""
