@@ -25,6 +25,7 @@ import json
 import re # Import regex module
 import aiohttp
 from app.services.shopify_urls import shopify_admin_url
+from app.services.shopify_tokens import admin_headers, call_admin_api, call_admin_api_async
 
 logger = get_logger(__name__)
 
@@ -56,11 +57,6 @@ class ShopifyService:
                 }
 
             url = shopify_admin_url(shop.shop_domain, "graphql.json")
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json"
-            }
-            
             payload = {
                 "query": query
             }
@@ -68,7 +64,8 @@ class ShopifyService:
             if variables:
                 payload["variables"] = variables
             
-            response = requests.post(url, headers=headers, json=payload)
+            response = call_admin_api(
+                shop, lambda token: requests.post(url, headers=admin_headers(token), json=payload))
             
             if response.status_code != 200:
                 logger.error(f"Failed to execute GraphQL query: {response.text}")
@@ -121,11 +118,6 @@ class ShopifyService:
                 }
 
             url = shopify_admin_url(shop.shop_domain, "graphql.json")
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json"
-            }
-            
             payload = {
                 "query": query
             }
@@ -133,32 +125,35 @@ class ShopifyService:
             if variables:
                 payload["variables"] = variables
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=payload) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Failed to execute GraphQL query: {error_text}")
-                        return {
-                            "success": False,
-                            "message": f"Failed to execute GraphQL query: {error_text}"
-                        }
-                        
-                    result = await response.json()
-                    
-                    # Check for GraphQL errors
-                    if "errors" in result:
-                        logger.error(f"GraphQL errors: {result['errors']}")
-                        return {
-                            "success": False,
-                            "errors": result["errors"],
-                            "message": result["errors"][0]["message"] if result["errors"] else "Unknown GraphQL error"
-                        }
-                    
-                    return {
-                        "success": True,
-                        "data": result.get("data", {}),
-                        "extensions": result.get("extensions", {})
-                    }
+            async def send(token: str):
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, headers=admin_headers(token), json=payload) as response:
+                        return response.status, await response.text()
+
+            status, body = await call_admin_api_async(shop, send)
+            if status != 200:
+                logger.error(f"Failed to execute GraphQL query: {body}")
+                return {
+                    "success": False,
+                    "message": f"Failed to execute GraphQL query: {body}"
+                }
+
+            result = json.loads(body)
+
+            # Check for GraphQL errors
+            if "errors" in result:
+                logger.error(f"GraphQL errors: {result['errors']}")
+                return {
+                    "success": False,
+                    "errors": result["errors"],
+                    "message": result["errors"][0]["message"] if result["errors"] else "Unknown GraphQL error"
+                }
+
+            return {
+                "success": True,
+                "data": result.get("data", {}),
+                "extensions": result.get("extensions", {})
+            }
         
         except Exception as e:
             logger.error(f"Error executing GraphQL query: {str(e)}")
@@ -458,15 +453,11 @@ class ShopifyService:
                 }
 
             url = shopify_admin_url(shop.shop_domain, "products.json")
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json"
-            }
-            
             # Ensure product_data has the right structure
             payload = {"product": product_data}
             
-            response = requests.post(url, headers=headers, json=payload)
+            response = call_admin_api(
+                shop, lambda token: requests.post(url, headers=admin_headers(token), json=payload))
             
             if response.status_code not in (200, 201):
                 logger.error(f"Failed to create product: {response.text}")
@@ -510,15 +501,11 @@ class ShopifyService:
                 }
 
             url = shopify_admin_url(shop.shop_domain, f"products/{product_id}.json")
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json"
-            }
-            
             # Ensure product_data has the right structure
             payload = {"product": product_data}
             
-            response = requests.put(url, headers=headers, json=payload)
+            response = call_admin_api(
+                shop, lambda token: requests.put(url, headers=admin_headers(token), json=payload))
             
             if response.status_code != 200:
                 logger.error(f"Failed to update product: {response.text}")
@@ -561,12 +548,7 @@ class ShopifyService:
                 }
 
             url = shopify_admin_url(shop.shop_domain, f"products/{product_id}.json")
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json"
-            }
-            
-            response = requests.delete(url, headers=headers)
+            response = call_admin_api(shop, lambda token: requests.delete(url, headers=admin_headers(token)))
             
             if response.status_code not in (200, 204):
                 logger.error(f"Failed to delete product: {response.text}")
@@ -1110,13 +1092,8 @@ class ShopifyService:
                 return {"success": False, "message": "Shop not connected or missing access token"}
 
             url = shopify_admin_url(shop.shop_domain, endpoint)
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-            
-            response = requests.request(method, url, headers=headers, json=payload)
+            response = call_admin_api(
+                shop, lambda token: requests.request(method, url, headers=admin_headers(token), json=payload))
             
             # Handle rate limits (basic example)
             if response.status_code == 429:

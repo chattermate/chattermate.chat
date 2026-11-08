@@ -176,6 +176,15 @@ def app_sessions_use_the_test_database(monkeypatch):
     Postgres in settings, which CI doesn't run."""
     monkeypatch.setattr(database, "engine", engine)
 
+
+@pytest.fixture(autouse=True)
+def shopify_legacy_tokens_stay_put(monkeypatch):
+    """Most Shopify tests build a store with a plain (non-expiring) token and
+    count the requests they mock. Exchanging that token on first use would add
+    a request, so it is off here; tests/services/test_shopify_tokens.py turns
+    it on to test the migration itself."""
+    monkeypatch.setattr(settings, "SHOPIFY_MIGRATE_LEGACY_TOKENS", False)
+
 def create_tables():
     """Create all tables in the test database"""
     Base.metadata.create_all(bind=engine)
