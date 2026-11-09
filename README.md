@@ -1,5 +1,8 @@
 <p align="center">
-  <img src=".github/images/logo.svg" width="96" alt="ChatterMate logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/images/logo-dark.svg">
+    <img src=".github/images/logo.svg" width="236" alt="ChatterMate">
+  </picture>
 </p>
 
 <h1 align="center">ChatterMate - Open Source AI Customer Support Chatbot Platform</h1>

@@ -25,6 +25,7 @@ import { useForgotPassword } from '@/composables/useForgotPassword'
 import { useSsoSignIn } from '@/composables/useSsoSignIn'
 import InstallPrompt from '@/components/pwa/InstallPrompt.vue'
 import SsoButtons from '@/components/auth/SsoButtons.vue'
+import BrandMark from '@/components/common/BrandMark.vue'
 import { apiPath } from '@/config/api'
 import type { AxiosError } from 'axios'
 interface ErrorResponse {
@@ -288,12 +289,8 @@ const handleVerifyAndResetPassword = async () => {
             <div class="auth-shell">
                 <!-- Logo mark -->
                 <div class="auth-logo">
-                    <div class="logo-mark">
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                    </div>
-                    <span class="logo-word">ChatterMate</span>
+                    <BrandMark :size="32" />
+                    <span class="logo-word brand-wordmark">ChatterMate</span>
                 </div>
 
                 <header class="auth-head">
@@ -576,30 +573,8 @@ const handleVerifyAndResetPassword = async () => {
     margin-bottom: var(--space-2xl);
 }
 
-.logo-mark {
-    width: 32px;
-    height: 32px;
-    background: var(--accent-solid);
-    border-radius: 10px 10px 10px 2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 3.5px;
-    flex-shrink: 0;
-}
-
-.dot {
-    width: 4.5px;
-    height: 4.5px;
-    background: var(--on-accent-solid);
-    border-radius: 50%;
-}
-
 .logo-word {
-    font-family: var(--font-display);
-    font-weight: 700;
     font-size: 18px;
-    letter-spacing: -0.01em;
     color: var(--text);
 }
 
