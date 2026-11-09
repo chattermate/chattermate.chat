@@ -139,6 +139,11 @@ describe('cheapestPaidPlan', () => {
     expect(cheapestPaidPlan(plans, () => true, 'yearly')?.price_per_agent).toBe(99.9)
   })
 
+  it('never picks a plan that costs nothing, whatever its tier', () => {
+    const withComp = [...plans, { type: 'pro', price_per_agent: 0, billing_interval: 'monthly' }]
+    expect(cheapestPaidPlan(withComp, (p) => p.type === 'pro')?.price_per_agent).toBe(24.99)
+  })
+
   it('treats a plan with no interval as monthly, and finds nothing when none pass', () => {
     expect(cheapestPaidPlan([{ type: 'starter', price_per_agent: 4.99 }], () => true)?.price_per_agent).toBe(4.99)
     expect(cheapestPaidPlan(plans, () => false)).toBeNull()

@@ -60,14 +60,16 @@ export const trialLabel = (planName: string, daysLeft: number): string => {
 }
 
 /** The cheapest paid plan billed at `interval` that passes `test`, or null.
- *  Upgrade lines name this plan rather than a fixed tier. */
+ *  Upgrade lines name this plan rather than a fixed tier. A plan that costs
+ *  nothing (a comp or custom plan in the list) is never one to upgrade to. */
 export const cheapestPaidPlan = <T extends CatalogPlan>(
   plans: readonly T[],
   test: (plan: T) => boolean,
   interval: 'monthly' | 'yearly' = 'monthly',
 ): T | null =>
   plans
-    .filter((plan) => plan.type !== 'free' && (plan.billing_interval ?? 'monthly') === interval && test(plan))
+    .filter((plan) => plan.type !== 'free' && (plan.price_per_agent ?? 0) > 0
+      && (plan.billing_interval ?? 'monthly') === interval && test(plan))
     .reduce<T | null>(
       (best, plan) => (best === null || (plan.price_per_agent ?? 0) < (best.price_per_agent ?? 0) ? plan : best),
       null,

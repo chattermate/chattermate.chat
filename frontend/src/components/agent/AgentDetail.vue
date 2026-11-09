@@ -1245,7 +1245,7 @@ onMounted(async () => {
 
         <!-- Upgrade Modal (only shown when enterprise module exists) -->
         <div v-if="hasEnterpriseModule && showUpgradeModal" class="upgrade-modal-overlay">
-            <div class="upgrade-modal">
+            <div class="upgrade-modal" role="dialog" aria-modal="true" :aria-label="modalTitle">
                 <div class="upgrade-modal-header">
                     <div class="upgrade-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1255,7 +1255,7 @@ onMounted(async () => {
                         </svg>
                     </div>
                     <h3>{{ modalTitle }}</h3>
-                    <button class="close-button" @click="closeUpgradeModal">×</button>
+                    <button class="close-button" aria-label="Close" @click="closeUpgradeModal">×</button>
                 </div>
                 <div class="upgrade-modal-content">
                     <p class="upgrade-description">
