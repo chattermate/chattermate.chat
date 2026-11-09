@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { ref } from 'vue'
 import type { Agent } from '@/types/agent'
 import type { UserGroup } from '@/types/user'
 
@@ -131,6 +132,16 @@ export const agentStorage = {
   },
 }
 
+// Bumped whenever the stored subscription changes, in this tab or another
+// (the 'storage' event), so computeds that read it re-run: an open page must
+// not keep Free's limits after the plan was paid for elsewhere.
+const subscriptionVersion = ref(0)
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEYS.CURRENT_SUBSCRIPTION || event.key === null) subscriptionVersion.value++
+  })
+}
+
 // Subscription storage
 export const subscriptionStorage = {
   // Store current subscription
@@ -140,10 +151,12 @@ export const subscriptionStorage = {
     } else {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_SUBSCRIPTION)
     }
+    subscriptionVersion.value++
   },
 
-  // Get current subscription
+  // Get current subscription (reactive: see subscriptionVersion)
   getCurrentSubscription(): CurrentSubscription | null {
+    void subscriptionVersion.value
     const stored = localStorage.getItem(STORAGE_KEYS.CURRENT_SUBSCRIPTION)
     if (!stored) return null
     try {
@@ -175,6 +188,7 @@ export const subscriptionStorage = {
   clearSubscriptionData(): void {
     localStorage.removeItem(STORAGE_KEYS.CURRENT_SUBSCRIPTION)
     localStorage.removeItem(STORAGE_KEYS.AVAILABLE_PLANS)
+    subscriptionVersion.value++
   },
 
   // Check if a feature is enabled in the current plan

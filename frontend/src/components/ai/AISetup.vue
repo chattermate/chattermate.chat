@@ -19,6 +19,7 @@ import { useAISetup } from '@/composables/useAISetup'
 import { computed, ref, watch, onMounted } from 'vue'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useSubscriptionStorage } from '@/utils/storage'
+import { planDisplayName, planShortName } from '@/utils/planDisplay'
 
 const emit = defineEmits<{
   (e: 'ai-setup-complete'): void
@@ -154,10 +155,7 @@ const currentPlanMessageLimit = computed(() => {
   return `${plan.max_messages.toLocaleString()} AI replies a month`
 })
 
-const currentPlanName = computed(() => {
-  const plan = currentPlan.value
-  return plan?.name || 'Current Plan'
-})
+const currentPlanName = computed(() => planDisplayName(currentPlan.value) || 'Current Plan')
 
 // Check available plans and upgrade options
 const availablePlans = computed(() => {
@@ -453,7 +451,7 @@ const chatterMateButtonText = computed(() => {
                   <div class="upgrade-text">
                     <div class="upgrade-title">Want more AI replies?</div>
                     <div class="upgrade-description">
-                      Upgrade to {{ nextUpgradePlan.name }} for
+                      Upgrade to {{ planShortName(planDisplayName(nextUpgradePlan)) }} for
                       {{ nextUpgradePlan.max_messages ? nextUpgradePlan.max_messages.toLocaleString() : 'unlimited' }}
                       AI replies a month
                     </div>

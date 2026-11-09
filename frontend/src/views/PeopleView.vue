@@ -166,7 +166,7 @@ onMounted(() => {
         <li>AI-qualified lead summaries and captured attributes</li>
         <li>Automatic visitor → lead → customer lifecycle</li>
       </ul>
-      <button class="pv-locked-btn" @click="goToUpgrade">Upgrade to Pro</button>
+      <button class="pv-locked-btn" @click="goToUpgrade">See plans</button>
     </div>
   </div>
 

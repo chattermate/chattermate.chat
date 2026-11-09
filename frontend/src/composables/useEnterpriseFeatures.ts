@@ -101,6 +101,8 @@ const moduleImports = {
   channelsPausedNotice: '/src/modules/enterprise/components/promo/ChannelsPausedNotice.vue',
   // Help button for the hosted support chat (renders nothing in open source)
   supportChatButton: '/src/modules/enterprise/components/support/SupportChatButton.vue',
+  // "Contact us" to sales where a plan limit is reached (empty in OSS)
+  contactUsLink: '/src/modules/enterprise/components/support/ContactUsLink.vue',
   // External apps driving channel conversations (settings page)
   appIntegrationsView: '/src/modules/enterprise/views/AppIntegrationsView.vue',
   // Personal access tokens for the CLI and API (settings page)

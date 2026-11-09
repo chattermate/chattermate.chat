@@ -74,7 +74,7 @@ def _require_people_access(
         if not PlanRepository(db).check_feature_availability(str(subscription.plan_id), 'lead_capture'):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="People / Lead Management is not available in your current plan. Please upgrade to Pro.",
+                detail="People / Lead Management is not available in your current plan. Upgrade your plan to turn it on.",
             )
 
 

@@ -16,16 +16,7 @@ limitations under the License.
 
 import { describe, expect, it } from 'vitest'
 import { formatShortDate } from '@/utils/shortDate'
-import {
-  cheapestPaidPlan,
-  dayCount,
-  endsIn,
-  lowestPlanWith,
-  planDisplayName,
-  planShortName,
-  trialLabel,
-  upgradeLabel,
-} from '@/utils/planDisplay'
+import { cheapestPaidPlan, dayCount, daysUntil, endsIn, lowestPlanWith, planDisplayName, planShortName, trialLabel, upgradeLabel } from '@/utils/planDisplay'
 
 describe('planDisplayName', () => {
   it('calls every free plan Free, the hidden legacy one included', () => {
@@ -147,5 +138,24 @@ describe('cheapestPaidPlan', () => {
   it('treats a plan with no interval as monthly, and finds nothing when none pass', () => {
     expect(cheapestPaidPlan([{ type: 'starter', price_per_agent: 4.99 }], () => true)?.price_per_agent).toBe(4.99)
     expect(cheapestPaidPlan(plans, () => false)).toBeNull()
+  })
+})
+
+describe('daysUntil', () => {
+  const now = new Date(2026, 10, 9, 9, 0)
+
+  it('is 0 on the last day, however late it ends', () => {
+    expect(daysUntil(new Date(2026, 10, 9, 23, 30), now)).toBe(0)
+  })
+
+  it('counts calendar days, not 24-hour blocks', () => {
+    expect(daysUntil(new Date(2026, 10, 10, 1, 0), now)).toBe(1)
+    expect(daysUntil(new Date(2026, 10, 23, 9, 0), now)).toBe(14)
+  })
+
+  it('never goes negative, and is null with no date', () => {
+    expect(daysUntil(new Date(2026, 10, 1), now)).toBe(0)
+    expect(daysUntil(null, now)).toBeNull()
+    expect(daysUntil('not a date', now)).toBeNull()
   })
 })

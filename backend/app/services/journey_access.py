@@ -27,7 +27,7 @@ JOURNEYS_FEATURE = "journeys"
 
 UPGRADE_MESSAGE = (
     "Journeys are not available in your current plan. "
-    "Please upgrade to Pro to use them."
+    "Upgrade your plan to turn them on."
 )
 
 

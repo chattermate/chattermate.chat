@@ -27,7 +27,7 @@ HELP_CENTER_FEATURE = "help_center"
 
 UPGRADE_MESSAGE = (
     "The Help Center is not available in your current plan. "
-    "Please upgrade to Pro to access this feature."
+    "Upgrade your plan to turn it on."
 )
 
 

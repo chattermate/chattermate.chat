@@ -47,6 +47,19 @@ export const planDisplayName = (plan?: NamedPlan | null): string =>
 export const planShortName = (name: string | null | undefined): string =>
   (name ?? '').replace(/\s*\((yearly|monthly)\)/i, '')
 
+const DAY_MS = 86_400_000
+
+/** Calendar days from today to `date`'s day, in local time: 0 on its last
+ *  day, so a trial ending this evening "ends today" rather than having
+ *  "1 day left". Null when there is no date. */
+export const daysUntil = (date: string | Date | null | undefined, now: Date = new Date()): number | null => {
+  if (!date) return null
+  const end = new Date(date)
+  if (Number.isNaN(end.getTime())) return null
+  const startOfDay = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
+  return Math.max(0, Math.round((startOfDay(end) - startOfDay(now)) / DAY_MS))
+}
+
 /** "1 day", "3 days". */
 export const dayCount = (days: number): string => `${days} day${days === 1 ? '' : 's'}`
 
