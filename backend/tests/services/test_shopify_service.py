@@ -36,6 +36,7 @@ def mock_shop():
     shop.organization_id = UUID("00000000-0000-0000-0000-000000000002")
     shop.shop_domain = "test-shop.myshopify.com"
     shop.access_token = "test_access_token"
+    shop.refresh_token = None  # a plain token: nothing to refresh
     shop.is_installed = True
     return shop
 

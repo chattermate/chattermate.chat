@@ -37,6 +37,8 @@ export interface EmbedOptions {
   context?: Record<string, unknown>
   /** ChatterMate.prompt(prompt) from the site's code. */
   prompt?: { message: string; suggestions?: string[]; open?: boolean }
+  /** The page is a Shopify storefront of this shop, with a cart. */
+  shopifyStore?: string
 }
 
 type JsApiMethod = 'open' | 'close' | 'toggle' | 'isOpen' | 'showLauncher' | 'hideLauncher' | 'identify' | 'logout'
@@ -201,6 +203,7 @@ export class ChatWidget {
       if (options.withActions) params.set('actions', '1')
       if (options.context) params.set('context', JSON.stringify(options.context))
       if (options.prompt) params.set('prompt', JSON.stringify(options.prompt))
+      if (options.shopifyStore) params.set('shopify', options.shopifyStore)
       if (options.tokenProvider) {
         params.set('tokenProvider', '1')
         await this.answerTokenRequests(options.tokenProvider)
@@ -539,6 +542,28 @@ export class ChatWidget {
   /** Bot and human-agent replies — the widget renders both the same way. */
   get agentMessages(): Locator {
     return this.messageLog.locator('.message.agent-message .message-bubble')
+  }
+
+  /** One product's card in the chat. */
+  productCard(title: string): Locator {
+    return this.frame.getByRole('group', { name: title })
+  }
+
+  async addToCart(title: string): Promise<void> {
+    await step(`Customer adds ${title} to the cart`, async () => {
+      await this.productCard(title).getByRole('button', { name: 'Add to cart' }).click()
+    })
+  }
+
+  async viewCart(title: string): Promise<void> {
+    await step('Customer goes to the cart', async () => {
+      await this.productCard(title).getByRole('button', { name: 'View cart' }).click()
+    })
+  }
+
+  /** The count the store's own cart page shows. */
+  get itemsInCart(): Locator {
+    return this.page.getByLabel('Items in cart')
   }
 
   lastAgentMessage(): Locator {

@@ -96,7 +96,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | CRM | HubSpot install, manual sync and automatic push (worker) with the lead's details | `specs/crm/hubspot.org.spec.ts` | P2 | ✅ |
 | CRM | Pipedrive install (Basic-auth token exchange) and a captured lead pushed as organisation, person, lead and note | `specs/crm/pipedrive.org.spec.ts` | P2 | ✅ |
 | Integrations | Jira connect from Settings (real browser OAuth round trip) and the AI filing an issue in the agent's project | `specs/integrations/jira.org.spec.ts` | P2 | ✅ |
-| Integrations | Shopify install and link (the org keeps its website, the storefront is allowed), a store not linked yet is told to connect, order status answered from the shop, lookup refused without the customer's email | `specs/integrations/shopify.org.spec.ts` | P2 | ✅ |
+| Integrations | Shopify install and link (the org keeps its website, the storefront is allowed), a store not linked yet is told to connect, order status answered from the shop, lookup refused without the customer's email, an email alone lists nothing, a number the customer never wrote is refused, add to cart from the chat (`@redis`: added, sold out, no button for sizes, off sale, off the Online Store, another store or a non-store) | `specs/integrations/shopify.org.spec.ts` | P2 | ✅ |
 | Visual and cross-browser widget | Widget on Firefox, WebKit, Android, iPhone; screenshots light/dark | `--project=widget-*`, `specs/visual` | P2 | ✅ (nightly) |
 | Accessibility | axe on key screens (dark and light themes) and the widget: no serious findings anywhere; a per-screen baseline catches regressions | `specs/a11y` | P2 | ✅ |
 | Performance | Loader/widget size budgets; reply-time budget | `specs/perf` | P2 | ✅ |

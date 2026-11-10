@@ -46,7 +46,8 @@ from app.services import shopify_privacy
 from app.core.s3 import delete_file_from_s3
 from app.services.shopify_links import owned_by_another_org, refresh_allowed_storefronts, use_shop_domain_if_unset
 from app.services.shopify_session import require_shopify_session
-from app.services.shopify_urls import shopify_admin_url, shopify_oauth_token_url
+from app.services.shopify_urls import shopify_admin_url
+from app.services import shopify_tokens
 from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
@@ -113,56 +114,18 @@ async def exchange_session_token(
 
         logger.info(f"Extracted shop domain from token: {shop_domain}")
         
-        # 3. Call Shopify token exchange API
-        token_url = shopify_oauth_token_url(shop_domain)
-        payload = {
-            "client_id": settings.SHOPIFY_API_KEY,
-            "client_secret": settings.SHOPIFY_API_SECRET,
-            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-            "subject_token": session_token,
-            "subject_token_type": "urn:ietf:params:oauth:token-type:id_token",
-            "requested_token_type": "urn:shopify:params:oauth:token-type:offline-access-token"
-        }
-        
-        logger.info(f"Calling Shopify token exchange API for shop: {shop_domain}")
-        response = requests.post(token_url, json=payload)
-        
-        if response.status_code != 200:
-            logger.error(f"Token exchange failed: {response.status_code} - {response.text}")
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Token exchange failed: {response.text}"
+        # 3. Exchange it for an expiring offline token and store it, under the
+        #    shop's token lock so it never overlaps a refresh.
+        try:
+            db_shop = await run_in_threadpool(
+                shopify_tokens.acquire_token, db, shop_domain,
+                lambda: shopify_tokens.exchange_session_token(shop_domain, session_token),
             )
-        
-        token_data = response.json()
-        access_token = token_data.get('access_token')
-        
-        if not access_token:
-            logger.error(f"No access token in response: {token_data}")
-            raise HTTPException(status_code=500, detail="No access token received from Shopify")
-        
-        logger.info(f"Successfully received offline access token for shop: {shop_domain}")
-        
-        # 4. Create or update shop with offline access token
-        shop_repo = ShopifyShopRepository(db)
-        db_shop = shop_repo.get_shop_by_domain(shop_domain)
-        
-        if not db_shop:
-            logger.info(f"Creating new shop record for: {shop_domain}")
-            shop_data = ShopifyShopCreate(
-                shop_domain=shop_domain,
-                access_token=access_token,
-                is_installed=True
-            )
-            db_shop = shop_repo.create_shop(shop_data)
-        else:
-            logger.info(f"Updating existing shop record for: {shop_domain}")
-            shop_update = ShopifyShopUpdate(access_token=access_token, is_installed=True)
-            db_shop = shop_repo.update_shop(db_shop.id, shop_update)
-        
-        db.commit()    
-        db.refresh(db_shop)
-        
+        except shopify_tokens.ShopifyTokenError as e:
+            logger.error(f"Token exchange failed for {shop_domain}: {e}")
+            status = e.status_code if e.status_code and e.status_code >= 400 else 502
+            raise HTTPException(status_code=status, detail=f"Token exchange failed: {e}")
+
         logger.info(f"Shop record saved successfully. Shop ID: {db_shop.id}, Org ID: {db_shop.organization_id}")
         
         return {
@@ -337,10 +300,6 @@ async def delete_shop(
         try:
             # Request to delete app data from Shopify
             uninstall_url = shopify_admin_url(db_shop.shop_domain, "graphql.json")
-            headers = {
-                "X-Shopify-Access-Token": db_shop.access_token,
-                "Content-Type": "application/json"
-            }
             
             # GraphQL mutation to uninstall the app
             mutation = """
@@ -360,11 +319,12 @@ async def delete_shop(
             }
             """
             
-            response = requests.post(
-                uninstall_url, 
-                headers=headers,
-                json={"query": mutation}
-            )
+            # Off the event loop: renewing the token and the request both block.
+            response = await run_in_threadpool(shopify_tokens.call_admin_api, db_shop, lambda token: requests.post(
+                uninstall_url,
+                headers=shopify_tokens.admin_headers(token),
+                json={"query": mutation},
+            ))
             
             logger.info(f"Shopify uninstall response: {response.status_code} - {response.text}")
         except Exception as e:

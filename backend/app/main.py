@@ -64,6 +64,7 @@ from app.api import session_to_agent
 from app.api import agent_logo
 from app.workers.chat_auto_closer import run_auto_closer_loop
 from app.workers.journey_data_purge import run_purge_loop
+from app.workers.shopify_token_keepalive import run_keepalive_loop
 
 logger = get_logger(__name__)
 
@@ -119,6 +120,8 @@ async def startup_event(api: FastAPI):
     api.state.auto_closer_task = asyncio.create_task(run_auto_closer_loop())
     # Old action calls and journey progress hold visitor data: deleted daily.
     api.state.journey_purge_task = asyncio.create_task(run_purge_loop())
+    # Shopify refresh tokens lapse after 90 days unused: renewed before then.
+    api.state.shopify_token_keepalive_task = asyncio.create_task(run_keepalive_loop())
 
 # Include routers
 app.include_router(

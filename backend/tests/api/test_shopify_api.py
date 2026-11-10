@@ -25,7 +25,7 @@ import hmac
 import hashlib
 import base64
 from urllib.parse import urlencode, quote
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from app.models.schemas.shopify.agent_shopify_config import AgentShopifyConfig
 from app.models.shopify.agent_shopify_config import AgentShopifyConfig
 
@@ -382,47 +382,52 @@ async def test_check_connection_not_connected(mock_shop_repo, mock_db, mock_orga
 
 @pytest.mark.asyncio
 @patch('app.services.shopify_session.ShopifySessionService.get_session_token_from_request')
-@patch('app.api.shopify.ShopifyShopRepository')
-@patch('app.api.shopify.requests.post')
+@patch('app.services.shopify_tokens.requests.post')
 @patch('jwt.decode')
-async def test_exchange_session_token_success(mock_jwt_decode, mock_requests_post, mock_shop_repo, mock_get_token, mock_db):
-    """Test successful session token exchange"""
-    # Arrange
+async def test_exchange_session_token_success(mock_jwt_decode, mock_requests_post, mock_get_token, db):
+    """The session token is exchanged for an expiring offline token, and the
+    access token, refresh token and both expiries are stored on a new shop row."""
     shop_domain = "test-shop.myshopify.com"
-    session_token = "mock_session_token"
-    access_token = "mock_access_token"
-    
-    mock_get_token.return_value = session_token
+    mock_get_token.return_value = "mock_session_token"
     mock_jwt_decode.return_value = {"dest": f"https://{shop_domain}"}
-    
-    # Mock Shopify API response
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"access_token": access_token}
-    mock_requests_post.return_value = mock_response
-    
-    # Mock repository
-    mock_shop_repo_instance = MagicMock()
-    mock_shop_repo.return_value = mock_shop_repo_instance
-    mock_shop_repo_instance.get_shop_by_domain.return_value = None
-    
-    mock_created_shop = MagicMock()
-    mock_created_shop.id = str(uuid.uuid4())
-    mock_created_shop.shop_domain = shop_domain
-    mock_created_shop.organization_id = None
-    mock_shop_repo_instance.create_shop.return_value = mock_created_shop
-    
-    mock_request = MagicMock()
-    
-    # Act
+    mock_requests_post.return_value = MagicMock(status_code=200, json=MagicMock(return_value={
+        "access_token": "shpat_new", "scope": "read_orders", "expires_in": 3600,
+        "refresh_token": "shprt_new", "refresh_token_expires_in": 7776000,
+    }))
+
     from app.api.shopify import exchange_session_token
-    response = await exchange_session_token(mock_request, mock_db)
-    
-    # Assert
-    assert response["shop_id"] == str(mock_created_shop.id)
-    assert response["shop_domain"] == shop_domain
-    assert response["organization_id"] is None
-    assert response["is_installed"] is True
+    response = await exchange_session_token(MagicMock(), db)
+
+    sent = mock_requests_post.call_args.kwargs["data"]
+    assert sent["expiring"] == "1"
+    assert sent["subject_token"] == "mock_session_token"
+    assert sent["requested_token_type"] == "urn:shopify:params:oauth:token-type:offline-access-token"
+
+    shop = db.query(ShopifyShop).filter_by(shop_domain=shop_domain).one()
+    assert response == {"shop_id": shop.id, "shop_domain": shop_domain,
+                        "organization_id": None, "is_installed": True}
+    assert (shop.access_token, shop.refresh_token, shop.scope) == ("shpat_new", "shprt_new", "read_orders")
+    assert shop.access_token_expires_at is not None and shop.refresh_token_expires_at is not None
+    assert shop.refresh_token_expires_at - shop.access_token_expires_at > timedelta(days=89)
+
+
+@pytest.mark.asyncio
+@patch('app.services.shopify_session.ShopifySessionService.get_session_token_from_request')
+@patch('app.services.shopify_tokens.requests.post')
+@patch('jwt.decode')
+async def test_exchange_session_token_shopify_refusal_is_reported(mock_jwt_decode, mock_requests_post, mock_get_token, db):
+    """Shopify refusing the exchange surfaces as an error and stores nothing."""
+    mock_get_token.return_value = "mock_session_token"
+    mock_jwt_decode.return_value = {"dest": "https://test-shop.myshopify.com"}
+    mock_requests_post.return_value = MagicMock(status_code=400, text="bad",
+                                                json=MagicMock(return_value={"error": "invalid_request"}))
+
+    from app.api.shopify import exchange_session_token
+    with pytest.raises(HTTPException) as exc_info:
+        await exchange_session_token(MagicMock(), db)
+
+    assert exc_info.value.status_code == 400
+    assert db.query(ShopifyShop).count() == 0
 
 
 @pytest.mark.asyncio
