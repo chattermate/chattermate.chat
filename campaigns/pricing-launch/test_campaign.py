@@ -100,7 +100,20 @@ class Launch(unittest.TestCase):
     def test_prices_come_from_the_catalog(self):
         plans = json.loads(json.dumps(CFG.plans))
         plans["Starter"].update(usd=6.5, inr=1500)
-        self.assertIn("$6.50 a month (₹1,500 + GST)", launch(launch_row(), CFG._replace(plans=plans), UNSUB).text)
+        cfg = CFG._replace(plans=plans)
+        self.assertIn("Plans from $6.50 a month,", launch(launch_row(), cfg, UNSUB).text)
+        india = launch_row(org_timezone="Asia/Kolkata")
+        self.assertIn("Plans from ₹1,500 + GST a month,", launch(india, cfg, UNSUB).text)
+
+    def test_one_currency_per_org(self):
+        for zone in ("Asia/Kolkata", "Asia/Calcutta"):
+            text = launch(launch_row(org_timezone=zone), CFG, UNSUB).text
+            self.assertIn("₹", text)
+            self.assertNotIn("$", text)
+        for zone in ("UTC", "America/New_York", "Asia/Dubai", None, ""):
+            text = launch(launch_row(org_timezone=zone), CFG, UNSUB).text
+            self.assertIn("$", text)
+            self.assertNotIn("₹", text)
 
     def test_placeholder_org_reads_as_a_sentence(self):
         email = launch(launch_row(org_name="asdf", full_name="test"), CFG, UNSUB)

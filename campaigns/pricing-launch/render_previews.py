@@ -46,7 +46,9 @@ def _sample_previews(cfg: Settings, no_offer: Settings) -> List[Preview]:
     same_price, below_growth = _rows("winback")
     low, high, channels, idle = _rows("free_change")
     return [
-        Preview("1-launch", "Launch: existing free org", _render("launch", legacy, cfg)),
+        Preview("1-launch", "Launch: existing free org, dollars", _render("launch", legacy, cfg)),
+        Preview("1-launch-india", "Launch: existing free org on Indian time, rupees",
+                _render("launch", {**legacy, "org_timezone": "Asia/Kolkata"}, cfg)),
         Preview("1-launch-comp-org", "Launch: org not on legacy Free, placeholder names", _render("launch", comp, cfg)),
         Preview("1-launch-no-offer", "Launch: without TRIAL30", _render("launch", legacy, no_offer)),
         Preview("2-winback-same-price", "Win-back: old price matches Growth", _render("winback", same_price, cfg)),

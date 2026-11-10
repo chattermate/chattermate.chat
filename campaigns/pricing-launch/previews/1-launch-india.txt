@@ -1,0 +1,24 @@
+Subject: Our new plans, and 14 days of Growth on us
+
+Pay for what your AI answers.
+
+Hi Priya,
+
+We've changed how ChatterMate is priced. You pay for the replies your AI writes, and that's all.
+
+- Unlimited team members. Invite your whole team on any paid plan.
+- Only AI replies count. Visitor messages and your team's replies are free.
+- Plans from ₹399 + GST a month, with live chat and your AI agent included.
+
+Acme Store is on Growth, free, until 18 Nov 2026.
+WhatsApp and the other channels, workflows, no ChatterMate branding and 2,500 AI replies. Keep it before the trial ends with TRIAL30 for 30% off your first year of Growth or Pro, billed yearly.
+Set up WhatsApp: https://app.chattermate.chat/settings/integrations
+
+When the trial ends you're back on Free, which keeps its 300 AI replies a month until 31 Jan 2027. See the new plans (https://chattermate.chat/pricing/).
+
+Runix
+ChatterMate
+
+--
+You're getting this because you have a ChatterMate account. Prefer to run it yourself? ChatterMate is open source. Self-host it for free.
+Unsubscribe: https://api.chattermate.chat/api/v1/enterprise/email/unsubscribe?t=preview

@@ -36,6 +36,10 @@ class Settings(NamedTuple):
     def inr(self, plan: str) -> str:
         return f"₹{self.plans[plan]['inr']:,.0f}"
 
+    def price(self, plan: str, currency: str) -> str:
+        """The plan's monthly price in one currency, GST noted for rupees."""
+        return f"{self.inr(plan)} + GST" if currency == "INR" else self.usd(plan)
+
     def replies(self, plan: str) -> str:
         return f"{self.plans[plan]['max_messages']:,}"
 

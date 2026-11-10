@@ -24,6 +24,10 @@ JUNK_NAMES = {
     "aaa", "ddd", "abc", "xxx", "asd", "asdf", "qwe", "sdf", "sgasd",
 }
 
+# The app shows rupees to India and dollars elsewhere. It goes by the visitor's
+# IP; an email can't, so it uses the org's timezone, the app's own fallback.
+INDIAN_TIMEZONES = {"Asia/Kolkata", "Asia/Calcutta"}
+
 GREETING_FALLBACK = "there"
 WORKSPACE_FALLBACK = "your workspace"
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -63,6 +67,11 @@ def workspace(row: dict) -> str:
     """The org's name, or "your workspace" when it's a placeholder."""
     name = (row.get("org_name") or "").strip()
     return WORKSPACE_FALLBACK if _is_junk(name) else name
+
+
+def currency(row: dict) -> str:
+    """INR for an org on Indian time, USD for everyone else: one currency per org."""
+    return "INR" if row.get("org_timezone") in INDIAN_TIMEZONES else "USD"
 
 
 def sentence_start(text: str) -> str:

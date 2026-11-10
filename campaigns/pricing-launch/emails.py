@@ -7,7 +7,7 @@ keeps working and only the AI pauses.
 from datetime import date
 from typing import Callable, Dict, NamedTuple, Optional, Tuple
 
-from audience import first_name, sentence_start, workspace
+from audience import currency, first_name, sentence_start, workspace
 from blocks import (Rendered, b, call_to_action, checklist, document, esc, headline, highlight,
                     link, paragraphs, signoff, strong)
 from catalog import Settings, date_label, short_date_label, usd
@@ -51,7 +51,7 @@ def _after_trial(row: dict, cfg: Settings) -> str:
 def launch(row: dict, cfg: Settings, unsubscribe_url: str) -> Rendered:
     trial_end = date_label(date.fromisoformat(row["trial_end"]))
     org = _org(row)
-    entry = f"{cfg.usd(STARTER)} a month ({cfg.inr(STARTER)} + GST)"
+    entry = f"{cfg.price(STARTER, currency(row))} a month"
     return document(
         subject=f"Our new plans, and {cfg.trial_days()} days of Growth on us",
         preheader=f"Unlimited team members, and you're on Growth free until {trial_end}.",
