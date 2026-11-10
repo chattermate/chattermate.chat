@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createHostActions } from './loader/hostActions.js'
 import { createPushLayout, sheetCss } from './loader/pushLayout.js'
+import { createShopifyCart } from './loader/shopifyCart.js'
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
@@ -223,6 +224,8 @@ window.chattermateConfig;
     postToFrame(message)
     return true
   }, (function () { try { return window.sessionStorage } catch (e) { return null } })())
+  // "Add to cart" on a Shopify storefront. Sent only once the widget is listening.
+  const shopifyCart = createShopifyCart(window, postToFrame)
   const pushLayout = createPushLayout(window)
   // Only the widget frame may talk to the loader: the right window, and the right
   // origin - which is only known once it says hello, so until then hello is all it
@@ -2009,9 +2012,11 @@ window.chattermateConfig;
       if (event.data.type === 'WIDGET_READY') {
         onWidgetReady()
         hostActions.announce()
+        shopifyCart.announce()
         return
       }
       if (hostActions.handleFrameMessage(event.data)) return
+      if (shopifyCart.handleFrameMessage(event.data)) return
       if (event.data.type === 'WIDGET_OPEN_REQUEST') {
         // A journey step that opens the chat by itself (once per step).
         if (!isOpen) toggleChat()
