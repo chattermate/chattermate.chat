@@ -40,7 +40,7 @@ const isPicked = (swatch: string) => props.modelValue?.toUpperCase() === swatch.
       :aria-checked="isPicked(swatch)"
       :aria-label="swatch"
       :title="swatch"
-      :style="{ background: swatch, boxShadow: isPicked(swatch) ? `0 0 0 2px ${swatch}` : 'none' }"
+      :style="{ background: swatch }"
       @click="emit('update:modelValue', swatch)"
     ></button>
     <label class="swatch-custom" title="Custom color">
@@ -74,8 +74,11 @@ const isPicked = (swatch: string) => props.modelValue?.toUpperCase() === swatch.
   transition: box-shadow var(--transition-fast);
 }
 
+/* The ring is the theme's text colour, not the swatch's: an ink swatch on the dark
+   theme, or a white one on the light theme, would otherwise lose its selection. */
 .swatch.active {
   border-color: var(--surface);
+  box-shadow: 0 0 0 2px var(--text);
 }
 
 .swatch:focus-visible {

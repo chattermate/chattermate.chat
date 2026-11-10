@@ -79,9 +79,9 @@ export class AgentCustomizationPage {
     return this.launcherCard.getByRole('alert')
   }
 
-  /** "… is on Base and Pro." under a locked option (hosted editions only). */
+  /** "… is on paid plans." under a locked option (hosted editions only). */
   get upsell(): Locator {
-    return this.launcherCard.getByText(/is on Base and Pro\.$/)
+    return this.launcherCard.getByText(/is on paid plans\.$/)
   }
 
   windowSize(name: string): Locator {

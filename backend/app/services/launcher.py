@@ -39,7 +39,7 @@ from app.services.help_center_images import absolute_upload_url
 
 LAUNCHER_KEY = 'launcher'
 LOGO_FEATURE = CUSTOM_BRANDING_FEATURE
-UPGRADE_MESSAGE = "Custom logos and premium animations are on Base and Pro."
+UPGRADE_MESSAGE = "Custom logos and premium animations are on paid plans."
 
 PAID_ANIMATIONS = (LauncherAnimation.SWOOSH.value, LauncherAnimation.GLOW.value)
 FREE_ICON_FALLBACK = LauncherIcon.DOTS.value

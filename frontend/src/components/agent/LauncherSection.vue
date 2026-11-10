@@ -153,7 +153,7 @@ const onFile = (event: Event) => {
         </div>
       </div>
 
-      <LauncherUpsell v-if="settings.upsell.value === 'icon' && locked" message="Your own logo is on Base and Pro." @upgrade="emit('upgrade')" />
+      <LauncherUpsell v-if="settings.upsell.value === 'icon' && locked" message="Your own logo is on paid plans." @upgrade="emit('upgrade')" />
 
       <div v-if="logoChosen" class="logo-area">
         <input ref="fileInput" type="file" class="logo-input" :accept="LOGO_ACCEPT" aria-label="Upload logo" @change="onFile">
@@ -211,7 +211,7 @@ const onFile = (event: Event) => {
         </div>
       </div>
 
-      <LauncherUpsell v-if="settings.upsell.value === 'animation' && locked" :message="`${trialLabel} is on Base and Pro.`" @upgrade="emit('upgrade')" />
+      <LauncherUpsell v-if="settings.upsell.value === 'animation' && locked" :message="`${trialLabel} is on paid plans.`" @upgrade="emit('upgrade')" />
     </template>
 
     <!-- Placement settings that belong with the launcher (hide it, use your own button). -->

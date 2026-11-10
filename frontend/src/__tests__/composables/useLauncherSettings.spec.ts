@@ -327,9 +327,9 @@ describe('useLauncherSettings', () => {
     it('puts the upsell right under the clicked row', async () => {
       const { wrapper } = setup({}, true)
       await chip(wrapper, 'Swoosh').trigger('click')
-      expect(wrapper.text()).toContain('Swoosh is on Base and Pro.')
+      expect(wrapper.text()).toContain('Swoosh is on paid plans.')
       await chip(wrapper, 'Your logo').trigger('click')
-      expect(wrapper.text()).toContain('Your own logo is on Base and Pro.')
+      expect(wrapper.text()).toContain('Your own logo is on paid plans.')
       expect(wrapper.text()).not.toContain('Swoosh is on Base')
     })
 
