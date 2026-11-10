@@ -1,11 +1,13 @@
 <script setup lang="ts">
 /*
  * The ChatterMate mark: an ink rounded square holding a lime dot (the AI) and a
- * coral dot (the human). Colours come from the --logo-* design tokens; the
- * fallbacks keep it right where the dashboard tokens aren't loaded (the widget
- * iframe). The hairline ring keeps the ink tile's edge visible on dark surfaces.
+ * coral dot (the human). Colours come from config/brand.ts, so the mark is the
+ * same in the dashboard and in the widget iframe (which has no design tokens).
+ * Only the hairline ring follows the theme: it keeps the ink tile's edge visible
+ * on dark surfaces.
  */
 import { computed } from 'vue'
+import { BRAND_COLORS } from '../../config/brand' // relative: the widget build has no @ alias
 
 const props = withDefaults(defineProps<{ size?: number }>(), { size: 32 })
 
@@ -28,9 +30,9 @@ const dots = computed(() =>
         aria-hidden="true"
         focusable="false"
     >
-        <rect class="brand-mark__tile" x="0.75" y="0.75" width="62.5" height="62.5" rx="15.25" />
-        <circle class="brand-mark__ai" :cx="dots.left" cy="32" :r="dots.r" />
-        <circle class="brand-mark__human" :cx="dots.right" cy="32" :r="dots.r" />
+        <rect class="brand-mark__tile" x="0.75" y="0.75" width="62.5" height="62.5" rx="15.25" :fill="BRAND_COLORS.ink" />
+        <circle :cx="dots.left" cy="32" :r="dots.r" :fill="BRAND_COLORS.lime" />
+        <circle :cx="dots.right" cy="32" :r="dots.r" :fill="BRAND_COLORS.coral" />
     </svg>
 </template>
 
@@ -40,10 +42,7 @@ const dots = computed(() =>
     flex-shrink: 0;
 }
 .brand-mark__tile {
-    fill: var(--logo-ink, #12150E);
     stroke: var(--logo-ring, color-mix(in srgb, currentColor 18%, transparent));
     stroke-width: 1.5;
 }
-.brand-mark__ai { fill: var(--logo-lime, #C9F24E); }
-.brand-mark__human { fill: var(--logo-coral, #FF9D87); }
 </style>

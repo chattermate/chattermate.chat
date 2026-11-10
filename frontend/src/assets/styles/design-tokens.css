@@ -15,11 +15,8 @@
   --c-purple: #9D8CFF;
   --c-coral: #FF8A73;
 
-  /* ChatterMate logo (BrandMark.vue). Brand colours, fixed in both themes; only the
-     hairline ring changes so the ink tile keeps its edge on dark surfaces. */
-  --logo-ink: #12150E;
-  --logo-lime: #C9F24E;
-  --logo-coral: #FF9D87;
+  /* Hairline ring on the ChatterMate mark (BrandMark.vue) so its ink tile keeps an
+     edge on dark surfaces. The logo colours themselves are in config/brand.ts. */
   --logo-ring: rgba(245,246,240,.16);
 
   /* Contrast inks — text/icon placed on top of a fill */

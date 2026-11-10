@@ -65,10 +65,10 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
       --sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
       --display: 'Sora', var(--sans);
       --mono: 'JetBrains Mono', ui-monospace, monospace;
-      /* ChatterMate mark in the "Powered by" chip (fixed brand colours). */
-      --logo-ink: #12150E;
-      --logo-lime: #C9F24E;
-      --logo-coral: #FF9D87;
+      /* ChatterMate mark in the "Powered by" chip (app/core/brand.py). */
+      --logo-ink: {{ brand_colors.ink }};
+      --logo-lime: {{ brand_colors.lime }};
+      --logo-coral: {{ brand_colors.coral }};
     }
     * { box-sizing: border-box; }
     /* Author display rules (e.g. .hc-card { display:flex }) otherwise beat the UA
