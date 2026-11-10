@@ -20,7 +20,7 @@ import { BASE_URL, WIDGET_ID, api, bringUp, cleanupPage, flush, fromFrame, hands
 
 const LOGO = 'https://bucket.s3.amazonaws.com/agents/o/logo.webp?X-Amz-Signature=abc'
 // What the image loads: the loader's own redirect route, never the relayed address.
-const LOGO_SRC = `${BASE_URL}/widgets/${WIDGET_ID}/launcher-logo?v=${encodeURIComponent('https://bucket.s3.amazonaws.com/agents/o/logo.webp')}`
+const LOGO_SRC = `${BASE_URL}/widgets/${WIDGET_ID}/launcher-logo?v=1`
 const BRAND = '#2F5BEA'
 
 const button = () => document.getElementById('chattermate-button') as HTMLElement
@@ -237,6 +237,13 @@ describe('launcher customization', () => {
       expect(logo()).toBeNull()
       customize({ icon: 'logo' }, LOGO.replace('abc', 'def'))
       expect(logo()?.getAttribute('src')).toBe(LOGO_SRC)
+    })
+
+    it('a new file gets a new image address', async () => {
+      await up()
+      customize({ icon: 'logo' }, LOGO)
+      customize({ icon: 'logo' }, 'https://bucket.s3.amazonaws.com/agents/o/other.webp')
+      expect(logo()?.getAttribute('src')).toBe(`${BASE_URL}/widgets/${WIDGET_ID}/launcher-logo?v=2`)
     })
 
     it('never puts the relayed address in the image', async () => {

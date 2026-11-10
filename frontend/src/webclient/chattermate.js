@@ -198,12 +198,18 @@ import {
 
   // Dashboard "Launcher" settings over CUSTOMIZATION_UPDATE: same precedence as
   // placement, per key. The logo is only ever the dashboard's.
+  // Counts logo files seen on this page. The image address carries this, not anything
+  // from the frame's message, so nothing a message says ever becomes part of it.
+  let launcherLogoVersion = 0
+
   function applyDashboardLauncher(launcher, logoUrl) {
     const picked = pickLauncherStyle(launcher)
     Object.keys(picked).forEach(function (key) {
       if (!devOverrides['launcherStyle.' + key]) config.launcherStyle[key] = picked[key]
     })
     const url = usableLogoUrl(logoUrl, config.baseUrl)
+    // A different file gets a new image address, so a cached redirect can't show the old one.
+    if (logoFile(url) !== logoFile(config.launcherLogoUrl)) launcherLogoVersion += 1
     // A new signature counts too: the old one may be what just failed.
     if (url !== config.launcherLogoUrl) {
       config.launcherLogoUrl = url
@@ -1355,11 +1361,11 @@ import {
   }
 
   // The logo's address, built from this loader's own API base: the URL the frame sends
-  // only says there is a logo and which file, and never goes into the image itself.
-  // The server redirects to the current file, so an expired signature can't break it.
+  // only says there is a logo, and never goes into the image itself. The server
+  // redirects to the current file, so an expired signature can't break it.
   function launcherLogoSrc() {
     return config.baseUrl + '/widgets/' + encodeURIComponent(window.chattermateId) +
-      '/launcher-logo?v=' + encodeURIComponent(logoFile(config.launcherLogoUrl) || '')
+      '/launcher-logo?v=' + launcherLogoVersion
   }
 
   // Draw the chosen icon or logo. Runs on every updateStyles, including each resize,
