@@ -54,6 +54,8 @@ Run on the prod host with plain `python3`, never inside a container. The scripts
    nohup python3 send.py launch data/launch.json --catalog data/catalog.json --offer-is-live --send --confirm launch:212 > data/launch.out 2>&1 &
    ```
 
+**Daily limit.** Brevo allows 300 emails a day across everything we send, app email included. Campaigns share 100 of those (`--daily-limit`, default 100), counted from every `data/sent.*.log` for today (UTC). A list longer than that goes out over several days: export again and run the same command each day. The dry run prints today's batch and the `--confirm` value for it.
+
 `data/sent.<campaign>.log` is written after each send. Running again skips those addresses, and the dry run's count drops to match.
 
 ## Check before each send

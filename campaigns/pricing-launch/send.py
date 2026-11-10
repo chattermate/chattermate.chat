@@ -43,6 +43,11 @@ DATA_DIR = HERE / "data"
 PREVIEW_SECRET = "dry-run-only"
 MAX_EXPORT_AGE_HOURS = 24
 DEFAULT_DELAY_SECONDS = 1.5
+# Brevo's plan allows 300 emails a day across everything we send, app email
+# included. Campaigns share 100 of them, so sign-up codes and trial emails
+# always have room. A run sends up to what is left today; the rest wait for
+# the next day's run, and the sent logs keep anyone from getting two.
+DEFAULT_DAILY_LIMIT = 100
 
 
 def unsubscribe_url(user_id: str, secret: str, backend_url: str) -> str:
@@ -75,6 +80,21 @@ def read_sent(log: Path) -> Set[str]:
     if not log.exists():
         return set()
     return {line.split("\t")[0] for line in log.read_text(encoding="utf-8").splitlines() if line.strip()}
+
+
+def sent_today(data_dir: Path, today: date) -> int:
+    """Campaign emails already sent today (UTC), across every campaign's log."""
+    stamp = today.isoformat()
+    return sum(
+        1
+        for log in data_dir.glob("sent.*.log")
+        for line in log.read_text(encoding="utf-8").splitlines()
+        if line.split("\t")[-1].startswith(stamp)
+    )
+
+
+def todays_batch(items: List[tuple], limit: int, already_today: int) -> List[tuple]:
+    return items[:max(0, limit - already_today)]
 
 
 def record_sent(log: Path, email: str) -> None:
@@ -184,6 +204,8 @@ def parse_args(argv=None):
     parser.add_argument("--send", action="store_true", help="really send; needs --confirm")
     parser.add_argument("--confirm", help="campaign:count, as printed by the dry run")
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY_SECONDS, help="seconds between sends")
+    parser.add_argument("--daily-limit", type=int, default=DEFAULT_DAILY_LIMIT,
+                        help="campaign emails a day, across all campaigns (the rest wait for tomorrow)")
     args = parser.parse_args(argv)
     if args.send and args.test_to:
         parser.error("--send and --test-to can't be used together")
@@ -216,17 +238,27 @@ def main(argv=None, environ=None, today: Optional[date] = None) -> int:
             raise SystemExit("Nothing to test with: every recipient was skipped")
         send_test(items[0], args.test_to, env)
         return 0
+    batch = todays_batch(items, args.daily_limit, sent_today(DATA_DIR, today))
+    waiting = len(items) - len(batch)
+    print(f"today: {len(batch)} of {len(items)} (daily limit {args.daily_limit})"
+          + (f"; {waiting} wait for later days" if waiting else ""))
     if not args.send:
-        print(f"\nDry run: nothing sent. To send: --send --confirm {args.campaign}:{len(items)}")
+        print(f"\nDry run: nothing sent. To send: --send --confirm {args.campaign}:{len(batch)}")
         if cfg.is_sample:
             print("Rendered with the SAMPLE catalog; a real send will refuse it.")
         return 0
 
-    problem = live_send_problem(args, cfg, args.recipients, len(items), today, time.time())
+    if not items:
+        print("Nothing left to send.")
+        return 0
+    if not batch:
+        print("Not sending: today's limit is used up. Run again tomorrow.", file=sys.stderr)
+        return 2
+    problem = live_send_problem(args, cfg, args.recipients, len(batch), today, time.time())
     if problem:
         print(f"Not sending: {problem}", file=sys.stderr)
         return 2
-    return send_live(items, log, env, args.delay)
+    return send_live(batch, log, env, args.delay)
 
 
 if __name__ == "__main__":

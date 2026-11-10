@@ -4,7 +4,7 @@ import os
 import tempfile
 import time
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -310,6 +310,43 @@ class Sender(unittest.TestCase):
         code, smtp = self.run_send(*self.live(0))
         self.assertEqual(code, 0)
         smtp.return_value.send_message.assert_not_called()
+
+    def stamp_sent_today(self, count, campaign="winback"):
+        stamp = f"{TODAY.isoformat()}T09:00:00+00:00"
+        lines = "".join(f"x{n}@other.test\t{stamp}\n" for n in range(count))
+        (self.dir / f"sent.{campaign}.log").write_text(lines, encoding="utf-8")
+
+    def test_daily_limit_sends_part_and_the_rest_next_day(self):
+        code, smtp = self.run_send(*self.live(1, "--daily-limit", "1"))
+        self.assertEqual(code, 0)
+        self.assertEqual(smtp.return_value.send_message.call_count, 1)
+        # same day: the limit is spent
+        code, smtp = self.run_send(*self.live(0, "--daily-limit", "1"))
+        self.assertEqual(code, 2)
+        smtp.return_value.send_message.assert_not_called()
+        # next day: the one left goes, nobody twice
+        code, smtp = self.run_send(*self.live(1, "--daily-limit", "1"), today=TODAY + timedelta(days=1))
+        self.assertEqual(code, 0)
+        self.assertEqual(smtp.return_value.send_message.call_count, 1)
+        self.assertEqual(len(send.read_sent(self.dir / "sent.launch.log")), 2)
+
+    def test_daily_limit_counts_every_campaign_sent_today(self):
+        self.stamp_sent_today(99)
+        code, smtp = self.run_send(*self.live(1))
+        self.assertEqual(code, 0)
+        self.assertEqual(smtp.return_value.send_message.call_count, 1)
+
+    def test_confirm_is_todays_batch_not_the_whole_list(self):
+        self.stamp_sent_today(99)
+        code, smtp = self.run_send(*self.live(2))
+        self.assertEqual(code, 2)
+        smtp.assert_not_called()
+
+    def test_yesterdays_sends_do_not_count(self):
+        self.stamp_sent_today(100)
+        code, smtp = self.run_send(*self.live(2), today=TODAY + timedelta(days=1))
+        self.assertEqual(code, 0)
+        self.assertEqual(smtp.return_value.send_message.call_count, 2)
 
     def test_failed_address_does_not_stop_the_batch_and_can_be_retried(self):
         with mock.patch.object(send.smtplib, "SMTP") as smtp, mock.patch("builtins.print"):
