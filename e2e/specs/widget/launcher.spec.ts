@@ -49,6 +49,26 @@ test.describe('widget launcher', () => {
     await expect.poll(() => widget.launcherAnimation()).toBe('chattermate-launcher-bounce')
   })
 
+  test('every icon offered in the dashboard draws on the site @widget', async ({ agent, adminApi, widget, customizationPage }) => {
+    const icons = [['chat', 'Chat'], ['headset', 'Headset'], ['help', 'Help'], ['sparkle', 'Sparkle']] as const
+    await customizationPage.goto(agent.id)
+    for (const [, label] of icons) await expect(customizationPage.option('Icon', label)).toBeVisible()
+
+    const drawn = new Set<string>()
+    for (const [icon] of icons) {
+      await customizeAgent(adminApi, agent.id, { customization_metadata: { launcher: { icon, size: 'md' } } })
+      await widget.embed()
+      await expect(widget.launcherIcon).toBeVisible()
+      await expect(widget.launcherDots).toBeHidden()
+      // Drawn inside the button at icon size, not collapsed or overflowing it
+      await expect.poll(() => width(widget.launcherIcon)).toBeGreaterThan(16)
+      expect(await width(widget.launcherIcon)).toBeLessThan(40)
+      drawn.add(await widget.launcherIcon.innerHTML())
+    }
+    // Four different pictures, not one icon four times
+    expect(drawn.size).toBe(icons.length)
+  })
+
   test('a transparent logo floats with no button behind it, and gets one while the chat is open @widget', async ({ agent, widget, customizationPage }) => {
     await customizationPage.goto(agent.id)
     await customizationPage.choose('Icon', 'Your logo')

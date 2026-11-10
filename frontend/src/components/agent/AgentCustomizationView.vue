@@ -675,7 +675,7 @@ const hideInitiationPreview = () => {
                             </div>
                             <div class="chat-style-title">
                                 <span>{{ option.label }}</span>
-                                <span v-if="customization.chat_style === option.value" class="chat-style-check">✓</span>
+                                <span v-if="customization.chat_style === option.value" class="chat-style-check" aria-hidden="true">✓</span>
                             </div>
                             <div class="chat-style-desc">{{ option.description }}</div>
                         </button>
@@ -697,7 +697,7 @@ const hideInitiationPreview = () => {
                             </div>
                             <div class="chat-style-title">
                                 <span>{{ option.label }}</span>
-                                <span v-if="customization.chat_style === option.value" class="chat-style-check">✓</span>
+                                <span v-if="customization.chat_style === option.value" class="chat-style-check" aria-hidden="true">✓</span>
                             </div>
                             <div class="chat-style-desc">{{ option.description }}</div>
                         </button>
@@ -806,7 +806,7 @@ const hideInitiationPreview = () => {
                             </div>
                             <div class="chat-style-title">
                                 <span>{{ option.label }}</span>
-                                <span v-if="activeDisplayMode === option.value" class="chat-style-check">✓</span>
+                                <span v-if="activeDisplayMode === option.value" class="chat-style-check" aria-hidden="true">✓</span>
                             </div>
                             <div class="chat-style-desc">
                                 {{ option.description }}
@@ -1577,6 +1577,8 @@ const hideInitiationPreview = () => {
 
 :deep(.chip-tick.active)::after {
     content: '✓';
+    /* Decoration only: a screen reader hears "checked", not the tick's name. */
+    content: '✓' / '';
     margin-left: 6px;
     font-size: 12px;
     font-weight: 700;
