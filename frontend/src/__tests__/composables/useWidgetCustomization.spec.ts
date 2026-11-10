@@ -16,7 +16,6 @@ limitations under the License.
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('webfontloader', () => ({ default: { load: vi.fn() } }))
 
 import { useWidgetCustomization } from '@/composables/useWidgetCustomization'
 

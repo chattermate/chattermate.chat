@@ -47,6 +47,7 @@ import type { HostPrompt, PageChip } from './actions/hostActionsClient'
 import { useJourneys } from '../composables/useJourneys'
 import { usePromptPlace } from '../composables/usePromptPlace'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
+import { takePrefetchedWidgetData } from './prefetched-widget-data'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
 import { useConversationToken, IDENTITY_EXPIRED_CODE, sanitizeToken } from '../composables/useConversationToken'
@@ -668,10 +669,12 @@ const checkAuthorization = async ({ afterRefusal = false } = {}): Promise<boolea
 
         // Never a stored copy: this call is what binds the visitor to a customer,
         // and a cached answer left the socket holding the page's anonymous token.
-        const response = await fetch(url, {
-            headers,
-            cache: 'no-store'
-        })
+        // On first load /bootstrap has already answered it for this same token.
+        const response = takePrefetchedWidgetData(token.value, url.searchParams.get('email'))
+            ?? await fetch(url, {
+                headers,
+                cache: 'no-store'
+            })
 
         if (response.status === 401) {
             // Check the error detail to determine the type of 401

@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, Header, Query, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -278,7 +279,25 @@ async def get_widget_data(
     # Binds this visitor to a customer: a stored copy would skip that and leave
     # the widget holding the page's anonymous token.
     response.headers["Cache-Control"] = "no-store"
+    return await authorize_visitor(db, widget_id, email, source, authorization)
 
+
+async def prefetched_widget_data(db: Session, widget_id: str, token: Optional[str], source: Optional[str]) -> dict:
+    """GET /widgets/{id}'s answer for `token`, as /bootstrap hands it to a starting
+    widget so it needn't ask again: {"status": 200, "data": ...} or the refusal as
+    {"status": ..., "detail": ...}. Exactly that route's logic, same token, no email."""
+    authorization = f"Bearer {token}" if token else None
+    try:
+        data = await authorize_visitor(db, widget_id, None, source, authorization)
+    except HTTPException as refused:
+        return {"status": refused.status_code, "detail": refused.detail}
+    return {"status": 200, "data": jsonable_encoder(WidgetResponse.model_validate(data))}
+
+
+async def authorize_visitor(db: Session, widget_id: str, email: Optional[str], source: Optional[str],
+                            authorization: Optional[str]) -> dict:
+    """Binds the visitor in `authorization` to a customer (minting one when needed)
+    and returns GET /widgets/{id}'s answer. Raises HTTPException when refused."""
     widget = db.query(Widget).filter(Widget.id == widget_id).first()
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
