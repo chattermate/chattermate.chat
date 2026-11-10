@@ -553,6 +553,89 @@ class TestGetWidgetChatHistory:
                     )
     
     @pytest.mark.asyncio
+    async def test_get_widget_chat_history_hides_team_notes(self, mock_sio, monkeypatch, test_widget, test_customer, test_session, db):
+        """History sends only the attributes the widget reads, never notes for the team."""
+        from app.api import widget_chat
+
+        monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        serve_socket_db(monkeypatch, db)
+        mock_sio.get_session.return_value = {
+            "widget_id": str(test_widget.id),
+            "org_id": str(test_widget.organization_id),
+            "customer_id": str(test_customer.id),
+            "agent_id": str(test_widget.agent_id)
+        }
+
+        stored = MagicMock()
+        stored.message = "Connecting you to the team"
+        stored.message_type = "bot"
+        stored.created_at = datetime.now(timezone.utc)
+        stored.attributes = {
+            'transfer_to_human': True,
+            'transfer_reason': 'billing',
+            'transfer_description': 'Angry about a double charge; check Stripe.',
+            'workflow_error': 'KeyError: api_key',
+            'request_rating': False,
+        }
+        stored.user = None
+        stored.agent = None
+        stored.attachments = []
+
+        with patch('app.api.widget_chat._own_session', return_value=test_session):
+            with patch.object(ChatRepository, 'get_session_history', return_value=[stored]):
+                await widget_chat.get_widget_chat_history("test_sid")
+
+        payload = mock_sio.emit.call_args.args[1]
+        assert payload['messages'][0]['attributes'] == {'request_rating': False}
+
+    @pytest.mark.asyncio
+    async def test_get_widget_chat_history_keeps_what_the_widget_restores(self, mock_sio, monkeypatch, test_widget, test_customer, test_session, db):
+        """Products, citations, attachments and odd rows come back intact; notes do not."""
+        from app.api import widget_chat
+
+        monkeypatch.setattr(widget_chat, "sio", mock_sio)
+        serve_socket_db(monkeypatch, db)
+        mock_sio.get_session.return_value = {
+            "widget_id": str(test_widget.id),
+            "org_id": str(test_widget.organization_id),
+            "customer_id": str(test_customer.id),
+            "agent_id": str(test_widget.agent_id)
+        }
+        products = {'products': [{'id': '1', 'title': 'Guji', 'image': {'src': 'https://x/y.png'}}], 'shop_domain': 's.myshopify.com'}
+        attachment = MagicMock(id=7, filename='photo.png', file_url='https://files/photo.png',
+                               content_type='image/png', file_size=1200)
+
+        def row(attributes, attachments=()):
+            msg = MagicMock()
+            msg.message = "m"
+            msg.message_type = "bot"
+            msg.created_at = datetime.now(timezone.utc)
+            msg.attributes = attributes
+            msg.user = None
+            msg.agent = None
+            msg.attachments = list(attachments)
+            return msg
+
+        rows = [
+            row({'shopify_output': products, 'sources': [{'name': 'faq', 'type': 'url'}],
+                 'guardrail': True, 'transfer_group_id': 'g-1'}, [attachment]),
+            row({'end_chat': True, 'request_rating': True, 'end_chat_reason': 'resolved',
+                 'end_chat_description': 'Customer was rude'}),
+            row(None),
+            row('{"request_rating": true, "error": "Traceback ..."}'),
+        ]
+        with patch('app.api.widget_chat._own_session', return_value=test_session):
+            with patch.object(ChatRepository, 'get_session_history', return_value=rows):
+                await widget_chat.get_widget_chat_history("test_sid")
+
+        sent = mock_sio.emit.call_args.args[1]['messages']
+        assert sent[0]['attributes'] == {'shopify_output': products, 'sources': [{'name': 'faq', 'type': 'url'}]}
+        assert sent[0]['attachments'][0]['file_url'] == 'https://files/photo.png'
+        assert sent[1]['attributes'] == {'end_chat': True, 'request_rating': True}
+        assert sent[2]['attributes'] == {}
+        assert sent[3]['attributes'] == {'request_rating': True}
+
+    @pytest.mark.asyncio
     async def test_get_widget_chat_history_database_error(self, mock_sio, monkeypatch, test_widget, test_customer, db):
         """Test get chat history with database error"""
         from app.api import widget_chat

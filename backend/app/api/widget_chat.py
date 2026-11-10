@@ -49,6 +49,7 @@ from app.services import conversation_token as conversation_token_service
 from app.services.workflow_chat import WorkflowChatService
 from app.services.file_upload_service import FileUploadService
 from app.services.file_storage import resolve_public_url
+from app.services.visitor_payload import visitor_attributes, visitor_error
 
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
@@ -70,6 +71,7 @@ from app.services.widget_reply import (
     create_widget_agent,
     deliver_ai_reply,
     emit_bot_typing,
+    reply_payload,
     send_handoff_contact_form,
     widget_agent_kwargs,
 )
@@ -669,15 +671,8 @@ async def handle_widget_chat(sid, data):
             
             # If this is a transfer response, send it and return
             if response.transfer_to_human and hasattr(response, '_is_transfer_response'):
-                await sio.emit('chat_response', {
-                    'message': response.message,
-                    'session_id': session_id,
-                    'transfer_to_human': response.transfer_to_human,
-                    'transfer_reason': response.transfer_reason.value if response.transfer_reason else None,
-                    'transfer_description': response.transfer_description,
-                    'end_chat': response.end_chat,
-                    'request_rating': response.request_rating
-                }, room=session_id, namespace='/widget')
+                await sio.emit('chat_response', reply_payload(response, session_id),
+                               room=session_id, namespace='/widget')
                 return
         elif ai_replies_enabled and active_session.status == SessionStatus.OPEN and active_session.user_id is None: # open and user has not taken over
             # One reply at a time: while the page is running an action for the
@@ -988,7 +983,7 @@ async def get_widget_chat_history(sid):
                 'message': msg.message,
                 'message_type': msg.message_type,
                 'timestamp': format_datetime(msg.created_at),
-                'attributes': msg.attributes,
+                'attributes': visitor_attributes(msg.attributes),
                 'user_name': msg.user.full_name if msg.user else None,
                 'agent_name': msg.agent.display_name or msg.agent.name if msg.agent else None
             }
@@ -1735,7 +1730,7 @@ async def handle_get_workflow_state(sid):
                 else:
                     await sio.emit('workflow_state', {
                         'type': 'error',
-                        'error': workflow_result.error,
+                        'error': visitor_error(workflow_result.error),
                         'session_id': session_id,
                         'has_history': has_history,
                         'button_text': 'Start Chat'
@@ -2019,7 +2014,7 @@ async def handle_proceed_workflow(sid, data):
         else:
             # Handle error
             await sio.emit('error', {
-                'error': workflow_result.error or 'Failed to proceed workflow',
+                'error': visitor_error(workflow_result.error, 'Failed to proceed workflow'),
                 'type': 'workflow_error'
             }, to=sid, namespace='/widget')
 
@@ -2320,7 +2315,7 @@ async def handle_form_submission(sid, data):
         else:
             # Handle form submission error
             await sio.emit('error', {
-                'error': workflow_result.error or 'Form submission failed',
+                'error': visitor_error(workflow_result.error, 'Form submission failed'),
                 'type': 'form_error'
             }, to=sid, namespace='/widget')
 
