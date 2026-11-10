@@ -816,7 +816,7 @@ def test_search_products_sends_the_widened_query(shopify_tools):
     lambda tools, **f: tools.recommend_products(**f),  # no criteria: recent products
 ], ids=["search", "recommend", "recent"])
 @pytest.mark.parametrize("filters,expected,absent", [
-    # What gpt-4o-mini sends when the customer named no price or brand
+    # What the model sends when the customer named no price or brand
     ({"min_price": 0, "max_price": 0, "vendor": "", "cursor": ""}, [], ["price:", "vendor:"]),
     ({"min_price": 10, "max_price": 50}, ["price:>=10", "price:<=50"], ["vendor:"]),
     ({"max_price": 50, "vendor": "Larkfield"}, ["price:<=50", "vendor:'Larkfield'"], ["price:>="]),
