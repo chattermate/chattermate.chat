@@ -33,7 +33,7 @@ from app.core.security import create_conversation_token
 from app.models.agent import Agent
 from app.models.widget import Widget
 from app.repositories.widget import WidgetRepository
-from app.services import conversation_token
+from app.services import conversation_token, launcher
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on, plan_hides_branding
 from app.utils.business_hours import is_within_business_hours
 
@@ -155,14 +155,16 @@ def open_session(db: Session, widget: Widget, token: Optional[str], source: Opti
                          hide_branding=plan_hides_branding(db, agent.organization_id))
 
 
-async def _customization(agent: Agent) -> dict:
+async def _customization(db: Session, agent: Agent) -> dict:
     customization = agent.customization
     if not customization:
-        return {}
+        return launcher.uncustomized_defaults()
 
     photo_url = customization.photo_url
     if settings.S3_FILE_STORAGE and photo_url:
         photo_url = await get_s3_signed_url(photo_url)
+
+    metadata, logo_url = launcher.for_visitors(db, agent)
 
     return {
         "chat_background_color": customization.chat_background_color,
@@ -184,17 +186,18 @@ async def _customization(agent: Agent) -> dict:
         # would be untrue — same reason the widget hides it after takeover.
         "show_ai_disclaimer": customization.show_ai_disclaimer and agent.ai_replies_enabled,
         "allow_new_chat": customization.allow_new_chat,
-        "customization_metadata": customization.customization_metadata or {},
+        "customization_metadata": metadata,
+        "launcher_logo_url": logo_url,
     }
 
 
-async def initial_data(session: WidgetSession) -> dict:
+async def initial_data(db: Session, session: WidgetSession) -> dict:
     """What the widget boots from (`window.__INITIAL_DATA__` in the HTML route)."""
     agent = session.agent
     return {
         "widgetId": session.widget.id,
         "agentName": agent.display_name or agent.name,
-        "customization": await _customization(agent),
+        "customization": await _customization(db, agent),
         "customerId": session.customer_id or "",
         "initialToken": session.token or "",
         "customer": {},

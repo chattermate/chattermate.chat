@@ -23,7 +23,10 @@ import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri, termi
 
 import KnowledgeExplorer from '@/components/knowledge/KnowledgeExplorer.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
+import type { LauncherBackdrop, LauncherPreview } from '@/composables/useLauncherSettings'
 import AgentChatPreviewPanel from './AgentChatPreviewPanel.vue'
+import LauncherPreviewStage from './LauncherPreviewStage.vue'
+import { DEFAULT_LAUNCHER_COLOR } from '@/webclient/launcher-style'
 import AgentIntegrationsTab from './AgentIntegrationsTab.vue'
 import AgentWidgetTab from './AgentWidgetTab.vue'
 
@@ -156,12 +159,39 @@ const activeTab = ref(props.agent.use_workflow ? 'workflow-builder' : 'agent') /
 const isEditingHeader = ref(false)
 const editDisplayName = ref(agentData.value.display_name || agentData.value.name)
 const editIsActive = ref(agentData.value.is_active)
+const launcherPreview = ref<LauncherPreview | null>(null)
+const customizationPreviewMode = ref<'chat' | 'launcher'>('chat')
+const LAUNCHER_BACKDROPS: { value: LauncherBackdrop; label: string }[] = [
+    { value: 'light', label: 'Light site' },
+    { value: 'dark', label: 'Dark site' },
+]
+const launcherBackdrop = ref<LauncherBackdrop>('light')
+
+// The chat preview at the window size chosen in Placement, shrunk only when that
+// doesn't fit beside the settings. Ask AI designs keep their own palette size.
+const CHAT_PREVIEW_MAX = { width: 480, height: 600 }
+const ASK_AI_PREVIEW_STYLES = ['ASK_ANYTHING', 'AURORA']
+const chatPreviewFit = computed(() => {
+    const preview = launcherPreview.value
+    if (!preview || ASK_AI_PREVIEW_STYLES.includes(previewCustomization.value.chat_style as string)) {
+        return { width: undefined, height: undefined, box: {}, inner: {} }
+    }
+    const { windowWidth: width, windowHeight: height } = preview
+    const scale = Math.min(1, CHAT_PREVIEW_MAX.width / width, CHAT_PREVIEW_MAX.height / height)
+    return {
+        width,
+        height,
+        box: { width: `${Math.round(width * scale)}px`, height: `${Math.round(height * scale)}px` },
+        inner: scale < 1 ? { transform: `scale(${scale})`, transformOrigin: 'top left' } : {},
+    }
+})
+
 const previewCustomization = ref<AgentCustomization>({
     id: agentData.value.customization?.id ?? 0,
     agent_id: agentData.value.id,
     chat_background_color: agentData.value.customization?.chat_background_color ?? '#F8F9FA',
     chat_text_color: agentData.value.customization?.chat_text_color ?? '#212529',
-    chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? '#E9ECEF',
+    chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? DEFAULT_LAUNCHER_COLOR,
     accent_color: agentData.value.customization?.accent_color ?? '#C9F24E',
     font_family: agentData.value.customization?.font_family ?? 'Inter, system-ui, sans-serif',
     photo_url: agentData.value.customization?.photo_url,
@@ -1162,17 +1192,52 @@ onMounted(async () => {
                                         @save="handleCustomizationSave"
                                         @cancel="() => switchTab('agent')"
                                         @chat-style-changed="handleChatStyleChange"
+                                        @launcher-preview="launcherPreview = $event"
+                                        @launcher-editing="customizationPreviewMode = 'launcher'"
+                                        @preview-mode="customizationPreviewMode = $event"
                                     />
                                 </div>
                                 <div class="customization-preview">
-                                    <AgentChatPreviewPanel
-                                        :is-active="agentData.is_active"
-                                        :customization="previewCustomization"
-                                        :agent-type="agentData.agent_type"
+                                    <div class="preview-toolbar">
+                                        <div class="preview-switch" role="radiogroup" aria-label="Preview">
+                                            <button type="button" role="radio" class="preview-switch-option"
+                                                :class="{ active: customizationPreviewMode === 'chat' }"
+                                                :aria-checked="customizationPreviewMode === 'chat'"
+                                                @click="customizationPreviewMode = 'chat'">Chat</button>
+                                            <button type="button" role="radio" class="preview-switch-option"
+                                                :class="{ active: customizationPreviewMode === 'launcher' }"
+                                                :aria-checked="customizationPreviewMode === 'launcher'"
+                                                @click="customizationPreviewMode = 'launcher'">Launcher</button>
+                                        </div>
+                                        <div v-if="customizationPreviewMode === 'launcher'" class="preview-switch"
+                                            role="radiogroup" aria-label="Site background">
+                                            <button v-for="option in LAUNCHER_BACKDROPS" :key="option.value" type="button"
+                                                role="radio" class="preview-switch-option"
+                                                :class="{ active: launcherBackdrop === option.value }"
+                                                :aria-checked="launcherBackdrop === option.value"
+                                                @click="launcherBackdrop = option.value">{{ option.label }}</button>
+                                        </div>
+                                    </div>
+                                    <LauncherPreviewStage
+                                        v-if="customizationPreviewMode === 'launcher' && launcherPreview"
+                                        v-bind="launcherPreview"
+                                        :backdrop="launcherBackdrop"
                                         :agent-name="agentData.display_name || agentData.name"
-                                        :orb-seed="agentData.name"
-                                        :agent-id="agentData.id"
                                     />
+                                    <div v-else class="chat-preview-fit" :style="chatPreviewFit.box">
+                                        <div :style="chatPreviewFit.inner">
+                                            <AgentChatPreviewPanel
+                                                :is-active="agentData.is_active"
+                                                :customization="previewCustomization"
+                                                :agent-type="agentData.agent_type"
+                                                :agent-name="agentData.display_name || agentData.name"
+                                                :orb-seed="agentData.name"
+                                                :agent-id="agentData.id"
+                                                :window-width="chatPreviewFit.width"
+                                                :window-height="chatPreviewFit.height"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2842,11 +2907,50 @@ input:checked + .slider:before {
     background-color: var(--o25);
 }
 
+/* The preview shows the widget's own colours, which can match the dashboard's
+   (a dark design on the dark theme). A hairline keeps its edge visible. */
+.customization-preview :deep(.chat-container) {
+    box-shadow: 0 0 0 1px var(--o12), 0 24px 48px -16px rgba(0, 0, 0, 0.35);
+}
+
+.preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    width: 100%;
+    margin-bottom: var(--space-sm);
+}
+
+.preview-switch {
+    display: flex;
+    gap: 6px;
+}
+
+.preview-switch-option {
+    padding: 6px 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border-radius: var(--radius-chip);
+    border: 1px solid var(--o12);
+    background: var(--bg);
+    color: var(--text3);
+    cursor: pointer;
+}
+
+.preview-switch-option.active {
+    background: var(--accent-bg-12);
+    border-color: var(--accent-ink);
+    color: var(--accent-ink);
+}
+
 .customization-preview {
     flex: 0 1 auto;
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
     padding-top: 0;
@@ -2934,6 +3038,32 @@ input:checked + .slider:before {
         /* Keep matching the 600px chat preview, even on laptop widths */
         height: 600px;
         max-height: 600px;
+    }
+}
+
+/* Tablets and phones: settings full width, the preview below them. */
+@media (max-width: 768px) {
+    .customization-tab-layout {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .customization-panel {
+        min-width: 0;
+        flex: 1 1 auto;
+        max-width: none;
+        width: 100%;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+    }
+
+    .customization-preview {
+        padding: 0;
     }
 }
 

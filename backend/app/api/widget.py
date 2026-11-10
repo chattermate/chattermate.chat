@@ -31,9 +31,9 @@ from app.database import get_db
 from app.repositories.widget import WidgetRepository
 from app.repositories.agent import AgentRepository
 from app.core.security import verify_conversation_token
-from app.services import conversation_token
+from app.services import conversation_token, launcher
 from app.repositories.customer import CustomerRepository
-from app.models.schemas.widget import WidgetCreate, WidgetResponse
+from app.models.schemas.widget import AgentCustomizationResponse, WidgetCreate, WidgetResponse
 from app.core.logger import get_logger
 from app.repositories.session_to_agent import SessionToAgentRepository, session_in_scope
 from app.services.contact_capture import CONTACT_EMAIL_META_KEY
@@ -145,7 +145,7 @@ async def get_widget_ui(
     except widget_bootstrap.WidgetAccessDenied as denied:
         raise _identity_expired() if denied.code == conversation_token.IDENTITY_EXPIRED_CODE else _token_required()
 
-    html_page = get_widget_html(await widget_bootstrap.initial_data(session), request)
+    html_page = get_widget_html(await widget_bootstrap.initial_data(db, session), request)
     response = _widget_html_response(html_page)
     if ancestors:
         response.headers["Content-Security-Policy"] = ancestors
@@ -231,8 +231,18 @@ def _anonymous_customer(customer_repo: CustomerRepository, widget: Widget, conve
         meta_data=meta_data, conversation_key=conversation_key)
 
 
-def _widget_data_response(widget: Widget, agent: Agent, customer_id: Optional[str], human_agent_info: dict,
-                          runs_workflow: bool, token: Optional[str] = None) -> dict:
+def _visitor_customization(db: Session, agent: Agent) -> Optional[AgentCustomizationResponse]:
+    """The agent's customization as visitors may see it: this route re-applies it
+    after the bootstrap, so it has to pass the same launcher plan check."""
+    if not agent.customization:
+        return None
+    metadata, logo_url = launcher.for_visitors(db, agent)
+    return AgentCustomizationResponse.model_validate(agent.customization).model_copy(
+        update={"customization_metadata": metadata, "launcher_logo_url": logo_url})
+
+
+def _widget_data_response(db: Session, widget: Widget, agent: Agent, customer_id: Optional[str],
+                          human_agent_info: dict, runs_workflow: bool, token: Optional[str] = None) -> dict:
     """GET /widgets/{id}'s answer; `token` only when the visitor needs a new one."""
     # photo_url is signed by AgentCustomizationResponse on serialization.
     data = {
@@ -244,7 +254,7 @@ def _widget_data_response(widget: Widget, agent: Agent, customer_id: Optional[st
             "id": agent.id,
             "name": agent.name,
             "display_name": agent.display_name,
-            "customization": agent.customization,
+            "customization": _visitor_customization(db, agent),
             "workflow": runs_workflow,
             "allow_attachments": agent.allow_attachments
         }
@@ -337,11 +347,11 @@ async def get_widget_data(
             anonymous = _anonymous_customer(customer_repo, widget, conversation_key, claimed_email=customer.email)
             new_token = widget_bootstrap.mint_widget_token(widget_id, conversation_key, customer_id=str(anonymous.id),
                                            source=source, token_payload=token_payload)
-            return _widget_data_response(widget, agent, str(anonymous.id), {}, agent_has_workflow, new_token)
+            return _widget_data_response(db, widget, agent, str(anonymous.id), {}, agent_has_workflow, new_token)
 
         logger.debug(f"Using existing token for customer_id: {customer_id}")
         human_agent_info = await get_human_agent_session_info(db, str(customer.id), scope)
-        return _widget_data_response(widget, agent, customer_id, human_agent_info, agent_has_workflow)
+        return _widget_data_response(db, widget, agent, customer_id, human_agent_info, agent_has_workflow)
 
     # A token-protected widget only ever runs on tokens its site issued: one whose
     # customer is gone is no reason to issue a widget token of our own.
@@ -373,7 +383,7 @@ async def get_widget_data(
     human_agent_info = await get_human_agent_session_info(db, str(customer.id), conversation_key)
     new_token = widget_bootstrap.mint_widget_token(widget_id, conversation_key, customer_id=str(customer.id),
                                    source=source, token_payload=token_payload)
-    return _widget_data_response(widget, agent, str(customer.id), human_agent_info, agent_has_workflow, new_token)
+    return _widget_data_response(db, widget, agent, str(customer.id), human_agent_info, agent_has_workflow, new_token)
 
 
 @router.post("/{widget_id}/end-chat")

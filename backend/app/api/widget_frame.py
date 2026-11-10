@@ -229,7 +229,7 @@ async def bootstrap_widget(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": denied.code, "message": message})
 
-    return JSONResponse(await widget_bootstrap.initial_data(session), headers=_NO_STORE)
+    return JSONResponse(await widget_bootstrap.initial_data(db, session), headers=_NO_STORE)
 
 
 def _own_widget(db: Session, widget_id: str, user: User):

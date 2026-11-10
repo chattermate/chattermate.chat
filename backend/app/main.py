@@ -61,6 +61,7 @@ try:
 except ImportError:
     print("Enterprise models not available")
 from app.api import session_to_agent
+from app.api import agent_logo
 from app.workers.chat_auto_closer import run_auto_closer_loop
 from app.workers.journey_data_purge import run_purge_loop
 
@@ -229,6 +230,12 @@ app.include_router(
 
 app.include_router(
     agent.router,
+    prefix=f"{settings.API_V1_STR}/agent",
+    tags=["agent"]
+)
+
+app.include_router(
+    agent_logo.router,
     prefix=f"{settings.API_V1_STR}/agent",
     tags=["agent"]
 )

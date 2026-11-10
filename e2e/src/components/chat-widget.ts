@@ -454,6 +454,39 @@ export class ChatWidget {
     return this.page.locator('#chattermate-button')
   }
 
+  /** The launcher's chosen icon (an inline SVG); absent while it shows the default dots. */
+  get launcherIcon(): Locator {
+    return this.launcher.locator('.cm-icon svg')
+  }
+
+  /** The launcher's uploaded logo. */
+  get launcherLogo(): Locator {
+    return this.launcher.locator('.cm-icon img')
+  }
+
+  /** The default three dots. */
+  get launcherDots(): Locator {
+    return this.launcher.locator('.cm-dots')
+  }
+
+  /** The launcher's running CSS animation, `none` when still. */
+  async launcherAnimation(): Promise<string> {
+    return this.launcher.evaluate((button) => getComputedStyle(button).animationName)
+  }
+
+  /** The suite runs with reduced motion; this visitor's browser doesn't ask for it. */
+  async allowMotion(): Promise<void> {
+    await this.page.emulateMedia({ reducedMotion: 'no-preference' })
+  }
+
+  async openWithKeyboard(): Promise<void> {
+    await step('Customer opens the chat from the keyboard', async () => {
+      await this.launcher.focus()
+      await this.page.keyboard.press('Enter')
+      await expect(this.panel).toHaveClass(/active/)
+    })
+  }
+
   /** The chat panel; it carries `.active` while open. */
   get panel(): Locator {
     return this.page.locator('#chattermate-container')

@@ -11,6 +11,26 @@ window.ChatterMate;
 /** @type {object|undefined} Declarative options, same shape as ChatterMate.init(options). */
 window.chattermateConfig;
 
+import {
+  LAUNCHER_BADGE_COLORS,
+  DEFAULT_LAUNCHER_COLOR,
+  LAUNCHER_DEFAULTS,
+  LAUNCHER_ICON_SCALE,
+  LAUNCHER_ICON_SVG,
+  LAUNCHER_LOGO_SCALE,
+  LAUNCHER_MOBILE_MAX_PX,
+  LAUNCHER_SIZE_PX,
+  launcherAccent,
+  launcherDotColors,
+  launcherFill,
+  launcherLook,
+  launcherMotionCss,
+  logoFile,
+  pickDeveloperStyle,
+  pickLauncherStyle,
+  usableLogoUrl,
+} from './launcher-style'
+
 ;(function () {
   // Function to validate hex color code
   function isValidHexColor(color) {
@@ -49,7 +69,7 @@ window.chattermateConfig;
     containerId: 'chattermate-container',
     backdropId: 'chattermate-backdrop',
     buttonId: 'chattermate-button',
-    chatBubbleColor: '#f34611', // Default color
+    chatBubbleColor: DEFAULT_LAUNCHER_COLOR, // Until the agent's own colour arrives
     loadingContainerId: 'chattermate-loading',
     tokenKey: 'ctid', // Key for localStorage
     tokenProvider: null, // Host callback that mints a fresh conversation token
@@ -62,6 +82,9 @@ window.chattermateConfig;
     side: 'right', // Which screen edge the launcher/window hug: 'right' | 'left'
     displayMode: 'floating', // 'floating' | 'sidebar-left' | 'sidebar-right' | 'search-bar'
     launcher: true, // false hides the built-in launcher (site uses its own trigger/API)
+    launcherStyle: { ...LAUNCHER_DEFAULTS }, // Size, shape, icon, animation (see launcher-style.ts)
+    launcherLogoUrl: null, // Set by the dashboard only; null when the plan doesn't cover it
+    launcherLogoFailed: false, // The image wouldn't load (e.g. the site's CSP): use the icon
     sidebarWidth: 420, // Panel width in the sidebar display modes
     layout: 'overlay', // 'overlay' | 'push': in sidebar modes, push moves pushTarget aside
     pushTarget: null, // CSS selector of the page content the push layout makes room in
@@ -170,6 +193,25 @@ window.chattermateConfig;
     if (isNumber(display.offset_bottom)) set('launcherBottom', Math.max(0, display.offset_bottom))
     if (isNumber(display.offset_side)) set('launcherRight', Math.max(0, display.offset_side))
     if (isNumber(display.z_index)) set('zIndex', Math.max(1, Math.floor(display.z_index)))
+  }
+
+  // Dashboard "Launcher" settings over CUSTOMIZATION_UPDATE: same precedence as
+  // placement, per key. The logo is only ever the dashboard's.
+  function applyDashboardLauncher(launcher, logoUrl) {
+    const picked = pickLauncherStyle(launcher)
+    Object.keys(picked).forEach(function (key) {
+      if (!devOverrides['launcherStyle.' + key]) config.launcherStyle[key] = picked[key]
+    })
+    const url = usableLogoUrl(logoUrl, config.baseUrl)
+    // A new signature counts too: the old one may be what just failed.
+    if (url !== config.launcherLogoUrl) {
+      config.launcherLogoUrl = url
+      config.launcherLogoFailed = false
+    }
+  }
+
+  function currentLauncherLook() {
+    return launcherLook(config.launcherStyle, config.launcherLogoFailed ? null : config.launcherLogoUrl)
   }
 
   // Geometry the widget interior needs to adapt its own sizing (see WidgetBuilder).
@@ -291,14 +333,6 @@ window.chattermateConfig;
   }
 
   // Pick a readable ink color (dark/light) for content sitting on a given bg.
-  function onColor(hex) {
-    const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim())
-    if (!m) return '#0B0C10'
-    const n = parseInt(m[1], 16)
-    const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255
-    return lum > 0.6 ? '#0B0C10' : '#FFFFFF'
-  }
-
   // The launcher stays invisible (`.chattermate-pending`, see updateStyles) until
   // revealButton() runs, so the correct brand color is applied before it's ever seen —
   // no orange-then-green flash on a cold cache. Reveal fires on whichever happens
@@ -307,6 +341,7 @@ window.chattermateConfig;
   let buttonRevealed = false
   let revealTimeoutId = null
   const onRevealCallbacks = []
+  const LOGO_REVEAL_WAIT_MS = 1500
 
   function revealButton() {
     if (buttonRevealed) return
@@ -322,6 +357,20 @@ window.chattermateConfig;
     })
   }
 
+  // Reveal once the logo has had a moment to arrive, so it doesn't pop in. The hold
+  // replaces the longer safety-net timer, and revealButton() clears it either way.
+  function revealWhenLogoReady() {
+    const logo = document.querySelector('#' + config.buttonId + ' .cm-icon img')
+    if (buttonRevealed || !logo || logo.complete || !config.launcher) {
+      revealButton()
+      return
+    }
+    logo.addEventListener('load', revealButton, { once: true })
+    logo.addEventListener('error', revealButton, { once: true })
+    if (revealTimeoutId) clearTimeout(revealTimeoutId)
+    revealTimeoutId = setTimeout(revealButton, LOGO_REVEAL_WAIT_MS)
+  }
+
   // Launcher badge: show the nudge count until the chat is first opened, then the
   // count of unread agent messages reported by the iframe. Hidden when open/empty.
   function updateBadge() {
@@ -334,6 +383,8 @@ window.chattermateConfig;
       : (config.chatInitiationMessages || []).length
     badge.textContent = count > 99 ? '99+' : String(count)
     badge.style.display = (count > 0 && !btn.classList.contains('active')) ? 'flex' : 'none'
+    // Attention animations are done once the visitor has found the chat.
+    btn.classList.toggle('cm-opened', config.hasOpened)
   }
 
   // Create and inject styles
@@ -344,7 +395,14 @@ window.chattermateConfig;
     // nudge, floating window) follows the configured side.
     const side = mode === 'sidebar-left' ? 'left' : (mode === 'sidebar-right' ? 'right' : config.side)
     // The search bar is shorter than the bubble launcher; dependent offsets track it.
-    const launcherHeight = mode === 'search-bar' ? 48 : 64
+    const look = currentLauncherLook()
+    const launcherHeight = mode === 'search-bar' ? 48 : look.px
+    // The window keeps its gap above a smaller launcher.
+    const launcherShrink = mode === 'search-bar' ? 0 : LAUNCHER_SIZE_PX.lg - look.px
+    const brandFill = launcherFill({ background: 'brand' }, config.chatBubbleColor)
+    const fill = launcherFill(look, config.chatBubbleColor)
+    const iconScale = look.isLogo ? (look.bare ? 1 : LAUNCHER_LOGO_SCALE) : LAUNCHER_ICON_SCALE
+    const dotColors = launcherDotColors(config.chatBubbleColor)
     // Every chat style draws a header chevron that closes the widget, except
     // ASK_ANYTHING and AURORA (see isAskAnythingStyle in WidgetBuilder.vue).
     const hasInPanelClose = ASK_AI_STYLES.indexOf(config.chatStyle) === -1
@@ -362,21 +420,31 @@ window.chattermateConfig;
         position: fixed;
         bottom: ${config.launcherBottom}px;
         ${side}: ${config.launcherRight}px;
-        width: 64px;
-        height: 64px;
-        border-radius: 20px 20px 20px 6px;
-        background: ${config.chatBubbleColor};
-        color: ${onColor(config.chatBubbleColor)};
-        box-shadow: 0 16px 40px -8px ${config.chatBubbleColor}cc, inset 0 0 0 1px rgba(255,255,255,0.08);
+        width: ${look.px}px;
+        height: ${look.px}px;
+        border-radius: ${look.radius};
+        background: ${fill.fill};
+        color: ${fill.ink};
+        box-shadow: ${fill.shadow};
         cursor: pointer;
         z-index: ${config.zIndex};
         display: flex;
         align-items: center;
         justify-content: center;
         transition: transform 0.3s cubic-bezier(.34,1.3,.5,1), opacity 320ms ease;
-        animation: chattermate-float 4s ease-in-out infinite;
       }
-      #${config.buttonId}.active { animation: none; }
+      #${config.buttonId}:focus-visible {
+        outline: 2px solid ${launcherAccent(config.chatBubbleColor)};
+        outline-offset: 3px;
+      }
+      ${look.bare ? `
+      /* Open or loading, a logo with no background still needs a button behind the
+         chevron and spinner. */
+      #${config.buttonId}.active,
+      #${config.buttonId}.loading {
+        background: ${brandFill.fill};
+        color: ${brandFill.ink};
+      }` : ''}
       /* Stay fully invisible until the org's real brand color is known (or the
          widget errors out / times out) — avoids ever flashing the wrong color. */
       #${config.buttonId}.chattermate-pending {
@@ -389,13 +457,13 @@ window.chattermateConfig;
       #${config.buttonId} .cm-ring {
         position: absolute;
         inset: 0;
-        border-radius: 20px 20px 20px 6px;
-        border: 1.5px solid ${config.chatBubbleColor};
+        border-radius: inherit;
+        border: 1.5px solid ${launcherAccent(config.chatBubbleColor)};
         animation: chattermate-ring 2.4s ease-out infinite;
         pointer-events: none;
       }
       #${config.buttonId} .cm-ring.r2 { animation-delay: 1.2s; }
-      #${config.buttonId}.active .cm-ring { display: none; }
+      ${launcherMotionCss('#' + config.buttonId, look, launcherAccent(config.chatBubbleColor), side, fill.shadow)}
 
       /* Pulsing two-dot mark (closed): the ChatterMate mark's AI + human dots, drawn in
          the launcher's contrast colour so it reads on any brand colour. Absolutely centered so it stays pinned to the
@@ -407,8 +475,28 @@ window.chattermateConfig;
         position: absolute;
         top: 50%;
         left: 50%;
+        transform: translate(-50%, -50%) scale(${look.px / LAUNCHER_SIZE_PX.lg});
+      }
+      /* An icon or logo in place of the dots. */
+      #${config.buttonId} .cm-icon {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: ${iconScale * 100}%;
+        height: ${iconScale * 100}%;
         transform: translate(-50%, -50%);
       }
+      #${config.buttonId} .cm-icon img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        ${look.bare ? 'filter: drop-shadow(0 0 1.5px rgba(255,255,255,.95)) drop-shadow(0 6px 10px rgba(15,23,42,.25));' : ''}
+      }
+      #${config.buttonId}.cm-has-icon .cm-dots { display: none; }
+      #${config.buttonId}.cm-has-icon .cm-icon { display: block; }
+      #${config.buttonId}.active .cm-icon { display: none; }
       #${config.buttonId} .cm-dot {
         width: 13px;
         height: 13px;
@@ -417,6 +505,9 @@ window.chattermateConfig;
         animation: chattermate-pulse 1.5s ease-in-out infinite;
       }
       #${config.buttonId} .cm-dot:nth-child(2) { animation-delay: .3s; }
+      ${dotColors ? `
+      #${config.buttonId} .cm-dot:nth-child(1) { background: ${dotColors[0]}; }
+      #${config.buttonId} .cm-dot:nth-child(2) { background: ${dotColors[1]}; }` : ''}
       #${config.buttonId}.active .cm-dots { display: none; }
 
       /* Chevron (open) — absolutely centered, pinned to the button center. */
@@ -438,22 +529,23 @@ window.chattermateConfig;
         position: absolute;
         top: -5px;
         right: -5px;
-        min-width: 22px;
-        height: 22px;
-        padding: 0 6px;
+        min-width: ${look.badgePx}px;
+        height: ${look.badgePx}px;
+        padding: 0 ${look.badgePaddingPx}px;
         border-radius: 999px;
-        background: #FF8A73;
-        color: #0B0C10;
-        font: 700 11.5px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        background: ${LAUNCHER_BADGE_COLORS.fill};
+        color: ${LAUNCHER_BADGE_COLORS.ink};
+        font: 700 ${look.badgeFontPx}px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
         align-items: center;
         justify-content: center;
-        border: 2px solid #F5F3EE;
+        border: 2px solid ${LAUNCHER_BADGE_COLORS.ring};
         box-shadow: 0 4px 12px rgba(0,0,0,0.25);
         display: none;
       }
       #${config.buttonId}.active .cm-badge { display: none; }
 
       #${config.buttonId}.loading .cm-dots,
+      #${config.buttonId}.loading .cm-icon,
       #${config.buttonId}.loading .cm-chevron { visibility: hidden; }
       #${config.buttonId}.loading:after {
         content: '';
@@ -467,6 +559,7 @@ window.chattermateConfig;
         border-radius: 50%;
         border-top-color: #fff;
         animation: chattermate-spin 0.6s linear infinite;
+        ${look.background === 'white' ? `border-color: rgba(15,23,42,.15); border-top-color: ${config.chatBubbleColor};` : ''}
       }
 
       /* Search-bar trigger content: hidden unless search-bar mode (below) shows it. */
@@ -488,9 +581,17 @@ window.chattermateConfig;
           justify-content: flex-start;
           box-sizing: border-box;
         }
+        #${config.buttonId}.active,
+        #${config.buttonId}.loading {
+          background: #ffffff;
+          color: #374151;
+        }
         #${config.buttonId}:hover { transform: scale(1.02); }
         #${config.buttonId} .cm-ring,
         #${config.buttonId} .cm-dots,
+        #${config.buttonId} .cm-icon,
+        #${config.buttonId}.cm-has-icon .cm-icon,
+        #${config.buttonId} .cm-swoosh,
         #${config.buttonId} .cm-chevron,
         #${config.buttonId}.active .cm-chevron { display: none; }
         /* Dark spinner — the stock white one vanishes on the white bar. */
@@ -529,6 +630,7 @@ window.chattermateConfig;
         #${config.buttonId},
         #${config.buttonId} .cm-ring,
         #${config.buttonId} .cm-dot,
+        #${config.buttonId} .cm-swoosh span,
         .initiation-orb { animation: none !important; }
         /* Open and close in place: no slide, scale or fade for people who asked for less motion. */
         #${config.buttonId},
@@ -542,7 +644,7 @@ window.chattermateConfig;
            ChatterMate.init position / setPosition) the window shifts by the same
            delta so the two stay together. Mobile is full-screen (media query below)
            and is unaffected. */
-        bottom: ${(config.containerBottom || 100) + ((config.launcherBottom || 20) - 20)}px;
+        bottom: ${(config.containerBottom || 100) + ((config.launcherBottom || 20) - 20) - launcherShrink}px;
         ${side}: ${(config.containerRight || 20) + ((config.launcherRight || 20) - 20)}px;
         width: ${config.containerWidth || 384}px;
         max-width: calc(100vw - 48px);
@@ -793,8 +895,8 @@ window.chattermateConfig;
           /* flex (not block) keeps the launcher's centering context; the dots/chevron
              are absolutely centered regardless, but this keeps it consistent. */
           display: flex !important;
-          width: 56px !important;
-          height: 56px !important;
+          width: ${Math.min(look.px, LAUNCHER_MOBILE_MAX_PX)}px !important;
+          height: ${Math.min(look.px, LAUNCHER_MOBILE_MAX_PX)}px !important;
           /* Respect the configured position on mobile too, so the closed launcher can
              clear a fixed bottom nav bar (the main reason to move it up). */
           bottom: ${config.launcherBottom}px !important;
@@ -1246,6 +1348,40 @@ window.chattermateConfig;
     if (placeholder && placeholder.textContent !== config.searchPlaceholder) {
       placeholder.textContent = config.searchPlaceholder
     }
+    syncLauncherIcon(btn)
+  }
+
+  // Draw the chosen icon or logo. Runs on every updateStyles, including each resize,
+  // so it only touches the DOM when the choice changed: redrawing would restart a
+  // logo's load and flash it.
+  function syncLauncherIcon(btn) {
+    const holder = btn.querySelector('.cm-icon')
+    if (!holder) return
+    const look = currentLauncherLook()
+    const drawn = look.isLogo ? 'logo:' + logoFile(config.launcherLogoUrl) : look.icon
+    if (holder.getAttribute('data-drawn') === drawn) return
+    holder.setAttribute('data-drawn', drawn)
+    btn.classList.toggle('cm-has-icon', look.isLogo || look.icon !== 'dots')
+    holder.textContent = ''
+    if (look.isLogo) {
+      const img = document.createElement('img')
+      img.alt = ''
+      img.draggable = false
+      img.addEventListener('error', function () {
+        // A rebuilt launcher draws the last address it knew, which may have expired.
+        if (config.launcherLogoUrl && img.getAttribute('src') !== config.launcherLogoUrl) {
+          img.src = config.launcherLogoUrl
+          return
+        }
+        config.launcherLogoFailed = true
+        updateStyles()
+      })
+      img.src = config.launcherLogoUrl
+      holder.appendChild(img)
+    } else if (look.icon !== 'dots') {
+      // A fixed string from launcher-style.ts, chosen by a whitelisted key.
+      holder.innerHTML = LAUNCHER_ICON_SVG[look.icon]
+    }
   }
 
   // A token is only usable if it's a non-empty string. The stringified "undefined"
@@ -1465,10 +1601,16 @@ window.chattermateConfig;
     const button = document.createElement('div')
     button.id = config.buttonId
     button.classList.add('chattermate-pending')
+    button.setAttribute('role', 'button')
+    button.setAttribute('tabindex', '0')
+    button.setAttribute('aria-label', 'Open chat')
+    button.setAttribute('aria-expanded', 'false')
     button.innerHTML = `
       <span class="cm-ring"></span>
       <span class="cm-ring r2"></span>
+      <span class="cm-swoosh"><span></span><span></span><span></span></span>
       <div class="cm-dots"><span class="cm-dot"></span><span class="cm-dot"></span></div>
+      <span class="cm-icon"></span>
       <span class="cm-chevron">&#8964;</span>
       <span class="cm-search">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
@@ -1514,7 +1656,8 @@ window.chattermateConfig;
     document.body.appendChild(mobileCloseButton)
     document.body.appendChild(mobileTopbar)
     updateBadge()
-    // The button just entered the DOM — populate its text content (search placeholder).
+    // The button just entered the DOM: its text (search placeholder) and, for a
+    // rebuilt launcher, the icon or logo it already had.
     syncLauncherContent()
 
     let isOpen = false
@@ -1541,6 +1684,8 @@ window.chattermateConfig;
       container.classList.toggle('active')
       backdrop.classList.toggle('active', isOpen)
       button.classList.toggle('active')
+      button.setAttribute('aria-label', isOpen ? 'Close chat' : 'Open chat')
+      button.setAttribute('aria-expanded', String(isOpen))
       mobileCloseButton.classList.toggle('active')
       applyPush()
       if (isOpen) {
@@ -1573,13 +1718,9 @@ window.chattermateConfig;
         if (isOpen) {
           // When opening on mobile, hide the button
           button.classList.remove('mobile-closed')
-          // Stop bouncing when open
-          button.style.animation = ''
         } else {
           // When closing on mobile, show the button
           button.classList.add('mobile-closed')
-          // Add subtle idle bounce when closed
-          button.style.animation = 'chattermate-float 4s ease-in-out infinite'
           // Hide topbar when closing
           mobileTopbar.classList.remove('active')
           document.body.classList.remove('ask-anything-mobile')
@@ -2192,6 +2333,12 @@ window.chattermateConfig;
 
     // Add click event listeners
     button.addEventListener('click', toggleChat)
+    button.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      // A held key repeats; one press is one toggle.
+      if (!event.repeat) toggleChat()
+    })
     mobileCloseButton.addEventListener('click', toggleChat)
     // Clicking the dimmed page closes the Ask AI palette.
     backdrop.addEventListener('click', function () {
@@ -2201,8 +2348,6 @@ window.chattermateConfig;
     // Initialize mobile button visibility
     if (isMobileDevice() && !isOpen) {
       button.classList.add('mobile-closed')
-      // Idle bounce animation when initially closed
-      button.style.animation = 'chattermate-float 4s ease-in-out infinite'
     }
 
     // Handle window resize to update mobile behavior
@@ -2213,13 +2358,11 @@ window.chattermateConfig;
       if (isMobile && !isOpen) {
         // On mobile when closed, show the button
         button.classList.add('mobile-closed')
-        button.style.animation = 'chattermate-float 4s ease-in-out infinite'
         // Ensure mobile close button is hidden when widget is closed
         mobileCloseButton.classList.remove('active')
       } else if (!isMobile) {
         // On desktop, remove mobile-specific classes
         button.classList.remove('mobile-closed')
-        button.style.animation = ''
         // Ensure mobile close button is hidden on desktop
         if (isOpen) {
           mobileCloseButton.classList.remove('active')
@@ -2356,6 +2499,7 @@ window.chattermateConfig;
       // Dashboard "Widget placement" defaults. Applied before revealButton() below,
       // so the launcher first appears already in its final mode/position — no jump.
       applyDashboardDisplay(customData.widget_display)
+      applyDashboardLauncher(customData.launcher, customData.launcher_logo_url)
 
       // ASK_ANYTHING sits a little lower than the other styles (desktop only).
       // A per-style default, not an override: geometry the developer set via
@@ -2383,7 +2527,7 @@ window.chattermateConfig;
       // Re-inject styles recolors the launcher; refresh the nudge badge count.
       updateBadge()
       // The real color is applied above, so it's now safe to show the launcher.
-      revealButton()
+      revealWhenLogoReady()
 
       // Tell the widget the final display geometry (developer overrides merged with
       // dashboard defaults) so its interior sizing can adapt. Replied to the sending
@@ -2450,6 +2594,11 @@ window.chattermateConfig;
     if (typeof options.launcher === 'boolean') {
       setDevConfig('launcher', options.launcher)
     }
+    const launcherStyle = pickDeveloperStyle(options.launcherStyle)
+    Object.keys(launcherStyle).forEach(function (key) {
+      config.launcherStyle[key] = launcherStyle[key]
+      devOverrides['launcherStyle.' + key] = true
+    })
     if (DISPLAY_MODES.indexOf(options.displayMode) !== -1) {
       setDevConfig('displayMode', options.displayMode)
     }

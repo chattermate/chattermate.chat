@@ -44,7 +44,7 @@ from PIL import Image
 from uuid import UUID
 from app.core.s3 import upload_file_to_s3
 from app.core.config import settings
-from app.services import telegram_webhooks
+from app.services import launcher, telegram_webhooks
 from app.services.file_storage import local_upload_path
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
@@ -505,6 +505,14 @@ async def create_agent_customization(
             AgentCustomization.agent_id == agent_id
         ).first()
 
+        if 'customization_metadata' in customization_data.model_fields_set:
+            customization_data.customization_metadata = launcher.check_metadata_write(
+                db,
+                auth_info["organization_id"],
+                db_customization.customization_metadata if db_customization else None,
+                customization_data.customization_metadata,
+            )
+
         if db_customization:
             # Update existing customization
             for field, value in customization_data.model_dump(exclude_unset=True).items():
@@ -512,10 +520,10 @@ async def create_agent_customization(
                     setattr(db_customization, field, value)
         else:
             # Create new customization
-            db_customization = AgentCustomization(
-                agent_id=agent_id,
-                **customization_data.model_dump(exclude={'id'})
-            )
+            new_customization = customization_data.model_dump(exclude={'id'})
+            new_customization['customization_metadata'] = launcher.first_save_metadata(
+                new_customization.get('customization_metadata'))
+            db_customization = AgentCustomization(agent_id=agent_id, **new_customization)
             db.add(db_customization)
 
         db.commit()
@@ -576,7 +584,8 @@ async def upload_agent_photo(
         else:
             db_customization = AgentCustomization(
                 agent_id=agent_id,
-                photo_url=photo_url
+                photo_url=photo_url,
+                customization_metadata=launcher.first_save_metadata(None)
             )
             db.add(db_customization)
 
