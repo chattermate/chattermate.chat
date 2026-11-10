@@ -40,7 +40,8 @@ class GuardrailEvent(Base):
 
     Append-only: this is the record that answers "is off-topic abuse actually
     material?" and "is a rule wrongly refusing real customers?" — the review
-    gate before any detection rule is promoted from counting to blocking.
+    gate before any detection rule is promoted from counting to blocking. Rows
+    are never updated; erasing a conversation removes its rows with it.
 
     `matched` holds rule ids / short match tokens ONLY — the column is plain
     JSON (unencrypted), so raw visitor text must never land in it. The

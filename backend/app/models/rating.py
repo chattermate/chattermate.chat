@@ -26,8 +26,8 @@ class Rating(Base):
     __tablename__ = "ratings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, index=True,default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("session_to_agents.session_id", ondelete="CASCADE"), nullable=False)
-    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("session_to_agents.session_id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
