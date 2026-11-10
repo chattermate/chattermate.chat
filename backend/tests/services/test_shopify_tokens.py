@@ -18,6 +18,7 @@ import threading
 import time
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 import requests
@@ -452,7 +453,7 @@ def test_one_failing_store_does_not_stop_the_sweep(db, token_endpoint):
     db.commit()
 
     def answer(url, **kwargs):
-        if "other.myshopify.com" in url:
+        if urlparse(url).hostname == "other.myshopify.com":
             raise RuntimeError("boom")
         return token_response(body=NEW_TOKEN)
     token_endpoint.side_effect = answer
