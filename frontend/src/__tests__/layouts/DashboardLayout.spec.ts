@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import DashboardLayout from '../../layouts/DashboardLayout.vue'
@@ -49,21 +49,26 @@ vi.mock('@/composables/useNotifications', () => ({
   }))
 }))
 
+const enterprise = vi.hoisted(() => ({
+  hasEnterpriseModule: false,
+  store: {
+    currentPlan: null as null | { plan: { type: string; name: string } },
+    isLoadingPlan: false,
+    isInTrial: false,
+    trialDaysLeft: 0,
+  },
+}))
+
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
-    hasEnterpriseModule: false,
+    hasEnterpriseModule: enterprise.hasEnterpriseModule,
     subscriptionStore: {
       value: {
-        currentPlan: null,
-        isLoadingPlan: false,
-        isInTrial: false,
-        trialDaysLeft: 0,
+        ...enterprise.store,
         fetchCurrentPlan: vi.fn().mockResolvedValue(undefined)
       }
     },
     initializeSubscriptionStore: vi.fn().mockResolvedValue(undefined),
-    showMessageLimitWarning: false,
-    messageLimitStatus: null,
     moduleImports: {
       promoSurfaces: '/src/modules/enterprise/components/promo/PromoSurfaces.vue',
       promoHeaderPill: '/src/modules/enterprise/components/promo/PromoHeaderPill.vue',
@@ -217,4 +222,45 @@ describe('DashboardLayout', () => {
     // Skip this test since we don't want to modify the component
     expect(true).toBe(true)
   })
-}) 
+})
+
+describe('DashboardLayout plan badges', () => {
+  const mountWith = (store: Partial<typeof enterprise.store>) => {
+    enterprise.hasEnterpriseModule = true
+    Object.assign(enterprise.store, { currentPlan: null, isLoadingPlan: false, isInTrial: false, trialDaysLeft: 0 }, store)
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1920 })
+    setActivePinia(createPinia())
+    return mount(DashboardLayout, {
+      global: { plugins: [router], stubs: { AppSidebar: true, NotificationList: true, UserSettings: true } },
+    })
+  }
+
+  afterEach(() => { enterprise.hasEnterpriseModule = false })
+
+  it('calls the hidden legacy Free plan Free', () => {
+    const wrapper = mountWith({ currentPlan: { plan: { type: 'free', name: 'Free (legacy)' } } })
+    const badge = wrapper.find('.plan-badge')
+    expect(badge.text()).toContain('Free')
+    expect(badge.text()).not.toContain('legacy')
+    expect(badge.classes()).toContain('free')
+  })
+
+  it('names the trial plan and the days left, and flags the last days', () => {
+    const wrapper = mountWith({
+      currentPlan: { plan: { type: 'growth', name: 'Growth' } }, isInTrial: true, trialDaysLeft: 1,
+    })
+    const badge = wrapper.find('.trial-badge')
+    expect(badge.text()).toBe('Growth trial · 1 day left')
+    expect(badge.classes()).toContain('ending-soon')
+    expect(wrapper.find('.plan-badge').classes()).toContain('paid')
+  })
+
+  it('keeps a long trial calm and drops "(yearly)" from the name', () => {
+    const wrapper = mountWith({
+      currentPlan: { plan: { type: 'growth', name: 'Growth (yearly)' } }, isInTrial: true, trialDaysLeft: 10,
+    })
+    const badge = wrapper.find('.trial-badge')
+    expect(badge.text()).toBe('Growth trial · 10 days left')
+    expect(badge.classes()).not.toContain('ending-soon')
+  })
+})

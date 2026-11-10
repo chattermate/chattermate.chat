@@ -34,7 +34,9 @@ vi.mock('@/services/knowledge', () => ({ knowledgeService: kb }))
 vi.mock('@/services/agent', () => ({ agentService: agents }))
 vi.mock('vue-sonner', () => ({ toast }))
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
-  useEnterpriseFeatures: () => ({ hasEnterpriseModule: false, loadModule: vi.fn(), moduleImports: {} }),
+  useEnterpriseFeatures: () => ({
+    hasEnterpriseModule: false, loadModule: vi.fn(), moduleImports: {}, enterpriseComponent: () => ({ render: () => null }),
+  }),
 }))
 
 import KnowledgeExplorer from '@/components/knowledge/KnowledgeExplorer.vue'

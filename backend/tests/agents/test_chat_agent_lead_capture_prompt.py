@@ -143,3 +143,17 @@ class TestLeadCapturePrompt:
 
         assert "ALREADY KNOWN" not in prompt
         assert "noemail.com" not in prompt
+
+
+class TestLeadCaptureOnThePlan:
+    def test_a_plan_without_it_leaves_the_prompt_alone(self):
+        with patch('app.agents.chat_agent.plan_feature_on', return_value=False):
+            agent = build_agent()
+
+        assert agent.lead_capture_enabled is False
+
+    def test_a_plan_with_it_turns_it_on(self):
+        with patch('app.agents.chat_agent.plan_feature_on', return_value=True):
+            agent = build_agent()
+
+        assert agent.lead_capture_enabled is True

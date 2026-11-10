@@ -53,7 +53,7 @@ def check_lead_capture_access(current_user: User, db: Session) -> None:
     if not PlanRepository(db).check_feature_availability(str(subscription.plan_id), 'lead_capture'):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Lead Capture is not available in your current plan. Please upgrade to Pro to access this feature.",
+            detail="Lead Capture is not available in your current plan. Upgrade your plan to turn it on.",
         )
 
 

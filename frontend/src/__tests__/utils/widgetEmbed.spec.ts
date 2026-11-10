@@ -17,7 +17,7 @@ limitations under the License.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { buildAiInstallPrompt, buildWidgetCsp, buildWidgetEmbed, widgetFrameSources } from '@/utils/widgetEmbed'
-import { WIDGET_INSTALL_GUIDE_URL } from '@/config/docs'
+import { WIDGET_INSTALL_GUIDE_URL, WORDPRESS_PLUGIN_URL } from '@/config/docs'
 // The snippet's exact text, pinned so other code that builds it can match it.
 import golden from '../fixtures/widget-snippet.txt?raw'
 
@@ -118,6 +118,7 @@ describe('buildAiInstallPrompt', () => {
     expect(prompt).toContain('index.html')
     expect(prompt).toContain('next/script')
     expect(prompt).toContain('WordPress')
+    expect(prompt).toContain(WORDPRESS_PLUGIN_URL)
   })
 
   it('is empty when there is nothing to install', () => {

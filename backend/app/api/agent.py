@@ -31,6 +31,7 @@ from app.core.auth import (
 )
 from app.repositories.agent import AgentRepository
 from app.repositories.knowledge import KnowledgeRepository
+from app.repositories.workflow import WorkflowRepository
 from app.models.schemas.agent import AgentUpdate, AgentResponse, AgentCreate, AgentRosterItem, AgentWithCustomizationResponse
 from sqlalchemy.orm import Session
 from app.models.agent import Agent, AgentCustomization
@@ -248,6 +249,15 @@ async def create_agent(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _require_agents_workflow(db: Session, agent: Agent, workflow_id: UUID) -> None:
+    """404 unless the workflow is this agent's own: every new session runs the
+    agent's active workflow, so another tenant's must never be settable."""
+    workflow = WorkflowRepository(db).get_by_id(workflow_id)
+    if (not workflow or workflow.organization_id != agent.organization_id
+            or workflow.agent_id != agent.id):
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+
 @router.put("/{agent_id}/shopify", response_model=AgentWithCustomizationResponse)
 @router.put("/{agent_id}", response_model=AgentWithCustomizationResponse)
 async def update_agent(
@@ -298,6 +308,9 @@ async def update_agent(
                     # If rating feature is not available, force ask_for_rating to False
                     update_dict["ask_for_rating"] = False
         
+        if update_dict.get("active_workflow_id") is not None:
+            _require_agents_workflow(db, agent, update_dict["active_workflow_id"])
+
         buttons_turned_on = update_dict.get("channel_quick_replies") is True and not agent.channel_quick_replies
         agent = agent_repo.update_agent(agent_id, **update_dict)
         if buttons_turned_on:

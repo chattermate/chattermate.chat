@@ -1,3 +1,4 @@
+import type { APIRequestContext } from '@playwright/test'
 import { env } from '../env'
 import type { ApiClient } from './client'
 
@@ -36,4 +37,16 @@ export async function helpCenterChat(api: ApiClient): Promise<HelpCenterChat> {
 /** Puts `agentId`'s widget on every help center page (or takes it off). */
 export async function setHelpCenterChat(api: ApiClient, chat: HelpCenterChat): Promise<void> {
   await api.put('/help-center/settings', { data: { agent_id: chat.agentId, chat_widget_enabled: chat.enabled } })
+}
+
+/** Turns on the help center's "Ask AI" box, answered by `agentId`. */
+export async function turnOnAskAi(api: ApiClient, agentId: string): Promise<void> {
+  await api.put('/help-center/settings', { data: { agent_id: agentId, ai_search_enabled: true } })
+}
+
+/** A visitor's question in the public help center's "Ask AI" box (no sign-in). */
+export async function askHelpCenter(request: APIRequestContext, helpCenterUrl: string, question: string): Promise<string> {
+  const response = await request.post(`${helpCenterUrl}/ask`, { data: { question } })
+  if (!response.ok()) throw new Error(`Ask AI → ${response.status()}: ${await response.text()}`)
+  return ((await response.json()) as { answer: string }).answer
 }

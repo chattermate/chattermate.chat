@@ -551,6 +551,11 @@ export class ChatWidget {
     return this.frame.locator('.cm-welcome-block .message-bubble')
   }
 
+  /** The "Powered by ChatterMate" link, unless the plan hides the branding. */
+  get poweredBy(): Locator {
+    return this.frame.getByRole('link', { name: 'Powered by ChatterMate' })
+  }
+
   get contactForm(): Locator {
     return this.frame.locator('.form-message').filter({ hasText: 'Before we connect you to a teammate' })
   }

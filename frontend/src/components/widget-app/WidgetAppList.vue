@@ -24,9 +24,13 @@ import ApiKeyModal from './ApiKeyModal.vue'
 import { permissionChecks } from '@/utils/permissions'
 import { useSubscriptionStorage } from '@/utils/storage'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useUpgradePlan } from '@/composables/useUpgradePlan'
+
+const API_ACCESS_FEATURE = 'api_access'
 
 const subscriptionStorage = useSubscriptionStorage()
 const { hasEnterpriseModule } = useEnterpriseFeatures()
+const { upgradeText } = useUpgradePlan(API_ACCESS_FEATURE)
 
 const {
   apps,
@@ -69,7 +73,7 @@ const isWidgetAppsLocked = computed(() => {
   }
 
   // Check if api_access feature exists in subscription (required for widget apps)
-  const hasApiAccessFeature = subscriptionStorage.hasFeature('api_access')
+  const hasApiAccessFeature = subscriptionStorage.hasFeature(API_ACCESS_FEATURE)
   if (!hasApiAccessFeature) {
     return true // Lock widget apps if feature doesn't exist
   }
@@ -177,7 +181,7 @@ const formatDate = (dateString: string) => {
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="upgrade-icon">
             <path fill-rule="evenodd" d="M12.516 2.17a.75.75 0 00-1.032 0 11.209 11.209 0 01-7.877 3.08.75.75 0 00-.722.515A12.74 12.74 0 002.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 00.374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 00-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.734-3.08zm3.094 8.016a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clip-rule="evenodd" />
           </svg>
-          Upgrade to Pro
+          {{ upgradeText }}
         </button>
       </div>
     </div>

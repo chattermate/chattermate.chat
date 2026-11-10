@@ -22,6 +22,7 @@ import { agentService } from '@/services/agent'
 import { leadCaptureService } from '@/services/leadCapture'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { subscriptionStorage } from '@/utils/storage'
+import { useUpgradePlan } from '@/composables/useUpgradePlan'
 import type { Agent } from '@/types/agent'
 
 // Lazy-load the provider setup form — only needed on OSS builds without ChatterMate AI
@@ -79,16 +80,18 @@ const isSubmitting = ref(false)
 const isGenerating = ref(false)
 const error = ref('')
 
-// Lead capture is a Pro-plan feature — hide/disable it where the enterprise module
+// Lead capture is a paid feature — hide/disable it where the enterprise module
 // is present and the plan doesn't include it (mirrors the Lead Capture tab gate).
+const LEAD_CAPTURE_FEATURE = 'lead_capture'
 const leadCaptureLocked = computed(() =>
   hasEnterpriseModule &&
-  (!subscriptionStorage.hasFeature('lead_capture') || !subscriptionStorage.isSubscriptionActive())
+  (!subscriptionStorage.hasFeature(LEAD_CAPTURE_FEATURE) || !subscriptionStorage.isSubscriptionActive())
 )
+const { planName: leadCapturePlan, upgradeText: leadCaptureUpgradeText } = useUpgradePlan(LEAD_CAPTURE_FEATURE)
 
 // Lead capture — a simple on/off here; the agent collects details in conversation.
 // Refined later in the agent's Lead Capture tab (consent, guidance, custom fields).
-// Default off when locked so we never try to save it on a non-Pro plan.
+// Default off when locked so we never try to save it on a plan without it.
 const leadEnabled = ref(!leadCaptureLocked.value)
 const LEAD_FIELDS = [
   { key: 'name', label: 'Name' },
@@ -101,7 +104,7 @@ const leadFields = ref<Record<string, boolean>>({ name: true, email: true, compa
 // Persist the chosen lead-capture config onto the freshly-created/updated agent.
 // Non-fatal: the agent is already created and this is fully editable in its tab.
 const applyLeadCapture = async (agentId: string) => {
-  // Skip entirely on non-Pro plans — the backend gate would 403.
+  // Skip entirely on plans without it — the backend gate would 403.
   if (leadCaptureLocked.value) return
   try {
     const fields = LEAD_FIELDS
@@ -408,9 +411,9 @@ const onAiConfigured = async () => {
       <div class="field lead-field">
         <div class="lead-enable-row">
           <div>
-            <label class="field-label">Lead capture <span v-if="leadCaptureLocked" class="lead-pro">Pro</span></label>
+            <label class="field-label">Lead capture <span v-if="leadCaptureLocked && leadCapturePlan" class="lead-pro">{{ leadCapturePlan }}</span></label>
             <p class="lead-sub">
-              <template v-if="leadCaptureLocked">Capture and qualify leads in conversation. Upgrade to Pro to enable it.</template>
+              <template v-if="leadCaptureLocked">Capture and qualify leads in conversation. {{ leadCaptureUpgradeText }} to turn it on.</template>
               <template v-else>The agent collects contact details in conversation — helps first, then asks at the natural moment.</template>
             </p>
           </div>

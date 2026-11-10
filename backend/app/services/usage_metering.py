@@ -53,7 +53,7 @@ def is_hosted_model(db: Session, organization_id: UUID) -> bool:
 def remaining_message_credits(db: Session, organization_id: UUID) -> Optional[int]:
     """Message credits left in the current billing period, or None when
     unlimited (no enterprise module, no subscription cap, or the check errored
-    — fail open, matching check_message_limit's posture)."""
+    — fail open, matching plan_allows_ai's posture)."""
     try:
         from app.enterprise.services.message_limit import get_remaining_messages
     except ImportError:

@@ -57,6 +57,7 @@ async def notify_customer(
     message: str,
     user_id: Optional[str] = None,
     channels_only: bool = True,
+    attributes: Optional[dict] = None,
 ) -> None:
     """Record a message in the thread and push it to the customer.
 
@@ -75,7 +76,10 @@ async def notify_customer(
             'agent_id': str(session.agent_id) if session.agent_id else None,
             'customer_id': str(session.customer_id) if session.customer_id else None,
             'user_id': user_id,
-            'attributes': {'channel': session.channel, 'handover_notice': True},
+            'attributes': {
+                'channel': session.channel, 'handover_notice': True,
+                'source': MessageSource.SYSTEM.value, **(attributes or {}),
+            },
         })
         result = await deliver_to_customer(db, session, {
             'message': message,

@@ -120,6 +120,28 @@ def _response_payload(response: ChatResponse, session_id: str) -> dict:
     return payload
 
 
+async def send_handoff_contact_form(session: dict, db) -> None:
+    """Ask the visitor for whichever contact details the agent wants and we
+    don't have yet."""
+    session_id = session['session_id']
+    try:
+        handoff_agent = AgentRepository(db).get_agent(session['agent_id'])
+        customer = CustomerRepository(db).get_by_id(session['customer_id'])
+        if handoff_agent and customer:
+            contact_form = build_handoff_contact_form(
+                customer,
+                collect_email=getattr(handoff_agent, 'handoff_collect_email', True),
+                collect_name=getattr(handoff_agent, 'handoff_collect_name', True),
+            )
+            if contact_form:
+                await sio.emit('display_form', {
+                    'form_data': contact_form,
+                    'session_id': session_id,
+                }, room=session_id, namespace=WIDGET_NAMESPACE)
+    except Exception as contact_err:
+        logger.error(f"Failed to emit handoff contact form: {contact_err}")
+
+
 async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatResponse], db) -> None:
     """Send the AI's reply to the conversation, then act on what it asked for:
     the hand-off contact form, a captured lead, or ending the chat."""
@@ -133,22 +155,7 @@ async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatRespo
     # so the human agent can follow up. Fires for both a live transfer and the
     # no-agents/ticket case (request_contact). Only asks for enabled + missing fields.
     if response.transfer_to_human or getattr(response, 'request_contact', False):
-        try:
-            handoff_agent = AgentRepository(db).get_agent(session['agent_id'])
-            customer = CustomerRepository(db).get_by_id(customer_id)
-            if handoff_agent and customer:
-                contact_form = build_handoff_contact_form(
-                    customer,
-                    collect_email=getattr(handoff_agent, 'handoff_collect_email', True),
-                    collect_name=getattr(handoff_agent, 'handoff_collect_name', True),
-                )
-                if contact_form:
-                    await sio.emit('display_form', {
-                        'form_data': contact_form,
-                        'session_id': session_id,
-                    }, room=session_id, namespace=WIDGET_NAMESPACE)
-        except Exception as contact_err:
-            logger.error(f"Failed to emit handoff contact form: {contact_err}")
+        await send_handoff_contact_form(session, db)
 
     # Lead capture: the agent collected the details conversationally and set
     # request_lead_capture (like transfer_to_human). Persist the structured

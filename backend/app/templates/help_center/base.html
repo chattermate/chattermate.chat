@@ -65,6 +65,10 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
       --sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
       --display: 'Sora', var(--sans);
       --mono: 'JetBrains Mono', ui-monospace, monospace;
+      /* ChatterMate mark in the "Powered by" chip (app/core/brand.py). */
+      --logo-ink: {{ brand_colors.ink }};
+      --logo-lime: {{ brand_colors.lime }};
+      --logo-coral: {{ brand_colors.coral }};
     }
     * { box-sizing: border-box; }
     /* Author display rules (e.g. .hc-card { display:flex }) otherwise beat the UA
@@ -250,8 +254,10 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
     .hc-footer-org .hc-name { font-size: 15px; }
     .hc-powered { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 7px 13px; border: 1px solid #ececf2; border-radius: 999px; font-size: 12.5px; color: #8a90a0; }
     .hc-powered strong { display: inline-flex; align-items: center; gap: 6px; color: #1a1b25; font-weight: 600; }
-    .hc-cm-mark { width: 15px; height: 15px; border-radius: 5px 5px 5px 1px; background: #c9f24e; display: inline-flex; align-items: center; justify-content: center; gap: 1.5px; }
-    .hc-cm-mark i { width: 2px; height: 2px; border-radius: 50%; background: #0b0c10; }
+    .hc-cm-mark { width: 15px; height: 15px; flex-shrink: 0; }
+    .hc-cm-mark rect { fill: var(--logo-ink); }
+    .hc-cm-mark .ai { fill: var(--logo-lime); }
+    .hc-cm-mark .human { fill: var(--logo-coral); }
 
     /* progressive enhancement: only hide things once JS takes over */
     .js .hc-tag { display: none; }
@@ -366,10 +372,12 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
         {% endif %}
         <span class="hc-name">{{ row.organization.name }}</span>
       </div>
+      {% if not hide_branding %}
       <a class="hc-powered" href="https://chattermate.chat" target="_blank" rel="noopener">
         <span>Powered by</span>
-        <strong><span class="hc-cm-mark"><i></i><i></i><i></i></span> ChatterMate</strong>
+        <strong><svg class="hc-cm-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16"/><circle class="ai" cx="22" cy="32" r="10"/><circle class="human" cx="42" cy="32" r="10"/></svg> ChatterMate</strong>
       </a>
+      {% endif %}
     </div>
   </footer>
 
