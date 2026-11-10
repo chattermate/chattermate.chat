@@ -2,6 +2,7 @@
 import { createHostActions } from './loader/hostActions.js'
 import { createPushLayout, sheetCss } from './loader/pushLayout.js'
 import { createShopifyCart } from './loader/shopifyCart.js'
+import { createLookCache } from './loader/lookCache.js'
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
@@ -131,6 +132,12 @@ import {
   // built-in default. The Ask AI palette has its own defaults but must still honour
   // an explicitly configured size.
   const sizeIsExplicit = { width: false, height: false }
+  // The placement every widget starts with, before the dashboard's or the developer's.
+  const BUILT_IN_DISPLAY = {}
+  ;['displayMode', 'side', 'launcher', 'containerWidth', 'containerHeight', 'sidebarWidth',
+    'searchPlaceholder', 'launcherBottom', 'launcherRight', 'zIndex'].forEach(function (key) {
+    BUILT_IN_DISPLAY[key] = config[key]
+  })
 
   // The palette is the surface for the ask-anything styles, and for the search-bar
   // trigger whatever the style — a box labelled "Ask anything" that opens a corner
@@ -177,10 +184,15 @@ import {
   // validated server-side) arriving over CUSTOMIZATION_UPDATE. Fills only the keys
   // the developer didn't set. Types are re-checked because this crosses a frame.
   function applyDashboardDisplay(display) {
-    if (!display || typeof display !== 'object') return
     const set = function (configKey, value) {
       if (!devOverrides[configKey]) config[configKey] = value
     }
+    // Each message is the whole picture: a setting it leaves out is back at its
+    // default, not left at what a cached look (lookCache) had.
+    Object.keys(BUILT_IN_DISPLAY).forEach(function (key) { set(key, BUILT_IN_DISPLAY[key]) })
+    if (!devOverrides.containerWidth) sizeIsExplicit.width = false
+    if (!devOverrides.containerHeight) sizeIsExplicit.height = false
+    if (!display || typeof display !== 'object') return
     if (DISPLAY_MODES.indexOf(display.mode) !== -1) set('displayMode', display.mode)
     if (display.side === 'left' || display.side === 'right') set('side', display.side)
     if (typeof display.launcher === 'boolean') set('launcher', display.launcher)
@@ -208,7 +220,8 @@ import {
   let launcherLogoVersion = 0
 
   function applyDashboardLauncher(launcher, logoUrl) {
-    const picked = pickLauncherStyle(launcher)
+    // As with placement, a key the message leaves out goes back to its default.
+    const picked = { ...LAUNCHER_DEFAULTS, ...pickLauncherStyle(launcher) }
     Object.keys(picked).forEach(function (key) {
       if (!devOverrides['launcherStyle.' + key]) config.launcherStyle[key] = picked[key]
     })
@@ -220,6 +233,29 @@ import {
       config.launcherLogoUrl = url
       config.launcherLogoFailed = false
     }
+  }
+
+  // The dashboard's look for the launcher: colour, chat style, placement and launcher
+  // settings. From the frame's CUSTOMIZATION_UPDATE, or from the copy the last one
+  // left in the site's storage (lookCache). Every field is checked here either way.
+  function applyLook(look) {
+    if (isValidHexColor(look.chat_bubble_color)) config.chatBubbleColor = look.chat_bubble_color
+    if (typeof look.chat_style === 'string') config.chatStyle = look.chat_style
+    applyDashboardDisplay(look.widget_display)
+    applyDashboardLauncher(look.launcher, look.launcher_logo_url)
+    // ASK_ANYTHING sits a little lower than the other styles (desktop only).
+    // A per-style default, not an override: geometry the developer set via
+    // init()/chattermateConfig (devOverrides) always wins.
+    if (!isMobileDevice() && !devOverrides.containerBottom) {
+      config.containerBottom = look.chat_style === 'ASK_ANYTHING' ? 90 : 100
+    }
+  }
+
+  // Keyed by the widget ID at the time of use: init() may set it after load.
+  function lookCache() {
+    let storage = null
+    try { storage = window.localStorage } catch { /* blocked: no cache */ }
+    return createLookCache(storage, window.chattermateId)
   }
 
   function currentLauncherLook() {
@@ -1612,6 +1648,10 @@ import {
   // Initialize function to create and append elements
   function initialize() {
     isDestroyed = false
+    // A returning visitor's launcher can show now, in the look it had last time,
+    // instead of waiting seconds for the frame. The frame's settings still follow.
+    const cachedLook = lookCache().read()
+    if (cachedLook) applyLook(cachedLook)
     updateStyles()
 
     // Create chat button with icon
@@ -1676,6 +1716,7 @@ import {
     // The button just entered the DOM: its text (search placeholder) and, for a
     // rebuilt launcher, the icon or logo it already had.
     syncLauncherContent()
+    if (cachedLook) revealWhenLogoReady()
 
     let isOpen = false
     // While the frame starts: the listener for this page refusing it, and the host
@@ -2504,30 +2545,18 @@ import {
     }
     if (event.data.type === 'CUSTOMIZATION_UPDATE') {
       const customData = event.data.data;
-      const newColor = customData.chat_bubble_color;
-      config.chatBubbleColor = isValidHexColor(newColor) ? newColor : config.chatBubbleColor;
-      if (typeof customData.chat_style === 'string') {
-        config.chatStyle = customData.chat_style;
-      }
+      if (!customData || typeof customData !== 'object') return
+      // Applied before revealButton() below, so the launcher first appears already
+      // in its final colour, mode and position — no jump.
+      applyLook(customData)
+      lookCache().save(customData)
 
       // Store chat initiation messages
       if (customData.chat_initiation_messages && Array.isArray(customData.chat_initiation_messages)) {
         config.chatInitiationMessages = customData.chat_initiation_messages;
       }
 
-      // Dashboard "Widget placement" defaults. Applied before revealButton() below,
-      // so the launcher first appears already in its final mode/position — no jump.
-      applyDashboardDisplay(customData.widget_display)
-      applyDashboardLauncher(customData.launcher, customData.launcher_logo_url)
-
-      // ASK_ANYTHING sits a little lower than the other styles (desktop only).
-      // A per-style default, not an override: geometry the developer set via
-      // init()/chattermateConfig (devOverrides) always wins.
-      if (!isMobileDevice()) {
-        if (!devOverrides.containerBottom) {
-          config.containerBottom = customData.chat_style === 'ASK_ANYTHING' ? 90 : 100;
-        }
-      } else {
+      if (isMobileDevice()) {
         // Handle mobile ASK_ANYTHING style. This handler is outside initialize(), so
         // reach the open-state and topbar through the controller/DOM, not closures.
         const chatOpen = controller ? controller.isOpen() : false

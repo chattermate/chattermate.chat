@@ -147,6 +147,19 @@ test.describe('widget launcher', () => {
     }).toEqual([360, 520])
   })
 
+  test('a returning visitor sees the launcher without waiting for the chat to load @widget', async ({ agent, adminApi, widget }) => {
+    await customizeAgent(adminApi, agent.id, { customization_metadata: { launcher: { size: 'sm', shape: 'circle' } } })
+    await widget.embed()
+    await expect.poll(() => widget.launcherShown()).toBe(true)
+    await expect.poll(() => width(widget.launcher)).toBe(48)
+
+    await widget.returnWithChatHeldBack()
+    // Shown straight away, in the look it had last time, with the chat still loading
+    await expect.poll(() => widget.launcherShown(), { timeout: 3000 }).toBe(true)
+    expect(await width(widget.launcher)).toBe(48)
+    await expect(widget.launcher).toHaveCSS('border-top-left-radius', '50%')
+  })
+
   test('the site\'s own launcherStyle wins over the dashboard @widget', async ({ agent, adminApi, widget }) => {
     await customizeAgent(adminApi, agent.id, { customization_metadata: { launcher: { size: 'lg' } } })
     await widget.embed({ config: { launcherStyle: { size: 'sm' } } })
