@@ -797,3 +797,13 @@ def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools
     assert "publishedAt" in query
     cached = json.loads(get_redis.return_value.setex.call_args.args[2])
     assert cached["products"][0]["cart_variant_id"] == "111"
+
+
+def test_search_products_sends_the_widened_query(shopify_tools):
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"data": {"products": {"edges": [], "pageInfo": {}}}}
+    with patch("requests.post", return_value=response) as post:
+        shopify_tools.search_products("backpacks")
+    assert post.call_args.kwargs["json"]["variables"]["searchTerm"] == (
+        "((backpacks OR backpack*)) AND status:active AND inventory_total:>0"
+    )

@@ -20,6 +20,7 @@ from app.core.logger import get_logger
 from app.services.shopify import ShopifyService
 from app.services.shopify_urls import shopify_admin_url
 from app.repositories.chat import ChatRepository
+from app.tools.shopify_search import match_singulars
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.database import SessionLocal
 from app.models.organization import Organization
@@ -476,7 +477,7 @@ class ShopifyTools(Toolkit):
             
             # Add status:active filter to only return active products (exclude archived and draft)
             # Add inventory_total:>0 to only return in-stock products
-            filtered_query = f"({query}) AND status:active AND inventory_total:>0"
+            filtered_query = f"({match_singulars(query)}) AND status:active AND inventory_total:>0"
 
             # Add price filters if provided
             if min_price is not None:
