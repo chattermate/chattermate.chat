@@ -8664,6 +8664,8 @@ export interface components {
             price_formatted?: string | null;
             /** Variant Title */
             variant_title?: string | null;
+            /** Cart Variant Id */
+            cart_variant_id?: string | null;
         };
         /** ShopifyProductImage */
         ShopifyProductImage: {
