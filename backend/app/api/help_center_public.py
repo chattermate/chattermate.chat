@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.utils.client_ip import forwarded_client_ip
 from app.api.help_center_images import router as help_center_images_router
+from app.core.brand import BRAND_COLORS
 from app.core.config import settings
 from app.core.error_handlers import ClientSafeHTTPException, install_error_handlers
 from app.database import get_db, release_connection
@@ -98,6 +99,7 @@ public_app.include_router(
     prefix=f"{settings.API_V1_STR}/help-center",
 )
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["brand_colors"] = BRAND_COLORS
 
 PAGE_CACHE_CONTROL = "public, max-age=60"
 ASK_LIMIT_PER_MINUTE = 10

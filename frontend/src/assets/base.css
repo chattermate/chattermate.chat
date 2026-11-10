@@ -44,6 +44,15 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.2;
 }
 
+/* "ChatterMate" wordmark next to the BrandMark: Bricolage Grotesque, 800, condensed. */
+.brand-wordmark {
+  font-family: var(--font-brand);
+  font-weight: 800;
+  font-stretch: 85%;
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
 /* Inputs inherit font */
 input, textarea, select, button {
   font-family: var(--font-sans);

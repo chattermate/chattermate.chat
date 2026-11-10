@@ -397,26 +397,26 @@ window.chattermateConfig;
       #${config.buttonId} .cm-ring.r2 { animation-delay: 1.2s; }
       #${config.buttonId}.active .cm-ring { display: none; }
 
-      /* Pulsing 3-dot mark (closed). Absolutely centered so it stays pinned to the
+      /* Pulsing two-dot mark (closed): the ChatterMate mark's AI + human dots, drawn in
+         the launcher's contrast colour so it reads on any brand colour. Absolutely centered so it stays pinned to the
          button's center regardless of the button's display mode (flex on desktop,
          block when .mobile-closed) or viewport. */
       #${config.buttonId} .cm-dots {
         display: flex;
-        gap: 5px;
+        gap: 3px;
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
       }
       #${config.buttonId} .cm-dot {
-        width: 7px;
-        height: 7px;
+        width: 13px;
+        height: 13px;
         border-radius: 50%;
         background: currentColor;
         animation: chattermate-pulse 1.5s ease-in-out infinite;
       }
-      #${config.buttonId} .cm-dot:nth-child(2) { animation-delay: .18s; }
-      #${config.buttonId} .cm-dot:nth-child(3) { animation-delay: .36s; }
+      #${config.buttonId} .cm-dot:nth-child(2) { animation-delay: .3s; }
       #${config.buttonId}.active .cm-dots { display: none; }
 
       /* Chevron (open) — absolutely centered, pinned to the button center. */
@@ -1468,7 +1468,7 @@ window.chattermateConfig;
     button.innerHTML = `
       <span class="cm-ring"></span>
       <span class="cm-ring r2"></span>
-      <div class="cm-dots"><span class="cm-dot"></span><span class="cm-dot"></span><span class="cm-dot"></span></div>
+      <div class="cm-dots"><span class="cm-dot"></span><span class="cm-dot"></span></div>
       <span class="cm-chevron">&#8964;</span>
       <span class="cm-search">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
@@ -1749,7 +1749,7 @@ window.chattermateConfig;
       logoSvg.setAttribute('viewBox', '0 0 60 60');
       logoSvg.setAttribute('fill', 'none');
       const logoPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      logoPath.setAttribute('d', 'M18 12 H42 A6 6 0 0 1 48 18 V42 A6 6 0 0 1 42 48 H18 A6 6 0 0 1 12 42 V18 A6 6 0 0 1 18 12 Z M17 30 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M26 30 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M35 30 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z');
+      logoPath.setAttribute('d', 'M21 12 H39 A9 9 0 0 1 48 21 V39 A9 9 0 0 1 39 48 H21 A9 9 0 0 1 12 39 V21 A9 9 0 0 1 21 12 Z M20.4 30 a4.5 4.5 0 1 0 9 0 a4.5 4.5 0 1 0 -9 0 Z M30.6 30 a4.5 4.5 0 1 0 9 0 a4.5 4.5 0 1 0 -9 0 Z');
       logoPath.setAttribute('fill-rule', 'evenodd');
       logoPath.setAttribute('fill', 'currentColor');
       logoPath.setAttribute('opacity', '0.6');

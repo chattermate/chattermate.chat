@@ -20,6 +20,7 @@ import type { AgentCustomization } from '@/types/agent'
 import { resolveUploadUrl } from '@/config/api'
 import { orbSvgDataUri, resolveOrbStyle } from '@/utils/orb'
 import { themeCssVars } from '@/webclient/widget-theme'
+import BrandMark from '@/components/common/BrandMark.vue'
 import '@/webclient/widget-surface.css'
 import { useAgentChat } from '@/composables/useAgentChat'
 import WebFont from 'webfontloader'
@@ -564,8 +565,8 @@ const handleInitiationClick = () => {
         <div class="toggle-container" v-if="!isExpanded || customization.showBubblePreview || customization.showInitiationPreview">
             <button class="chat-toggle" :class="{ preview: customization.showBubblePreview || customization.showInitiationPreview }" :style="chatIconStyles"
                 @click="isExpanded = !isExpanded">
-                <!-- New launcher mark: 3 dots in the contrast ink (matches chattermate.js) -->
-                <div class="cm-toggle-dots"><span></span><span></span><span></span></div>
+                <!-- Launcher mark: the ChatterMate AI + human dots in the contrast ink (matches chattermate.js) -->
+                <div class="cm-toggle-dots"><span></span><span></span></div>
             </button>
         </div>
 
@@ -617,12 +618,7 @@ const handleInitiationClick = () => {
             
             <!-- Powered by footer for welcome message -->
             <div v-if="showBranding" class="powered-by-welcome" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+                <BrandMark class="chattermate-logo" :size="15" />
                 <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
@@ -720,12 +716,7 @@ const handleInitiationClick = () => {
 
             <!-- Add powered by footer -->
             <div v-if="showBranding" class="powered-by" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+                <BrandMark class="chattermate-logo" :size="15" />
                 <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
@@ -783,13 +774,13 @@ const handleInitiationClick = () => {
 
 .cm-toggle-dots {
     display: flex;
-    gap: 5px;
+    gap: 3px;
     align-items: center;
     justify-content: center;
 }
 .cm-toggle-dots span {
-    width: 7px;
-    height: 7px;
+    width: 13px;
+    height: 13px;
     border-radius: 50%;
     background: currentColor;
 }
