@@ -232,6 +232,18 @@ export class ChatWidget {
     })
   }
 
+  /**
+   * The visitor comes back to the site on a network so slow that the chat itself
+   * never arrives: the widget frame's request is held for the rest of the test.
+   */
+  async returnWithChatHeldBack(): Promise<void> {
+    await step('Customer comes back while the chat is slow to load', async () => {
+      await this.page.route(`**/widgets/${this.widgetId}/frame**`, () => new Promise<void>(() => {}))
+      // The held frame keeps the page's load event from firing
+      await this.page.reload({ waitUntil: 'domcontentloaded' })
+    })
+  }
+
   /** Opens a page that already carries this widget, e.g. a help center article. */
   async visit(url: string): Promise<void> {
     await step(`Customer opens ${url}`, async () => {
@@ -455,6 +467,11 @@ export class ChatWidget {
 
   get launcher(): Locator {
     return this.page.locator('#chattermate-button')
+  }
+
+  /** Whether the launcher has been revealed: until then it is in the page but transparent. */
+  async launcherShown(): Promise<boolean> {
+    return this.launcher.evaluate((button) => !button.classList.contains('chattermate-pending'))
   }
 
   /** The launcher's chosen icon (an inline SVG); absent while it shows the default dots. */
