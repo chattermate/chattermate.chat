@@ -22,6 +22,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.config import settings
 from app.models.shopify import ShopifyShop
 from app.services import shopify_tokens
@@ -52,9 +54,11 @@ def token_response(status=200, body=None, text=""):
 @pytest.fixture(autouse=True)
 def fresh_module_state(monkeypatch):
     shopify_tokens._migration_failed_at.clear()
+    shopify_tokens._dead_refresh_tokens.clear()
     monkeypatch.setattr(settings, "SHOPIFY_MIGRATE_LEGACY_TOKENS", True)
     yield
     shopify_tokens._migration_failed_at.clear()
+    shopify_tokens._dead_refresh_tokens.clear()
 
 
 @pytest.fixture
@@ -135,6 +139,45 @@ def test_a_dead_refresh_token_asks_for_reauth_and_leaves_the_row_alone(db, token
 
     row = stored(db)
     assert (row.access_token, row.refresh_token) == ("shpat_old", "shprt_old")
+
+
+def test_a_dead_refresh_token_is_not_sent_again(db, token_endpoint):
+    """Retrying a refresh token Shopify refused can't succeed: later callers
+    fail fast instead of calling Shopify on every request."""
+    token_endpoint.return_value = token_response(401, {"error": "invalid_request"})
+    shop = expiring_shop(db)
+
+    for _ in range(3):
+        with pytest.raises(ShopifyReauthRequired):
+            get_access_token(shop)
+
+    assert token_endpoint.call_count == 1
+
+
+def test_an_expired_refresh_token_is_not_sent(db, token_endpoint):
+    shop = expiring_shop(db)
+    shop.refresh_token_expires_at = now() - timedelta(minutes=1)
+    db.commit()
+
+    with pytest.raises(ShopifyReauthRequired):
+        get_access_token(shop)
+    token_endpoint.assert_not_called()
+
+
+def test_a_new_token_revives_a_shop_whose_refresh_token_died(db, token_endpoint):
+    token_endpoint.return_value = token_response(401, {"error": "invalid_request"})
+    shop = expiring_shop(db)
+    with pytest.raises(ShopifyReauthRequired):
+        get_access_token(shop)
+
+    token_endpoint.return_value = token_response(body=NEW_TOKEN)
+    shopify_tokens.acquire_token(db, SHOP, lambda: shopify_tokens.exchange_session_token(SHOP, "session"))
+    db.query(ShopifyShop).filter_by(shop_domain=SHOP).update(
+        {"access_token_expires_at": now() - timedelta(minutes=1)})
+    db.commit()
+    token_endpoint.return_value = token_response(body={**NEW_TOKEN, "access_token": "shpat_newer"})
+
+    assert get_access_token(stored(db)) == "shpat_newer"
 
 
 def test_a_transient_refresh_failure_keeps_using_a_token_that_has_not_expired(db, token_endpoint):
@@ -223,6 +266,25 @@ def test_a_401_for_a_token_someone_already_replaced_uses_theirs(db, token_endpoi
     token_endpoint.assert_not_called()
 
 
+def test_a_replacement_token_that_is_itself_expired_is_renewed(db, token_endpoint):
+    expiring_shop(db, expires_in=timedelta(minutes=-10))
+    db.query(ShopifyShop).filter_by(shop_domain=SHOP).update({"access_token": "shpat_by_other_worker"})
+    db.commit()
+    stale = ShopifyShop(shop_domain=SHOP, access_token="shpat_old", refresh_token="shprt_old",
+                        access_token_expires_at=now() + timedelta(minutes=30))
+
+    assert get_access_token(stale, rejected_token="shpat_old") == "shpat_new"
+    assert token_endpoint.call_count == 1
+
+
+def test_a_200_response_body_is_not_read_for_the_rejection_check(db, token_endpoint):
+    shop = expiring_shop(db, expires_in=timedelta(minutes=30))
+    response = MagicMock(status_code=200)
+    type(response).text = property(lambda self: pytest.fail("body decoded for a 200"))
+
+    assert call_admin_api(shop, lambda token: response) is response
+
+
 def test_a_401_that_cannot_be_renewed_returns_shopifys_answer(db, token_endpoint):
     token_endpoint.return_value = token_response(401, {"error": "invalid_request"})
     shop = expiring_shop(db, expires_in=timedelta(minutes=30))
@@ -307,6 +369,99 @@ def test_migration_can_be_paused(db, token_endpoint, monkeypatch):
 
 
 # --- New tokens ---------------------------------------------------------------------
+
+def test_acquiring_for_a_new_store_another_process_just_created_keeps_our_token(db, token_endpoint):
+    """Two first loads of a new install: the other process inserted the row
+    between our lock (no row yet) and our insert. Our token is the newer one."""
+    real_commit = db.commit
+    calls = {"n": 0}
+
+    def commit_after_rival_insert():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            db.rollback()
+            db.add(ShopifyShop(shop_domain=SHOP, is_installed=True, access_token="shpat_rival",
+                               refresh_token="shprt_rival"))
+            real_commit()
+            raise IntegrityError("insert", {}, Exception("duplicate shop_domain"))
+        real_commit()
+
+    db.commit = commit_after_rival_insert
+    try:
+        shopify_tokens.acquire_token(db, SHOP, lambda: shopify_tokens.exchange_session_token(SHOP, "session"))
+    finally:
+        db.commit = real_commit
+
+    row = stored(db)
+    assert (row.access_token, row.refresh_token) == ("shpat_new", "shprt_new")
+    assert db.query(ShopifyShop).count() == 1
+
+
+# --- Keep-alive -----------------------------------------------------------------------
+
+def test_keep_alive_renews_a_refresh_token_that_is_getting_old(db, token_endpoint):
+    shop = expiring_shop(db, expires_in=timedelta(minutes=30))
+    shop.refresh_token_expires_at = now() + timedelta(days=20)
+    db.commit()
+
+    assert shopify_tokens.keep_alive(shop) is True
+    assert stored(db).refresh_token == "shprt_new"
+
+
+def test_a_request_never_refreshes_just_because_the_refresh_token_is_old(db, token_endpoint):
+    """Only the sweep looks at the refresh token's age, so a short-lived refresh
+    token can't turn every request into a refresh."""
+    shop = expiring_shop(db, expires_in=timedelta(minutes=30))
+    shop.refresh_token_expires_at = now() + timedelta(days=20)
+    db.commit()
+
+    assert get_access_token(shop) == "shpat_old"
+    token_endpoint.assert_not_called()
+
+
+def test_keep_alive_leaves_healthy_tokens_alone(db, token_endpoint):
+    shop = expiring_shop(db, expires_in=timedelta(minutes=30))
+
+    assert shopify_tokens.keep_alive(shop) is False
+    token_endpoint.assert_not_called()
+
+
+def test_the_sweep_migrates_idle_legacy_stores_and_reports_dead_ones(db, token_endpoint):
+    from app.workers.shopify_token_keepalive import keep_tokens_alive
+    add_shop(db, access_token="shpat_legacy")
+    dead = ShopifyShop(shop_domain="dead.myshopify.com", is_installed=True, access_token="shpat_x",
+                       refresh_token="shprt_x", access_token_expires_at=now() - timedelta(hours=2),
+                       refresh_token_expires_at=now() - timedelta(days=1))
+    healthy = ShopifyShop(shop_domain="fine.myshopify.com", is_installed=True, access_token="shpat_y",
+                          refresh_token="shprt_y", access_token_expires_at=now() + timedelta(minutes=30),
+                          refresh_token_expires_at=now() + timedelta(days=85))
+    uninstalled = ShopifyShop(shop_domain="gone.myshopify.com", is_installed=False, access_token="shpat_z")
+    db.add_all([dead, healthy, uninstalled])
+    db.commit()
+
+    assert keep_tokens_alive() == {"renewed": 1, "reauth_required": 1, "failed": 0}
+    assert token_endpoint.call_args.kwargs["data"]["subject_token"] == "shpat_legacy"
+    assert stored(db).refresh_token == "shprt_new"
+
+
+def test_one_failing_store_does_not_stop_the_sweep(db, token_endpoint):
+    from app.workers.shopify_token_keepalive import keep_tokens_alive
+    add_shop(db, access_token="shpat_legacy")
+    db.add(ShopifyShop(shop_domain="other.myshopify.com", is_installed=True, access_token="shpat_o",
+                       refresh_token="shprt_o", access_token_expires_at=now() - timedelta(hours=1)))
+    db.commit()
+
+    def answer(url, **kwargs):
+        if "other.myshopify.com" in url:
+            raise RuntimeError("boom")
+        return token_response(body=NEW_TOKEN)
+    token_endpoint.side_effect = answer
+
+    counts = keep_tokens_alive()
+
+    assert counts["renewed"] == 1
+    assert counts["failed"] == 1
+
 
 def test_acquiring_a_token_replaces_the_stored_pair(db, token_endpoint):
     expiring_shop(db, expires_in=timedelta(minutes=30))

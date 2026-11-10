@@ -41,6 +41,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterator, Optional, Tuple
 
 import requests
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -64,6 +65,11 @@ TOKEN_REQUEST_TIMEOUT_SECONDS = 15
 # After a failed legacy-token exchange, keep using the old token this long
 # before trying again, rather than calling Shopify on every request.
 MIGRATION_RETRY_AFTER = timedelta(minutes=15)
+# Refresh tokens last 90 days and only a refresh extends them, so a store whose
+# agent makes no Shopify calls would lose its token. Renew once less than this
+# remains (the keep-alive sweep in app.workers.shopify_token_keepalive does it
+# for idle stores).
+REFRESH_TOKEN_RENEW_WITHIN = timedelta(days=60)
 
 # Shopify's 403 body once it stops accepting non-expiring tokens (April 2027).
 NON_EXPIRING_REJECTED = "Non-expiring access tokens are no longer accepted"
@@ -209,6 +215,9 @@ def migrate_legacy_token(shop_domain: str, legacy_token: str) -> IssuedToken:
 _shop_locks: Dict[str, threading.Lock] = {}
 _shop_locks_guard = threading.Lock()
 _migration_failed_at: Dict[str, datetime] = {}
+# The refresh token Shopify last refused per shop. Retrying it can't succeed,
+# so later callers fail fast until a new token is acquired.
+_dead_refresh_tokens: Dict[str, str] = {}
 
 
 @contextmanager
@@ -248,12 +257,28 @@ def acquire_token(db: Session, shop_domain: str, issue: Callable[[], IssuedToken
         if shop is None:
             shop = ShopifyShop(shop_domain=shop_domain)
             db.add(shop)
-        issued.apply_to(shop)
-        shop.is_installed = True
-        db.commit()
+        _store_new_token(shop, issued)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Another process created the row first (a new install's first
+            # load, twice). Our token is the newer one and retired theirs, so
+            # it is the one to keep.
+            db.rollback()
+            shop = lock_shop_row(db, shop_domain)
+            if shop is None:
+                raise
+            _store_new_token(shop, issued)
+            db.commit()
         db.refresh(shop)
         _migration_failed_at.pop(shop_domain, None)
+        _dead_refresh_tokens.pop(shop_domain, None)
         return shop
+
+
+def _store_new_token(shop: ShopifyShop, issued: IssuedToken) -> None:
+    issued.apply_to(shop)
+    shop.is_installed = True
 
 
 # --- Using a token ------------------------------------------------------------
@@ -274,6 +299,18 @@ def needs_renewal(shop: ShopifyShop, now: Optional[datetime] = None) -> bool:
         return failed_at is None or now - failed_at >= MIGRATION_RETRY_AFTER
     expires_at = shop.access_token_expires_at
     return expires_at is None or expires_at - REFRESH_MARGIN <= now
+
+
+def keep_alive_due(shop: ShopifyShop, now: Optional[datetime] = None) -> bool:
+    """needs_renewal, or the refresh token is getting old. Checked only by the
+    periodic sweep, never per request: if Shopify ever issued a short-lived
+    refresh token, a per-request check would refresh on every call."""
+    now = now or _utcnow()
+    if needs_renewal(shop, now):
+        return True
+    refresh_expires_at = shop.refresh_token_expires_at
+    return bool(shop.refresh_token) and refresh_expires_at is not None \
+        and refresh_expires_at - REFRESH_TOKEN_RENEW_WITHIN <= now
 
 
 def _renew(shop: ShopifyShop, rejected: bool) -> Optional[IssuedToken]:
@@ -298,9 +335,14 @@ def _renew(shop: ShopifyShop, rejected: bool) -> Optional[IssuedToken]:
         logger.info(f"Migrated {shop.shop_domain} to an expiring offline token")
         return issued
 
+    refresh_expires_at = shop.refresh_token_expires_at
+    if _dead_refresh_tokens.get(shop.shop_domain) == shop.refresh_token or (
+            refresh_expires_at is not None and refresh_expires_at <= _utcnow()):
+        raise ShopifyReauthRequired(f"The Shopify refresh token for {shop.shop_domain} is no longer valid")
     try:
         return refresh_access_token(shop.shop_domain, shop.refresh_token)
     except ShopifyReauthRequired:
+        _dead_refresh_tokens[shop.shop_domain] = shop.refresh_token
         logger.error(f"Shopify refresh token for {shop.shop_domain} is no longer valid; the merchant must reopen the app")
         raise
     except ShopifyTokenError as e:
@@ -329,18 +371,31 @@ def get_access_token(shop: ShopifyShop, *, rejected_token: Optional[str] = None)
     `shop` may be detached."""
     if rejected_token is None and not needs_renewal(shop):
         return shop.access_token
+    return _renew_if_due(shop, needs_renewal, rejected_token)
 
+
+def keep_alive(shop: ShopifyShop) -> bool:
+    """For the keep-alive sweep: renew the shop's token if `keep_alive_due`.
+    True when a new token was stored."""
+    if not keep_alive_due(shop):
+        return False
+    before = shop.access_token
+    return _renew_if_due(shop, keep_alive_due, None) != before
+
+
+def _renew_if_due(shop: ShopifyShop, due_check: Callable[[ShopifyShop], bool],
+                  rejected_token: Optional[str]) -> str:
+    """Under the shop's locks, re-read its row and renew the token if it is still
+    due (another caller may have renewed it while we waited)."""
     with shop_token_lock(shop.shop_domain), Session(bind=database.engine, autoflush=False) as db:
         row = lock_shop_row(db, shop.shop_domain)
         if row is None or not row.access_token:
             db.rollback()
             raise ShopifyReauthRequired(f"No Shopify token stored for {shop.shop_domain}")
 
-        if rejected_token is not None:
-            # Someone renewed it while we waited: theirs is the one to use.
-            due = row.access_token == rejected_token
-        else:
-            due = needs_renewal(row)
+        # A rejected token is renewed unless someone already replaced it while
+        # we waited; then theirs is used, if it isn't itself due.
+        due = (rejected_token is not None and row.access_token == rejected_token) or due_check(row)
 
         issued = _renew(row, rejected=rejected_token is not None) if due else None
         if issued is not None:
@@ -366,9 +421,10 @@ def admin_headers(access_token: str) -> Dict[str, str]:
     }
 
 
-def is_token_rejected(status_code: int, body: str) -> bool:
-    """Shopify refused the token itself, as opposed to the request."""
-    return status_code == 401 or (status_code == 403 and NON_EXPIRING_REJECTED in (body or ""))
+def is_token_rejected(status_code: int, body: Callable[[], str]) -> bool:
+    """Shopify refused the token itself, as opposed to the request. `body` is
+    only read for a 403, so a large success response isn't decoded twice."""
+    return status_code == 401 or (status_code == 403 and NON_EXPIRING_REJECTED in (body() or ""))
 
 
 def call_admin_api(shop: ShopifyShop, send: Callable[[str], requests.Response]) -> requests.Response:
@@ -377,7 +433,7 @@ def call_admin_api(shop: ShopifyShop, send: Callable[[str], requests.Response]) 
     the rejected response is returned for the caller's usual error handling."""
     token = get_access_token(shop)
     response = send(token)
-    if not is_token_rejected(response.status_code, response.text):
+    if not is_token_rejected(response.status_code, lambda: response.text):
         return response
     try:
         token = get_access_token(shop, rejected_token=token)
@@ -393,7 +449,7 @@ async def call_admin_api_async(
     """`call_admin_api` for async callers; `send` returns (status, body text)."""
     token = await get_access_token_async(shop)
     status, body = await send(token)
-    if not is_token_rejected(status, body):
+    if not is_token_rejected(status, lambda: body):
         return status, body
     try:
         token = await get_access_token_async(shop, rejected_token=token)

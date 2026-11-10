@@ -319,7 +319,8 @@ async def delete_shop(
             }
             """
             
-            response = shopify_tokens.call_admin_api(db_shop, lambda token: requests.post(
+            # Off the event loop: renewing the token and the request both block.
+            response = await run_in_threadpool(shopify_tokens.call_admin_api, db_shop, lambda token: requests.post(
                 uninstall_url,
                 headers=shopify_tokens.admin_headers(token),
                 json={"query": mutation},
