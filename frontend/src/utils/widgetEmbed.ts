@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { getApiUrl } from '@/config/api'
-import { WIDGET_INSTALL_GUIDE_URL } from '@/config/docs'
+import { WIDGET_INSTALL_GUIDE_URL, WORDPRESS_PLUGIN_URL } from '@/config/docs'
 
 // The loader (chattermate.min.js) is served by THIS frontend, so resolve its
 // origin at snippet-generation time from where the dashboard is running — no
@@ -96,7 +96,7 @@ export function buildAiInstallPrompt(snippet: string): string {
     '',
     '- React or Vite: add it once to index.html, not inside a component.',
     '- Next.js: load it with next/script in the root layout.',
-    '- WordPress: use a header and footer code plugin.',
+    `- WordPress: install the ChatterMate plugin (${WORDPRESS_PLUGIN_URL}) and enter the widget ID from the snippet.`,
     '- Change nothing else on the site.',
     `Install guide: ${WIDGET_INSTALL_GUIDE_URL}`,
   ].join('\n')
