@@ -21,7 +21,7 @@ from app.services.shopify import ShopifyService
 from app.services.shopify_urls import shopify_admin_url
 from app.services.shopify_tokens import admin_headers, call_admin_api
 from app.repositories.chat import ChatRepository
-from app.tools.shopify_search import match_singulars
+from app.tools.shopify_search import catalog_filters, match_singulars
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.database import SessionLocal
 from app.models.organization import Organization
@@ -478,17 +478,10 @@ class ShopifyTools(Toolkit):
             
             # Add status:active filter to only return active products (exclude archived and draft)
             # Add inventory_total:>0 to only return in-stock products
-            filtered_query = f"({match_singulars(query)}) AND status:active AND inventory_total:>0"
-
-            # Add price filters if provided
-            if min_price is not None:
-                filtered_query += f" AND price:>={min_price}"
-            if max_price is not None:
-                filtered_query += f" AND price:<={max_price}"
-
-            # Add vendor filter if provided
-            if vendor:
-                filtered_query += f" AND vendor:'{vendor}'"
+            filtered_query = " AND ".join([
+                f"({match_singulars(query)})", "status:active", "inventory_total:>0",
+                *catalog_filters(min_price, max_price, vendor),
+            ])
 
             variables = {
                 "searchTerm": filtered_query,
@@ -970,13 +963,7 @@ class ShopifyTools(Toolkit):
                 logger.info("No specific criteria for recommendations, fetching recent products.")
 
                 # Build fallback query with price and vendor filters
-                fallback_filters = ["status:active", "inventory_total:>0"]
-                if min_price is not None:
-                    fallback_filters.append(f"price:>={min_price}")
-                if max_price is not None:
-                    fallback_filters.append(f"price:<={max_price}")
-                if vendor:
-                    fallback_filters.append(f"vendor:'{vendor}'")
+                fallback_filters = ["status:active", "inventory_total:>0", *catalog_filters(min_price, max_price, vendor)]
 
                 fallback_query = " AND ".join(fallback_filters)
 
@@ -1038,17 +1025,10 @@ class ShopifyTools(Toolkit):
                 # Construct final query: Join parts with OR for broader recommendations
                 # Add status:active filter to only return active products (exclude archived and draft)
                 # Add inventory_total:>0 to only return in-stock products
-                search_query = f"({' OR '.join(search_query_parts)}) AND status:active AND inventory_total:>0"
-
-                # Add price filters if provided
-                if min_price is not None:
-                    search_query += f" AND price:>={min_price}"
-                if max_price is not None:
-                    search_query += f" AND price:<={max_price}"
-
-                # Add vendor filter if provided
-                if vendor:
-                    search_query += f" AND vendor:'{vendor}'"
+                search_query = " AND ".join([
+                    f"({' OR '.join(search_query_parts)})", "status:active", "inventory_total:>0",
+                    *catalog_filters(min_price, max_price, vendor),
+                ])
 
                 logger.info(f"Constructed recommendation search query: {search_query}")
                 

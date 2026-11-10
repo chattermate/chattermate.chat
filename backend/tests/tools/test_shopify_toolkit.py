@@ -808,3 +808,26 @@ def test_search_products_sends_the_widened_query(shopify_tools):
     assert post.call_args.kwargs["json"]["variables"]["searchTerm"] == (
         "((backpacks OR backpack*)) AND status:active AND inventory_total:>0"
     )
+
+
+@pytest.mark.parametrize("call", [
+    lambda tools, **f: tools.search_products("board", **f),
+    lambda tools, **f: tools.recommend_products(product_type="board", **f),
+    lambda tools, **f: tools.recommend_products(**f),  # no criteria: recent products
+], ids=["search", "recommend", "recent"])
+@pytest.mark.parametrize("filters,expected,absent", [
+    # What gpt-4o-mini sends when the customer named no price or brand
+    ({"min_price": 0, "max_price": 0, "vendor": "", "cursor": ""}, [], ["price:", "vendor:"]),
+    ({"min_price": 10, "max_price": 50}, ["price:>=10", "price:<=50"], ["vendor:"]),
+    ({"max_price": 50, "vendor": "Larkfield"}, ["price:<=50", "vendor:'Larkfield'"], ["price:>="]),
+], ids=["unused-filters", "price-range", "price-and-brand"])
+def test_product_tools_filter_only_on_what_the_customer_asked(shopify_tools, call, filters, expected, absent):
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"data": {"products": {"edges": [], "pageInfo": {}}}}
+    with patch("requests.post", return_value=response) as post:
+        call(shopify_tools, **filters)
+    sent = json.dumps(post.call_args.kwargs["json"])
+    for term in expected:
+        assert term in sent
+    for term in absent:
+        assert term not in sent
