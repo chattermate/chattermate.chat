@@ -19,6 +19,7 @@ plurals, and the model passes their word on.
 """
 
 import re
+from typing import List, Optional
 
 # A plain plural word of four letters or more: not a field value (title:x), not a
 # wildcard, and not a word that only looks plural ("glass", "canvas", "tennis", "bus")
@@ -52,3 +53,22 @@ def match_singulars(query: str) -> str:
     parts = query.split('"')
     # Even parts are outside quotes
     return '"'.join(_PLURAL.sub(_widen, part) if i % 2 == 0 else part for i, part in enumerate(parts))
+
+
+def _strip_quotes(value: str) -> str:
+    return re.sub(r"[\\'\"]", "", value).strip()
+
+
+def catalog_filters(min_price: Optional[float], max_price: Optional[float], vendor: Optional[str]) -> List[str]:
+    """Search terms for the optional price and vendor filters. Models fill arguments
+    they don't need with 0 or "", so a price of 0 or less, or a blank vendor, means
+    no filter: "price:<=0" alone hid every product."""
+    terms = []
+    if min_price is not None and min_price > 0:
+        terms.append(f"price:>={min_price}")
+    if max_price is not None and max_price > 0:
+        terms.append(f"price:<={max_price}")
+    brand = _strip_quotes(vendor or "")
+    if brand:
+        terms.append(f"vendor:'{brand}'")
+    return terms

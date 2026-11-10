@@ -16,7 +16,7 @@ limitations under the License.
 
 import pytest
 
-from app.tools.shopify_search import match_singulars
+from app.tools.shopify_search import catalog_filters, match_singulars
 
 
 @pytest.mark.parametrize("query,expected", [
@@ -56,3 +56,17 @@ def test_everything_else_is_left_alone(query):
 def test_operators_are_never_widened():
     assert match_singulars("bags AND totes") == "(bags OR bag*) AND (totes OR tote*)"
 
+
+
+@pytest.mark.parametrize("min_price,max_price,vendor,expected", [
+    (None, None, None, []),
+    (0, 0, "", []),                        # the model's "nothing asked"
+    (-5, -1, "   ", []),
+    (0, 50, None, ["price:<=50"]),
+    (19.5, 0, None, ["price:>=19.5"]),
+    (10, 50, "Larkfield", ["price:>=10", "price:<=50", "vendor:'Larkfield'"]),
+    (None, None, "O'Neill", ["vendor:'ONeill'"]),   # a quote would end the value early
+    (None, None, '"\\', []),
+])
+def test_catalog_filters(min_price, max_price, vendor, expected):
+    assert catalog_filters(min_price, max_price, vendor) == expected
