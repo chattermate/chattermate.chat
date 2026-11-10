@@ -274,8 +274,8 @@ async def _start_over(sid: str) -> None:
 
 
 def _conversation_deleted(session_repo: SessionToAgentRepository, session: dict) -> bool:
-    """True when the socket's conversation row is gone (data retention, an
-    erasure request), not merely someone else's now."""
+    """True when the socket's conversation row is gone (erased), not merely
+    someone else's now."""
     return not session_repo.session_exists(session['session_id'])
 
 

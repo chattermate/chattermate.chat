@@ -2,15 +2,14 @@
 
 Deleting a session_to_agents or customers row makes Postgres look up every row
 that references it. These columns had no index, so erasing a customer (the
-Shopify redact webhooks, and the hosted retention job) scanned each table once
-per deleted row. Self-hosted installs only gain the indexes.
+Shopify privacy webhooks, for one) scanned each table once per deleted row.
 
 Built CONCURRENTLY so the tables keep taking writes while the backend starts.
 That can't run in a transaction, hence the autocommit block. A build that dies
 part-way leaves an INVALID index that IF NOT EXISTS would then skip, so each one
 is dropped first when it is invalid: running this again finishes the job.
 
-Revision ID: retention_fk_indexes_001
+Revision ID: erasure_fk_indexes_001
 Revises: shopify_expiring_tokens_001
 Create Date: 2026-11-10
 """
@@ -22,7 +21,7 @@ from alembic import op
 # revision identifiers, used by Alembic.
 # Keep revision ids under 32 characters: alembic_version.version_num is
 # varchar(32).
-revision: str = 'retention_fk_indexes_001'
+revision: str = 'erasure_fk_indexes_001'
 down_revision: Union[str, None] = 'shopify_expiring_tokens_001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

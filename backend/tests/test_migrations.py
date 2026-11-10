@@ -53,11 +53,11 @@ def _load_migration(name: str):
     return module
 
 
-def test_retention_fk_indexes_match_the_models():
+def test_erasure_fk_indexes_match_the_models():
     """The models declare the same indexes, under the same names, so a database
     made by create_all and one made by migrating agree, and autogenerate sees
     no drift."""
-    migration = _load_migration("retention_fk_indexes_001")
+    migration = _load_migration("erasure_fk_indexes_001")
     for table, column in migration.FOREIGN_KEYS:
         names = {index.name for index in Base.metadata.tables[table].indexes
                  if [c.name for c in index.columns] == [column]}

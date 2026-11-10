@@ -13,8 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-A widget left open while its conversation was deleted (data retention, an
-erasure request): the visitor's next message carries on in a new conversation,
+A widget left open while its conversation was erased: the visitor's next
+message carries on in a new conversation,
 or, when the visitor's record went too, the widget is sent to authorize again.
 """
 import asyncio

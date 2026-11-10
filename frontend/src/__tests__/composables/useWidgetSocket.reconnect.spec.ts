@@ -257,8 +257,8 @@ describe('widget socket reconnection', () => {
   })
 
   describe('a conversation deleted while the widget was open', () => {
-    // Data retention can delete the conversation and the visitor's record under
-    // an open socket. The server then says so and closes the connection, which
+    // The conversation and the visitor's record can be erased under an open
+    // socket. The server then says so and closes the connection, which
     // socket.io never reconnects on its own.
     const gone = { type: 'conversation_gone', error: 'This conversation has ended. Please send your message again.' }
 

@@ -709,7 +709,7 @@ async def test_concurrent_turns_each_deliver_against_their_own_reply(
 
 
 class TestAfterTheConversationWasDeleted:
-    """Data retention and erasure requests delete conversations, and customers
+    """Erasing a person deletes their conversations, and their customer record
     with them. The person can still message the channel: the next message must
     start over cleanly rather than fail on rows that are gone."""
 
