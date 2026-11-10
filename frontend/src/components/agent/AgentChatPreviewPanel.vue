@@ -28,6 +28,7 @@ import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '@/utils/aiDisclaimer'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useImageFallback } from '@/composables/useImageFallback'
 
 const props = defineProps<{
     isActive: boolean
@@ -338,10 +339,8 @@ const messageNameStyles = computed(() => ({
     color: 'var(--cm-text)'
 }))
 
-/** Set when the uploaded photo won't load, so the orb stands in for it. */
-const photoFailed = ref(false)
-watch(() => props.customization.photo_url, () => { photoFailed.value = false })
-const onPhotoError = () => { photoFailed.value = true }
+// When the uploaded photo won't load, the orb stands in for it
+const { failed: photoFailed, onError: onPhotoError } = useImageFallback(() => props.customization.photo_url)
 
 const photoUrl = computed(() => {
     // These are <img> slots in chat bubbles, so the fallback has to be an image:
@@ -582,8 +581,9 @@ const handleInitiationClick = () => {
                     <div v-if="useOrbAvatar" class="welcome-orb" :style="orbStyle"></div>
                     <img
                         v-else-if="photoUrl"
-                        :src="photoUrl" @error="onPhotoError"
+                        :src="photoUrl"
                         :alt="agentName"
+                        @error="onPhotoError"
                         class="welcome-avatar"
                     >
                     <h1 class="welcome-title">{{ welcomeTitle }}</h1>

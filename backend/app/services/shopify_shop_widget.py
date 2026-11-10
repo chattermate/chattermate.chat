@@ -14,19 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.models.shopify.agent_shopify_config import AgentShopifyConfig
 from app.models.widget import Widget
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 from app.repositories.widget import WidgetRepository
 
 
-def shop_widget(db: Session, shop_id: str) -> Optional[Widget]:
+def shop_widget(db: Session, shop_id: str, configs: Optional[List[AgentShopifyConfig]] = None) -> Optional[Widget]:
     """The chat widget a store's theme embed loads: the first widget of the
-    first agent connected to the store. None until an agent is connected."""
-    configs = AgentShopifyConfigRepository(db).get_configs_by_shop(shop_id, enabled_only=True)
+    first agent connected to the store. None until an agent is connected.
+    configs: the store's enabled agent configs, when the caller has them."""
+    if configs is None:
+        configs = AgentShopifyConfigRepository(db).get_configs_by_shop(shop_id, enabled_only=True)
     if not configs:
         return None
     widgets = WidgetRepository(db).get_widgets_by_agent(configs[0].agent_id)

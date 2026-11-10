@@ -16,6 +16,7 @@ limitations under the License.
 
 import api from './api'
 import type { Conversation, ChatDetail } from '@/types/chat'
+import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
 
 interface ChatParams {
   skip?: number
@@ -30,21 +31,17 @@ interface ChatParams {
 
 export const chatService = {
   async getRecentChats(params?: ChatParams) {
-    // Check if we're in a Shopify context
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    const embedded = isEmbeddedShopify()
     
-    const endpoint = hasShopParam ? '/chats/recent/shopify' : '/chats/recent'
+    const endpoint = embedded ? '/chats/recent/shopify' : '/chats/recent'
     const response = await api.get(endpoint, { params })
     return response.data as Conversation[]
   },
 
   async getChatDetail(sessionId: string) {
-    // Check if we're in a Shopify context
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    const embedded = isEmbeddedShopify()
     
-    const endpoint = hasShopParam ? `/chats/${sessionId}/shopify` : `/chats/${sessionId}`
+    const endpoint = embedded ? `/chats/${sessionId}/shopify` : `/chats/${sessionId}`
     const response = await api.get<ChatDetail>(endpoint)
     return response.data
   },

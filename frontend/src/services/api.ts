@@ -63,12 +63,12 @@ api.interceptors.request.use(
     // the app moves to, even once the address no longer has those params.
     const app = embeddedShopifyApp()
 
-    // Check if this is a Shopify-related endpoint
+    // Shopify endpoints, and the agent and chat ones the embedded app shares
     const isShopifyEndpoint =
       config.url?.includes('/shopify/') ||
       config.url?.endsWith('/shopify') ||
-      (config.url?.includes('/agent/') && !!app) ||
-      (config.url?.includes('/chats/') && !!app)
+      config.url?.includes('/agent/') ||
+      config.url?.includes('/chats/')
 
     if (app && isShopifyEndpoint && getSessionToken) {
       try {
@@ -142,10 +142,11 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config
 
-    // If error is 401 and we haven't tried to refresh token yet
     // Inside Shopify admin the session is Shopify's: the page shows the
     // error (or asks to reopen the app) rather than leaving for our login.
     if (error.response?.status === 401 && embeddedShopifyApp()) return Promise.reject(error)
+
+    // If error is 401 and we haven't tried to refresh token yet
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       // If there's no authenticated user, do not attempt refresh. Go to login directly.

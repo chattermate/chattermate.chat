@@ -33,6 +33,7 @@ import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { fas } from '@fortawesome/free-solid-svg-icons'
 import { far } from '@fortawesome/free-regular-svg-icons'
 import { fab } from '@fortawesome/free-brands-svg-icons'
+import { SHOPIFY_APP_PATH_PREFIX } from './utils/shopifyEmbed'
 
 /* Add icons to the library */
 library.add(fas, far, fab)
@@ -40,7 +41,7 @@ library.add(fas, far, fab)
 const savedTheme = localStorage.getItem('cm-theme') ?? 'dark'
 // The embedded Shopify app sits inside Shopify's light admin, whatever the
 // dashboard theme is: the whole page is light, not just the app's own panels.
-const resolvedTheme = window.location.pathname.startsWith('/shopify/')
+const resolvedTheme = window.location.pathname.startsWith(SHOPIFY_APP_PATH_PREFIX)
   ? 'light'
   : savedTheme === 'system'
     ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')

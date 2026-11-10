@@ -17,6 +17,7 @@ limitations under the License.
 import api from './api'
 import type { AgentCustomization, Agent, AgentUpdate } from '@/types/agent'
 import { agentStorage } from '@/utils/storage'
+import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
 
 export const agentService = {
   /**
@@ -31,11 +32,9 @@ export const agentService = {
   },
 
   async getOrganizationAgents(): Promise<Agent[]> {
-    // Check if we're in a Shopify context (has shop query param or session token)
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    const embedded = isEmbeddedShopify()
     
-    const endpoint = hasShopParam ? '/agent/list/shopify' : '/agent/list'
+    const endpoint = embedded ? '/agent/list/shopify' : '/agent/list'
     const response = await api.get(endpoint)
     // Store agents in local storage
     agentStorage.setAgents(response.data)
@@ -64,11 +63,9 @@ export const agentService = {
     agentId: string,
     data: AgentUpdate
   ): Promise<Agent> {
-    // Check if we're in a Shopify context
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    const embedded = isEmbeddedShopify()
     
-    const endpoint = hasShopParam ? `/agent/${agentId}/shopify` : `/agent/${agentId}`
+    const endpoint = embedded ? `/agent/${agentId}/shopify` : `/agent/${agentId}`
     const response = await api.put(endpoint, data)
     // Update agent in local storage
     agentStorage.updateAgent(response.data)
@@ -79,11 +76,9 @@ export const agentService = {
     agentId: string,
     customization: AgentCustomization,
   ): Promise<AgentCustomization> {
-    // Check if we're in a Shopify context
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    const embedded = isEmbeddedShopify()
     
-    const endpoint = hasShopParam ? `/agent/${agentId}/customization/shopify` : `/agent/${agentId}/customization`
+    const endpoint = embedded ? `/agent/${agentId}/customization/shopify` : `/agent/${agentId}/customization`
     const response = await api.post(endpoint, customization)
 
     // Update agent customization in local storage
@@ -107,11 +102,9 @@ export const agentService = {
     const formData = new FormData()
     formData.append('photo', file)
 
-    // Check if we're in a Shopify context
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    const embedded = isEmbeddedShopify()
     
-    const endpoint = hasShopParam ? `/agent/${agentId}/customization/photo/shopify` : `/agent/${agentId}/customization/photo`
+    const endpoint = embedded ? `/agent/${agentId}/customization/photo/shopify` : `/agent/${agentId}/customization/photo`
     const response = await api.post(endpoint, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -141,11 +134,9 @@ export const agentService = {
   },
 
   async getAgentById(agentId: string): Promise<Agent> {
-    // Check if we're in a Shopify context
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    const embedded = isEmbeddedShopify()
     
-    const endpoint = hasShopParam ? `/agent/${agentId}/shopify` : `/agent/${agentId}`
+    const endpoint = embedded ? `/agent/${agentId}/shopify` : `/agent/${agentId}`
     const response = await api.get(endpoint)
     return response.data
   },

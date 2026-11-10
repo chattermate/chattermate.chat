@@ -452,7 +452,7 @@ async def get_shop_config_status(
         agent_config_repository = AgentShopifyConfigRepository(db)
         configs = agent_config_repository.get_configs_by_shop(str(db_shop.id), enabled_only=True)
         agents_connected = len(configs) if configs else 0
-        widget = shop_widget(db, str(db_shop.id))
+        widget = shop_widget(db, str(db_shop.id), configs)
         widget_id = str(widget.id) if widget else None
 
         return {
