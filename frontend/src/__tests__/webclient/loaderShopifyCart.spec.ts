@@ -26,12 +26,15 @@ function jsonResponse(status: number, body: unknown) {
   return { ok: status < 400, status, json: async () => body }
 }
 
-function storefront(overrides: Record<string, unknown> = {}, fetchImpl: any = vi.fn(async () => jsonResponse(200, {}))) {
+function storefront(overrides: Record<string, unknown> = {}, fetchImpl: any = vi.fn(async () => jsonResponse(200, {})), doc: Document | null = null) {
   const posted: any[] = []
   const win: any = {
     Shopify: { shop: SHOP, routes: { root: '/' }, ...overrides },
     fetch: fetchImpl,
     location: { assign: vi.fn() },
+    document: doc,
+    DOMParser: window.DOMParser,
+    CustomEvent: window.CustomEvent,
   }
   return { win, posted, cart: createShopifyCart(win, (m: any) => posted.push(m)) }
 }
@@ -66,6 +69,91 @@ describe('shopify cart in the loader', () => {
     expect(options.credentials).toBe('same-origin')
     expect(JSON.parse(options.body)).toEqual({ items: [{ id: 111, quantity: 1 }] })
     expect(posted).toEqual([{ type: 'ADD_TO_CART_DONE', requestId: 'r1', ok: true }])
+  })
+
+  describe('the theme\'s cart count', () => {
+    // A page laid out as Dawn's is: the header's cart icon and the cart drawer
+    function dawnPage(count = '0') {
+      const doc = document.implementation.createHTMLDocument('store')
+      doc.body.innerHTML = `<a id="cart-icon-bubble"><span class="count">${count}</span></a>
+        <cart-drawer class="is-empty"><div id="CartDrawer"><p>Your cart is empty</p></div></cart-drawer>`
+      return doc
+    }
+    const redrawn = {
+      'cart-icon-bubble': '<div class="shopify-section"><span class="count">1</span></div>',
+      'cart-drawer': '<div class="shopify-section"><div id="CartDrawer"><p>The Videographer Snowboard</p></div></div>',
+    }
+
+    it('asks Shopify to redraw the parts the theme has, and puts them in place', async () => {
+      const doc = dawnPage()
+      const fetchMock = vi.fn(async () => jsonResponse(200, { items: [], sections: redrawn }))
+      const { cart, posted } = storefront({}, fetchMock, doc)
+      cart.handleFrameMessage(addRequest)
+      await flush()
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).sections).toBe('cart-icon-bubble,cart-drawer')
+      expect(doc.querySelector('#cart-icon-bubble')!.textContent!.trim()).toBe('1')
+      expect(doc.querySelector('#CartDrawer')!.textContent).toContain('The Videographer Snowboard')
+      expect(doc.querySelector('cart-drawer')!.classList.contains('is-empty')).toBe(false)
+      expect(posted).toEqual([{ type: 'ADD_TO_CART_DONE', requestId: 'r1', ok: true }])
+    })
+
+    it('tells the page the cart changed, for a theme it can\'t redraw', async () => {
+      const doc = document.implementation.createHTMLDocument('store')
+      const heard = vi.fn()
+      doc.addEventListener('chattermate:cart-updated', heard)
+      const fetchMock = vi.fn(async () => jsonResponse(200, { items: [] }))
+      const { cart } = storefront({}, fetchMock, doc)
+      cart.handleFrameMessage(addRequest)
+      await flush()
+
+      expect(heard).toHaveBeenCalledTimes(1)
+      // Nothing on the page to redraw, so nothing asked for
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).sections).toBeUndefined()
+    })
+
+    it('redraws only what the page has', async () => {
+      const doc = document.implementation.createHTMLDocument('store')
+      doc.body.innerHTML = '<a id="cart-icon-bubble">0</a>'
+      const fetchMock = vi.fn(async () => jsonResponse(200, { sections: redrawn }))
+      const { cart } = storefront({}, fetchMock, doc)
+      cart.handleFrameMessage(addRequest)
+      await flush()
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).sections).toBe('cart-icon-bubble')
+      expect(doc.querySelector('#cart-icon-bubble')!.textContent!.trim()).toBe('1')
+    })
+
+    it.each([
+      ['no sections in the answer', { items: [] }],
+      ['a section Shopify could not render', { sections: { 'cart-icon-bubble': null, 'cart-drawer': null } }],
+      ['markup without the part', { sections: { 'cart-icon-bubble': '<p>other</p>', 'cart-drawer': '<p>other</p>' } }],
+    ])('keeps the old count on %s, and the add still succeeds', async (_name, answer) => {
+      const doc = dawnPage('3')
+      const { cart, posted } = storefront({}, vi.fn(async () => jsonResponse(200, answer)), doc)
+      cart.handleFrameMessage(addRequest)
+      await flush()
+      expect(doc.querySelector('#cart-icon-bubble')!.textContent!.trim()).toBe('3')
+      expect(posted[0].ok).toBe(true)
+    })
+
+    it('still succeeds when the answer is not JSON', async () => {
+      const doc = dawnPage()
+      const notJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => { throw new Error('html') } }))
+      const { cart, posted } = storefront({}, notJson, doc)
+      cart.handleFrameMessage(addRequest)
+      await flush()
+      expect(posted[0].ok).toBe(true)
+    })
+
+    it('leaves the count alone when the add fails', async () => {
+      const doc = dawnPage('2')
+      const soldOut = vi.fn(async () => jsonResponse(422, { description: 'Sold out.' }))
+      const { cart } = storefront({}, soldOut, doc)
+      cart.handleFrameMessage(addRequest)
+      await flush()
+      expect(doc.querySelector('#cart-icon-bubble')!.textContent!.trim()).toBe('2')
+      expect(doc.querySelector('cart-drawer')!.classList.contains('is-empty')).toBe(true)
+    })
   })
 
   it('keeps a language prefix', async () => {

@@ -27,6 +27,17 @@ const MAX_ERROR_LENGTH = 200
 // Short enough to stay exact as a JavaScript number
 const VARIANT_ID = /^[0-9]{1,15}$/
 
+// The theme's own cart icon and drawer, redrawn by Shopify after an add (the Section
+// Rendering API), as the theme's own add-to-cart does. Without this the header still
+// shows the old count. Named as Dawn and the themes built on it name them; a theme
+// without these parts keeps its count until the next page load.
+const THEME_CART_PARTS = [
+  { section: 'cart-icon-bubble', target: '#cart-icon-bubble', from: '.shopify-section' },
+  { section: 'cart-drawer', target: '#CartDrawer', from: '#CartDrawer' },
+]
+// Dispatched on the page after every add, so a theme we don't know can refresh itself
+export const CART_UPDATED_EVENT = 'chattermate:cart-updated'
+
 // Shopify's cart errors are written for shoppers ("… is already sold out.")
 async function errorFrom(response) {
   try {
@@ -56,18 +67,51 @@ export function createShopifyCart(win, postToFrame) {
     if (shopify) postToFrame({ type: 'CART_AVAILABLE', shop: shopify.shop })
   }
 
+  // The parts of the theme's cart this page has
+  function cartPartsOnPage() {
+    const doc = win.document
+    return doc ? THEME_CART_PARTS.filter(function (part) { return doc.querySelector(part.target) }) : []
+  }
+
+  // Never fails the add: the item is in the cart whatever happens here
+  function redrawCart(sections) {
+    try {
+      cartPartsOnPage().forEach(function (part) {
+        const html = sections && sections[part.section]
+        if (typeof html !== 'string') return
+        const fresh = new win.DOMParser().parseFromString(html, 'text/html').querySelector(part.from)
+        if (fresh) win.document.querySelector(part.target).innerHTML = fresh.innerHTML
+      })
+      // Dawn hides the drawer's items while it thinks the cart is empty
+      const drawer = win.document && win.document.querySelector('cart-drawer')
+      if (drawer) drawer.classList.remove('is-empty')
+    } catch (e) {
+      /* a theme we can't redraw keeps its old count */
+    }
+    try {
+      win.document.dispatchEvent(new win.CustomEvent(CART_UPDATED_EVENT))
+    } catch (e) {
+      /* no document to tell */
+    }
+  }
+
   async function post(shopify, variantId) {
     const controller = new AbortController()
     const timer = setTimeout(function () { controller.abort() }, ADD_TIMEOUT_MS)
+    const parts = cartPartsOnPage().map(function (part) { return part.section })
+    const body = { items: [{ id: Number(variantId), quantity: 1 }] }
+    if (parts.length) body.sections = parts.join(',')
     try {
       const response = await win.fetch(urlFor(shopify, 'cart/add.js'), {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ items: [{ id: Number(variantId), quantity: 1 }] }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       })
-      return response.ok ? { ok: true } : { ok: false, error: await errorFrom(response) }
+      if (!response.ok) return { ok: false, error: await errorFrom(response) }
+      redrawCart(await response.json().then(function (added) { return added && added.sections }, function () { return null }))
+      return { ok: true }
     } catch (e) {
       return { ok: false, error: null }
     } finally {
