@@ -109,6 +109,7 @@ def _ai_improved() -> str:
 
 
 def winback(row: dict, cfg: Settings, unsubscribe_url: str) -> Rendered:
+    """In dollars: everyone it goes to paid us in USD through PayPal."""
     old_price = float(row["old_price"])
     old_plan = esc(row["old_plan"])
     org = _org(row)
@@ -163,13 +164,13 @@ def _free_change_next_step(row: dict, cfg: Settings) -> Tuple[str, str]:
     if row["has_channels"]:
         return (
             f"Your connected channels stay connected and messages keep reaching your inbox, but on Free "
-            f"the AI won't answer them. To keep it answering there, Growth is {cfg.usd(GROWTH)} a month "
+            f"the AI won't answer them. To keep it answering there, Growth is {cfg.price(GROWTH, currency(row))} a month "
             f"for {cfg.replies(GROWTH)} replies.",
             "channels",
         )
     if row["last_month_replies"] > cfg.upsell_above_replies:
         return (
-            f"To keep your AI answering, Starter is {cfg.usd(STARTER)} a month "
+            f"To keep your AI answering, Starter is {cfg.price(STARTER, currency(row))} a month "
             f"for {cfg.replies(STARTER)} replies.",
             "upsell",
         )

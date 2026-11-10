@@ -7,6 +7,8 @@ PNG on retina screens; the email shows it at BODY_WIDTH.
     python3 hero.py --catalog data/catalog.json
 """
 import argparse
+import os
+import shutil
 import subprocess
 import tempfile
 from html import escape
@@ -16,7 +18,7 @@ from catalog import load_settings
 
 HERE = Path(__file__).resolve().parent
 OUT_DIR = HERE / "previews"
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+MAC_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 WIDTH, HEIGHT, SCALE = 600, 380, 2
 CURRENCIES = ("USD", "INR")
 # (catalog name, label on the card), cheapest first
@@ -27,6 +29,15 @@ FONTS = ("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth
 
 # Website tokens (chattermate.chat :root)
 INK, LIME, PAPER, WHITE, MUTE = "#12150E", "#C9F24E", "#F5F6F0", "#FFFFFF", "#4A5142"
+
+
+def chrome() -> str:
+    """CHROME_PATH, else Chrome or Chromium on PATH, else the macOS app."""
+    found = os.environ.get("CHROME_PATH") or next(
+        (path for name in ("google-chrome", "chromium", "chromium-browser") if (path := shutil.which(name))), None)
+    if found or Path(MAC_CHROME).exists():
+        return found or MAC_CHROME
+    raise SystemExit("Chrome not found. Set CHROME_PATH to a Chrome or Chromium binary.")
 
 
 def hero_path(currency: str) -> Path:
@@ -78,7 +89,7 @@ def render(cfg, currency: str) -> Path:
         page = Path(tmp) / "hero.html"
         page.write_text(html(cfg, currency), encoding="utf-8")
         subprocess.run(
-            [CHROME, "--headless=new", "--hide-scrollbars", "--disable-gpu", f"--window-size={WIDTH},{HEIGHT}",
+            [chrome(), "--headless=new", "--hide-scrollbars", "--disable-gpu", f"--window-size={WIDTH},{HEIGHT}",
              f"--force-device-scale-factor={SCALE}", "--virtual-time-budget=4000",
              f"--screenshot={out}", page.as_uri()],
             check=True, capture_output=True, timeout=60,

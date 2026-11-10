@@ -1,8 +1,6 @@
 """The light look for this campaign: the website's paper, ink and lime.
 
-enterprise's email_templates/base.py draws the dark product emails and other
-emails share it, so the light shell lives here. Only base's layout helpers and
-contact constants are reused.
+Standard library only, so it runs on the host with plain python3.
 
 Email clients rarely load web fonts, so every family falls back to one that
 ships with phones and desktops. Colours carry `color-scheme: light` so Apple
@@ -30,6 +28,9 @@ FONT_LINK = ("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,
              "&family=Instrument+Sans:wght@400;600&family=JetBrains+Mono:wght@500&display=swap")
 
 BODY_WIDTH = 600
+SUPPORT_EMAIL = "support@chattermate.chat"
+DOCS_URL = "https://docs.chattermate.chat"
+GITHUB_URL = "https://github.com/chattermate/chattermate.chat"
 LOGO_SIZE = 30
 
 HEAD_STYLE = """

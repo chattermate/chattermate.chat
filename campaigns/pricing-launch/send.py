@@ -24,7 +24,7 @@ import os
 import smtplib
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
@@ -33,21 +33,24 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from audience import Exclusions, load_exclusions, screen
-from blocks import Rendered, b
+from blocks import Rendered
 from catalog import HERE, Settings, load_settings
 from emails import CAMPAIGNS
+from theme import SUPPORT_EMAIL
 
-FROM_NAME = "Runix · ChatterMate"
+FROM_NAME = "Runix, ChatterMate"  # as the app's own emails
 SMTP_KEYS = ("SMTP_SERVER", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "FROM_EMAIL", "UNSUBSCRIBE_SECRET")
 DATA_DIR = HERE / "data"
 PREVIEW_SECRET = "dry-run-only"
 MAX_EXPORT_AGE_HOURS = 24
 DEFAULT_DELAY_SECONDS = 1.5
 # Brevo's plan allows 300 emails a day across everything we send, app email
-# included. Campaigns share 100 of them, so sign-up codes and trial emails
-# always have room. A run sends up to what is left today; the rest wait for
-# the next day's run, and the sent logs keep anyone from getting two.
+# included. Campaigns share 100 of them in any 24 hours, so sign-up codes and
+# trial emails always have room whichever timezone Brevo counts its day in. A
+# run sends up to what is left; the rest wait for a later run, and the sent
+# logs keep anyone from getting two.
 DEFAULT_DAILY_LIMIT = 100
+CAP_WINDOW = timedelta(hours=24)
 
 
 def unsubscribe_url(user_id: str, secret: str, backend_url: str) -> str:
@@ -66,10 +69,10 @@ def build_message(rendered: Rendered, to_email: str, from_email: str, unsubscrib
     message["Subject"] = f"{subject_prefix}{rendered.subject}"
     message["From"] = formataddr((FROM_NAME, from_email))
     message["To"] = to_email
-    message["Reply-To"] = b.SUPPORT_EMAIL
+    message["Reply-To"] = SUPPORT_EMAIL
     message["Date"] = formatdate(localtime=False)
     message["Message-ID"] = make_msgid(domain=from_email.rsplit("@", 1)[-1])
-    message["List-Unsubscribe"] = f"<{unsubscribe}>, <mailto:{b.SUPPORT_EMAIL}?subject=unsubscribe>"
+    message["List-Unsubscribe"] = f"<{unsubscribe}>, <mailto:{SUPPORT_EMAIL}?subject=unsubscribe>"
     message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
     message.set_content(rendered.text)
     message.add_alternative(rendered.html, subtype="html")
@@ -82,14 +85,22 @@ def read_sent(log: Path) -> Set[str]:
     return {line.split("\t")[0] for line in log.read_text(encoding="utf-8").splitlines() if line.strip()}
 
 
-def sent_today(data_dir: Path, today: date) -> int:
-    """Campaign emails already sent today (UTC), across every campaign's log."""
-    stamp = today.isoformat()
+def _sent_at(line: str) -> Optional[datetime]:
+    parts = line.split("\t")
+    try:
+        return datetime.fromisoformat(parts[1]) if len(parts) > 1 else None
+    except ValueError:
+        return None
+
+
+def sent_recently(data_dir: Path, now: datetime) -> int:
+    """Campaign emails sent in the last 24 hours, across every campaign's log."""
+    since = now - CAP_WINDOW
     return sum(
         1
         for log in data_dir.glob("sent.*.log")
         for line in log.read_text(encoding="utf-8").splitlines()
-        if line.split("\t")[-1].startswith(stamp)
+        if (_sent_at(line) or since) > since
     )
 
 
@@ -205,17 +216,18 @@ def parse_args(argv=None):
     parser.add_argument("--confirm", help="campaign:count, as printed by the dry run")
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY_SECONDS, help="seconds between sends")
     parser.add_argument("--daily-limit", type=int, default=DEFAULT_DAILY_LIMIT,
-                        help="campaign emails a day, across all campaigns (the rest wait for tomorrow)")
+                        help="campaign emails in any 24 hours, across all campaigns (the rest wait)")
     args = parser.parse_args(argv)
     if args.send and args.test_to:
         parser.error("--send and --test-to can't be used together")
     return args
 
 
-def main(argv=None, environ=None, today: Optional[date] = None) -> int:
+def main(argv=None, environ=None, today: Optional[date] = None, now: Optional[datetime] = None) -> int:
     args = parse_args(argv)
     environ = os.environ if environ is None else environ
-    today = today or datetime.now(timezone.utc).date()
+    now = now or datetime.now(timezone.utc)
+    today = today or now.date()
     cfg = load_settings(args.catalog, with_offer=not args.without_offer)
     spec = CAMPAIGNS[args.campaign]
 
@@ -238,9 +250,9 @@ def main(argv=None, environ=None, today: Optional[date] = None) -> int:
             raise SystemExit("Nothing to test with: every recipient was skipped")
         send_test(items[0], args.test_to, env)
         return 0
-    batch = todays_batch(items, args.daily_limit, sent_today(DATA_DIR, today))
+    batch = todays_batch(items, args.daily_limit, sent_recently(DATA_DIR, now))
     waiting = len(items) - len(batch)
-    print(f"today: {len(batch)} of {len(items)} (daily limit {args.daily_limit})"
+    print(f"this run: {len(batch)} of {len(items)} (limit {args.daily_limit} in 24 hours)"
           + (f"; {waiting} wait for later days" if waiting else ""))
     if not args.send:
         print(f"\nDry run: nothing sent. To send: --send --confirm {args.campaign}:{len(batch)}")
@@ -252,7 +264,7 @@ def main(argv=None, environ=None, today: Optional[date] = None) -> int:
         print("Nothing left to send.")
         return 0
     if not batch:
-        print("Not sending: today's limit is used up. Run again tomorrow.", file=sys.stderr)
+        print("Not sending: the 24-hour limit is used up. Run again later.", file=sys.stderr)
         return 2
     problem = live_send_problem(args, cfg, args.recipients, len(batch), today, time.time())
     if problem:

@@ -4,7 +4,7 @@ import os
 import tempfile
 import time
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -15,6 +15,7 @@ from emails import CAMPAIGNS, free_change, launch, winback
 
 SAMPLES = Path(__file__).resolve().parent / "samples"
 TODAY = date(2026, 11, 4)
+NOON = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
 UNSUB = "https://api.example.test/unsub?t=x"
 USER = "11111111-2222-3333-4444-555555555555"
 CFG = load_settings()
@@ -70,28 +71,6 @@ class CopyRules(unittest.TestCase):
         email = launch(launch_row(org_name="<script>x</script>", full_name="<b>Bo</b>"), CFG, UNSUB)
         self.assertNotIn("<script>x", email.html)
         self.assertNotIn("<b>Bo", email.html)
-
-
-class BaseLoader(unittest.TestCase):
-    def test_base_loads_brand_without_starting_the_app(self):
-        import sys
-        import blocks
-        with tempfile.TemporaryDirectory() as tmp:
-            app = Path(tmp) / "app"
-            (app / "core").mkdir(parents=True)
-            (app / "enterprise/services/email_templates").mkdir(parents=True)
-            (app / "__init__.py").write_text("raise RuntimeError('app started')\n")
-            (app / "core/brand.py").write_text("BRAND_COLORS = {'ink': '#12150E'}\n")
-            base = app / "enterprise/services/email_templates/base.py"
-            base.write_text("from app.core.brand import BRAND_COLORS\nINK = BRAND_COLORS['ink']\n")
-            saved = {name: sys.modules.pop(name) for name in list(sys.modules) if name.split('.')[0] == 'app'}
-            try:
-                with mock.patch.dict(os.environ, {"EMAIL_BASE_PY": str(base)}):
-                    self.assertEqual(blocks._load_base().INK, "#12150E")
-            finally:
-                for name in [n for n in sys.modules if n.split('.')[0] == 'app']:
-                    sys.modules.pop(name)
-                sys.modules.update(saved)
 
 
 class Launch(unittest.TestCase):
@@ -188,6 +167,14 @@ class FreeChange(unittest.TestCase):
         self.assertNotIn("Starter", at.text)
         self.assertIn("Starter is $4.99", above.text)
 
+    def test_one_currency_per_org(self):
+        india = free_change(free_row(last_month_replies=41, org_timezone="Asia/Kolkata"), CFG, UNSUB).text
+        self.assertIn("Starter is ₹399 + GST a month", india)
+        self.assertNotIn("$", india)
+        channels = free_change(free_row(has_channels=True, org_timezone="Asia/Calcutta"), CFG, UNSUB).text
+        self.assertIn("Growth is ₹799 + GST a month", channels)
+        self.assertNotIn("$", channels)
+
     def test_counts_read_naturally(self):
         self.assertIn("didn't use any", free_change(free_row(last_month_replies=0), CFG, UNSUB).text)
         self.assertIn("used 1 AI reply.", free_change(free_row(last_month_replies=1), CFG, UNSUB).text)
@@ -265,13 +252,24 @@ class Sender(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
+    @staticmethod
+    def record_at(now):
+        """record_sent stamped with the test's clock, not the real one."""
+        def record(log, email):
+            log.parent.mkdir(exist_ok=True)
+            with log.open("a", encoding="utf-8") as handle:
+                handle.write(f"{email}\t{now.isoformat()}\n")
+        return record
+
     def write_rows(self, rows):
         self.recipients.write_text(json.dumps(rows), encoding="utf-8")
 
-    def run_send(self, *extra, campaign="launch", today=TODAY, env=SMTP_ENV):
+    def run_send(self, *extra, campaign="launch", today=TODAY, env=SMTP_ENV, now=None):
         argv = [campaign, str(self.recipients), "--exclusions", str(self.exclusions), *extra]
-        with mock.patch.object(send.smtplib, "SMTP") as smtp, mock.patch("builtins.print"):
-            code = send.main(argv, environ=env, today=today)
+        now = now or datetime.combine(today, NOON.timetz())
+        with mock.patch.object(send.smtplib, "SMTP") as smtp, mock.patch("builtins.print"), \
+                mock.patch.object(send, "record_sent", self.record_at(now)):
+            code = send.main(argv, environ=env, today=today, now=now)
         return code, smtp
 
     def live(self, count=2, *extra):
@@ -333,8 +331,8 @@ class Sender(unittest.TestCase):
         self.assertEqual(code, 0)
         smtp.return_value.send_message.assert_not_called()
 
-    def stamp_sent_today(self, count, campaign="winback"):
-        stamp = f"{TODAY.isoformat()}T09:00:00+00:00"
+    def stamp_sent_today(self, count, campaign="winback", at=None):
+        stamp = (at or NOON - timedelta(hours=3)).isoformat()
         lines = "".join(f"x{n}@other.test\t{stamp}\n" for n in range(count))
         (self.dir / f"sent.{campaign}.log").write_text(lines, encoding="utf-8")
 
@@ -364,11 +362,19 @@ class Sender(unittest.TestCase):
         self.assertEqual(code, 2)
         smtp.assert_not_called()
 
-    def test_yesterdays_sends_do_not_count(self):
-        self.stamp_sent_today(100)
-        code, smtp = self.run_send(*self.live(2), today=TODAY + timedelta(days=1))
+    def test_sends_older_than_24_hours_do_not_count(self):
+        self.stamp_sent_today(100)  # 09:00 on the 4th
+        code, smtp = self.run_send(*self.live(2), today=TODAY + timedelta(days=1),
+                                   now=NOON + timedelta(hours=21, minutes=1))
         self.assertEqual(code, 0)
         self.assertEqual(smtp.return_value.send_message.call_count, 2)
+
+    def test_the_last_24_hours_count_across_midnight(self):
+        self.stamp_sent_today(100, at=datetime(2026, 11, 4, 23, 0, tzinfo=timezone.utc))
+        code, smtp = self.run_send(*self.live(0), today=TODAY + timedelta(days=1),
+                                   now=datetime(2026, 11, 5, 0, 30, tzinfo=timezone.utc))
+        self.assertEqual(code, 2)
+        smtp.assert_not_called()
 
     def test_failed_address_does_not_stop_the_batch_and_can_be_retried(self):
         with mock.patch.object(send.smtplib, "SMTP") as smtp, mock.patch("builtins.print"):

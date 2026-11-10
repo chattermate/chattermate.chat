@@ -1,74 +1,23 @@
 """Email blocks for this campaign, in the light theme (theme.py).
 
-Contact constants come from enterprise's email_templates/base.py. It uses only
-the standard library, so it is loaded straight from that file: importing it
-through `app.*` would pull in the ML stack, which once took prod down mid-campaign.
+Standard library only, with no app code: it runs on the host with plain
+python3, and importing `app.*` there would start the whole app and its ML stack.
 
 Each block carries its HTML and its plain-text twin, so the two versions of an
 email can't drift. Callers escape recipient data with `esc` before it reaches a
 block: a block takes trusted markup.
 """
-import importlib.util
-import os
 import re
-import sys
-import types
 from html import escape, unescape
-from pathlib import Path
 from typing import List, NamedTuple, Optional, Sequence
 
 import theme as t
 
-BASE_PATH = Path("backend/app/enterprise/services/email_templates/base.py")
 PAD_X = 32
 GITHUB_LABEL = "GitHub"
 OPEN_SOURCE_NOTE = "Prefer to run it yourself? ChatterMate is open source. Self-host it for free."
 ACCOUNT_NOTE = "You're getting this because you have a ChatterMate account."
 
-
-def find_base() -> Path:
-    """EMAIL_BASE_PY, else the nearest checkout that has the enterprise submodule."""
-    explicit = os.environ.get("EMAIL_BASE_PY")
-    if explicit:
-        return Path(explicit)
-    for parent in Path(__file__).resolve().parents:
-        if (parent / BASE_PATH).is_file():
-            return parent / BASE_PATH
-    raise SystemExit(f"Can't find {BASE_PATH}. Set EMAIL_BASE_PY to its path.")
-
-
-def _module_from(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _provide_brand(base_path: Path) -> None:
-    """base.py imports app.core.brand, a dict of logo colours. Importing it the
-    normal way runs app/__init__.py, which starts the whole app and its ML
-    stack. So brand.py is loaded on its own and registered under its name, with
-    empty stand-ins for the packages above it."""
-    if "app.core.brand" in sys.modules:
-        return
-    for package in ("app", "app.core"):
-        sys.modules.setdefault(package, types.ModuleType(package))
-    brand = _module_from("app.core.brand", base_path.parents[3] / "core" / "brand.py")
-    sys.modules["app.core.brand"] = brand
-    sys.modules["app.core"].brand = brand
-
-
-def _load_base():
-    path = find_base()
-    if (path.parents[3] / "core" / "brand.py").is_file():
-        _provide_brand(path)
-    spec = importlib.util.spec_from_file_location("email_base", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-b = _load_base()
 
 # Rounded corners on a table need separate borders.
 _ROUNDED = ' style="border-collapse:separate; border-spacing:0;"'
@@ -194,8 +143,8 @@ def _footer(dashboard_url: str, unsubscribe_url: str) -> str:
     unsubscribe = (f'<a href="{esc(unsubscribe_url)}" target="_blank" '
                    f'style="color:{t.MUTE}; text-decoration:underline;">Unsubscribe</a>')
     return t.footer(
-        links=[("Docs", b.DOCS_URL), ("Dashboard", dashboard_url), (GITHUB_LABEL, b.GITHUB_URL),
-               ("Support", f"mailto:{b.SUPPORT_EMAIL}")],
+        links=[("Docs", t.DOCS_URL), ("Dashboard", dashboard_url), (GITHUB_LABEL, t.GITHUB_URL),
+               ("Support", f"mailto:{t.SUPPORT_EMAIL}")],
         notes=[f"{ACCOUNT_NOTE} {OPEN_SOURCE_NOTE}", unsubscribe],
     )
 

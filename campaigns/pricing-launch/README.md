@@ -10,7 +10,7 @@ Drafts of the three customer emails for the message-based pricing launch. **Noth
 
 ## Files
 
-- `emails.py`: the copy. `blocks.py`: layout, on top of enterprise's `email_templates/base.py`.
+- `emails.py`: the copy. `blocks.py` and `theme.py`: layout, in the website's light look, standard library only.
 - `catalog.py`: every price and limit comes from the catalog, none from the copy. `campaign.json`: dates, the offer and links.
 - `audience.py`: screening. `send.py`: the sender. `export/*.sql`: recipient and catalog exports.
 - `previews/`: every variant, with fictional people. Open `previews/index.html`.
@@ -28,7 +28,7 @@ python3 -m unittest
 
 Run on the prod host with plain `python3`, never inside a container. The scripts use only the standard library.
 
-1. Copy this folder to the host. Set `EMAIL_BASE_PY` to the deployed `backend/app/enterprise/services/email_templates/base.py`.
+1. Copy this folder to the host. It needs only the standard library.
 2. Create `data/exclusions.json` from `samples/exclusions.sample.json`. Add internal orgs, test accounts and anyone who asked support to unsubscribe.
 3. Export. Run each of `catalog`, `launch`, `winback` and `free_change` as needed. An export over 24 hours old is refused, so recent unsubscribes count.
 

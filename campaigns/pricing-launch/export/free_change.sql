@@ -4,6 +4,7 @@
 SELECT coalesce(json_agg(row_to_json(t)), '[]')
 FROM (
   SELECT u.id AS user_id, u.email, u.full_name, o.id AS org_id, o.name AS org_name,
+         o.timezone AS org_timezone,
          (SELECT count(*) FROM chat_history c
           WHERE c.organization_id = o.id AND c.message_type = 'bot'
             AND coalesce(c.attributes ->> 'source', '') NOT IN ('app', 'host', 'journey')
