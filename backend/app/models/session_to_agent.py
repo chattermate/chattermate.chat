@@ -52,7 +52,7 @@ class SessionToAgent(Base):
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=False, index=True)
     group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id", ondelete="SET NULL"), nullable=True)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     status = Column(SQLEnum(SessionStatus), nullable=False, default=SessionStatus.OPEN)
     # Messaging channel the session belongs to ('web' = widget, 'telegram',
     # 'whatsapp', ...). Routing key for outbound delivery of replies.

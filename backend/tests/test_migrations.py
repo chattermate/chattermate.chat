@@ -17,6 +17,7 @@ limitations under the License.
 import importlib.util
 from pathlib import Path
 
+import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
@@ -53,12 +54,16 @@ def _load_migration(name: str):
     return module
 
 
-def test_erasure_fk_indexes_match_the_models():
+@pytest.mark.parametrize("name, columns", [
+    ("erasure_fk_indexes_001", "FOREIGN_KEYS"),
+    ("org_lookup_indexes_001", "ORGANIZATION_COLUMNS"),
+])
+def test_index_migrations_match_the_models(name, columns):
     """The models declare the same indexes, under the same names, so a database
     made by create_all and one made by migrating agree, and autogenerate sees
     no drift."""
-    migration = _load_migration("erasure_fk_indexes_001")
-    for table, column in migration.FOREIGN_KEYS:
+    migration = _load_migration(name)
+    for table, column in getattr(migration, columns):
         names = {index.name for index in Base.metadata.tables[table].indexes
                  if [c.name for c in index.columns] == [column]}
         assert migration.index_name(table, column) in names, f"{table}.{column} has no index=True"
