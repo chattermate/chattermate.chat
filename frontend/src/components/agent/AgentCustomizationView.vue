@@ -331,6 +331,15 @@ watch(customization, (newValue) => {
     emit('preview', newValue)
 }, { deep: true })
 
+// A photo uploaded beside the form (it saves itself) changes photo_url in
+// place: take it without dropping the form's other unsaved edits, so the next
+// save keeps the new photo instead of sending the old one back
+watch(() => props.agent.customization?.photo_url, (photoUrl) => {
+    if (photoUrl !== undefined && customization.value.photo_url !== photoUrl) {
+        customization.value = { ...customization.value, photo_url: photoUrl }
+    }
+})
+
 // Watch for prop changes to update local customization
 watch(() => props.agent.customization, (newCustomization) => {
     if (newCustomization) {
