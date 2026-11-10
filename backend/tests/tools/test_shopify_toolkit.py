@@ -716,6 +716,9 @@ def test_api_error(shopify_tools, mock_shopify_service):
     assert result["success"] is False
     assert "error" in result["message"].lower() 
 
+PUBLISHED = "2025-04-06T15:54:17Z"
+
+
 def _variant(variant_id="111", available=True):
     return {"node": {"id": f"gid://shopify/ProductVariant/{variant_id}", "availableForSale": available}}
 
@@ -730,11 +733,18 @@ def _variant(variant_id="111", available=True):
     (None, None),
 ])
 def test_cart_variant_id(variants, expected):
-    assert cart_variant_id({"variants": variants}) == expected
+    assert cart_variant_id({"publishedAt": PUBLISHED, "variants": variants}) == expected
+
+
+@pytest.mark.parametrize("published", [None, ""])
+def test_a_product_off_the_online_store_has_no_cart_variant(published):
+    """Seen on the real test store: the Admin API returned it, the cart said
+    "Cannot find variant"."""
+    assert cart_variant_id({"publishedAt": published, "variants": {"edges": [_variant()]}}) is None
 
 
 def test_a_product_with_no_variant_data_has_no_cart_variant():
-    assert cart_variant_id({}) is None
+    assert cart_variant_id({"publishedAt": PUBLISHED}) is None
 
 
 def test_product_from_node_copes_with_missing_fields():
@@ -754,6 +764,7 @@ def test_product_from_node_flattens_a_full_node():
         "priceRangeV2": {"minVariantPrice": {"amount": "10.00", "currencyCode": "USD"},
                          "maxVariantPrice": {"amount": "20.00", "currencyCode": "USD"}},
         "images": {"edges": [{"node": {"url": "https://cdn.example/a.png"}}]},
+        "publishedAt": PUBLISHED,
         "variants": {"edges": [_variant()]},
     })
 
@@ -771,7 +782,7 @@ def test_product_from_node_flattens_a_full_node():
 ])
 def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools, call):
     node = {"id": "gid://shopify/Product/9", "title": "Board", "handle": "board",
-            "productType": "board", "tags": [], "variants": {"edges": [_variant()]}}
+            "productType": "board", "tags": [], "publishedAt": PUBLISHED, "variants": {"edges": [_variant()]}}
     response = MagicMock(status_code=200)
     response.json.return_value = {"data": {"product": node, "products": {
         "edges": [{"node": node}], "pageInfo": {"hasNextPage": False}}}}
@@ -781,6 +792,8 @@ def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools
          patch("app.tools.shopify_toolkit.get_redis") as get_redis:
         call(shopify_tools)
 
-    assert "variants(first: 2)" in mock_post.call_args.kwargs["json"]["query"]
+    query = mock_post.call_args.kwargs["json"]["query"]
+    assert "variants(first: 2)" in query
+    assert "publishedAt" in query
     cached = json.loads(get_redis.return_value.setex.call_args.args[2])
     assert cached["products"][0]["cart_variant_id"] == "111"

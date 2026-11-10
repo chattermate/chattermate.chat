@@ -416,11 +416,13 @@ function shopifyOrderNode(order: ShopifyOrder) {
   }
 }
 
-function shopifyProduct(id: number, title: string, variants: { id: number; onSale: boolean }[]) {
+function shopifyProduct(id: number, title: string, variants: { id: number; onSale: boolean }[], onOnlineStore = true) {
+  const handle = title.toLowerCase().replaceAll(' ', '-')
   return {
     id: `gid://shopify/Product/${id}`,
     title,
-    handle: title.toLowerCase().replaceAll(' ', '-'),
+    handle,
+    publishedAt: onOnlineStore ? '2025-04-06T15:54:17Z' : null,
     description: title,
     productType: 'E2E',
     vendor: 'E2E',
@@ -433,12 +435,13 @@ function shopifyProduct(id: number, title: string, variants: { id: number; onSal
 }
 
 // One to buy, one that sells out after the search (the site's cart refuses variant 222),
-// one with sizes to choose, and one not on sale.
+// one with sizes to choose, one not on sale, and one the Online Store doesn't sell.
 const shopifyProducts = [
   shopifyProduct(1, 'E2E Mug', [{ id: 111, onSale: true }]),
   shopifyProduct(2, 'E2E Cap', [{ id: 222, onSale: true }]),
   shopifyProduct(3, 'E2E Shirt', [{ id: 331, onSale: true }, { id: 332, onSale: true }]),
   shopifyProduct(4, 'E2E Poster', [{ id: 444, onSale: false }]),
+  shopifyProduct(5, 'E2E Draft', [{ id: 555, onSale: true }], false),
 ]
 
 function shopify({ action, body }: Call): Answer {

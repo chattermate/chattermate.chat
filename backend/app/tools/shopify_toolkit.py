@@ -146,8 +146,13 @@ def create_minimal_product(product: dict) -> dict:
     }
 
 def cart_variant_id(node: dict) -> Optional[str]:
-    """The variant one click can add: only for a product with a single variant that
-    is on sale. With several, picking one for the customer could buy the wrong size."""
+    """The variant one click can add: only for a product published to the Online
+    Store with a single variant that is on sale. The Admin API also returns products
+    the storefront can't sell, whose cart add fails ("Cannot find variant").
+    publishedAt, not onlineStoreUrl: the URL is null on a password-protected store.
+    With several variants, picking one for the customer could buy the wrong size."""
+    if not node.get("publishedAt"):
+        return None
     edges = (node.get("variants") or {}).get("edges") or []
     variant = (edges[0].get("node") or {}) if len(edges) == 1 else {}
     if not variant.get("id") or not variant.get("availableForSale"):
@@ -435,6 +440,7 @@ class ShopifyTools(Toolkit):
                     productType
                     vendor
                     totalInventory
+                    publishedAt
                     variants(first: 2) { edges { node { id availableForSale } } }
                     priceRangeV2 {
                       minVariantPrice {
@@ -992,6 +998,7 @@ class ShopifyTools(Toolkit):
                         productType
                         vendor
                         totalInventory
+                        publishedAt
                         variants(first: 2) {{ edges {{ node {{ id availableForSale }} }} }}
                         priceRangeV2 {{
                           minVariantPrice {{
@@ -1062,6 +1069,7 @@ class ShopifyTools(Toolkit):
                         productType
                         vendor
                         totalInventory
+                        publishedAt
                         variants(first: 2) { edges { node { id availableForSale } } }
                         priceRangeV2 {
                           minVariantPrice {

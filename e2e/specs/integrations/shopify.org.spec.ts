@@ -100,14 +100,14 @@ test.describe('Shopify', () => {
       await expect(widget.productCard('E2E Mug').getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
     })
 
-    test('a product with sizes, or not on sale, goes to its product page @integrations', async ({ agent, widget, llm }) => {
+    test('a product with sizes, not on sale, or off the Online Store goes to its product page @integrations', async ({ agent, widget, llm }) => {
       await llm.script(agent, offerProducts)
       await widget.embed({ shopifyStore: shop })
       await widget.open()
       await widget.send('Any gift ideas?')
 
       await expect(widget.productCard('E2E Mug').getByRole('button', { name: 'Add to cart' })).toBeVisible(AI_REPLY)
-      for (const title of ['E2E Shirt', 'E2E Poster']) {
+      for (const title of ['E2E Shirt', 'E2E Poster', 'E2E Draft']) {
         await expect(widget.productCard(title).getByRole('button', { name: /View product/ })).toBeVisible()
         await expect(widget.productCard(title).getByRole('button', { name: 'Add to cart' })).toHaveCount(0)
       }
