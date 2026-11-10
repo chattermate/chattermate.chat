@@ -19,6 +19,7 @@ from agno.tools import Toolkit
 from app.core.logger import get_logger
 from app.services.shopify import ShopifyService
 from app.services.shopify_urls import shopify_admin_url
+from app.services.shopify_tokens import admin_headers, call_admin_api
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.database import SessionLocal
 from app.models.organization import Organization
@@ -456,10 +457,6 @@ class ShopifyTools(Toolkit):
             
             # Execute the GraphQL query
             url = shopify_admin_url(shop.shop_domain, "graphql.json")
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json"
-            }
             
             payload = {
                 "query": graphql_query,
@@ -467,7 +464,8 @@ class ShopifyTools(Toolkit):
             }
             
             verify_ssl = settings.VERIFY_SSL_CERTIFICATES
-            response = requests.post(url, headers=headers, json=payload, verify=verify_ssl)
+            response = call_admin_api(shop, lambda token: requests.post(
+                url, headers=admin_headers(token), json=payload, verify=verify_ssl))
             
             if response.status_code != 200:
                 logger.error(f"Failed to search products: {response.text}")
@@ -646,16 +644,16 @@ class ShopifyTools(Toolkit):
         """Orders placed with this email (and number, if given). Shopify's search is
         fuzzy, so every result is re-checked for an exact email and number match."""
         limit = max(1, min(int(limit or MAX_ORDER_RESULTS), MAX_ORDER_RESULTS))
-        response = requests.post(
+        response = call_admin_api(shop, lambda token: requests.post(
             shopify_admin_url(shop.shop_domain, "graphql.json"),
-            headers={"X-Shopify-Access-Token": shop.access_token, "Content-Type": "application/json"},
+            headers=admin_headers(token),
             json={
                 "query": ORDER_SEARCH_GRAPHQL,
                 "variables": {"query": build_order_search(customer_email, order_number), "first": limit},
             },
             verify=settings.VERIFY_SSL_CERTIFICATES,
             timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
-        )
+        ))
         if response.status_code != 200:
             logger.error(f"Failed to search orders: {response.status_code} {response.text}")
             return {"success": False, "message": "Couldn't reach the store's orders right now."}
@@ -907,10 +905,6 @@ class ShopifyTools(Toolkit):
                 }
                 
                 url = shopify_admin_url(shop.shop_domain, "graphql.json")
-                headers = {
-                    "X-Shopify-Access-Token": shop.access_token,
-                    "Content-Type": "application/json"
-                }
                 
                 payload = {
                     "query": graphql_query,
@@ -918,7 +912,8 @@ class ShopifyTools(Toolkit):
                 }
                 
                 verify_ssl = settings.VERIFY_SSL_CERTIFICATES
-                response = requests.post(url, headers=headers, json=payload, verify=verify_ssl)
+                response = call_admin_api(shop, lambda token: requests.post(
+                    url, headers=admin_headers(token), json=payload, verify=verify_ssl))
                 
                 if response.status_code == 200:
                     result = response.json()
@@ -1098,10 +1093,6 @@ class ShopifyTools(Toolkit):
             
             # Execute the GraphQL query
             url = shopify_admin_url(shop.shop_domain, "graphql.json")
-            headers = {
-                "X-Shopify-Access-Token": shop.access_token,
-                "Content-Type": "application/json"
-            }
             
             payload = {
                 "query": graphql_query,
@@ -1109,7 +1100,8 @@ class ShopifyTools(Toolkit):
             }
             
             verify_ssl = settings.VERIFY_SSL_CERTIFICATES
-            response = requests.post(url, headers=headers, json=payload, verify=verify_ssl)
+            response = call_admin_api(shop, lambda token: requests.post(
+                url, headers=admin_headers(token), json=payload, verify=verify_ssl))
             
             if response.status_code != 200:
                 logger.error(f"Failed to get recommendations: {response.text}")

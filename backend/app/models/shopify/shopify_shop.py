@@ -31,6 +31,12 @@ class ShopifyShop(Base):
     shop_domain = Column(String, nullable=False, unique=True, index=True)
     # Encrypted at rest (app.core.encryption); rows from before read as plaintext.
     access_token = Column(EncryptedText, nullable=True)
+    # Expiring offline tokens (app.services.shopify_tokens): the access token
+    # lasts an hour and the refresh token renews it. A row with an access token
+    # but no refresh token holds a legacy non-expiring token awaiting migration.
+    refresh_token = Column(EncryptedText, nullable=True)
+    access_token_expires_at = Column(DateTime, nullable=True)
+    refresh_token_expires_at = Column(DateTime, nullable=True)
     scope = Column(String, nullable=True)
     is_installed = Column(Boolean, default=False)
     

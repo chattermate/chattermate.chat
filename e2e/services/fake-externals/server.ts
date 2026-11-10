@@ -418,8 +418,12 @@ function shopifyOrderNode(order: ShopifyOrder) {
 
 function shopify({ action, body }: Call): Answer {
   if (action === 'access_token') {
-    const seed = String(body?.subject_token ?? body?.code ?? '')
-    return ok({ access_token: `shpat_${digest(seed).slice(0, 24)}`, scope: 'read_orders,read_products' })
+    // Code grant, session/legacy-token exchange, or refresh grant; `expiring=1`
+    // asks for an expiring offline token (1h access, 90d rotating refresh).
+    const seed = String(body?.subject_token ?? body?.code ?? body?.refresh_token ?? '')
+    const token = { access_token: `shpat_${digest(seed).slice(0, 24)}`, scope: 'read_orders,read_products' }
+    if (String(body?.expiring) !== '1' && body?.grant_type !== 'refresh_token') return ok(token)
+    return ok({ ...token, expires_in: 3600, refresh_token: `shprt_${digest(`refresh:${seed}`).slice(0, 24)}`, refresh_token_expires_in: 7776000 })
   }
   const query = String(body?.query ?? '')
   const variables = (body?.variables ?? {}) as Record<string, unknown>

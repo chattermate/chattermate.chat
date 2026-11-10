@@ -31,10 +31,13 @@ async def test_lifespan_runs_every_startup_step_once():
         patch("app.main.configure_socketio") as configure_socketio,
         patch("app.main.initialize_cors_listener") as cors_listener,
         patch("app.main.run_auto_closer_loop", new=AsyncMock()) as auto_closer,
+        patch("app.main.run_keepalive_loop", new=AsyncMock()) as shopify_keepalive,
     ):
         async with lifespan(api):
             task = api.state.auto_closer_task
+            keepalive_task = api.state.shopify_token_keepalive_task
         await task
+        await keepalive_task
 
     verify_key.assert_called_once_with()
     verify_secrets.assert_called_once_with()
@@ -42,6 +45,7 @@ async def test_lifespan_runs_every_startup_step_once():
     configure_socketio.assert_called_once()
     cors_listener.assert_called_once_with()
     auto_closer.assert_awaited_once_with()
+    shopify_keepalive.assert_awaited_once_with()
 
 
 def test_startup_work_is_not_left_on_the_dead_on_event_list():
