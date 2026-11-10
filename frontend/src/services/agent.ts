@@ -17,13 +17,12 @@ limitations under the License.
 import api from './api'
 import type { AgentCustomization, Agent, AgentUpdate } from '@/types/agent'
 import { agentStorage } from '@/utils/storage'
+import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
 
 // Inside the Shopify admin the same routes are served under a /shopify suffix,
 // authenticated by the session token instead of the dashboard login.
 function agentEndpoint(path: string): string {
-  const urlParams = new URLSearchParams(window.location.search)
-  const inShopify = urlParams.has('shop') || urlParams.has('host')
-  return inShopify ? `${path}/shopify` : path
+  return isEmbeddedShopify() ? `${path}/shopify` : path
 }
 
 export const agentService = {

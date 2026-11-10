@@ -37,11 +37,16 @@ vi.mock('@/services/user', () => ({
 
 vi.mock('@/config/api', () => ({ getApiUrl: () => 'http://api.test/api/v1' }))
 
+// Off by default; the embedded-Shopify tests switch it on before loadApi().
+const shopify = { enterprise: false, app: null as unknown }
+const getSessionToken = vi.fn()
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
-    hasEnterpriseModule: false,
-    loadModule: vi.fn(),
-    moduleImports: {},
+    hasEnterpriseModule: shopify.enterprise,
+    loadModule: async (name: string) => name === 'bridge'
+      ? { initShopifyApp: () => shopify.app }
+      : { getSessionToken },
+    moduleImports: { shopifyAppBridgeUtilities: 'utils', shopifyAppBridge: 'bridge' },
   }),
 }))
 
@@ -235,5 +240,76 @@ describe('api client', () => {
     expect(refresh).not.toHaveBeenCalled()
     expect(seen).toHaveLength(1)
     expect(push).not.toHaveBeenCalled()
+  })
+
+  describe('inside Shopify admin', () => {
+    const realTop = window.top
+
+    beforeEach(() => {
+      shopify.enterprise = true
+      shopify.app = { id: 'app-bridge' }
+      getSessionToken.mockResolvedValue('shopify-token')
+      // Shopify admin frames the app
+      Object.defineProperty(window, 'top', { value: {}, configurable: true })
+    })
+
+    afterEach(() => {
+      shopify.enterprise = false
+      shopify.app = null
+      Object.defineProperty(window, 'top', { value: realTop, configurable: true })
+    })
+
+    /** loadApi(), once its Shopify modules have finished loading. */
+    async function loadEmbeddedApi() {
+      const loaded = await loadApi()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      return loaded
+    }
+
+    // The address loses ?shop=&host= once the app navigates; the token must
+    // still go out, or every later page gets a 401.
+    it('attaches the session token on a page without the Shopify params', async () => {
+      const { api } = await loadEmbeddedApi()
+      const { adapter, seen } = adapterQueue([200])
+
+      await api.get('/shopify/shop-config-status', { adapter })
+
+      expect(window.location.search).toBe('')
+      expect(seen[0].headers?.Authorization).toBe('Bearer shopify-token')
+    })
+
+    it('keeps the bearer token off non-Shopify endpoints', async () => {
+      const { api } = await loadEmbeddedApi()
+      const { adapter, seen } = adapterQueue([200])
+
+      await api.get('/users/me', { adapter })
+
+      expect(seen[0].headers?.Authorization).toBeUndefined()
+    })
+
+    it('leaves a 401 to the page instead of sending the admin to our login', async () => {
+      isAuthenticated.mockReturnValue(false)
+      const { api, axios } = await loadEmbeddedApi()
+      const refresh = vi.spyOn(axios, 'post')
+      const { adapter } = adapterQueue([401])
+
+      await expect(api.get('/shopify/shop-config-status', { adapter })).rejects.toMatchObject({
+        response: { status: 401 },
+      })
+
+      expect(refresh).not.toHaveBeenCalled()
+      expect(push).not.toHaveBeenCalled()
+      expect(clearCurrentUser).not.toHaveBeenCalled()
+    })
+
+    it('treats an unframed page as the dashboard', async () => {
+      Object.defineProperty(window, 'top', { value: window, configurable: true })
+      const { api } = await loadEmbeddedApi()
+      const { adapter, seen } = adapterQueue([200])
+
+      await api.get('/shopify/shop-config-status', { adapter })
+
+      expect(seen[0].headers?.Authorization).toBeUndefined()
+    })
   })
 })

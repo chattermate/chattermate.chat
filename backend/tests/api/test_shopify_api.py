@@ -738,8 +738,8 @@ async def test_get_status_not_connected(mock_shop_repo, mock_db, mock_organizati
 @pytest.mark.asyncio
 @patch('app.api.shopify.require_shopify_session')
 @patch('app.api.shopify.AgentShopifyConfigRepository')
-@patch('app.api.shopify.WidgetRepository')
-async def test_get_shop_config_status_success(mock_widget_repo, mock_config_repo, mock_require_session, mock_db):
+@patch('app.api.shopify.shop_widget')
+async def test_get_shop_config_status_success(mock_shop_widget, mock_config_repo, mock_require_session, mock_db):
     """Test shop config status endpoint"""
     # Arrange
     shop_id = str(uuid.uuid4())
@@ -764,13 +764,10 @@ async def test_get_shop_config_status_success(mock_widget_repo, mock_config_repo
     mock_agent_config.agent_id = str(uuid.uuid4())
     mock_config_repo_instance.get_configs_by_shop.return_value = [mock_agent_config]
     
-    # Mock widget repository
-    mock_widget_repo_instance = MagicMock()
-    mock_widget_repo.return_value = mock_widget_repo_instance
-    
+    # The store's widget
     mock_widget = MagicMock()
     mock_widget.id = widget_id
-    mock_widget_repo_instance.get_widgets_by_agent.return_value = [mock_widget]
+    mock_shop_widget.return_value = mock_widget
     
     # Act
     from app.api.shopify import get_shop_config_status
@@ -962,8 +959,8 @@ async def test_get_connected_agents_shop_id_mismatch(mock_require_session, mock_
 @pytest.mark.asyncio
 @patch('app.api.shopify.require_shopify_session')
 @patch('app.api.shopify.AgentShopifyConfigRepository')
-@patch('app.api.shopify.WidgetRepository')
-async def test_get_shop_config_status_no_widget(mock_widget_repo, mock_config_repo, mock_require_session, mock_db):
+@patch('app.api.shopify.shop_widget')
+async def test_get_shop_config_status_no_widget(mock_shop_widget, mock_config_repo, mock_require_session, mock_db):
     """Test shop config status when no widget exists"""
     # Arrange
     shop_id = str(uuid.uuid4())
@@ -984,9 +981,8 @@ async def test_get_shop_config_status_no_widget(mock_widget_repo, mock_config_re
     mock_config_repo.return_value = mock_config_repo_instance
     mock_config_repo_instance.get_configs_by_shop.return_value = []  # No agent configs
     
-    # Mock widget repository (won't be called since no configs)
-    mock_widget_repo_instance = MagicMock()
-    mock_widget_repo.return_value = mock_widget_repo_instance
+    # No agent connected, so no widget
+    mock_shop_widget.return_value = None
     
     # Act
     from app.api.shopify import get_shop_config_status

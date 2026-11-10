@@ -58,32 +58,24 @@ const api = axios.create({
 // Request interceptor to add session token for Shopify embedded app
 api.interceptors.request.use(
   async (config) => {
-    // Check if we're in embedded Shopify context
-    const urlParams = new URLSearchParams(window.location.search)
-    const hasShopParam = urlParams.has('shop') || urlParams.has('host')
+    // Embedded in Shopify admin: App Bridge started on the first page load
+    // (which carries ?shop=&host=) and stays up, so this holds on every page
+    // the app moves to, even once the address no longer has those params.
+    const app = embeddedShopifyApp()
 
-    // Check if this is a Shopify-related endpoint
+    // Shopify endpoints, and the agent and chat ones the embedded app shares
     const isShopifyEndpoint =
       config.url?.includes('/shopify/') ||
       config.url?.endsWith('/shopify') ||
-      (config.url?.includes('/agent/') && hasShopParam) ||
-      (config.url?.includes('/chats/') && hasShopParam)
+      config.url?.includes('/agent/') ||
+      config.url?.includes('/chats/')
 
-    if (
-      hasShopParam &&
-      isShopifyEndpoint &&
-      hasEnterpriseModule &&
-      initShopifyApp &&
-      getSessionToken
-    ) {
+    if (app && isShopifyEndpoint && getSessionToken) {
       try {
-        const app = initShopifyApp()
-        if (app) {
-          const token = await getSessionToken(app)
-          if (token) {
-            config.headers.Authorization = `Bearer ${token}`
-            console.log('✅ Added Shopify session token to request:', config.url)
-          }
+        const token = await getSessionToken(app)
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+          console.log('✅ Added Shopify session token to request:', config.url)
         }
       } catch (error) {
         console.error('❌ Failed to add session token:', error)
@@ -94,6 +86,17 @@ api.interceptors.request.use(
   },
   (error) => Promise.reject(error),
 )
+
+/** The App Bridge app when this page runs inside Shopify admin, else null. */
+function embeddedShopifyApp(): unknown {
+  // Shopify admin always frames the app; the dashboard never is.
+  if (!hasEnterpriseModule || !initShopifyApp || window.top === window) return null
+  try {
+    return initShopifyApp() || null
+  } catch {
+    return null
+  }
+}
 
 /** Signs the user out locally and sends them to the login page. */
 function signOut() {
@@ -139,7 +142,12 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config
 
+    // Inside Shopify admin the session is Shopify's: the page shows the
+    // error (or asks to reopen the app) rather than leaving for our login.
+    if (error.response?.status === 401 && embeddedShopifyApp()) return Promise.reject(error)
+
     // If error is 401 and we haven't tried to refresh token yet
+
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       // If there's no authenticated user, do not attempt refresh. Go to login directly.
       if (!userService.isAuthenticated()) {

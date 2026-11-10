@@ -88,6 +88,7 @@ const moduleImports = {
   shopifyAgentManagement: '/src/modules/enterprise/views/ShopifyAgentManagementView.vue',
   shopifyInbox: '/src/modules/enterprise/views/ShopifyInboxView.vue',
   shopifyPricing: '/src/modules/enterprise/views/ShopifyPricingView.vue',
+  shopifyCustomize: '/src/modules/enterprise/views/ShopifyCustomizeView.vue',
   shopifyAppBridge: '/src/modules/enterprise/plugins/shopifyAppBridge.ts',
   shopifyAppBridgeUtilities: '/src/modules/enterprise/plugins/shopifyAppBridgeUtilities.ts',
   shopifyIntegration: '/src/modules/enterprise/composables/useShopifyIntegration.ts',

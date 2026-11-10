@@ -322,6 +322,12 @@ const allRoutes = hasEnterpriseModule
         component: loadEnterpriseComponent(moduleImports.shopifyPricing),
         meta: { requiresAuth: false },
       },
+      {
+        path: '/shopify/customize',
+        name: 'shopify-customize',
+        component: loadEnterpriseComponent(moduleImports.shopifyCustomize),
+        meta: { requiresAuth: false }, // Session token auth instead
+      },
     ]
   : baseRoutes
 

@@ -54,6 +54,25 @@
   <script>
     (function () {
       var params = new URLSearchParams(window.location.search)
+      // Shopify opens the app with ?host=&shop=; a page reloaded later inside
+      // the admin (a link, a refresh) may not carry them. Remember them for
+      // this tab and put them back, or the page would load without App Bridge.
+      var KEY = 'cm_shopify_embed'
+      // Same test as isEmbeddedShopify in src/utils/shopifyEmbed.ts (a static
+      // page can't import it): framed, on one of the app's routes
+      var inAdminFrame = window.top !== window && window.location.pathname.indexOf('/shopify/') === 0
+      try {
+        if (params.has('host') && params.has('shop')) {
+          sessionStorage.setItem(KEY, JSON.stringify({ host: params.get('host'), shop: params.get('shop') }))
+        } else if (inAdminFrame) {
+          var saved = JSON.parse(sessionStorage.getItem(KEY) || 'null')
+          if (saved && saved.host && saved.shop) {
+            params.set('host', saved.host)
+            params.set('shop', saved.shop)
+            history.replaceState(history.state, '', window.location.pathname + '?' + params.toString() + window.location.hash)
+          }
+        }
+      } catch (e) { /* storage blocked: Shopify's own params are all there is */ }
       if (!params.has('host') && !params.has('shop')) return
       var sources = [
         'https://cdn.shopify.com/shopifycloud/app-bridge.js',

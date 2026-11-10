@@ -30,9 +30,11 @@ import LauncherSection from './LauncherSection.vue'
 import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
-}>()
+    /** The host page has its own save (the Shopify app's title-bar Save). */
+    hideActions?: boolean
+}>(), { hideActions: false })
 
 const emit = defineEmits<{
     (e: 'cancel'): void
@@ -118,12 +120,12 @@ const customization = ref<AgentCustomization>({
     allow_new_chat: props.agent.customization?.allow_new_chat ?? false,
 })
 
-// Chat style options grouped into Legacy (existing looks) and New (premium presets)
+// Chat style options grouped into Classic (existing looks) and New (premium presets)
 const chatStyleOptions = [
     {
         value: 'CHATBOT' as ChatStyle,
-        label: 'Legacy',
-        description: 'The original look — light, neutral, classic chatbot.',
+        label: 'Classic',
+        description: 'The original look: light, neutral and simple.',
         group: 'legacy' as const,
     },
     {
@@ -363,7 +365,8 @@ const fontPresets = [
 const isSaving = ref(false)
 const saveMessage = ref<{ type: 'success' | 'error', text: string } | null>(null)
 
-const handleSave = async () => {
+/** Saves the customization. True when it saved. */
+const handleSave = async (): Promise<boolean> => {
     isSaving.value = true
     saveMessage.value = null
     
@@ -386,16 +389,20 @@ const handleSave = async () => {
         setTimeout(() => {
             saveMessage.value = null
         }, 3000)
+        return true
     } catch (error) {
         console.error('Failed to update customization:', error)
         saveMessage.value = { 
             type: 'error', 
             text: error instanceof Error ? error.message : 'Failed to save customization. Please try again.' 
         }
+        return false
     } finally {
         isSaving.value = false
     }
 }
+
+defineExpose({ save: handleSave })
 
 // Watch for changes and emit preview event
 const isInternalUpdate = ref(false)
@@ -407,6 +414,15 @@ watch(customization, (newValue) => {
     console.log('AgentCustomizationView - Customization changed, emitting preview:', newValue)
     emit('preview', newValue)
 }, { deep: true })
+
+// A photo uploaded beside the form (it saves itself) changes photo_url in
+// place: take it without dropping the form's other unsaved edits, so the next
+// save keeps the new photo instead of sending the old one back
+watch(() => props.agent.customization?.photo_url, (photoUrl) => {
+    if (photoUrl !== undefined && customization.value.photo_url !== photoUrl) {
+        customization.value = { ...customization.value, photo_url: photoUrl }
+    }
+})
 
 // Watch for prop changes to update local customization
 watch(() => props.agent.customization, (newCustomization) => {
@@ -657,9 +673,9 @@ const hideInitiationPreview = () => {
                 <!-- Chat design Section -->
                 <div class="subsection">
                     <h4 class="subsection-heading">Style</h4>
-                    <p class="section-subtext">Every look from the marketing site — pick one, match it to your brand.</p>
+                    <p class="section-subtext">Pick the look that fits your store.</p>
 
-                    <div class="chat-style-group-label">Legacy</div>
+                    <div class="chat-style-group-label">Classic</div>
                     <div class="chat-style-grid">
                         <button
                             v-for="option in legacyStyleOptions"
@@ -1116,7 +1132,7 @@ const hideInitiationPreview = () => {
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Show citations</span>
-                            <span class="citations-toggle-desc">Display the knowledge-base sources used to answer, as chips under each reply.</span>
+                            <span class="citations-toggle-desc">Shows the sources behind each answer.</span>
                         </span>
                     </label>
 
@@ -1125,7 +1141,7 @@ const hideInitiationPreview = () => {
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Collect email before chat</span>
-                            <span class="citations-toggle-desc">Require visitors to enter their email before they can start chatting. Off by default.</span>
+                            <span class="citations-toggle-desc">Visitors give their email before they can chat.</span>
                         </span>
                     </label>
 
@@ -1134,7 +1150,7 @@ const hideInitiationPreview = () => {
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Show AI disclaimer</span>
-                            <span class="citations-toggle-desc">Adds “{{ AI_DISCLAIMER_TEXT }}” to the widget footer. Hidden automatically once a human agent takes over.</span>
+                            <span class="citations-toggle-desc">Shows “{{ AI_DISCLAIMER_TEXT }}” under the chat while the AI answers.</span>
                         </span>
                     </label>
 
@@ -1143,7 +1159,7 @@ const hideInitiationPreview = () => {
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Let visitors start a new chat</span>
-                            <span class="citations-toggle-desc">Adds a “New chat” control that ends the conversation and starts a fresh one. Hidden while a human agent is handling the chat.</span>
+                            <span class="citations-toggle-desc">Adds a “New chat” button that starts a fresh conversation.</span>
                         </span>
                     </label>
                 </div>
@@ -1151,7 +1167,7 @@ const hideInitiationPreview = () => {
 
         </div>
 
-        <div class="button-group">
+        <div v-if="!hideActions" class="button-group">
             <!-- Save Message -->
             <div v-if="saveMessage" class="save-message" :class="saveMessage.type">
                 <font-awesome-icon 

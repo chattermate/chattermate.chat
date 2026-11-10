@@ -28,6 +28,7 @@ import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '@/utils/aiDisclaimer'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useImageFallback } from '@/composables/useImageFallback'
 
 const props = defineProps<{
     isActive: boolean
@@ -341,12 +342,15 @@ const messageNameStyles = computed(() => ({
     color: 'var(--cm-text)'
 }))
 
+// When the uploaded photo won't load, the orb stands in for it
+const { failed: photoFailed, onError: onPhotoError } = useImageFallback(() => props.customization.photo_url)
+
 const photoUrl = computed(() => {
     // These are <img> slots in chat bubbles, so the fallback has to be an image:
     // the orb as an SVG data URI. Previously the retired /avatars/*.svg artwork.
     // Seeded off orbSeed (the agent slug) so it matches the orb on the detail
     // header and in the list, which use the same seed.
-    if (!props.customization.photo_url) {
+    if (!props.customization.photo_url || photoFailed.value) {
         return orbSvgDataUri(
             props.orbSeed || props.agentName,
             props.customization.customization_metadata?.orb_variant,
@@ -582,6 +586,7 @@ const handleInitiationClick = () => {
                         v-else-if="photoUrl"
                         :src="photoUrl"
                         :alt="agentName"
+                        @error="onPhotoError"
                         class="welcome-avatar"
                     >
                     <h1 class="welcome-title">{{ welcomeTitle }}</h1>
@@ -633,7 +638,7 @@ const handleInitiationClick = () => {
         ]" :style="chatStyles" v-if="isExpanded && !customization.showBubblePreview && !customization.showInitiationPreview && shouldShowChatPanel">
             <div v-if="!isAskAnythingStyle" class="chat-header">
                 <div class="header-content">
-                    <img :src="photoUrl" :alt="agentName" class="header-avatar">
+                    <img :src="photoUrl" @error="onPhotoError" :alt="agentName" class="header-avatar">
                     <div class="header-info">
                         <h3 :style="messageNameStyles">{{ agentName }}</h3>
                         <div class="status">
@@ -660,7 +665,7 @@ const handleInitiationClick = () => {
                 <div v-for="(message, index) in messages" :key="index" :class="['message', message.role === 'bot' ? 'agent-message' : `${message.role}-message`]">
                     <div v-if="message.role === 'bot'" class="cm-msg-avatar">
                         <div v-if="useOrbAvatar" class="cm-msg-avatar-orb" :style="orbStyle"></div>
-                        <img v-else :src="photoUrl" :alt="agentName" class="cm-msg-avatar-img">
+                        <img v-else :src="photoUrl" @error="onPhotoError" :alt="agentName" class="cm-msg-avatar-img">
                     </div>
                     <div class="message-bubble"
                         :style="message.role === 'bot' ? agentBubbleStyles : userBubbleStyles"
