@@ -260,13 +260,49 @@ describe('widget socket reconnection', () => {
     // Data retention can delete the conversation and the visitor's record under
     // an open socket. The server then says so and closes the connection, which
     // socket.io never reconnects on its own.
-    it('connects again when the server closes the connection', async () => {
+    const gone = { type: 'conversation_gone', error: 'This conversation has ended. Please send your message again.' }
+
+    it('connects again when the server closes the connection after saying why', async () => {
+      await connectWidget()
+      fire('connect')
+
+      fire('error', gone)
+      fire('disconnect', 'io server disconnect')
+
+      expect(socket.connect).toHaveBeenCalledTimes(1)
+    })
+
+    it('stays closed when the server closes the connection for any other reason', async () => {
       await connectWidget()
       fire('connect')
 
       fire('disconnect', 'io server disconnect')
 
+      expect(socket.connect).not.toHaveBeenCalled()
+    })
+
+    it('starts over only once per request', async () => {
+      await connectWidget()
+      fire('connect')
+      fire('error', gone)
+      fire('disconnect', 'io server disconnect')
+      fire('connect')
+
+      fire('disconnect', 'io server disconnect')
+
       expect(socket.connect).toHaveBeenCalledTimes(1)
+    })
+
+    it('forgets the request once any disconnect has followed it', async () => {
+      await connectWidget()
+      fire('connect')
+      fire('error', gone)
+      fire('disconnect', 'transport close') // socket.io reconnects this itself
+      fire('connect')
+
+      fire('disconnect', 'io server disconnect')
+
+      expect(socket.connect).not.toHaveBeenCalled()
     })
 
     it('authorizes a new visitor when that connection is refused', async () => {
@@ -275,6 +311,7 @@ describe('widget socket reconnection', () => {
       widget.onReauthorize(reauthorize)
       fire('connect')
 
+      fire('error', gone)
       fire('disconnect', 'io server disconnect')
       refuse('customer_required', 'Visitor not authorized yet')
 
@@ -285,7 +322,7 @@ describe('widget socket reconnection', () => {
       const widget = await connectWidget()
       fire('connect')
 
-      fire('error', { type: 'conversation_gone', error: 'This conversation has ended. Please send your message again.' })
+      fire('error', gone)
 
       expect(widget.errorMessage.value).toBe('This conversation has ended. Please send your message again.')
     })
@@ -294,6 +331,7 @@ describe('widget socket reconnection', () => {
       await connectWidget()
       fire('connect')
 
+      fire('error', gone)
       fire('disconnect', 'transport close')
       fire('disconnect', 'io client disconnect')
 

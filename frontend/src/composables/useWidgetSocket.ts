@@ -94,6 +94,8 @@ export function useWidgetSocket() {
     // worth another attempt.
     const FINAL_REFUSALS = new Set<SocketError['type']>(['ai_config_missing', ...REAUTHORIZING_REFUSALS])
     let refusedForGood = false
+    // The server is about to close the connection so the widget starts over
+    let startOverRequested = false
     // Why the last attempt was refused for good, for the caller of connect().
     const refusal = ref<SocketError['type'] | null>(null)
 
@@ -217,12 +219,19 @@ export function useWidgetSocket() {
             }
 
             // socket.io doesn't reconnect after the server closes the connection.
-            // The server only does that once the visitor's conversation and record
-            // were deleted: connecting again is refused with a reason that has the
-            // widget authorize a new visitor.
-            if (reason === 'io server disconnect') {
+            // Only when the server said why first, because the visitor's
+            // conversation was deleted: connecting again opens a new one, or is
+            // refused with a reason that has the widget authorize a new visitor.
+            // Any other server-side close stays closed.
+            const startOver = startOverRequested
+            startOverRequested = false // only ever for the disconnect that follows it
+            if (reason === 'io server disconnect' && startOver) {
                 socket?.connect()
             }
+        })
+
+        socket.on('error', (error?: SocketError) => {
+            if (error?.type === 'conversation_gone') startOverRequested = true
         })
 
         // A refusal carries its reason in `data`: events the server emits before

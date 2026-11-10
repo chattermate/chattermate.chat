@@ -282,9 +282,10 @@ def _conversation_deleted(session_repo: SessionToAgentRepository, session: dict)
 def _may_continue_in_place(db, session: dict) -> bool:
     """A new conversation can start under this socket only for the same visitor
     and the agent the socket was set up for: a widget since pointed at another
-    agent reconnects, so connect reads that agent's settings."""
+    agent reconnects, so connect reads that agent's settings. A visitor merged
+    into another record reconnects too: authorizing again resolves the merge."""
     customer = CustomerRepository(db).get_by_id(session['customer_id'])
-    if not may_stand_for(customer, session.get('conversation_scope')):
+    if not may_stand_for(customer, session.get('conversation_scope')) or customer.merged_into_customer_id:
         return False
     widget_repo = WidgetRepository(db)
     widget = widget_repo.get_widget(session['widget_id'])

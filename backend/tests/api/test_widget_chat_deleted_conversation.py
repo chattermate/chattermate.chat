@@ -274,3 +274,20 @@ class TestStartingOverInstead:
         await getattr(widget_chat, handler)("sid", data)
 
         sio.disconnect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_visitor_merged_into_another_record_reconnects(db, socket, sio, test_customer, test_organization):
+    """Authorizing again resolves the merge; a new conversation on the merged
+    record would hide it from the person it now belongs to."""
+    survivor = Customer(organization_id=test_organization.id, email="survivor@example.com")
+    db.add(survivor)
+    db.commit()
+    erase_sessions(db, [UUID(socket["session_id"])])
+    test_customer.merged_into_customer_id = survivor.id
+    db.commit()
+
+    await send()
+
+    sio.disconnect.assert_awaited_once()
+    assert sessions_of(db, test_customer.id) == []
