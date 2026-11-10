@@ -23,6 +23,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api.widget import _visitor_customization
+from app.api.widget_frame import launcher_logo
+from app.core.brand import BRAND_COLORS
 from app.models.agent import AgentCustomization
 from app.models.schemas.agent_customization import (
     ChatStyle,
@@ -242,8 +244,40 @@ class TestBothVisitorRoutesAreGated:
         assert _visitor_customization(MagicMock(), agent) is None
 
 
+class TestLogoRedirect:
+    """The embed loader's image loads this route, never an address sent to the page."""
+
+    def _serve(self, agent, allowed=True, widget=True):
+        repo = MagicMock()
+        repo.get_widget.return_value = SimpleNamespace(id="w") if widget else None
+        repo.get_widget_agent.return_value = agent
+        with patch("app.api.widget_frame.WidgetRepository", return_value=repo), \
+                patch("app.services.launcher.plan_feature_on", return_value=allowed), \
+                patch("app.services.launcher.settings.S3_FILE_STORAGE", False):
+            return launcher_logo("w", MagicMock())
+
+    def test_redirects_to_the_current_logo_with_a_short_cache(self):
+        response = self._serve(TestBothVisitorRoutesAreGated()._agent())
+        assert response.status_code == 302
+        assert response.headers["location"].endswith("/api/v1/uploads/agents/x/a.webp")
+        assert response.headers["cache-control"] == f"public, max-age={launcher.LOGO_REDIRECT_MAX_AGE}"
+        assert launcher.LOGO_REDIRECT_MAX_AGE < launcher.SIGNED_URL_CACHE_SECONDS
+
+    @pytest.mark.parametrize("case", ["no plan", "no widget", "no agent", "no customization"])
+    def test_nothing_to_serve_is_a_404(self, case):
+        agent = TestBothVisitorRoutesAreGated()._agent()
+        kwargs = {
+            "no plan": dict(agent=agent, allowed=False),
+            "no widget": dict(agent=agent, widget=False),
+            "no agent": dict(agent=None),
+            "no customization": dict(agent=SimpleNamespace(customization=None)),
+        }[case]
+        with pytest.raises(HTTPException) as refused:
+            self._serve(**kwargs)
+        assert refused.value.status_code == 404
+
+
 class TestDefaultLauncherColour:
     def test_new_customizations_take_the_logo_ink(self):
-        from app.core.brand import BRAND_COLORS
         assert CustomizationCreate().chat_bubble_color == BRAND_COLORS["ink"]
         assert AgentCustomization.__table__.c.chat_bubble_color.default.arg == BRAND_COLORS["ink"]

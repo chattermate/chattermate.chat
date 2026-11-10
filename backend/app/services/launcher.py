@@ -50,6 +50,9 @@ SERVER_OWNED_KEYS = ('logo_transparent',)
 # A fresh signature is a new URL, so browsers would refetch the logo on every page
 # view. Reused well inside the signature's life, it stays cacheable.
 SIGNED_URL_CACHE_SECONDS = min(600, settings.S3_PRESIGN_EXPIRY_SECONDS // 2)
+# How long a browser may reuse the logo redirect: well inside the cached signature's
+# remaining life, so a reused redirect never lands on an expired address.
+LOGO_REDIRECT_MAX_AGE = SIGNED_URL_CACHE_SECONDS // 2
 CACHE_MAX_ENTRIES = 2048
 
 _signed_url_cache: Dict[str, Tuple[float, str]] = {}

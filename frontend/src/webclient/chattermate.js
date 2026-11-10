@@ -1354,6 +1354,14 @@ import {
     syncLauncherIcon(btn)
   }
 
+  // The logo's address, built from this loader's own API base: the URL the frame sends
+  // only says there is a logo and which file, and never goes into the image itself.
+  // The server redirects to the current file, so an expired signature can't break it.
+  function launcherLogoSrc() {
+    return config.baseUrl + '/widgets/' + encodeURIComponent(window.chattermateId) +
+      '/launcher-logo?v=' + encodeURIComponent(logoFile(config.launcherLogoUrl) || '')
+  }
+
   // Draw the chosen icon or logo. Runs on every updateStyles, including each resize,
   // so it only touches the DOM when the choice changed: redrawing would restart a
   // logo's load and flash it.
@@ -1371,15 +1379,10 @@ import {
       img.alt = ''
       img.draggable = false
       img.addEventListener('error', function () {
-        // A rebuilt launcher draws the last address it knew, which may have expired.
-        if (config.launcherLogoUrl && img.getAttribute('src') !== config.launcherLogoUrl) {
-          img.src = config.launcherLogoUrl
-          return
-        }
         config.launcherLogoFailed = true
         updateStyles()
       })
-      img.src = config.launcherLogoUrl
+      img.src = launcherLogoSrc()
       holder.appendChild(img)
     } else if (look.icon !== 'dots') {
       // A fixed string from launcher-style.ts, chosen by a whitelisted key.

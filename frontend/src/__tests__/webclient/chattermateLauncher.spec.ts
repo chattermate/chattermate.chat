@@ -16,9 +16,11 @@ limitations under the License.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BRAND_COLORS } from '@/config/brand'
-import { api, bringUp, cleanupPage, flush, fromFrame, handshake, loadLoader, resetPage } from './loaderHarness'
+import { BASE_URL, WIDGET_ID, api, bringUp, cleanupPage, flush, fromFrame, handshake, loadLoader, resetPage } from './loaderHarness'
 
 const LOGO = 'https://bucket.s3.amazonaws.com/agents/o/logo.webp?X-Amz-Signature=abc'
+// What the image loads: the loader's own redirect route, never the relayed address.
+const LOGO_SRC = `${BASE_URL}/widgets/${WIDGET_ID}/launcher-logo?v=${encodeURIComponent('https://bucket.s3.amazonaws.com/agents/o/logo.webp')}`
 const BRAND = '#2F5BEA'
 
 const button = () => document.getElementById('chattermate-button') as HTMLElement
@@ -187,7 +189,7 @@ describe('launcher customization', () => {
     it('renders the logo as a plain image', async () => {
       await up()
       customize({ icon: 'logo', background: 'white' }, LOGO)
-      expect(logo()?.getAttribute('src')).toBe(LOGO)
+      expect(logo()?.getAttribute('src')).toBe(LOGO_SRC)
       expect(logo()?.getAttribute('alt')).toBe('')
       expect(css()).toContain('background: #FFFFFF;')
     })
@@ -234,20 +236,15 @@ describe('launcher customization', () => {
       customize({ icon: 'logo' }, LOGO)
       expect(logo()).toBeNull()
       customize({ icon: 'logo' }, LOGO.replace('abc', 'def'))
-      expect(logo()?.getAttribute('src')).toBe(LOGO.replace('abc', 'def'))
+      expect(logo()?.getAttribute('src')).toBe(LOGO_SRC)
     })
 
-    it('recovers when an expired address fails after a fresh one arrived', async () => {
+    it('never puts the relayed address in the image', async () => {
       await up()
-      customize({ icon: 'logo' }, LOGO)
-      const fresh = LOGO.replace('abc', 'def')
-      customize({ icon: 'logo' }, fresh)
-      const image = logo()!
-      image.dispatchEvent(new Event('error'))
-      expect(logo()).toBe(image)
-      expect(image.getAttribute('src')).toBe(fresh)
-      image.dispatchEvent(new Event('error'))
-      expect(logo()).toBeNull()
+      customize({ icon: 'logo' }, 'https://evil.example/x.png?"><script>')
+      const src = logo()!.getAttribute('src')!
+      expect(src.startsWith(`${BASE_URL}/widgets/${WIDGET_ID}/launcher-logo?v=`)).toBe(true)
+      expect(src).not.toContain('<')
     })
 
     it('does not reload the image for a new signature or a resize', async () => {
@@ -257,7 +254,7 @@ describe('launcher customization', () => {
       customize({ icon: 'logo' }, LOGO.replace('abc', 'def'))
       window.dispatchEvent(new Event('resize'))
       expect(logo()).toBe(first)
-      expect(logo()?.getAttribute('src')).toBe(LOGO)
+      expect(logo()?.getAttribute('src')).toBe(LOGO_SRC)
     })
 
     it('shows the dots when the logo option has no file', async () => {
