@@ -22,6 +22,7 @@ from app.models.widget import Widget
 from app.models.agent import Agent, AgentType
 from app.models.ai_config import AIConfig, AIModelType
 from app.models.customer import Customer
+from app.models.organization import Organization
 from app.models.user import User
 from app.repositories.agent import AgentRepository
 from app.repositories.widget import WidgetRepository
@@ -1946,3 +1947,28 @@ async def test_org_inbox_room_is_for_people_who_see_unowned_chats(
     await widget_chat.handle_join_room("sid-1", {"session_id": f"org_inbox_{org}"})
 
     assert mock_sio.enter_room.await_count == (1 if joins else 0)
+
+
+@pytest.mark.asyncio
+async def test_widget_connect_refuses_a_widget_bound_to_another_orgs_agent(
+        db, test_widget, test_customer, mock_sio, monkeypatch):
+    """Issue #405: a widget pointing at another tenant's agent never opens a chat"""
+    monkeypatch.setattr(widget_chat, "sio", mock_sio)
+    serve_socket_db(monkeypatch, db)
+    other_org = Organization(name="Other Org", domain="other.com", timezone="UTC")
+    db.add(other_org)
+    db.commit()
+    foreign = AgentRepository(db).create_agent(
+        name="Foreign", agent_type=AgentType.CUSTOMER_SUPPORT, instructions=["x"], org_id=other_org.id)
+    test_widget.agent_id = foreign.id
+    db.commit()
+    monkeypatch.setattr(widget_chat, "authenticate_socket_conversation_token", AsyncMock(return_value=(
+        str(test_widget.id), str(test_widget.organization_id), str(test_customer.id), "test_token")))
+    _accept_conversation_token(monkeypatch)
+    create_session = MagicMock()
+    monkeypatch.setattr(
+        "app.repositories.session_to_agent.SessionToAgentRepository.create_session", create_session)
+
+    assert await widget_chat.widget_connect("test_sid", {}, {"conversation_token": "test_token"}) is False
+    create_session.assert_not_called()
+    mock_sio.enter_room.assert_not_called()

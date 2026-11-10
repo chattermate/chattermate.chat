@@ -29,6 +29,9 @@ from app.api import widget as widget_router
 from app.core.auth import get_current_user
 from app.main import app
 from app.core.config import settings
+from app.models.organization import Organization
+from app.repositories.agent import AgentRepository
+from app.repositories.widget import WidgetRepository
 from tests.conftest import engine, TestingSessionLocal
 
 # Create a test FastAPI app
@@ -290,3 +293,61 @@ def test_get_widget_data_without_token(client: TestClient, test_widget: Widget):
 def test_widgets_for_malformed_agent_id_is_a_client_error(client: TestClient):
     """A malformed id is the caller's mistake (422), never a server error."""
     assert client.get("/api/v1/widgets/agent/0").status_code == 422
+
+
+@pytest.fixture
+def foreign_agent(db) -> Agent:
+    """An agent owned by another organization (issue #405)"""
+    org = Organization(name="Other Org", domain="other.com", timezone="UTC")
+    db.add(org)
+    db.commit()
+    return AgentRepository(db).create_agent(
+        name="Foreign Agent",
+        agent_type=AgentType.CUSTOMER_SUPPORT,
+        instructions=["Secret instructions"],
+        org_id=org.id,
+    )
+
+
+@pytest.fixture
+def cross_org_widget(db, test_user: User, foreign_agent: Agent) -> Widget:
+    """A binding written before the create check existed: our widget, their agent"""
+    widget = Widget(name="Hijack", organization_id=test_user.organization_id, agent_id=foreign_agent.id)
+    db.add(widget)
+    db.commit()
+    db.refresh(widget)
+    return widget
+
+
+def test_create_widget_refuses_another_orgs_agent(client: TestClient, db, foreign_agent: Agent):
+    response = client.post("/api/v1/widgets", json={"name": "Hijack", "agent_id": str(foreign_agent.id)})
+    assert response.status_code == 404
+    assert db.query(Widget).filter(Widget.agent_id == foreign_agent.id).count() == 0
+
+
+def test_create_widget_refuses_an_unknown_agent(client: TestClient):
+    response = client.post("/api/v1/widgets", json={"name": "Ghost", "agent_id": str(uuid4())})
+    assert response.status_code == 404
+
+
+def test_widgets_by_agent_leave_out_another_orgs_widgets(
+        db, test_widget: Widget, foreign_agent: Agent, test_agent: Agent):
+    """The agent's owner never sees (or embeds) a widget another org bound to it"""
+    other_org = db.query(Organization).filter(Organization.id == foreign_agent.organization_id).one()
+    db.add(Widget(name="Theirs", organization_id=other_org.id, agent_id=test_agent.id))
+    db.commit()
+    widgets = WidgetRepository(db).get_widgets_by_agent(test_agent.id)
+    assert [w.id for w in widgets] == [test_widget.id]
+
+
+def test_public_widget_data_refuses_a_cross_org_binding(client: TestClient, cross_org_widget: Widget):
+    response = client.get(f"/api/v1/widgets/{cross_org_widget.id}")
+    assert response.status_code == 404
+    assert "Foreign Agent" not in response.text
+
+
+def test_widget_agent_is_none_for_a_cross_org_binding(db, cross_org_widget: Widget, test_widget: Widget,
+                                                      test_agent: Agent):
+    repo = WidgetRepository(db)
+    assert repo.get_widget_agent(cross_org_widget) is None
+    assert repo.get_widget_agent(test_widget).id == test_agent.id
