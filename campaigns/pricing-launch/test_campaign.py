@@ -72,6 +72,28 @@ class CopyRules(unittest.TestCase):
         self.assertNotIn("<b>Bo", email.html)
 
 
+class BaseLoader(unittest.TestCase):
+    def test_base_loads_brand_without_starting_the_app(self):
+        import sys
+        import blocks
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            (app / "core").mkdir(parents=True)
+            (app / "enterprise/services/email_templates").mkdir(parents=True)
+            (app / "__init__.py").write_text("raise RuntimeError('app started')\n")
+            (app / "core/brand.py").write_text("BRAND_COLORS = {'ink': '#12150E'}\n")
+            base = app / "enterprise/services/email_templates/base.py"
+            base.write_text("from app.core.brand import BRAND_COLORS\nINK = BRAND_COLORS['ink']\n")
+            saved = {name: sys.modules.pop(name) for name in list(sys.modules) if name.split('.')[0] == 'app'}
+            try:
+                with mock.patch.dict(os.environ, {"EMAIL_BASE_PY": str(base)}):
+                    self.assertEqual(blocks._load_base().INK, "#12150E")
+            finally:
+                for name in [n for n in sys.modules if n.split('.')[0] == 'app']:
+                    sys.modules.pop(name)
+                sys.modules.update(saved)
+
+
 class Launch(unittest.TestCase):
     def test_leads_with_the_pitch(self):
         email = launch(launch_row(), CFG, UNSUB)

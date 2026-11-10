@@ -11,6 +11,8 @@ block: a block takes trusted markup.
 import importlib.util
 import os
 import re
+import sys
+import types
 from html import escape, unescape
 from pathlib import Path
 from typing import List, NamedTuple, Optional, Sequence
@@ -35,8 +37,32 @@ def find_base() -> Path:
     raise SystemExit(f"Can't find {BASE_PATH}. Set EMAIL_BASE_PY to its path.")
 
 
+def _module_from(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _provide_brand(base_path: Path) -> None:
+    """base.py imports app.core.brand, a dict of logo colours. Importing it the
+    normal way runs app/__init__.py, which starts the whole app and its ML
+    stack. So brand.py is loaded on its own and registered under its name, with
+    empty stand-ins for the packages above it."""
+    if "app.core.brand" in sys.modules:
+        return
+    for package in ("app", "app.core"):
+        sys.modules.setdefault(package, types.ModuleType(package))
+    brand = _module_from("app.core.brand", base_path.parents[3] / "core" / "brand.py")
+    sys.modules["app.core.brand"] = brand
+    sys.modules["app.core"].brand = brand
+
+
 def _load_base():
-    spec = importlib.util.spec_from_file_location("email_base", find_base())
+    path = find_base()
+    if (path.parents[3] / "core" / "brand.py").is_file():
+        _provide_brand(path)
+    spec = importlib.util.spec_from_file_location("email_base", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
