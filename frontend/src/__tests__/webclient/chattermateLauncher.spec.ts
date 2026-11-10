@@ -291,6 +291,18 @@ describe('launcher customization', () => {
       expect(logo()).not.toBeNull()
     })
 
+    it("loads the logo from the API address the page's options set", async () => {
+      const origin = 'https://chat.self-hosted.example'
+      ;(window as any).chattermateConfig = { baseUrl: `${origin}/api/v1` }
+      await loadLoader()
+      handshake({ origin })
+      fromFrame({
+        type: 'CUSTOMIZATION_UPDATE',
+        data: { launcher: { icon: 'logo' }, launcher_logo_url: LOGO },
+      }, { origin })
+      expect(logo()?.getAttribute('src')).toBe(`${origin}/api/v1/widgets/${WIDGET_ID}/launcher-logo?v=1`)
+    })
+
     describe('with no background', () => {
       const bare = { icon: 'logo', background: 'none' }
 

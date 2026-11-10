@@ -64,9 +64,14 @@ import {
     return 'https://api.chattermate.chat/api/v1';
   }
 
+  // The API address, also kept outside `config`: config takes frame-message values by
+  // key, so code scanning treats all of it as page-controlled. The logo image's address
+  // is built from this instead.
+  let apiBaseUrl = getBaseUrl()
+
   // Configuration object
   const config = {
-    baseUrl: getBaseUrl(),
+    baseUrl: apiBaseUrl,
     containerId: 'chattermate-container',
     backdropId: 'chattermate-backdrop',
     buttonId: 'chattermate-button',
@@ -1364,7 +1369,7 @@ import {
   // only says there is a logo, and never goes into the image itself. The server
   // redirects to the current file, so an expired signature can't break it.
   function launcherLogoSrc() {
-    return config.baseUrl + '/widgets/' + encodeURIComponent(window.chattermateId) +
+    return apiBaseUrl + '/widgets/' + encodeURIComponent(window.chattermateId) +
       '/launcher-logo?v=' + launcherLogoVersion
   }
 
@@ -2596,6 +2601,7 @@ import {
     Object.assign(givenOptions, options)
     if (options.baseUrl) {
       config.baseUrl = options.baseUrl
+      apiBaseUrl = options.baseUrl
     }
     if (options.id) {
       window.chattermateId = options.id
