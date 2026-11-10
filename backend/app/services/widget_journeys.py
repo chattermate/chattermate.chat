@@ -34,12 +34,19 @@ async def emit_journey_state(sid: str, view: Optional[dict]) -> None:
 
 
 async def sync_journey(sid: str, session: dict, db: Session, *,
-                       events: Iterable[str] = (), actions: Iterable[str] = ()) -> None:
+                       events: Iterable[str] = (), actions: Iterable[str] = (),
+                       only_a_step: bool = False) -> None:
     """Apply what just happened and send the step to show. Never raises: a
-    journey problem must not break the chat."""
+    journey problem must not break the chat.
+
+    only_a_step: send nothing when there is no step. A caller running beside
+    the page's own sync (page state arrives as the journey starts) would
+    otherwise clear the step the other just showed."""
     try:
         view = JourneyRunner(db, session).sync(events=events, actions=actions)
     except Exception as e:
         logger.error(f"Journey sync failed for session {session.get('session_id')}: {e}")
+        return
+    if view is None and only_a_step:
         return
     await emit_journey_state(sid, view)

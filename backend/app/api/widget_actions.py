@@ -37,6 +37,7 @@ from app.services.host_action_runtime import (
     OFFERED_KEY, handle_page_result, page_may_offer_actions, register_page_actions,
 )
 from app.services.socket_rate_limit import socket_rate_limit
+from app.services.widget_journeys import sync_journey
 from app.services.widget_reply import WIDGET_NAMESPACE
 
 logger = get_logger(__name__)
@@ -87,9 +88,10 @@ async def handle_set_context(sid, data):
     session = await authenticated_session(sid)
     if session is None:
         return
+    previous = session.get('host_context')
     session['host_context'] = clean_host_context((data or {}).get('context') if isinstance(data, dict) else None)
     await sio.save_session(sid, session, namespace=WIDGET_NAMESPACE)
-    if not session['host_context']:
+    if not session['host_context'] or session['host_context'] == previous:
         return
     db = await session_off_loop()
     try:
@@ -97,6 +99,10 @@ async def handle_set_context(sid, data):
         AgentContextKeyRepository(db).record(UUID(str(session['agent_id'])), session['host_context'].keys(), 'context')
     except Exception as e:
         logger.error(f"Recording context keys failed for sid {sid}: {e}")
+    try:
+        # A step can be done by page state alone (pages learned, chat seen
+        # live), so the page's news moves the journey on without a message.
+        await sync_journey(sid, session, db, only_a_step=True)
     finally:
         close_session(db)
 
