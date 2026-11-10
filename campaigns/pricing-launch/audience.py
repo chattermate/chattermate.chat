@@ -16,6 +16,8 @@ DISPOSABLE_DOMAINS = {
     "minitts.net", "xkxkud.com", "emlpro.com", "mailinator.com", "guerrillamail.com",
     "10minutemail.com", "trashmail.com", "sharklasers.com", "maildrop.cc",
     "temp-mail.org", "getnada.com", "throwawaymail.com",
+    # temp-mail.org's rotating domains (mail.wabblywabble.com / mail.wallywatts.com MX)
+    "hebase.com", "hutdot.com", "bocably.com", "dd2car.com", "airychen.com",
 }
 
 # Placeholder text typed into signup forms: "Hi Test," reads worse than "Hi there,".
