@@ -38,6 +38,7 @@ from app.channels.meta_base import (
     subscribe_instagram_app,
     GRAPH_INSTAGRAM_BASE,
 )
+from app.services.channel_access import check_channel_access
 from app.services.meta_own_app import (
     APP_SECRET_KEY,
     AppCheckUnavailable,
@@ -320,6 +321,7 @@ def _upsert_account(db: Session, organization: Organization, channel_type: str,
             merged.pop(key, None)
         repo.update_credentials(existing, merged)
         return repo.set_active(existing, True)
+    check_channel_access(db, organization.id)
     return repo.create_account(
         organization_id=organization.id,
         channel_type=channel_type,
@@ -434,6 +436,9 @@ async def connect_whatsapp_embedded_signup(
     everything after that is the same upsert and webhook subscribe.
     """
     check_signup_access(ChannelType.WHATSAPP.value, current_user)
+    # Before the number is registered with Meta below, which can't be undone
+    if _previous_account(db, organization, ChannelType.WHATSAPP.value, request.phone_number_id) is None:
+        check_channel_access(db, organization.id)
 
     ok, data = await exchange_signup_code(request.code)
     access_token = data.get("access_token") if ok else None

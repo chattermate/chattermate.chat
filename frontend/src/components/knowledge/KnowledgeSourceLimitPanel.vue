@@ -18,6 +18,7 @@ limitations under the License.
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ReplaceableSource } from '@/types/knowledge'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 // Shown in the add-source dialog when the plan's source cap refused the add.
 // Removing a source from an agent keeps it in the organization, where it still
@@ -42,6 +43,10 @@ onMounted(() => root.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smoo
 // doesn't have would throw while rendering.
 const PLANS_ROUTE = 'subscription'
 const hasPlansPage = useRouter()?.hasRoute(PLANS_ROUTE) ?? false
+
+// Hosted only: more sources than any plan offers is a conversation with us
+const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const ContactUsLink = enterpriseComponent(moduleImports.contactUsLink)
 
 // "...knowledge sources (1) would be exceeded" -> 1
 const limit = computed(() => Number(/\((\d+)\)/.exec(props.message)?.[1]) || null)
@@ -77,7 +82,10 @@ const headline = computed(() => {
       </ul>
     </template>
     <p v-else class="limit__sub">A crawl still in progress counts too. Wait for it to finish, or cancel it.</p>
-    <router-link v-if="hasPlansPage" class="limit__plans" :to="{ name: PLANS_ROUTE }">See plans with more sources</router-link>
+    <div v-if="hasPlansPage || hasEnterpriseModule" class="limit__links">
+      <router-link v-if="hasPlansPage" class="limit__plans" :to="{ name: PLANS_ROUTE }">See plans with more sources</router-link>
+      <ContactUsLink v-if="hasEnterpriseModule" class="limit__plans" label="Need more? Contact us" subject="More knowledge sources" />
+    </div>
   </div>
 </template>
 
@@ -163,9 +171,14 @@ const headline = computed(() => {
   cursor: not-allowed;
 }
 
-.limit__plans {
-  display: inline-block;
+.limit__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
   margin-top: 10px;
+}
+
+.limit__plans {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--accent-ink);

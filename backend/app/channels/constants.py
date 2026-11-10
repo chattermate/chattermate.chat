@@ -46,7 +46,9 @@ class MessageSource(str, enum.Enum):
 
 
 # Messages that cost no AI, so they never count toward the plan's message limit.
-UNMETERED_SOURCES = frozenset({MessageSource.APP.value, MessageSource.HOST.value, MessageSource.JOURNEY.value})
+UNMETERED_SOURCES = frozenset({
+    MessageSource.SYSTEM.value, MessageSource.APP.value, MessageSource.HOST.value, MessageSource.JOURNEY.value,
+})
 
 
 # The most choices one reply can offer the customer: WhatsApp's list-message

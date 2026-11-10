@@ -372,10 +372,12 @@ org content safe. Colors: only `--brand`/`--brand-ink` come from the server
         {% endif %}
         <span class="hc-name">{{ row.organization.name }}</span>
       </div>
+      {% if not hide_branding %}
       <a class="hc-powered" href="https://chattermate.chat" target="_blank" rel="noopener">
         <span>Powered by</span>
         <strong><svg class="hc-cm-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16"/><circle class="ai" cx="22" cy="32" r="10"/><circle class="human" cx="42" cy="32" r="10"/></svg> ChatterMate</strong>
       </a>
+      {% endif %}
     </div>
   </footer>
 

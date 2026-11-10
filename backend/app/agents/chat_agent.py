@@ -20,7 +20,7 @@ from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
-from app.channels.constants import is_widget_channel
+from app.channels.constants import MessageSource, is_widget_channel
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
 from app.database import get_db, SessionLocal, engine, release_connection
@@ -31,6 +31,7 @@ from app.agents.history_memory import BoundedHistoryMemory, run_with_overflow_re
 from app.agents.host_actions.turns import fill_results, paused_run_tools, paused_turn
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services.feature_gate import LEAD_CAPTURE_FEATURE, plan_feature_on
 from app.services.widget_identity import trusts_identity_in_session
 from app.models.session_to_agent import SessionStatus
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse, TransferReasonType, EndChatReasonType
@@ -462,7 +463,7 @@ class ChatAgent(ChatAgentMCPMixin):
                 try:
                     from app.repositories.lead_capture import LeadCaptureConfigRepository
                     lcc = LeadCaptureConfigRepository(db).get_by_agent(agent_id)
-                    if lcc:
+                    if lcc and plan_feature_on(db, org_id, LEAD_CAPTURE_FEATURE):
                         self.lead_capture_enabled = bool(lcc.enabled)
                         self.lead_capture_fields = lcc.fields or []
                         self.lead_capture_require_consent = bool(lcc.require_consent)
@@ -1424,7 +1425,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                         "organization_id": org_id,
                         "agent_id": agent_id,
                         "customer_id": customer_id,
-                        "attributes": guardrail_verdict.as_attributes()
+                        "attributes": {**guardrail_verdict.as_attributes(), "source": MessageSource.SYSTEM.value}
                     })
                     return blocked_response
 
@@ -1655,7 +1656,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "organization_id": org_id,
                     "agent_id": agent_id,
                     "customer_id": customer_id,
-                    "attributes": {"error": str(e)}
+                    "attributes": {"error": str(e), "source": MessageSource.SYSTEM.value}
                 })
         except Exception as store_error:
             logger.error(f"Failed to store error message: {str(store_error)}")

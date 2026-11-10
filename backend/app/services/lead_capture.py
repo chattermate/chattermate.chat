@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.models.lead_capture import LeadCaptureConfig, LeadCaptureResponse
 from app.repositories.customer import CustomerRepository
+from app.services.feature_gate import LEAD_CAPTURE_FEATURE, plan_feature_on
 from app.services.widget_identity import can_act_as
 from app.core.logger import get_logger
 
@@ -295,6 +296,8 @@ def record_lead_from_response(
         agent = AgentRepository(db).get_agent(agent_id)
         config = getattr(agent, 'lead_capture_config', None) if agent else None
         if not (config and config.enabled) or has_captured_lead(db, customer_id, agent_id):
+            return None
+        if not plan_feature_on(db, organization_id, LEAD_CAPTURE_FEATURE):
             return None
 
         lead_data = dict(getattr(response, 'lead_data', None) or {})

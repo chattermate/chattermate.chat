@@ -184,7 +184,8 @@ def get_widget_html(data: dict, request: Optional[Request] = None) -> str:
                     customer: {{}},
                     workflow: {str(data['workflow']).lower()},
                     allowAttachments: {str(data['allowAttachments']).lower()},
-                    presence: {script_json(data['presence'])}
+                    presence: {script_json(data['presence'])},
+                    hideBranding: {str(data['hideBranding']).lower()}
                 }};
             </script>
         </head>
@@ -226,7 +227,7 @@ def _anonymous_customer(customer_repo: CustomerRepository, widget: Widget, conve
 
 
 def _widget_data_response(widget: Widget, agent: Agent, customer_id: Optional[str], human_agent_info: dict,
-                          token: Optional[str] = None) -> dict:
+                          runs_workflow: bool, token: Optional[str] = None) -> dict:
     """GET /widgets/{id}'s answer; `token` only when the visitor needs a new one."""
     # photo_url is signed by AgentCustomizationResponse on serialization.
     data = {
@@ -239,7 +240,7 @@ def _widget_data_response(widget: Widget, agent: Agent, customer_id: Optional[st
             "name": agent.name,
             "display_name": agent.display_name,
             "customization": agent.customization,
-            "workflow": bool(agent.use_workflow and agent.active_workflow_id),
+            "workflow": runs_workflow,
             "allow_attachments": agent.allow_attachments
         }
     }
@@ -303,7 +304,7 @@ async def get_widget_data(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized - Token required")
 
     # Check if agent has workflow enabled
-    agent_has_workflow = bool(agent.use_workflow and agent.active_workflow_id)
+    agent_has_workflow = widget_bootstrap.agent_runs_workflow(db, agent)
 
     # Check if agent has ASK_ANYTHING chat style
     is_ask_anything_style = (agent.customization and
@@ -332,11 +333,11 @@ async def get_widget_data(
             anonymous = _anonymous_customer(customer_repo, widget, conversation_key, claimed_email=customer.email)
             new_token = widget_bootstrap.mint_widget_token(widget_id, conversation_key, customer_id=str(anonymous.id),
                                            source=source, token_payload=token_payload)
-            return _widget_data_response(widget, agent, str(anonymous.id), {}, new_token)
+            return _widget_data_response(widget, agent, str(anonymous.id), {}, agent_has_workflow, new_token)
 
         logger.debug(f"Using existing token for customer_id: {customer_id}")
         human_agent_info = await get_human_agent_session_info(db, str(customer.id), scope)
-        return _widget_data_response(widget, agent, customer_id, human_agent_info)
+        return _widget_data_response(widget, agent, customer_id, human_agent_info, agent_has_workflow)
 
     # A token-protected widget only ever runs on tokens its site issued: one whose
     # customer is gone is no reason to issue a widget token of our own.
@@ -368,7 +369,7 @@ async def get_widget_data(
     human_agent_info = await get_human_agent_session_info(db, str(customer.id), conversation_key)
     new_token = widget_bootstrap.mint_widget_token(widget_id, conversation_key, customer_id=str(customer.id),
                                    source=source, token_payload=token_payload)
-    return _widget_data_response(widget, agent, str(customer.id), human_agent_info, new_token)
+    return _widget_data_response(widget, agent, str(customer.id), human_agent_info, agent_has_workflow, new_token)
 
 
 @router.post("/{widget_id}/end-chat")

@@ -19,15 +19,17 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useSubscriptionStorage } from '@/utils/storage'
+import { useUpgradePlan } from '@/composables/useUpgradePlan'
 
 const props = defineProps<{
   /** Server-side plan verdict (settings.plan_allowed). false always locks. */
   planAllowed?: boolean | null
 }>()
 
-const PRO_PRICE_NOTE = 'Included in Pro · $39/agent/mo'
+const HELP_CENTER_FEATURE = 'help_center'
 
 const router = useRouter()
+const { planName, upgradeText } = useUpgradePlan(HELP_CENTER_FEATURE)
 const { hasEnterpriseModule } = useEnterpriseFeatures()
 const subscriptionStorage = useSubscriptionStorage()
 
@@ -35,7 +37,7 @@ const isLocked = computed(() => {
   if (props.planAllowed === false) return true
   return (
     hasEnterpriseModule &&
-    (!subscriptionStorage.hasFeature('help_center') || !subscriptionStorage.isSubscriptionActive())
+    (!subscriptionStorage.hasFeature(HELP_CENTER_FEATURE) || !subscriptionStorage.isSubscriptionActive())
   )
 })
 
@@ -54,7 +56,7 @@ function goToSubscription() {
         <div class="lock-card__icon">
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--c-purple)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2.2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
         </div>
-        <h3 class="lock-card__title">Auto-generate FAQs with Pro</h3>
+        <h3 class="lock-card__title">{{ planName ? `Auto-generate FAQs with ${planName}` : 'Auto-generate FAQs' }}</h3>
         <p class="lock-card__copy">
           ChatterMate reads every knowledge source and drafts clear, ready-to-publish FAQs — grouped
           by topic and kept in sync as your docs change.
@@ -62,11 +64,10 @@ function goToSubscription() {
         <div class="lock-card__actions">
           <button class="btn-upgrade" type="button" @click="goToSubscription">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="none"><path d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg>
-            Upgrade to Pro
+            {{ upgradeText }}
           </button>
           <button class="btn-compare" type="button" @click="goToSubscription">Compare plans</button>
         </div>
-        <div class="lock-card__note">{{ PRO_PRICE_NOTE }}</div>
       </div>
     </div>
   </div>
@@ -167,12 +168,5 @@ function goToSubscription() {
   font-size: 14.5px;
   font-weight: 500;
   cursor: pointer;
-}
-
-.lock-card__note {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted2);
-  margin-top: 18px;
 }
 </style>

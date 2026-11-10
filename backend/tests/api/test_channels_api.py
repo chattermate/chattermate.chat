@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import app.main  # noqa: F401 — ensures routers are registered on the FastAPI app
@@ -25,6 +26,7 @@ from app.core.application import app
 from app.core.auth import get_current_user, get_current_organization
 from app.database import get_db
 from app.repositories.channels import ChannelAccountRepository, AgentChannelConfigRepository
+from app.services import channel_access
 
 BASE = "/api/v1/channels"
 WEBHOOK_BASE = "/api/v1/webhooks"
@@ -334,3 +336,104 @@ class TestSmsChannel:
             display_name="SMS", settings={"provider": "twilio"})
         r = client.post(f"/api/v1/webhooks/sms/vonage/{acc.id}", data={"msisdn": "+44"})
         assert r.status_code == 404
+
+
+def plan_refuses(monkeypatch):
+    def refuse(db, organization_id, feature, message):
+        raise HTTPException(status_code=403, detail=message)
+    monkeypatch.setattr(channel_access, "check_feature_access", refuse)
+
+
+class TestConnectOnAPlanWithoutChannels:
+    def bot(self, bot_id):
+        return patch("app.api.channels.telegram.telegram_api.get_me",
+                     AsyncMock(return_value={"id": bot_id, "username": "bot"}))
+
+    def test_a_new_telegram_bot_is_refused_and_nothing_is_stored(self, client, db, test_organization, monkeypatch):
+        plan_refuses(monkeypatch)
+        with self.bot(555), patch("app.api.channels.telegram.telegram_webhooks.register",
+                                  AsyncMock(return_value=(True, ""))) as register:
+            r = client.post(f"{BASE}/telegram", json={"bot_token": "555:t"})
+
+        assert r.status_code == 403
+        assert r.json()["detail"] == channel_access.UPGRADE_MESSAGE
+        register.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("telegram", "555") is None
+
+    def test_a_channel_it_already_has_can_be_refreshed(self, client, db, telegram_account, monkeypatch):
+        plan_refuses(monkeypatch)
+        with self.bot(777), patch("app.api.channels.telegram.telegram_webhooks.register",
+                                  AsyncMock(return_value=(True, ""))):
+            r = client.post(f"{BASE}/telegram", json={"bot_token": "777:new"})
+
+        assert r.status_code == 200
+
+    def test_it_can_still_disconnect(self, client, telegram_account, monkeypatch):
+        plan_refuses(monkeypatch)
+        with patch("app.api.channels.telegram.telegram_api.delete_webhook", AsyncMock(return_value=True)):
+            r = client.delete(f"{BASE}/telegram/{telegram_account.id}")
+
+        assert r.status_code == 200
+
+    def test_a_new_line_account_is_refused(self, client, db, monkeypatch):
+        plan_refuses(monkeypatch)
+        with patch("app.api.channels.line.line_api.get_bot_info",
+                   AsyncMock(return_value={"userId": "U1", "displayName": "Bot"})):
+            r = client.post(f"{BASE}/line", json={"channel_access_token": "t", "channel_secret": "s"})
+
+        assert r.status_code == 403
+        assert ChannelAccountRepository(db).get_by_external_id("line", "U1") is None
+
+    def test_a_new_email_address_is_refused(self, client, db, monkeypatch):
+        plan_refuses(monkeypatch)
+        r = client.post(f"{BASE}/email", json={"inbound_address": "help@acme.test"})
+
+        assert r.status_code == 403
+        assert ChannelAccountRepository(db).get_by_external_id("email", "help@acme.test") is None
+
+    def test_a_new_sms_number_is_refused(self, client, db, monkeypatch):
+        plan_refuses(monkeypatch)
+        provider = MagicMock(label="Twilio", validate_credentials=AsyncMock())
+        with patch("app.api.channels.sms.get_provider", return_value=provider):
+            r = client.post(f"{BASE}/sms", json={"phone_number": "+15550001", "provider": "twilio",
+                                                 "credentials": {"sid": "x"}})
+
+        assert r.status_code == 403
+        assert ChannelAccountRepository(db).get_by_external_id("sms", "+15550001") is None
+
+
+class TestSlackInstallOnAPlanWithoutChannels:
+    @pytest.fixture(autouse=True)
+    def fake_slack(self):
+        self.slack = AsyncMock()
+
+    def callback(self, client, team_id, organization_id):
+        response = MagicMock()
+        response.json.return_value = {"ok": True, "access_token": "x", "bot_user_id": "B",
+                                      "team": {"id": team_id, "name": "Acme"}}
+        http = MagicMock(post=AsyncMock(return_value=response))
+        http.__aenter__ = AsyncMock(return_value=http)
+        http.__aexit__ = AsyncMock(return_value=None)
+        with patch("app.api.channels.slack.pop_state", return_value=str(organization_id)), \
+             patch("app.api.channels.slack.httpx.AsyncClient", return_value=http), \
+             patch("app.api.channels.slack.channels_allowed", return_value=False), \
+             patch("app.api.channels.slack.slack_api", self.slack):
+            return client.get(f"{BASE}/slack/callback?code=c&state=s", follow_redirects=False)
+
+    def test_a_new_workspace_goes_back_with_the_reason(self, client, db, test_organization):
+        r = self.callback(client, "T1", test_organization.id)
+
+        assert "status=failure" in r.headers["location"]
+        assert "reason=plan_required" in r.headers["location"]
+        assert ChannelAccountRepository(db).get_by_external_id("slack", "T1") is None
+        # The install can't be kept, so the token it made shouldn't outlive it
+        self.slack.assert_awaited_once_with("auth.revoke", "x", {}, form=True)
+
+    def test_a_workspace_it_already_has_reconnects(self, client, db, test_organization):
+        ChannelAccountRepository(db).create_account(
+            organization_id=test_organization.id, channel_type="slack", external_account_id="T2",
+            credentials={"access_token": "old"}, display_name="Acme")
+
+        r = self.callback(client, "T2", test_organization.id)
+
+        assert "status=success" in r.headers["location"]

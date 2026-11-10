@@ -32,6 +32,7 @@ from app.models.organization import Organization
 from app.models.schemas.channel import ChannelAccountOut, EmailConnectRequest
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
+from app.services.channel_access import check_channel_access
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -109,6 +110,7 @@ async def connect_email(
             repo.update_credentials(existing, credentials)
         account = repo.set_active(existing, True)
     else:
+        check_channel_access(db, organization.id)
         account = repo.create_account(
             organization_id=organization.id,
             channel_type=ChannelType.EMAIL.value,

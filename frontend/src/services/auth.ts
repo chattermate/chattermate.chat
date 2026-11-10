@@ -16,6 +16,7 @@ limitations under the License.
 
 import type { AxiosError } from 'axios'
 import api from './api'
+import { subscriptionStorage } from '@/utils/storage'
 import { userService } from './user'
 import type { User } from '../types/user'
 interface ErrorResponse {
@@ -65,7 +66,8 @@ export const authService = {
       await api.post('/users/logout')
       userService.clearCurrentUser()
       localStorage.removeItem('agents')
-      localStorage.removeItem('current_subscription')
+      // The plan and the plan catalog both belong to the org signing out
+      subscriptionStorage.clearSubscriptionData()
       localStorage.removeItem('exploreView_customization')
       localStorage.removeItem('exploreView_selectedColor')
       localStorage.removeItem('exploreView_url')

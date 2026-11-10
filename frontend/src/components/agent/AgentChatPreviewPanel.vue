@@ -27,6 +27,7 @@ import WebFont from 'webfontloader'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '@/utils/aiDisclaimer'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 const props = defineProps<{
     isActive: boolean
@@ -38,6 +39,15 @@ const props = defineProps<{
     // detail header. Falls back to agentName when not given.
     orbSeed?: string
 }>()
+
+// The preview matches what visitors see: a plan with custom branding drops
+// "Powered by" (the server decides the same for the live widget). Open
+// source always shows it. Read from the store so it follows the plan once
+// it loads, not just whatever was cached when the panel mounted.
+const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore } = useEnterpriseFeatures()
+const showBranding = computed(() =>
+    !(hasEnterpriseModule && subscriptionStore.value.currentPlan?.plan?.features?.custom_branding === true))
+onMounted(() => { if (hasEnterpriseModule) initializeSubscriptionStore() })
 console.log('AgentChatPreviewPanel props:', props.customization)
 const isExpanded = ref(true)
 const emailInput = ref('')
@@ -607,7 +617,7 @@ const handleInitiationClick = () => {
             </div>
             
             <!-- Powered by footer for welcome message -->
-            <div class="powered-by-welcome" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by-welcome" :style="messageNameStyles">
                 <BrandMark class="chattermate-logo" :size="15" />
                 <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
@@ -705,7 +715,7 @@ const handleInitiationClick = () => {
             </div>
 
             <!-- Add powered by footer -->
-            <div class="powered-by" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by" :style="messageNameStyles">
                 <BrandMark class="chattermate-logo" :size="15" />
                 <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
