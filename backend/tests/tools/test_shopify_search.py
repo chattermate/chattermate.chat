@@ -24,7 +24,15 @@ from app.tools.shopify_search import match_singulars
     ("Backpacks", "(Backpacks OR Backpack*)"),
     ("canvas backpacks", "canvas (backpacks OR backpack*)"),
     ("mugs OR bottles", "(mugs OR mug*) OR (bottles OR bottle*)"),
-    ("hoodies", "(hoodies OR hoodie*)"),
+    ("hoodies", "(hoodies OR hoodie* OR hoody)"),
+    ("accessories", "(accessories OR accessorie* OR accessory)"),
+    ("dresses", "(dresses OR dress*)"),
+    ("Glasses", "(Glasses OR Glass*)"),
+    ("boxes", "(boxes OR box*)"),
+    ("watches", "(watches OR watch*)"),
+    ("brushes", "(brushes OR brush*)"),
+    ("shoes", "(shoes OR shoe*)"),
+    ("bikes", "(bikes OR bike*)"),
 ])
 def test_plural_words_also_match_the_singular(query, expected):
     assert match_singulars(query) == expected

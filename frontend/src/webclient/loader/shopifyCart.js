@@ -31,9 +31,11 @@ const VARIANT_ID = /^[0-9]{1,15}$/
 // Rendering API), as the theme's own add-to-cart does. Without this the header still
 // shows the old count. Named as Dawn and the themes built on it name them; a theme
 // without these parts keeps its count until the next page load.
+// `shows` is an element Dawn hides while it thinks the cart is empty: shown again
+// only once its part holds the fresh cart.
 const THEME_CART_PARTS = [
   { section: 'cart-icon-bubble', target: '#cart-icon-bubble', from: '.shopify-section' },
-  { section: 'cart-drawer', target: '#CartDrawer', from: '#CartDrawer' },
+  { section: 'cart-drawer', target: '#CartDrawer', from: '#CartDrawer', shows: 'cart-drawer' },
 ]
 // Dispatched on the page after every add, so a theme we don't know can refresh itself
 export const CART_UPDATED_EVENT = 'chattermate:cart-updated'
@@ -73,18 +75,24 @@ export function createShopifyCart(win, postToFrame) {
     return doc ? THEME_CART_PARTS.filter(function (part) { return doc.querySelector(part.target) }) : []
   }
 
+  // Puts one part's fresh markup on the page. Returns true if it did.
+  function redrawPart(part, sections) {
+    const html = sections && sections[part.section]
+    if (typeof html !== 'string') return false
+    const fresh = new win.DOMParser().parseFromString(html, 'text/html').querySelector(part.from)
+    if (!fresh) return false
+    win.document.querySelector(part.target).innerHTML = fresh.innerHTML
+    if (part.shows) {
+      const hidden = win.document.querySelector(part.shows)
+      if (hidden) hidden.classList.remove('is-empty')
+    }
+    return true
+  }
+
   // Never fails the add: the item is in the cart whatever happens here
   function redrawCart(sections) {
     try {
-      cartPartsOnPage().forEach(function (part) {
-        const html = sections && sections[part.section]
-        if (typeof html !== 'string') return
-        const fresh = new win.DOMParser().parseFromString(html, 'text/html').querySelector(part.from)
-        if (fresh) win.document.querySelector(part.target).innerHTML = fresh.innerHTML
-      })
-      // Dawn hides the drawer's items while it thinks the cart is empty
-      const drawer = win.document && win.document.querySelector('cart-drawer')
-      if (drawer) drawer.classList.remove('is-empty')
+      cartPartsOnPage().forEach(function (part) { redrawPart(part, sections) })
     } catch (e) {
       /* a theme we can't redraw keeps its old count */
     }

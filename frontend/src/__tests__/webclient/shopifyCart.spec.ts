@@ -116,13 +116,41 @@ describe('shopify cart in the widget', () => {
       expect(cartState(VARIANT)).toEqual({ status: 'failed', error: CART_ERROR })
     })
 
-    it('ignores an answer that arrives after giving up', () => {
+    it('shows a success that arrives after giving up', () => {
       vi.useFakeTimers()
       addToCart(VARIANT)
       const requestId = lastRequest()
       vi.advanceTimersByTime(20000)
       handleCartMessage({ type: 'ADD_TO_CART_DONE', requestId, ok: true })
-      expect(cartState(VARIANT).status).toBe('failed')
+      expect(cartState(VARIANT)).toEqual({ status: 'added', error: null })
+    })
+
+    it('answers a request only once', () => {
+      addToCart(VARIANT)
+      const requestId = lastRequest()
+      handleCartMessage({ type: 'ADD_TO_CART_DONE', requestId, ok: true })
+      handleCartMessage({ type: 'ADD_TO_CART_DONE', requestId, ok: false, error: 'Sold out.' })
+      expect(cartState(VARIANT).status).toBe('added')
+    })
+
+    it('keeps a retry in progress when the earlier request fails late', () => {
+      vi.useFakeTimers()
+      addToCart(VARIANT)
+      const first = lastRequest()
+      vi.advanceTimersByTime(20000)
+      addToCart(VARIANT)
+      handleCartMessage({ type: 'ADD_TO_CART_DONE', requestId: first, ok: false, error: 'Sold out.' })
+      expect(cartState(VARIANT)).toEqual({ status: 'adding', error: null })
+    })
+
+    it('does not let an earlier timeout fail the retry', () => {
+      vi.useFakeTimers()
+      addToCart(VARIANT)
+      handleCartMessage({ type: 'ADD_TO_CART_DONE', requestId: lastRequest(), ok: false })
+      vi.advanceTimersByTime(10000)
+      addToCart(VARIANT)
+      vi.advanceTimersByTime(15000)
+      expect(cartState(VARIANT)).toEqual({ status: 'adding', error: null })
     })
 
     it('ignores an answer to nothing it asked', () => {

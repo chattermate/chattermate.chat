@@ -46,9 +46,9 @@ const state = computed(() => cartState(props.variantId))
 
 .cm-cart-button {
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-xs) var(--space-sm);
   border: none;
-  border-radius: 16px;
+  border-radius: var(--radius-full);
   background: var(--cm-accent);
   color: var(--cm-on-accent);
   font-size: var(--text-xs);
@@ -72,7 +72,7 @@ const state = computed(() => cartState(props.variantId))
 }
 
 .cm-cart-note {
-  margin: 4px 0 0;
+  margin: calc(var(--space-xs) / 2) 0 0;
   color: var(--cm-muted);
   font-size: var(--text-xs);
   line-height: 1.3;

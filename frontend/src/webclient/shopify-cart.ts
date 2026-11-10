@@ -39,6 +39,8 @@ const IDLE: CartState = { status: 'idle', error: null }
 const shop = ref<string | null>(null)
 const states = reactive<Record<string, CartState>>({})
 const waiting = new Map<string, { variantId: string; timer: ReturnType<typeof setTimeout> }>()
+// Each product's most recent request: an older one's answer may only report success
+const latest = new Map<string, string>()
 let nextRequest = 0
 
 const sameShop = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
@@ -51,21 +53,27 @@ export function cartState(variantId: string): CartState {
   return states[variantId] ?? IDLE
 }
 
+function settle(variantId: string, requestId: string, state: CartState): void {
+  if (state.status === 'added' || latest.get(variantId) === requestId) states[variantId] = state
+}
+
+// A late answer still counts: the item may be in the cart after the button gave up
 function finish(requestId: string, state: CartState): void {
   const request = waiting.get(requestId)
   if (!request) return
   clearTimeout(request.timer)
   waiting.delete(requestId)
-  states[request.variantId] = state
+  settle(request.variantId, requestId, state)
 }
 
 export function addToCart(variantId: string): void {
   if (cartState(variantId).status === 'adding') return
   const requestId = `cart-${++nextRequest}`
   states[variantId] = { status: 'adding', error: null }
+  latest.set(variantId, requestId)
   waiting.set(requestId, {
     variantId,
-    timer: setTimeout(() => finish(requestId, { status: 'failed', error: CART_ERROR }), ANSWER_TIMEOUT_MS),
+    timer: setTimeout(() => settle(variantId, requestId, { status: 'failed', error: CART_ERROR }), ANSWER_TIMEOUT_MS),
   })
   postToHost({ type: 'ADD_TO_CART', requestId, variantId })
 }
@@ -93,5 +101,6 @@ export function resetShopifyCart(): void {
   shop.value = null
   waiting.forEach((request) => clearTimeout(request.timer))
   waiting.clear()
+  latest.clear()
   Object.keys(states).forEach((variantId) => delete states[variantId])
 }

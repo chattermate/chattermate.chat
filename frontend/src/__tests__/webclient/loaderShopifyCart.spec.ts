@@ -133,6 +133,7 @@ describe('shopify cart in the loader', () => {
       cart.handleFrameMessage(addRequest)
       await flush()
       expect(doc.querySelector('#cart-icon-bubble')!.textContent!.trim()).toBe('3')
+      expect(doc.querySelector('cart-drawer')!.classList.contains('is-empty')).toBe(true)
       expect(posted[0].ok).toBe(true)
     })
 
