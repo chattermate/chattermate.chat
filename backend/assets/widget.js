@@ -7463,10 +7463,10 @@ function Ec() {
 }
 const Ds = {
   get API_URL() {
-    return Ec().API_URL || void 0 || "https://api.chattermate.chat/api/v1";
+    return Ec().API_URL || "https://api.chattermate.chat/api/v1";
   },
   get WS_URL() {
-    return Ec().WS_URL || void 0 || "wss://api.chattermate.chat";
+    return Ec().WS_URL || "wss://api.chattermate.chat";
   }
 };
 function Ki(e) {
@@ -10265,8 +10265,8 @@ function Uy() {
       Ze = Je(Lt().conversation_token), o.value = "connected", se(), a.value = 0;
     }), R.on("bot_typing", () => {
       ue();
-    }), R.on("disconnect", () => {
-      H(), o.value === "connected" && (console.log("Socket disconnected, setting connection status to connecting"), o.value = "connecting");
+    }), R.on("disconnect", (z) => {
+      H(), o.value === "connected" && (console.log("Socket disconnected, setting connection status to connecting"), o.value = "connecting"), z === "io server disconnect" && (R == null || R.connect());
     }), R.on("connect_error", (z) => {
       var y;
       const f = (y = z == null ? void 0 : z.data) == null ? void 0 : y.type;

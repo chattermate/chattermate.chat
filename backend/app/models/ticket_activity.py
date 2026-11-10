@@ -57,7 +57,8 @@ class TicketActorType(_ValueStrEnum):
 
 class TicketActivity(Base):
     """Append-only ticket feed — doubles as comments and the audit trail of
-    every AI/system/human action. Never updated or deleted in place.
+    every AI/system/human action. Never updated in place; rows go only with
+    their ticket (data retention, an erasure request).
     """
     __tablename__ = "ticket_activities"
 

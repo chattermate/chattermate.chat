@@ -20,6 +20,7 @@ import json
 import os
 import re
 from types import SimpleNamespace
+from typing import Optional
 from fastapi import APIRouter
 from socketio.exceptions import ConnectionRefusedError as SocketRefused
 from app.channels.constants import MessageSource
@@ -96,6 +97,10 @@ MAX_CLIENT_ID_LENGTH = 64
 # Rating feedback comes from an anonymous widget visitor and is stored, shown
 # to agents and copied onto the linked ticket's activity feed — bound it.
 MAX_RATING_FEEDBACK_LENGTH = 2000
+
+# Shown when a visitor writes into a conversation that was deleted while their
+# page stayed open, and the visitor's record with it: the message wasn't kept.
+CONVERSATION_GONE_MESSAGE = 'This conversation has ended. Please send your message again.'
 
 
 def format_datetime(dt):
@@ -223,6 +228,89 @@ def _own_session(session_repo: SessionToAgentRepository, session: dict, active_o
         session.get('conversation_scope'), active_only=active_only)
 
 
+def _start_conversation(db, agent_id, customer_id, org_id, scope) -> str:
+    """Open a new widget conversation and return its id. The channel is stamped
+    now, the way the messaging channels do: an agent wired to a Shopify store is
+    serving that storefront, and the inbox labels the conversation accordingly.
+    Still a widget surface — see WIDGET_CHANNELS."""
+    session_id = str(uuid.uuid4())
+    shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
+    SessionToAgentRepository(db).create_session(
+        session_id=session_id,
+        agent_id=agent_id,
+        customer_id=customer_id,
+        organization_id=org_id,
+        channel='shopify' if shopify_config and shopify_config.enabled else 'web',
+        conversation_key=conversation_token_service.session_key_for_scope(scope)
+    )
+    return session_id
+
+
+async def _announce_conversation(sid: str, session: dict, created: bool) -> None:
+    """Tell the widget which conversation this socket is in, so end_chat and
+    uploads use it. `authenticated` lets the widget tell the host page whether
+    a conversation belongs to the identified visitor or to an anonymous one."""
+    await sio.emit('session_initialized', {
+        'session_id': session['session_id'],
+        'customer_id': session['customer_id'],
+        'agent_id': session['agent_id'],
+        'authenticated': bool(session.get('authenticated')),
+        'created': created
+    }, to=sid, namespace='/widget')
+
+
+# One restart at a time per socket: two quick messages into a deleted
+# conversation would otherwise each start a new one.
+_conversation_restarts = KeyedLock()
+
+
+async def _start_over(sid: str) -> None:
+    """Ask the visitor to resend, and close the socket so the widget connects
+    again: connect then opens a conversation, or refuses a visitor whose
+    record is gone and the widget authorizes a new one."""
+    await sio.emit('error', {'error': CONVERSATION_GONE_MESSAGE, 'type': 'conversation_gone'},
+                   to=sid, namespace='/widget')
+    await sio.disconnect(sid, namespace='/widget')
+
+
+def _conversation_deleted(session_repo: SessionToAgentRepository, session: dict) -> bool:
+    """True when the socket's conversation row is gone (data retention, an
+    erasure request), not merely someone else's now."""
+    return not session_repo.session_exists(session['session_id'])
+
+
+def _may_continue_in_place(db, session: dict) -> bool:
+    """A new conversation can start under this socket only for the same visitor
+    and the agent the socket was set up for: a widget since pointed at another
+    agent reconnects, so connect reads that agent's settings."""
+    customer = CustomerRepository(db).get_by_id(session['customer_id'])
+    if not may_stand_for(customer, session.get('conversation_scope')):
+        return False
+    widget_repo = WidgetRepository(db)
+    widget = widget_repo.get_widget(session['widget_id'])
+    agent = widget_repo.get_widget_agent(widget) if widget else None
+    return agent is not None and str(agent.id) == str(session['agent_id'])
+
+
+async def _restart_deleted_conversation(sid: str, session: dict, db) -> bool:
+    """Move a socket whose conversation was deleted into a new one, updating
+    `session`. False when it had to start over instead (see _start_over)."""
+    if not _may_continue_in_place(db, session):
+        logger.info(f"Widget sid {sid}: conversation deleted, reconnecting to start over")
+        await _start_over(sid)
+        return False
+
+    deleted_id = session['session_id']
+    session['session_id'] = _start_conversation(
+        db, session['agent_id'], session['customer_id'], session['org_id'], session.get('conversation_scope'))
+    await sio.leave_room(sid, deleted_id, namespace='/widget')
+    await sio.enter_room(sid, session['session_id'], namespace='/widget')
+    await sio.save_session(sid, session, namespace='/widget')
+    await _announce_conversation(sid, session, created=True)
+    logger.info(f"Widget sid {sid}: conversation {deleted_id} was deleted, continuing in {session['session_id']}")
+    return True
+
+
 @sio.on('connect', namespace='/widget')
 async def widget_connect(sid, environ, auth):
     db = None
@@ -286,25 +374,9 @@ async def widget_connect(sid, environ, auth):
         session_created = active_session is None
         if active_session:
             session_id = str(active_session.session_id)
-            logger.debug(f"Active session: {session_id}")  
+            logger.debug(f"Active session: {session_id}")
         else:
-            # Create new session if none exists. Stamp the channel now, the way
-            # the messaging channels do: an agent wired to a Shopify store is
-            # serving that storefront, and the inbox labels the conversation
-            # accordingly. Still a widget surface — see WIDGET_CHANNELS.
-            new_session_id = str(uuid.uuid4())
-            shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(
-                str(widget.agent_id)
-            )
-            session_repo.create_session(
-                session_id=new_session_id,
-                agent_id=widget.agent_id,
-                customer_id=customer_id,
-                organization_id=org_id,
-                channel='shopify' if shopify_config and shopify_config.enabled else 'web',
-                conversation_key=conversation_token_service.session_key_for_scope(scope)
-            )
-            session_id = new_session_id
+            session_id = _start_conversation(db, widget.agent_id, customer_id, org_id, scope)
             logger.debug(f"New session: {session_id}")
 
         # Join the room using session_id
@@ -350,6 +422,9 @@ async def widget_connect(sid, environ, auth):
             'use_workflow': agent.use_workflow if agent else False,
             'active_workflow_id': agent.active_workflow_id if agent else None,
             'source': source,
+            # Whether the token came from the embedding app: told to the page
+            # with each conversation this socket lands in (_announce_conversation)
+            'authenticated': is_identified,
             # Host page that embeds the widget (sent by the webclient). Recorded on
             # lead capture as lead_source.page_url so you can see WHERE leads convert.
             'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
@@ -365,16 +440,7 @@ async def widget_connect(sid, environ, auth):
         await sio.save_session(sid, session_data, namespace='/widget')
         logger.info(f"Widget client connected: {sid} joined room: {session_id}")
         
-        # Send session_id back to client immediately so it can be used for end_chat.
-        # `authenticated` lets the widget tell the host page whether a conversation it
-        # just started belongs to the identified visitor or to an anonymous one.
-        await sio.emit('session_initialized', {
-            'session_id': session_id,
-            'customer_id': customer_id,
-            'agent_id': str(widget.agent_id),
-            'authenticated': is_identified,
-            'created': session_created
-        }, to=sid, namespace='/widget')
+        await _announce_conversation(sid, session_data, session_created)
 
         # A reply paused on a host action survives a reconnect: send its call again.
         await replay_open_call(sid, session_id, db)
@@ -506,6 +572,18 @@ async def handle_widget_chat(sid, data):
         session_repo = SessionToAgentRepository(db)
                 
         own_session = _own_session(session_repo, session, active_only=False)
+        if own_session is None:
+            async with _conversation_restarts(sid):
+                # A message sent just before this one may have moved the socket already
+                session = await sio.get_session(sid, namespace='/widget')
+                if not session:
+                    return  # the socket went away while this message waited
+                own_session = _own_session(session_repo, session, active_only=False)
+                if own_session is None and _conversation_deleted(session_repo, session):
+                    if not await _restart_deleted_conversation(sid, session, db):
+                        return
+                    own_session = _own_session(session_repo, session, active_only=False)
+                session_id = session['session_id']
         active_session = own_session if own_session and own_session.status in ACTIVE_STATUSES else None
 
         if not active_session:
@@ -1796,6 +1874,10 @@ async def handle_proceed_workflow(sid, data):
         
         active_session = _own_session(session_repo, session)
 
+        # The step belonged to a conversation that has since been deleted
+        if active_session is None and _conversation_deleted(session_repo, session):
+            await _start_over(sid)
+            return
         if not active_session or not active_session.workflow_id:
             raise ValueError("No active workflow session found")
 
@@ -2063,6 +2145,10 @@ async def handle_form_submission(sid, data):
         
         active_session = _own_session(session_repo, session)
 
+        # The step belonged to a conversation that has since been deleted
+        if active_session is None and _conversation_deleted(session_repo, session):
+            await _start_over(sid)
+            return
         if not active_session or not active_session.workflow_id:
             raise ValueError("No active workflow session found")
 

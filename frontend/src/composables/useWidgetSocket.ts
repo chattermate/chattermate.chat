@@ -207,13 +207,21 @@ export function useWidgetSocket() {
             startBotTyping()
         })
 
-        socket.on('disconnect', () => {
+        socket.on('disconnect', (reason) => {
             // Nothing can arrive to clear it while we are disconnected.
             stopBotTyping()
 
             if (connectionStatus.value === 'connected') {
                 console.log('Socket disconnected, setting connection status to connecting')
                 connectionStatus.value = 'connecting'
+            }
+
+            // socket.io doesn't reconnect after the server closes the connection.
+            // The server only does that once the visitor's conversation and record
+            // were deleted: connecting again is refused with a reason that has the
+            // widget authorize a new visitor.
+            if (reason === 'io server disconnect') {
+                socket?.connect()
             }
         })
 

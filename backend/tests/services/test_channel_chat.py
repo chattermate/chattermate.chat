@@ -24,6 +24,7 @@ from app.channels.base import InboundMessage, InteractiveReply, InteractiveReply
 from app.channels.interactive_limits import TELEGRAM_LIMITS, WHATSAPP_LIMITS
 from app.models.channels import ChannelConversation
 from app.models.chat_history import ChatHistory
+from app.models.customer import Customer
 from app.models.agent import AgentType
 from app.models.session_to_agent import SessionToAgent, SessionStatus
 from app.repositories.channels import (
@@ -37,6 +38,7 @@ from app.services import agent_rooms, channel_chat
 from app.services.human_routing import HUMAN_ONLY_ACK
 from app.services.business_message import remember_business_message
 from app.services.channel_chat import process_channel_message
+from app.services.customer_erasure import erase_customers, erase_sessions
 from app.services.message_delivery import DeliveryResult
 
 
@@ -704,3 +706,52 @@ async def test_concurrent_turns_each_deliver_against_their_own_reply(
     assert len(deliveries) == 2
     for text, message_id in deliveries:
         assert db.get(ChatHistory, message_id).message == text
+
+
+class TestAfterTheConversationWasDeleted:
+    """Data retention and erasure requests delete conversations, and customers
+    with them. The person can still message the channel: the next message must
+    start over cleanly rather than fail on rows that are gone."""
+
+    @staticmethod
+    async def _send(account, text):
+        response = SimpleNamespace(message="ok", transfer_to_human=False,
+                                   end_chat=False, request_lead_capture=False)
+        fake_agent = MagicMock()
+        fake_agent.get_response = AsyncMock(return_value=response)
+        fake_agent.safe_cleanup_mcp_tools = AsyncMock()
+        with patch.object(channel_chat.ChatAgent, "create_async", AsyncMock(return_value=fake_agent)), \
+             patch.object(channel_chat, "deliver_to_customer", AsyncMock()) as deliver:
+            await process_channel_message(account.id, make_inbound(text))
+        return deliver
+
+    @pytest.mark.asyncio
+    async def test_the_same_customer_gets_a_new_conversation(self, db, routed_account, use_test_db,
+                                                             test_ai_config, mock_sio):
+        await self._send(routed_account, "first")
+        old = db.query(SessionToAgent).one()
+        old_id, customer_id = old.session_id, old.customer_id
+        erase_sessions(db, [old_id])
+
+        deliver = await self._send(routed_account, "back again")
+
+        new = db.query(SessionToAgent).one()
+        assert new.session_id != old_id and new.customer_id == customer_id
+        assert db.query(ChannelConversation).one().session_id == new.session_id
+        deliver.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_deleted_customer_is_created_again(self, db, routed_account, use_test_db,
+                                                       test_ai_config, mock_sio):
+        await self._send(routed_account, "first")
+        old_customer = db.query(SessionToAgent).one().customer_id
+        erase_customers(db, [old_customer])
+        assert db.query(SessionToAgent).count() == 0
+
+        deliver = await self._send(routed_account, "back again")
+
+        session = db.query(SessionToAgent).one()
+        assert session.customer_id != old_customer
+        assert db.get(Customer, session.customer_id) is not None
+        assert db.query(ChannelConversation).one().customer_id == session.customer_id
+        deliver.assert_awaited_once()

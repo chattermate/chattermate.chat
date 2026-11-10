@@ -156,7 +156,7 @@ class Ticket(Base):
         index=True,
     )
     # Nullable: manual/internal tickets may have no customer.
-    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)
 
     title = Column(String(500), nullable=False)
     # Preserved when AI triage rewrites the title.
@@ -209,7 +209,7 @@ class Ticket(Base):
     # conversation-only.
     csat_requested_at = Column(DateTime(timezone=True), nullable=True)
     csat_score = Column(Integer, nullable=True)
-    csat_rating_id = Column(UUID(as_uuid=True), ForeignKey("ratings.id", ondelete="SET NULL"), nullable=True)
+    csat_rating_id = Column(UUID(as_uuid=True), ForeignKey("ratings.id", ondelete="SET NULL"), nullable=True, index=True)
     csat_responded_at = Column(DateTime(timezone=True), nullable=True)
 
     # Optional one-way escalation reference (e.g. 'JIRA' + issue key + URL).
