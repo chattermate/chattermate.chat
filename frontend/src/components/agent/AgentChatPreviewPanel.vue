@@ -38,6 +38,9 @@ const props = defineProps<{
     // Seed for the fallback orb; pass the agent slug so it matches the list and
     // detail header. Falls back to agentName when not given.
     orbSeed?: string
+    // The chat window size chosen in Placement; the classic window when not given.
+    windowWidth?: number
+    windowHeight?: number
 }>()
 
 // The preview matches what visitors see: a plan with custom branding drops
@@ -398,8 +401,8 @@ const orbStyle = computed(() => resolveOrbStyle(props.agentName, orbMeta.value?.
 // Computed property for container styles
 const containerStyles = computed(() => {
     const baseStyles = {
-        width: '384px',
-        height: '560px',
+        width: `${props.windowWidth ?? 384}px`,
+        height: `${props.windowHeight ?? 560}px`,
         borderRadius: 'var(--cm-radius, 24px)'
     }
 
@@ -1237,6 +1240,13 @@ const handleInitiationClick = () => {
 
 .chat-container.ask-anything-style {
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+    /* The rules below were written against the dashboard's own colour variables,
+       which turn dark with the dashboard. Inside the preview they must follow the
+       widget's theme, which stays whatever the agent's design is. */
+    --background-base: var(--cm-card);
+    --text-primary: var(--cm-text);
+    --text-secondary: var(--cm-muted);
+    --border-color: var(--cm-border);
 }
 
 /* Welcome Message Section for ASK_ANYTHING Style */

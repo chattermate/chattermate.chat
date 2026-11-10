@@ -18,6 +18,7 @@ import { computed } from 'vue'
 import type { AgentCustomization } from '../types/widget'
 import { isColorDark } from '../types/widget'
 import { resolveWidgetUploadUrl } from '../webclient/widget-env'
+import { DEFAULT_LAUNCHER_COLOR } from '../webclient/launcher-style'
 
 // Themed colours now come from the shared design tokens (widget-theme.ts →
 // `--cm-*` vars set on `.chat-container`). These computeds return `var(--cm-*)`
@@ -31,8 +32,8 @@ export function useWidgetStyles(customization: { value: AgentCustomization }) {
 
     // Launcher icon still follows the dedicated chat_bubble_color.
     const chatIconStyles = computed(() => ({
-        backgroundColor: customization.value.chat_bubble_color || '#C9F24E',
-        color: isColorDark(customization.value.chat_bubble_color || '#C9F24E') ? '#FFFFFF' : '#000000'
+        backgroundColor: customization.value.chat_bubble_color || DEFAULT_LAUNCHER_COLOR,
+        color: isColorDark(customization.value.chat_bubble_color || DEFAULT_LAUNCHER_COLOR) ? '#FFFFFF' : '#000000'
     }))
 
     const agentBubbleStyles = computed(() => ({

@@ -22,6 +22,7 @@ import { LoginPage } from '../pages/login.page'
 import { PeoplePage } from '../pages/people.page'
 import { TicketsPage } from '../pages/tickets.page'
 import { WidgetAllowedDomainsPage } from '../pages/widget-allowed-domains.page'
+import { AgentCustomizationPage } from '../pages/agent-customization.page'
 import { unique } from '../support/ids'
 import { blockThirdParty } from './network'
 
@@ -134,6 +135,7 @@ interface TestFixtures {
   humanAgentsPage: HumanAgentsPage
   /** The agent editor's Widget tab, where the widget's allowed domains are edited. */
   allowedDomainsPage: WidgetAllowedDomainsPage
+  customizationPage: AgentCustomizationPage
 }
 
 /**
@@ -287,6 +289,7 @@ export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
   peoplePage: async ({ page }, use) => use(new PeoplePage(page)),
   humanAgentsPage: async ({ page }, use) => use(new HumanAgentsPage(page)),
   allowedDomainsPage: async ({ page }, use) => use(new WidgetAllowedDomainsPage(page)),
+  customizationPage: async ({ page }, use) => use(new AgentCustomizationPage(page)),
 })
 
 export { expect }

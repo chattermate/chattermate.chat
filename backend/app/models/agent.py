@@ -17,6 +17,7 @@ limitations under the License.
 from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean, Enum as SQLEnum, ForeignKey, JSON, Table, Float, func
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
+from app.core.brand import BRAND_COLORS
 from app.database import Base
 import enum
 import json
@@ -56,7 +57,7 @@ class AgentCustomization(Base):
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"))
     photo_url = Column(String)
     chat_background_color = Column(String, default="#F8F9FA")
-    chat_bubble_color = Column(String, default="#E9ECEF")
+    chat_bubble_color = Column(String, default=BRAND_COLORS["ink"])
     chat_text_color = Column(String, default="#212529")
     icon_url = Column(String)
     icon_color = Column(String, default="#6C757D")

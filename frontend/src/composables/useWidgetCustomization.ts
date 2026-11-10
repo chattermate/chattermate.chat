@@ -18,6 +18,7 @@ import { ref } from 'vue'
 import type { AgentCustomization } from '../types/agent'
 import WebFont from 'webfontloader'
 import { postToHost } from '../webclient/host-bridge'
+import { DEFAULT_LAUNCHER_COLOR } from '../webclient/launcher-style'
 
 // Design fonts the redesigned widget always needs (display / body / mono), with
 // the weights it actually uses. The user's custom font_family is layered on top.
@@ -73,12 +74,14 @@ export function useWidgetCustomization() {
         postToHost({
             type: 'CUSTOMIZATION_UPDATE',
             data: {
-                chat_bubble_color: newCustomization.chat_bubble_color || '#C9F24E',
+                chat_bubble_color: newCustomization.chat_bubble_color || DEFAULT_LAUNCHER_COLOR,
                 chat_style: newCustomization.chat_style,
                 chat_initiation_messages: newCustomization.chat_initiation_messages || [],
                 // Dashboard "Widget placement" defaults — the embed loader merges these
                 // under any options the installing developer set.
-                widget_display: newCustomization.customization_metadata?.widget_display
+                widget_display: newCustomization.customization_metadata?.widget_display,
+                launcher: newCustomization.customization_metadata?.launcher,
+                launcher_logo_url: newCustomization.launcher_logo_url
             }
         })
     }
