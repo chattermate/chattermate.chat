@@ -68,7 +68,7 @@ TARGETS = (
     # during the rollout. mcp_tools.env_vars / headers are encrypted by that
     # revision too but are `json`, not `jsonb`, so this script's JSON path
     # (jsonb_exists) does not apply to them.
-    ("shopify_shops", "id", ("access_token",), TEXT),
+    ("shopify_shops", "id", ("access_token", "refresh_token"), TEXT),
     ("jira_tokens", "id", ("access_token", "refresh_token"), TEXT),
 )
 

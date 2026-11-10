@@ -89,6 +89,8 @@ class ShopifyProduct(BaseModel):
     updated_at: Optional[str] = Field(default=None)
     price_formatted: Optional[str] = Field(default=None)
     variant_title: Optional[str] = Field(default=None)
+    # Set only when one click can add this product (see cart_variant_id)
+    cart_variant_id: Optional[str] = Field(default=None)
 
     class Config:
         json_encoders = {

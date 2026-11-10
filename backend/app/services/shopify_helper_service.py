@@ -23,7 +23,6 @@ from app.core.config import settings
 from app.models.organization import Organization
 from app.repositories.widget import WidgetRepository
 from app.services.shopify_auth_service import ShopifyAuthService
-from app.services.shopify_urls import shopify_oauth_token_url
 from urllib.parse import quote
 import hmac
 import hashlib
@@ -84,58 +83,6 @@ class ShopifyHelperService:
             if widgets and len(widgets) > 0:
                 return str(widgets[0].id)
         return default
-
-    @staticmethod
-    def exchange_oauth_code_for_token(shop: str, code: str) -> tuple[str, str]:
-        """
-        Exchange OAuth authorization code for access token.
-        
-        Args:
-            shop: Shop domain
-            code: OAuth authorization code
-            
-        Returns:
-            Tuple of (access_token, scope)
-            
-        Raises:
-            HTTPException: If token exchange fails
-        """
-        import requests
-        from fastapi import HTTPException
-        
-        token_url = shopify_oauth_token_url(shop)
-        payload = {
-            "client_id": settings.SHOPIFY_API_KEY,
-            "client_secret": settings.SHOPIFY_API_SECRET,
-            "code": code
-        }
-        
-        # Check if we should verify SSL certificates (default to True for production)
-        verify_ssl = settings.VERIFY_SSL_CERTIFICATES
-        logger.info(f"Exchanging OAuth code for token - Shop: {shop}")
-        logger.info(f"Verify SSL Certificates: {verify_ssl}")
-        logger.info(f"Token URL: {token_url}")
-        
-        try:
-            response = requests.post(token_url, json=payload, verify=verify_ssl)
-            response.raise_for_status()
-            token_data = response.json()
-            
-            access_token = token_data.get("access_token")
-            scope = token_data.get("scope")
-            
-            if not access_token:
-                logger.error(f"Failed to get access token for shop: {shop}")
-                raise HTTPException(status_code=400, detail="Failed to obtain access token")
-            
-            logger.info(f"Successfully obtained access token for shop: {shop}")
-            return access_token, scope
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error exchanging OAuth code for token: {str(e)}")
-            if isinstance(e, requests.exceptions.SSLError):
-                logger.error("SSL Certificate verification failed. If this is a development environment, consider setting VERIFY_SSL_CERTIFICATES=False in settings.")
-            raise HTTPException(status_code=500, detail=f"Failed to exchange OAuth code: {str(e)}")
 
     @staticmethod
     def verify_shopify_webhook(request_headers, request_body) -> bool:

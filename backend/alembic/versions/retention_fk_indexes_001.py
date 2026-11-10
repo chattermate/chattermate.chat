@@ -11,7 +11,7 @@ part-way leaves an INVALID index that IF NOT EXISTS would then skip, so each one
 is dropped first when it is invalid: running this again finishes the job.
 
 Revision ID: retention_fk_indexes_001
-Revises: integration_secrets_001
+Revises: shopify_expiring_tokens_001
 Create Date: 2026-11-10
 """
 from typing import Sequence, Union
@@ -23,7 +23,7 @@ from alembic import op
 # Keep revision ids under 32 characters: alembic_version.version_num is
 # varchar(32).
 revision: str = 'retention_fk_indexes_001'
-down_revision: Union[str, None] = 'integration_secrets_001'
+down_revision: Union[str, None] = 'shopify_expiring_tokens_001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

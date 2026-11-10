@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     SHOPIFY_API_KEY: str = os.getenv("SHOPIFY_API_KEY", "")
     SHOPIFY_API_SECRET: str = os.getenv("SHOPIFY_API_SECRET", "")
     SHOPIFY_API_VERSION: str = os.getenv("SHOPIFY_API_VERSION", "2025-10")
+    # Exchange a store's non-expiring offline token for an expiring one the next
+    # time it is used (app.services.shopify_tokens). Off only to pause migration.
+    SHOPIFY_MIGRATE_LEGACY_TOKENS: bool = os.getenv("SHOPIFY_MIGRATE_LEGACY_TOKENS", "true").lower() == "true"
 
     # Slack. The OAuth redirect URI is derived from BACKEND_URL, not configured.
     SLACK_CLIENT_ID: str = os.getenv("SLACK_CLIENT_ID", "")
