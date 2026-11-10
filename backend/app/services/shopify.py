@@ -162,6 +162,26 @@ class ShopifyService:
                 "message": f"Error executing GraphQL query: {str(e)}"
             }
 
+    SHOP_PROFILE_QUERY = """
+    query ShopProfile {
+      shop {
+        name
+        email
+        shopOwnerName
+        ianaTimezone
+        primaryDomain { url }
+      }
+    }
+    """
+
+    async def get_shop_profile(self, shop: ShopifyShop) -> Optional[Dict[str, Any]]:
+        """The store's name, owner, email, timezone and primary domain, in one
+        call. None when Shopify can't be reached."""
+        result = await self._execute_graphql_async(shop, self.SHOP_PROFILE_QUERY)
+        if not result.get("success"):
+            return None
+        return (result.get("data") or {}).get("shop")
+
     def get_products(self, shop: ShopifyShop, limit: int = 10) -> Dict[str, Any]:
         """
         Get products from a Shopify store using GraphQL.
