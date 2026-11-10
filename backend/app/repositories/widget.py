@@ -14,9 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from typing import Optional
+
 from sqlalchemy.orm import Session
+from app.models.agent import Agent
 from app.models.widget import Widget
 from app.models.schemas.widget import WidgetCreate
+from app.repositories.agent import AgentRepository
 
 class WidgetRepository:
     def __init__(self, db: Session):
@@ -38,21 +42,31 @@ class WidgetRepository:
         return self.db.query(Widget).filter(Widget.id == widget_id).first()
 
 
+    def get_widget_agent(self, widget: Widget) -> Optional[Agent]:
+        """The agent a widget serves, only if it's in the widget's organization.
+
+        Every public widget surface resolves its agent here, so a widget bound
+        to another tenant's agent serves nothing rather than that agent.
+        """
+        if widget.agent_id is None:
+            return None
+        return AgentRepository(self.db).get_agent_in_org(widget.agent_id, widget.organization_id)
+
+
     def get_widgets(self, organization_id: str) -> list[Widget]:
         return self.db.query(Widget).filter(Widget.organization_id == organization_id).all()
 
 
     def get_widgets_by_agent(self, agent_id: str) -> list[Widget]:
+        """The agent's widgets, only those in the agent's own organization.
+
+        A widget bound to another tenant's agent is never one of its widgets,
+        so callers (dashboard, Shopify embed lookup) can't be handed one.
         """
-        Get all widgets associated with a specific agent.
-        
-        Args:
-            agent_id: The ID of the agent
-            
-        Returns:
-            List of Widget objects associated with the agent
-        """
-        return self.db.query(Widget).filter(Widget.agent_id == agent_id).all()
+        return self.db.query(Widget).join(
+            Agent,
+            (Agent.id == Widget.agent_id) & (Agent.organization_id == Widget.organization_id),
+        ).filter(Widget.agent_id == agent_id).all()
 
 
     def set_allowed_domains(self, widget: Widget, allowed_domains: list[str]) -> Widget:

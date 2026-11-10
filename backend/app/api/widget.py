@@ -87,6 +87,11 @@ def create_new_widget(
     current_user=Depends(get_current_user)
 ):
     """Create a new widget for the organization"""
+    # The agent must be the caller's own: a widget bound to another tenant's
+    # agent would serve that agent's config and answer from its knowledge.
+    if widget.agent_id is not None and not AgentRepository(db).get_agent_in_org(
+            widget.agent_id, current_user.organization_id):
+        raise HTTPException(status_code=404, detail="Agent not found")
     widget_repo = WidgetRepository(db)
     return widget_repo.create_widget(widget, current_user.organization_id)
 
@@ -268,8 +273,7 @@ async def get_widget_data(
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
 
-    agent_repo = AgentRepository(db)
-    agent = agent_repo.get_by_id(widget.agent_id)
+    agent = WidgetRepository(db).get_widget_agent(widget)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -456,16 +460,9 @@ def get_widgets_by_agent(
     current_user=Depends(get_current_user)
 ):
     """Get all widgets for a specific agent"""
-    widget_repo = WidgetRepository(db)
-    widgets = widget_repo.get_widgets_by_agent(agent_id)
-    
-    # Verify the agent belongs to the user's organization
-    agent_repo = AgentRepository(db)
-    agent = agent_repo.get_by_id(agent_id)
-    if not agent or str(agent.organization_id) != str(current_user.organization_id):
+    if not AgentRepository(db).get_agent_in_org(agent_id, current_user.organization_id):
         raise HTTPException(status_code=404, detail="Agent not found")
-    
-    return widgets
+    return WidgetRepository(db).get_widgets_by_agent(agent_id)
 
 
 @router.delete("/{widget_id}")

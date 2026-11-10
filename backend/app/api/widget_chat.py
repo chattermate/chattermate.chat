@@ -257,7 +257,9 @@ async def widget_connect(sid, environ, auth):
         db = await session_off_loop()
         widget_repo = WidgetRepository(db)
         widget = widget_repo.get_widget(widget_id)
-        if not widget:
+        # A widget whose agent isn't its own organization's serves nothing
+        agent = widget_repo.get_widget_agent(widget) if widget else None
+        if not agent:
             raise ValueError("Invalid widget ID")
 
         # A widget-issued token may not stand for a person the embedding app has
@@ -308,14 +310,10 @@ async def widget_connect(sid, environ, auth):
         # Join the room using session_id
         await sio.enter_room(sid, session_id, namespace='/widget')
         
-        # Get agent to retrieve rate limiting settings
-        agent_repo = AgentRepository(db)
-        agent = agent_repo.get_agent(widget.agent_id)
-        
         # Store session data including rate limiting settings
-        enable_rate_limiting = agent.enable_rate_limiting if agent else False
-        overall_limit_per_ip = agent.overall_limit_per_ip if agent else 100
-        requests_per_sec = agent.requests_per_sec if agent else 1.0
+        enable_rate_limiting = agent.enable_rate_limiting
+        overall_limit_per_ip = agent.overall_limit_per_ip
+        requests_per_sec = agent.requests_per_sec
         
         # Snapshot only the fields the rest of the app reads from session['ai_config']
         # (encrypted_api_key/model_name/model_type) into a plain, DB-independent object.

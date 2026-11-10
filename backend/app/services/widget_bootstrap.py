@@ -32,7 +32,7 @@ from app.core.s3 import get_s3_signed_url
 from app.core.security import create_conversation_token
 from app.models.agent import Agent
 from app.models.widget import Widget
-from app.repositories.agent import AgentRepository
+from app.repositories.widget import WidgetRepository
 from app.services import conversation_token
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on, plan_hides_branding
 from app.utils.business_hours import is_within_business_hours
@@ -122,7 +122,7 @@ def open_session(db: Session, widget: Widget, token: Optional[str], source: Opti
     Raises WidgetAccessDenied when the visitor can't open the widget, and a 404
     when its agent is gone.
     """
-    agent = AgentRepository(db).get_by_id(widget.agent_id)
+    agent = WidgetRepository(db).get_widget_agent(widget)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
