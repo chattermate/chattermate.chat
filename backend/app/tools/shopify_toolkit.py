@@ -20,6 +20,8 @@ from app.core.logger import get_logger
 from app.services.shopify import ShopifyService
 from app.services.shopify_urls import shopify_admin_url
 from app.services.shopify_tokens import admin_headers, call_admin_api
+from app.repositories.chat import ChatRepository
+from app.tools.shopify_search import catalog_filters, match_singulars
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.database import SessionLocal
 from app.models.organization import Organization
@@ -35,6 +37,7 @@ from app.core.config import settings
 from app.core.redis import get_redis
 from app.tools.shopify_order_access import (
     MAX_ORDER_RESULTS,
+    missing_from_chat,
     ORDER_NOT_FOUND,
     build_order_search,
     order_belongs_to,
@@ -123,10 +126,6 @@ query SearchOrders($query: String, $first: Int!) {
         }
       }
     }
-    pageInfo {
-      hasNextPage
-      endCursor
-    }
   }
 }
 """
@@ -147,6 +146,46 @@ def create_minimal_product(product: dict) -> dict:
         "total_inventory": product.get("total_inventory"),
         "tags": product.get("tags", [])
     }
+
+def cart_variant_id(node: dict) -> Optional[str]:
+    """The variant one click can add: only for a product published to the Online
+    Store with a single variant that is on sale. The Admin API also returns products
+    the storefront can't sell, whose cart add fails ("Cannot find variant").
+    publishedAt, not onlineStoreUrl: the URL is null on a password-protected store.
+    With several variants, picking one for the customer could buy the wrong size."""
+    if not node.get("publishedAt"):
+        return None
+    edges = (node.get("variants") or {}).get("edges") or []
+    variant = (edges[0].get("node") or {}) if len(edges) == 1 else {}
+    if not variant.get("id") or not variant.get("availableForSale"):
+        return None
+    return variant["id"].split("/")[-1]
+
+
+def product_from_node(node: dict) -> dict:
+    """Flatten one GraphQL product node into the shape the cache and cards use."""
+    images = (node.get("images") or {}).get("edges") or []
+    image_url = (images[0].get("node") or {}).get("url") if images else None
+    price_range = node.get("priceRangeV2") or {}
+    min_variant_price = price_range.get("minVariantPrice") or {}
+    return {
+        "id": node["id"].split("/")[-1] if node.get("id") else None,
+        "title": node.get("title"),
+        "description": node.get("description"),
+        "handle": node.get("handle"),
+        "product_type": node.get("productType"),
+        "vendor": node.get("vendor"),
+        "total_inventory": node.get("totalInventory"),
+        "price": min_variant_price.get("amount"),
+        "price_max": (price_range.get("maxVariantPrice") or {}).get("amount"),
+        "currency": min_variant_price.get("currencyCode"),
+        "image": {"src": image_url} if image_url else None,
+        "tags": node.get("tags"),
+        "created_at": node.get("createdAt"),
+        "updated_at": node.get("updatedAt"),
+        "cart_variant_id": cart_variant_id(node),
+    }
+
 
 class ShopifyTools(Toolkit):
     def __init__(self, agent_id: str, org_id: str, session_id: str):
@@ -403,6 +442,8 @@ class ShopifyTools(Toolkit):
                     productType
                     vendor
                     totalInventory
+                    publishedAt
+                    variants(first: 2) { edges { node { id availableForSale } } }
                     priceRangeV2 {
                       minVariantPrice {
                         amount
@@ -437,17 +478,10 @@ class ShopifyTools(Toolkit):
             
             # Add status:active filter to only return active products (exclude archived and draft)
             # Add inventory_total:>0 to only return in-stock products
-            filtered_query = f"({query}) AND status:active AND inventory_total:>0"
-
-            # Add price filters if provided
-            if min_price is not None:
-                filtered_query += f" AND price:>={min_price}"
-            if max_price is not None:
-                filtered_query += f" AND price:<={max_price}"
-
-            # Add vendor filter if provided
-            if vendor:
-                filtered_query += f" AND vendor:'{vendor}'"
+            filtered_query = " AND ".join([
+                f"({match_singulars(query)})", "status:active", "inventory_total:>0",
+                *catalog_filters(min_price, max_price, vendor),
+            ])
 
             variables = {
                 "searchTerm": filtered_query,
@@ -489,42 +523,7 @@ class ShopifyTools(Toolkit):
             edges = products_data.get("edges", [])
             page_info = products_data.get("pageInfo", {})
             
-            # Extract products from edges
-            products = []
-            for edge in edges:
-                node = edge.get("node", {})
-                
-                # Extract the first image URL if available
-                image_url = None
-                images = node.get("images", {}).get("edges", [])
-                if images and len(images) > 0:
-                    image_url = images[0].get("node", {}).get("url")
-                
-                # Extract price information
-                price_range = node.get("priceRangeV2", {})
-                min_price = price_range.get("minVariantPrice", {}).get("amount")
-                max_price = price_range.get("maxVariantPrice", {}).get("amount")
-                currency_code = price_range.get("minVariantPrice", {}).get("currencyCode")
-                
-                # Transform to product structure
-                transformed_product = {
-                    "id": node.get("id").split("/")[-1] if node.get("id") else None,
-                    "title": node.get("title"),
-                    "description": node.get("description"),
-                    "handle": node.get("handle"),
-                    "product_type": node.get("productType"),
-                    "vendor": node.get("vendor"),
-                    "total_inventory": node.get("totalInventory"),
-                    "price": min_price,
-                    "price_max": max_price,
-                    "currency": currency_code,
-                    "image": {"src": image_url} if image_url else None,
-                    "tags": node.get("tags"),
-                    "created_at": node.get("createdAt"),
-                    "updated_at": node.get("updatedAt")
-                }
-                
-                products.append(transformed_product)
+            products = [product_from_node(edge.get("node", {})) for edge in edges]
             
             # Check if search was successful
             if products:
@@ -594,21 +593,22 @@ class ShopifyTools(Toolkit):
             })
     
    
-    def search_orders(self, customer_email: str, order_number: Optional[str] = None, limit: int = MAX_ORDER_RESULTS) -> str:
+    def search_orders(self, customer_email: str, order_number: str) -> str:
         """
-        Find the customer's own orders. Ask the customer for the email address they
-        used at checkout; never guess it or take it from anywhere else.
+        Get the full details of one order: items, totals, shipping address and tracking.
+        Needs both the order number and the email address the customer used at checkout;
+        ask the customer for whichever is missing. Never guess the email or take it from
+        anywhere else. This cannot list a customer's orders.
 
         Args:
-            customer_email: The email address the customer used at checkout (required)
-            order_number: The order number, e.g. "#1001" (optional, narrows to one order)
-            limit: Maximum number of orders to return (default and maximum: 10)
+            customer_email: The email address the customer used at checkout
+            order_number: The order number, e.g. "1001" or "#1001"
 
         Returns:
-            str: JSON string with the customer's matching orders or error information
+            str: JSON string with the matching order or error information
         """
         try:
-            problem = order_lookup_problem(customer_email, order_number)
+            problem = self._lookup_problem(customer_email, order_number)
             if problem:
                 return json.dumps({"success": False, "message": problem, "requires_user_input": True})
 
@@ -619,7 +619,7 @@ class ShopifyTools(Toolkit):
                     "message": "Shopify integration is not enabled for this agent or shop not found"
                 })
 
-            found = self._find_customer_orders(shop, customer_email, order_number, limit)
+            found = self._find_customer_orders(shop, customer_email, order_number)
             if not found["success"]:
                 return json.dumps(found)
             orders = found["orders"]
@@ -630,7 +630,6 @@ class ShopifyTools(Toolkit):
                 "success": True,
                 "message": self._summarise_orders(orders),
                 "orders": orders,
-                "page_info": found["page_info"],
                 "shop_domain": shop.shop_domain
             })
 
@@ -639,17 +638,24 @@ class ShopifyTools(Toolkit):
             logger.error(traceback.format_exc())
             return json.dumps({"success": False, "message": "Couldn't search the store's orders right now."})
 
-    def _find_customer_orders(self, shop: ShopifyShop, customer_email: str,
-                              order_number: Optional[str], limit: int) -> Dict[str, Any]:
-        """Orders placed with this email (and number, if given). Shopify's search is
-        fuzzy, so every result is re-checked for an exact email and number match."""
-        limit = max(1, min(int(limit or MAX_ORDER_RESULTS), MAX_ORDER_RESULTS))
+    def _customer_messages(self) -> List[str]:
+        with SessionLocal() as db:
+            return ChatRepository(db).get_customer_messages(self.session_id)
+
+    def _lookup_problem(self, customer_email: Optional[str], order_number: Optional[str]) -> Optional[str]:
+        """What to ask the customer before this lookup can run, or None when it can."""
+        return (order_lookup_problem(customer_email, order_number)
+                or missing_from_chat(customer_email, order_number, self._customer_messages()))
+
+    def _find_customer_orders(self, shop: ShopifyShop, customer_email: str, order_number: str) -> Dict[str, Any]:
+        """The order with this number placed with this email. Shopify's search is fuzzy,
+        so every result is re-checked for an exact email and number match."""
         response = call_admin_api(shop, lambda token: requests.post(
             shopify_admin_url(shop.shop_domain, "graphql.json"),
             headers=admin_headers(token),
             json={
                 "query": ORDER_SEARCH_GRAPHQL,
-                "variables": {"query": build_order_search(customer_email, order_number), "first": limit},
+                "variables": {"query": build_order_search(customer_email, order_number), "first": MAX_ORDER_RESULTS},
             },
             verify=settings.VERIFY_SSL_CERTIFICATES,
             timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
@@ -669,7 +675,6 @@ class ShopifyTools(Toolkit):
             "success": True,
             "orders": [o for o in orders
                        if order_belongs_to(o, customer_email) and order_number_matches(o, order_number)],
-            "page_info": orders_data.get("pageInfo", {}),
         }
 
     @staticmethod
@@ -761,7 +766,7 @@ class ShopifyTools(Toolkit):
             str: JSON string with order status details or error information
         """
         try:
-            problem = order_lookup_problem(customer_email, order_number, number_required=True)
+            problem = self._lookup_problem(customer_email, order_number)
             if problem:
                 return json.dumps({"success": False, "message": problem, "requires_user_input": True})
 
@@ -772,7 +777,7 @@ class ShopifyTools(Toolkit):
                     "message": "Shopify integration is not enabled for this agent or shop not found"
                 })
 
-            found = self._find_customer_orders(shop, customer_email, order_number, MAX_ORDER_RESULTS)
+            found = self._find_customer_orders(shop, customer_email, order_number)
             if not found["success"]:
                 return json.dumps(found)
             if not found["orders"]:
@@ -958,13 +963,7 @@ class ShopifyTools(Toolkit):
                 logger.info("No specific criteria for recommendations, fetching recent products.")
 
                 # Build fallback query with price and vendor filters
-                fallback_filters = ["status:active", "inventory_total:>0"]
-                if min_price is not None:
-                    fallback_filters.append(f"price:>={min_price}")
-                if max_price is not None:
-                    fallback_filters.append(f"price:<={max_price}")
-                if vendor:
-                    fallback_filters.append(f"vendor:'{vendor}'")
+                fallback_filters = ["status:active", "inventory_total:>0", *catalog_filters(min_price, max_price, vendor)]
 
                 fallback_query = " AND ".join(fallback_filters)
 
@@ -982,6 +981,8 @@ class ShopifyTools(Toolkit):
                         productType
                         vendor
                         totalInventory
+                        publishedAt
+                        variants(first: 2) {{ edges {{ node {{ id availableForSale }} }} }}
                         priceRangeV2 {{
                           minVariantPrice {{
                             amount
@@ -1024,17 +1025,10 @@ class ShopifyTools(Toolkit):
                 # Construct final query: Join parts with OR for broader recommendations
                 # Add status:active filter to only return active products (exclude archived and draft)
                 # Add inventory_total:>0 to only return in-stock products
-                search_query = f"({' OR '.join(search_query_parts)}) AND status:active AND inventory_total:>0"
-
-                # Add price filters if provided
-                if min_price is not None:
-                    search_query += f" AND price:>={min_price}"
-                if max_price is not None:
-                    search_query += f" AND price:<={max_price}"
-
-                # Add vendor filter if provided
-                if vendor:
-                    search_query += f" AND vendor:'{vendor}'"
+                search_query = " AND ".join([
+                    f"({' OR '.join(search_query_parts)})", "status:active", "inventory_total:>0",
+                    *catalog_filters(min_price, max_price, vendor),
+                ])
 
                 logger.info(f"Constructed recommendation search query: {search_query}")
                 
@@ -1051,6 +1045,8 @@ class ShopifyTools(Toolkit):
                         productType
                         vendor
                         totalInventory
+                        publishedAt
+                        variants(first: 2) { edges { node { id availableForSale } } }
                         priceRangeV2 {
                           minVariantPrice {
                             amount
@@ -1125,42 +1121,7 @@ class ShopifyTools(Toolkit):
             edges = products_data.get("edges", [])
             page_info = products_data.get("pageInfo", {})
             
-            # Extract products from edges
-            products = []
-            for edge in edges:
-                node = edge.get("node", {})
-                
-                # Extract the first image URL if available
-                image_url = None
-                images = node.get("images", {}).get("edges", [])
-                if images and len(images) > 0:
-                    image_url = images[0].get("node", {}).get("url")
-                
-                # Extract price information
-                price_range = node.get("priceRangeV2", {})
-                min_price = price_range.get("minVariantPrice", {}).get("amount")
-                max_price = price_range.get("maxVariantPrice", {}).get("amount")
-                currency_code = price_range.get("minVariantPrice", {}).get("currencyCode")
-                
-                # Transform to product structure
-                transformed_product = {
-                    "id": node.get("id").split("/")[-1] if node.get("id") else None,
-                    "title": node.get("title"),
-                    "description": node.get("description"),
-                    "handle": node.get("handle"),
-                    "product_type": node.get("productType"),
-                    "vendor": node.get("vendor"),
-                    "total_inventory": node.get("totalInventory"),
-                    "price": min_price,
-                    "price_max": max_price,
-                    "currency": currency_code,
-                    "image": {"src": image_url} if image_url else None,
-                    "tags": node.get("tags"),
-                    "created_at": node.get("createdAt"),
-                    "updated_at": node.get("updatedAt")
-                }
-                
-                products.append(transformed_product)
+            products = [product_from_node(edge.get("node", {})) for edge in edges]
             
             # Filter out the original product_id if it was part of the criteria and fetch limit allowed
             if product_id and search_limit > limit:

@@ -114,6 +114,7 @@ export interface AgentCustomization {
   font_family?: string
   custom_css?: string
   customization_metadata?: Record<string, any>
+  launcher_logo_url?: string | null
   chat_style?: ChatStyle
   widget_position?: WidgetPosition
   welcome_title?: string

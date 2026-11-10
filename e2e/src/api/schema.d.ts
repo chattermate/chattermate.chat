@@ -2944,6 +2944,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/{agent_id}/customization/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Launcher Logo
+         * @description Store a new launcher logo, replacing any previous one.
+         */
+        post: operations["upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post"];
+        /**
+         * Remove Launcher Logo
+         * @description Remove the logo. Open to every plan, so a lapsed org can still clean up.
+         */
+        delete: operations["remove_launcher_logo_api_v1_agent__agent_id__customization_logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/customization/logo/shopify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Launcher Logo
+         * @description Store a new launcher logo, replacing any previous one.
+         */
+        post: operations["upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post"];
+        /**
+         * Remove Launcher Logo
+         * @description Remove the logo. Open to every plan, so a lapsed org can still clean up.
+         */
+        delete: operations["remove_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/{agent_id}/lead-capture": {
         parameters: {
             query?: never;
@@ -3832,6 +3880,30 @@ export interface paths {
          * @description Replace the widget's allowed domains. An empty list allows any site.
          */
         put: operations["update_embed_settings_api_v1_widgets__widget_id__embed_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/widgets/{widget_id}/launcher-logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Launcher Logo
+         * @description The launcher logo for the embed loader's image: a redirect to the current file.
+         *
+         *     The loader builds this address itself, so the page never puts a URL it was sent
+         *     in a message into an image, and an expired signature is never its problem.
+         *     Served only while the plan covers the logo, like everything else visitors get.
+         */
+        get: operations["launcher_logo_api_v1_widgets__widget_id__launcher_logo_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -5630,6 +5702,8 @@ export interface components {
             customization_metadata?: {
                 [key: string]: unknown;
             } | null;
+            /** Launcher Logo Url */
+            launcher_logo_url?: string | null;
         };
         /** AgentInfo */
         AgentInfo: {
@@ -6007,6 +6081,16 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post */
+        Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post: {
+            /** Logo */
+            logo: string;
+        };
+        /** Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post */
+        Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post: {
+            /** Logo */
+            logo: string;
+        };
         /** Body_upload_logo_api_v1_help_center_logo_post */
         Body_upload_logo_api_v1_help_center_logo_post: {
             /** File */
@@ -6289,7 +6373,7 @@ export interface components {
             chat_background_color: string | null;
             /**
              * Chat Bubble Color
-             * @default #E9ECEF
+             * @default #12150E
              */
             chat_bubble_color: string | null;
             /**
@@ -6297,8 +6381,6 @@ export interface components {
              * @default #212529
              */
             chat_text_color: string | null;
-            /** Icon Url */
-            icon_url?: string | null;
             /**
              * Icon Color
              * @default #6C757D
@@ -6369,7 +6451,7 @@ export interface components {
             chat_background_color: string | null;
             /**
              * Chat Bubble Color
-             * @default #E9ECEF
+             * @default #12150E
              */
             chat_bubble_color: string | null;
             /**
@@ -6377,8 +6459,6 @@ export interface components {
              * @default #212529
              */
             chat_text_color: string | null;
-            /** Icon Url */
-            icon_url?: string | null;
             /**
              * Icon Color
              * @default #6C757D
@@ -6444,6 +6524,8 @@ export interface components {
              * Format: uuid
              */
             agent_id: string;
+            /** Icon Url */
+            icon_url?: string | null;
         };
         /** DBConnectorColumnOut */
         DBConnectorColumnOut: {
@@ -8664,6 +8746,8 @@ export interface components {
             price_formatted?: string | null;
             /** Variant Title */
             variant_title?: string | null;
+            /** Cart Variant Id */
+            cart_variant_id?: string | null;
         };
         /** ShopifyProductImage */
         ShopifyProductImage: {
@@ -15683,6 +15767,138 @@ export interface operations {
             };
         };
     };
+    upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_launcher_logo_api_v1_agent__agent_id__customization_logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_lead_capture_config_api_v1_agent__agent_id__lead_capture_get: {
         parameters: {
             query?: never;
@@ -17654,6 +17870,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WidgetEmbedSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    launcher_logo_api_v1_widgets__widget_id__launcher_logo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                widget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

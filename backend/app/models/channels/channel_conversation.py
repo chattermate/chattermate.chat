@@ -76,7 +76,8 @@ class ChannelConversation(Base):
     customer_id = Column(
         UUID(as_uuid=True),
         ForeignKey("customers.id", ondelete="SET NULL"),
-        nullable=True
+        nullable=True,
+        index=True
     )
 
     # Timestamp of the customer's latest inbound message; drives the

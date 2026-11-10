@@ -68,7 +68,7 @@ class Customer(Base):
     # persists an empty JSON value as JSON null (not SQL NULL), so `meta_data IS NULL`
     # never matched reliably.
     is_authenticated = Column(Boolean, default=False, server_default="false", nullable=False)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True)
     is_active = Column(Boolean, default=True)
     # Lead lifecycle — denormalized onto the customer so the People page can filter/aggregate
     # by stage without joining lead_capture_responses on every list request.

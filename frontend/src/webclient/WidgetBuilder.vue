@@ -28,6 +28,8 @@ import ActionConfirmCard from './ActionConfirmCard.vue'
 import ActionReceiptLine from './ActionReceiptLine.vue'
 import JourneyPlan from './JourneyPlan.vue'
 import SuggestedReplies from './SuggestedReplies.vue'
+import ProductCartButton from './ProductCartButton.vue'
+import { canAddToCart, handleCartMessage } from './shopify-cart'
 import { useActionReceipts } from '../composables/useActionReceipts'
 import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
@@ -988,33 +990,6 @@ const handleSubmitRating = async (sessionId: string, rating: number, feedback: s
     }
 }
 
-const handleAddToCart = (message) => {
-    const productData = message.shopify_output || {
-        id: message.product_id,
-        title: message.product_title,
-        price: message.product_price,
-        image: message.product_image,
-        vendor: message.product_vendor
-    };
-
-    if (productData) {
-        // Send a message to the parent window (the main shop)
-        postToHost({
-            type: 'ADD_TO_CART',
-            product: productData
-        });
-    }
-};
-
-const handleAddToCartFromCarousel = (product) => {
-    if (product) {
-        postToHost({
-            type: 'ADD_TO_CART',
-            product: product
-        });
-    }
-};
-
 // Form validation function
 const validateForm = (formConfig: any): boolean => {
     const errors: Record<string, string> = {}
@@ -1478,6 +1453,7 @@ window.addEventListener('message', (event) => {
     // widget; hostile sibling frames can reach this window via top.frames[i].
     if (event.source !== window.parent) return
     if (!event.data || typeof event.data.type !== 'string') return
+    if (handleCartMessage(event.data)) return
     if (event.data.type === 'SCROLL_TO_BOTTOM') {
         scrollToBottom()
     }
@@ -2856,7 +2832,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                                     <div v-if="message.shopify_output?.products && message.shopify_output.products.length > 0" class="products-carousel">
                                         <h3 class="carousel-title">Products</h3>
                                         <div class="carousel-items">
-                                            <div v-for="product in message.shopify_output.products" :key="product.id" class="product-card-compact carousel-item">
+                                            <div v-for="product in message.shopify_output.products" :key="product.id" class="product-card-compact carousel-item" role="group" :aria-label="product.title">
                                                 <div class="product-image-compact" v-if="product.image?.src">
                                                     <img :src="product.image.src" :alt="product.title" class="product-thumbnail">
                                                 </div>
@@ -2867,6 +2843,10 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                                                         <div class="product-price-compact">{{ product.price_formatted || formatCurrency(product.price, product.currency) }}</div>
                                                     </div>
                                                     <div class="product-actions-compact">
+                                                        <ProductCartButton
+                                                            v-if="canAddToCart(product, message.shopify_output?.shop_domain)"
+                                                            :variant-id="product.cart_variant_id"
+                                                        />
                                                         <button
                                                             class="view-details-button-compact"
                                                             @click="handleViewDetails(product, message.shopify_output?.shop_domain)"
@@ -5134,6 +5114,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 
 .product-actions-compact {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-xs);
     margin-top: var(--space-sm); /* Add margin for single card */
 }
@@ -5147,7 +5128,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
     padding-top: var(--space-xs);
 }
 
-.add-to-cart-button-compact,
 .view-details-button-compact {
     flex: none; /* Don't grow */
     padding: 6px 10px; /* Adjusted padding */
@@ -5164,14 +5144,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
     line-height: 1;
 }
 
-.add-to-cart-button-compact {
-    background-color: var(--accent-solid);
-    color: white;
-    border-color: transparent;
-    box-shadow: var(--shadow-xs);
-    flex: 1; /* Allow add button to take space in carousel */
-}
-
 .view-details-button-compact {
      display: inline-flex; /* Align icon */
      align-items: center;
@@ -5182,18 +5154,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
     font-size: 1em;
     line-height: 1;
     display: inline-block;
-}
-
-.add-to-cart-button-compact:hover:not(:disabled) {
-    opacity: 0.9;
-    box-shadow: var(--shadow-sm);
-}
-
-.add-to-cart-button-compact:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-    opacity: 0.7;
-    box-shadow: none;
 }
 
 .view-details-button-compact:hover {
@@ -5217,7 +5177,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 /* .product-type { ... } */
 /* .product-description { ... } */
 /* .product-actions { ... } */
-/* .add-to-cart-button { ... } */
 /* .view-details-button { ... } */
 
 /* Ensure product message container uses full width */

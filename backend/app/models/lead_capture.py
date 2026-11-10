@@ -103,7 +103,7 @@ class LeadCaptureResponse(Base):
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("session_to_agents.session_id"), nullable=True)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("session_to_agents.session_id"), nullable=True, index=True)
 
     field_values = Column(JSON, nullable=True)  # {"email": ..., "company": ..., "custom_1": ...}
     # AI-written qualification narrative (e.g. "40-person fintech replacing Intercom, wants a demo").

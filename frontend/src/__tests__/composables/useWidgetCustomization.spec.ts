@@ -40,6 +40,20 @@ describe('useWidgetCustomization', () => {
         expect(message.data.widget_display).toEqual({ mode: 'sidebar-left', width: 420 })
     })
 
+    it('forwards the launcher and its logo', () => {
+        const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
+        const { applyCustomization } = useWidgetCustomization()
+
+        applyCustomization({
+            customization_metadata: { launcher: { size: 'sm' } },
+            launcher_logo_url: 'https://cdn.example/logo.webp',
+        } as any)
+
+        const message = postMessage.mock.calls.at(-1)![0] as any
+        expect(message.data.launcher).toEqual({ size: 'sm' })
+        expect(message.data.launcher_logo_url).toBe('https://cdn.example/logo.webp')
+    })
+
     it('sends no widget_display when the metadata has none', () => {
         const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
         const { applyCustomization } = useWidgetCustomization()
