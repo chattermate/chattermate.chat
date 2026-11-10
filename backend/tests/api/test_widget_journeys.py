@@ -99,6 +99,49 @@ async def test_set_context_records_keys(db, sio, session, test_agent):
     assert {k.key for k in db.query(AgentContextKey).all()} == {"plan", "seats"}
 
 
+@pytest.fixture
+def learning_journey(db, test_agent):
+    return JourneyRepository(db).create(test_agent.organization_id, test_agent.id, JourneyWrite(
+        key="setup", name="Setup", status="live",
+        definition={"start": {"kind": "url", "value": "/dashboard*"}, "steps": [
+            {"id": "teach", "title": "Teach", "message": "Teach it",
+             "done_when": [{"kind": "ctx", "value": "pages_learned", "op": "gt", "operand": 0}]},
+            {"id": "test", "title": "Test", "message": "Try it", "done_when": [{"kind": "event", "value": "x"}]},
+        ]}))
+
+
+@pytest.mark.asyncio
+async def test_page_state_alone_moves_the_step_on(sio, session, learning_journey):
+    await journey_events.handle_journey_sync("sid", {"url": "https://app.x/dashboard"})
+    await widget_actions.handle_set_context("sid", {"context": {"pages_learned": 0}})
+    await widget_actions.handle_set_context("sid", {"context": {"pages_learned": 12}})
+    assert [v["step_id"] for v in _views(sio)] == ["teach", "teach", "test"]
+
+
+@pytest.mark.asyncio
+async def test_unchanged_page_state_sends_nothing(sio, session, learning_journey):
+    await journey_events.handle_journey_sync("sid", {"url": "https://app.x/dashboard"})
+    await widget_actions.handle_set_context("sid", {"context": {"pages_learned": 0}})
+    await widget_actions.handle_set_context("sid", {"context": {"pages_learned": 0}})
+    assert len(_views(sio)) == 2
+
+
+@pytest.mark.asyncio
+async def test_page_state_without_a_step_never_clears_one(sio, session, learning_journey):
+    # No journey has started for this page yet: the page's own sync shows the
+    # step, and a context update racing it must not send an empty view.
+    await widget_actions.handle_set_context("sid", {"context": {"pages_learned": 0}})
+    assert _views(sio) == []
+
+
+@pytest.mark.asyncio
+async def test_a_journey_failure_on_page_state_is_swallowed(sio, session, learning_journey):
+    with patch("app.services.widget_journeys.JourneyRunner.sync", side_effect=RuntimeError("boom")):
+        await widget_actions.handle_set_context("sid", {"context": {"pages_learned": 3}})
+    assert session["host_context"] == {"pages_learned": 3}
+    assert _views(sio) == []
+
+
 @pytest.mark.asyncio
 async def test_unauthenticated_is_refused(sio):
     sio.get_session.return_value = {}
