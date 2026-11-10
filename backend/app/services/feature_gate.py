@@ -37,7 +37,19 @@ try:
 except ImportError:
     HAS_ENTERPRISE = False
 
+# Apart from the rest: an enterprise module without it must still gate
+# everything above, not fall back to community mode.
+try:
+    from app.enterprise.services.entitlements import feature_on
+except ImportError:
+    feature_on = None
+
 logger = get_logger(__name__)
+
+WORKFLOW_FEATURE = "workflow"
+MCP_TOOLS_FEATURE = "mcp_tools"
+LEAD_CAPTURE_FEATURE = "lead_capture"
+CUSTOM_BRANDING_FEATURE = "custom_branding"
 
 
 def feature_allowed(db: Session, organization_id: UUID, feature: str) -> bool:
@@ -54,6 +66,31 @@ def feature_allowed(db: Session, organization_id: UUID, feature: str) -> bool:
     except Exception as e:
         logger.error(f"Feature gate check '{feature}' failed for org {organization_id}: {e}")
         return False
+
+
+def _plan_says(db: Session, organization_id: UUID | str, feature: str, otherwise: bool) -> bool:
+    """One cached read of the plan, or `otherwise` on community installs and
+    when the lookup fails."""
+    if feature_on is None:
+        return otherwise
+    try:
+        return feature_on(db, organization_id, feature)
+    except Exception as e:
+        logger.error(f"Plan check '{feature}' failed for org {organization_id} (using {otherwise}): {e}")
+        return otherwise
+
+
+def plan_feature_on(db: Session, organization_id: UUID | str, feature: str) -> bool:
+    """The check for the chat path. Unlike feature_allowed, a failed lookup
+    leaves the feature running: a blip must never change how a paying customer's
+    agent behaves."""
+    return _plan_says(db, organization_id, feature, otherwise=True)
+
+
+def plan_hides_branding(db: Session, organization_id: UUID | str) -> bool:
+    """Only a plan removes the branding, so community installs and a failed
+    lookup keep it."""
+    return _plan_says(db, organization_id, CUSTOM_BRANDING_FEATURE, otherwise=False)
 
 
 def check_feature_access(db: Session, organization_id: UUID, feature: str, upgrade_message: str) -> None:
@@ -77,6 +114,6 @@ def feature_limit(db: Session, organization_id: UUID, key: str) -> Optional[int]
     if not HAS_ENTERPRISE:
         return None
     subscription = require_accessible_subscription(db, organization_id)
-    plan = PlanRepository(db).get(str(subscription.plan_id))
+    plan = PlanRepository(db).get(subscription.plan_id)
     value = (plan.features or {}).get(key) if plan else None
     return value if isinstance(value, int) and not isinstance(value, bool) else None

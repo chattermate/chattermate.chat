@@ -23,8 +23,10 @@ const props = defineProps<{
   largestSubpageCount: number
 }>()
 
-const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore } =
+const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, enterpriseComponent, moduleImports } =
   useEnterpriseFeatures()
+// Hosted only: "Contact us" to sales once every source is in use
+const ContactUsLink = enterpriseComponent(moduleImports.contactUsLink)
 
 onMounted(async () => {
   if (!hasEnterpriseModule) return
@@ -45,6 +47,7 @@ function pct(used: number, limit: number | null): number {
 }
 
 const sourcesOver = computed(() => maxSources.value !== null && props.sourceCount > maxSources.value)
+const sourcesFull = computed(() => maxSources.value !== null && props.sourceCount === maxSources.value)
 const subpagesOver = computed(
   () => maxSubpages.value !== null && props.largestSubpageCount > maxSubpages.value,
 )
@@ -64,6 +67,10 @@ const subpagesOver = computed(
       </div>
       <div class="meter__note">
         <template v-if="sourcesOver">You’ve exceeded your plan’s source limit. Upgrade to connect more.</template>
+        <template v-else-if="sourcesFull">
+          All your plan’s sources are in use.
+          <ContactUsLink v-if="hasEnterpriseModule" class="meter__contact" label="Contact us for more." subject="More knowledge sources" />
+        </template>
         <template v-else-if="maxSources !== null">{{ sourceCount }} of {{ maxSources }} sources connected.</template>
         <template v-else>{{ sourceCount }} sources connected.</template>
       </div>
@@ -96,6 +103,11 @@ const subpagesOver = computed(
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+}
+
+.meter__contact {
+  font-weight: 600;
+  color: var(--accent-ink);
 }
 
 @media (max-width: 640px) {

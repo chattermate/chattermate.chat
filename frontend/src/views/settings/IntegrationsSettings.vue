@@ -19,6 +19,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { checkJiraConnection, getJiraAuthUrl, disconnectJira } from '@/services/jira'
 import { checkShopifyConnection, getShopifyShops } from '@/services/shopify'
 import channelsService, { type ChannelAccount } from '@/services/channels'
@@ -573,6 +574,12 @@ const filteredIntegrations = computed(() => {
 
 const intEmpty = computed(() => filteredIntegrations.value.length === 0)
 
+// Plan notice for connected channels the plan no longer covers (nothing in open source)
+const { enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const ChannelsPausedNotice = enterpriseComponent(moduleImports.channelsPausedNotice)
+const connectedChannelNames = computed(() =>
+  availableIntegrations.value.filter(card => card.category === 'MESSAGING' && card.connected).map(card => card.name))
+
 const intSummary = computed(() => {
   const total = availableIntegrations.value.length
   const connected = availableIntegrations.value.filter(it => it.connected).length
@@ -625,6 +632,8 @@ onMounted(async () => {
       // Map common error reasons to user-friendly messages
       if (reason === 'cancelled') {
         errorMessage = `${name} connection was cancelled`
+      } else if (reason === 'plan_required') {
+        errorMessage = "Your plan doesn't include channels. Upgrade to connect one."
       } else if (reason === 'invalid_state') {
         errorMessage = 'Authentication session expired or is invalid'
       } else if (reason.includes('unauthorized')) {
@@ -678,6 +687,8 @@ onMounted(async () => {
           />
         </div>
       </div>
+
+      <ChannelsPausedNotice :connected="connectedChannelNames" />
 
       <!-- Summary bar -->
       <div class="int-summary-bar">

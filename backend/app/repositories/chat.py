@@ -66,6 +66,13 @@ class ChatRepository:
             ChatHistory.message_type == 'user'
         ).first() is not None
 
+    def has_message_flag(self, session_id: str, flag: str) -> bool:
+        """Whether any message in the session carries this attribute as true."""
+        return self.db.query(ChatHistory.id).filter(
+            ChatHistory.session_id == UUID(str(session_id)),
+            ChatHistory.attributes[flag].as_boolean().is_(True),
+        ).first() is not None
+
     def get_message_count_for_period(
         self,
         org_id: UUID | str,
@@ -103,7 +110,7 @@ class ChatRepository:
             if start_date is not None:
                 conditions.append(ChatHistory.created_at >= start_date)
             if end_date is not None:
-                conditions.append(ChatHistory.created_at <= end_date)
+                conditions.append(ChatHistory.created_at < end_date)
             
             count = self.db.query(func.count(ChatHistory.id))\
                 .filter(and_(*conditions))\

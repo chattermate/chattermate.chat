@@ -26,6 +26,7 @@ import WebFont from 'webfontloader'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '@/utils/aiDisclaimer'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 
 const props = defineProps<{
     isActive: boolean
@@ -37,6 +38,15 @@ const props = defineProps<{
     // detail header. Falls back to agentName when not given.
     orbSeed?: string
 }>()
+
+// The preview matches what visitors see: a plan with custom branding drops
+// "Powered by" (the server decides the same for the live widget). Open
+// source always shows it. Read from the store so it follows the plan once
+// it loads, not just whatever was cached when the panel mounted.
+const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore } = useEnterpriseFeatures()
+const showBranding = computed(() =>
+    !(hasEnterpriseModule && subscriptionStore.value.currentPlan?.plan?.features?.custom_branding === true))
+onMounted(() => { if (hasEnterpriseModule) initializeSubscriptionStore() })
 console.log('AgentChatPreviewPanel props:', props.customization)
 const isExpanded = ref(true)
 const emailInput = ref('')
@@ -606,7 +616,7 @@ const handleInitiationClick = () => {
             </div>
             
             <!-- Powered by footer for welcome message -->
-            <div class="powered-by-welcome" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by-welcome" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
@@ -709,7 +719,7 @@ const handleInitiationClick = () => {
             </div>
 
             <!-- Add powered by footer -->
-            <div class="powered-by" :style="messageNameStyles">
+            <div v-if="showBranding" class="powered-by" :style="messageNameStyles">
                 <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
                     <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>

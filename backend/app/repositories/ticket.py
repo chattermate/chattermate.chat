@@ -481,7 +481,7 @@ class InvestigationRepository:
                 InvestigationRun.organization_id == organization_id,
                 InvestigationRun.metered.is_(True),
                 InvestigationRun.created_at >= start_date,
-                InvestigationRun.created_at <= end_date,
+                InvestigationRun.created_at < end_date,
             )
             .scalar()
         )

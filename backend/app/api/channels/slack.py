@@ -33,6 +33,7 @@ from app.models.channels import ChannelAccount, ChannelType
 from app.models.organization import Organization
 from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository
+from app.services.channel_access import channels_allowed
 from app.core.logger import get_logger
 
 router = APIRouter()
@@ -119,6 +120,9 @@ async def slack_oauth_callback(
         repo.update_credentials(existing, credentials)
         repo.set_active(existing, True)
     else:
+        if not channels_allowed(db, UUID(org_id)):
+            await _revoke(data.get("access_token"))
+            return _settings_redirect("failure", "plan_required")
         repo.create_account(
             organization_id=UUID(org_id),
             channel_type=ChannelType.SLACK.value,
@@ -130,8 +134,18 @@ async def slack_oauth_callback(
     return _settings_redirect("success")
 
 
+async def _revoke(token: str | None) -> None:
+    """Best-effort: tell Slack to invalidate a bot token we are dropping."""
+    if not token:
+        return
+    try:
+        await slack_api("auth.revoke", token, {}, form=True)
+    except Exception as e:
+        logger.warning(f"Slack auth.revoke failed, carrying on: {e}")
+
+
 async def _revoke_token(repo: ChannelAccountRepository, account: ChannelAccount) -> None:
-    """Best-effort: tell Slack to invalidate the bot token before we drop it.
+    """Revoke a stored token before the account goes.
 
     Never blocks the disconnect — an already-revoked token, an undecryptable
     blob, or an unreachable Slack must still leave the workspace disconnected
@@ -139,11 +153,10 @@ async def _revoke_token(repo: ChannelAccountRepository, account: ChannelAccount)
     """
     try:
         token = repo.get_credentials(account).get("access_token")
-        if not token:
-            return
-        await slack_api("auth.revoke", token, {}, form=True)
     except Exception as e:
-        logger.warning(f"Slack auth.revoke failed, disconnecting anyway: {e}")
+        logger.warning(f"Slack token unreadable, disconnecting anyway: {e}")
+        return
+    await _revoke(token)
 
 
 @router.delete("/{account_id}")

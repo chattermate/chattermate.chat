@@ -11,7 +11,9 @@ export { customizeAgent } from './api/customization'
 export { connectCrm, disconnectCrm, syncPersonToCrm, type CrmProvider } from './api/crm'
 export { connectJira, disconnectJira, fakeJira, installShopify, openShopifyApp, routeTicketsToJira, uninstallShopify, useShopForAgent } from './api/integrations'
 export { publishWorkflow, type WorkflowGraph } from './api/workflows'
-export { createArticle, enableHelpCenter, helpCenterChat, setArticleStatus, setHelpCenterChat, type Article, type HelpCenterChat } from './api/help-center'
+export {
+  askHelpCenter, createArticle, enableHelpCenter, helpCenterChat, setArticleStatus, setHelpCenterChat, turnOnAskAi, type Article, type HelpCenterChat,
+} from './api/help-center'
 export { connectEmail, listChannelAccounts } from './api/channels'
 export { currentAiConfig, restoreAi, useFakeLlm, type AiConfig } from './api/ai'
 export { createAgent, enableLeadCapture } from './api/agents'

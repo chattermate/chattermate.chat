@@ -53,20 +53,53 @@ export class KnowledgePage {
     })
   }
 
+  /** The "Add source" dialog. */
+  get addDialog(): Locator {
+    return this.page.getByRole('dialog', { name: 'Add knowledge source' })
+  }
+
+  /** The dialog's refusal when every source the plan allows is in use. */
+  get sourceLimit(): Locator {
+    return this.addDialog.getByRole('alert')
+  }
+
+  /** The source meter's note when the plan's sources are all in use. */
+  get allSourcesInUse(): Locator {
+    return this.page.getByText('All your plan’s sources are in use.')
+  }
+
+  /**
+   * Fills the "Add source" dialog with pasted text and submits it. The dialog
+   * stays open when the add is refused. `agent` is the agent's name as the
+   * picker lists it, or NO_AGENT; leave it out when the org has one agent
+   * (the dialog shows no picker then).
+   */
+  async submitText(source: { title: string; content: string; agent?: string }): Promise<void> {
+    await this.page.getByRole('button', { name: 'Add source' }).click()
+    await this.addDialog.getByRole('button', { name: /^Text/ }).click()
+    await this.addDialog.getByLabel('Title').fill(source.title)
+    await this.addDialog.getByLabel('Content').fill(source.content)
+    if (source.agent) await this.addDialog.getByLabel('Which agent answers from it').selectOption({ label: source.agent })
+    await this.addDialog.getByRole('button', { name: 'Add page' }).click()
+  }
+
   /**
    * Adds pasted text through the "Add source" dialog. `agent` is the agent's name
-   * as the org page's picker lists it, or NO_AGENT.
+   * as the org page's picker lists it, or NO_AGENT; leave it out for an org
+   * with one agent.
    */
-  async addText(source: { title: string; content: string; agent: string }): Promise<void> {
-    await step(`Add the text source "${source.title}" for ${source.agent}`, async () => {
-      await this.page.getByRole('button', { name: 'Add source' }).click()
-      const dialog = this.page.getByRole('dialog', { name: 'Add knowledge source' })
-      await dialog.getByRole('button', { name: /^Text/ }).click()
-      await dialog.getByLabel('Title').fill(source.title)
-      await dialog.getByLabel('Content').fill(source.content)
-      await dialog.getByLabel('Which agent answers from it').selectOption({ label: source.agent })
-      await dialog.getByRole('button', { name: 'Add page' }).click()
-      await expect(dialog).toBeHidden()
+  async addText(source: { title: string; content: string; agent?: string }): Promise<void> {
+    await step(`Add the text source "${source.title}" for ${source.agent ?? 'the only agent'}`, async () => {
+      await this.submitText(source)
+      await expect(this.addDialog).toBeHidden()
+    })
+  }
+
+  /** From the source-limit refusal, swap `sourceName` for the source being added. */
+  async replaceSource(sourceName: string): Promise<void> {
+    await step(`Replace "${sourceName}" with the new source`, async () => {
+      await this.sourceLimit.getByRole('listitem').filter({ hasText: sourceName }).getByRole('button', { name: 'Replace' }).click()
+      await expect(this.addDialog).toBeHidden()
     })
   }
 }

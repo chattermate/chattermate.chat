@@ -39,3 +39,45 @@ describe('subscriptionStorage.getPlanLimits', () => {
     expect(subscriptionStorage.getPlanLimits().maxAgents).toBe(0)
   })
 })
+
+describe('subscriptionStorage.getFeatureLimit', () => {
+  afterEach(() => localStorage.clear())
+
+  it('reads a numeric team limit from the plan', () => {
+    storeSubscription({ features: { max_users: 1, chat: true } })
+    expect(subscriptionStorage.getFeatureLimit('max_users')).toBe(1)
+  })
+
+  it('treats a null limit as unlimited', () => {
+    storeSubscription({ features: { max_users: null } })
+    expect(subscriptionStorage.getFeatureLimit('max_users')).toBeNull()
+  })
+
+  it('ignores a flag that is not a number, and a missing plan', () => {
+    storeSubscription({ features: { chat: true } })
+    expect(subscriptionStorage.getFeatureLimit('chat')).toBeNull()
+    localStorage.clear()
+    expect(subscriptionStorage.getFeatureLimit('max_users')).toBeNull()
+  })
+
+  it('still reports a numeric limit as a present feature', () => {
+    storeSubscription({ features: { max_users: 1 } })
+    expect(subscriptionStorage.hasFeatures(['max_users', 'chat'])).toEqual({ max_users: true, chat: false })
+  })
+})
+
+describe('subscriptionStorage.isSubscriptionActive', () => {
+  afterEach(() => localStorage.clear())
+
+  it('keeps a past-due org on its plan while the payment is retried, like the server', () => {
+    subscriptionStorage.setCurrentSubscription({ status: 'past_due', plan: {} } as never)
+    expect(subscriptionStorage.isSubscriptionActive()).toBe(true)
+  })
+
+  it('treats a lapsed trial and an unknown status as inactive', () => {
+    subscriptionStorage.setCurrentSubscription({ status: 'trial', trial_end: '2000-01-01T00:00:00Z', plan: {} } as never)
+    expect(subscriptionStorage.isSubscriptionActive()).toBe(false)
+    subscriptionStorage.setCurrentSubscription({ status: 'expired', plan: {} } as never)
+    expect(subscriptionStorage.isSubscriptionActive()).toBe(false)
+  })
+})

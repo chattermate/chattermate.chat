@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.help_center_public import public_app
+from app.api.help_center_public import ASK_AI_PAUSED, public_app
 from app.core.config import settings
 from app.core.help_center_host import HelpCenterHostMiddleware, is_help_center_host
 from app.database import get_db
@@ -469,6 +469,19 @@ def test_ask_answers_and_rate_limits(client, db, test_organization, help_center,
         assert limited.status_code == 429
 
 
+def test_ask_stops_at_the_plan_limit_without_calling_the_model(
+    client, db, test_organization, help_center, test_agent, test_ai_config
+):
+    help_center.agent_id = test_agent.id
+    db.commit()
+    with patch("app.api.help_center_public.plan_allows_ai", return_value=False), \
+         patch("app.api.help_center_public.answer_question", new=AsyncMock()) as answer:
+        response = client.post("/ask", json={"question": "Where do I log in?"}, headers={"host": HOST})
+    assert response.status_code == 200
+    assert response.json()["answer"] == ASK_AI_PAUSED
+    answer.assert_not_awaited()
+
+
 def test_ask_holds_no_connection_while_the_ai_answers(client, db, test_organization, help_center, test_agent):
     # Anyone can ask: a request sitting on a pooled connection through the wait for a
     # slot and the answer would let a handful of visitors starve the API
@@ -711,3 +724,15 @@ def test_path_dispatch_slug_url_redirects_with_the_base_path(
 
     assert r.status_code == 301
     assert r.headers["location"] == f"/help/test-org{MIGRATED_PATH}"
+
+
+class TestBranding:
+    def page(self, client, help_center, monkeypatch, hidden):
+        monkeypatch.setattr("app.api.help_center_public.plan_hides_branding", lambda *a: hidden)
+        return client.get("/", headers={"host": HOST})
+
+    def test_shown_by_default(self, client, help_center, monkeypatch):
+        assert 'class="hc-powered"' in self.page(client, help_center, monkeypatch, False).text
+
+    def test_a_plan_with_custom_branding_removes_it(self, client, help_center, monkeypatch):
+        assert 'class="hc-powered"' not in self.page(client, help_center, monkeypatch, True).text

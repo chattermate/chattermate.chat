@@ -30,7 +30,6 @@ from app.channels.interactive_limits import InteractiveLimits
 from app.core.security import decrypt_api_key
 from app.core.logger import get_logger
 from app.database import SessionLocal, release_connection
-from app.models.ai_config import AIModelType
 from app.models.channels import ChannelAccount
 from app.models.session_to_agent import SessionStatus
 from app.repositories.agent import AgentRepository
@@ -50,16 +49,10 @@ from app.services.human_routing import HUMAN_ONLY_ACK, notify_customer
 from app.services.lead_capture import record_lead_from_response
 from app.services.conversation_token import VERIFIED_SCOPE
 from app.services.agent_rooms import USER_MESSAGE, relay_stored_message
+from app.services.ai_access import plan_allows_ai, tell_customer_ai_is_off
 from app.services.business_message import business_message_context
 from app.services.channel_replies import inbound_attributes, reply_text
 from app.services.message_delivery import DeliveryResult, deliver_to_customer
-
-# Optional enterprise message-limit check (same seam as the widget path)
-try:
-    from app.enterprise.services.message_limit import check_message_limit
-    HAS_ENTERPRISE = True
-except ImportError:
-    HAS_ENTERPRISE = False
 
 logger = get_logger(__name__)
 
@@ -109,7 +102,12 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         # someone to pick it up, so it takes the same path as one a human
         # already holds.
         agent = AgentRepository(db).get_agent(agent_id)
-        ai_replies_enabled = agent.ai_replies_enabled if agent else True
+        agent_uses_ai = agent.ai_replies_enabled if agent else True
+        # The plan can switch the AI off too, for this message only: the
+        # conversation stays as it is, so the AI is back as soon as it's allowed
+        ai_config = AIConfigRepository(db).get_active_config(account.organization_id)
+        plan_allows = ai_config is None or plan_allows_ai(db, org_id, ai_config.model_type, on_channel=True)
+        ai_replies_enabled = agent_uses_ai and plan_allows
         # Buttons are the agent's choice (off unless turned on), where the
         # channel can show them
         choice_limits = (adapter.choice_limits_for(conversation)
@@ -146,24 +144,18 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
             # Nothing will answer this on its own, so acknowledge once — on a
             # channel an unanswered message reads as a dead number. Only on the
             # opening message of a brand-new conversation.
-            if is_new_session and not ai_replies_enabled:
+            if is_new_session and not agent_uses_ai:
                 await notify_customer(db, session_record, HUMAN_ONLY_ACK,
                                       channels_only=False)
+            elif agent_uses_ai and not plan_allows and session_record.user_id is None:
+                await tell_customer_ai_is_off(db, session_record)
             return
 
         await announce_inbound(account, session_record, customer_id, inbound,
                                HandledBy.AI, received_at)
 
-        ai_config = AIConfigRepository(db).get_active_config(account.organization_id)
         if ai_config is None:
             logger.error(f"No AI config for org {org_id}; dropping {account.channel_type} message")
-            return
-
-        if not await _within_message_limit(db, org_id, ai_config):
-            await _send_via_adapter(
-                db, session_record,
-                "Sorry, this assistant has reached its message limit. Please try again later."
-            )
             return
 
         # Show a typing indicator while the agent composes its reply
@@ -451,18 +443,6 @@ def _store_customer_message(db: Session, inbound: InboundMessage, session_record
     return ChatRepository(db).create_message(message)
 
 
-async def _within_message_limit(db: Session, org_id: str, ai_config) -> bool:
-    """Enterprise subscription limit; permissive on any failure so the
-    community edition and enterprise errors never block conversations."""
-    if not (HAS_ENTERPRISE and ai_config.model_type == AIModelType.CHATTERMATE):
-        return True
-    try:
-        return await check_message_limit(db, org_id, None, None)
-    except Exception as e:
-        logger.error(f"Message limit check failed (allowing message): {e}")
-        return True
-
-
 async def _run_chat_agent(db: Session, account: ChannelAccount, ai_config,
                           inbound: InboundMessage, org_id: str, agent_id: str,
                           customer_id: str, session_id: str, conversation=None,
@@ -534,9 +514,3 @@ async def _deliver(db: Session, session_record, payload: dict, *, source: Messag
             f"Undelivered reply on {getattr(session_record, 'channel', 'unknown')} "
             f"session {session_record.session_id}: {result.reason}")
     return result
-
-
-async def _send_via_adapter(db: Session, session_record, text: str) -> None:
-    """Send a plain service message to the customer's channel."""
-    await _deliver(db, session_record, {'message': text, 'type': 'chat_response'},
-                   source=MessageSource.SYSTEM)

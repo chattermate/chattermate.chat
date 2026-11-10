@@ -26,5 +26,6 @@ interface Window {
         allowAttachments?: boolean;
         /** How soon the header may claim someone replies. */
         presence?: import('../utils/widgetPresence').WidgetPresence;
+        hideBranding?: boolean;
     };
 } 
