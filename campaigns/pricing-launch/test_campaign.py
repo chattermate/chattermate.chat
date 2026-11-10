@@ -115,6 +115,27 @@ class Launch(unittest.TestCase):
             self.assertIn("$", text)
             self.assertNotIn("₹", text)
 
+    def test_hero_and_its_alt_text_use_the_orgs_currency(self):
+        dollars = launch(launch_row(), CFG, UNSUB).html
+        self.assertIn(CFG.hero_urls["USD"], dollars)
+        self.assertNotIn(CFG.hero_urls["INR"], dollars)
+        self.assertIn('alt="New plans: Free, Starter $4.99', dollars)
+        rupees = launch(launch_row(org_timezone="Asia/Kolkata"), CFG, UNSUB).html
+        self.assertIn(CFG.hero_urls["INR"], rupees)
+        self.assertNotIn(CFG.hero_urls["USD"], rupees)
+        self.assertNotIn("$", rupees)
+
+    def test_hero_links_to_the_plans_and_stays_out_of_the_text(self):
+        email = launch(launch_row(), CFG, UNSUB)
+        self.assertIn(f'<a href="{CFG.plans_url}" target="_blank"><img src="{CFG.hero_urls["USD"]}"', email.html)
+        self.assertNotIn(".png", email.text)
+
+    def test_light_page_with_the_logo(self):
+        for email in every_variant():
+            self.assertIn(CFG.logo_url, email.html)
+            self.assertIn('content="light"', email.html)
+            self.assertNotIn("#07080B", email.html)
+
     def test_placeholder_org_reads_as_a_sentence(self):
         email = launch(launch_row(org_name="asdf", full_name="test"), CFG, UNSUB)
         self.assertIn("Your workspace is on Growth", email.text)

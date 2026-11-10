@@ -29,6 +29,9 @@ class Settings(NamedTuple):
     channels_url: str
     dashboard_url: str
     backend_url: str
+    home_url: str
+    logo_url: str
+    hero_urls: dict  # currency -> hosted hero image (hero.py draws them)
 
     def usd(self, plan: str) -> str:
         return usd(self.plans[plan]["usd"])
@@ -90,4 +93,7 @@ def load_settings(catalog_path: Optional[Path] = None, with_offer: bool = True) 
         channels_url=config["channels_url"],
         dashboard_url=config["dashboard_url"],
         backend_url=config["backend_url"],
+        home_url=config["home_url"],
+        logo_url=config["logo_url"],
+        hero_urls=config["hero_urls"],
     )

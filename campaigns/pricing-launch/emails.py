@@ -8,11 +8,11 @@ from datetime import date
 from typing import Callable, Dict, NamedTuple, Optional, Tuple
 
 from audience import currency, first_name, sentence_start, workspace
-from blocks import (Rendered, b, call_to_action, checklist, document, esc, headline, highlight,
+from blocks import (Rendered, call_to_action, checklist, code, document, esc, headline, hero, highlight,
                     link, paragraphs, signoff, strong)
 from catalog import Settings, date_label, short_date_label, usd
 
-STARTER, GROWTH, FREE, FREE_LEGACY = "Starter", "Growth", "Free", "Free (legacy)"
+STARTER, GROWTH, PRO, FREE, FREE_LEGACY = "Starter", "Growth", "Pro", "Free", "Free (legacy)"
 
 
 def _hello(row: dict) -> str:
@@ -28,7 +28,8 @@ def _joined(items) -> str:
 
 
 def _shared(cfg: Settings, unsubscribe_url: str) -> dict:
-    return {"dashboard_url": cfg.dashboard_url, "unsubscribe_url": unsubscribe_url}
+    return {"dashboard_url": cfg.dashboard_url, "unsubscribe_url": unsubscribe_url,
+            "logo_url": cfg.logo_url, "home_url": cfg.home_url}
 
 
 # --- Email 1: launch --------------------------------------------------------
@@ -36,8 +37,7 @@ def _shared(cfg: Settings, unsubscribe_url: str) -> dict:
 def _offer_sentence(cfg: Settings) -> str:
     if not cfg.offer:
         return ""
-    code = f'<strong style="color:{b.ACCENT};">{esc(cfg.offer.code)}</strong>'
-    return (f" Keep it before the trial ends with {code} for {cfg.offer.percent}% off "
+    return (f" Keep it before the trial ends with {code(esc(cfg.offer.code))} for {cfg.offer.percent}% off "
             f"your first year of Growth or Pro, billed yearly.")
 
 
@@ -48,16 +48,25 @@ def _after_trial(row: dict, cfg: Settings) -> str:
     return f"When the trial ends you move to Free, with {cfg.replies(FREE)} AI replies a month."
 
 
+def _plans_hero(cfg: Settings, money: str):
+    """The plan cards in the org's currency; the alt text reads the same figures."""
+    prices = ", ".join(f"{plan} {cfg.price(plan, money)}" for plan in (STARTER, GROWTH, PRO))
+    alt = f"New plans: Free, {prices} a month. Growth is free for {cfg.trial_days()} days."
+    return hero(cfg.hero_urls[money], alt, cfg.plans_url)
+
+
 def launch(row: dict, cfg: Settings, unsubscribe_url: str) -> Rendered:
     trial_end = date_label(date.fromisoformat(row["trial_end"]))
     org = _org(row)
-    entry = f"{cfg.price(STARTER, currency(row))} a month"
+    money = currency(row)
+    entry = f"{cfg.price(STARTER, money)} a month"
     return document(
         subject=f"Our new plans, and {cfg.trial_days()} days of Growth on us",
         preheader=f"Unlimited team members, and you're on Growth free until {trial_end}.",
         variant="legacy-free" if row.get("legacy_free") else "new-free",
         blocks=[
             headline("NEW PRICING", "Pay for what your AI answers."),
+            _plans_hero(cfg, money),
             paragraphs([
                 _hello(row),
                 "We've changed how ChatterMate is priced. You pay for the replies your AI writes, and that's all.",
