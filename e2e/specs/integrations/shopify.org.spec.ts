@@ -70,11 +70,13 @@ test.describe('Shopify', () => {
     expect(await new FakeExternals(request).calls('shopify', 'graphql.json', { contains: shop })).toHaveLength(0)
   })
 
+  // Product cards are filled in from the Redis product cache, so these run in the
+  // nightly Redis run (@redis); the PR stack leaves Redis off.
   test.describe('add to cart', () => {
     const offerProducts = (s: Script) =>
       s.otherwise().callTool('search_products', { query: 'gift' }).thenReply('Here are some options for you.')
 
-    test('a customer adds a product from the chat and finds it in the store\'s cart @integrations', async ({ agent, widget, llm }) => {
+    test('a customer adds a product from the chat and finds it in the store\'s cart @integrations @redis', async ({ agent, widget, llm }) => {
       await llm.script(agent, offerProducts)
       await widget.embed({ shopifyStore: shop })
       await widget.open()
@@ -86,7 +88,7 @@ test.describe('Shopify', () => {
       await expect(widget.itemsInCart).toHaveText('1')
     })
 
-    test('a product that sold out says so, and the customer can still buy another @integrations', async ({ agent, widget, llm }) => {
+    test('a product that sold out says so, and the customer can still buy another @integrations @redis', async ({ agent, widget, llm }) => {
       await llm.script(agent, offerProducts)
       await widget.embed({ shopifyStore: shop })
       await widget.open()
@@ -100,7 +102,7 @@ test.describe('Shopify', () => {
       await expect(widget.productCard('E2E Mug').getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
     })
 
-    test('a product with sizes, not on sale, or off the Online Store goes to its product page @integrations', async ({ agent, widget, llm }) => {
+    test('a product with sizes, not on sale, or off the Online Store goes to its product page @integrations @redis', async ({ agent, widget, llm }) => {
       await llm.script(agent, offerProducts)
       await widget.embed({ shopifyStore: shop })
       await widget.open()
@@ -118,7 +120,7 @@ test.describe('Shopify', () => {
         ['another store', () => ({ shopifyStore: 'someone-else.myshopify.com' })],
         ['a site that is not a store', () => ({})],
       ] as const) {
-        test(`no cart button on ${where} @integrations`, async ({ agent, widget, llm }) => {
+        test(`no cart button on ${where} @integrations @redis`, async ({ agent, widget, llm }) => {
           await llm.script(agent, offerProducts)
           await widget.embed(embed())
           await widget.open()
