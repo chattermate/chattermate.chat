@@ -38,7 +38,6 @@ from urllib.parse import urlencode, quote
 from app.core.auth import get_current_user, require_permissions, get_current_organization, check_permissions
 from app.models.user import User
 from app.models.organization import Organization
-from app.repositories.widget import WidgetRepository
 from app.services.shopify import ShopifyService
 from app.services.shopify_auth_service import ShopifyAuthService
 from app.services.shopify_helper_service import ShopifyHelperService
@@ -46,6 +45,7 @@ from app.services import shopify_privacy
 from app.core.s3 import delete_file_from_s3
 from app.services.shopify_links import owned_by_another_org, refresh_allowed_storefronts, use_shop_domain_if_unset
 from app.services.shopify_session import require_shopify_session
+from app.services.shopify_shop_widget import shop_widget
 from app.services.shopify_urls import shopify_admin_url
 from app.services import shopify_tokens
 from app.repositories.knowledge import KnowledgeRepository
@@ -452,14 +452,8 @@ async def get_shop_config_status(
         agent_config_repository = AgentShopifyConfigRepository(db)
         configs = agent_config_repository.get_configs_by_shop(str(db_shop.id), enabled_only=True)
         agents_connected = len(configs) if configs else 0
-
-        # Get widget ID if agents are configured
-        widget_id = None
-        if configs and len(configs) > 0:
-            widget_repo = WidgetRepository(db)
-            widgets = widget_repo.get_widgets_by_agent(configs[0].agent_id)
-            if widgets and len(widgets) > 0:
-                widget_id = str(widgets[0].id)
+        widget = shop_widget(db, str(db_shop.id))
+        widget_id = str(widget.id) if widget else None
 
         return {
             "shop_id": str(db_shop.id),
