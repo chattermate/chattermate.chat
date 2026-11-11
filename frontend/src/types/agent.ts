@@ -100,6 +100,8 @@ export interface ChatMessage {
 
 export type ChatStyle = 'CHATBOT' | 'ASK_ANYTHING' | 'GLASS' | 'TERMINAL' | 'PLAYFUL' | 'CALM_MINT' | 'AURORA' | 'SUNRISE'
 export type WidgetPosition = 'FLOATING' | 'FIXED'
+/** The widget design an agent's visitors get: 1 classic, 2 the redesign. */
+export type WidgetUiVersion = 1 | 2
 
 export interface AgentCustomization {
   id: number

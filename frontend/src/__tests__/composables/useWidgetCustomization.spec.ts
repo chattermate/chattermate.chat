@@ -64,4 +64,18 @@ describe('useWidgetCustomization', () => {
         expect(message.type).toBe('CUSTOMIZATION_UPDATE')
         expect(message.data.widget_display).toBeUndefined()
     })
+
+    it.each([
+        [{ widget_ui: { version: 2 } }, 2],
+        [{ widget_ui: { version: 1 } }, 1],
+        [{}, 1],
+    ])('tells the loader which widget design to frame (%j → %i)', (metadata, ui) => {
+        const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
+        const { applyCustomization } = useWidgetCustomization()
+
+        applyCustomization({ customization_metadata: metadata } as any)
+
+        const message = postMessage.mock.calls.at(-1)![0] as any
+        expect(message.data.panel).toEqual({ ui })
+    })
 })

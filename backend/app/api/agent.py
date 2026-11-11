@@ -44,7 +44,7 @@ from PIL import Image
 from uuid import UUID
 from app.core.s3 import upload_file_to_s3
 from app.core.config import settings
-from app.services import launcher, telegram_webhooks
+from app.services import launcher, telegram_webhooks, widget_ui
 from app.services.file_storage import local_upload_path
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
@@ -506,12 +506,15 @@ async def create_agent_customization(
         ).first()
 
         if 'customization_metadata' in customization_data.model_fields_set:
+            stored_metadata = db_customization.customization_metadata if db_customization else None
             customization_data.customization_metadata = launcher.check_metadata_write(
                 db,
                 auth_info["organization_id"],
-                db_customization.customization_metadata if db_customization else None,
+                stored_metadata,
                 customization_data.customization_metadata,
             )
+            customization_data.customization_metadata = widget_ui.keep_stored_choice(
+                stored_metadata, customization_data.customization_metadata)
 
         if db_customization:
             # Update existing customization

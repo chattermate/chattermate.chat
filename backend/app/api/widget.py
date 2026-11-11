@@ -31,7 +31,7 @@ from app.database import get_db
 from app.repositories.widget import WidgetRepository
 from app.repositories.agent import AgentRepository
 from app.core.security import verify_conversation_token
-from app.services import conversation_token, launcher
+from app.services import conversation_token, widget_ui
 from app.repositories.customer import CustomerRepository
 from app.models.schemas.widget import AgentCustomizationResponse, WidgetCreate, WidgetResponse
 from app.core.logger import get_logger
@@ -236,7 +236,7 @@ def _visitor_customization(db: Session, agent: Agent) -> Optional[AgentCustomiza
     after the bootstrap, so it has to pass the same launcher plan check."""
     if not agent.customization:
         return None
-    metadata, logo_url = launcher.for_visitors(db, agent)
+    metadata, logo_url = widget_ui.for_visitors(db, agent)
     return AgentCustomizationResponse.model_validate(agent.customization).model_copy(
         update={"customization_metadata": metadata, "launcher_logo_url": logo_url})
 

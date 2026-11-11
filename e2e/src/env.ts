@@ -8,6 +8,8 @@ const backendUrl = 'http://127.0.0.1:18000'
 
 export const env = {
   edition: (process.env.E2E_EDITION ?? 'oss') as 'oss' | 'enterprise',
+  /** Widget design every new agent gets (E2E_WIDGET_UI=2 runs the specs on the redesign). */
+  widgetUi: (process.env.E2E_WIDGET_UI === '2' ? 2 : 1) as 1 | 2,
   /** The stack runs with Redis (scripts/stack.sh E2E_REDIS_URL): dedupe and rate limits are live. */
   redis: Boolean(process.env.E2E_REDIS_URL),
   /** The backend runs several workers (stack.sh E2E_BACKEND_WORKERS); socket.io polling isn't sticky across them. */

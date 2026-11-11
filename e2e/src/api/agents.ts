@@ -1,4 +1,6 @@
 import type { ApiClient } from './client'
+import { env } from '../env'
+import { customizeAgent } from './customization'
 
 export interface Agent {
   id: string
@@ -37,6 +39,9 @@ export async function createAgent(api: ApiClient, agent: NewAgent): Promise<Agen
   })
   if (agent.groupIds?.length) {
     await api.put(`/agent/${created.id}/groups`, { data: agent.groupIds })
+  }
+  if (env.widgetUi === 2) {
+    await customizeAgent(api, String(created.id), { customization_metadata: { widget_ui: { version: 2 } } })
   }
   return { id: String(created.id), name: created.name }
 }

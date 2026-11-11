@@ -274,3 +274,13 @@ class TestCustomizationWrite:
         db.commit()
         self._save(client, agent, customization_metadata={"avatar_style": "orb"})
         assert _row(db, agent).customization_metadata == {"avatar_style": "orb"}
+
+    def test_a_partial_save_keeps_the_chosen_widget_design(self, client, db, agent):
+        db.add(AgentCustomization(agent_id=agent.id, customization_metadata={"widget_ui": {"version": 2}}))
+        db.commit()
+        self._save(client, agent, customization_metadata={"widget_display": {"mode": "launcher"}})
+        assert _row(db, agent).customization_metadata["widget_ui"] == {"version": 2}
+
+    def test_a_bad_widget_design_is_refused(self, client, db, agent):
+        response = self._save(client, agent, customization_metadata={"widget_ui": {"version": True}})
+        assert response.status_code == 422
