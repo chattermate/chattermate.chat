@@ -18,7 +18,7 @@ limitations under the License.
 // The visitor's own message: an accent bubble on the right, with any files below it.
 import { computed } from 'vue'
 import { renderMarkdown } from '../../markdown'
-import AttachmentLinks from './AttachmentLinks.vue'
+import AttachmentList from './AttachmentList.vue'
 import type { WidgetMessage } from '../../../types/widget'
 
 const props = defineProps<{ message: WidgetMessage; index: number }>()
@@ -32,7 +32,7 @@ const showBubble = computed(() => !!text.value || files.value.length === 0)
 <template>
     <div class="message user-message cm-user">
         <div v-if="showBubble" class="message-bubble" v-html="renderMarkdown(text)"></div>
-        <AttachmentLinks v-if="files.length" class="cm-user__files" :attachments="files" />
+        <AttachmentList v-if="files.length" class="cm-user__files" :attachments="files" />
     </div>
 </template>
 

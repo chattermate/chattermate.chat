@@ -115,10 +115,13 @@ export function useComposer({
     const heldForEmail = ref(false)
 
     const isMessageInputEnabled = computed(() => {
+        // While the panel holds sends for the email, the box stays usable whatever
+        // the connection does (accepting the email reconnects it): a send only
+        // waits, and goes out once the email is in and the socket is connected.
+        if (holdForEmail.value) return true
         // A conversation already started, or no email to collect (Ask AI, or
         // collect_email off): only the connection and a reply in flight matter.
-        // While the panel holds sends for the email, the box is usable: a send waits.
-        if ((hasStartedChat.value && hasConversationToken.value) || !shouldCollectEmail.value || holdForEmail.value) {
+        if ((hasStartedChat.value && hasConversationToken.value) || !shouldCollectEmail.value) {
             return canSendWhenIdle()
         }
         return (isValidEmail(emailInput.value.trim()) && canSendWhenIdle()) || isWorkflowAgent()
@@ -179,12 +182,14 @@ export function useComposer({
         if (connectionStatus.value === 'connected' && hasStartedChat.value) void sendMessage()
     })
 
-    // Release a message held for the email once the email is in. Not when the
-    // connection dropped meanwhile: it stays in the box, visibly unsent.
-    watch(holdForEmail, (holding) => {
-        if (holding || !heldForEmail.value) return
+    // Release a message held for the email once the email is in and the socket is
+    // connected: accepting the email reconnects it with the visitor's token, so the
+    // email usually lands a moment before the connection does. Until then (or while
+    // the connection is down) it waits, visibly, in the box.
+    watch([holdForEmail, connectionStatus], ([holding, status]) => {
+        if (holding || !heldForEmail.value || status !== 'connected') return
         heldForEmail.value = false
-        if (connectionStatus.value === 'connected') void sendMessage()
+        void sendMessage()
     })
 
     // The visitor emptied the box while a message waited for the email: nothing waits now.

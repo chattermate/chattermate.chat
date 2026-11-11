@@ -310,6 +310,16 @@ describe('useComposer', () => {
             expect(c.canTypeMessage.value).toBe(true)
         })
 
+        it('keeps the box usable through the reconnect that accepting the email causes', async () => {
+            const c = holding()
+            c.socket.connectionStatus.value = 'connecting'
+            expect(c.canTypeMessage.value).toBe(true)
+            c.newMessage.value = 'Hello'
+            await c.sendMessage()
+            expect(c.heldForEmail.value).toBe(true)
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+        })
+
         it('holds a typed message, keeps it in the box and asks for the email', async () => {
             const c = holding()
             c.newMessage.value = 'Where is my order?'
@@ -357,7 +367,26 @@ describe('useComposer', () => {
             expect(c.socket.sendMessage).not.toHaveBeenCalled()
         })
 
-        it('leaves the held message in the box when the connection dropped meanwhile', async () => {
+        it('waits for the connection after the email is in, then sends', async () => {
+            const c = holding()
+            c.newMessage.value = 'hello'
+            await c.sendMessage()
+            // Accepting the email reconnects the socket with the visitor's token.
+            c.socket.connectionStatus.value = 'connecting'
+            c.holdForEmail.value = false
+            await nextTick()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+            expect(c.newMessage.value).toBe('hello')
+            expect(c.heldForEmail.value).toBe(true)
+
+            c.socket.connectionStatus.value = 'connected'
+            await nextTick()
+            await Promise.resolve()
+            expect(c.socket.sendMessage).toHaveBeenCalledTimes(1)
+            expect(c.socket.sendMessage.mock.calls[0][0]).toBe('hello')
+        })
+
+        it('keeps the held message in the box while the connection is down', async () => {
             const c = holding()
             c.newMessage.value = 'hello'
             await c.sendMessage()

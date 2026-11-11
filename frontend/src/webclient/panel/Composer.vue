@@ -27,6 +27,7 @@ import { WIDGET_CTX } from './controller'
 import { PANEL_COPY } from '../copy'
 import { SECRET_WARNING } from '../../utils/secretGuard'
 import { carriesFiles, growToFit, isSendKey } from './composer-input'
+import StagedFiles from './StagedFiles.vue'
 
 const ctrl = inject(WIDGET_CTX)!
 const {
@@ -89,20 +90,7 @@ defineExpose({ focus })
 
 <template>
     <div class="cm-composer-wrap">
-        <!-- Staged files: names only until the attachment list (plan 1.4). -->
-        <ul v-if="uploadedAttachments.length" class="cm-staged">
-            <li v-for="(file, index) in uploadedAttachments" :key="index" class="cm-staged__file">
-                <span class="cm-staged__name">{{ file.filename }}</span>
-                <button
-                    type="button"
-                    class="cm-icon-button cm-icon-button--small"
-                    :aria-label="PANEL_COPY.removeFile(file.filename)"
-                    @click="ctrl.removeAttachment(index)"
-                >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
-                </button>
-            </li>
-        </ul>
+        <StagedFiles />
         <div class="cm-composer" :class="{ 'is-disabled': !canTypeMessage }">
             <input
                 ref="fileInput"
@@ -190,7 +178,4 @@ defineExpose({ focus })
     justify-content: center;
 }
 .cm-send__stop { position: absolute; width: 11px; height: 11px; }
-.cm-staged { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.cm-staged__file { display: flex; align-items: center; gap: 4px; padding: 2px 2px 2px 10px; max-width: 100%; }
-.cm-staged__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

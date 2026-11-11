@@ -1,0 +1,208 @@
+/**
+ * The redesigned widget's cards in the conversation (ui 2): the rating card, forms
+ * and questions, product cards, files on messages and in the composer, and the
+ * image preview. Rules and the other parts: see widget-panel.css.
+ */
+
+/* ===== Card layout: widget-surface.css lays out every .message as a row ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-rating,
+.chat-container.cm-surface.cm-ui-2 .cm-form-card,
+.chat-container.cm-surface.cm-ui-2 .cm-question,
+.chat-container.cm-surface.cm-ui-2 .cm-products {
+    flex-direction: column;
+    align-items: stretch;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-question,
+.chat-container.cm-surface.cm-ui-2 .cm-products {
+    gap: 8px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating,
+.chat-container.cm-surface.cm-ui-2 .cm-form-card {
+    gap: 10px;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+}
+
+/* ===== Rating ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-rating__check {
+    border-radius: 50%;
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__title,
+.chat-container.cm-surface.cm-ui-2 .cm-form-card__title {
+    font-size: 14.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__prompt,
+.chat-container.cm-surface.cm-ui-2 .cm-form-card__text,
+.chat-container.cm-surface.cm-ui-2 .cm-question__label,
+.chat-container.cm-surface.cm-ui-2 .cm-question__confirmation,
+.chat-container.cm-surface.cm-ui-2 .cm-rating__done {
+    color: var(--cm-muted);
+    font-size: 13px;
+    line-height: 19px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__option {
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-card);
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__option:hover:not(:disabled) {
+    border-color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__option.is-chosen {
+    border-color: var(--cm-accent);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__option:disabled {
+    cursor: default;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__option:disabled:not(.is-chosen) {
+    opacity: .6;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-rating__ends,
+.chat-container.cm-surface.cm-ui-2 .cm-rating__count {
+    color: var(--cm-muted);
+    font-size: 12px;
+}
+
+/* ===== Form fields ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-form__label,
+.chat-container.cm-surface.cm-ui-2 .cm-form__check {
+    color: var(--cm-text);
+    font-size: 13px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-form__check {
+    font-weight: 500;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-form__check input {
+    accent-color: var(--cm-accent);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-form__error {
+    color: var(--cm-text);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+/* ===== Questions ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-question .message-bubble {
+    max-width: none;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: var(--cm-bubble) var(--cm-bubble) var(--cm-bubble) var(--cm-bubble-tail);
+    background: var(--cm-agent-bg);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-question__value {
+    color: var(--cm-text);
+    font-size: 14px;
+}
+
+/* ===== Products ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-products .message-bubble {
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--cm-text);
+    line-height: 22px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-products__empty {
+    color: var(--cm-muted);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product {
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-card);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product__image {
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product__title {
+    margin-top: 6px;
+    font-size: 13.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product__variant {
+    color: var(--cm-muted);
+    font-size: 12px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product__price {
+    font-size: 13px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product__view {
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product__view:hover {
+    background: var(--cm-tint);
+}
+
+/* ===== Files ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-attachments__thumb {
+    overflow: hidden;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-control);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-attachments__link {
+    color: var(--cm-text);
+    font-size: 13px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-staged__file {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 12.5px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-staged__thumb {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-card);
+    color: var(--cm-muted);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-staged__size {
+    color: var(--cm-muted);
+    font-size: 11.5px;
+}
+
+/* ===== Image preview ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-preview::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--cm-card);
+    opacity: .9;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-preview__dialog {
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-preview__image {
+    border-radius: var(--cm-radius-control);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-preview__name {
+    color: var(--cm-muted);
+    font-size: 12.5px;
+}

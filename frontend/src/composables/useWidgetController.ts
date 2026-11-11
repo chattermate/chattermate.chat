@@ -16,7 +16,7 @@ limitations under the License.
 
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { postToHost } from '../webclient/host-bridge'
-import type { WidgetController, WidgetControllerProps, WidgetViewHooks } from '../webclient/panel/controller'
+import type { WidgetController, WidgetControllerProps } from '../webclient/panel/controller'
 import { useWidgetCustomization } from './useWidgetCustomization'
 import { useCurrency } from './useCurrency'
 import { useWidgetSocket } from './useWidgetSocket'
@@ -38,12 +38,9 @@ import { useWidgetDisplay } from './useWidgetDisplay'
 import { widgetUiVersion } from '../webclient/widget-ui'
 import { usePanelEmail } from './usePanelEmail'
 import { useHistoryArrival } from './useHistoryArrival'
+import { useViewHooks, viewedParts } from './widgetControllerParts'
 
 export type { WidgetControllerProps }
-
-// Only these keys of a composable reach the views.
-const pick = <T extends object, K extends keyof T>(source: T, ...keys: K[]) =>
-    Object.fromEntries(keys.map((key) => [key, source[key]])) as Pick<T, K>
 
 /**
  * Everything the chat widget does, for whichever view renders it: the socket, the
@@ -58,12 +55,8 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const widgetId = computed(() => props.widgetId || window.__INITIAL_DATA__?.widgetId)
     const isWorkflowAgent = () => !!window.__INITIAL_DATA__?.workflow
 
-    // The rendering view's DOM hooks; no-ops until it registers (during its setup,
-    // before anything can call them).
-    const view: WidgetViewHooks = { scrollToBottom: () => {}, focusComposer: () => {}, afterSend: () => {} }
-    const registerView = (hooks: WidgetViewHooks) => { Object.assign(view, hooks) }
-    let markReady = () => {}
-    const ready = new Promise<void>((resolve) => { markReady = resolve })
+    // The rendering view's DOM hooks, and the end of initialization it waits on.
+    const { view, registerView, ready, markReady } = useViewHooks()
 
     const { customization, agentName, applyCustomization, initializeFromData } = useWidgetCustomization()
     const { formatCurrency } = useCurrency()
@@ -250,26 +243,10 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         ready, registerView,
         widgetId, customization, agentName, formatCurrency, isAuroraStyle, isAskAnythingStyle, isExpanded,
         minimizeWidget, ...styles, ...presentation,
-        ...pick(display, 'containerStyles', 'hostVisible', 'useAskAiPanel', 'askAiHotkey'),
-        ...pick(auth, 'isInitializing', 'hasConversationToken', 'authError', 'showAuthError',
-            'isApiKeyAuthRequired', 'handleReconnect'),
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, ...rating,
-        ...pick(composer, 'newMessage', 'secretInMessage', 'isMessageInputEnabled', 'canTypeMessage',
-            'placeholderText', 'sendMessage', 'sendQuickAction', 'handleKeyPress', 'heldForEmail'),
-        ...files,
-        ...pick(hostPrompt, 'pendingConfirm', 'approveAction', 'declineAction', 'receiptsAfter',
-            'journeyProgress', 'chipBusy', 'skipStep', 'dismissJourney', 'shownPrompt', 'replyChips',
-            'onPageChip', 'promptPlace'),
-        receiptCount: computed(() => hostPrompt.receipts.value.length),
-        ...pick(emailGate, 'emailInput', 'emailGateError', 'submittingEmail', 'shouldCollectEmail',
-            'showEmailGate', 'submitEmailGate', 'submitEmailOnce'),
+        isRevealing, skipReveal, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory,
-        ...pick(workflow, 'showLandingPage', 'landingPageData', 'workflowButtonText', 'showFullScreenForm',
-            'fullScreenFormData', 'formData', 'formErrors', 'isSubmittingForm', 'shouldShowNewConversationOption',
-            'handleLandingPageProceed', 'handleFormSubmit', 'handleFieldChange', 'submitFullScreenForm',
-            'handleUserInputSubmit'),
-        ...newChat,
+        ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }
 }

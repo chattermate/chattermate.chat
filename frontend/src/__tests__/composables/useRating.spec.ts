@@ -88,4 +88,17 @@ describe('useRating', () => {
         expect(rating.messages.value[1].showFeedback).toBeUndefined()
         expect(rating.messages.value[1].selectedRating).toBeUndefined()
     })
+
+    it('ignores a second submit while the first is in flight', async () => {
+        let finish = () => {}
+        const submitRating = vi.fn(() => new Promise<void>((resolve) => { finish = resolve }))
+        const messages = ref<any[]>([{ message_type: 'rating' }])
+        const rating = useRating({ messages, submitRating })
+        const first = rating.handleSubmitRating('s', 4, null)
+        await rating.handleSubmitRating('s', 4, null)
+        finish()
+        await first
+        expect(submitRating).toHaveBeenCalledTimes(1)
+        expect(messages.value[0].isSubmitted).toBe(true)
+    })
 })

@@ -23,7 +23,13 @@
     line-height: 1.45;
 }
 .chat-container.cm-surface.cm-ui-2 .cm-panel {
+    position: relative;
     background: var(--cm-card);
+}
+/* The composer and footer (or a screen's footer), pinned under the panel's body. */
+.chat-container.cm-surface.cm-ui-2 .cm-panel__bottom {
+    flex-shrink: 0;
+    padding: 10px 14px 8px;
 }
 /* The shared Ask AI palette keeps its own focus style. The message box shows focus
    on the composer around it (:focus-within below), so it is left out here. */
@@ -131,6 +137,26 @@
     cursor: pointer;
 }
 
+/* ===== Fields (email card, forms, questions, rating feedback) ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-field {
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-card);
+    color: var(--cm-text);
+    font: inherit;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-field::placeholder {
+    color: var(--cm-muted);
+    opacity: 1;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-field.is-invalid,
+.chat-container.cm-surface.cm-ui-2 .cm-field[aria-invalid="true"] {
+    border-width: 2px;
+    border-color: var(--cm-text);
+}
+
 /* ===== Agent mark and avatars ===== */
 .chat-container.cm-surface.cm-ui-2 .cm-mark {
     background: var(--cm-accent);
@@ -172,6 +198,26 @@
 }
 .chat-container.cm-surface.cm-ui-2 .cm-footer__brand strong {
     color: var(--cm-text);
+}
+
+/* Touch screens and phones: every control in the panel is at least 44px (plan §5). */
+@media (pointer: coarse), (max-width: 480px) {
+    .chat-container.cm-surface.cm-ui-2 .cm-icon-button,
+    .chat-container.cm-surface.cm-ui-2 .cm-send,
+    .chat-container.cm-surface.cm-ui-2 .cm-chip,
+    .chat-container.cm-surface.cm-ui-2 .cm-link-button,
+    .chat-container.cm-surface.cm-ui-2 .cm-primary,
+    .chat-container.cm-surface.cm-ui-2 .cm-suggestion,
+    .chat-container.cm-surface.cm-ui-2 .cm-rating__option,
+    .chat-container.cm-surface.cm-ui-2 .cm-product__view,
+    .chat-container.cm-surface.cm-ui-2 .cm-attachments__link,
+    .chat-container.cm-surface.cm-ui-2 .cm-attachments__thumb,
+    .chat-container.cm-surface.cm-ui-2 .cm-staged__thumb,
+    .chat-container.cm-surface.cm-ui-2 .cm-form__check,
+    .chat-container.cm-surface.cm-ui-2 .cm-cart-button {
+        min-width: 44px;
+        min-height: 44px;
+    }
 }
 
 /* Reduced motion: state changes fade briefly. */

@@ -24,11 +24,42 @@ function readBaseline(screen: string): string[] {
 }
 
 /**
+ * Waits until no finite animation has run in the page or its frames for a moment
+ * (at most a few seconds). An entrance that fades text in (the redesigned widget's
+ * open cascade, or a part that mounts once data arrives) would otherwise be
+ * measured mid-fade, and axe reports the half-transparent colour as low contrast.
+ * Looping animations (typing dots, a pulse) are ignored.
+ */
+async function entrancesFinished(page: Page): Promise<void> {
+  for (const frame of page.frames()) {
+    await frame.evaluate(async () => {
+      const QUIET_MS = 300
+      const deadline = Date.now() + 5000
+      const running = () => document.getAnimations().filter((animation) =>
+        animation.playState !== 'finished' && animation.effect?.getComputedTiming().iterations !== Infinity)
+      let quietSince = Date.now()
+      while (Date.now() < deadline && Date.now() - quietSince < QUIET_MS) {
+        const now = running()
+        if (now.length) {
+          // Never past the deadline: a paused or very long animation must not hang the check.
+          const timeLeft = new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now())))
+          await Promise.race([Promise.all(now.map((animation) => animation.finished.catch(() => undefined))), timeLeft])
+          quietSince = Date.now()
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+      }
+    }).catch(() => undefined)
+  }
+}
+
+/**
  * Rule ids of the serious and critical violations on the page now (iframes
  * included). Each offending element, with axe's explanation (for contrast: the
  * colours and the ratio), is attached to the test so a failure says what to fix.
  */
 async function violations(page: Page, screen: string): Promise<string[]> {
+  await entrancesFinished(page)
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
   const serious = results.violations.filter((v) => SERIOUS.has(v.impact ?? ''))
   if (serious.length) {

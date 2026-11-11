@@ -375,6 +375,9 @@ export class ChatWidget {
     await step(`Customer gives ${this.customer.email}`, async () => {
       await this.emailGate.fill(this.customer.email)
       await this.frame.getByRole('button', { name: 'Continue to chat' }).click()
+      // The redesigned widget keeps its message box usable beside the email card, so
+      // "ready" is the email taken (the card gone), not just an editable box.
+      await expect(this.emailGate).toBeHidden()
       await this.expectReady()
     })
   }

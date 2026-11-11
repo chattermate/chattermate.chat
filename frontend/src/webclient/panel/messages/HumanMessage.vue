@@ -21,7 +21,7 @@ limitations under the License.
 import { computed, inject } from 'vue'
 import { WIDGET_CTX } from '../controller'
 import PersonAvatar from '../PersonAvatar.vue'
-import AttachmentLinks from './AttachmentLinks.vue'
+import AttachmentList from './AttachmentList.vue'
 import { renderMarkdown } from '../../markdown'
 import type { WidgetMessage } from '../../../types/widget'
 
@@ -46,7 +46,7 @@ const files = computed(() => props.message.attachments ?? [])
         <div class="cm-human__col">
             <span class="cm-human__name">{{ name }}</span>
             <div class="message-bubble" :aria-busy="streaming" v-html="html"></div>
-            <AttachmentLinks v-if="files.length" :attachments="files" />
+            <AttachmentList v-if="files.length" :attachments="files" />
         </div>
     </div>
 </template>

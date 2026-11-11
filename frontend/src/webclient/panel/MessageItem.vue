@@ -24,6 +24,10 @@ import AnswerMessage from './messages/AnswerMessage.vue'
 import HumanMessage from './messages/HumanMessage.vue'
 import JoinedDivider from './messages/JoinedDivider.vue'
 import FallbackMessage from './messages/FallbackMessage.vue'
+import ProductMessage from './messages/ProductMessage.vue'
+import RatingCard from './messages/RatingCard.vue'
+import FormCard from './messages/FormCard.vue'
+import UserInputCard from './messages/UserInputCard.vue'
 import type { WidgetMessage } from '../../types/widget'
 
 const props = defineProps<{
@@ -39,6 +43,10 @@ const COMPONENT_FOR: Record<MessageKind, Component> = {
     human: HumanMessage,
     joined: JoinedDivider,
     system: JoinedDivider,
+    product: ProductMessage,
+    rating: RatingCard,
+    form: FormCard,
+    userInput: UserInputCard,
     fallback: FallbackMessage,
 }
 

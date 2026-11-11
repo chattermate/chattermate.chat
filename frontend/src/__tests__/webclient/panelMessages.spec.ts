@@ -84,7 +84,8 @@ describe('a message in the panel', () => {
         })
         expect(wrapper!.find('.message-bubble').exists()).toBe(false)
         const link = wrapper!.get('.cm-attachments__link')
-        expect(link.text()).toBe('shot.png (12 B)')
+        expect(link.text()).toContain('shot.png (12 B)')
+        expect(link.text()).toContain('(opens in a new tab)')
         expect(link.attributes('href')).toBe('https://files.test/f/1')
         expect(link.attributes('rel')).toContain('noopener')
     })
@@ -106,27 +107,14 @@ describe('a message in the panel', () => {
         expect(wrapper!.findAll('.cm-joined__line')).toHaveLength(0)
     })
 
-    it('draws a form as text for now, keeping the form-message hook', () => {
-        item({ message_type: 'form', attributes: { form_data: { title: 'Before we connect you to a teammate', fields: [] } } })
-        expect(wrapper!.classes()).toContain('form-message')
-        expect(wrapper!.text()).toContain('Before we connect you to a teammate')
-    })
-
-    it('draws a rating request as text for now', () => {
-        item({ message_type: 'rating', message: '' }, { humanAgent: ref({ human_agent_name: 'Priya' }) })
-        expect(wrapper!.classes()).toContain('rating-message')
-        expect(wrapper!.text()).toContain('Rate the chat session that you had with Priya')
-    })
-
-    it('lists products as text for now', () => {
-        item({
-            message_type: 'product',
-            message: 'Two picks: https://shop.test/a',
-            shopify_output: { products: [{ id: 'p1', title: 'Guji 250g', price: '14', price_formatted: '£14.00' }] },
-        })
-        expect(wrapper!.classes()).toContain('product-message')
-        expect(wrapper!.text()).toContain('Guji 250g · £14.00')
-        expect(wrapper!.text()).not.toContain('https://shop.test/a')
+    it.each([
+        ['form', { message_type: 'form', attributes: { form_data: { title: 'Before we connect you', fields: [] } } }, 'form-message'],
+        ['rating', { message_type: 'rating', message: '' }, 'rating-message'],
+        ['product', { message_type: 'product', message: 'Picks', shopify_output: { products: [] } }, 'product-message'],
+        ['free-text question', { message_type: 'user_input', attributes: { prompt_message: 'Your order number?' } }, 'cm-question'],
+    ])('draws a %s with its own card, keeping its class hook', (_name, message, hook) => {
+        item(message as Record<string, unknown>)
+        expect(wrapper!.classes()).toContain(hook)
     })
 
     it('keeps a reply carrying products readable as a reply', () => {

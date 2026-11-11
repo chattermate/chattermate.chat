@@ -15,69 +15,19 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-/**
- * STOPGAP until plan 1.4 (message-kind parity): ratings, forms, product messages,
- * free-text questions and any unknown kind are drawn as plain text here, so nothing
- * the conversation holds is silently dropped. They are not interactive yet; the
- * classic class hooks (form-message, rating-message, product-message) are kept.
- */
-import { computed, inject } from 'vue'
-import { WIDGET_CTX } from '../controller'
-import { fallbackClass } from '../message-kind'
+// A message of a type this widget does not know (a newer server, say): its text,
+// sanitised, so nothing the conversation holds is silently dropped.
+import { computed } from 'vue'
 import { renderMarkdown } from '../../markdown'
-import { stripUrlsForProducts } from '../../products'
-import { PANEL_COPY } from '../../copy'
 import type { WidgetMessage } from '../../../types/widget'
 
 const props = defineProps<{ message: WidgetMessage; index: number }>()
 
-const ctrl = inject(WIDGET_CTX)!
-
-const products = computed(() => props.message.shopify_output?.products ?? [])
-
-/** Plain lines for the structured kinds (escaped by the template). */
-const lines = computed<string[]>(() => {
-    const { message } = props
-    const attributes = message.attributes ?? {}
-    if (message.message_type === 'rating') {
-        const name = message.agent_name || ctrl.humanAgent.value.human_agent_name || ctrl.agentName.value
-        return [PANEL_COPY.ratingPrompt(name)]
-    }
-    if (message.message_type === 'form') {
-        const form = attributes.form_data ?? {}
-        const formLines = [form.title, form.description].filter((line): line is string => !!line)
-        return formLines.length ? formLines : [PANEL_COPY.formFallback]
-    }
-    if (message.message_type === 'user_input') {
-        return [attributes.prompt_message, message.submittedValue].filter((line): line is string => !!line)
-    }
-    return []
-})
-
-/** Markdown body for product messages and unknown kinds (sanitised by renderMarkdown). */
-const html = computed(() => {
-    if (lines.value.length) return ''
-    const text = props.message.message || ''
-    return renderMarkdown(products.value.length ? stripUrlsForProducts(text) : text)
-})
-
-const priceOf = (product: (typeof products.value)[number]) =>
-    product.price_formatted || ctrl.formatCurrency(product.price, product.currency)
+const html = computed(() => renderMarkdown(props.message.message || ''))
 </script>
 
 <template>
-    <div class="message cm-fallback" :class="fallbackClass(message)">
-        <div class="message-bubble">
-            <p v-for="(line, i) in lines" :key="i" class="cm-fallback__line">{{ line }}</p>
-            <div v-if="html" v-html="html"></div>
-            <ul v-if="products.length" class="cm-fallback__products" :aria-label="PANEL_COPY.productsFallback">
-                <li v-for="product in products" :key="product.id">{{ product.title }} · {{ priceOf(product) }}</li>
-            </ul>
-        </div>
+    <div class="message agent-message cm-fallback">
+        <div class="message-bubble" v-html="html"></div>
     </div>
 </template>
-
-<style scoped>
-.cm-fallback__line { margin: 0; }
-.cm-fallback__products { margin: 6px 0 0; padding-left: 18px; }
-</style>

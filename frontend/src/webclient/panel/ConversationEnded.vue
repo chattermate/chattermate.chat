@@ -15,17 +15,17 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-// STOPGAP until the "conversation ended" section is redesigned (plan 1.4): a
-// workflow conversation ended; offer a new one, with the classic text.
+// A workflow conversation ended: say so and offer a new one, in place of the
+// composer (classic wording; the controller starts it).
 import { inject } from 'vue'
-import { WIDGET_CTX } from '../controller'
-import { PANEL_COPY } from '../../copy'
+import { WIDGET_CTX } from './controller'
+import { PANEL_COPY } from '../copy'
 
 const ctrl = inject(WIDGET_CTX)!
 </script>
 
 <template>
-    <div class="cm-ended">
+    <div class="cm-ended" role="status">
         <p class="cm-ended__text">{{ PANEL_COPY.chatEnded }}</p>
         <button type="button" class="cm-primary cm-press" @click="ctrl.handleStartNewConversation">
             {{ PANEL_COPY.startNewConversation }}
@@ -34,6 +34,6 @@ const ctrl = inject(WIDGET_CTX)!
 </template>
 
 <style scoped>
-.cm-ended { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; }
+.cm-ended { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .cm-ended__text { margin: 0; text-align: center; }
 </style>

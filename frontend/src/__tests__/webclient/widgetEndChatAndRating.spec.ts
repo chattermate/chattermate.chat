@@ -198,7 +198,7 @@ describe('the rating prompt', () => {
         expect(socketCalls.submitRating).toHaveBeenCalledTimes(1)
     })
 
-    it('sends the rating twice when Submit is pressed twice within one tick', async () => {
+    it('sends the rating once when Submit is pressed twice within one tick', async () => {
         await endWithRating()
 
         await stars(wrapper)[2].trigger('click')
@@ -209,9 +209,8 @@ describe('the rating prompt', () => {
         submit.trigger('click')
         await settle(wrapper)
 
-        // Pinned current behaviour (bug): submitting has no in-flight guard of its own;
-        // only the disabled button stops a second press, so a same-tick double press sends two.
-        expect(socketCalls.submitRating).toHaveBeenCalledTimes(2)
+        // The submit has its own in-flight guard (it used to send two).
+        expect(socketCalls.submitRating).toHaveBeenCalledTimes(1)
     })
 
     it('submits the last HOVERED star, not the clicked one, after the pointer leaves', async () => {

@@ -32,48 +32,42 @@ export type MessageKind =
     | 'joined'
     /** Any other system note ("Thank you for your feedback!"). */
     | 'system'
-    /** Ratings, forms, products, free-text questions: plain text until plan 1.4. */
+    /** A reply carrying product cards (Shopify). */
+    | 'product'
+    /** The end-of-chat rating request. */
+    | 'rating'
+    /** A form the workflow put in the chat. */
+    | 'form'
+    /** A workflow question answered in free text. */
+    | 'userInput'
+    /** A type this widget does not know: its text, never dropped. */
     | 'fallback'
 
 /** The socket's takeover note (useWidgetSocket, handle_taken_over). */
 const JOINED_SUFFIX = ' joined the conversation'
 
-/** Kinds the panel draws as text for now; each keeps the classic class hook. */
-const FALLBACK_CLASS: Record<string, string> = {
-    rating: 'rating-message',
-    form: 'form-message',
-    product: 'product-message',
-    user_input: 'user-input-message',
-}
-
 const AI_TYPES = new Set(['bot', 'assistant'])
+
+const KIND_FOR_TYPE: Record<string, MessageKind> = {
+    user: 'user',
+    agent: 'human',
+    rating: 'rating',
+    form: 'form',
+    user_input: 'userInput',
+    product: 'product',
+}
 
 const hasProducts = (message: WidgetMessage) => !!message.shopify_output
 
 /** The component kind for one message. Unknown types fall back to text, never dropped. */
 export function messageKind(message: WidgetMessage): MessageKind {
     const type = message.message_type
-    if (type === 'product' || hasProducts(message)) return 'fallback'
-    if (type === 'user') return 'user'
+    if (hasProducts(message)) return 'product'
     if (AI_TYPES.has(type)) return 'answer'
-    if (type === 'agent') return 'human'
     if (type === 'system') return isJoinedNote(message) ? 'joined' : 'system'
-    return 'fallback'
+    return KIND_FOR_TYPE[type] || 'fallback'
 }
 
 /** Whether a system message is the takeover note. */
 export const isJoinedNote = (message: WidgetMessage): boolean =>
     message.message_type === 'system' && (message.message || '').endsWith(JOINED_SUFFIX)
-
-/** Reply types written by the agent (AI or person): they keep the agent-message hook. */
-const REPLY_TYPES = new Set([...AI_TYPES, 'agent'])
-
-/**
- * The class hooks a fallback keeps: form-message (used by the e2e page object),
- * rating- and product-message; and agent-message on a reply that carries products,
- * as the classic widget gives it, so the page object reads it as a reply.
- */
-export function fallbackClass(message: WidgetMessage): string {
-    if (hasProducts(message) && REPLY_TYPES.has(message.message_type)) return 'agent-message product-message'
-    return FALLBACK_CLASS[hasProducts(message) ? 'product' : message.message_type] || 'agent-message'
-}

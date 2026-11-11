@@ -24,7 +24,7 @@ limitations under the License.
 import { computed, inject } from 'vue'
 import { WIDGET_CTX } from '../controller'
 import AgentMark from '../AgentMark.vue'
-import AttachmentLinks from './AttachmentLinks.vue'
+import AttachmentList from './AttachmentList.vue'
 import { agentFace } from '../agent-face'
 import { renderMarkdown } from '../../markdown'
 import { citationLabel, citationTooltip } from '../../citations'
@@ -62,7 +62,7 @@ const files = computed(() => props.message.attachments ?? [])
                 {{ citationLabel(source) }}
             </li>
         </ul>
-        <AttachmentLinks v-if="files.length" :attachments="files" />
+        <AttachmentList v-if="files.length" :attachments="files" />
     </div>
 </template>
 

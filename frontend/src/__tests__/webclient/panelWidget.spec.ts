@@ -168,14 +168,20 @@ describe('the panel shell', () => {
     })
 })
 
-describe('the stopgaps until later units', () => {
+describe('the panel\'s screens and notices', () => {
     it('says when it is starting up or connecting, and offers a retry when the connection failed', async () => {
         panel({ isInitializing: ref(true) })
-        expect(wrapper!.get('.cm-notice').text()).toBe('Initializing chat...')
+        // One status line, always there, its text changing (announced each time).
+        const status = wrapper!.get('.cm-banner[role="status"]')
+        expect(status.text()).toBe('Initializing chat...')
         ctrl.isInitializing.value = false
         ctrl.connectionStatus.value = 'connecting'
         await nextTick()
-        expect(wrapper!.get('.cm-notice').text()).toBe('Connecting to chat service...')
+        expect(wrapper!.get('.cm-banner[role="status"]').element).toBe(status.element)
+        expect(status.text()).toBe('Connecting to chat service...')
+        ctrl.connectionStatus.value = 'connected'
+        await nextTick()
+        expect(status.text()).toBe('')
         ctrl.connectionStatus.value = 'failed'
         await nextTick()
         await buttonNamed('Click here to reconnect')!.trigger('click')
@@ -184,8 +190,8 @@ describe('the stopgaps until later units', () => {
 
     it('shows the error alert', () => {
         panel({ showError: ref(true), errorMessage: ref('Something went wrong') })
-        expect(wrapper!.get('.cm-notice--error').attributes('role')).toBe('alert')
-        expect(wrapper!.get('.cm-notice--error').text()).toBe('Something went wrong')
+        expect(wrapper!.get('.cm-banner--error').attributes('role')).toBe('alert')
+        expect(wrapper!.get('.cm-banner--error').text()).toBe('Something went wrong')
     })
 
     it('says the chat is unavailable when the widget is not set up', async () => {

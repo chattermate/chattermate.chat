@@ -67,7 +67,7 @@ export const PANEL_COPY = {
     emailWait: 'Please wait…',
     /** Shown on the card while a message waits for the email. */
     emailHeld: 'Your message is ready. It sends as soon as your email is in.',
-    /** Status notices until the restyled banners (plan 1.4). Same text as classic. */
+    /** Connection and widget states. Same text as classic. */
     initializing: 'Initializing chat...',
     connecting: 'Connecting to chat service...',
     connectionFailed: 'Connection failed.',
@@ -77,12 +77,38 @@ export const PANEL_COPY = {
     authErrorTitle: 'Authentication Error',
     refresh: 'Refresh Page',
     closeChat: 'Close chat',
-    /** The end of a workflow conversation (plan 1.4). Same text as classic. */
+    /** The end of a workflow conversation. Same text as classic. */
     chatEnded: 'This chat has ended.',
     startNewConversation: 'Click here to start a new conversation',
     continueLabel: 'Continue',
-    /** Text fallbacks for message kinds the panel draws in plan 1.4. */
+    /** The end-of-chat rating card (plan G4). "Submit Rating" and "N out of 5" as classic (e2e). */
+    ratingTitle: 'Sorted. How did we do?',
     ratingPrompt: (name: string) => `Rate the chat session that you had with ${name || 'our agent'}`,
-    formFallback: 'A form was shared here.',
-    productsFallback: 'Products',
+    ratingOption: (n: number) => `${n} out of 5`,
+    ratingLow: 'Not good',
+    ratingHigh: 'Excellent',
+    ratingFeedbackLabel: 'Your feedback (optional)',
+    ratingFeedbackPlaceholder: 'Please share your feedback (optional)',
+    ratingSubmit: 'Submit Rating',
+    ratingSubmitting: 'Submitting...',
+    ratingThanks: 'Thank you for your rating!',
+    /** Workflow forms and questions. Same text as classic. */
+    submit: 'Submit',
+    submitting: 'Submitting...',
+    selectPlaceholder: 'Select an option',
+    /** Read out when a form is refused: what to fix. */
+    formErrors: (errors: string[]) =>
+        `${errors.length === 1 ? 'Please fix 1 field' : `Please fix ${errors.length} fields`}: ${errors.join('. ')}`,
+    yourAnswer: 'Your input',
+    answerPlaceholder: 'Type your message here...',
+    /** Product cards. Same text as classic. */
+    viewProduct: 'View product',
+    noProducts: 'No products found.',
+    noProductsToShow: 'No products to display.',
+    /** Files on messages and in the composer, and the image preview. */
+    stagedFiles: 'Files to send',
+    previewImage: (name: string) => `Preview ${name}`,
+    opensInNewTab: '(opens in a new tab)',
+    imagePreview: 'Image preview',
+    closePreview: 'Close preview',
 } as const

@@ -21,7 +21,7 @@ limitations under the License.
  * classic view. This view owns its DOM work: scrolling (MessageList), focus and
  * what survives the panel being hidden (usePanelVisibility).
  * The Ask AI palette (ASK_ANYTHING / AURORA, search-bar trigger) is shared with the
- * classic view. Stopgaps until later units live in ./stopgaps (each says which).
+ * classic view.
  */
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { WIDGET_CTX } from './controller'
@@ -31,18 +31,20 @@ import Composer from './Composer.vue'
 import PanelFooter from './PanelFooter.vue'
 import AskAiSurface from '../AskAiSurface.vue'
 import NewChatConfirm from '../NewChatConfirm.vue'
-import StatusNotices from './stopgaps/StatusNotices.vue'
-import AuthNotice from './stopgaps/AuthNotice.vue'
+import StatusBanner from './StatusBanner.vue'
 import StartState from './StartState.vue'
 import EmailCard from './EmailCard.vue'
-import WorkflowScreen from './stopgaps/WorkflowScreen.vue'
-import ConversationEnded from './stopgaps/ConversationEnded.vue'
+import FrontScreen from './screens/FrontScreen.vue'
+import ConversationEnded from './ConversationEnded.vue'
+import PreviewModal from './PreviewModal.vue'
 import { usePanelVisibility } from '../../composables/usePanelVisibility'
 import '../widget-panel.css'
 import '../widget-panel-messages.css'
 import '../widget-panel-composer.css'
 import '../widget-panel-start.css'
-import '../widget-panel-stopgaps.css'
+import '../widget-panel-cards.css'
+import '../widget-panel-screens.css'
+import '../widget-panel-shared.css'
 import '../widget-motion.css'
 
 const ctrl = inject(WIDGET_CTX)!
@@ -123,20 +125,14 @@ const rootStyle = computed(() => ({
         :style="rootStyle"
     >
         <template v-if="useAskAiPanel && !showBlocked">
-            <StatusNotices />
+            <StatusBanner />
             <AskAiSurface />
         </template>
         <div v-else class="cm-panel">
-            <template v-if="showBlocked || showWorkflowScreen">
-                <AuthNotice v-if="showBlocked" />
-                <WorkflowScreen v-else />
-                <div class="cm-panel__bottom">
-                    <PanelFooter branding-only />
-                </div>
-            </template>
+            <FrontScreen v-if="showBlocked || showWorkflowScreen" :blocked="showBlocked" />
             <template v-else>
                 <PanelHeader />
-                <StatusNotices />
+                <StatusBanner />
                 <NewChatConfirm
                     v-if="newChatArmed && canStartNewChat"
                     :busy="startingNewChat"
@@ -159,6 +155,7 @@ const rootStyle = computed(() => ({
                     <PanelFooter />
                 </div>
             </template>
+            <PreviewModal />
         </div>
     </div>
 </template>
@@ -191,5 +188,4 @@ const rootStyle = computed(() => ({
     display: flex;
     flex-direction: column;
 }
-.cm-panel__bottom { flex-shrink: 0; padding: 10px 14px 8px; }
 </style>

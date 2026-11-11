@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { describe, expect, it } from 'vitest'
-import { fallbackClass, isJoinedNote, messageKind } from '@/webclient/panel/message-kind'
+import { isJoinedNote, messageKind } from '@/webclient/panel/message-kind'
 import { agentFace, initialsOf } from '@/webclient/panel/agent-face'
 import type { WidgetMessage } from '@/types/widget'
 
@@ -28,17 +28,18 @@ describe('which component draws a message', () => {
         ['bot', 'answer'],
         ['assistant', 'answer'],
         ['agent', 'human'],
-        ['rating', 'fallback'],
-        ['form', 'fallback'],
-        ['user_input', 'fallback'],
-        ['product', 'fallback'],
+        ['rating', 'rating'],
+        ['form', 'form'],
+        ['user_input', 'userInput'],
+        ['product', 'product'],
         ['something_new', 'fallback'],
     ])('%s → %s', (type, kind) => {
         expect(messageKind(message({ message_type: type }))).toBe(kind)
     })
 
     it('draws a reply carrying products as a product message whatever its type', () => {
-        expect(messageKind(message({ message_type: 'bot', shopify_output: { products: [] } }))).toBe('fallback')
+        expect(messageKind(message({ message_type: 'bot', shopify_output: { products: [] } }))).toBe('product')
+        expect(messageKind(message({ message_type: 'agent', shopify_output: { products: [] } }))).toBe('product')
     })
 
     it('tells the takeover note from other system notes', () => {
@@ -48,18 +49,6 @@ describe('which component draws a message', () => {
         expect(isJoinedNote(joined)).toBe(true)
         expect(messageKind(thanks)).toBe('system')
         expect(isJoinedNote(message({ message_type: 'bot', message: 'Priya joined the conversation' }))).toBe(false)
-    })
-
-    it('keeps the classic class hooks on the text fallbacks', () => {
-        expect(fallbackClass(message({ message_type: 'form' }))).toBe('form-message')
-        expect(fallbackClass(message({ message_type: 'rating' }))).toBe('rating-message')
-        expect(fallbackClass(message({ message_type: 'product' }))).toBe('product-message')
-        // A reply carrying products stays a reply for the page object, as in classic.
-        expect(fallbackClass(message({ message_type: 'bot', shopify_output: { products: [] } })))
-            .toBe('agent-message product-message')
-        expect(fallbackClass(message({ message_type: 'agent', shopify_output: { products: [] } })))
-            .toBe('agent-message product-message')
-        expect(fallbackClass(message({ message_type: 'mystery' }))).toBe('agent-message')
     })
 })
 

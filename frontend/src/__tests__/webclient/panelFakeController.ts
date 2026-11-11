@@ -34,7 +34,7 @@ import type { HumanAgent, WidgetMessage } from '@/types/widget'
 import type { ConnectionStatus } from '@/composables/useWidgetSocket'
 import type { HostPrompt, PageChip, PendingConfirm } from '@/webclient/actions/hostActionsClient'
 import type { JourneyProgress } from '@/webclient/journeys/journeyClient'
-import type { UploadedFile } from '@/composables/useWidgetFiles'
+import type { PreviewFile, UploadedFile } from '@/composables/useWidgetFiles'
 import type { WorkflowForm } from '@/composables/useWorkflowScreens'
 import type { PresenceLine } from '@/utils/widgetPresence'
 
@@ -84,6 +84,12 @@ const baseController = () => ({
     isStreaming: vi.fn((_index: number) => false),
     isRevealing: ref(false),
     skipReveal: vi.fn(),
+    hoverRating: ref(0),
+    isSubmittingRating: ref(false),
+    handleStarHover: vi.fn((_rating: number) => {}),
+    handleStarLeave: vi.fn(),
+    handleStarClick: vi.fn(async (_rating: number) => {}),
+    handleSubmitRating: vi.fn(async (_sessionId: string, _rating: number, _feedback?: string | null) => {}),
     // composer
     newMessage: ref(''),
     secretInMessage: ref(false),
@@ -105,6 +111,13 @@ const baseController = () => ({
     handleDragOver: vi.fn((_event: DragEvent) => {}),
     handleDragLeave: vi.fn((_event: DragEvent) => {}),
     removeAttachment: vi.fn(async (_index: number) => {}),
+    isImage: (type: string) => type.startsWith('image/'),
+    isImageAttachment: (type: string) => type.startsWith('image/'),
+    getPreviewUrl: (file: { url: string; file_url?: string }) => `https://files.test/${file.file_url || file.url}`,
+    previewModal: ref(false),
+    previewFile: ref<PreviewFile | null>(null),
+    openPreview: vi.fn((_file: PreviewFile) => {}),
+    closePreview: vi.fn(),
     // host prompt
     pendingConfirm: ref<PendingConfirm | null>(null),
     receiptCount: ref(0),
@@ -138,6 +151,13 @@ const baseController = () => ({
     handleLandingPageProceed: vi.fn(async () => {}),
     showFullScreenForm: ref(false),
     fullScreenFormData: ref<WorkflowForm | null>(null),
+    formData: ref<Record<string, any>>({}),
+    formErrors: ref<Record<string, string>>({}),
+    isSubmittingForm: ref(false),
+    handleFormSubmit: vi.fn(async (_form: WorkflowForm) => {}),
+    handleFieldChange: vi.fn((_name: string, _value: unknown) => {}),
+    submitFullScreenForm: vi.fn(async () => {}),
+    handleUserInputSubmit: vi.fn(async (_message: any) => {}),
     // the view's hooks
     registerView: vi.fn(),
 }) satisfies Partial<Writable<WidgetController>>

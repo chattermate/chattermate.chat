@@ -69,9 +69,10 @@ export function useRating({ messages, submitRating }: RatingOptions) {
         }
     }
 
-    // Pinned current behaviour (bug): there is no in-flight guard here; only the
-    // disabled Submit button stops a second press.
+    // One rating at a time: a second press that lands before the button disables
+    // (a same-tick double click) is ignored, not sent twice.
     const handleSubmitRating = async (_sessionId: string, rating: number, feedback: string | null = null) => {
+        if (isSubmittingRating.value) return
         try {
             isSubmittingRating.value = true
             await submitRating(rating, feedback)

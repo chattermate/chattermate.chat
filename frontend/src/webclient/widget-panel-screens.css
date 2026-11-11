@@ -1,0 +1,71 @@
+/**
+ * The redesigned widget's screens and notices (ui 2): the connection banner and
+ * error alert, screens in front of the chat (unavailable, authentication error,
+ * landing page, full-screen form) and the ended conversation. Rules and the other
+ * parts: see widget-panel.css.
+ */
+
+/* ===== Banner ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-banner {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-banner--idle {
+    background: none;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-banner--failed,
+.chat-container.cm-surface.cm-ui-2 .cm-banner--error {
+    border: 1px solid var(--cm-control-line);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-banner__dots .cm-typing-dot {
+    border-radius: 50%;
+    background: var(--cm-muted);
+}
+
+/* ===== Screens ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-screen {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    padding: 28px 22px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-screen--form {
+    justify-content: flex-start;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-screen__icon {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: min(32%, var(--cm-avatar-radius));
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-screen__title {
+    margin: 4px 0 0;
+    color: var(--cm-text);
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-screen__text,
+.chat-container.cm-surface.cm-ui-2 .cm-ended__text {
+    margin: 0;
+    color: var(--cm-muted);
+    font-size: 14px;
+    line-height: 21px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-screen__fields {
+    margin-top: 6px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-screen__action {
+    margin-top: 8px;
+}

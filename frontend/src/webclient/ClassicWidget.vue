@@ -35,6 +35,7 @@ import ProductCartButton from './ProductCartButton.vue'
 import { canAddToCart } from './shopify-cart'
 import { openProduct, stripUrlsForProducts } from './products'
 import { citationLabel, citationTooltip } from './citations'
+import { fieldOptions } from './forms/options'
 import { SECRET_WARNING } from '../utils/secretGuard'
 import { AI_DISCLAIMER_TEXT } from '../utils/aiDisclaimer'
 import { NEW_CHAT_LABEL } from './new-chat'
@@ -90,7 +91,7 @@ export default defineComponent({
             openProduct,
             ratingShown,
             reloadPage: () => window.location.reload(),
-            isValidEmail, renderMarkdown, canAddToCart, stripUrlsForProducts, citationLabel, citationTooltip,
+            isValidEmail, renderMarkdown, canAddToCart, stripUrlsForProducts, citationLabel, citationTooltip, fieldOptions,
             SECRET_WARNING, AI_DISCLAIMER_TEXT, NEW_CHAT_LABEL,
         }
     },
@@ -357,7 +358,7 @@ export default defineComponent({
                         >
                             <option value="">{{ field.placeholder || 'Please select...' }}</option>
                             <option
-                                v-for="option in (Array.isArray(field.options) ? field.options : field.options?.split('\n') || []).filter((o: string) => o.trim())"
+                                v-for="option in fieldOptions(field.options)"
                                 :key="option"
                                 :value="option.trim()"
                             >
@@ -387,7 +388,7 @@ export default defineComponent({
                             class="radio-group"
                         >
                             <label
-                                v-for="option in (Array.isArray(field.options) ? field.options : field.options?.split('\n') || []).filter((o: string) => o.trim())"
+                                v-for="option in fieldOptions(field.options)"
                                 :key="option"
                                 class="radio-field"
                             >
@@ -741,7 +742,7 @@ export default defineComponent({
                                             >
                                                 <option value="">{{ field.placeholder || 'Select an option' }}</option>
                                                 <option
-                                                    v-for="option in (Array.isArray(field.options) ? field.options : field.options?.split('\n') || []).filter((o: string) => o.trim())"
+                                                    v-for="option in fieldOptions(field.options)"
                                                     :key="option.trim()"
                                                     :value="option.trim()"
                                                 >
@@ -767,7 +768,7 @@ export default defineComponent({
                                             <!-- Radio buttons -->
                                             <div v-else-if="field.type === 'radio'" class="radio-field">
                                                 <div
-                                                    v-for="option in (Array.isArray(field.options) ? field.options : field.options?.split('\n') || []).filter((o: string) => o.trim())"
+                                                    v-for="option in fieldOptions(field.options)"
                                                     :key="option.trim()"
                                                     class="radio-option"
                                                 >
@@ -1342,84 +1343,6 @@ export default defineComponent({
     cursor: default;
 }
 
-.header-menu-container {
-    position: relative;
-    margin-left: auto;
-}
-
-.header-menu-btn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 6px;
-    color: var(--text-secondary, #6b7280);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.header-menu-btn:hover {
-    background: var(--background-secondary, #f3f4f6);
-    color: var(--text-primary, #1f2937);
-}
-
-.header-menu-btn:focus {
-    outline: 2px solid var(--primary-color, #3b82f6);
-    outline-offset: 2px;
-}
-
-.header-dropdown-menu {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 4px;
-    background: var(--background-base, white);
-    border: 1px solid var(--border-color, #e5e7eb);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    min-width: 140px;
-    z-index: 1000;
-    overflow: hidden;
-}
-
-.dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 10px 14px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: var(--text-sm, 14px);
-    color: var(--text-primary, #1f2937);
-    text-align: left;
-    transition: all 0.15s ease;
-}
-
-.dropdown-item:hover:not(:disabled) {
-    background: var(--background-secondary, #f3f4f6);
-}
-
-.dropdown-item:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.dropdown-item.end-chat-btn {
-    color: var(--error-color, #ef4444);
-}
-
-.dropdown-item.end-chat-btn:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.1);
-}
-
-.dropdown-item svg {
-    flex-shrink: 0;
-}
-
 .header-avatar {
     width: 34px;
     height: 34px;
@@ -1550,14 +1473,6 @@ export default defineComponent({
     }
 }
 
-.message-avatar {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    object-fit: cover;
-    margin-top: 4px;
-}
-
 /* Per-message agent avatar (28px orb/photo beside each reply, design comp) */
 .cm-msg-avatar {
     width: 28px;
@@ -1604,7 +1519,6 @@ export default defineComponent({
     background: linear-gradient(135deg, var(--accent-solid) 0%, color-mix(in srgb, var(--accent-solid) 90%, black) 100%);
 }
 
-.assistant-message .message-bubble,
 .agent-message .message-bubble {
     border-radius: var(--cm-bubble-tail, 5px) var(--cm-bubble, 16px) var(--cm-bubble, 16px) var(--cm-bubble, 16px);
     /* Fallback only — the per-theme color from agentBubbleStyles (inline background-color)
@@ -1850,24 +1764,6 @@ export default defineComponent({
 }
 
 /* Authentication Error Alert Styles */
-.auth-error-alert {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
-    color: white;
-    z-index: 200;
-    border-radius: 24px;
-    animation: slideDown 0.3s ease-out;
-    text-align: center;
-}
 
 .auth-error-header {
     display: flex;
@@ -2003,48 +1899,8 @@ export default defineComponent({
 }
 
 /* SECURITY: Full-page blocking auth error container */
-.auth-error-only-container {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
-    border-radius: 24px;
-    overflow: hidden;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
 
 /* Blocking auth error alert - prevents any interaction with chat */
-.auth-error-alert-blocking {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 32px 24px;
-    color: white;
-    z-index: 9999;
-    text-align: center;
-    animation: slideDown 0.3s ease-out;
-    max-width: 90%;
-}
-
-.auth-error-alert-blocking .auth-error-header {
-    margin-bottom: 16px;
-}
-
-.auth-error-alert-blocking .auth-error-message {
-    font-size: 14px;
-    line-height: 1.6;
-    margin: 16px 0;
-    opacity: 0.95;
-    color: #f9fafb;
-}
-
-.chat-container.collapsed .auth-error-alert {
-    display: none;
-}
 
 @keyframes slideDown {
     from {
@@ -2084,12 +1940,6 @@ export default defineComponent({
 
     .chat-messages {
         padding: var(--space-sm);
-    }
-
-    .chat-toggle {
-        width: 48px;
-        height: 48px;
-        font-size: 14px;
     }
 
     /* Mobile styles for new conversation section */
@@ -2144,13 +1994,6 @@ export default defineComponent({
     font-size: 0.75rem;
     font-weight: 500;
     opacity: 0.8;
-}
-
-.message-time {
-    font-size: 0.75rem;
-    opacity: 0.7;
-    margin-top: 4px;
-    text-align: right;
 }
 
 .typing-indicator {
@@ -2911,78 +2754,6 @@ export default defineComponent({
      box-shadow: var(--shadow-md);
 }
 
-.product-card-compact.single-product {
-    max-width: 280px; /* Reduced max width */
-    align-self: flex-start;
-    padding: var(--space-sm); /* Reduced padding */
-    gap: var(--space-sm); /* Reduced gap */
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start; /* Align items at the start */
-}
-
-.product-card-compact.single-product .product-image-compact {
-    width: 50px; /* Smaller image */
-    height: 50px;
-    border-radius: var(--radius-xs); /* Smaller radius */
-    flex-shrink: 0;
-}
-
-.product-card-compact.single-product .product-info-compact {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between; /* Space out text and button */
-    flex: 1; /* Take remaining space */
-    min-height: 50px; /* Match image height */
-    gap: var(--space-xxs); /* Reduced gap */
-}
-
-.product-card-compact.single-product .product-text-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1px; /* Very small gap between text lines */
-}
-
-.product-card-compact.single-product .product-title-compact {
-    font-size: var(--text-xs); /* Smaller font */
-    font-weight: 500;
-    line-height: 1.3;
-    white-space: normal; /* Allow wrapping */
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin: 0;
-}
-
-.product-card-compact.single-product .product-variant-compact {
-    font-size: 10px; /* Even smaller variant text */
-    color: var(--text-muted);
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.product-card-compact.single-product .product-price-compact {
-    font-size: var(--text-xs); /* Smaller font */
-    font-weight: 600;
-    margin-top: 2px;
-}
-
-.product-card-compact.single-product .product-actions-compact {
-    margin-top: auto; /* Push button to bottom */
-    width: 100%; /* Make container full width */
-}
-
-.product-card-compact.single-product .view-details-button-compact {
-    width: 100%; /* Make button full width */
-    padding: 5px 8px; /* Smaller padding */
-    font-size: 11px; /* Smaller font */
-    justify-content: center; /* Center text/icon */
-}
-
 .product-image-compact {
     position: relative;
     width: 60px; /* Fixed width for thumbnail */
@@ -3064,10 +2835,6 @@ export default defineComponent({
     margin-top: var(--space-sm); /* Add margin for single card */
 }
 
-.product-actions-compact.single {
-     justify-content: flex-start; /* Align button left */
-}
-
 .product-card-compact.carousel-item .product-actions-compact {
     margin-top: auto; /* Push actions to bottom */
     padding-top: var(--space-xs);
@@ -3107,22 +2874,6 @@ export default defineComponent({
     color: var(--text-primary);
 }
 
-/* Remove old .product-card styles */
-/* .product-card { ... } */
-/* .product-image-container { ... } */
-/* .product-image { ... } */
-/* .product-badge { ... } */
-/* .product-details { ... } */
-/* .product-title { ... } */
-/* .product-price { ... } */
-/* .current-price { ... } */
-/* .product-meta { ... } */
-/* .product-vendor { ... } */
-/* .label { ... } */
-/* .product-type { ... } */
-/* .product-description { ... } */
-/* .product-actions { ... } */
-/* .view-details-button { ... } */
 
 /* Ensure product message container uses full width */
 .product-message-container {
@@ -3548,11 +3299,6 @@ export default defineComponent({
     color: var(--text-muted);
 }
 
-.user-input-actions {
-    display: flex;
-    justify-content: flex-end;
-}
-
 .user-input-submit-button {
     padding: var(--space-sm) var(--space-lg);
     background: var(--accent-solid);
@@ -3582,17 +3328,6 @@ export default defineComponent({
     background: var(--background-soft);
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
-}
-
-.submitted-input {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    line-height: 1.4;
-}
-
-.submitted-input strong {
-    color: var(--text-primary);
-    font-weight: 600;
 }
 
 /* Responsive styles for user input */
@@ -3913,15 +3648,6 @@ export default defineComponent({
 }
 
 /* Welcome Input Section */
-.welcome-input-section {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: var(--background-base);
-    border-radius: var(--radius-lg);
-    position: relative;
-}
 
 .welcome-input-container {
     display: flex;
@@ -4859,28 +4585,6 @@ export default defineComponent({
 }
 
 /* Attachment restriction message */
-.attachment-restriction-message {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 14px;
-  background: linear-gradient(135deg,
-    rgba(59, 130, 246, 0.08) 0%,
-    rgba(96, 165, 250, 0.05) 100%);
-  border-radius: 10px;
-  margin-bottom: 10px;
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.08);
-}
-
-.restriction-text {
-  font-size: 12px;
-  color: #3b82f6;
-  font-weight: 500;
-  text-align: center;
-  letter-spacing: 0.01em;
-  line-height: 1.4;
-}
 
 /* Preview Modal Styles */
 .preview-modal-overlay {
