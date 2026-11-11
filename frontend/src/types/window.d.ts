@@ -27,5 +27,7 @@ interface Window {
         /** How soon the header may claim someone replies. */
         presence?: import('../utils/widgetPresence').WidgetPresence;
         hideBranding?: boolean;
+        /** GET /widgets/{id}'s answer for initialToken, from /bootstrap (see prefetched-widget-data). */
+        widgetData?: import('../webclient/prefetched-widget-data').PrefetchedWidgetData;
     };
 } 
