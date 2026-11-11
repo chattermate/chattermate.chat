@@ -28,8 +28,8 @@ SESSION = {"agent_id": "a", "org_id": "o", "customer_id": "c", "session_id": "s"
 
 def _patches(**service):
     return [patch.object(handlers, "authenticated_session", AsyncMock(return_value=dict(SESSION))),
-            patch.object(handlers, "session_off_loop", AsyncMock(return_value=MagicMock())),
-            patch.object(handlers, "close_session")] + \
+            patch.object(handlers, "SessionLocal", MagicMock()),
+            patch.object(handlers, "allow_request", return_value=True)] + \
         [patch.object(handlers.visitor_history, name, **spec) for name, spec in service.items()]
 
 
@@ -66,3 +66,22 @@ async def test_continuing_keeps_the_context_for_the_agent():
     saved = sio.save_session.await_args.args[1]
     assert saved[handlers.visitor_history.CONTINUED_KEY] == "ctx"
     assert sio.emit.await_args.args[:2] == ("conversation_continued", {"title": "Late order"})
+
+
+
+@pytest.mark.asyncio
+async def test_too_many_requests_answer_nothing_but_an_empty_list():
+    patches = [patch.object(handlers, "authenticated_session", AsyncMock(return_value=dict(SESSION))),
+               patch.object(handlers, "allow_request", return_value=False),
+               patch.object(handlers.visitor_history, "list_conversations")]
+    with patch.object(handlers, "sio") as sio:
+        sio.emit = AsyncMock()
+        for p in patches:
+            p.start()
+        try:
+            await handlers.handle_list_conversations("sid", {})
+            assert not handlers.visitor_history.list_conversations.called
+        finally:
+            for p in patches:
+                p.stop()
+    assert sio.emit.await_args.args[1]["items"] == []

@@ -40,7 +40,7 @@ const submit = () => {
 <template>
     <div class="message agent-message cm-question">
         <p v-if="prompt" :id="promptId" class="message-bubble cm-question__prompt">{{ prompt }}</p>
-        <form v-if="!message.isSubmitted" class="cm-question__form" @submit.prevent="submit">
+        <form v-if="!message.isSubmitted && index >= 0" class="cm-question__form" @submit.prevent="submit">
             <textarea
                 v-model="message.userInputValue"
                 class="cm-field cm-question__field"

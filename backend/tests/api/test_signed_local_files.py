@@ -139,7 +139,7 @@ class TestSigning:
     async def test_s3_urls_are_still_presigned(self, monkeypatch):
         from app.services import file_storage
         monkeypatch.setattr(file_storage.settings, "S3_FILE_STORAGE", True)
-        with patch.object(file_storage, "get_s3_signed_url", return_value="https://signed") as presign:
+        with patch.object(file_storage, "sign_s3_url", return_value="https://signed") as presign:
             assert await resolve_public_url("https://b.s3.amazonaws.com/k") == "https://signed"
         presign.assert_called_once()
 

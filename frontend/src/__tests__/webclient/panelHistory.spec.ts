@@ -110,6 +110,19 @@ describe('a past conversation', () => {
         expect(ctrl.continueConversation).toHaveBeenCalledWith('a')
     })
 
+    it('shows an old form without letting it submit into the current chat', () => {
+        ctrl = fakeController()
+        ctrl.history.value = { ...emptyHistory(), showing: true, items: [item('a', '2026-11-10T10:00:00')],
+            viewing: { id: 'a', open: false, before: null, messages: [
+                { message: '', message_type: 'form', created_at: '', session_id: '',
+                  attributes: { form_data: { title: 'Your details', fields: [{ name: 'email', label: 'Email', type: 'email' }] } } },
+            ] } }
+        wrapper = mountWithController(PastConversation, ctrl)
+        expect(wrapper.text()).toContain('Your details')
+        expect(wrapper.find('.cm-form-card button[type="submit"]').exists()).toBe(false)
+        expect(wrapper.get('.cm-form-card input').attributes('disabled')).toBeDefined()
+    })
+
     it('goes back to the chat for the current conversation', async () => {
         ctrl = fakeController()
         ctrl.history.value = { ...emptyHistory(), showing: true, items: [item('a', '2026-11-10T10:00:00', { current: true })],

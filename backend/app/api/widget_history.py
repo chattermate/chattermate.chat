@@ -22,11 +22,14 @@ Every event answers only from the socket's own scope (visitor_history.py). A
 conversation that is not the visitor's answers exactly like one that does not exist.
 """
 
+import asyncio
+
 from app.api.widget_actions import authenticated_session
 from app.core.logger import get_logger
 from app.core.socketio import sio
-from app.database import close_session, session_off_loop
+from app.database import SessionLocal
 from app.services import visitor_history
+from app.services.public_rate_limit import allow_request
 from app.services.socket_rate_limit import socket_rate_limit
 from app.services.widget_reply import WIDGET_NAMESPACE
 
@@ -39,19 +42,30 @@ def _field(data, name: str):
     return data.get(name) if isinstance(data, dict) else None
 
 
+# History events per conversation per minute, on top of the agent's own limits
+# (which are off unless the agent turned them on)
+EVENTS_PER_MINUTE = 60
+
+
+def _in_thread(work, session: dict):
+    with SessionLocal() as db:
+        return work(db, session)
+
+
 async def _run(sid: str, work):
-    """The authenticated socket session and a database connection for `work`."""
+    """The authenticated socket session and the result of `work`, run off the
+    event loop (it loads and decrypts messages). (session, None) on failure or
+    when this conversation asked too often."""
     session = await authenticated_session(sid)
     if session is None:
         return None, None
-    db = await session_off_loop()
+    if not allow_request(f"history:{session.get('session_id')}", EVENTS_PER_MINUTE, 60):
+        return session, None
     try:
-        return session, work(db, session)
+        return session, await asyncio.to_thread(_in_thread, work, session)
     except Exception as e:
         logger.error(f"Conversation history failed: {e}")
         return session, None
-    finally:
-        close_session(db)
 
 
 @sio.on('list_conversations', namespace=WIDGET_NAMESPACE)

@@ -161,9 +161,15 @@ class TestContinue:
         current = _conversation(db, test_widget, test_customer, messages=(), at=10)
         continued = history.continue_conversation(db, _socket(test_widget, test_customer, current=current), str(earlier))
         assert continued["title"] == "Order 1042 is late"
-        assert "Customer: Order 1042 is late" in continued["context"] and "You: Checking now." in continued["context"]
+        context = continued["context"]
+        assert context["session_id"] == str(current)
+        assert "UNTRUSTED EARLIER_CONVERSATION" in context["context"]
+        assert "Customer: Order 1042 is late" in context["context"] and "You: Checking now." in context["context"]
         note = db.query(ChatHistory).filter(ChatHistory.session_id == current).one()
         assert note.message_type == "system" and note.message == 'Continued from "Order 1042 is late"'
+        # Asking again adds no second note
+        history.continue_conversation(db, _socket(test_widget, test_customer, current=current), str(earlier))
+        assert db.query(ChatHistory).filter(ChatHistory.session_id == current).count() == 1
 
     def test_cannot_continue_another_visitors_or_the_current_conversation(self, db, test_widget, test_customer):
         current = _conversation(db, test_widget, test_customer, messages=())
@@ -171,3 +177,31 @@ class TestContinue:
         socket = _socket(test_widget, test_customer, current=current)
         assert history.continue_conversation(db, socket, str(theirs)) is None
         assert history.continue_conversation(db, socket, str(current)) is None
+
+
+
+class TestKeylessScope:
+    def test_a_verified_visitor_sees_keyless_chats_only_from_after_keys_existed(self, db, test_widget, test_customer):
+        recent = _conversation(db, test_widget, test_customer, scope=None)
+        old = _conversation(db, test_widget, test_customer, scope=None)
+        from app.models.session_to_agent import SessionToAgent
+        db.query(SessionToAgent).filter(SessionToAgent.session_id == old).update(
+            {"assigned_at": history.KEYS_INTRODUCED - timedelta(days=30)})
+        db.commit()
+        socket = _socket(test_widget, test_customer, scope="verified")
+        assert [i["id"] for i in history.list_conversations(db, socket)["items"]] == [str(recent)]
+        assert history.get_conversation(db, socket, str(old)) is None
+
+
+class TestResolvedBy:
+    def test_only_the_teammate_who_answered_a_finished_chat(self, db, test_widget, test_customer, test_user):
+        sid = _conversation(db, test_widget, test_customer, ("Help",))
+        db.add(ChatHistory(message="Sorted!", message_type="agent", session_id=sid, user_id=test_user.id,
+                           organization_id=test_widget.organization_id, agent_id=test_widget.agent_id,
+                           customer_id=test_customer.id, created_at=START + timedelta(minutes=5)))
+        db.commit()
+        socket = _socket(test_widget, test_customer)
+        assert history.list_conversations(db, socket)["items"][0]["resolved_by"] is None  # still open
+        SessionToAgentRepository(db).close_session(session_id=str(sid))
+        item = history.list_conversations(db, socket)["items"][0]
+        assert item["resolved_by"]["name"] == test_user.full_name
