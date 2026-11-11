@@ -369,6 +369,16 @@ class TestEnhancedWebsiteKnowledgeBase:
         mock_reader.read.assert_called_once()
         assert mock_vector_db.upsert_page.call_count == len(TEST_PAGES)
 
+    def test_pages_cannot_be_read_without_being_stored(self, mock_vector_db, mock_reader):
+        """A page read again must replace its old copy: upsert=False is refused."""
+        kb = EnhancedWebsiteKnowledgeBase(urls=TEST_URLS[:1], reader=mock_reader)
+        kb.vector_db = mock_vector_db
+
+        with pytest.raises(ValueError):
+            kb.load(upsert=False)
+
+        mock_reader.read.assert_not_called()
+
     def test_load_never_builds_an_approximate_index(self, mock_vector_db, mock_reader):
         """Agent searches filter by agent_id; an HNSW/IVFFlat index would filter
         after choosing candidates and could return fewer results. Exact search only."""

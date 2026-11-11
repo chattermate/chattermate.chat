@@ -361,6 +361,18 @@ describe('StepTeach while sources are read', () => {
       expect(movedOn()).toBe(1)
     })
 
+    it('stays and says why when a site that had stored pages then fails', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 2, knowledge_id: 1 })))
+      getKnowledgeByAgent.mockResolvedValue(indexed)
+      await mountStep(follow)
+
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'failed', { pages_learned: 2, knowledge_id: 1, reason: 'It stopped partway.' })))
+      await nextPoll()
+
+      expect(movedOn()).toBe(0)
+      expect(failure().text()).toContain('It stopped partway.')
+    })
+
     it('does nothing with no knowledge at all', async () => {
       await mountStep(follow)
 
@@ -416,8 +428,19 @@ describe('StepTeach while sources are read', () => {
 
   it('counts a site that has stored pages once against the plan cap', async () => {
     getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 4, knowledge_id: 1 })))
+    getKnowledgeByAgent.mockResolvedValue(indexed)
     getKnowledgeByOrganization.mockResolvedValue(indexed)
     await mountStep()
+
+    expect((wrapper.vm as any).$.setupState.inUseCount).toBe(1)
+  })
+
+  it('still counts a site whose source appeared after the total was fetched', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing')))
+    await mountStep()
+
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 1, knowledge_id: 1 })))
+    await nextPoll()
 
     expect((wrapper.vm as any).$.setupState.inUseCount).toBe(1)
   })

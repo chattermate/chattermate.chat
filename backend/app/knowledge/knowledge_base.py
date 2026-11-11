@@ -512,8 +512,9 @@ class KnowledgeManager:
                     await self._learn_site(queue_item, queue_repo, reader, max_links)
 
                     # Fail clearly if the sitemap listed no pages (wrong URL / not a
-                    # sitemap) rather than creating an empty knowledge source.
-                    if getattr(reader, '_sitemap_page_count', 0) == 0:
+                    # sitemap) rather than creating an empty knowledge source. A
+                    # sitemap already learned is not read again, so has no count.
+                    if getattr(reader, '_sitemap_page_count', None) == 0:
                         raise ValueError(
                             "No pages found in the sitemap. Make sure the URL points "
                             "to a valid sitemap.xml."

@@ -342,6 +342,8 @@ async def test_a_pdf_that_fails_is_never_marked_completed_first(knowledge_manage
 
 # ---- Websites: learned page by page ----
 
+from types import SimpleNamespace  # noqa: E402
+
 from app.knowledge.page_sink import SourceRemoved  # noqa: E402
 
 SITE = "https://shop.example"
@@ -409,3 +411,21 @@ async def test_a_site_removed_mid_crawl_is_cleaned_up(knowledge_manager, site_ru
 
     learning.discard.assert_called_once()
     learning.ensure_source.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reader,fails", [
+    (SimpleNamespace(), False),  # already learned: not read again, no count
+    (SimpleNamespace(_sitemap_page_count=0), True),  # read, and it listed nothing
+    (SimpleNamespace(_sitemap_page_count=4), False),
+])
+async def test_only_a_sitemap_that_was_read_and_listed_nothing_fails(knowledge_manager, reader, fails):
+    queue_item = MagicMock(id=7, source_type='sitemap', source=f"{SITE}/sitemap.xml", queue_metadata={})
+    with patch('app.knowledge.knowledge_base.SitemapReader', return_value=reader), \
+         patch('app.knowledge.knowledge_base.KnowledgeQueueRepository'), \
+         patch.object(knowledge_manager, '_learn_site', AsyncMock()):
+        if fails:
+            with pytest.raises(ValueError, match="No pages found"):
+                await knowledge_manager.process_knowledge(queue_item)
+        else:
+            assert await knowledge_manager.process_knowledge(queue_item) is True

@@ -130,11 +130,18 @@ const moveOnIfLearned = () => {
   if (learned) emit('next')
   return learned
 }
-watch(pagesSoFar, () => moveOnIfLearned())
+// Only on new pages: a site that stops being read (finished or failed) is
+// handled by handleLearned, once its outcome is known.
+watch(pagesSoFar, (now, before) => {
+  if (now > before) moveOnIfLearned()
+})
 
 // Crawls still running count against the cap too (the server counts them),
-// except one that has stored a page: its source is already in the total.
-const inUseCount = computed(() => orgTotalCount.value + crawling.value.filter((q) => !q.knowledge_id).length)
+// except one whose source was already there when the total was fetched.
+const inUseCount = computed(() => {
+  const counted = new Set(knowledgeItems.value.map((k) => k.id))
+  return orgTotalCount.value + crawling.value.filter((q) => !q.knowledge_id || !counted.has(q.knowledge_id)).length
+})
 const { fitToCap } = useStagedSourceCap(inUseCount, urls, files)
 
 // A newly staged source makes the last failure history: Continue sends it and

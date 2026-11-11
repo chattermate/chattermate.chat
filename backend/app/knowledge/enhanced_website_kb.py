@@ -266,13 +266,15 @@ class EnhancedWebsiteKnowledgeBase(AgentKnowledge):
         filters: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Read the website into the vector db, storing each page as soon as it
-        is read (see page_sink). Pages are always upserted, whatever
-        ``upsert`` says: reading a page again must replace it.
+        is read (see page_sink). Pages are always upserted: reading a page
+        again must replace it, so ``upsert=False`` (agno's signature) is refused.
 
         Raises SourceRemoved when the source is deleted mid-crawl, and
         SourceTimedOut / the stored-nothing errors when nothing was stored.
         Past the time limit with pages stored, it keeps them and completes.
         """
+        if not upsert:
+            raise ValueError("Website pages are always upserted: a page read again replaces its old copy")
         total_start_time = time.time()
         self._stopped_at_time_limit = False
 

@@ -1358,6 +1358,6 @@ class EnhancedWebsiteReader(WebsiteReader):
         
         end_time = time.time()
         duration = end_time - start_time
-        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed reading from {url} - Created {len(documents)} documents (Total time: {duration:.2f}s)")
+        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed reading from {url} - Created {created} documents (Total time: {duration:.2f}s)")
         
         return documents 
