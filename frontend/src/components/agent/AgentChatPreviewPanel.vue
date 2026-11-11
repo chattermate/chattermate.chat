@@ -15,7 +15,7 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
 import { resolveUploadUrl } from '@/config/api'
 import { orbSvgDataUri, resolveOrbStyle } from '@/utils/orb'
@@ -29,6 +29,7 @@ import { sanitizeHtml } from '@/utils/sanitize'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '@/utils/aiDisclaimer'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useImageFallback } from '@/composables/useImageFallback'
+import { widgetUiVersion } from '@/webclient/widget-ui'
 
 const props = defineProps<{
     isActive: boolean
@@ -53,6 +54,11 @@ const showBranding = computed(() =>
     !(hasEnterpriseModule && subscriptionStore.value.currentPlan?.plan?.features?.custom_branding === true))
 onMounted(() => { if (hasEnterpriseModule) initializeSubscriptionStore() })
 console.log('AgentChatPreviewPanel props:', props.customization)
+// The agent's stored widget design: the redesigned panel (2) previews with the
+// widget's own components (AgentPanelPreview); the classic one (1) is drawn here.
+const isPanelDesign = computed(() => widgetUiVersion(props.customization) === 2)
+// Loaded only for an agent on the new design: it brings the widget's panel and its CSS.
+const AgentPanelPreview = defineAsyncComponent(() => import('./AgentPanelPreview.vue'))
 const isExpanded = ref(true)
 const emailInput = ref('')
 const hasStartedChat = ref(false)
@@ -553,7 +559,17 @@ const handleInitiationClick = () => {
 </script>
 
 <template>
-    <div class="chat-container cm-surface" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }, themeClass]" :style="{ ...containerStyles, ...themeVars }">
+    <AgentPanelPreview
+        v-if="isPanelDesign"
+        :customization="customization"
+        :agent-id="agentId"
+        :agent-name="agentName"
+        :photo-url="photoUrl"
+        :show-branding="showBranding"
+        :window-width="windowWidth"
+        :window-height="windowHeight"
+    />
+    <div v-else class="chat-container cm-surface" :class="[{ collapsed: !isExpanded, 'ask-anything-style': isAskAnythingStyle }, themeClass]" :style="{ ...containerStyles, ...themeVars }">
         <!-- Chat Initiation Message -->
         <div 
             v-if="showInitiationMessage && hasChatInitiationMessages && (customization.showBubblePreview || customization.showInitiationPreview || !isExpanded)" 

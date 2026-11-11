@@ -24,7 +24,7 @@ limitations under the License.
  * classic view.
  */
 import { computed, inject, nextTick, ref, watch } from 'vue'
-import { WIDGET_CTX } from './controller'
+import { WIDGET_CTX, WIDGET_PREVIEW } from './controller'
 import PanelHeader from './PanelHeader.vue'
 import MessageList from './MessageList.vue'
 import Composer from './Composer.vue'
@@ -38,7 +38,6 @@ import FrontScreen from './screens/FrontScreen.vue'
 import ConversationEnded from './ConversationEnded.vue'
 import PreviewModal from './PreviewModal.vue'
 import { usePanelVisibility } from '../../composables/usePanelVisibility'
-import { useFrameDocument } from '../../composables/useFrameDocument'
 import { usePanelActivity, usePanelCascade, usePanelExpand } from '../../composables/usePanelHostMotion'
 import { postToHost } from '../host-bridge'
 import '../widget-panel.css'
@@ -61,8 +60,10 @@ const {
 
 // The loader's motion: the open cascade, the expand, the working dot while hidden.
 const { cascading, play: playCascade } = usePanelCascade()
-const { expanded, resizing, toggleExpand } = usePanelExpand(postToHost)
-usePanelActivity(loading, ctrl.hostVisible, postToHost)
+// The dashboard preview has no embedding page to tell anything.
+const toHost = inject(WIDGET_PREVIEW, false) ? () => {} : postToHost
+const { expanded, resizing, toggleExpand } = usePanelExpand(toHost)
+usePanelActivity(loading, ctrl.hostVisible, toHost)
 
 const list = ref<InstanceType<typeof MessageList> | null>(null)
 const composer = ref<InstanceType<typeof Composer> | null>(null)
@@ -83,7 +84,6 @@ watch(awaitingEmail, (awaiting, wasAwaiting) => {
     nextTick(() => composer.value?.focus())
 })
 
-useFrameDocument()
 const { report, focusIfShown } = usePanelVisibility(ctrl.hostVisible, {
     focus: focusField,
     onHide: () => list.value?.remember(),

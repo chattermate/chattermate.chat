@@ -19,10 +19,11 @@ limitations under the License.
 // panel view show the same palette (ASK_ANYTHING / AURORA, or the search-bar trigger).
 import { inject } from 'vue'
 import AskAiPanel from './AskAiPanel.vue'
-import { WIDGET_CTX } from './panel/controller'
+import { WIDGET_CTX, WIDGET_PREVIEW } from './panel/controller'
 import { AI_DISCLAIMER_TEXT } from '../utils/aiDisclaimer'
 
 const ctrl = inject(WIDGET_CTX)!
+const preview = inject(WIDGET_PREVIEW, false)
 const {
     messages, newMessage, agentName, quickActions, customization, askAiSubtitle, placeholderText,
     isMessageInputEnabled, canTypeMessage, loading, showCitations, showAiDisclaimer, showBranding,
@@ -53,6 +54,7 @@ const setDraft = (text: string) => { ctrl.newMessage.value = text }
         :starting-new-chat="startingNewChat"
         :new-chat-armed="newChatArmed"
         :new-chat-error="newChatError"
+        :preview="preview"
         @new-chat="ctrl.requestNewChat"
         @confirm-new-chat="ctrl.confirmNewChat"
         @cancel-new-chat="ctrl.disarmNewChat"

@@ -19,6 +19,7 @@ limitations under the License.
 // the agent's design asks for (customization_metadata.widget_ui).
 import { provide } from 'vue'
 import { useWidgetController } from '../composables/useWidgetController'
+import { useFrameDocument } from '../composables/useFrameDocument'
 import { WIDGET_CTX, type WidgetControllerProps } from './panel/controller'
 import ClassicWidget from './ClassicWidget.vue'
 import PanelWidget from './panel/PanelWidget.vue'
@@ -29,6 +30,8 @@ const props = defineProps<WidgetControllerProps>()
 const ctrl = useWidgetController(props)
 provide(WIDGET_CTX, ctrl)
 const { ui } = ctrl
+// The redesign fills its frame edge to edge (the classic view keeps the page as it was).
+useFrameDocument(() => ui.value === 2)
 </script>
 
 <template>

@@ -132,4 +132,6 @@ export interface AgentCustomization {
 
 export interface AgentWithCustomization extends AgentResponse {
   customization?: AgentCustomization
+  /** Response-only: whether this server serves the redesigned widget at all (WIDGET_UI_V2_ENABLED). */
+  widget_ui_v2_enabled?: boolean
 }

@@ -16,7 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { ref, watch, onMounted, computed, onUnmounted, nextTick } from 'vue'
-import type { AgentWithCustomization, AgentCustomization, ChatStyle } from '@/types/agent'
+import type { AgentWithCustomization, AgentCustomization, ChatStyle, WidgetUiVersion } from '@/types/agent'
 import { agentService } from '@/services/agent'
 import WebFont from 'webfontloader'
 import { useSubscriptionStorage } from '@/utils/storage'
@@ -29,6 +29,8 @@ import { WINDOW_PRESETS, WINDOW_STANDARD, useWindowSize } from '@/composables/us
 import LauncherSection from './LauncherSection.vue'
 import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
+import WidgetDesignChoice from './WidgetDesignChoice.vue'
+import { widgetUiVersion } from '@/webclient/widget-ui'
 
 const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
@@ -204,6 +206,24 @@ const selectChatStyle = (value: ChatStyle) => {
     }
     emit('preview', { ...customization.value })
 }
+
+// ---- Widget design (customization_metadata.widget_ui): classic or the redesign ----
+// Saved with the rest of the form; the preview switches at once. Reassigned
+// wholesale, like the placement below, so the preview's watcher sees the change.
+const widgetDesign = computed<WidgetUiVersion>({
+    get: () => widgetUiVersion(customization.value),
+    set: (version) => {
+        const meta = { ...((customization.value.customization_metadata as Record<string, any>) ?? {}) }
+        meta.widget_ui = { ...(meta.widget_ui ?? {}), version }
+        customization.value.customization_metadata = meta
+        emit('preview-mode', 'chat')
+    },
+})
+
+// Whether this server serves the redesign at all: read-only, on every agent the
+// dashboard loads (the agent's choice is still saved when it is off). An older
+// server says nothing: no note.
+const redesignServed = computed(() => props.agent.widget_ui_v2_enabled !== false)
 
 // ---- Widget placement (stored in customization_metadata.widget_display) ----
 // The embed loader reads these as site-wide defaults; options set in the install
@@ -672,6 +692,7 @@ const hideInitiationPreview = () => {
                 :open="openSection === 'design'" @toggle="toggleSection('design')">
                 <!-- Chat design Section -->
                 <div class="subsection">
+                    <WidgetDesignChoice v-model="widgetDesign" :served="redesignServed" />
                     <h4 class="subsection-heading">Style</h4>
                     <p class="section-subtext">Pick the look that fits your store.</p>
 

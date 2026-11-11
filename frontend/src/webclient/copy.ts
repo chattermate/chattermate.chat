@@ -118,3 +118,17 @@ export const PANEL_COPY = {
     imagePreview: 'Image preview',
     closePreview: 'Close preview',
 } as const
+
+/**
+ * The dashboard preview's sample conversation (usePreviewController): a question,
+ * an answer citing its sources, and the in-app action it took.
+ */
+export const PREVIEW_SAMPLE_COPY = {
+    question: 'Do you offer free returns?',
+    answer: 'Yes, returns are free for 30 days. Start one from your order page and we will email you a prepaid label.',
+    sources: [
+        { name: 'Returns policy', type: 'url' },
+        { name: 'Shipping FAQ', type: 'file' },
+    ],
+    receipt: 'Opened your order page',
+} as const

@@ -47,7 +47,7 @@ export { agentSocketOverPolling, agentSocketOverWebSocket, signInCookies, type S
 export { prepareOrg, type PreparedOrg } from './org-setup'
 export { readOrgState, writeOrgState, storageStatePath, type OrgState } from './org-state'
 export { AgentActionsTab, type ActionForm } from './pages/agent-actions.page'
-export { AgentCustomizationPage, type CustomizationSection, type LauncherGroup, type LogoFile } from './pages/agent-customization.page'
+export { AgentCustomizationPage, type CustomizationSection, type LauncherGroup, type LogoFile, type WidgetDesign } from './pages/agent-customization.page'
 export { AgentJourneysTab } from './pages/agent-journeys.page'
 export { AgentsPage } from './pages/agents.page'
 export { AiConfigPage } from './pages/ai-config.page'

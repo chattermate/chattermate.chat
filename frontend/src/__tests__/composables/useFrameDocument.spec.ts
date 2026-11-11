@@ -39,3 +39,27 @@ describe('fitting the frame page to the panel', () => {
         expect(isWidgetFrame(blocked)).toBe(true)
     })
 })
+
+describe('the widget root', () => {
+    it('fits the frame only once the design is the redesign', async () => {
+        const { ref, nextTick, effectScope } = await import('vue')
+        const { useFrameDocument } = await import('@/composables/useFrameDocument')
+        const parent = Object.getOwnPropertyDescriptor(window, 'parent')
+        Object.defineProperty(window, 'parent', { configurable: true, value: {} })
+        try {
+            document.body.style.margin = ''
+            const ui = ref(1)
+            const scope = effectScope()
+            scope.run(() => useFrameDocument(() => ui.value === 2))
+            expect(document.body.style.margin).toBe('')
+            ui.value = 2
+            await nextTick()
+            expect(document.body.style.margin).toBe('0px')
+            scope.stop()
+        } finally {
+            if (parent) Object.defineProperty(window, 'parent', parent)
+            document.body.style.margin = ''
+        }
+    })
+})
+

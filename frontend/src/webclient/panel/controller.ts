@@ -253,5 +253,11 @@ export interface WidgetController
     registerView: (hooks: WidgetViewHooks) => void
 }
 
+/**
+ * Provided (true) by the dashboard preview only: there is no embedding page, so the
+ * views post it nothing and listen to none of its keys. False when not provided.
+ */
+export const WIDGET_PREVIEW: InjectionKey<boolean> = Symbol('WidgetPreview')
+
 /** Provided by the widget root (WidgetBuilder.vue); injected by the views. */
 export const WIDGET_CTX: InjectionKey<WidgetController> = Symbol('WidgetController')

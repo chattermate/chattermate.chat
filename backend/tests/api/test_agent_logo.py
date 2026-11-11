@@ -26,6 +26,7 @@ from PIL import Image
 from app.api import agent as agent_router
 from app.api import agent_logo
 from app.core.auth import get_unified_auth
+from app.core.config import settings
 from app.database import get_db
 from app.models.agent import Agent, AgentCustomization, AgentType
 from app.models.permission import Permission, role_permissions
@@ -284,3 +285,14 @@ class TestCustomizationWrite:
     def test_a_bad_widget_design_is_refused(self, client, db, agent):
         response = self._save(client, agent, customization_metadata={"widget_ui": {"version": True}})
         assert response.status_code == 422
+
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_the_dashboard_learns_whether_the_server_serves_the_redesign(self, client, db, agent, enabled):
+        # Before any customization is saved, and after a choice the switch overrides.
+        with patch.object(settings, "WIDGET_UI_V2_ENABLED", enabled):
+            assert client.get(f"/api/agent/{agent.id}").json()["widget_ui_v2_enabled"] is enabled
+            assert self._save(client, agent, customization_metadata={"widget_ui": {"version": 2}}).status_code == 200
+            body = client.get(f"/api/agent/{agent.id}").json()
+        assert body["widget_ui_v2_enabled"] is enabled
+        # The stored choice is the agent's, whatever the switch says.
+        assert body["customization"]["customization_metadata"]["widget_ui"] == {"version": 2}
