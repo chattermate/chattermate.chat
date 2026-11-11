@@ -189,6 +189,7 @@ export function usePreviewController(
         verifyEmailCode: noop,
         restartEmailCheck: noop,
         history: ref(emptyHistory()),
+        pageSuggestions: ref({ loaded: false, heading: 'popular' as const, pill: null, items: [] }),
         openHistory: noop,
         closeHistory: noop,
         refreshConversations: noop,

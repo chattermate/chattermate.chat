@@ -28,6 +28,7 @@ import type { WorkflowForm, WorkflowMessage } from '../../composables/useWorkflo
 import type { LiveStep } from '../../composables/useAgentTrace'
 import type { EmailCheckState } from '../../composables/useEmailCheck'
 import type { HistoryState } from '../../composables/useConversationHistory'
+import type { PageSuggestions } from '../../composables/usePageSuggestions'
 import type { VisitorFeedback } from './answer-extras'
 
 /** What the widget root is given (by widget.ts, or the dashboard preview). */
@@ -147,6 +148,8 @@ export interface WidgetConversation {
     sendFeedback: (message: WidgetMessage, value: VisitorFeedback | null) => void
     /** Ask the shop for a product's options, for the product sheet (product-sheet.ts). */
     requestProductOptions: (productId: string) => void
+    /** "Suggested for this page" for the start state (usePageSuggestions). */
+    pageSuggestions: Shown<PageSuggestions>
     /** "Your conversations": the visitor's own past chats (useConversationHistory). */
     history: Shown<HistoryState>
     openHistory: () => void

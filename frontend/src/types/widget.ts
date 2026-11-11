@@ -18,6 +18,8 @@ import type { ChatStyle, WidgetPosition } from './agent'
 import type { Message, ShopifyProductImage } from './chat'
 
 /** A product card in a widget message, as the shop tools send it. */
+import type { QuickAction } from '../webclient/quick-actions'
+
 export interface WidgetProduct {
   id: string
   title: string
@@ -109,7 +111,7 @@ export interface AgentCustomization {
     welcome_subtitle?: string;
     welcome_message?: string;
     chat_initiation_messages?: string[];
-    quick_actions?: string[];
+    quick_actions?: QuickAction[];
 }
 
 

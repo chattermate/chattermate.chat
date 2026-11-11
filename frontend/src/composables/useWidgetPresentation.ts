@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { everyPageLabels } from '../webclient/quick-actions'
 import { helpCenterLink } from '../webclient/help-center-link'
 import { computed, ref, type Ref } from 'vue'
 import type { AgentCustomization } from '../types/agent'
@@ -138,11 +139,9 @@ export function useWidgetPresentation({
 
     // Welcome message + quick actions shown on open (no history yet); they clear once
     // the visitor sends their first message.
-    const quickActions = computed<string[]>(() =>
-        Array.isArray(customization.value.quick_actions)
-            ? customization.value.quick_actions.filter(a => !!a && a.trim().length > 0)
-            : []
-    )
+    // Only the every-page ones: a rule for some pages is the server's to place
+    // ("Suggested for this page", usePageSuggestions).
+    const quickActions = computed<string[]>(() => everyPageLabels(customization.value.quick_actions))
     const welcomeMessageText = computed(() => (customization.value.welcome_message || '').trim())
     // The welcome bubble shows at the top of the thread; the quick actions render as a
     // bar just above the input (comp layout). Both only appear before the first message.

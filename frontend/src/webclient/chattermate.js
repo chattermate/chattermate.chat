@@ -1794,6 +1794,7 @@ import {
       post: postToFrame,
       canAnnounce: function () { return widgetMounted },
       canExpand: function () { return isFloatingWindow() && !isMobileDevice() },
+      isPhone: isMobileDevice,
     })
     panelHost = panel
     panel.sync()
@@ -2246,7 +2247,8 @@ import {
 
     // Leads record the page they came from; tell the frame when a single-page app moves on.
     function reportPage() {
-      if (widgetMounted) postToFrame({ type: 'HOST_PAGE', url: window.location.href })
+      // The title names the page in the redesign's "Suggested for this page"
+      if (widgetMounted) postToFrame({ type: 'HOST_PAGE', url: window.location.href, title: String(document.title || '').slice(0, 200) })
     }
 
     // SPA routers move on with history.pushState/replaceState, which fire no

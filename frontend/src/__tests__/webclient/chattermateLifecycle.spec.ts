@@ -185,7 +185,7 @@ describe('ChatterMate frame and lifecycle API', () => {
 
       const pages = post.mock.calls.filter(([m]) => (m as any).type === 'HOST_PAGE')
       expect(pages).toHaveLength(3)
-      expect(pages[0]).toEqual([{ type: 'HOST_PAGE', url: window.location.href }, FRAME_ORIGIN])
+      expect(pages[0]).toEqual([{ type: 'HOST_PAGE', url: window.location.href, title: document.title }, FRAME_ORIGIN])
     })
 
     it('tells the frame when a single-page app routes with pushState or replaceState, until destroyed', async () => {

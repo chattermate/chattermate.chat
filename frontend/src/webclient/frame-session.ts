@@ -27,6 +27,7 @@ limitations under the License.
  * embeds); none of this runs for them.
  */
 
+import { ref } from 'vue'
 import { sanitizeToken, localTokenStore, memoryTokenStore, TOKEN_STORAGE_KEY, type TokenStore } from '../composables/useConversationToken'
 import { postToHost, setHostOrigin } from './host-bridge'
 import { widgetEnv } from './widget-env'
@@ -68,8 +69,14 @@ export const hostSharesIdentity = (): boolean => !boot || (hosted && !opaqueHost
 /** The embedding page's own URL, as its loader reported it. */
 export const reportedPageUrl = (): string | null => hostPageUrl
 
-export const setHostPageUrl = (url: unknown): void => {
-  if (typeof url === 'string' && url) hostPageUrl = url
+/** The host page as the loader last reported it, for what reacts to page changes. */
+export const hostPage = ref<{ url: string | null; title: string | null }>({ url: null, title: null })
+
+export const setHostPageUrl = (url: unknown, title?: unknown): void => {
+  if (typeof url === 'string' && url) {
+    hostPageUrl = url
+    hostPage.value = { url, title: typeof title === 'string' ? title : hostPage.value.title }
+  }
 }
 
 /** Where the widget keeps its token in this mode. */
