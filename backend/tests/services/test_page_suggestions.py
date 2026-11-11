@@ -136,3 +136,13 @@ def test_a_percent_or_backslash_in_the_page_url_is_literal(db, test_organization
     _faq(db, test_organization_id, "Wildcard?", "https://shop.example/pages/x")
     assert suggestions_for(db, test_organization_id, _agent([]), "https://shop.example/%25")["items"] == []
     assert suggestions_for(db, test_organization_id, _agent([]), "https://shop.example/a%5C")["items"] == []
+
+
+
+def test_the_visitor_schema_turns_stored_rules_into_every_page_labels():
+    """Older widget bundles call .trim() on each quick action: they only ever get strings."""
+    from app.models.schemas.widget import AgentCustomizationResponse
+    response = AgentCustomizationResponse.model_validate(
+        {"quick_actions": ["Track my order", {"label": "Sizes?", "match": "/products/*"}]})
+    assert response.quick_actions == ["Track my order"]
+    assert AgentCustomizationResponse.model_validate({"quick_actions": None}).quick_actions is None
