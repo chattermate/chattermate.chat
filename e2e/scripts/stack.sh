@@ -203,14 +203,12 @@ build_widget() {
 }
 
 # The embed loader (chattermate.min.js), built from source into the dashboard copy's
-# public/ so vite ships it in the build — what build-webclient-*.ts does.
+# public/ so vite ships it in the build — the same bundle build-webclient-*.ts make
+# (scripts/loader-build.ts, which also compacts the loader's template-literal CSS).
 build_loader() {
   local src="$1"
-  (cd "$src" && node_modules/.bin/esbuild src/webclient/chattermate.js --bundle --minify --format=iife \
-    --target=es2015 --loader:.svg=text --log-level=warning \
-    --define:process.env.NODE_ENV='"production"' \
-    --define:__CHATTERMATE_API_URL__="\"http://127.0.0.1:$BACKEND_PORT/api/v1\"" \
-    --outfile=public/webclient/chattermate.min.js) >&2
+  (cd "$src" && node_modules/.bin/tsx scripts/loader-build.ts public/webclient/chattermate.min.js \
+    "http://127.0.0.1:$BACKEND_PORT/api/v1") >&2
 }
 
 # One copy of frontend/ feeds all three builds: loader, widget, dashboard.

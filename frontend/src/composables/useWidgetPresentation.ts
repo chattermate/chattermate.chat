@@ -37,6 +37,8 @@ export interface WidgetPresentationOptions {
     shouldShowNewConversationOption: Readonly<Ref<boolean>>
     allowAttachments: Ref<boolean>
     uploadedAttachments: Ref<unknown[]>
+    /** The embed loader frosts the page behind the redesigned panel (Glass may be see-through). */
+    hostBackdrop?: Readonly<Ref<boolean>>
 }
 
 // Premium design presets → CSS theme class applied on .chat-container.
@@ -70,6 +72,7 @@ export function useWidgetPresentation({
     shouldShowNewConversationOption,
     allowAttachments,
     uploadedAttachments,
+    hostBackdrop,
 }: WidgetPresentationOptions) {
     // Handle human agent profile picture URL. Signed S3 URLs pass through; local
     // paths are resolved against the runtime API origin (the stored path already
@@ -127,7 +130,7 @@ export function useWidgetPresentation({
         chat_text_color: customization.value.chat_text_color,
         accent_color: customization.value.accent_color,
         font_family: customization.value.font_family,
-    }, { ui: ui.value }))
+    }, { ui: ui.value, hostBackdrop: !!hostBackdrop?.value }))
 
     // Welcome message + quick actions shown on open (no history yet); they clear once
     // the visitor sends their first message.

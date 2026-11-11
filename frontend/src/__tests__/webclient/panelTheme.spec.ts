@@ -208,6 +208,15 @@ describe('the panel fill', () => {
         expect(themeCssVars('GLASS')['--cm-card']).toBe(getThemeTokens('GLASS').card)
     })
 
+    it('goes see-through for Glass once the loader confirms it frosts the page (HOST_CAPABILITIES)', () => {
+        expect(themeCssVars('GLASS', {}, { ui: 2, hostBackdrop: true })['--cm-card']).toBe(getThemeTokens('GLASS').card)
+        // Only Glass: every other style keeps its own card whatever the loader says.
+        expect(themeCssVars('SUNRISE', {}, { ui: 2, hostBackdrop: true })['--cm-card'])
+            .toBe(themeCssVars('SUNRISE', {}, { ui: 2 })['--cm-card'])
+        // A custom background is the agent's choice, frosted or not.
+        expect(themeCssVars('GLASS', { chat_background_color: '#223344' }, { ui: 2, hostBackdrop: true })['--cm-card']).toBe('#223344')
+    })
+
     it.each(['SUNRISE', 'AURORA', 'TERMINAL'])('is the %s card otherwise', (style) => {
         expect(themeCssVars(style, {}, { ui: 2 })['--cm-card']).toBe(getThemeTokens(style).card)
     })

@@ -49,6 +49,8 @@ export function useStickyScroll(followers: WatchSource<unknown>[]) {
     const content = ref<HTMLElement | null>(null)
     // Starts pinned: an empty list is at its bottom.
     const pinned = ref(true)
+    // Something arrived below while the visitor read further up ("New messages").
+    const unseen = ref(false)
     let frame: number | null = null
     let remembered: number | null = null
 
@@ -60,11 +62,16 @@ export function useStickyScroll(followers: WatchSource<unknown>[]) {
     /** The visitor scrolled: are they at the bottom now? */
     const onScroll = () => {
         if (scroller.value) pinned.value = isAtBottom(scroller.value)
+        if (pinned.value) unseen.value = false
     }
 
     /** New content: keep the end in view, but only if the visitor was there (once per frame). */
     const follow = () => {
-        if (!pinned.value || frame !== null) return
+        if (!pinned.value) {
+            unseen.value = true
+            return
+        }
+        if (frame !== null) return
         frame = nextFrame(() => {
             frame = null
             if (pinned.value) pinNow()
@@ -74,6 +81,7 @@ export function useStickyScroll(followers: WatchSource<unknown>[]) {
     /** Go to the end whatever the position (the visitor just sent a message). */
     const scrollToBottom = () => {
         pinned.value = true
+        unseen.value = false
         nextTick(pinNow)
     }
 
@@ -109,5 +117,5 @@ export function useStickyScroll(followers: WatchSource<unknown>[]) {
         sizes?.disconnect()
     })
 
-    return { scroller, content, pinned, onScroll, follow, scrollToBottom, remember, restore }
+    return { scroller, content, pinned, unseen, onScroll, follow, scrollToBottom, remember, restore }
 }

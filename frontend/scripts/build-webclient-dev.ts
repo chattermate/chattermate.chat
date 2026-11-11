@@ -1,4 +1,4 @@
-import { build } from 'esbuild'
+import { buildLoader } from './loader-build'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import * as dotenv from 'dotenv'
@@ -28,22 +28,13 @@ async function buildWebClientDev() {
     const apiUrl = process.env.VITE_API_URL || 'http://localhost:8000/api/v1'
     console.log('Using API URL:', apiUrl)
 
-    const sourceFile = resolve(dirname(__dirname), 'src/webclient/chattermate.js')
-
-    await build({
-      entryPoints: [sourceFile],
-      bundle: true,
-      minify: false, // Don't minify for development
+    // Shared by the prod and dev builds and the e2e stack (loader-build.ts): esbuild, plus
+    // the step that compacts the loader's template-literal CSS.
+    await buildLoader({
       outfile: resolve(dirname(__dirname), 'public/webclient/chattermate.min.js'),
-      format: 'iife',
-      target: ['es2015'],
-      loader: {
-        '.svg': 'text',
-      },
-      define: {
-        'process.env.NODE_ENV': '"development"',
-        '__CHATTERMATE_API_URL__': JSON.stringify(apiUrl),
-      },
+      apiUrl,
+      nodeEnv: 'development',
+      minify: false,
       sourcemap: true, // Add sourcemap for development
     })
 

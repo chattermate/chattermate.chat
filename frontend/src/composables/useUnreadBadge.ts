@@ -16,6 +16,29 @@ limitations under the License.
 
 import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue'
 import { postToHost } from '../webclient/host-bridge'
+import { renderMarkdown } from '../webclient/markdown'
+
+/** Longest unread preview the loader shows (it cuts again on its side). */
+export const PREVIEW_MAX_CHARS = 120
+
+/**
+ * A reply as one line of plain text: its markdown rendered (and sanitised), then
+ * only the text kept, parsed inertly (DOMParser loads nothing), cut to the limit.
+ */
+export function previewText(message: string): string {
+    const html = renderMarkdown(message || '')
+    const text = (new DOMParser().parseFromString(html, 'text/html').body.textContent || '')
+        .replace(/\s+/g, ' ').trim()
+    return text.length > PREVIEW_MAX_CHARS ? `${text.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}…` : text
+}
+
+/** The redesigned panel also shows the reply itself in the loader's peek. */
+export interface UnreadPreview {
+    /** Read when a reply arrives: whether to send it (the redesign is on). */
+    enabled: () => boolean
+    /** Who the reply is from when the message does not say. */
+    agentName: () => string
+}
 
 /**
  * Tracks unread agent/bot messages that arrive while the widget is minimized and
@@ -23,7 +46,7 @@ import { postToHost } from '../webclient/host-bridge'
  * badge). The embedder drives visibility via `WIDGET_VISIBILITY` messages and
  * shows the nudge count until the chat is first opened, then this unread count.
  */
-export function useUnreadBadge(messages: Ref<any[]>) {
+export function useUnreadBadge(messages: Ref<any[]>, preview?: UnreadPreview) {
     const visible = ref(true)
     let unread = 0
 
@@ -48,6 +71,10 @@ export function useUnreadBadge(messages: Ref<any[]>) {
         if (m && (m.message_type === 'bot' || m.message_type === 'agent')) {
             unread += 1
             post()
+            if (preview?.enabled()) {
+                const text = previewText(m.message)
+                if (text) postToHost({ type: 'UNREAD_PREVIEW', text, agentName: m.agent_name || preview.agentName() })
+            }
         }
     })
 

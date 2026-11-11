@@ -502,6 +502,69 @@ describe('a returning visitor', () => {
     })
 })
 
+describe('with the embed loader (plan 1.5)', () => {
+    const posted = (post: any, type: string) => post.mock.calls.map(([m]: any[]) => m).filter((m: any) => m?.type === type)
+
+    it('tells the loader how to frame the redesign', async () => {
+        const post = vi.spyOn(window.parent, 'postMessage')
+        await mountPanel({ chat_style: 'GLASS' })
+        const update = posted(post, 'CUSTOMIZATION_UPDATE').at(-1)
+        expect(update.data.panel).toEqual({ ui: 2, radius: 22, elevation: 'dark', glow: 'rgba(157,140,255,.26)', glass: true })
+    })
+
+    it('shows expand only once the loader says it can, and asks it for the size', async () => {
+        await mountPanel()
+        expect(wrapper.find('button[aria-label="Expand chat"]').exists()).toBe(false)
+        await postFromParent(wrapper, { type: 'HOST_CAPABILITIES', v: 1, expand: true, backdrop: false })
+        const post = vi.spyOn(window.parent, 'postMessage')
+        vi.useFakeTimers()
+        await wrapper.find('button[aria-label="Expand chat"]').trigger('click')
+        expect(wrapper.find('.cm-panel').classes()).toContain('cm-resizing')
+        await vi.advanceTimersByTimeAsync(200)
+        expect(posted(post, 'WIDGET_EXPAND')).toEqual([{ type: 'WIDGET_EXPAND', expanded: true }])
+        expect(wrapper.find('.cm-panel').classes()).not.toContain('cm-resizing')
+        expect(wrapper.find('button[aria-label="Make chat smaller"]').exists()).toBe(true)
+    })
+
+    it('paints Glass see-through only once the loader frosts the page', async () => {
+        await mountPanel({ chat_style: 'GLASS' })
+        const card = () => (panelRoot().element as HTMLElement).style.getPropertyValue('--cm-card')
+        const solid = card()
+        expect(solid).not.toContain('gradient')
+        await postFromParent(wrapper, { type: 'HOST_CAPABILITIES', v: 1, expand: true, backdrop: true })
+        expect(card()).toContain('gradient')
+    })
+
+    it('ignores capabilities that are not exactly true', async () => {
+        await mountPanel({ chat_style: 'GLASS' })
+        await postFromParent(wrapper, { type: 'HOST_CAPABILITIES', v: 1, expand: 'yes', backdrop: 1 })
+        expect(wrapper.find('button[aria-label="Expand chat"]').exists()).toBe(false)
+        expect((panelRoot().element as HTMLElement).style.getPropertyValue('--cm-card')).not.toContain('gradient')
+    })
+
+    it('plays the open cascade when the loader opens it', async () => {
+        await mountPanel()
+        vi.stubGlobal('requestAnimationFrame', (run: () => void) => { run(); return 0 })
+        await postFromParent(wrapper, { type: 'WIDGET_VISIBILITY', open: false })
+        await postFromParent(wrapper, { type: 'WIDGET_VISIBILITY', open: true, cascade: true })
+        expect(wrapper.find('.cm-panel').classes()).toContain('cm-cascade')
+    })
+
+    it('tells the loader it is working while hidden, and sends an unread reply for the peek', async () => {
+        await mountPanel()
+        const post = vi.spyOn(window.parent, 'postMessage')
+        await postFromParent(wrapper, { type: 'WIDGET_VISIBILITY', open: false })
+        socket.loading.value = true
+        await settle(wrapper)
+        expect(posted(post, 'WIDGET_ACTIVITY').at(-1)).toEqual({ type: 'WIDGET_ACTIVITY', busy: true })
+        socket.loading.value = false
+        socket.messages.value.push({ message_type: 'bot', message: 'Your order **shipped**', created_at: '', session_id: '' })
+        await settle(wrapper)
+        expect(posted(post, 'WIDGET_ACTIVITY').at(-1)).toEqual({ type: 'WIDGET_ACTIVITY', busy: false })
+        expect(posted(post, 'UNREAD_PREVIEW').at(-1)).toEqual({ type: 'UNREAD_PREVIEW', text: 'Your order shipped', agentName: 'Ada' })
+    })
+})
+
 describe('focus when the panel opens', () => {
     it('focuses the composer about 520ms after the page shows it, never while hidden', async () => {
         await mountPanel()

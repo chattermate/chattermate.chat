@@ -23,7 +23,7 @@ limitations under the License.
 // through the same checks as a live message, so a bad entry can't do more than one.
 
 export const LOOK_CACHE_PREFIX = 'cm_look:'
-const LOOK_FIELDS = ['chat_bubble_color', 'chat_style', 'widget_display', 'launcher', 'launcher_logo_url']
+const LOOK_FIELDS = ['chat_bubble_color', 'chat_style', 'widget_display', 'launcher', 'launcher_logo_url', 'panel']
 const MAX_BYTES = 4096
 
 export function createLookCache(storage, widgetId) {

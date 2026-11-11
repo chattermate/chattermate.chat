@@ -113,6 +113,16 @@ describe('the panel header', () => {
         expect(button.attributes('disabled')).toBeDefined()
     })
 
+    it('offers expand only when the loader can size the panel up, and says which way it goes', async () => {
+        header()
+        expect(wrapper!.find('button[aria-label="Expand chat"]').exists()).toBe(false)
+        await wrapper!.setProps({ canExpand: true })
+        await wrapper!.get('button[aria-label="Expand chat"]').trigger('click')
+        expect(wrapper!.emitted('expand')).toHaveLength(1)
+        await wrapper!.setProps({ expanded: true })
+        expect(wrapper!.find('button[aria-label="Make chat smaller"]').exists()).toBe(true)
+    })
+
     it('has no history or expand buttons yet', () => {
         header({ canStartNewChat: ref(true) })
         expect(wrapper!.findAll('button')).toHaveLength(2)

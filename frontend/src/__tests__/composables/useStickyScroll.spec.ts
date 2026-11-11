@@ -207,4 +207,34 @@ describe('useStickyScroll', () => {
             expect(list.box.scrollTop).toBe(1200)
         })
     })
+
+    describe('"New messages"', () => {
+        it('is offered when something arrives while the visitor reads further up, and goes at the bottom', async () => {
+            const list = setup()
+            list.box.scrollTop = 100
+            list.onScroll()
+            expect(list.unseen.value).toBe(false)
+            list.follow()
+            expect(list.unseen.value).toBe(true)
+            list.box.scrollTop = 600
+            list.onScroll()
+            expect(list.unseen.value).toBe(false)
+        })
+
+        it('goes when the visitor is taken to the end', () => {
+            const list = setup()
+            list.box.scrollTop = 0
+            list.onScroll()
+            list.follow()
+            list.scrollToBottom()
+            expect(list.unseen.value).toBe(false)
+        })
+
+        it('is never offered at the bottom', async () => {
+            const list = setup()
+            list.follow()
+            await settle()
+            expect(list.unseen.value).toBe(false)
+        })
+    })
 })

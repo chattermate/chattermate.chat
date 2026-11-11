@@ -175,6 +175,30 @@ describe('the message list', () => {
             .toEqual(['Hello!', 'Need a hand with checkout?'])
     })
 
+    it('offers "New messages" when a reply arrives while the visitor reads further up', async () => {
+        list()
+        ctrl.messages.value = [msg('user', 'Hi'), msg('bot', 'Hello!')]
+        await nextTick()
+        const log = wrapper!.get('[role="log"]').element as HTMLElement
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1000 })
+        Object.defineProperty(log, 'clientHeight', { configurable: true, value: 400 })
+        log.scrollTop = 100
+        log.dispatchEvent(new Event('scroll'))
+        expect(wrapper!.find('.cm-new-messages').exists()).toBe(false)
+
+        ctrl.messages.value.push(msg('bot', 'One more thing'))
+        await nextTick()
+        await nextTick()
+        const pill = wrapper!.get('button.cm-new-messages')
+        expect(pill.text()).toBe('New messages')
+        // Outside the log, so it is not read out as part of the conversation.
+        expect(log.contains(pill.element)).toBe(false)
+
+        await pill.trigger('click')
+        await nextTick()
+        expect(wrapper!.find('.cm-new-messages').exists()).toBe(false)
+    })
+
     it('animates a message that arrives live, not the history', async () => {
         list()
         ctrl.messages.value = [msg('user', 'old'), msg('bot', 'older')]

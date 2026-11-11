@@ -3,6 +3,9 @@ import { createHostActions } from './loader/hostActions.js'
 import { createPushLayout, sheetCss } from './loader/pushLayout.js'
 import { createShopifyCart } from './loader/shopifyCart.js'
 import { createLookCache } from './loader/lookCache.js'
+import { panelCss } from './loader/panelMotion.js'
+import { createPanelHost } from './loader/panelHost.js'
+import { CLASSIC_FRAME, pickPanelLook } from './panel-style'
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
@@ -108,7 +111,18 @@ import {
     initiationShownKey: 'ctim_shown', // Key for tracking if initiation was shown
     unreadCount: 0, // unread agent messages (reported by the iframe) once chat opened
     hasOpened: false, // whether the visitor has opened the chat at least once
+    panel: { ...CLASSIC_FRAME }, // How the frame asks to be framed (pickPanelLook): classic until it says ui 2
+    panelExpanded: false, // The redesigned panel's header asked for the bigger size (WIDGET_EXPAND)
+    peekId: 'chattermate-peek', // The redesigned panel's peek nudge (peekNudge.js)
   }
+
+  // The redesigned widget (widget_ui version 2) asked for its own framing. Everything
+  // the loader does differently for it checks this; the classic widget never changes.
+  function isPanelV2() {
+    return config.panel.ui === 2
+  }
+  // How long the page has to be in view before the redesigned panel's peek shows.
+  const PEEK_DWELL_MS = 1400
 
   // Keys the developer set explicitly (via chattermateConfig / init / setPosition).
   // Dashboard defaults arriving later over CUSTOMIZATION_UPDATE never override these —
@@ -240,6 +254,7 @@ import {
   // left in the site's storage (lookCache). Every field is checked here either way.
   function applyLook(look) {
     if (isValidHexColor(look.chat_bubble_color)) config.chatBubbleColor = look.chat_bubble_color
+    config.panel = pickPanelLook(look.panel)
     if (typeof look.chat_style === 'string') config.chatStyle = look.chat_style
     applyDashboardDisplay(look.widget_display)
     applyDashboardLauncher(look.launcher, look.launcher_logo_url)
@@ -282,6 +297,8 @@ import {
   // DOM elements it creates). This controller is populated there so the public API
   // below can reach them; calls made before then are queued and flushed on init.
   let controller = null
+  // The redesigned panel's side of the loader (loader/panelHost.js), once built.
+  let panelHost = null
   const pendingCalls = []
   let triggerClickQueued = false
   // The widget iframe's window, once created — message handlers accept commands
@@ -1377,6 +1394,21 @@ import {
       #${config.buttonId}, #${config.buttonId}.mobile-closed { display: none !important; }
       `}
     `
+    if (isPanelV2()) style.textContent += panelCss(
+      { button: config.buttonId, container: config.containerId, peek: config.peekId },
+      {
+        mode,
+        side,
+        floating: isFloatingWindow(),
+        sizeIsExplicit,
+        dotsScale: look.px / LAUNCHER_SIZE_PX.lg,
+        peekBottom: (config.launcherBottom || 20) + launcherHeight + 12,
+        sideOffset: config.launcherRight || 20,
+        zIndex: config.zIndex,
+      },
+      config.panel,
+    )
+    syncPanelClasses()
     // Remove existing style if it exists
     const existingStyle = document.getElementById('chattermate-styles')
     if (existingStyle) {
@@ -1387,6 +1419,30 @@ import {
     // The search-bar placeholder is data, not markup — keep it in sync here since
     // every config change funnels through updateStyles().
     syncLauncherContent()
+  }
+
+  // The redesigned panel's rules are scoped to .cm-v2 on the launcher and the
+  // container (see panelHost.sync); nothing until the widget is built.
+  function syncPanelClasses() {
+    if (panelHost) panelHost.sync()
+  }
+
+  // Tell a redesigned frame what this loader can do for it (panelHost.announce).
+  function announceCapabilities(onlyIfChanged) {
+    if (panelHost) panelHost.announce(onlyIfChanged)
+  }
+
+  // A floating window, as opposed to a drawer or the Ask AI palette: the only
+  // surface the redesign's corners, shadow and expand size apply to.
+  function isFloatingWindow() {
+    const mode = config.displayMode
+    return mode !== 'sidebar-left' && mode !== 'sidebar-right' && !isAskAiModal()
+  }
+
+  // Run `cb` once the launcher is visible: now, if it already is.
+  function onReveal(cb) {
+    if (buttonRevealed) cb()
+    else onRevealCallbacks.push(cb)
   }
 
   // Set text content on launcher children (textContent, never innerHTML — the
@@ -1712,6 +1768,7 @@ import {
     document.body.appendChild(container)
     document.body.appendChild(mobileCloseButton)
     document.body.appendChild(mobileTopbar)
+    syncPanelClasses()
     updateBadge()
     // The button just entered the DOM: its text (search placeholder) and, for a
     // rebuilt launcher, the icon or logo it already had.
@@ -1725,6 +1782,21 @@ import {
     let refusedOrigin = null
     let iframe = null
     let initiationMessageElement = null
+    // The redesigned panel: its classes, capabilities, messages and peek nudge.
+    const panel = createPanelHost({
+      doc: document,
+      config,
+      button,
+      container,
+      isV2: isPanelV2,
+      isOpen: function () { return isOpen },
+      open: function () { toggleChat() },
+      post: postToFrame,
+      canAnnounce: function () { return widgetMounted },
+      canExpand: function () { return isFloatingWindow() && !isMobileDevice() },
+    })
+    panelHost = panel
+    panel.sync()
 
     // Push layout: an open drawer makes room in the page's own content (see pushLayout.js).
     function applyPush() {
@@ -1737,7 +1809,9 @@ import {
       })
     }
 
-    function toggleChat() {
+    // `options.returnFocus`: the close came from the keyboard, Escape or the panel's
+    // own minimize, so focus goes back to the launcher (redesigned panel only).
+    function toggleChat(options) {
       isOpen = !isOpen
       container.classList.toggle('active')
       backdrop.classList.toggle('active', isOpen)
@@ -1754,8 +1828,11 @@ import {
           prefetchWidget()
         }
       }
-      // Tell the iframe whether it's visible so it can track unread messages.
-      postToFrame({ type: 'WIDGET_VISIBILITY', open: isOpen })
+      // Tell the iframe whether it's visible so it can track unread messages. The
+      // redesigned panel also plays its open cascade.
+      postToFrame(isPanelV2()
+        ? { type: 'WIDGET_VISIBILITY', open: isOpen, cascade: isOpen }
+        : { type: 'WIDGET_VISIBILITY', open: isOpen })
       if (isOpen) {
         reportPage()
         // A cross-origin frame can't take focus on its own; the click that opened
@@ -1763,6 +1840,9 @@ import {
         if (iframe && widgetMounted) iframe.focus()
       }
       updateBadge()
+
+      // The peek fades as the panel grows, so it seems to turn into it.
+      panel.toggled(isOpen)
 
       // Hide initiation message when chat is opened
       if (isOpen && initiationMessageElement) {
@@ -1790,7 +1870,11 @@ import {
         }
       }
 
-      if (isOpen) postToFrame({ type: 'SCROLL_TO_BOTTOM' })
+      // The redesigned panel keeps where the visitor was (it follows new messages
+      // only from the bottom, with a "New messages" pill otherwise).
+      if (isOpen && !isPanelV2()) postToFrame({ type: 'SCROLL_TO_BOTTOM' })
+      // Focus back on the launcher once it is showing again (phones re-show it above).
+      if (!isOpen && isPanelV2() && options && options.returnFocus === true) button.focus()
 
       emitEvent(isOpen ? 'open' : 'close')
     }
@@ -1836,6 +1920,8 @@ import {
       button.classList.remove('loading')
       paletteContentHeight = 0
       applyPaletteHeight()
+      // The old frame's peek, working dot and expanded size go with it.
+      panel.reset()
     }
 
     // Rebuild the widget for whatever token is current — the mechanism behind
@@ -1865,6 +1951,8 @@ import {
       unwatchHistory()
       // The nudge is appended to <body>, not to our container, and it runs a
       // typewriter interval that would keep ticking on a detached node.
+      panel.destroy()
+      panelHost = null
       if (initiationMessageElement) {
         if (initiationMessageElement.typeInterval) clearInterval(initiationMessageElement.typeInterval)
         removeNode(initiationMessageElement)
@@ -2209,6 +2297,7 @@ import {
         onWidgetReady()
         hostActions.announce()
         shopifyCart.announce()
+        announceCapabilities()
         return
       }
       if (hostActions.handleFrameMessage(event.data)) return
@@ -2234,11 +2323,17 @@ import {
       }
       if (event.data.type === 'WIDGET_ESCAPE') {
         // Escape pressed inside the frame, which the page's own key handlers can't
-        // see. A drawer closes on it, as it would with focus on the page.
+        // see. A drawer closes on it, as it would with focus on the page; the
+        // redesigned panel closes on it in every mode, focus back on the launcher.
+        if (isPanelV2()) {
+          if (isOpen) toggleChat({ returnFocus: true })
+          return
+        }
         const drawer = config.displayMode === 'sidebar-left' || config.displayMode === 'sidebar-right'
         if (drawer && isOpen) toggleChat()
         return
       }
+      if (panel.handleMessage(event.data, closingUp)) return
       if (event.data.type === 'END_CHAT_DONE') {
         if (endChatDone) endChatDone()
         return
@@ -2378,7 +2473,17 @@ import {
     // Show initiation message shortly after the launcher becomes visible — scheduling
     // this from page-load time (rather than from reveal) could show a nudge bubble
     // pointing at a launcher that isn't on screen yet.
+    // The redesigned panel's peek: once per session, after a 1.4s dwell. onReveal,
+    // as a returning visitor's cached look can reveal the launcher before this point.
+    onReveal(() => {
+      if (!isPanelV2()) return
+      setTimeout(() => {
+        if (isOpen || !isPanelV2() || !shouldShowInitiation()) return
+        if (panel.show('', getRandomInitiationMessage())) markInitiationShown()
+      }, PEEK_DWELL_MS)
+    })
     onRevealCallbacks.push(() => {
+      if (isPanelV2()) return
       setTimeout(() => {
         if (isDestroyed) return
         if (!isOpen && config.chatInitiationMessages.length > 0) {
@@ -2397,7 +2502,7 @@ import {
       if (event.key !== 'Enter' && event.key !== ' ') return
       event.preventDefault()
       // A held key repeats; one press is one toggle.
-      if (!event.repeat) toggleChat()
+      if (!event.repeat) toggleChat({ returnFocus: true })
     })
     mobileCloseButton.addEventListener('click', toggleChat)
     // Clicking the dimmed page closes the Ask AI palette.
@@ -2433,6 +2538,8 @@ import {
       updateStyles()
       // The palette's ceiling is 76vh, which just moved.
       applyPaletteHeight()
+      // Crossing the phone width turns the redesign's expand size on or off.
+      announceCapabilities(true)
     }
     window.addEventListener('resize', handleResize)
 
@@ -2445,9 +2552,11 @@ import {
         if (!isOpen) toggleChat()
         if (opts && opts.message) prefillMessage(opts.message)
       },
-      close: function () {
-        if (isOpen) toggleChat()
+      close: function (opts) {
+        if (isOpen) toggleChat(opts)
       },
+      // A page prompt() while the redesigned panel is closed also shows in its peek.
+      peekPrompt: function (message) { panel.show('', message) },
       reload: reloadWidget,
       destroy: destroyWidget,
     }
@@ -2486,6 +2595,13 @@ import {
     if (e.key === 'Escape' && controller.isOpen()) {
       controller.close()
     }
+  })
+  // The redesigned panel closes on Escape in every mode, focus on the page too.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented || !controller || !isPanelV2() || isAskAiModal()) return
+    // Not while the visitor is closing the site's own dialog: Esc inside our frame
+    // arrives as WIDGET_ESCAPE instead.
+    if (controller.isOpen() && panelHost && panelHost.ownsEscape()) controller.close({ returnFocus: true })
   })
 
   // No-code custom launcher: any element matching the developer's `trigger` selector or
@@ -2536,11 +2652,13 @@ import {
       if (!palette) paletteContentHeight = 0
       updateStyles()
       applyPaletteHeight()
+      announceCapabilities(true)
       return
     }
     // Header chevron inside the widget asks to minimize.
     if (event.data.type === 'WIDGET_MINIMIZE') {
-      withController(function () { controller.close() })
+      // The redesigned panel's own minimize hands focus back to the launcher.
+      withController(function () { controller.close(isPanelV2() ? { returnFocus: true } : undefined) })
       return
     }
     if (event.data.type === 'CUSTOMIZATION_UPDATE') {
@@ -2581,6 +2699,7 @@ import {
       // dashboard defaults) so its interior sizing can adapt. Replied to the sending
       // frame — this handler sits outside initialize() and has no iframe reference.
       postToFrame(widgetDisplayPayload())
+      announceCapabilities()
     }
   })
 
@@ -2925,6 +3044,7 @@ import {
     prompt: function (options) {
       hostActions.prompt(options)
       if (options && options.open === true) withController(function () { controller.open() })
+      else if (options && options.message) withController(function () { controller.peekPrompt(options.message) })
     },
     // SPA login: identify(token) switches the widget to that visitor.
     identify: function (token) { setIdentity(token) },

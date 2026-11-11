@@ -40,7 +40,7 @@ const {
     replyChips, chipBusy, isMessageInputEnabled, promptPlace,
 } = ctrl
 
-const { scroller, content, onScroll, follow, scrollToBottom, remember, restore } = useStickyScroll([
+const { scroller, content, unseen, onScroll, follow, scrollToBottom, remember, restore } = useStickyScroll([
     () => messages.value.length, pendingConfirm, shownPrompt, receiptCount, loading,
 ])
 const { isFresh } = useMessageArrivals(messages)
@@ -57,6 +57,7 @@ defineExpose({ follow, scrollToBottom, remember, restore })
 </script>
 
 <template>
+    <div class="cm-thread-wrap">
     <div
         ref="scroller"
         class="cm-thread"
@@ -96,9 +97,22 @@ defineExpose({ follow, scrollToBottom, remember, restore })
             </div>
         </div>
     </div>
+    <!-- Replies arrived below while the visitor read further up: one tap down. -->
+    <button v-if="unseen" type="button" class="cm-new-messages cm-fade" @click="scrollToBottom">
+        {{ PANEL_COPY.newMessages }}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"></path></svg>
+    </button>
+    </div>
 </template>
 
 <style scoped>
+.cm-thread-wrap {
+    position: relative;
+    flex-grow: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
 .cm-thread {
     flex-grow: 1;
     min-height: 0;
@@ -115,4 +129,16 @@ defineExpose({ follow, scrollToBottom, remember, restore })
 }
 .cm-typing { display: inline-flex; align-self: flex-start; gap: 4px; padding: 13px 14px; }
 .cm-typing-dot { width: 6px; height: 6px; }
+.cm-new-messages {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 14px;
+    white-space: nowrap;
+}
 </style>

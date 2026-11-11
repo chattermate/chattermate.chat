@@ -15,6 +15,7 @@
  * - `cm-press`: a button that dips when pressed.
  * - `cm-pulse`: the agent mark while it is working.
  * - `cm-typing-dot`: the three dots while a reply is coming.
+ * - `cm-cascade` / `cm-resizing` on the panel: the loader's open cascade and expand.
  */
 
 @keyframes cm-rise {
@@ -69,11 +70,37 @@
 .chat-container.cm-surface.cm-ui-2 .cm-typing-dot:nth-child(2) { animation-delay: .15s; }
 .chat-container.cm-surface.cm-ui-2 .cm-typing-dot:nth-child(3) { animation-delay: .3s; }
 
+/* The open cascade (WIDGET_VISIBILITY cascade): header, body and composer rise
+   40ms apart as the loader grows the panel out of the launcher. */
+.chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-header,
+.chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-panel__body,
+.chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-panel__bottom {
+    animation: cm-rise calc(var(--cm-dur-3) * var(--cm-dur-scale)) var(--cm-ease-enter) both;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-panel__body { animation-delay: 40ms; }
+.chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-panel__bottom { animation-delay: 80ms; }
+
+/* Expand: the panel fades out while the loader resizes it, then back in. */
+.chat-container.cm-surface.cm-ui-2 .cm-panel {
+    transition: opacity calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-out);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-panel.cm-resizing {
+    opacity: 0;
+    transition: opacity var(--cm-dur-1) var(--cm-ease-in);
+}
+
 /* Reduced motion: every entrance becomes a short fade, nothing loops or travels. */
 @media (prefers-reduced-motion: reduce) {
     .chat-container.cm-surface.cm-ui-2 .cm-enter,
-    .chat-container.cm-surface.cm-ui-2 .cm-fade {
+    .chat-container.cm-surface.cm-ui-2 .cm-fade,
+    .chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-header,
+    .chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-panel__body,
+    .chat-container.cm-surface.cm-ui-2 .cm-cascade > .cm-panel__bottom {
         animation: cm-fade-in 150ms linear both;
+    }
+    .chat-container.cm-surface.cm-ui-2 .cm-panel,
+    .chat-container.cm-surface.cm-ui-2 .cm-panel.cm-resizing {
+        transition: opacity 150ms linear;
     }
     .chat-container.cm-surface.cm-ui-2 .cm-pulse,
     .chat-container.cm-surface.cm-ui-2 .cm-typing-dot {

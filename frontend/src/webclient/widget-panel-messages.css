@@ -119,6 +119,19 @@
     to { transform: scaleX(1); }
 }
 
+/* "New messages": the accent pill over the end of the conversation. */
+.chat-container.cm-surface.cm-ui-2 .cm-new-messages {
+    border: 0;
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    box-shadow: 0 6px 18px -8px var(--cm-text);
+    cursor: pointer;
+}
+
 /* Reduced motion: the divider lines are simply there. */
 @media (prefers-reduced-motion: reduce) {
     .chat-container.cm-surface.cm-ui-2 .cm-joined__line {

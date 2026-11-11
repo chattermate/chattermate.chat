@@ -31,7 +31,7 @@ import { useComposer } from './useComposer'
 import { useEndChat } from './useEndChat'
 import { useRating } from './useRating'
 import { useWorkflowScreens } from './useWorkflowScreens'
-import { useHostMessages } from './useHostMessages'
+import { NO_HOST_CAPABILITIES, useHostMessages, type HostCapabilities } from './useHostMessages'
 import { useNewChat } from './useNewChat'
 import { useWidgetPresentation } from './useWidgetPresentation'
 import { useWidgetDisplay } from './useWidgetDisplay'
@@ -81,9 +81,15 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         useTypewriter(messages, () => nextTick(() => view.scrollToBottom()))
 
     // Report unread agent messages (received while minimized) to the embedder badge.
-    useUnreadBadge(messages)
+    // The redesign also shows the reply itself in the loader's peek.
+    useUnreadBadge(messages, {
+        enabled: () => widgetUiVersion(customization.value) === 2,
+        agentName: () => agentName.value,
+    })
 
     const isExpanded = ref(true)
+    // What the embed loader can do for the redesigned panel; nothing until it says.
+    const hostCapabilities = ref<HostCapabilities>({ ...NO_HOST_CAPABILITIES })
 
     // checkAuthorization is set up just below; it only runs on submit. The panel's
     // email handling (panelEmail, below) only runs on submit too.
@@ -172,10 +178,11 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         endChatForHost: endChat.endChatForHost,
         continueAnonymously: auth.continueAnonymously,
         adoptHostToken: auth.adoptHostToken,
-        setHostVisible: (open) => {
+        setHostVisible: (open, cascade) => {
             display.hostVisible.value = open
-            view.hostVisibilityReported?.(open)
+            view.hostVisibilityReported?.(open, { cascade })
         },
+        setHostCapabilities: (capabilities) => { hostCapabilities.value = capabilities },
         setParentDisplay: (geometry) => { display.parentDisplay.value = geometry },
         prefill: (text) => {
             composer.newMessage.value = text
@@ -222,6 +229,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         shouldShowNewConversationOption: workflow.shouldShowNewConversationOption,
         allowAttachments,
         uploadedAttachments: files.uploadedAttachments,
+        hostBackdrop: computed(() => hostCapabilities.value.backdrop),
     })
 
     // Display geometry, host visibility and the surface on screen (Ask AI palette or chat).
@@ -246,7 +254,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
         isRevealing, skipReveal, ...rating, ...files, ...newChat,
-        awaitingEmail, awaitingHistory,
+        awaitingEmail, awaitingHistory, hostCapabilities,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }
 }

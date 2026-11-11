@@ -19,14 +19,35 @@ import { postToHost } from '../webclient/host-bridge'
 import { hostSharesIdentity, isFramed, setHostPageUrl } from '../webclient/frame-session'
 import type { WidgetDisplay } from './useWidgetDisplay'
 
+/** What the embed loader announced it can do (only a loader framing the redesign says). */
+export interface HostCapabilities {
+    /** It sizes the panel up when the header asks (WIDGET_EXPAND). */
+    expand: boolean
+    /** It frosts the page behind the panel, so Glass may be see-through. */
+    backdrop: boolean
+}
+
+export const NO_HOST_CAPABILITIES: HostCapabilities = { expand: false, backdrop: false }
+
+/** Only booleans that are exactly true count. */
+const hostCapabilitiesFrom = (data: Record<string, unknown>): HostCapabilities => ({
+    expand: data.expand === true,
+    backdrop: data.backdrop === true,
+})
+
 export interface HostMessageHandlers {
     scrollToBottom: () => void
     /** The host is replacing the visitor: close their session, then answer. */
     endChatForHost: (sessionId: unknown) => Promise<void>
     continueAnonymously: () => Promise<void>
     adoptHostToken: (token: unknown) => Promise<void>
-    /** The loader reports whether the widget is open (WIDGET_VISIBILITY). */
-    setHostVisible: (open: boolean) => void
+    /**
+     * The loader reports whether the widget is open (WIDGET_VISIBILITY); `cascade`
+     * asks the redesigned panel to play its open cascade.
+     */
+    setHostVisible: (open: boolean, cascade: boolean) => void
+    /** What the loader can do for the redesigned panel (HOST_CAPABILITIES). */
+    setHostCapabilities: (capabilities: HostCapabilities) => void
     /** The loader's final display geometry (WIDGET_DISPLAY). */
     setParentDisplay: (display: WidgetDisplay) => void
     /** Prefill (never auto-send) the message box, e.g. ChatterMate.open({ message }). */
@@ -76,7 +97,10 @@ export function useHostMessages(handlers: HostMessageHandlers) {
             // The loader reports open/closed. Without this the Ask AI palette would
             // autofocus its input while the widget is still hidden — the iframe is
             // created eagerly on page load, so focus would leave the host page.
-            handlers.setHostVisible(!!event.data.open)
+            handlers.setHostVisible(!!event.data.open, event.data.cascade === true)
+        }
+        if (event.data.type === 'HOST_CAPABILITIES') {
+            handlers.setHostCapabilities(hostCapabilitiesFrom(event.data))
         }
         if (event.data.type === 'WIDGET_DISPLAY') {
             // The embed loader's final display geometry (developer options merged with

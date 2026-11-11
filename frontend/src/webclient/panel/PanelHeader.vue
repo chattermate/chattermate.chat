@@ -17,9 +17,9 @@ limitations under the License.
 <script setup lang="ts">
 /**
  * The panel's header: the agent's mark, its name and an honest status line, then
- * new chat and minimize. After a takeover the person's name and avatar lead.
- * No team presence: a person only appears once they joined. The history and
- * expand buttons come with plans 5.x and 1.5.
+ * new chat, expand (when the loader can size the panel up) and minimize. After a
+ * takeover the person's name and avatar lead. No team presence: a person only
+ * appears once they joined. The history button comes with plan 5.x.
  */
 import { computed, inject } from 'vue'
 import { WIDGET_CTX } from './controller'
@@ -28,6 +28,13 @@ import PersonAvatar from './PersonAvatar.vue'
 import { agentFace } from './agent-face'
 import { PANEL_COPY } from '../copy'
 import { NEW_CHAT_LABEL } from '../new-chat'
+
+defineProps<{
+    /** The loader can size the panel up (HOST_CAPABILITIES.expand). */
+    canExpand?: boolean
+    expanded?: boolean
+}>()
+const emit = defineEmits<{ (e: 'expand'): void }>()
 
 const ctrl = inject(WIDGET_CTX)!
 const {
@@ -86,6 +93,17 @@ const statusText = computed(() => (working.value ? PANEL_COPY.working : presence
                     <path d="M12 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-6"></path>
                     <path d="M17.5 3.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z"></path>
                 </svg>
+            </button>
+            <button
+                v-if="canExpand"
+                type="button"
+                class="cm-icon-button cm-press"
+                :title="expanded ? PANEL_COPY.collapse : PANEL_COPY.expand"
+                :aria-label="expanded ? PANEL_COPY.collapse : PANEL_COPY.expand"
+                @click="emit('expand')"
+            >
+                <svg v-if="!expanded" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>
+                <svg v-else width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"></path></svg>
             </button>
             <button
                 type="button"

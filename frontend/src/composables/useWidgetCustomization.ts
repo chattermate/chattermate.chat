@@ -20,6 +20,7 @@ import WebFont from 'webfontloader'
 import { postToHost } from '../webclient/host-bridge'
 import { DEFAULT_LAUNCHER_COLOR } from '../webclient/launcher-style'
 import { widgetUiVersion } from '../webclient/widget-ui'
+import { panelLookFor } from '../webclient/widget-theme'
 
 // Design fonts each widget design needs (display / body / mono), with the weights
 // it actually uses. The user's custom font_family is layered on top. The redesign
@@ -55,6 +56,24 @@ const loadFonts = (ui: WidgetUiVersion, customFontFamily?: string) => {
     })
 }
 
+/**
+ * What the embed loader is told about the panel: the classic widget only says so;
+ * the redesign adds its framing (panelLookFor), which the loader validates
+ * (panel-style.ts) before any of it reaches the page's CSS.
+ */
+export const panelFrameFor = (ui: WidgetUiVersion, customization: Partial<AgentCustomization>) =>
+    ui === 2
+        ? {
+            ui,
+            ...panelLookFor(customization.chat_style, {
+                chat_background_color: customization.chat_background_color,
+                chat_text_color: customization.chat_text_color,
+                accent_color: customization.accent_color,
+                font_family: customization.font_family,
+            }),
+        }
+        : { ui }
+
 export function useWidgetCustomization() {
     const customization = ref<Partial<AgentCustomization>>({})
     const agentName = ref('')
@@ -82,8 +101,9 @@ export function useWidgetCustomization() {
                 widget_display: newCustomization.customization_metadata?.widget_display,
                 launcher: newCustomization.customization_metadata?.launcher,
                 launcher_logo_url: newCustomization.launcher_logo_url,
-                // Which widget design the loader frames (classic or the redesign).
-                panel: { ui }
+                // Which widget design the loader frames (classic or the redesign), and
+                // for the redesign how: radius, shadow, glow, frosted backdrop.
+                panel: panelFrameFor(ui, newCustomization)
             }
         })
     }

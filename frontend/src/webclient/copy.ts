@@ -32,6 +32,10 @@ export const PANEL_COPY = {
     /** The header status while a reply is being worked on. */
     working: 'Working on it…',
     minimize: 'Minimize chat',
+    expand: 'Expand chat',
+    collapse: 'Make chat smaller',
+    /** Takes the visitor down to replies that arrived while they read further up. */
+    newMessages: 'New messages',
     /** The message log's accessible name (the e2e page object finds it by this). */
     messages: 'Messages',
     /** The typing indicator's accessible name (the e2e page object finds it by this). */

@@ -22,6 +22,7 @@ import type { HostPrompt, PageChip, PendingConfirm } from '../actions/hostAction
 import type { ActionReceipt } from '../actions/receipts'
 import type { JourneyProgress } from '../journeys/journeyClient'
 import type { ConnectionStatus } from '../../composables/useWidgetSocket'
+import type { HostCapabilities } from '../../composables/useHostMessages'
 import type { PreviewFile, UploadedFile } from '../../composables/useWidgetFiles'
 import type { WorkflowForm, WorkflowMessage } from '../../composables/useWorkflowScreens'
 
@@ -55,7 +56,7 @@ export interface WidgetViewHooks {
      * on every report, even one that repeats the current state: the first report
      * after load is an "open" when the visitor clicked the launcher early.
      */
-    hostVisibilityReported?: (open: boolean) => void
+    hostVisibilityReported?: (open: boolean, how?: { cascade: boolean }) => void
 }
 
 /** The agent's look, the surfaces on screen and the header. */
@@ -96,6 +97,8 @@ export interface WidgetLook {
     askAiSubtitle: Shown<string>
     /** Whether the embedding page shows the widget at all. */
     hostVisible: Shown<boolean>
+    /** What the embed loader can do for the redesigned panel (HOST_CAPABILITIES). */
+    hostCapabilities: Shown<HostCapabilities>
     /** The Ask AI palette is on screen instead of the chat. */
     useAskAiPanel: Shown<boolean>
     askAiHotkey: Shown<boolean>

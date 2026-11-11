@@ -32,6 +32,7 @@ import { PANEL_PRESENCE_TEXT } from '@/webclient/copy'
 import type { AgentCustomization, WidgetUiVersion } from '@/types/agent'
 import type { HumanAgent, WidgetMessage } from '@/types/widget'
 import type { ConnectionStatus } from '@/composables/useWidgetSocket'
+import type { HostCapabilities } from '@/composables/useHostMessages'
 import type { HostPrompt, PageChip, PendingConfirm } from '@/webclient/actions/hostActionsClient'
 import type { JourneyProgress } from '@/webclient/journeys/journeyClient'
 import type { PreviewFile, UploadedFile } from '@/composables/useWidgetFiles'
@@ -58,6 +59,7 @@ const baseController = () => ({
     quickActions: ref<string[]>([]),
     welcomeMessageText: ref(''),
     hostVisible: ref(true),
+    hostCapabilities: ref<HostCapabilities>({ expand: false, backdrop: false }),
     themeVars: ref<Record<string, string>>({}),
     containerStyles: ref<Record<string, string>>({}),
     useAskAiPanel: ref(false),

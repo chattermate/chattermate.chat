@@ -99,11 +99,12 @@ function surfaceIsLight(tokens: ThemeTokens, colours: PanelColours): boolean {
 
 /**
  * The panel fill. Glass's translucent card only works over the loader's frosted
- * backdrop (unit 1.5); until then a see-through panel shows the host page behind
- * the messages, so the redesign paints Glass with its solid surface colour.
+ * backdrop; until the loader confirms it frosts the page behind the panel
+ * (HOST_CAPABILITIES.backdrop), a see-through panel would show the host page
+ * behind the messages, so the redesign paints Glass with its solid surface colour.
  */
-function panelCard(tokens: ThemeTokens): string {
-    return tokens.glass ? tokens.surface : tokens.card
+function panelCard(tokens: ThemeTokens, hostBackdrop: boolean): string {
+    return tokens.glass && !hostBackdrop ? tokens.surface : tokens.card
 }
 
 /** The loader's view of the panel for one theme and one agent's colours. */
@@ -115,7 +116,11 @@ export function panelLook(tokens: ThemeTokens, colours: PanelColours): PanelLook
 }
 
 /** The ui-2 --cm-* properties for one theme and one agent's colours. */
-export function panelCssVars(tokens: ThemeTokens, colours: PanelColours): Record<string, string> {
+export function panelCssVars(
+    tokens: ThemeTokens,
+    colours: PanelColours,
+    { hostBackdrop = false }: { hostBackdrop?: boolean } = {},
+): Record<string, string> {
     const surface = colours.customBackground || tokens.surface
     const text = panelText(tokens, colours)
     // Suggestions, cards and the composer sit on the tint, which is a little closer
@@ -135,7 +140,7 @@ export function panelCssVars(tokens: ThemeTokens, colours: PanelColours): Record
     }
     // The classic vars take any background string and any custom text; the
     // redesign overrides them with the checked colours.
-    vars['--cm-card'] = colours.customBackground || panelCard(tokens)
+    vars['--cm-card'] = colours.customBackground || panelCard(tokens, hostBackdrop)
     vars['--cm-text'] = text
     if (colours.customBackground || text !== tokens.text) {
         // The muted line only as faint as still reads (theme defaults are already AA).

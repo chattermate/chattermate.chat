@@ -38,6 +38,9 @@ import FrontScreen from './screens/FrontScreen.vue'
 import ConversationEnded from './ConversationEnded.vue'
 import PreviewModal from './PreviewModal.vue'
 import { usePanelVisibility } from '../../composables/usePanelVisibility'
+import { useFrameDocument } from '../../composables/useFrameDocument'
+import { usePanelActivity, usePanelCascade, usePanelExpand } from '../../composables/usePanelHostMotion'
+import { postToHost } from '../host-bridge'
 import '../widget-panel.css'
 import '../widget-panel-messages.css'
 import '../widget-panel-composer.css'
@@ -53,8 +56,13 @@ const {
     showLandingPage, landingPageData, showFullScreenForm, fullScreenFormData, awaitingEmail,
     shouldShowNewConversationOption, newChatArmed, canStartNewChat, startingNewChat, newChatError,
     messages, loadingHistory, loading, shownPrompt, journeyProgress, pendingConfirm, replyChips,
-    awaitingHistory,
+    awaitingHistory, hostCapabilities,
 } = ctrl
+
+// The loader's motion: the open cascade, the expand, the working dot while hidden.
+const { cascading, play: playCascade } = usePanelCascade()
+const { expanded, resizing, toggleExpand } = usePanelExpand(postToHost)
+usePanelActivity(loading, ctrl.hostVisible, postToHost)
 
 const list = ref<InstanceType<typeof MessageList> | null>(null)
 const composer = ref<InstanceType<typeof Composer> | null>(null)
@@ -75,6 +83,7 @@ watch(awaitingEmail, (awaiting, wasAwaiting) => {
     nextTick(() => composer.value?.focus())
 })
 
+useFrameDocument()
 const { report, focusIfShown } = usePanelVisibility(ctrl.hostVisible, {
     focus: focusField,
     onHide: () => list.value?.remember(),
@@ -87,7 +96,10 @@ ctrl.registerView({
     focusComposer: focusIfShown,
     // The visitor's own message always brings them to the end.
     afterSend: () => list.value?.scrollToBottom(),
-    hostVisibilityReported: report,
+    hostVisibilityReported: (open, how) => {
+        report(open)
+        if (open && how?.cascade) playCascade()
+    },
 })
 
 // The widget cannot be used (not set up, or the visitor's session failed). Not while
@@ -128,10 +140,10 @@ const rootStyle = computed(() => ({
             <StatusBanner />
             <AskAiSurface />
         </template>
-        <div v-else class="cm-panel">
+        <div v-else class="cm-panel" :class="{ 'cm-cascade': cascading, 'cm-resizing': resizing }">
             <FrontScreen v-if="showBlocked || showWorkflowScreen" :blocked="showBlocked" />
             <template v-else>
-                <PanelHeader />
+                <PanelHeader :can-expand="hostCapabilities.expand" :expanded="expanded" @expand="toggleExpand" />
                 <StatusBanner />
                 <NewChatConfirm
                     v-if="newChatArmed && canStartNewChat"

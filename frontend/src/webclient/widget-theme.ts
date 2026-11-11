@@ -191,7 +191,9 @@ function panelColours(t: ThemeTokens, overrides?: ThemeOverrides): PanelColours 
 export function themeCssVars(
     chatStyle?: string | null,
     overrides?: ThemeOverrides,
-    options: { ui?: WidgetUiVersion } = {},
+    // hostBackdrop: the embed loader frosts the page behind the panel (HOST_CAPABILITIES),
+    // so Glass may be see-through (ui 2 only).
+    options: { ui?: WidgetUiVersion; hostBackdrop?: boolean } = {},
 ): Record<string, string> {
     const t = getThemeTokens(chatStyle)
 
@@ -247,7 +249,7 @@ export function themeCssVars(
         '--cm-body-font': bodyFont,
     }
     if (options.ui !== 2) return classic
-    return { ...classic, ...panelCssVars(t, panelColours(t, overrides)) }
+    return { ...classic, ...panelCssVars(t, panelColours(t, overrides), { hostBackdrop: options.hostBackdrop }) }
 }
 
 /** How the loader should frame the redesigned panel for this style and these colours. */
