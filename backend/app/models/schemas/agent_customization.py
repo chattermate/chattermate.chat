@@ -209,7 +209,7 @@ QuickActionIcon = Literal['order', 'shipping', 'returns', 'product', 'billing', 
 class QuickActionRule(BaseModel):
     """A quick action shown only on some pages (`match`, a URL path pattern such as
     "/products/*"), with an optional icon. A plain string is shown on every page."""
-    label: str = Field(min_length=1, max_length=60)
+    label: str = Field(min_length=1, max_length=200)
     match: Optional[str] = Field(default=None, max_length=200, pattern=r'^/[^\s]*$')
     icon: Optional[QuickActionIcon] = None
 

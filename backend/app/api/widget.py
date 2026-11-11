@@ -22,6 +22,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 
+from app.services.page_suggestions import every_page_labels
 from app.models.agent import Agent
 from app.models.customer import Customer
 from app.models.widget import Widget
@@ -240,7 +241,9 @@ def _visitor_customization(db: Session, agent: Agent) -> Optional[AgentCustomiza
         return None
     metadata, logo_url = widget_ui.for_visitors(db, agent)
     return AgentCustomizationResponse.model_validate(agent.customization).model_copy(
-        update={"customization_metadata": metadata, "launcher_logo_url": logo_url})
+        update={"customization_metadata": metadata, "launcher_logo_url": logo_url,
+                # Plain strings only: older widget bundles call .trim() on each
+                "quick_actions": every_page_labels(agent.customization.quick_actions)})
 
 
 def _widget_data_response(db: Session, widget: Widget, agent: Agent, customer_id: Optional[str],

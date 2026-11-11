@@ -62,11 +62,19 @@ export function usePageSuggestions(options: {
         }
     })
 
-    watch([options.active, () => hostPage.value.url], ([active, url]) => {
-        if (!active || !url || url === asked) return
-        asked = url
-        pageSuggestions.value = empty()
-        options.emit('page_suggestions', { url, title: hostPage.value.title })
+    // Asked again for a new page or title, and after the socket came back (an
+    // answer lost with a dropped connection would otherwise never come).
+    watch([options.active, () => hostPage.value.url, () => hostPage.value.title], ([active, url, title]) => {
+        if (!active) {
+            asked = null
+            return
+        }
+        const key = `${url}\n${title ?? ''}`
+        if (!url || key === asked) return
+        const samePage = asked?.startsWith(`${url}\n`)
+        asked = key
+        if (!samePage) pageSuggestions.value = empty()
+        options.emit('page_suggestions', { url, title })
     }, { immediate: true })
 
     return { pageSuggestions }

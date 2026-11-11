@@ -40,6 +40,7 @@ interface HostInit {
   origin: string
   token: string | null
   pageUrl: string | null
+  pageTitle: string | null
 }
 
 // @ts-ignore - set by the /frame page before this bundle loads
@@ -100,6 +101,7 @@ const waitForHostInit = (): Promise<HostInit> =>
         // answered safely: such a frame runs as an anonymous visitor.
         token: opaque ? null : sanitizeToken(event.data.token),
         pageUrl: typeof event.data.pageUrl === 'string' ? event.data.pageUrl : null,
+        pageTitle: typeof event.data.pageTitle === 'string' ? event.data.pageTitle : null,
       })
     }
     window.addEventListener('message', onMessage)
@@ -146,7 +148,7 @@ export async function startFramedWidget(): Promise<boolean> {
       opaqueHost = true
       setHostOrigin('*')
     }
-    setHostPageUrl(init.pageUrl)
+    setHostPageUrl(init.pageUrl, init.pageTitle)
     token = init.token
   } else {
     token = tokenStoreFor(boot.widgetId).read()

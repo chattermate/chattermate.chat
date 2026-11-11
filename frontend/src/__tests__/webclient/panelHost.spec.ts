@@ -139,6 +139,9 @@ describe('createPanelHost', () => {
         expect(document.body.style.overflow).toBe('auto')
         phone.value = true
         host.toggled(true)
+        // A frame swapped while the panel is open keeps the page still
+        host.reset()
+        expect(document.body.style.overflow).toBe('hidden')
         host.destroy()
         expect(document.body.style.overflow).toBe('auto')
     })

@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from pydantic import BaseModel, Field, StringConstraints, field_serializer
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, List, Optional
 from uuid import UUID
 
 from app.core.s3 import sign_s3_url
@@ -45,8 +45,8 @@ class AgentCustomizationResponse(BaseModel):
     welcome_subtitle: Optional[str] = None
     welcome_message: Optional[str] = None
     chat_initiation_messages: Optional[List[str]] = None
-    # Plain strings, or {label, match?, icon?} rules (agent_customization.QuickActionRule)
-    quick_actions: Optional[List[Union[str, Dict[str, Any]]]] = None
+    # Every-page quick actions as plain strings (page rules stay on the server)
+    quick_actions: Optional[List[str]] = None
     show_citations: Optional[bool] = None
     collect_email: Optional[bool] = None
     show_ai_disclaimer: Optional[bool] = None

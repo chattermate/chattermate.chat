@@ -155,7 +155,8 @@ export function createPanelHost(host) {
 
   /** The frame is being replaced (reload, identify, logout): nothing of it carries over. */
   function reset() {
-    unlockPage()
+    // A frame swapped under an open panel keeps the page held still
+    if (!host.isOpen()) unlockPage()
     peek.hide()
     button.classList.remove('cm-busy')
     config.panelExpanded = false

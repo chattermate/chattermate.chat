@@ -24,7 +24,7 @@ from uuid import uuid4
 import pytest
 
 from app.models.faq import FAQ
-from app.services.page_suggestions import keyword_icon, normalise_url, suggestions_for
+from app.services.page_suggestions import _matches, every_page_labels, keyword_icon, normalise_url, suggestions_for
 
 
 def _agent(actions):
@@ -42,6 +42,7 @@ def _faq(db, org_id, question, url, status="published", yes=0, no=0, category="G
     ("http://shop.example:8080/", "http://shop.example:8080"),
     ("javascript:alert(1)", None),
     ("ftp://x/y", None),
+    ("http://x:99999/a", None),
     (None, None),
 ])
 def test_normalise_url(url, expected):
@@ -102,3 +103,36 @@ class TestSuggestions:
 
     def test_no_quick_actions_and_nothing_for_the_page_shows_nothing(self, db, test_organization_id):
         assert suggestions_for(db, test_organization_id, _agent(None), "https://shop.example/x")["items"] == []
+
+
+
+@pytest.mark.parametrize("pattern,path,hit", [
+    ("/products/*", "/products/tee", True),
+    ("/products/*", "/fr/products/tee", True),
+    ("/products/*", "/products/tee/reviews", False),
+    ("/products/*", "/products", False),
+    ("/blog*", "/blogger", True),
+    ("/blog*", "/blog/post", False),
+    ("/help/", "/help", True),
+    ("/help/", "/help/returns/long", True),
+    ("/Cart", "/cart", True),
+    ("/pages/über", "/pages/%C3%BCber", True),
+    ("/a[b]", "/a[b]", True),
+    ("/a?", "/ab", False),
+    ("cart", "/cart", True),
+])
+def test_path_patterns(pattern, path, hit):
+    assert _matches(pattern, path) is hit
+
+
+def test_visitor_payloads_carry_only_every_page_strings():
+    assert every_page_labels(["Track my order", {"label": "Sizes?", "match": "/products/*"},
+                              {"label": "Hours?", "match": None, "icon": "question"}, " ", 7, None]) == \
+        ["Track my order", "Hours?"]
+    assert every_page_labels(None) == []
+
+
+def test_a_percent_or_backslash_in_the_page_url_is_literal(db, test_organization_id):
+    _faq(db, test_organization_id, "Wildcard?", "https://shop.example/pages/x")
+    assert suggestions_for(db, test_organization_id, _agent([]), "https://shop.example/%25")["items"] == []
+    assert suggestions_for(db, test_organization_id, _agent([]), "https://shop.example/a%5C")["items"] == []

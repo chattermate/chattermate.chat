@@ -23,10 +23,9 @@ Nothing is generated per view. Each row's icon comes from where it came from, or
 a small keyword map for free-text quick actions.
 """
 
-import fnmatch
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -79,12 +78,23 @@ def normalise_url(url: Any) -> Optional[str]:
     if parsed.scheme not in ('http', 'https') or not parsed.hostname:
         return None
     path = parsed.path.rstrip('/') or ''
-    port = f':{parsed.port}' if parsed.port else ''
+    try:
+        port = f':{parsed.port}' if parsed.port else ''
+    except ValueError:  # an out-of-range port
+        return None
     return f'{parsed.scheme}://{parsed.hostname.lower()}{port}{path}'
 
 
 def path_of(url: Optional[str]) -> str:
     return urlparse(url).path or '/' if url else '/'
+
+
+def every_page_labels(actions: Any) -> List[str]:
+    """The quick actions shown on every page, as plain strings: what visitor
+    payloads carry (older widget bundles expect strings, and page rules are the
+    server's to place)."""
+    rules = [_rule(e) for e in (actions if isinstance(actions, list) else [])]
+    return [r['label'] for r in rules if r and 'match' not in r]
 
 
 def _quick_actions(agent: Any) -> List[Any]:
@@ -107,17 +117,33 @@ def _rule(entry: Any) -> Optional[Dict[str, str]]:
     return None
 
 
-def _matches(pattern: str, path: str) -> bool:
-    """A path pattern: '/products/*', '/pages/shipping', '/cart'."""
+_LOCALE_PREFIX = re.compile(r'^/[a-z]{2}(-[a-z]{2})?(?=/)', re.I)
+
+
+def _matcher(pattern: str) -> re.Pattern:
+    """A path pattern as a regex: `*` is one path segment, a trailing `/` means the
+    path and everything below it, everything else is literal; case blind."""
     pattern = pattern if pattern.startswith('/') else f'/{pattern}'
-    return fnmatch.fnmatchcase(path.rstrip('/') or '/', pattern.rstrip('/') or '/')
+    below = pattern.endswith('/') and pattern != '/'
+    body = pattern.rstrip('/') or '/'
+    regex = ''.join('[^/]+' if part == '*' else re.escape(part) for part in re.split(r'(\*)', body))
+    return re.compile(f'^{regex}' + ('(/.*)?$' if below else '/?$'), re.I)
+
+
+def _matches(pattern: str, path: str) -> bool:
+    """A rule's path pattern ('/products/*', '/pages/shipping', '/help/') against the
+    page's path, with or without a store's language prefix ('/fr/products/tee')."""
+    plain = unquote(path)
+    matcher = _matcher(pattern)
+    return bool(matcher.match(plain) or matcher.match(_LOCALE_PREFIX.sub('', plain)))
 
 
 def _faq_rows(db: Session, org_id: Any, page: Optional[str]) -> List[Dict[str, str]]:
     if not page:
         return []
     parsed = urlparse(page)
-    near = f'%{parsed.netloc}{parsed.path}%'.replace('_', r'\_')
+    escaped = (parsed.netloc + parsed.path).replace('\\', '\\\\').replace('%', r'\%').replace('_', r'\_')
+    near = f'%{escaped}%'
     candidates = db.query(FAQ).filter(FAQ.organization_id == org_id, FAQ.status == PUBLISHED,
                                       FAQ.source_url.ilike(near, escape='\\')) \
         .order_by(desc(FAQ.helpful_yes - FAQ.helpful_no), FAQ.sort_order).limit(200).all()

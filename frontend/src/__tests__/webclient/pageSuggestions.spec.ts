@@ -20,7 +20,7 @@ import { type VueWrapper } from '@vue/test-utils'
 import StartSuggestions from '@/webclient/panel/StartSuggestions.vue'
 import { usePageSuggestions } from '@/composables/usePageSuggestions'
 import { setHostPageUrl } from '@/webclient/frame-session'
-import { actionLabel, actionMatch, everyPageLabels, keywordIcon, toQuickAction } from '@/webclient/quick-actions'
+import { actionLabel, actionMatch, everyPageLabels, keywordIcon, pagePattern, toQuickAction } from '@/webclient/quick-actions'
 import { fakeController, mountWithController, type FakeController } from './panelFakeController'
 
 let wrapper: VueWrapper<any> | undefined
@@ -36,6 +36,13 @@ describe('quick actions', () => {
         expect(toQuickAction('Sizes?', '', { label: 'Sizes?', icon: 'product' })).toEqual({ label: 'Sizes?', icon: 'product' })
         expect(actionLabel({ label: 'A', match: '/x' })).toBe('A')
         expect(actionMatch('A')).toBe('')
+    })
+
+    it('turns what was typed into a path pattern', () => {
+        expect(pagePattern('https://shop.com/products/*?x=1#top')).toBe('/products/*')
+        expect(pagePattern(' products / * ')).toBe('/products/*')
+        expect(pagePattern('')).toBe('')
+        expect(toQuickAction('Sizes?', 'https://shop.com/products/*')).toEqual({ label: 'Sizes?', match: '/products/*' })
     })
 
     it('picks an icon from the words, as the server does', () => {
@@ -73,6 +80,27 @@ describe('usePageSuggestions', () => {
         await nextTick()
         expect(s.emit).toHaveBeenLastCalledWith('page_suggestions', { url: 'https://shop.example/cart', title: 'Cart' })
         expect(s.pageSuggestions.value.loaded).toBe(false)
+
+        // The connection dropped and came back: asked again for the same page
+        const asks = s.emit.mock.calls.length
+        s.active.value = false
+        await nextTick()
+        s.active.value = true
+        await nextTick()
+        expect(s.emit.mock.calls.length).toBe(asks + 1)
+        s.stop()
+    })
+
+    it('asks again when the title arrives for the same page, keeping what it shows', async () => {
+        setHostPageUrl('https://shop.example/landing', undefined)
+        const s = setUp()
+        s.active.value = true
+        await nextTick()
+        s.hear('suggestions', { url: 'https://shop.example/landing', heading: 'page', items: [{ label: 'Hi', icon: 'question' }] })
+        setHostPageUrl('https://shop.example/landing', 'Landing')
+        await nextTick()
+        expect(s.emit).toHaveBeenLastCalledWith('page_suggestions', { url: 'https://shop.example/landing', title: 'Landing' })
+        expect(s.pageSuggestions.value.loaded).toBe(true)
         s.stop()
     })
 })

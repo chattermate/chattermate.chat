@@ -26,6 +26,7 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.services.page_suggestions import every_page_labels
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.s3 import get_s3_signed_url
@@ -183,7 +184,8 @@ async def _customization(db: Session, agent: Agent) -> dict:
         "welcome_subtitle": customization.welcome_subtitle,
         "welcome_message": customization.welcome_message,
         "chat_initiation_messages": customization.chat_initiation_messages or [],
-        "quick_actions": customization.quick_actions or [],
+        # Every-page ones as plain strings: page rules are placed by the server
+        "quick_actions": every_page_labels(customization.quick_actions),
         "show_citations": customization.show_citations,
         "collect_email": customization.collect_email,
         # A human-only agent never produces an AI reply, so disclosing one

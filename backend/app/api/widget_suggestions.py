@@ -28,7 +28,7 @@ from app.database import SessionLocal
 from app.repositories.agent import AgentRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 from app.services.page_suggestions import suggestions_for
-from app.services.socket_rate_limit import socket_rate_limit
+from app.services.public_rate_limit import allow_request
 from app.services.widget_reply import WIDGET_NAMESPACE
 
 logger = get_logger(__name__)
@@ -48,11 +48,15 @@ def _suggestions(agent_id: str, org_id: str, url, title) -> dict:
                                store=bool(shopify and shopify.enabled))
 
 
+# Asked at connect and on page changes: its own limit, never the agent's message
+# limit (an ask there could cost the visitor their first message)
+ASKS_PER_MINUTE = 30
+
+
 @sio.on('page_suggestions', namespace=WIDGET_NAMESPACE)
-@socket_rate_limit(namespace=WIDGET_NAMESPACE)
 async def handle_page_suggestions(sid, data):
     session = await authenticated_session(sid)
-    if session is None:
+    if session is None or not allow_request(f"suggestions:{session.get('session_id')}", ASKS_PER_MINUTE, 60):
         return
     url = data.get('url') if isinstance(data, dict) else None
     title = data.get('title') if isinstance(data, dict) else None
@@ -62,5 +66,5 @@ async def handle_page_suggestions(sid, data):
     except Exception as e:
         logger.error(f"Page suggestions failed: {e}")
         result = NONE
-    await sio.emit('suggestions', {'url': url if isinstance(url, str) else None, **result},
+    await sio.emit('suggestions', {'url': url[:2000] if isinstance(url, str) else None, **result},
                    to=sid, namespace=WIDGET_NAMESPACE)

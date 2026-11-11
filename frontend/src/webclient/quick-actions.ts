@@ -45,13 +45,31 @@ export const everyPageLabels = (actions: unknown): string[] =>
         .map(actionLabel)
         .filter(Boolean)
 
+/**
+ * What "Show on pages" means as a path pattern: a pasted full URL keeps only its
+ * path, spaces go, and it always starts with "/". '' for every page.
+ */
+export function pagePattern(input: string): string {
+    let value = input.trim()
+    if (!value) return ''
+    if (/^https?:\/\//i.test(value)) {
+        try {
+            value = new URL(value).pathname
+        } catch {
+            /* keep what was typed */
+        }
+    }
+    value = value.split(/[?#]/)[0].replace(/\s+/g, '')
+    return value.startsWith('/') ? value : `/${value}`
+}
+
 /** A plain string when it is for every page, else a rule. */
 export function toQuickAction(label: string, match: string, previous?: QuickAction): QuickAction {
     const text = label.trim()
-    const path = match.trim()
+    const path = pagePattern(match)
     const icon = typeof previous === 'object' ? previous.icon : undefined
     if (!path && !icon) return text
-    return { label: text, ...(path ? { match: path.startsWith('/') ? path : `/${path}` } : {}), ...(icon ? { icon } : {}) }
+    return { label: text, ...(path ? { match: path } : {}), ...(icon ? { icon } : {}) }
 }
 
 /** The keyword map the server also uses (page_suggestions.keyword_icon), for the preview. */

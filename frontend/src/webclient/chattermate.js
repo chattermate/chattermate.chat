@@ -2293,7 +2293,7 @@ import {
         button.classList.add('loading')
         clearFrameTimer()
         frameTimer = setTimeout(showUnavailable, FRAME_LOAD_MS)
-        postToFrame({ type: 'HOST_INIT', token: getStoredToken(), pageUrl: window.location.href })
+        postToFrame({ type: 'HOST_INIT', token: getStoredToken(), pageUrl: window.location.href, pageTitle: String(document.title || '').slice(0, 200) })
         pendingIdentity = null // HOST_INIT carried the newest token
         return
       }

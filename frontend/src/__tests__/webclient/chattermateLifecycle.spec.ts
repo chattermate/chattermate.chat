@@ -67,7 +67,7 @@ describe('ChatterMate frame and lifecycle API', () => {
       const init = handshake()
 
       expect(init?.targetOrigin).toBe(FRAME_ORIGIN)
-      expect(init?.message).toEqual({ type: 'HOST_INIT', token: 'tok-stored', pageUrl: window.location.href })
+      expect(init?.message).toEqual({ type: 'HOST_INIT', token: 'tok-stored', pageUrl: window.location.href, pageTitle: document.title })
     })
 
     it('loads anonymously when no token is stored', async () => {
