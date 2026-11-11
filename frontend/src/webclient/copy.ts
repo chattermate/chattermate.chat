@@ -107,6 +107,11 @@ export const PANEL_COPY = {
     answerPlaceholder: 'Type your message here...',
     /** Product cards. Same text as classic. */
     viewProduct: 'View product',
+    /** Status cards (plan phase 4). */
+    cardSteps: 'Progress',
+    cardStepState: (label: string, state: string) =>
+        state === 'done' ? `${label}, done` : state === 'current' ? `${label}, current step` : state === 'failed' ? `${label}, failed` : label,
+    quantity: (n: number) => `× ${n}`,
     /** Commerce (plan phase 3): the carousel, the product sheet and the cart bar. */
     products: 'Products',
     previousProducts: 'Previous products',

@@ -617,6 +617,11 @@ export class ChatWidget {
     })
   }
 
+  /** A status card in the chat (the redesign), named by its title, e.g. "Order #1042". */
+  statusCard(title: string): Locator {
+    return this.frame.getByRole('region', { name: title })
+  }
+
   /** The redesign's cart bar above the message box. */
   get cartBar(): Locator {
     return this.frame.getByRole('region', { name: 'Your cart' })

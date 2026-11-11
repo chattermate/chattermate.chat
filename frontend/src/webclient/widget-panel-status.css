@@ -1,0 +1,97 @@
+/**
+ * The redesigned widget's status cards (ui 2, plan phase 4): an order or a ticket
+ * with its status pill, steps, rows, items, total and actions. The pill's text
+ * says the status; its tint only repeats it. Rules: see widget-panel.css.
+ */
+
+.chat-container.cm-surface.cm-ui-2 .cm-status-card {
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-card);
+    color: var(--cm-text);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__title {
+    font-size: 14.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__subtitle,
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__row dt,
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__item-meta {
+    color: var(--cm-muted);
+    font-size: 12.5px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__pill {
+    padding: 3px 10px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: 999px;
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 12px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__pill.is-success,
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__pill.is-progress,
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__pill.is-info {
+    border-color: var(--cm-accent);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__pill.is-danger,
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__pill.is-warning {
+    border-color: var(--cm-text);
+    border-style: dashed;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__track {
+    border-radius: 2px;
+    background: var(--cm-line);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__fill {
+    background: var(--cm-accent);
+    transition: transform calc(var(--cm-dur-4) * var(--cm-dur-scale)) var(--cm-ease-out);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__step {
+    color: var(--cm-muted);
+    font-size: 11.5px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__step.is-current {
+    color: var(--cm-text);
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__row dd,
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__amount {
+    color: var(--cm-text);
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__thumb {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__total {
+    padding-top: 10px;
+    border-top: 1px solid var(--cm-line);
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__action {
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__action.is-primary {
+    border-color: var(--cm-accent);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status-card__action:disabled {
+    opacity: .5;
+    cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-status-card__fill {
+        transition: none;
+    }
+}

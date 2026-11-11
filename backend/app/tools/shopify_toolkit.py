@@ -45,6 +45,8 @@ from app.tools.shopify_order_access import (
     order_number_matches,
 )
 
+from app.cards.order_card import order_card
+from app.cards.turn_cards import TurnCards
 logger = get_logger(__name__)
 
 # A slow store must not hold the chat turn open.
@@ -225,6 +227,8 @@ class ShopifyTools(Toolkit):
         # even if the LLM forgets to echo the key in its structured shopify_output.
         # Per-request instance, so this cannot leak across turns.
         self.has_cached_products: bool = False
+        # The reply's status cards (app/cards), set by the chat agent for the redesign.
+        self.turn_cards: Optional[TurnCards] = None
 
         # Register the functions
         self.register(self.list_products)
@@ -785,6 +789,8 @@ class ShopifyTools(Toolkit):
             # The full record is fetched separately, so check ownership on it too.
             if not order_belongs_to(order, customer_email):
                 return json.dumps({"success": False, "message": ORDER_NOT_FOUND})
+            if self.turn_cards is not None:
+                self.turn_cards.add(order_card(order))
 
             # Filter out cancelled fulfillments - only include active ones
             active_fulfillments = [

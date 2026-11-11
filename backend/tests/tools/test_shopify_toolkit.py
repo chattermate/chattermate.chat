@@ -547,6 +547,18 @@ def test_get_order_status_rechecks_the_full_record(shopify_tools, mock_shopify_s
     assert result == {"success": False, "message": ORDER_NOT_FOUND}
 
 
+def test_get_order_status_shows_the_order_card_only_for_the_owner(shopify_tools, mock_shopify_service):
+    from app.cards.turn_cards import TurnCards
+    shopify_tools.turn_cards = TurnCards()
+    with patch("requests.post", return_value=_orders_response(_order_node())):
+        shopify_tools.get_order_status(order_number="1001", customer_email="someone.else@example.com")
+    assert shopify_tools.turn_cards.payload() == []
+    with patch("requests.post", return_value=_orders_response(_order_node())):
+        shopify_tools.get_order_status(order_number="1001", customer_email=OWNER_EMAIL)
+    [card] = shopify_tools.turn_cards.payload()
+    assert card["kind"] == "order" and card["title"].startswith("Order ")
+
+
 def test_get_order_status_guest_checkout(shopify_tools, mock_shopify_service):
     order = mock_shopify_service.get_order.return_value["order"]
     order["customer"] = None

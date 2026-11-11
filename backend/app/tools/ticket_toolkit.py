@@ -21,6 +21,8 @@ from uuid import UUID
 
 from agno.tools import Toolkit
 
+from app.cards.ticket_card import ticket_card
+from app.cards.turn_cards import TurnCards
 from app.core.logger import get_logger
 from app.database import SessionLocal
 from app.models.session_to_agent import SessionToAgent
@@ -63,6 +65,8 @@ class TicketTools(Toolkit):
         self.agent_id = agent_id
         self.org_id = org_id
         self.session_id = session_id
+        # The reply's status cards (app/cards), set by the chat agent for the redesign.
+        self.turn_cards: Optional[TurnCards] = None
 
         self.register(self.create_ticket)
         self.register(self.get_ticket_status)
@@ -139,6 +143,7 @@ class TicketTools(Toolkit):
                         body=f"Additional details from the conversation:\n{description}",
                     )
                     db.commit()
+                    self._show_ticket(existing.display_number, str(existing.status), str(existing.priority))
                     return json.dumps({
                         "success": True,
                         "updated": True,
@@ -166,6 +171,7 @@ class TicketTools(Toolkit):
                 db.refresh(ticket)
                 ticket_number = ticket.display_number
                 status = str(ticket.status)
+                self._show_ticket(ticket_number, status, str(ticket.priority))
 
             # The acknowledgment message is sent by the chat agent itself in
             # its reply, so no separate customer notification here.
@@ -204,6 +210,10 @@ class TicketTools(Toolkit):
                 f"Failed to capture customer identity for session {conversation.session_id}: {e}"
             )
 
+    def _show_ticket(self, number: str, status: str, priority: Optional[str]) -> None:
+        if self.turn_cards is not None:
+            self.turn_cards.add(ticket_card(number, status, priority))
+
     def get_ticket_status(self, ticket_number: Optional[str] = None) -> str:
         """
         Get the current status of a ticket. Without a ticket number, returns
@@ -229,6 +239,11 @@ class TicketTools(Toolkit):
                     ticket = repo.get_by_session(UUID(str(self.session_id)))
                 if ticket is None or str(ticket.organization_id) != str(self.org_id):
                     return json.dumps({"exists": False, "message": "No ticket found."})
+                # A card only for this conversation's own ticket: a number alone
+                # proves nothing about whose ticket it is.
+                own = ticket if not ticket_number else repo.get_by_session(UUID(str(self.session_id)))
+                if own is not None and own.id == ticket.id:
+                    self._show_ticket(ticket.display_number, str(ticket.status), str(ticket.priority))
                 return json.dumps({
                     "exists": True,
                     "ticket_id": ticket.display_number,

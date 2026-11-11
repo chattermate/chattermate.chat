@@ -45,6 +45,25 @@ test.describe('Shopify', () => {
     expect(toolResults).toMatch(/1ZE2E\d+/)
   })
 
+  test('the order shows as a card with where it is, the tracking number masked @integrations', async ({ agent, widget, llm }) => {
+    // eslint-disable-next-line playwright/no-skipped-test -- status cards are the redesigned widget's
+    test.skip(env.widgetUi !== 2, 'Status cards are the redesigned widget\'s')
+    const email = widget.customer.email
+    await llm.script(agent, (s) => s
+      .when(/1042/).callTool('get_order_status', { order_number: '#1042', customer_email: email })
+      .thenReply('Order #1042 is on its way.')
+      .otherwise().reply('What is your order number and email?'))
+    await widget.embed()
+    await widget.open()
+    await widget.send(`Where is order 1042? ${email}`)
+
+    const card = widget.statusCard('Order #1042')
+    await expect(card).toContainText('In transit', AI_REPLY)
+    await expect(card).toContainText('UPS ••••')
+    await expect(card).not.toContainText('1 Test Street')
+    await expect(card.getByRole('link', { name: /Track with carrier/ })).toHaveAttribute('href', /^https:\/\/tracking\.e2e\.test\//)
+  })
+
   test('an email alone lists no orders @integrations', async ({ agent, widget, llm, request }) => {
     const email = widget.customer.email
     await llm.script(agent, (s) => s

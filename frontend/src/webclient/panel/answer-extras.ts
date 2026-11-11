@@ -103,7 +103,7 @@ export function feedbackOf(message: WidgetMessage): VisitorFeedback | null {
 /** The extras of a live reply (chat_response), to keep in its attributes like history does. */
 export function replyExtras(data: Record<string, unknown>): Record<string, unknown> {
     const extras: Record<string, unknown> = {}
-    for (const key of ['quick_replies', 'handover', 'trace'] as const) {
+    for (const key of ['quick_replies', 'handover', 'trace', 'cards'] as const) {
         if (data[key] !== null && data[key] !== undefined) extras[key] = data[key]
     }
     return extras
@@ -114,4 +114,77 @@ export function formatDuration(ms: number): string {
     if (ms < 1000) return '<1s'
     const seconds = ms / 1000
     return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`
+}
+
+// ===== Status cards (plan 4.1; app/models/schemas/cards.py) =====
+
+export type CardTone = 'neutral' | 'info' | 'progress' | 'success' | 'warning' | 'danger'
+export type CardStepState = 'done' | 'current' | 'upcoming' | 'failed'
+
+export interface CardMoney { value: string; currency: string }
+export interface CardAction { id: string; label: string; kind: 'link' | 'reply'; value: string; style: 'primary' | 'secondary' }
+
+export interface StatusCard {
+    id: string
+    kind: string
+    title: string
+    subtitle?: string
+    status?: { key: string; label: string; tone: CardTone }
+    steps: Array<{ label: string; state: CardStepState }>
+    rows: Array<{ label: string; value: string }>
+    items: Array<{ title: string; meta?: string; image?: string; quantity?: number; amount?: CardMoney }>
+    total?: { label: string; amount: CardMoney }
+    actions: CardAction[]
+}
+
+const TONES = new Set<CardTone>(['neutral', 'info', 'progress', 'success', 'warning', 'danger'])
+const STEP_STATES = new Set<CardStepState>(['done', 'current', 'upcoming', 'failed'])
+const str = (value: unknown): string => (typeof value === 'string' ? value : '')
+const list = (value: unknown): Record<string, unknown>[] =>
+    Array.isArray(value) ? value.filter(isObject) : []
+const money = (value: unknown): CardMoney | undefined =>
+    isObject(value) && str(value.value) ? { value: str(value.value), currency: str(value.currency) } : undefined
+const isWebUrl = (value: string) => /^https?:\/\//i.test(value)
+
+function actionFrom(value: Record<string, unknown>): CardAction | null {
+    const kind = value.kind
+    const target = str(value.value)
+    if (!str(value.label) || !target) return null
+    if (kind === 'link' && !isWebUrl(target)) return null
+    if (kind !== 'link' && kind !== 'reply') return null
+    return { id: str(value.id), label: str(value.label), kind, value: target, style: value.style === 'primary' ? 'primary' : 'secondary' }
+}
+
+function cardFrom(value: Record<string, unknown>): StatusCard | null {
+    if (!str(value.id) || !str(value.title)) return null
+    const status = isObject(value.status) && str(value.status.label)
+        ? { key: str(value.status.key), label: str(value.status.label),
+            tone: TONES.has(value.status.tone as CardTone) ? (value.status.tone as CardTone) : 'neutral' }
+        : undefined
+    const total = isObject(value.total) && money(value.total.amount)
+        ? { label: str(value.total.label) || 'Total', amount: money(value.total.amount)! } : undefined
+    return {
+        id: str(value.id),
+        kind: str(value.kind) || 'generic',
+        title: str(value.title),
+        subtitle: str(value.subtitle) || undefined,
+        status,
+        steps: list(value.steps).filter(s => str(s.label) && STEP_STATES.has(s.state as CardStepState))
+            .map(s => ({ label: str(s.label), state: s.state as CardStepState })),
+        rows: list(value.rows).filter(r => str(r.label) && str(r.value)).map(r => ({ label: str(r.label), value: str(r.value) })),
+        items: list(value.items).filter(i => str(i.title)).map(i => ({
+            title: str(i.title),
+            meta: str(i.meta) || undefined,
+            image: isWebUrl(str(i.image)) ? str(i.image) : undefined,
+            quantity: typeof i.quantity === 'number' ? i.quantity : undefined,
+            amount: money(i.amount),
+        })),
+        total,
+        actions: list(value.actions).map(actionFrom).filter((a): a is CardAction => a !== null),
+    }
+}
+
+/** The status cards a reply carries (order, ticket), validated. */
+export function cardsOf(message: WidgetMessage): StatusCard[] {
+    return list(attributesOf(message).cards).map(cardFrom).filter((c): c is StatusCard => c !== null)
 }

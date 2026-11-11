@@ -975,9 +975,19 @@ class ShopifyService:
             }
             fulfillments {
               status
+              displayStatus
+              estimatedDeliveryAt
               trackingInfo {
+                company
                 number
                 url
+              }
+              fulfillmentLineItems(first: 10) {
+                edges {
+                  node {
+                    quantity
+                  }
+                }
               }
             }
             lineItems(first: 50) {
@@ -986,6 +996,9 @@ class ShopifyService:
                   id
                   name
                   quantity
+                  image {
+                    url
+                  }
                   originalUnitPriceSet {
                     shopMoney {
                       amount
@@ -1035,7 +1048,8 @@ class ShopifyService:
                 "currency": li_node.get("originalUnitPriceSet", {}).get("shopMoney", {}).get("currencyCode"),
                 "variant_id": variant.get("id").split("/")[-1] if variant.get("id") else None,
                 "variant_title": variant.get("title"),
-                "sku": variant.get("sku")
+                "sku": variant.get("sku"),
+                "image": (li_node.get("image") or {}).get("url"),
             }
             
             line_items.append(line_item)
@@ -1047,12 +1061,18 @@ class ShopifyService:
             
             for tracking in fulfillment.get("trackingInfo", []):
                 tracking_info.append({
+                    "company": tracking.get("company"),
                     "number": tracking.get("number"),
                     "url": tracking.get("url")
                 })
+            shipped_edges = (fulfillment.get("fulfillmentLineItems") or {}).get("edges") or []
             
             fulfillments.append({
                 "status": fulfillment.get("status"),
+                # For the widget's order card (app/cards/order_card.py)
+                "display_status": fulfillment.get("displayStatus"),
+                "estimated_delivery_at": fulfillment.get("estimatedDeliveryAt"),
+                "shipped_quantity": sum(int((e.get("node") or {}).get("quantity") or 0) for e in shipped_edges),
                 "tracking_numbers": [t.get("number") for t in tracking_info if t.get("number")],
                 "tracking_urls": [t.get("url") for t in tracking_info if t.get("url")],
                 "tracking_info": tracking_info

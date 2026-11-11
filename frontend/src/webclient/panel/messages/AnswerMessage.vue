@@ -31,11 +31,12 @@ import LinkCard from './answer/LinkCard.vue'
 import AnswerActions from './answer/AnswerActions.vue'
 import FollowUpChips from './answer/FollowUpChips.vue'
 import TraceReceipt from './answer/TraceReceipt.vue'
+import StatusCard from './StatusCard.vue'
 import { agentFace } from '../agent-face'
 import { renderMarkdown } from '../../markdown'
 import { decorateAnswerLinks, type AnswerSource } from '../../answer-links'
 import { hostOrigin } from '../../host-bridge'
-import { feedbackOf, followUpsOf, traceOf } from '../answer-extras'
+import { cardsOf, feedbackOf, followUpsOf, traceOf } from '../answer-extras'
 import { PANEL_COPY } from '../../copy'
 import type { WidgetMessage } from '../../../types/widget'
 
@@ -63,6 +64,7 @@ const answer = computed(() => {
 })
 const files = computed(() => props.message.attachments ?? [])
 const trace = computed(() => traceOf(props.message))
+const cards = computed(() => (streaming.value ? [] : cardsOf(props.message)))
 const isLatest = computed(() => inConversation.value && props.index === messages.value.length - 1)
 const followUps = computed(() => (isLatest.value && !streaming.value ? followUpsOf(props.message) : []))
 const showActions = computed(() => inConversation.value && !streaming.value && !!props.message.message)
@@ -81,6 +83,7 @@ const answerText = () => body.value?.text() ?? ''
         <TraceReceipt v-if="trace" :trace="trace" />
         <AnswerBody ref="body" :html="answer.html" :busy="streaming" />
         <LinkCard v-if="answer.card && !streaming" :source="answer.card" class="cm-fade" />
+        <StatusCard v-for="(card, i) in cards" :key="card.id" :card="card" class="cm-enter" :style="{ '--cm-i': i }" />
         <SourceChips v-if="sources.length" :sources="sources" />
         <AttachmentList v-if="files.length" :attachments="files" />
         <AnswerActions

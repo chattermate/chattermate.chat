@@ -22,6 +22,7 @@ from app.core.logger import get_logger
 from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import MessageSource, is_widget_channel
 from app.services.agent_steps import StepReporter
+from app.cards.turn_cards import TurnCards
 from app.services.handover_payload import handover_payload
 from app.services.widget_answers import widget_choices
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
@@ -365,7 +366,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, step_reporter: Optional[StepReporter] = None):
+    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, step_reporter: Optional[StepReporter] = None, turn_cards: Optional[TurnCards] = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -379,6 +380,9 @@ class ChatAgent(ChatAgentMCPMixin):
         self.last_trace = None
         # The handover card state stored on this turn's reply (handover_payload.py)
         self.last_handover = None
+        # Status cards the tools produce this turn (app/cards), and the reply's
+        self.turn_cards = turn_cards
+        self.last_cards = None
         # Channels that can show tappable choices get a reply schema that
         # offers them (ChannelChatResponse); everyone else's is unchanged.
         self._response_model = ChannelChatResponse if choice_limits is not None else ChatResponse
@@ -569,6 +573,10 @@ class ChatAgent(ChatAgentMCPMixin):
                 self.tools.append(self.shopify_tools)
             except Exception as e:
                 logger.error(f"Failed to initialize Shopify tools: {e}")
+
+        for toolkit in (getattr(self, 'ticket_tools', None), getattr(self, 'shopify_tools', None)):
+            if toolkit is not None:
+                toolkit.turn_cards = self.turn_cards
 
         # Add MCP tools if provided
         if self.mcp_tools:
@@ -1042,6 +1050,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
             self.knowledge_tool.reset_turn()
         if getattr(self, "step_reporter", None) is not None:
             self.step_reporter.reset()
+        if getattr(self, "turn_cards", None) is not None:
+            self.turn_cards.reset()
 
     async def _arun(self, message: str, session_id: str):
         """One agent run under AGENT_RUN_TIMEOUT, with the context-overflow
@@ -1408,6 +1418,9 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_trace = self.step_reporter.summary() if self.step_reporter else None
         if self.last_trace:
             extras["trace"] = self.last_trace
+        self.last_cards = (self.turn_cards.payload() or None) if self.turn_cards else None
+        if self.last_cards:
+            extras["cards"] = self.last_cards
         return extras
 
     def _store_bot_message(self, chat_repo: ChatRepository, message_data: dict) -> None:
@@ -1426,6 +1439,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_bot_message_id = None
         self.last_trace = None
         self.last_handover = None
+        self.last_cards = None
         try:
             # Update session and IDs if provided
             if session_id:

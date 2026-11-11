@@ -24,6 +24,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+import json
+
 import pytest
 
 from app.models.customer import Customer
@@ -155,3 +157,50 @@ class TestCreateTicketIdentity:
         ticket = self._create(db, test_organization_id, test_agent.id, session, customer_email="other@acme.com")
 
         assert ticket.customer_id is None
+
+
+
+class TestTicketCards:
+    """The redesign's ticket card: for this conversation's own ticket only."""
+
+    def _session(self, db, org_id, agent_id):
+        customer = Customer(email=f"{uuid4().hex}@example.com", organization_id=org_id, conversation_key="k")
+        db.add(customer); db.commit(); db.refresh(customer)
+        session = SessionToAgent(session_id=uuid4(), customer_id=customer.id, agent_id=agent_id,
+                                 organization_id=org_id, status=SessionStatus.OPEN, conversation_key="k")
+        db.add(session); db.commit()
+        return session
+
+    def _tools(self, org_id, agent_id, session):
+        from app.cards.turn_cards import TurnCards
+        tools = TicketTools(str(agent_id), str(org_id), str(session.session_id))
+        tools.turn_cards = TurnCards()
+        return tools
+
+    def test_creating_a_ticket_shows_its_card(self, ticket_tools_db, test_organization_id, test_agent):
+        session = self._session(ticket_tools_db, test_organization_id, test_agent.id)
+        tools = self._tools(test_organization_id, test_agent.id, session)
+        tools.create_ticket(summary="Login fails", description="Every attempt errors.")
+        [card] = tools.turn_cards.payload()
+        assert card["kind"] == "ticket" and card["status"]["label"] in ("Received", "Looking into it")
+        assert "Login fails" not in repr(card)
+
+    def test_another_conversations_ticket_shows_no_card(self, ticket_tools_db, test_organization_id, test_agent):
+        db = ticket_tools_db
+        theirs = self._session(db, test_organization_id, test_agent.id)
+        mine = self._session(db, test_organization_id, test_agent.id)
+        TicketTools(str(test_agent.id), str(test_organization_id), str(theirs.session_id)).create_ticket(
+            summary="Their problem", description="Private.")
+        from app.repositories.ticket import TicketRepository
+        number = TicketRepository(db).get_by_session(theirs.session_id).display_number
+        tools = self._tools(test_organization_id, test_agent.id, mine)
+        result = json.loads(tools.get_ticket_status(number))
+        assert result["exists"] is True and tools.turn_cards.payload() == []
+
+    def test_asking_after_its_own_ticket_shows_the_card(self, ticket_tools_db, test_organization_id, test_agent):
+        session = self._session(ticket_tools_db, test_organization_id, test_agent.id)
+        TicketTools(str(test_agent.id), str(test_organization_id), str(session.session_id)).create_ticket(
+            summary="Login fails", description="Every attempt errors.")
+        tools = self._tools(test_organization_id, test_agent.id, session)
+        tools.get_ticket_status()
+        assert [c["kind"] for c in tools.turn_cards.payload()] == ["ticket"]
