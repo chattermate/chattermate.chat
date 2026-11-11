@@ -603,6 +603,22 @@ def test_logout(client: TestClient, test_user: User):
     for cookie in ["access_token", "refresh_token", "user_info"]:
         assert response.cookies.get(cookie) is None or response.cookies[cookie].value == ""
 
+def test_logout_drops_only_this_devices_push_token(client: TestClient, test_user: User, db: Session):
+    """The token rides on the logout itself, so signing out never waits on a
+    separate DELETE — and the user's other devices keep their push."""
+    db.add_all([
+        FCMToken(user_id=test_user.id, token="phone_token"),
+        FCMToken(user_id=test_user.id, token="laptop_token"),
+    ])
+    db.commit()
+
+    response = client.post("/api/v1/users/logout", json={"fcm_token": "laptop_token"})
+    assert response.status_code == 200
+
+    tokens = {t.token for t in db.query(FCMToken).filter(
+        FCMToken.user_id == test_user.id).all()}
+    assert tokens == {"phone_token"}
+
 def test_update_profile(client: TestClient, test_user: User):
     """Test updating user's own profile"""
     update_data = {
