@@ -162,39 +162,6 @@ def cart_variant_id(node: dict) -> Optional[str]:
     return variant["id"].split("/")[-1]
 
 
-# A product shows at most this many variants in the widget's product sheet; the
-# query asks for this many (Admin API cost grows with it, per product).
-MAX_VARIANTS = 25
-
-
-def _variant_from_node(node: dict) -> Optional[dict]:
-    if not node.get("id"):
-        return None
-    image = (node.get("image") or {}).get("url")
-    return {
-        "id": node["id"].split("/")[-1],
-        "title": node.get("title"),
-        "available": bool(node.get("availableForSale")),
-        "price": node.get("price"),
-        "options": {o.get("name"): o.get("value") for o in node.get("selectedOptions") or []
-                    if o.get("name") and o.get("value") is not None},
-        "image": {"src": image} if image else None,
-    }
-
-
-def product_choices(node: dict) -> dict:
-    """What the widget's product sheet offers: the options (Size, Colour) with their
-    values, and each variant with what it is. Empty for a single-variant product:
-    there is nothing to choose."""
-    edges = (node.get("variants") or {}).get("edges") or []
-    variants = [v for v in (_variant_from_node(e.get("node") or {}) for e in edges[:MAX_VARIANTS]) if v]
-    if len(variants) < 2:
-        return {"options": [], "variants": []}
-    options = [{"name": o.get("name"), "values": [v for v in o.get("values") or [] if isinstance(v, str)]}
-               for o in node.get("options") or [] if o.get("name")]
-    return {"options": options, "variants": variants}
-
-
 def product_from_node(node: dict) -> dict:
     """Flatten one GraphQL product node into the shape the cache and cards use."""
     images = (node.get("images") or {}).get("edges") or []
@@ -217,11 +184,34 @@ def product_from_node(node: dict) -> dict:
         "created_at": node.get("createdAt"),
         "updated_at": node.get("updatedAt"),
         "cart_variant_id": cart_variant_id(node),
-        # For the widget's carousel ("Only 3 left") and product sheet (plan 3.x)
+        # For the widget's carousel ("Only 3 left") and its product sheet, which
+        # fetches the options itself when opened (shopify_product_options.py)
         "published": bool(node.get("publishedAt")),
         "tracks_inventory": node.get("tracksInventory"),
-        **product_choices(node),
+        "has_choices": node.get("hasOnlyDefaultVariant") is False,
     }
+
+
+def shop_for_agent(agent_id: Any, org_id: Any) -> Optional[ShopifyShop]:
+    """The installed Shopify shop the agent uses, when it belongs to the agent's
+    organization and the agent has Shopify on; otherwise None."""
+    try:
+        with SessionLocal() as db:
+            shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
+            if not shopify_config or not shopify_config.enabled or not shopify_config.shop_id:
+                logger.warning("Shopify integration is not enabled for this agent")
+                return None
+            shop = ShopifyShopRepository(db).get_shop(shopify_config.shop_id)
+            if not shop or not shop.is_installed:
+                logger.warning("Shopify shop not found or not installed")
+                return None
+            if str(shop.organization_id) != str(UUID(str(org_id))):
+                logger.warning(f"Shop {shop.id} does not belong to organization {org_id}")
+                return None
+            return shop
+    except Exception as e:
+        logger.error(f"Error getting shop for agent: {str(e)}")
+        return None
 
 
 class ShopifyTools(Toolkit):
@@ -256,44 +246,9 @@ class ShopifyTools(Toolkit):
 
 
     def _get_shop_for_agent(self) -> Optional[ShopifyShop]:
-        """
-        Helper method to get the Shopify shop associated with the agent.
-        
-        Returns:
-            ShopifyShop: The shop associated with the agent, or None if not found or not enabled.
-        """
-        try:
-            logger.debug(f"Getting shop for agent {self.agent_id}")
-            
-            with SessionLocal() as db:
-                # Get the agent's Shopify configuration
-                agent_shopify_config_repo = AgentShopifyConfigRepository(db)
-                shopify_config = agent_shopify_config_repo.get_agent_shopify_config(str(self.agent_id))
-                
-                if not shopify_config or not shopify_config.enabled or not shopify_config.shop_id:
-                    logger.warning("Shopify integration is not enabled for this agent")
-                    return None
-                    
-                # Get the shop
-                shopify_repo = ShopifyShopRepository(db)
-                shop = shopify_repo.get_shop(shopify_config.shop_id)
-                
-                if not shop or not shop.is_installed:
-                    logger.warning("Shopify shop not found or not installed")
-                    return None
-                    
-                # Verify the shop belongs to the current organization
-                org_uuid = UUID(str(self.org_id))
-                if str(shop.organization_id) != str(org_uuid):
-                    logger.warning(f"Shop {shop.id} does not belong to organization {self.org_id}")
-                    return None
-                    
-                return shop
-            
-        except Exception as e:
-            logger.error(f"Error getting shop for agent: {str(e)}")
-            return None
-    
+        """The installed shop this agent uses, in its organization, or None."""
+        return shop_for_agent(self.agent_id, self.org_id)
+
     def list_products(self, limit: int = 10) -> str:
         """
         List products from the Shopify store.
@@ -480,7 +435,7 @@ class ShopifyTools(Toolkit):
                     vendor
                     totalInventory
                     publishedAt
-                    tracksInventory options { name values } variants(first: 25) { edges { node { id title availableForSale price selectedOptions { name value } image { url } } } }
+                    tracksInventory hasOnlyDefaultVariant variants(first: 2) { edges { node { id availableForSale } } }
                     priceRangeV2 {
                       minVariantPrice {
                         amount
@@ -1019,7 +974,7 @@ class ShopifyTools(Toolkit):
                         vendor
                         totalInventory
                         publishedAt
-                        tracksInventory options {{ name values }} variants(first: 25) {{ edges {{ node {{ id title availableForSale price selectedOptions {{ name value }} image {{ url }} }} }} }}
+                        tracksInventory hasOnlyDefaultVariant variants(first: 2) {{ edges {{ node {{ id availableForSale }} }} }}
                         priceRangeV2 {{
                           minVariantPrice {{
                             amount
@@ -1083,7 +1038,7 @@ class ShopifyTools(Toolkit):
                         vendor
                         totalInventory
                         publishedAt
-                        tracksInventory options { name values } variants(first: 25) { edges { node { id title availableForSale price selectedOptions { name value } image { url } } } }
+                        tracksInventory hasOnlyDefaultVariant variants(first: 2) { edges { node { id availableForSale } } }
                         priceRangeV2 {
                           minVariantPrice {
                             amount

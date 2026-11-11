@@ -33,9 +33,16 @@ export interface WidgetProduct {
   /** Published to the Online Store: only then can the storefront's cart take it. */
   published?: boolean | null
   tracks_inventory?: boolean | null
-  /** What a customer picks between (Size, Colour); empty for a single-variant product. */
-  options?: WidgetProductOption[]
-  variants?: WidgetProductVariant[]
+  /** It has variants to choose between (Size, Colour): the product sheet reads them when opened. */
+  has_choices?: boolean | null
+}
+
+/** A product's options and variants, read by the product sheet (product_options). */
+export interface WidgetProductChoices {
+  options: WidgetProductOption[]
+  variants: WidgetProductVariant[]
+  /** False when the sheet can't offer them whole: the product's own page can. */
+  complete: boolean
 }
 
 export interface WidgetProductOption {
@@ -50,7 +57,6 @@ export interface WidgetProductVariant {
   price?: string | null
   /** Option name → value, e.g. { Size: 'M' }. */
   options: Record<string, string>
-  image?: ShopifyProductImage | null
 }
 
 /** A chat message plus the state the widget keeps on it (forms, ratings, questions). */

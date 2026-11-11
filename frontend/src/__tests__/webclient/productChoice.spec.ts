@@ -15,12 +15,17 @@ limitations under the License.
 */
 
 import { describe, expect, it } from 'vitest'
-import { firstSelection, hasPriceRange, lowStock, needsChoice, valueAvailable, variantFor } from '@/webclient/product-choice'
-import type { WidgetProduct } from '@/types/widget'
+import {
+    choicesFrom, everyOptionChosen, firstSelection, hasPriceRange, lowStock, needsChoice, valueAvailable, variantFor,
+} from '@/webclient/product-choice'
+import type { WidgetProduct, WidgetProductChoices } from '@/types/widget'
 
 const tee: WidgetProduct = {
     id: 'p1', title: 'Tee', price: '20.00', price_max: '24.00', published: true,
-    tracks_inventory: true, total_inventory: 3,
+    tracks_inventory: true, total_inventory: 3, has_choices: true,
+}
+const choices: WidgetProductChoices = {
+    complete: true,
     options: [{ name: 'Size', values: ['S', 'M', 'L'] }, { name: 'Colour', values: ['Red', 'Blue'] }],
     variants: [
         { id: '1', available: false, options: { Size: 'S', Colour: 'Red' } },
@@ -45,27 +50,53 @@ describe('product choice', () => {
         expect(hasPriceRange({ ...tee, price_max: null })).toBe(false)
     })
 
-    it('needs a choice for a published product with several variants, one on sale', () => {
+    it('needs a choice for a published product with variants to choose between', () => {
         expect(needsChoice(tee)).toBe(true)
         expect(needsChoice({ ...tee, published: false })).toBe(false)
-        expect(needsChoice({ ...tee, variants: tee.variants!.map(v => ({ ...v, available: false })) })).toBe(false)
-        expect(needsChoice({ ...tee, variants: [tee.variants![1]] })).toBe(false)
+        expect(needsChoice({ ...tee, has_choices: false })).toBe(false)
     })
 
     it('finds the chosen variant, and none until every option is picked', () => {
-        expect(variantFor(tee, { Size: 'M', Colour: 'Red' })?.id).toBe('2')
-        expect(variantFor(tee, { Size: 'M' })).toBeNull()
+        expect(variantFor(choices, { Size: 'M', Colour: 'Red' })?.id).toBe('2')
+        expect(variantFor(choices, { Size: 'M' })).toBeNull()
+        expect(everyOptionChosen(choices, { Size: 'M' })).toBe(false)
+        // A combination no variant has: every option chosen, nothing to add
+        expect(variantFor(choices, { Size: 'L', Colour: 'Red' })).toBeNull()
+        expect(everyOptionChosen(choices, { Size: 'L', Colour: 'Red' })).toBe(true)
+    })
+
+    it('matches nothing without options', () => {
+        expect(variantFor({ ...choices, options: [] }, {})).toBeNull()
     })
 
     it('marks values that cannot lead to a variant on sale', () => {
         const red = { Size: 'M', Colour: 'Red' }
-        expect(valueAvailable(tee, red, 'Size', 'S')).toBe(false)
-        expect(valueAvailable(tee, red, 'Size', 'M')).toBe(true)
-        expect(valueAvailable(tee, { Size: 'S', Colour: 'Blue' }, 'Size', 'L')).toBe(false)
+        expect(valueAvailable(choices, red, 'Size', 'S')).toBe(false)
+        expect(valueAvailable(choices, red, 'Size', 'M')).toBe(true)
+        expect(valueAvailable(choices, { Size: 'S', Colour: 'Blue' }, 'Size', 'L')).toBe(false)
     })
 
     it('starts on the first variant on sale', () => {
-        expect(firstSelection(tee)).toEqual({ Size: 'M', Colour: 'Red' })
-        expect(firstSelection({ ...tee, variants: [] })).toEqual({})
+        expect(firstSelection(choices)).toEqual({ Size: 'M', Colour: 'Red' })
+        expect(firstSelection({ ...choices, variants: [] })).toEqual({})
+    })
+
+    it('validates the shop\'s answer', () => {
+        const read = choicesFrom({
+            complete: true,
+            options: [{ name: 'Size', values: ['S', 1, 'M'] }, { name: '', values: [] }, 'junk'],
+            variants: [
+                { id: '11', available: true, options: { Size: 'S', Bad: 3 } },
+                { id: 'gid://x', available: true, options: {} },
+                { id: '12', available: 'yes', options: { Size: 'M' }, price: 4 },
+            ],
+        })
+        expect(read.options).toEqual([{ name: 'Size', values: ['S', 'M'] }])
+        expect(read.variants).toEqual([
+            { id: '11', title: null, available: true, price: null, options: { Size: 'S' } },
+            { id: '12', title: null, available: false, price: null, options: { Size: 'M' } },
+        ])
+        expect(read.complete).toBe(true)
+        expect(choicesFrom({ complete: true, options: [], variants: [] }).complete).toBe(false)
     })
 })

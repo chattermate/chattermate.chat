@@ -21,7 +21,7 @@ import ProductMessage from '@/webclient/panel/messages/ProductMessage.vue'
 import ProductSheet from '@/webclient/panel/ProductSheet.vue'
 import CartBar from '@/webclient/panel/CartBar.vue'
 import { handleCartMessage, resetShopifyCart, cartSummary } from '@/webclient/shopify-cart'
-import { closeProductSheet, productSheet } from '@/webclient/product-sheet'
+import { closeProductSheet, openProductSheet, productSheet, settleProductSheet } from '@/webclient/product-sheet'
 import { resetHostOrigin } from '@/webclient/host-bridge'
 import { fakeController, mountWithController } from './panelFakeController'
 import type { WidgetMessage, WidgetProduct } from '@/types/widget'
@@ -47,7 +47,10 @@ afterEach(() => {
 
 const tee: WidgetProduct = {
     id: 'p1', title: 'Tee', price: '20', price_max: '24', handle: 'tee', published: true,
-    tracks_inventory: true, total_inventory: 2,
+    tracks_inventory: true, total_inventory: 2, has_choices: true,
+}
+const teeChoices = {
+    complete: true,
     options: [{ name: 'Size', values: ['S', 'M'] }],
     variants: [
         { id: '11', available: false, options: { Size: 'S' } },
@@ -94,12 +97,23 @@ describe('the product carousel', () => {
 })
 
 describe('the product sheet', () => {
-    const openSheet = async (product = tee) => {
-        wrapper = mountWithController(ProductSheet, fakeController())
-        productSheet.value = { product, shopDomain: SHOP }
+    let ctrl: ReturnType<typeof fakeController>
+    const openSheet = async (choices: typeof teeChoices | null = teeChoices) => {
+        ctrl = fakeController()
+        wrapper = mountWithController(ProductSheet, ctrl)
+        openProductSheet(tee, SHOP)
+        await nextTick()
+        if (choices) settleProductSheet(tee.id, choices)
         await nextTick()
         await nextTick()
     }
+
+    it('asks the shop for the options and says it is loading meanwhile', async () => {
+        await openSheet(null)
+        expect(ctrl.requestProductOptions).toHaveBeenCalledWith('p1')
+        expect(wrapper!.get('[role="dialog"]').attributes('aria-busy')).toBe('true')
+        expect(wrapper!.get('.cm-sheet__note').text()).toBe('Loading options…')
+    })
 
     it('is a modal dialog starting on the first size on sale, ready to add', async () => {
         handleCartMessage({ type: 'CART_AVAILABLE', shop: SHOP })
@@ -110,7 +124,7 @@ describe('the product sheet', () => {
         const [small, medium] = wrapper!.findAll('.cm-variant-chip')
         expect(small.attributes('aria-label')).toBe('S (sold out)')
         expect(medium.attributes('aria-pressed')).toBe('true')
-        expect(wrapper!.get('.cm-sheet__price').text()).toBe('$24')
+        expect(wrapper!.get('.cm-sheet__price').text()).toBe('\$24')
         await wrapper!.get('.cm-sheet__add .cm-cart-button').trigger('click')
         expect(posted.find(m => m.type === 'ADD_TO_CART')).toMatchObject({ variantId: '12' })
     })
@@ -122,16 +136,31 @@ describe('the product sheet', () => {
         expect(wrapper!.get('.cm-sheet__note').text()).toBe('Sold out')
     })
 
-    it('closes on Escape without letting the key reach the page', async () => {
+    it('sends a product it cannot show whole to its own page', async () => {
+        await openSheet({ ...teeChoices, complete: false })
+        expect(wrapper!.find('.cm-variant-chip').exists()).toBe(false)
+        expect(wrapper!.get('.cm-sheet__note').text()).toBe('Choose the options on the product page.')
+        expect(wrapper!.get('a.cm-product__view').attributes('href')).toBe('https://shop.test/products/tee')
+    })
+
+    it('drops a late answer for another product', async () => {
+        await openSheet(null)
+        settleProductSheet('other', teeChoices)
+        await nextTick()
+        expect(productSheet.value?.choices).toBeNull()
+    })
+
+    it('closes on Escape without letting the key reach the page, even with focus lost', async () => {
         await openSheet()
+        ;(document.activeElement as HTMLElement | null)?.blur()
         const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
-        wrapper!.get('[role="dialog"]').element.dispatchEvent(escape)
+        document.body.dispatchEvent(escape)
         await nextTick()
         expect(escape.defaultPrevented).toBe(true)
         expect(productSheet.value).toBeNull()
     })
 
-    it('keeps Tab inside', async () => {
+    it('keeps Tab inside, and brings a lost focus back in', async () => {
         await openSheet()
         const buttons = wrapper!.findAll('button').filter(b => !b.attributes('disabled'))
         ;(buttons[buttons.length - 1].element as HTMLElement).focus()
@@ -139,14 +168,26 @@ describe('the product sheet', () => {
         buttons[buttons.length - 1].element.dispatchEvent(tab)
         expect(tab.defaultPrevented).toBe(true)
         expect(document.activeElement).toBe(buttons[0].element)
+        ;(document.activeElement as HTMLElement).blur()
+        const lost = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+        document.body.dispatchEvent(lost)
+        expect(document.activeElement).toBe(buttons[0].element)
     })
 })
 
 describe('the cart bar', () => {
     it('shows the cart once it has something, with View cart and Checkout', async () => {
         handleCartMessage({ type: 'CART_AVAILABLE', shop: SHOP })
-        expect(posted).toContainEqual({ type: 'GET_CART' })
-        wrapper = mountWithController(CartBar, fakeController())
+        expect(posted).not.toContainEqual({ type: 'GET_CART' })
+        const ctrl = fakeController()
+        wrapper = mountWithController(CartBar, ctrl)
+        // Read as the open panel shows it, and again each time it opens
+        expect(posted.filter(m => m.type === 'GET_CART')).toHaveLength(1)
+        ctrl.hostVisible.value = false
+        await nextTick()
+        ctrl.hostVisible.value = true
+        await nextTick()
+        expect(posted.filter(m => m.type === 'GET_CART')).toHaveLength(2)
         expect(wrapper.find('.cm-cart-bar').exists()).toBe(false)
 
         handleCartMessage({ type: 'CART_STATE', item_count: 2, total_price: 4300, currency: 'GBP', items: [
@@ -161,6 +202,17 @@ describe('the cart bar', () => {
         expect(posted).toContainEqual({ type: 'GO_TO_CHECKOUT' })
         await wrapper.get('.cm-cart-bar__view').trigger('click')
         expect(posted).toContainEqual({ type: 'VIEW_CART' })
+    })
+
+    it('goes when the cart was emptied elsewhere', async () => {
+        handleCartMessage({ type: 'CART_AVAILABLE', shop: SHOP })
+        wrapper = mountWithController(CartBar, fakeController())
+        handleCartMessage({ type: 'CART_STATE', item_count: 1, total_price: 100, currency: 'GBP', items: [] })
+        await nextTick()
+        expect(wrapper.find('.cm-cart-bar').exists()).toBe(true)
+        handleCartMessage({ type: 'CART_STATE', item_count: 0, total_price: 0, currency: 'GBP', items: [] })
+        await nextTick()
+        expect(wrapper.find('.cm-cart-bar').exists()).toBe(false)
     })
 
     it('ignores a cart from a page that announced no store', () => {

@@ -20,19 +20,26 @@ limitations under the License.
  */
 
 import { ref } from 'vue'
-import type { WidgetProduct } from '../types/widget'
+import type { WidgetProduct, WidgetProductChoices } from '../types/widget'
 
 export interface OpenSheet {
     product: WidgetProduct
     shopDomain?: string | null
+    /** Null while they are being read (product_options); then what the shop said. */
+    choices: WidgetProductChoices | null
 }
 
 export const productSheet = ref<OpenSheet | null>(null)
 
 export function openProductSheet(product: WidgetProduct, shopDomain?: string | null): void {
-    productSheet.value = { product, shopDomain }
+    productSheet.value = { product, shopDomain, choices: null }
 }
 
 export function closeProductSheet(): void {
     productSheet.value = null
+}
+
+/** The shop's answer for the open product (a late answer for another product is dropped). */
+export function settleProductSheet(productId: string, choices: WidgetProductChoices): void {
+    if (productSheet.value?.product.id === productId) productSheet.value = { ...productSheet.value, choices }
 }

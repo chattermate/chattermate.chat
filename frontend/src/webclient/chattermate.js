@@ -1953,6 +1953,8 @@ import {
       // typewriter interval that would keep ticking on a detached node.
       panel.destroy()
       panelHost = null
+      // The storefront's cart events would still read cart.js for a widget that is gone.
+      shopifyCart.destroy()
       if (initiationMessageElement) {
         if (initiationMessageElement.typeInterval) clearInterval(initiationMessageElement.typeInterval)
         removeNode(initiationMessageElement)

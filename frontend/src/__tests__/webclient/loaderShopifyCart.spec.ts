@@ -109,17 +109,36 @@ describe('shopify cart in the loader', () => {
       expect(win.location.assign).toHaveBeenCalledWith('/fr/checkout')
     })
 
-    it('follows the page\'s own cart changes until destroyed', async () => {
+    it('follows the page\'s cart changes while a widget is up, until destroyed', async () => {
       const doc = document.implementation.createHTMLDocument('store')
       const fetchMock = vi.fn(async () => jsonResponse(200, cartJs))
       const { cart, posted } = storefront({}, fetchMock, doc)
+      const cartStates = () => posted.filter(m => m.type === 'CART_STATE')
       doc.dispatchEvent(new CustomEvent('chattermate:cart-updated'))
       await flush()
-      expect(posted).toHaveLength(1)
+      expect(cartStates()).toHaveLength(0)
+      cart.announce()
+      cart.announce()
+      doc.dispatchEvent(new CustomEvent('chattermate:cart-updated'))
+      await flush()
+      expect(cartStates()).toHaveLength(1)
       cart.destroy()
       doc.dispatchEvent(new CustomEvent('chattermate:cart-updated'))
       await flush()
-      expect(posted).toHaveLength(1)
+      expect(cartStates()).toHaveLength(1)
+    })
+
+    it('drops an older read of the cart that answers last', async () => {
+      const answers: Array<(value: unknown) => void> = []
+      const fetchMock = vi.fn(() => new Promise((resolve) => { answers.push(resolve) }))
+      const { cart, posted } = storefront({}, fetchMock)
+      cart.handleFrameMessage({ type: 'GET_CART' })
+      cart.handleFrameMessage({ type: 'GET_CART' })
+      answers[1](jsonResponse(200, { ...cartJs, item_count: 0, items: [] }))
+      await flush()
+      answers[0](jsonResponse(200, cartJs))
+      await flush()
+      expect(posted.map(m => m.item_count)).toEqual([0])
     })
   })
 
@@ -147,9 +166,7 @@ describe('shopify cart in the loader', () => {
       expect(doc.querySelector('#cart-icon-bubble')!.textContent!.trim()).toBe('1')
       expect(doc.querySelector('#CartDrawer')!.textContent).toContain('The Videographer Snowboard')
       expect(doc.querySelector('cart-drawer')!.classList.contains('is-empty')).toBe(false)
-      expect(posted[0]).toEqual({ type: 'ADD_TO_CART_DONE', requestId: 'r1', ok: true })
-      // The page heard the cart change, so the widget's cart bar is told too
-      expect(posted[1]).toMatchObject({ type: 'CART_STATE' })
+      expect(posted).toEqual([{ type: 'ADD_TO_CART_DONE', requestId: 'r1', ok: true }])
     })
 
     it('tells the page the cart changed, for a theme it can\'t redraw', async () => {

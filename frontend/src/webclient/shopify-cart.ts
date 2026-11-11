@@ -20,7 +20,7 @@ limitations under the License.
  * the button only appears on the store these products came from.
  */
 
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { postToHost } from './host-bridge'
 
 export type CartStatus = 'idle' | 'adding' | 'added' | 'failed'
@@ -107,7 +107,11 @@ export interface CartSummary {
 /** The storefront's cart, as the loader last read it (CART_STATE); null until then. */
 export const cartSummary = ref<CartSummary | null>(null)
 
-/** Ask the loader for the cart (it answers with CART_STATE). */
+/** Whether the loader announced a store cart on this page at all. */
+export const cartOnPage = computed(() => !!shop.value)
+
+/** Ask the loader for the cart (it answers with CART_STATE). Only the redesign's
+ * cart bar asks, while the panel is open: the classic widget never reads it. */
 export function requestCart(): void {
   if (shop.value) postToHost({ type: 'GET_CART' })
 }
@@ -138,7 +142,6 @@ function summaryFrom(data: Record<string, unknown>): CartSummary {
 export function handleCartMessage(data: Record<string, unknown>): boolean {
   if (data.type === 'CART_AVAILABLE') {
     shop.value = typeof data.shop === 'string' && data.shop ? data.shop : null
-    requestCart()
     return true
   }
   if (data.type === 'CART_STATE') {

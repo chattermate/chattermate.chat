@@ -67,10 +67,25 @@ export function createShopifyCart(win, postToFrame) {
     return root + path
   }
 
+  // The theme or another app changed the cart: the bar follows, while a widget is up.
+  let listening = false
+  function onCartUpdated() { void sendCart() }
+
   // Tell the frame the cart is here. Called whenever the widget mounts.
   function announce() {
     const shopify = storefront()
-    if (shopify) postToFrame({ type: 'CART_AVAILABLE', shop: shopify.shop })
+    if (!shopify) return
+    postToFrame({ type: 'CART_AVAILABLE', shop: shopify.shop })
+    if (!listening && win.document) {
+      win.document.addEventListener(CART_UPDATED_EVENT, onCartUpdated)
+      listening = true
+    }
+  }
+
+  // The widget is gone (ChatterMate.destroy): stop following the cart.
+  function destroy() {
+    if (listening && win.document) win.document.removeEventListener(CART_UPDATED_EVENT, onCartUpdated)
+    listening = false
   }
 
   // The parts of the theme's cart this page has
@@ -142,6 +157,9 @@ export function createShopifyCart(win, postToFrame) {
     postToFrame(Object.assign({ type: 'ADD_TO_CART_DONE', requestId: requestId }, answer))
   }
 
+  // Each read of the cart is numbered: an older answer arriving last is dropped.
+  let cartReads = 0
+
   // The cart as the widget's cart bar shows it, from the storefront's own cart.js
   function summaryFrom(cart) {
     const items = Array.isArray(cart && cart.items) ? cart.items : []
@@ -165,6 +183,7 @@ export function createShopifyCart(win, postToFrame) {
   async function sendCart() {
     const shopify = storefront()
     if (!shopify) return
+    const read = ++cartReads
     const controller = new AbortController()
     const timer = setTimeout(function () { controller.abort() }, CART_TIMEOUT_MS)
     try {
@@ -174,7 +193,8 @@ export function createShopifyCart(win, postToFrame) {
         signal: controller.signal,
       })
       if (!response.ok) return
-      postToFrame(Object.assign({ type: 'CART_STATE' }, summaryFrom(await response.json())))
+      const cart = await response.json()
+      if (read === cartReads) postToFrame(Object.assign({ type: 'CART_STATE' }, summaryFrom(cart)))
     } catch (e) {
       /* the bar keeps what it last showed */
     } finally {
@@ -211,14 +231,6 @@ export function createShopifyCart(win, postToFrame) {
       return true
     }
     return false
-  }
-
-  // The theme or another app changed the cart: the bar follows.
-  function onCartUpdated() { void sendCart() }
-  if (win.document && storefront()) win.document.addEventListener(CART_UPDATED_EVENT, onCartUpdated)
-
-  function destroy() {
-    if (win.document) win.document.removeEventListener(CART_UPDATED_EVENT, onCartUpdated)
   }
 
   return { announce, handleFrameMessage, sendCart, destroy }

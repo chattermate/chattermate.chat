@@ -19,7 +19,7 @@ limitations under the License.
  * 3.2), worked out from the product the server sent. Pure.
  */
 
-import type { WidgetProduct, WidgetProductVariant } from '../types/widget'
+import type { WidgetProduct, WidgetProductChoices, WidgetProductVariant } from '../types/widget'
 
 /** "Only N left" shows at this stock or fewer, and only for tracked stock. */
 export const LOW_STOCK = 5
@@ -38,28 +38,49 @@ export function lowStock(product: WidgetProduct): number | null {
 export const hasPriceRange = (product: WidgetProduct): boolean =>
     priceNumber(product.price_max) > priceNumber(product.price)
 
-const variantsOf = (product: WidgetProduct): WidgetProductVariant[] =>
-    Array.isArray(product.variants) ? product.variants.filter(v => v && typeof v.id === 'string' && !!v.id) : []
-
-/** Whether the customer has to choose a variant, and can, in the sheet. */
+/** Whether the customer has to choose a variant, and can, in the product sheet. */
 export const needsChoice = (product: WidgetProduct): boolean =>
-    product.published === true && variantsOf(product).length > 1 && variantsOf(product).some(v => v.available)
+    product.published === true && product.has_choices === true
 
 /** The variant the selection names, if every option is chosen. */
-export function variantFor(product: WidgetProduct, selection: Selection): WidgetProductVariant | null {
-    const options = product.options || []
-    return variantsOf(product).find(v => options.every(o => v.options[o.name] === selection[o.name])) ?? null
+export function variantFor(choices: WidgetProductChoices, selection: Selection): WidgetProductVariant | null {
+    if (!choices.options.length) return null
+    return choices.variants.find(v => choices.options.every(o => v.options[o.name] === selection[o.name])) ?? null
 }
 
+/** Whether every option has a value chosen. */
+export const everyOptionChosen = (choices: WidgetProductChoices, selection: Selection): boolean =>
+    choices.options.every(o => selection[o.name] !== undefined)
+
 /** Whether a value can still lead to a variant on sale, with the other choices kept. */
-export function valueAvailable(product: WidgetProduct, selection: Selection, option: string, value: string): boolean {
+export function valueAvailable(choices: WidgetProductChoices, selection: Selection, option: string, value: string): boolean {
     const wanted = { ...selection, [option]: value }
-    return variantsOf(product).some(v => v.available
+    return choices.variants.some(v => v.available
         && Object.entries(wanted).every(([name, chosen]) => v.options[name] === chosen))
 }
 
 /** Start from the first variant on sale, so Add works at once when it is the one wanted. */
-export function firstSelection(product: WidgetProduct): Selection {
-    const start = variantsOf(product).find(v => v.available)
+export function firstSelection(choices: WidgetProductChoices): Selection {
+    const start = choices.variants.find(v => v.available)
     return start ? { ...start.options } : {}
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object'
+
+/** The sheet's choices from the server's answer (product_options_result), validated. */
+export function choicesFrom(data: Record<string, unknown>): WidgetProductChoices {
+    const options = (Array.isArray(data.options) ? data.options : []).filter(isObject)
+        .filter(o => typeof o.name === 'string' && o.name && Array.isArray(o.values))
+        .map(o => ({ name: o.name as string, values: (o.values as unknown[]).filter((v): v is string => typeof v === 'string') }))
+    const variants = (Array.isArray(data.variants) ? data.variants : []).filter(isObject)
+        .filter(v => typeof v.id === 'string' && /^[0-9]{1,15}$/.test(v.id) && isObject(v.options))
+        .map(v => ({
+            id: v.id as string,
+            title: typeof v.title === 'string' ? v.title : null,
+            available: v.available === true,
+            price: typeof v.price === 'string' ? v.price : null,
+            options: Object.fromEntries(Object.entries(v.options as Record<string, unknown>)
+                .filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+        }))
+    return { options, variants, complete: data.complete === true && options.length > 0 && variants.length > 1 }
 }

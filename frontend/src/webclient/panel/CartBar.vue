@@ -19,9 +19,9 @@ limitations under the License.
  * Above the message box on the store: what is in the visitor's cart, with View
  * cart and Checkout. Shown once the cart has something in it.
  */
-import { computed, inject } from 'vue'
+import { computed, inject, watch } from 'vue'
 import { WIDGET_CTX } from './controller'
-import { cartSummary, goToCheckout, viewCart } from '../shopify-cart'
+import { cartOnPage, cartSummary, goToCheckout, requestCart, viewCart } from '../shopify-cart'
 import { PANEL_COPY } from '../copy'
 
 const ctrl = inject(WIDGET_CTX)!
@@ -32,12 +32,16 @@ const summary = computed(() => {
     return c ? PANEL_COPY.cartSummary(c.item_count, ctrl.formatCurrency(c.total_price / 100, c.currency)) : ''
 })
 const thumbs = computed(() => (cart.value?.items ?? []).filter(item => item.image).slice(0, 3))
+
+// Read the cart each time the panel opens on the store: the visitor may have
+// changed it in the theme's own drawer meanwhile.
+watch(() => cartOnPage.value && ctrl.hostVisible.value, (open) => { if (open) requestCart() }, { immediate: true })
 </script>
 
 <template>
     <div v-if="cart" class="cm-cart-bar cm-enter" role="region" :aria-label="PANEL_COPY.yourCart">
         <span class="cm-cart-bar__thumbs" aria-hidden="true">
-            <img v-for="item in thumbs" :key="item.variant_id" :src="item.image ?? ''" alt="">
+            <img v-for="(item, i) in thumbs" :key="i" :src="item.image ?? ''" alt="">
         </span>
         <span class="cm-cart-bar__summary" aria-live="polite">{{ summary }}</span>
         <button type="button" class="cm-cart-bar__view cm-press" @click="viewCart">{{ PANEL_COPY.viewCart }}</button>

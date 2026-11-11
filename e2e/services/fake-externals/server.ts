@@ -434,6 +434,7 @@ function shopifyProduct(id: number, title: string, variants: FakeVariant[], onOn
     priceRangeV2: { minVariantPrice: { amount: '40.00', currencyCode: 'USD' }, maxVariantPrice: { amount: '40.00', currencyCode: 'USD' } },
     images: { edges: [] },
     tracksInventory: true,
+    hasOnlyDefaultVariant: variants.length === 1,
     options: sizes.length ? [{ name: 'Size', values: sizes }] : [{ name: 'Title', values: ['Default Title'] }],
     variants: { edges: variants.map((v) => ({ node: {
       id: `gid://shopify/ProductVariant/${v.id}`, availableForSale: v.onSale, title: v.size ?? 'Default Title', price: '40.00',
@@ -471,6 +472,12 @@ function shopify({ action, body }: Call): Answer {
     const order = { id: String(parseInt(digest(`${email}#${number}`).slice(0, 8), 16)), number, email }
     remember(shopifyOrders, order.id, order)
     return ok({ data: { orders: { edges: email ? [{ node: shopifyOrderNode(order) }] : [], pageInfo: { hasNextPage: false, endCursor: null } } } })
+  }
+  if (query.includes('query ProductOptions')) {
+    // The widget's product sheet, reading one product's options when it opens
+    const product = shopifyProducts.find((p) => p.id === variables.id) ?? null
+    const node = product && { ...product, variants: { ...product.variants, pageInfo: { hasNextPage: false } } }
+    return ok({ data: { product: node } })
   }
   if (query.includes('query SearchProducts')) {
     return ok({ data: { products: { edges: shopifyProducts.map((node) => ({ node })), pageInfo: { hasNextPage: false, endCursor: null } } } })

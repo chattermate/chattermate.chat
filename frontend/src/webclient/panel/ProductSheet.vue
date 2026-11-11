@@ -17,15 +17,17 @@ limitations under the License.
 <script setup lang="ts">
 /**
  * The product sheet: slides up over the conversation to choose a product's options
- * (Size, Colour) and add the chosen variant. A modal dialog inside the panel:
- * focus moves in and stays, Escape closes the sheet (and only the sheet), and
- * focus goes back to the card that opened it.
+ * (Size, Colour), read from the shop as it opens, and add the chosen variant. A
+ * modal dialog inside the panel: focus moves in and stays, Escape closes the sheet
+ * (and only the sheet) wherever focus is, and focus goes back to the card that
+ * opened it. A product it can't offer whole goes to its own page instead.
  */
 import { computed, inject, nextTick, onUnmounted, ref, watch } from 'vue'
 import { WIDGET_CTX } from './controller'
 import ProductCartButton from '../ProductCartButton.vue'
 import { closeProductSheet, productSheet } from '../product-sheet'
-import { firstSelection, valueAvailable, variantFor, type Selection } from '../product-choice'
+import { everyOptionChosen, firstSelection, valueAvailable, variantFor, type Selection } from '../product-choice'
+import { productUrl } from '../products'
 import { PANEL_COPY } from '../copy'
 
 const ctrl = inject(WIDGET_CTX)!
@@ -35,35 +37,31 @@ const selection = ref<Selection>({})
 let opener: HTMLElement | null = null
 
 const product = computed(() => productSheet.value?.product ?? null)
-const chosen = computed(() => (product.value ? variantFor(product.value, selection.value) : null))
-const image = computed(() => chosen.value?.image?.src || product.value?.image?.src || '')
+const choices = computed(() => productSheet.value?.choices ?? null)
+const loading = computed(() => !!product.value && choices.value === null)
+const usable = computed(() => (choices.value?.complete ? choices.value : null))
+const chosen = computed(() => (usable.value ? variantFor(usable.value, selection.value) : null))
+const pageLink = computed(() => {
+    if (!product.value) return ''
+    const target = productUrl(product.value, productSheet.value?.shopDomain)
+    return 'url' in target ? target.url : ''
+})
 const price = computed(() => {
     const p = product.value
-    if (!p) return ''
-    return ctrl.formatCurrency(chosen.value?.price ?? p.price, p.currency)
+    return p ? ctrl.formatCurrency(chosen.value?.price ?? p.price, p.currency) : ''
 })
-
-watch(product, (next) => {
-    if (next) {
-        selection.value = firstSelection(next)
-        opener = document.activeElement as HTMLElement | null
-        nextTick(() => dialog.value?.querySelector<HTMLElement>('button, [tabindex="0"]')?.focus())
-    } else {
-        opener?.focus?.()
-        opener = null
-    }
-}, { immediate: true })
-
-// The sheet's state outlives the panel (it is module state): a new frame starts closed.
-onUnmounted(closeProductSheet)
-
-const pick = (option: string, value: string) => {
-    selection.value = { ...selection.value, [option]: value }
-}
+const note = computed(() => {
+    if (!usable.value || (chosen.value && chosen.value.available)) return ''
+    if (chosen.value) return PANEL_COPY.soldOut
+    return everyOptionChosen(usable.value, selection.value) ? PANEL_COPY.combinationUnavailable : PANEL_COPY.pickEveryOption
+})
 
 const focusables = () =>
     Array.from(dialog.value?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') ?? [])
 
+// Keys go to the sheet wherever focus is: a button that swaps itself after an add
+// (Add → View cart) drops focus to the page, and the next Escape must still close
+// only the sheet, not the whole widget.
 const onKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
         event.preventDefault()
@@ -76,7 +74,11 @@ const onKeydown = (event: KeyboardEvent) => {
     if (!items.length) return
     const first = items[0]
     const last = items[items.length - 1]
-    if (event.shiftKey && document.activeElement === first) {
+    const inside = dialog.value?.contains(document.activeElement) ?? false
+    if (!inside) {
+        event.preventDefault()
+        first.focus()
+    } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault()
         last.focus()
     } else if (!event.shiftKey && document.activeElement === last) {
@@ -84,15 +86,43 @@ const onKeydown = (event: KeyboardEvent) => {
         first.focus()
     }
 }
+
+watch(product, (next, previous) => {
+    if (next) {
+        if (!previous) {
+            opener = document.activeElement as HTMLElement | null
+            document.addEventListener('keydown', onKeydown, true)
+        }
+        selection.value = {}
+        ctrl.requestProductOptions(next.id)
+        nextTick(() => focusables()[0]?.focus())
+    } else {
+        document.removeEventListener('keydown', onKeydown, true)
+        opener?.focus?.()
+        opener = null
+    }
+}, { immediate: true })
+
+watch(usable, (ready) => { if (ready) selection.value = firstSelection(ready) })
+
+// The sheet's state outlives the panel (it is module state): a new frame starts closed.
+onUnmounted(() => {
+    document.removeEventListener('keydown', onKeydown, true)
+    closeProductSheet()
+})
+
+const pick = (option: string, value: string) => {
+    selection.value = { ...selection.value, [option]: value }
+}
 </script>
 
 <template>
     <Transition name="cm-sheet">
-        <div v-if="product" class="cm-sheet-backdrop" @click="closeProductSheet" @keydown="onKeydown">
-            <div ref="dialog" class="cm-sheet" role="dialog" aria-modal="true" :aria-label="product.title" @click.stop>
+        <div v-if="product" class="cm-sheet-backdrop" @click="closeProductSheet">
+            <div ref="dialog" class="cm-sheet" role="dialog" aria-modal="true" :aria-label="product.title" :aria-busy="loading" @click.stop>
                 <div class="cm-sheet__head">
                     <span class="cm-sheet__image">
-                        <img v-if="image" :src="image" :alt="product.title">
+                        <img v-if="product.image?.src" :src="product.image.src" :alt="product.title">
                     </span>
                     <span class="cm-sheet__text">
                         <span class="cm-sheet__title">{{ product.title }}</span>
@@ -102,24 +132,34 @@ const onKeydown = (event: KeyboardEvent) => {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
                     </button>
                 </div>
-                <fieldset v-for="option in product.options || []" :key="option.name" class="cm-sheet__option">
-                    <legend class="cm-sheet__legend">{{ option.name }}</legend>
-                    <div class="cm-sheet__values">
-                        <button
-                            v-for="value in option.values"
-                            :key="value"
-                            type="button"
-                            class="cm-variant-chip cm-press"
-                            :class="{ 'is-unavailable': !valueAvailable(product, selection, option.name, value) }"
-                            :aria-pressed="selection[option.name] === value"
-                            :aria-label="valueAvailable(product, selection, option.name, value) ? value : PANEL_COPY.unavailable(value)"
-                            @click="pick(option.name, value)"
-                        >{{ value }}</button>
+                <p v-if="loading" class="cm-sheet__note" role="status">{{ PANEL_COPY.loadingOptions }}</p>
+                <template v-else-if="usable">
+                    <fieldset v-for="option in usable.options" :key="option.name" class="cm-sheet__option">
+                        <legend class="cm-sheet__legend">{{ option.name }}</legend>
+                        <div class="cm-sheet__values">
+                            <button
+                                v-for="value in option.values"
+                                :key="value"
+                                type="button"
+                                class="cm-variant-chip cm-press"
+                                :class="{ 'is-unavailable': !valueAvailable(usable, selection, option.name, value) }"
+                                :aria-pressed="selection[option.name] === value"
+                                :aria-label="valueAvailable(usable, selection, option.name, value) ? value : PANEL_COPY.unavailable(value)"
+                                @click="pick(option.name, value)"
+                            >{{ value }}</button>
+                        </div>
+                    </fieldset>
+                    <div class="cm-sheet__add">
+                        <ProductCartButton v-if="chosen && chosen.available" :key="chosen.id" :variant-id="chosen.id" />
+                        <p v-else class="cm-sheet__note" role="status">{{ note }}</p>
                     </div>
-                </fieldset>
-                <div class="cm-sheet__add">
-                    <ProductCartButton v-if="chosen && chosen.available" :key="chosen.id" :variant-id="chosen.id" />
-                    <p v-else class="cm-sheet__note" role="status">{{ chosen ? PANEL_COPY.soldOut : PANEL_COPY.pickEveryOption }}</p>
+                </template>
+                <div v-else class="cm-sheet__add">
+                    <p class="cm-sheet__note">{{ PANEL_COPY.chooseOnStore }}</p>
+                    <a v-if="pageLink" class="cm-product__view" :href="pageLink" target="_blank" rel="noopener noreferrer">
+                        {{ PANEL_COPY.viewProduct }}
+                        <span class="cm-visually-hidden">{{ PANEL_COPY.opensInNewTab }}</span>
+                    </a>
                 </div>
             </div>
         </div>
