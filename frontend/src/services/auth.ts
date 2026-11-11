@@ -61,9 +61,10 @@ export const authService = {
     }
   },
 
-  async logout(): Promise<void> {
+  /** fcmToken: this browser's push token, removed server-side with the session. */
+  async logout(fcmToken?: string | null): Promise<void> {
     try {
-      await api.post('/users/logout')
+      await api.post('/users/logout', fcmToken ? { fcm_token: fcmToken } : {})
       userService.clearCurrentUser()
       localStorage.removeItem('agents')
       // The plan and the plan catalog both belong to the org signing out

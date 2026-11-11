@@ -116,7 +116,7 @@ function signOut() {
  */
 let refreshing: Promise<unknown> | null = null
 
-function refreshSession(): Promise<unknown> {
+export function refreshSession(): Promise<unknown> {
   refreshing ??= axios
     .post('/users/refresh', {}, { withCredentials: true, baseURL: getApiUrl() })
     .finally(() => {
