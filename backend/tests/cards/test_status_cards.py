@@ -61,6 +61,41 @@ def test_order_status(fields, label, tone):
     assert (status.label, status.tone) == (label, tone)
 
 
+def test_one_delivered_parcel_of_two_is_not_a_delivered_order():
+    order = _order(fulfillment_status="FULFILLED", fulfillments=[_shipped("DELIVERED"), _shipped("IN_TRANSIT")])
+    assert order_status(order)[0].label == "In transit"
+    both = _order(fulfillment_status="FULFILLED", fulfillments=[_shipped("DELIVERED"), _shipped("PICKED_UP")])
+    assert order_status(both)[0].label == "Delivered"
+
+
+@pytest.mark.parametrize("carrier,label,tone", [
+    ("ATTEMPTED_DELIVERY", "Delivery attempted", "warning"),
+    ("FAILURE", "Delivery problem", "danger"),
+    ("READY_FOR_PICKUP", "Ready for pickup", "info"),
+    ("PICKED_UP", "Picked up", "success"),
+])
+def test_more_carrier_states(carrier, label, tone):
+    status, _ = order_status(_order(fulfillment_status="FULFILLED", fulfillments=[_shipped(carrier)]))
+    assert (status.label, status.tone) == (label, tone)
+
+
+def test_a_refunded_order_with_a_shipment_shows_no_tracking_or_estimate():
+    card = order_card(_order(financial_status="REFUNDED", fulfillment_status="FULFILLED", fulfillments=[_shipped()]))
+    assert [a.id for a in card.actions] == ["help"]
+    assert {r.label for r in card.rows} == {"Ship to"}
+
+
+def test_a_delivered_order_has_no_estimate():
+    card = order_card(_order(fulfillment_status="FULFILLED", fulfillments=[_shipped("DELIVERED")]))
+    assert "Estimated delivery" not in {r.label for r in card.rows}
+
+
+def test_an_edited_order_counts_what_it_holds_now():
+    order = _order(fulfillment_status="PARTIALLY_FULFILLED", fulfillments=[_shipped(quantity=1)],
+                   line_items=[{"name": "Mug", "quantity": 3, "current_quantity": 2}])
+    assert order_status(order)[0].label == "1 of 2 shipped"
+
+
 def test_a_cancelled_fulfillment_is_not_where_the_order_is():
     order = _order(fulfillment_status="FULFILLED",
                    fulfillments=[{**_shipped("DELIVERED"), "status": "CANCELLED"}, _shipped("IN_TRANSIT")])
@@ -100,7 +135,8 @@ def test_an_unsafe_tracking_url_is_left_out():
 
 @pytest.mark.parametrize("address,shown", [
     ({"city": "Leeds", "zip": "LS1 4AP"}, "Leeds, LS1"),
-    ({"city": "Paris", "zip": "75008"}, "Paris, 7500"),
+    ({"city": "San Francisco", "zip": "94103"}, "San Francisco"),
+    ({"city": "Toronto", "zip": "M5V 2T6"}, "Toronto, M5V"),
     ({"city": "", "zip": ""}, None),
     (None, None),
 ])
@@ -119,11 +155,11 @@ def test_mask_tracking():
     ("something_new", "Received", 0),
 ])
 def test_ticket_card(status, label, current):
-    card = ticket_card("TKT-12", status, "high")
+    card = ticket_card("TKT-12", status)
     assert card.status.label == label
     states = [s.state for s in card.steps]
     assert states.index("current") == current if "current" in states else current == 3
-    assert {r.label: r.value for r in card.rows} == {"Ticket": "TKT-12", "Priority": "High"}
+    assert {r.label: r.value for r in card.rows} == {"Ticket": "TKT-12"}
 
 
 class TestTurnCards:

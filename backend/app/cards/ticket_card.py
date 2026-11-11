@@ -18,8 +18,6 @@ internal stages (triage, investigation, approval) read as one "Looking into it";
 the ticket's title is the team's and is not shown.
 """
 
-from typing import Optional
-
 from app.models.schemas.cards import CardRow, CardStatus, CardStep, StatusCard
 
 STEP_LABELS = ('Received', 'In progress', 'Resolved')
@@ -43,11 +41,10 @@ def _steps(current: int):
             for i, label in enumerate(STEP_LABELS)]
 
 
-def ticket_card(number: str, status: str, priority: Optional[str] = None) -> StatusCard:
+def ticket_card(number: str, status: str) -> StatusCard:
     label, tone, current = _STATUSES.get(str(status or '').lower(), ('Received', 'info', 0))
+    # The priority is the team's triage setting, not something to show the customer.
     rows = [CardRow(label='Ticket', value=number)]
-    if priority:
-        rows.append(CardRow(label='Priority', value=str(priority).capitalize()))
     return StatusCard(
         id=f'ticket-{number}',
         kind='ticket',

@@ -982,7 +982,7 @@ class ShopifyService:
                 number
                 url
               }
-              fulfillmentLineItems(first: 10) {
+              fulfillmentLineItems(first: 50) {
                 edges {
                   node {
                     quantity
@@ -996,6 +996,7 @@ class ShopifyService:
                   id
                   name
                   quantity
+                  currentQuantity
                   image {
                     url
                   }
@@ -1050,6 +1051,7 @@ class ShopifyService:
                 "variant_title": variant.get("title"),
                 "sku": variant.get("sku"),
                 "image": (li_node.get("image") or {}).get("url"),
+                "current_quantity": li_node.get("currentQuantity"),
             }
             
             line_items.append(line_item)

@@ -383,6 +383,7 @@ class ChatAgent(ChatAgentMCPMixin):
         # Status cards the tools produce this turn (app/cards), and the reply's
         self.turn_cards = turn_cards
         self.last_cards = None
+        self.last_email_check = False
         # Channels that can show tappable choices get a reply schema that
         # offers them (ChannelChatResponse); everyone else's is unchanged.
         self._response_model = ChannelChatResponse if choice_limits is not None else ChatResponse
@@ -577,6 +578,8 @@ class ChatAgent(ChatAgentMCPMixin):
         for toolkit in (getattr(self, 'ticket_tools', None), getattr(self, 'shopify_tools', None)):
             if toolkit is not None:
                 toolkit.turn_cards = self.turn_cards
+        if self.turn_cards is not None and getattr(self, 'shopify_tools', None) is not None:
+            self.shopify_tools.offer_email_check()
 
         # Add MCP tools if provided
         if self.mcp_tools:
@@ -1421,6 +1424,9 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_cards = (self.turn_cards.payload() or None) if self.turn_cards else None
         if self.last_cards:
             extras["cards"] = self.last_cards
+        self.last_email_check = bool(self.turn_cards and self.turn_cards.email_check)
+        if self.last_email_check:
+            extras["email_check"] = True
         return extras
 
     def _store_bot_message(self, chat_repo: ChatRepository, message_data: dict) -> None:
@@ -1440,6 +1446,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_trace = None
         self.last_handover = None
         self.last_cards = None
+        self.last_email_check = False
         try:
             # Update session and IDs if provided
             if session_id:

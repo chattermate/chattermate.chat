@@ -29,6 +29,8 @@ MAX_CARDS = 4
 class TurnCards:
     def __init__(self) -> None:
         self._cards: List[StatusCard] = []
+        # The reply asks the visitor to prove their email (the email check card)
+        self.email_check = False
 
     def add(self, card: StatusCard) -> None:
         """Keep a card; the same card again (an order looked up twice) replaces the first."""
@@ -38,6 +40,7 @@ class TurnCards:
 
     def reset(self) -> None:
         self._cards = []
+        self.email_check = False
 
     def payload(self) -> List[dict]:
         return [card.model_dump(exclude_none=True) for card in self._cards]

@@ -856,3 +856,59 @@ def test_product_tools_filter_only_on_what_the_customer_asked(shopify_tools, cal
         assert term in sent
     for term in absent:
         assert term not in sent
+
+
+
+class TestEmailCheckTools:
+    """confirm_email and list_my_orders: the redesign's own-orders path."""
+
+    def test_offered_only_where_codes_can_be_kept(self, shopify_tools):
+        with patch("app.tools.shopify_toolkit.email_check.available", return_value=False):
+            shopify_tools.offer_email_check()
+        assert "confirm_email" not in shopify_tools.functions
+        with patch("app.tools.shopify_toolkit.email_check.available", return_value=True):
+            shopify_tools.offer_email_check()
+        assert {"confirm_email", "list_my_orders"} <= set(shopify_tools.functions)
+
+    def test_confirm_email_asks_for_the_check(self, shopify_tools):
+        from app.cards.turn_cards import TurnCards
+        shopify_tools.turn_cards = TurnCards()
+        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None):
+            result = json.loads(shopify_tools.confirm_email())
+        assert result["confirmed"] is False and shopify_tools.turn_cards.email_check is True
+
+    def test_list_my_orders_needs_a_proven_email(self, shopify_tools):
+        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None), \
+             patch("requests.post") as post:
+            result = json.loads(shopify_tools.list_my_orders())
+        assert result["success"] is False
+        post.assert_not_called()
+
+    def test_list_my_orders_lists_only_that_emails_orders(self, shopify_tools, mock_shopify_service):
+        from app.cards.turn_cards import TurnCards
+        shopify_tools.turn_cards = TurnCards()
+        response = _orders_response(_order_node("#1001"), _order_node("#1002", email="someone.else@example.com"))
+        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=OWNER_EMAIL), \
+             patch("requests.post", return_value=response) as post:
+            result = json.loads(shopify_tools.list_my_orders())
+        assert [o["order_number"] for o in result["orders"]] == ["#1001"]
+        assert _sent_search(post) == f"email:{OWNER_EMAIL}"
+        [card] = shopify_tools.turn_cards.payload()
+        assert card["title"] == "Your recent orders"
+        assert card["actions"][0]["value"] == "Where is my order #1001?"
+
+    def test_a_proven_email_looks_up_an_order_without_being_typed(self, shopify_tools, mock_shopify_service):
+        shopify_tools._customer_messages = lambda: ["Where is my order #1001?"]
+        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=OWNER_EMAIL), \
+             patch("requests.post", return_value=_orders_response(_order_node())):
+            result = json.loads(shopify_tools.get_order_status(order_number="#1001", customer_email=OWNER_EMAIL))
+        assert result["success"] is True
+
+
+def test_a_proven_email_stands_in_when_none_is_given(shopify_tools, mock_shopify_service):
+    shopify_tools._customer_messages = lambda: ["Where is my order #1001?"]
+    with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=OWNER_EMAIL), \
+         patch("requests.post", return_value=_orders_response(_order_node())) as post:
+        result = json.loads(shopify_tools.get_order_status(order_number="#1001"))
+    assert result["success"] is True, result
+    assert _sent_search(post) == f"email:{OWNER_EMAIL} AND name:1001"

@@ -90,6 +90,67 @@
     cursor: default;
 }
 
+/* ===== The email check card ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-email-check {
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__title {
+    font-size: 14.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__text {
+    color: var(--cm-muted);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__input {
+    min-height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-field-radius, var(--cm-radius-control));
+    background: var(--cm-card);
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 14px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__code {
+    letter-spacing: .4em;
+    font-variant-numeric: tabular-nums;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__submit {
+    min-height: 38px;
+    border: 0;
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__submit:disabled,
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__link:disabled {
+    opacity: .5;
+    cursor: default;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 12.5px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-check__error {
+    color: var(--cm-text);
+    font-weight: 600;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .chat-container.cm-surface.cm-ui-2 .cm-status-card__fill {
         transition: none;

@@ -34,7 +34,7 @@ const progress = computed(() => {
     const steps = props.card.steps
     if (steps.length < 2) return 0
     const current = steps.findIndex(s => s.state === 'current')
-    return (current >= 0 ? current : doneSteps.value) / (steps.length - 1)
+    return Math.min(1, (current >= 0 ? current : doneSteps.value) / (steps.length - 1))
 })
 const money = (amount: { value: string; currency: string }) => ctrl.formatCurrency(amount.value, amount.currency)
 const act = (action: CardAction) => {

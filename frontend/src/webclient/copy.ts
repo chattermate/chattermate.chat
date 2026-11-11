@@ -107,6 +107,29 @@ export const PANEL_COPY = {
     answerPlaceholder: 'Type your message here...',
     /** Product cards. Same text as classic. */
     viewProduct: 'View product',
+    /** The email check (plan 4.3). */
+    emailCheckTitle: 'Confirm your email',
+    emailCheckText: "We'll send a 6-digit code to show these orders are yours.",
+    emailCheckSend: 'Send code',
+    emailCheckSending: 'Sending…',
+    emailCheckCodeLabel: 'Code',
+    emailCheckCodeText: (masked: string) => `Enter the code we sent to ${masked}.`,
+    emailCheckVerify: 'Confirm',
+    emailCheckResend: 'Send a new code',
+    emailCheckOtherEmail: 'Use another email',
+    emailCheckDone: (masked: string) => `Email confirmed: ${masked}`,
+    emailConfirmedMessage: "I've confirmed my email.",
+    emailCheckErrors: {
+        invalid_email: 'Please enter a valid email address.',
+        cooldown: 'Please wait a moment before asking for another code.',
+        too_many: 'Too many codes were asked for. Please try again later.',
+        expired: 'That code has expired. Ask for a new one.',
+        wrong_code: "That code isn't right.",
+        locked: 'Too many wrong codes. Ask for a new one.',
+        unavailable: "Email confirmation isn't available right now.",
+        send_failed: "We couldn't send the code. Please try again.",
+    } as Record<string, string>,
+    attemptsLeft: (n: number) => (n === 1 ? '1 try left.' : `${n} tries left.`),
     /** Status cards (plan phase 4). */
     cardSteps: 'Progress',
     cardStepState: (label: string, state: string) =>

@@ -25,6 +25,8 @@ import { useTypewriter } from './useTypewriter'
 import { useAgentTrace } from './useAgentTrace'
 import { useAnswerFeedback } from './useAnswerFeedback'
 import { useProductOptions } from './useProductOptions'
+import { useEmailCheck } from './useEmailCheck'
+import { PANEL_COPY } from '../webclient/copy'
 import { useUnreadBadge } from './useUnreadBadge'
 import { useEmailGate } from './useEmailGate'
 import { useWidgetAuth } from './useWidgetAuth'
@@ -90,6 +92,11 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
     // The product sheet's options, read from the shop when it opens.
     const { requestProductOptions } = useProductOptions({ on: socket.on, emit: socket.emit })
+    // The email check: once confirmed, the visitor tells the agent so it can look up their orders.
+    const emailChecks = useEmailCheck({
+        on: socket.on, emit: socket.emit,
+        announce: () => composer.sendQuickAction(PANEL_COPY.emailConfirmedMessage),
+    })
 
     // Report unread agent messages (received while minimized) to the embedder badge.
     // The redesign also shows the reply itself in the loader's peek.
@@ -264,7 +271,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...rating, ...files, ...newChat,
+        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...emailChecks, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory, hostCapabilities,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }

@@ -103,7 +103,7 @@ export function feedbackOf(message: WidgetMessage): VisitorFeedback | null {
 /** The extras of a live reply (chat_response), to keep in its attributes like history does. */
 export function replyExtras(data: Record<string, unknown>): Record<string, unknown> {
     const extras: Record<string, unknown> = {}
-    for (const key of ['quick_replies', 'handover', 'trace', 'cards'] as const) {
+    for (const key of ['quick_replies', 'handover', 'trace', 'cards', 'email_check'] as const) {
         if (data[key] !== null && data[key] !== undefined) extras[key] = data[key]
     }
     return extras

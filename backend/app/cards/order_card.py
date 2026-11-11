@@ -29,8 +29,18 @@ from app.models.schemas.cards import (
 STEP_LABELS = ('Ordered', 'Processing', 'Shipped', 'Delivered')
 MAX_ITEMS = 6
 
-# Carrier states (FulfillmentDisplayStatus) that say where a shipped order is.
-_IN_TRANSIT = {'IN_TRANSIT': 'In transit', 'OUT_FOR_DELIVERY': 'Out for delivery'}
+# Carrier states (FulfillmentDisplayStatus) of a shipped order, least advanced
+# first: an order with several parcels reads as its least advanced one, so one
+# delivered parcel never makes the whole order "Delivered".
+_ARRIVED = {'DELIVERED', 'PICKED_UP'}
+_CARRIER = [
+    ('FAILURE', 'Delivery problem', 'danger'),
+    ('NOT_DELIVERED', 'Delivery problem', 'danger'),
+    ('ATTEMPTED_DELIVERY', 'Delivery attempted', 'warning'),
+    ('IN_TRANSIT', 'In transit', 'info'),
+    ('OUT_FOR_DELIVERY', 'Out for delivery', 'info'),
+    ('READY_FOR_PICKUP', 'Ready for pickup', 'info'),
+]
 _PROCESSING = {'UNFULFILLED', 'PENDING_FULFILLMENT', 'OPEN', 'SCHEDULED', 'IN_PROGRESS'}
 
 
@@ -47,9 +57,15 @@ def _carrier_statuses(order: dict) -> List[str]:
             if _upper(f.get('status')) != 'CANCELLED']
 
 
+def _quantity(line_item: dict) -> int:
+    """What the order holds now (an edited order can have fewer), else as placed."""
+    current = line_item.get('current_quantity')
+    return int(current if current is not None else line_item.get('quantity') or 0)
+
+
 def _shipped_counts(order: dict) -> Tuple[int, int]:
     """(items shipped, items ordered), from fulfillment line-item quantities."""
-    ordered = sum(int(li.get('quantity') or 0) for li in order.get('line_items') or [])
+    ordered = sum(_quantity(li) for li in order.get('line_items') or [])
     shipped = sum(int(f.get('shipped_quantity') or 0) for f in order.get('fulfillments') or []
                   if _upper(f.get('status')) != 'CANCELLED')
     return min(shipped, ordered), ordered
@@ -73,12 +89,13 @@ def order_status(order: dict) -> Tuple[CardStatus, int]:
         shipped, ordered = _shipped_counts(order)
         label = f'{shipped} of {ordered} shipped' if ordered and shipped else 'Partly shipped'
         return CardStatus(key='partial', label=label, tone='progress'), 2
-    if 'DELIVERED' in carriers or fulfillment == 'DELIVERED':
-        return CardStatus(key='delivered', label='Delivered', tone='success'), 3
+    if fulfillment == 'DELIVERED' or (carriers and all(c in _ARRIVED for c in carriers)):
+        label = 'Picked up' if carriers and all(c == 'PICKED_UP' for c in carriers) else 'Delivered'
+        return CardStatus(key='delivered', label=label, tone='success'), 3
     if fulfillment == 'FULFILLED':
-        for carrier, label in _IN_TRANSIT.items():
+        for carrier, label, tone in _CARRIER:
             if carrier in carriers:
-                return CardStatus(key=carrier.lower(), label=label, tone='info'), 2
+                return CardStatus(key=carrier.lower(), label=label, tone=tone), 2
         return CardStatus(key='shipped', label='Shipped', tone='info'), 2
     return CardStatus(key=fulfillment.lower() or 'unknown', label=_title_case(fulfillment), tone='neutral'), 0
 
@@ -104,7 +121,10 @@ def ship_to(address: Optional[dict]) -> Optional[str]:
     if not address:
         return None
     city = (address.get('city') or '').strip()
-    postcode = (address.get('zip') or '').strip().split(' ')[0][:4]
+    # The district of a two-part postcode (UK, Canada, Netherlands); a one-part
+    # code (a US ZIP) is left out, since cutting it would read as a typo.
+    parts = (address.get('zip') or '').strip().split()
+    postcode = parts[0] if len(parts) > 1 else ''
     shown = ', '.join(part for part in (city, postcode) if part)
     return shown or None
 
@@ -130,7 +150,10 @@ def _tracking(order: dict) -> Tuple[Optional[str], Optional[str], Optional[str]]
 
 
 def _estimated_delivery(order: dict) -> Optional[str]:
-    for fulfillment in order.get('fulfillments') or []:
+    """The latest active shipment's estimate."""
+    for fulfillment in reversed(order.get('fulfillments') or []):
+        if _upper(fulfillment.get('status')) == 'CANCELLED':
+            continue
         shown = _date(fulfillment.get('estimated_delivery_at')) if fulfillment.get('estimated_delivery_at') else None
         if shown:
             return shown
@@ -146,7 +169,7 @@ def _items(order: dict) -> List[CardItem]:
             title=li.get('name') or 'Item',
             meta=variant if variant and variant != 'Default Title' else None,
             image=image if image.startswith('https://') else None,
-            quantity=li.get('quantity'),
+            quantity=_quantity(li),
             amount=Money(value=str(li['price']), currency=li.get('currency') or '') if li.get('price') else None,
         ))
     return items
@@ -155,16 +178,17 @@ def _items(order: dict) -> List[CardItem]:
 def order_card(order: dict) -> StatusCard:
     name = order.get('name') or 'Your order'
     status, current = order_status(order)
-    count = sum(int(li.get('quantity') or 0) for li in order.get('line_items') or [])
+    count = sum(_quantity(li) for li in order.get('line_items') or [])
     placed = _date(order.get('created_at'))
     subtitle = ' · '.join(p for p in (
         f'Placed {placed}' if placed else None,
         f'{count} item{"" if count == 1 else "s"}' if count else None,
     ) if p) or None
 
-    tracking, carrier, tracking_url = _tracking(order)
+    # A refunded or cancelled order has nothing to track; an arrived one no estimate.
+    tracking, carrier, tracking_url = _tracking(order) if current >= 0 else (None, None, None)
     rows = [CardRow(label=label, value=value) for label, value in (
-        ('Estimated delivery', _estimated_delivery(order)),
+        ('Estimated delivery', _estimated_delivery(order) if current == 2 else None),
         ('Ship to', ship_to(order.get('shipping_address'))),
         ('Tracking', f'{carrier} {tracking}'.strip() if tracking and carrier else tracking),
     ) if value]
@@ -192,3 +216,20 @@ def order_card(order: dict) -> StatusCard:
         actions=actions,
         fallback_text=f'Order {name}: {status.label}',
     )
+
+
+def recent_orders_card(orders: List[dict]) -> StatusCard:
+    """A confirmed email's recent orders (list_my_orders): one tap asks about one."""
+    rows, actions = [], []
+    for order in orders:
+        name = order.get('order_number') or ''
+        if not name:
+            continue
+        status, _ = order_status({'financial_status': order.get('financial_status'),
+                                  'fulfillment_status': order.get('fulfillment_status')})
+        placed = _date(order.get('created_at'))
+        rows.append(CardRow(label=f'{name} · {placed}' if placed else name, value=status.label))
+        actions.append(CardAction(id=f'order-{name}', label=f'Order {name}', kind='reply',
+                                  value=f'Where is my order {name}?'))
+    return StatusCard(id='recent-orders', kind='order', title='Your recent orders', rows=rows,
+                      actions=actions, fallback_text='Your recent orders: ' + ', '.join(r.label for r in rows))

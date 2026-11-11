@@ -117,6 +117,7 @@ def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[
         'quick_replies': widget_choices(response) or None,
         'handover': getattr(chat_agent, 'last_handover', None),
         'cards': getattr(chat_agent, 'last_cards', None),
+        'email_check': bool(getattr(chat_agent, 'last_email_check', False)) or None,
         'message': response.message,
         'type': 'chat_response',
         'session_id': session_id,

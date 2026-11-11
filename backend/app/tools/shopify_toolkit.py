@@ -38,6 +38,7 @@ from app.core.redis import get_redis
 from app.tools.shopify_order_access import (
     MAX_ORDER_RESULTS,
     missing_from_chat,
+    normalise_email,
     ORDER_NOT_FOUND,
     build_order_search,
     order_belongs_to,
@@ -45,12 +46,16 @@ from app.tools.shopify_order_access import (
     order_number_matches,
 )
 
-from app.cards.order_card import order_card
+from app.cards.order_card import order_card, recent_orders_card
+from app.services import email_check
 from app.cards.turn_cards import TurnCards
 logger = get_logger(__name__)
 
 # A slow store must not hold the chat turn open.
 ORDER_SEARCH_TIMEOUT_SECONDS = 20
+
+# How many of a confirmed email's orders list_my_orders shows
+RECENT_ORDERS = 5
 
 ORDER_SEARCH_GRAPHQL = """
 query SearchOrders($query: String, $first: Int!) {
@@ -641,7 +646,86 @@ class ShopifyTools(Toolkit):
     def _lookup_problem(self, customer_email: Optional[str], order_number: Optional[str]) -> Optional[str]:
         """What to ask the customer before this lookup can run, or None when it can."""
         return (order_lookup_problem(customer_email, order_number)
-                or missing_from_chat(customer_email, order_number, self._customer_messages()))
+                or missing_from_chat(customer_email, order_number, self._customer_messages(),
+                                     verified_email=email_check.verified_email(self.session_id)))
+
+    def offer_email_check(self) -> None:
+        """Offer the email check and the visitor's own orders: the redesigned
+        widget only, and only where codes can be kept (Redis)."""
+        if email_check.available():
+            self.register(self.confirm_email)
+            self.register(self.list_my_orders)
+
+    def confirm_email(self) -> str:
+        """
+        Ask the customer to confirm their email address with a code, so you can
+        look up their orders without them typing order numbers and emails. Call it
+        when they want to see their orders or don't know their order number.
+
+        Returns:
+            str: JSON saying whether their email is already confirmed.
+        """
+        proven = email_check.verified_email(self.session_id)
+        if proven:
+            return json.dumps({"confirmed": True, "message": "Their email is confirmed. Call list_my_orders."})
+        if self.turn_cards is not None:
+            self.turn_cards.email_check = True
+        return json.dumps({"confirmed": False, "message": (
+            "The chat now shows the customer a box to confirm their email with a code. "
+            "Tell them to enter their email there. Do not ask them to type it in the chat.")})
+
+    def list_my_orders(self) -> str:
+        """
+        List the customer's recent orders, for an email they confirmed with a code
+        (confirm_email). Never takes an email from you.
+
+        Returns:
+            str: JSON with up to 5 recent orders: number, date and status.
+        """
+        email = email_check.verified_email(self.session_id)
+        if not email:
+            return json.dumps({"success": False, "message": "Their email is not confirmed yet. Call confirm_email."})
+        # Only an address inert in Shopify's search syntax goes into the query
+        if order_lookup_problem(email, "1001"):
+            return json.dumps({"success": False, "message": ORDER_NOT_FOUND})
+        shop = self._get_shop_for_agent()
+        if not shop:
+            return json.dumps({"success": False, "message": "Shopify integration is not enabled for this agent"})
+        orders = self._recent_orders(shop, email)
+        if orders is None:
+            return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
+        if self.turn_cards is not None and orders:
+            self.turn_cards.add(recent_orders_card(orders))
+        return json.dumps({"success": True, "orders": orders,
+                           "message": "No orders for this email." if not orders else
+                           "Ask which order they mean, or answer about the latest one."})
+
+    def _recent_orders(self, shop: ShopifyShop, email: str) -> Optional[List[Dict[str, Any]]]:
+        """The email's latest orders (exact email match), newest first, or None on failure."""
+        response = call_admin_api(shop, lambda token: requests.post(
+            shopify_admin_url(shop.shop_domain, "graphql.json"),
+            headers=admin_headers(token),
+            json={"query": ORDER_SEARCH_GRAPHQL,
+                  "variables": {"query": f"email:{normalise_email(email)}", "first": RECENT_ORDERS}},
+            verify=settings.VERIFY_SSL_CERTIFICATES,
+            timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
+        ))
+        if response.status_code != 200 or "errors" in response.json():
+            logger.error(f"Recent orders search failed: {response.status_code}")
+            return None
+        edges = ((response.json().get("data") or {}).get("orders") or {}).get("edges") or []
+        orders = []
+        for edge in edges:
+            node = edge.get("node") or {}
+            if normalise_email(node.get("email")) != normalise_email(email):
+                continue
+            orders.append({
+                "order_number": node.get("name"),
+                "created_at": node.get("createdAt"),
+                "financial_status": node.get("displayFinancialStatus"),
+                "fulfillment_status": node.get("displayFulfillmentStatus"),
+            })
+        return orders
 
     def _find_customer_orders(self, shop: ShopifyShop, customer_email: str, order_number: str) -> Dict[str, Any]:
         """The order with this number placed with this email. Shopify's search is fuzzy,
@@ -748,7 +832,7 @@ class ShopifyTools(Toolkit):
             summaries.append(summary)
         return f"Found {len(orders)} order(s):\n\n" + "\n\n".join(summaries)
 
-    def get_order_status(self, order_number: str, customer_email: str) -> str:
+    def get_order_status(self, order_number: str, customer_email: str = "") -> str:
         """
         Get the status and tracking of one order. Needs both the order number and the
         email address the customer used at checkout; ask the customer for whichever is
@@ -756,12 +840,15 @@ class ShopifyTools(Toolkit):
 
         Args:
             order_number: The order number, e.g. "1001" or "#1001"
-            customer_email: The email address the customer used at checkout
+            customer_email: The email address the customer used at checkout. Leave it
+                empty when the customer confirmed their email with a code.
 
         Returns:
             str: JSON string with order status details or error information
         """
         try:
+            # The email the customer proved with a code (confirm_email), when none was given
+            customer_email = customer_email or email_check.verified_email(self.session_id) or ""
             problem = self._lookup_problem(customer_email, order_number)
             if problem:
                 return json.dumps({"success": False, "message": problem, "requires_user_input": True})

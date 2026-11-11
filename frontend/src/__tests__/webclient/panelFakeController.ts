@@ -39,6 +39,7 @@ import type { PreviewFile, UploadedFile } from '@/composables/useWidgetFiles'
 import type { WorkflowForm } from '@/composables/useWorkflowScreens'
 import type { PresenceLine } from '@/utils/widgetPresence'
 import type { LiveStep } from '@/composables/useAgentTrace'
+import type { EmailCheckState } from '@/composables/useEmailCheck'
 import type { VisitorFeedback } from '@/webclient/panel/answer-extras'
 
 /** The controller with its read-only refs made writable, for tests. */
@@ -92,6 +93,10 @@ const baseController = () => ({
     liveTrace: ref<LiveStep[]>([]),
     sendFeedback: vi.fn((_message: WidgetMessage, _value: VisitorFeedback | null) => {}),
     requestProductOptions: vi.fn((_productId: string) => {}),
+    emailCheck: ref<EmailCheckState>({ stage: 'email', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
+    startEmailCheck: vi.fn((_email: string) => {}),
+    verifyEmailCode: vi.fn((_code: string) => {}),
+    restartEmailCheck: vi.fn(),
     hoverRating: ref(0),
     isSubmittingRating: ref(false),
     handleStarHover: vi.fn((_rating: number) => {}),

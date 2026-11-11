@@ -1,4 +1,4 @@
-import { test, expect, env, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
+import { test, expect, env, Mailbox, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
 
 // Linking a shop changes which sites may call the API, so this runs in the serial
 // `org` project and uninstalls afterwards.
@@ -62,6 +62,36 @@ test.describe('Shopify', () => {
     await expect(card).toContainText('UPS ••••')
     await expect(card).not.toContainText('1 Test Street')
     await expect(card.getByRole('link', { name: /Track with carrier/ })).toHaveAttribute('href', /^https:\/\/tracking\.e2e\.test\//)
+  })
+
+  test('a customer confirms their email with a code and opens one of their orders @integrations @redis', async ({ agent, widget, llm, request }) => {
+    // eslint-disable-next-line playwright/no-skipped-test -- the email check is the redesigned widget's
+    test.skip(env.widgetUi !== 2, 'The email check is the redesigned widget\'s')
+    const email = widget.customer.email
+    await llm.script(agent, (s) => s
+      .when(/confirmed my email/).callTool('list_my_orders', {}).thenReply('Here are your recent orders.')
+      .when(/order #1001/).callTool('get_order_status', { order_number: '#1001' }).thenReply('Order #1001 is on its way.')
+      .otherwise().callTool('confirm_email', {}).thenReply('Please confirm your email below.'))
+    await widget.embed()
+    await widget.open()
+    await widget.send('Can you show me my orders?')
+
+    await expect(widget.emailCheck).toBeVisible(AI_REPLY)
+    const since = new Date()
+    await widget.askForEmailCode(email)
+    const code = await new Mailbox(request).verificationCode(email, { since })
+    // The real code with its last digit changed: always wrong
+    const wrong = `${code.slice(0, 5)}${(Number(code[5]) + 1) % 10}`
+    await widget.enterEmailCode(wrong)
+    await expect(widget.emailCheck.getByRole('alert')).toHaveText("That code isn't right. 4 tries left.")
+    await widget.enterEmailCode(code)
+    await expect(widget.emailCheck.getByRole('status')).toContainText('Email confirmed')
+
+    // Confirming tells the agent, which lists the customer's own orders
+    const orders = widget.statusCard('Your recent orders')
+    await expect(orders).toBeVisible(AI_REPLY)
+    await orders.getByRole('button', { name: 'Order #1001' }).click()
+    await expect(widget.statusCard('Order #1001')).toContainText('In transit', AI_REPLY)
   })
 
   test('an email alone lists no orders @integrations', async ({ agent, widget, llm, request }) => {
