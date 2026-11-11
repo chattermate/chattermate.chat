@@ -25,6 +25,8 @@ from app.knowledge.enhanced_website_reader import EnhancedWebsiteReader
 from app.knowledge.sitemap_reader import SitemapReader
 from app.knowledge.chunking import PageChunking
 from app.knowledge.enhanced_pdf_kb import EnhancedPDFKnowledgeBase
+from app.knowledge.page_sink import SourceRemoved
+from app.knowledge.source_learning import SourceLearning
 from app.core.s3 import delete_file_from_s3, owned_s3_key
 from app.knowledge.pdf_download import download_pdf
 from app.knowledge.pdf_limits import PdfRefused, check_page_count
@@ -327,6 +329,65 @@ class KnowledgeManager:
             logger.error(f"Error getting knowledge base: {str(e)}")
             return []
 
+    async def _learn_site(
+        self,
+        queue_item,
+        queue_repo: KnowledgeQueueRepository,
+        reader: EnhancedWebsiteReader,
+        max_links: int,
+        crawl_scope: str = DEFAULT_CRAWL_SCOPE,
+    ) -> None:
+        """Read a website or sitemap into the org's vector table, page by page.
+
+        The source becomes searchable with its first stored page (see
+        SourceLearning). A site already learned is skipped and just linked,
+        unless its last run stopped partway: then it is read again.
+        """
+        learning = SourceLearning(
+            queue_item.id,
+            self.org_id,
+            self.agent_id,
+            queue_item.source,
+            self.vector_db.table_name,
+            self.vector_db.schema,
+        )
+        knowledge_base = EnhancedWebsiteKnowledgeBase(
+            urls=[queue_item.source],
+            max_links=max_links,
+            crawl_scope=crawl_scope,
+            vector_db=self.vector_db,
+            reader=reader,
+        )
+        knowledge_base.queue_item = queue_item
+        knowledge_base.queue_repo = queue_repo
+        knowledge_base.learning = learning
+        skip_existing = not queue_repo.last_run_left_partial(
+            self.org_id, queue_item.source, queue_item.id
+        )
+        filters = {
+            "name": queue_item.source,
+            "agent_id": [str(self.agent_id)] if self.agent_id else [],
+            "org_id": str(self.org_id),
+        }
+
+        # The crawl is synchronous: run it off the event loop
+        logger.info(f"Starting website processing in background thread for {queue_item.source}")
+        try:
+            await asyncio.to_thread(
+                knowledge_base.load,
+                recreate=False,
+                upsert=True,
+                skip_existing=skip_existing,
+                filters=filters,
+            )
+        except SourceRemoved:
+            learning.discard()
+            raise
+
+        await asyncio.to_thread(learning.ensure_source)
+        if knowledge_base.stopped_at_time_limit:
+            queue_repo.note_stopped_at_time_limit(queue_item.id)
+
     async def process_knowledge(self, queue_item):
         """Process knowledge based on source type"""
         try:
@@ -424,40 +485,9 @@ class KnowledgeManager:
                         verify_ssl=False  # Disable SSL verification to support websites with invalid/self-signed certificates
                     )
 
-                    # Process the website - pass queue item and repo for URL tracking
-                    knowledge_base = EnhancedWebsiteKnowledgeBase(
-                        urls=[queue_item.source],
-                        max_links=max_links,
-                        crawl_scope=crawl_scope,
-                        vector_db=self.vector_db,
-                        reader=reader
-                    )
-                    # Add queue_item and repo for URL tracking
-                    knowledge_base.queue_item = queue_item
-                    knowledge_base.queue_repo = queue_repo
-                    
-                    # Process the website in a thread pool to avoid blocking other APIs
-                    logger.info(f"Starting website processing in background thread for {queue_item.source}")
-                    agent_id_filter = [str(self.agent_id)] if self.agent_id else []
-                    filters = {
-                        "name": queue_item.source,
-                        "agent_id": agent_id_filter,
-                        "org_id": str(self.org_id)
-                    }
-                    
-                    # Run the heavy synchronous operation in a thread pool
-                    await asyncio.to_thread(
-                        knowledge_base.load,
-                        recreate=False,
-                        upsert=True,
-                        filters=filters
-                    )
-                    
+                    await self._learn_site(queue_item, queue_repo, reader, max_links, crawl_scope)
                     logger.info(f"Completed website processing for {queue_item.source}")
-                    self._add_knowledge_source(queue_item.source, SourceType.WEBSITE)
                     success = True
-
-                    # Completion status is handled internally by EnhancedWebsiteKnowledgeBase
 
                 elif queue_item.source_type == 'sitemap':
                     # Crawl exactly the pages listed in the sitemap.xml (parsed
@@ -479,28 +509,7 @@ class KnowledgeManager:
                     )
 
                     # One source (the sitemap URL); its listed pages are the sub-pages.
-                    knowledge_base = EnhancedWebsiteKnowledgeBase(
-                        urls=[queue_item.source],
-                        max_links=max_links,
-                        vector_db=self.vector_db,
-                        reader=reader
-                    )
-                    knowledge_base.queue_item = queue_item
-                    knowledge_base.queue_repo = queue_repo
-
-                    agent_id_filter = [str(self.agent_id)] if self.agent_id else []
-                    filters = {
-                        "name": queue_item.source,
-                        "agent_id": agent_id_filter,
-                        "org_id": str(self.org_id)
-                    }
-
-                    await asyncio.to_thread(
-                        knowledge_base.load,
-                        recreate=False,
-                        upsert=True,
-                        filters=filters
-                    )
+                    await self._learn_site(queue_item, queue_repo, reader, max_links)
 
                     # Fail clearly if the sitemap listed no pages (wrong URL / not a
                     # sitemap) rather than creating an empty knowledge source.
@@ -511,7 +520,6 @@ class KnowledgeManager:
                         )
 
                     logger.info(f"Completed sitemap processing for {queue_item.source}")
-                    self._add_knowledge_source(queue_item.source, SourceType.WEBSITE)
                     success = True
 
                 else:
@@ -522,8 +530,8 @@ class KnowledgeManager:
 
                 return success
 
-        except SourceUnreadable:
-            raise  # the user's advice, reported by the worker
+        except (SourceUnreadable, SourceRemoved):
+            raise  # the user's advice, or a deliberate stop: the worker handles both
         except Exception as e:
             logger.error(f"Error processing knowledge: {str(e)}")
             raise

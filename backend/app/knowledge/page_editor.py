@@ -38,6 +38,7 @@ from app.core.logger import get_logger
 from app.knowledge.chunking import CHUNK_META_KEYS, chunk_page
 from app.knowledge.knowledge_base import KnowledgeManager
 from app.models.knowledge import Knowledge, SourceType
+from app.services.knowledge_vector_links import agent_ids_for
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
@@ -66,11 +67,6 @@ NATURAL_ID_ORDER = "length(id), id"
 def get_manager(organization_id) -> KnowledgeManager:
     """Build a KnowledgeManager bound to an org's vector table (no agent link)."""
     return KnowledgeManager(org_id=organization_id, agent_id=None)
-
-
-def agent_ids_for(knowledge: Knowledge) -> List[str]:
-    """Return the agent ids linked to a knowledge source (for vector filters)."""
-    return [str(link.agent_id) for link in knowledge.agent_links]
 
 
 def embed_document(

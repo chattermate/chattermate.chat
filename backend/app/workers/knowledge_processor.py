@@ -20,9 +20,9 @@ from app.repositories.knowledge_queue import KnowledgeQueueRepository
 from app.repositories.knowledge import KnowledgeRepository
 from app.knowledge.knowledge_base import KnowledgeManager
 from app.knowledge.failure_advice import SourceUnreadable
-from app.knowledge import page_editor
 from app.services import knowledge_vector_links
-from app.models.knowledge_queue import QueueStatus, ProcessingStage
+from app.models.knowledge_queue import QueueStatus, ProcessingStage, STOPPED_AT_TIME_LIMIT
+from app.knowledge.page_sink import SourceRemoved
 from app.core.logger import get_logger
 import os
 from app.core.config import settings
@@ -100,7 +100,7 @@ def _sync_vector_agent_links(db, queue_item) -> None:
         agent_ids = sorted({
             agent_id
             for knowledge in sources
-            for agent_id in page_editor.agent_ids_for(knowledge)
+            for agent_id in knowledge_vector_links.agent_ids_for(knowledge)
         })
         knowledge_vector_links.sync_agent_ids(db, sources[0], agent_ids)
         db.commit()
@@ -165,12 +165,13 @@ async def process_queue_item(queue_item_id: int):
                 db.commit()
 
                 await knowledge.process_knowledge(queue_item)
+                # The run wrote its progress through its own sessions
+                db.refresh(queue_item)
 
                 _sync_vector_agent_links(db, queue_item)
 
-                user_friendly_name = get_user_friendly_filename(queue_item.source, queue_item.source_type)
                 await _notify(db, queue_item, NotificationType.KNOWLEDGE_PROCESSED,
-                              "Knowledge Processing Complete", f"Successfully processed {user_friendly_name}")
+                              "Knowledge Processing Complete", _processed_message(queue_item))
 
                 # Auto-draft FAQs from the new source for orgs using the help
                 # center. Fully non-fatal — even an import failure of the FAQ
@@ -184,6 +185,12 @@ async def process_queue_item(queue_item_id: int):
             queue_item.status = QueueStatus.COMPLETED
             db.commit()
 
+        except SourceRemoved:
+            # Deleted while it was read: the run cleaned up after itself, and
+            # nobody wants to hear about a source they just removed.
+            db.rollback()
+            logger.info(f"Queue item {queue_item_id} stopped: its source was removed")
+
         except Exception as e:
             unreadable = isinstance(e, SourceUnreadable)
             log = logger.warning if unreadable else logger.error
@@ -195,8 +202,14 @@ async def process_queue_item(queue_item_id: int):
             db.rollback()
             try:
                 queue_item.status = QueueStatus.FAILED
-                # Persist the reason so the UI can show why it failed.
-                queue_item.error = str(e)
+                # Persist the reason so the UI can show why it failed. A run
+                # that stored pages before it broke keeps them searchable; it
+                # failed partway, which is what reading it again fixes.
+                stopped_partway = not unreadable and (queue_item.pages_learned or 0) > 0
+                queue_item.error = (
+                    FAILURE_ADVICE[FailureCause.INTERRUPTED].format(url=_shown_as(queue_item))
+                    if stopped_partway else str(e)
+                )
                 db.commit()
             except Exception as status_err:
                 db.rollback()
@@ -208,6 +221,13 @@ async def process_queue_item(queue_item_id: int):
             # own failures go on up to be logged as errors
             if not unreadable:
                 raise
+
+
+def _processed_message(queue_item) -> str:
+    name = get_user_friendly_filename(queue_item.source, queue_item.source_type)
+    if (queue_item.queue_metadata or {}).get(STOPPED_AT_TIME_LIMIT):
+        return f"Learned {queue_item.pages_learned} pages from {name} before the time limit"
+    return f"Successfully processed {name}"
 
 
 async def _tell_failed(db, queue_item) -> None:

@@ -15,11 +15,19 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
 import { useStagedSourceCap } from '@/composables/useStagedSourceCap'
 import { useCrawlCheck } from '@/composables/useCrawlCheck'
-import { isPdfSource, queueItemName, useLearningWatch, withoutUploadPrefix } from '@/composables/useLearningWatch'
+import {
+  isPdfSource,
+  learnedSoFar,
+  pagesLearnedSoFar,
+  queueItemName,
+  readyToTry,
+  useLearningWatch,
+  withoutUploadPrefix,
+} from '@/composables/useLearningWatch'
 import TeachTextFallback from './TeachTextFallback.vue'
 import type { QueueItem } from '@/types/knowledge'
 import { organizationService } from '@/services/organization'
@@ -100,17 +108,33 @@ const handleLearned = async (ids: number[]) => {
 }
 const { learning: crawling } = useLearningWatch(props.agentId, queueItems, handleLearned)
 
-// The assistant has said to try the agent, and that happens on the next step.
-// Anything unsent or unresolved here stays theirs to deal with.
+// A site is searchable from its first stored page, so its source is already
+// in knowledgeItems while it is read: show it once, as learning.
+const indexedItems = computed(() => {
+  const stillLearning = new Set(crawling.value.map((q) => q.knowledge_id).filter(Boolean))
+  return knowledgeItems.value.filter((k) => !stillLearning.has(k.id))
+})
+const pagesSoFar = computed(() => pagesLearnedSoFar(crawling.value))
+
+// The assistant has said to try the agent, and that happens on the next step:
+// once everything is read, or a site still being read has its first few pages
+// in. Anything unsent or unresolved here stays theirs to deal with.
 const moveOnIfLearned = () => {
-  const settled = !crawling.value.length && !crawlFailure.value && !busy.value && nothingStaged.value
-  const learned = props.followAssistant && knowledgeItems.value.length > 0 && settled
+  const settled = !crawlFailure.value && !busy.value && nothingStaged.value
+  const ready = readyToTry({
+    hasKnowledge: knowledgeItems.value.length > 0 || pagesSoFar.value > 0,
+    stillLearning: crawling.value.length > 0,
+    pagesSoFar: pagesSoFar.value,
+  })
+  const learned = !!props.followAssistant && ready && settled
   if (learned) emit('next')
   return learned
 }
+watch(pagesSoFar, () => moveOnIfLearned())
 
-// Crawls still running count against the cap too (the server counts them).
-const inUseCount = computed(() => orgTotalCount.value + crawling.value.length)
+// Crawls still running count against the cap too (the server counts them),
+// except one that has stored a page: its source is already in the total.
+const inUseCount = computed(() => orgTotalCount.value + crawling.value.filter((q) => !q.knowledge_id).length)
 const { fitToCap } = useStagedSourceCap(inUseCount, urls, files)
 
 // A newly staged source makes the last failure history: Continue sends it and
@@ -329,13 +353,13 @@ const handleTextAdded = () => {
           aria-hidden="true"
         />
         <span class="source-name">{{ queueItemName(item) }}</span>
-        <span class="source-tag pending">learning…</span>
+        <span class="source-tag pending">{{ learnedSoFar(item) }}</span>
       </li>
     </ul>
 
     <!-- Already indexed for this agent -->
-    <ul v-if="knowledgeItems.length" class="source-list indexed" aria-label="Already added">
-      <li v-for="item in knowledgeItems" :key="item.id" class="source-row">
+    <ul v-if="indexedItems.length" class="source-list indexed" aria-label="Already added">
+      <li v-for="item in indexedItems" :key="item.id" class="source-row">
         <font-awesome-icon icon="fa-solid fa-check" class="source-icon done" aria-hidden="true" />
         <span class="source-name">{{ withoutUploadPrefix(item.name) }}</span>
         <span class="source-tag">indexed</span>

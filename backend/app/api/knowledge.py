@@ -868,6 +868,10 @@ def _serialize_queue_item(item: KnowledgeQueue) -> dict:
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         "processing_stage": _enum_value(item.processing_stage),
         "progress_percentage": item.progress_percentage or 0,
+        # Pages already searchable: a website is learned page by page
+        "pages_learned": item.pages_learned or 0,
+        # The source those pages belong to, once the first one is stored
+        "knowledge_id": item.knowledge_id,
     }
 
 

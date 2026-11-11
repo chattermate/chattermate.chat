@@ -27,7 +27,7 @@ vi.mock('@/utils/storage', () => ({
 }))
 
 import StepTeach from '@/components/aiagent/onboarding/steps/StepTeach.vue'
-import { LEARNING_POLL_MS, queueItemName } from '@/composables/useLearningWatch'
+import { LEARNING_POLL_MS, READY_PAGES, queueItemName } from '@/composables/useLearningWatch'
 import type { QueueItem } from '@/types/knowledge'
 
 const SITE = 'https://pedalco.example.com'
@@ -340,6 +340,27 @@ describe('StepTeach while sources are read', () => {
       expect(staged()).toEqual(['https://shop.pedalco.example.com'])
     })
 
+    it('moves on once a site still being read has its first few pages in', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 2, knowledge_id: 1 })))
+      getKnowledgeByAgent.mockResolvedValue(indexed)
+      await mountStep(follow)
+      expect(movedOn()).toBe(0)
+
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: READY_PAGES, knowledge_id: 1 })))
+      await nextPoll()
+
+      expect(movedOn()).toBe(1)
+    })
+
+    it('a small site that finishes under that many pages still moves on', async () => {
+      getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 1, knowledge_id: 1 })))
+      await mountStep(follow)
+
+      await finishReading()
+
+      expect(movedOn()).toBe(1)
+    })
+
     it('does nothing with no knowledge at all', async () => {
       await mountStep(follow)
 
@@ -371,6 +392,34 @@ describe('StepTeach while sources are read', () => {
     await flushPromises()
 
     expect(getKnowledgeByAgent).toHaveBeenCalledTimes(knowledgeCalls)
+  })
+
+  it('says how many pages a site has stored so far', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 12 })))
+    await mountStep()
+
+    expect(wrapper.find('.source-list.learning .source-tag').text()).toBe('12 pages so far')
+
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 1 })))
+    await nextPoll()
+    expect(wrapper.find('.source-list.learning .source-tag').text()).toBe('1 page so far')
+  })
+
+  it('lists a site once while it is read, though its source already exists', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 4, knowledge_id: 1 })))
+    getKnowledgeByAgent.mockResolvedValue(indexed)
+    await mountStep()
+
+    expect(learning()).toEqual([SITE])
+    expect(done()).toEqual([])
+  })
+
+  it('counts a site that has stored pages once against the plan cap', async () => {
+    getAgentQueueItems.mockResolvedValue(queue(row(1, 'processing', { pages_learned: 4, knowledge_id: 1 })))
+    getKnowledgeByOrganization.mockResolvedValue(indexed)
+    await mountStep()
+
+    expect((wrapper.vm as any).$.setupState.inUseCount).toBe(1)
   })
 
   it('counts a site being read against the plan cap as before', async () => {

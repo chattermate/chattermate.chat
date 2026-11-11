@@ -1303,3 +1303,16 @@ class TestSourcesGoToTheLoneAgent:
             )
         assert response.status_code == 200
         assert self._queued_agent(db) == test_agent.id
+
+
+def test_a_queue_row_says_how_many_pages_are_searchable_so_far(db, test_organization):
+    """A website is learned page by page: the wizard and the setup
+    assistant show "learned 12 pages so far" from these."""
+    item = KnowledgeQueue(organization_id=test_organization.id, source="https://shop.example",
+                          source_type="website", status="processing", pages_learned=12)
+    db.add(item)
+    db.commit()
+
+    shown = knowledge_router._serialize_queue_item(item)
+
+    assert (shown["pages_learned"], shown["knowledge_id"]) == (12, None)

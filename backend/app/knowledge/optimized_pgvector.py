@@ -25,7 +25,11 @@ from agno.vectordb.pgvector.pgvector import PgVector
 from agno.vectordb.distance import Distance
 from agno.vectordb.pgvector.index import HNSW, Ivfflat
 from agno.vectordb.search import SearchType
+from sqlalchemy import delete, func, or_
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Engine
+
+from app.knowledge.chunking import CHUNK_ID_SEPARATOR, page_id_of
 
 
 class OptimizedPgVector(PgVector):
@@ -142,31 +146,11 @@ class OptimizedPgVector(PgVector):
                                         logger.warning(f"Document '{doc.name}' has no embedding and no embedder available - skipping")
                                         continue
                                 
-                                # Merge filters into document metadata for searchability
-                                merged_meta_data = doc.meta_data.copy() if doc.meta_data else {}
-                                if filters:
-                                    merged_meta_data.update(filters)
-                                    logger.debug(f"Merged filters into meta_data: {filters}")
-                                
-                                cleaned_content = self._clean_content(doc.content)
-                                content_hash = md5(cleaned_content.encode()).hexdigest()
-                                _id = doc.id or content_hash
-                                record = {
-                                    "id": _id,
-                                    "name": doc.name,
-                                    "meta_data": merged_meta_data,  # Use merged metadata
-                                    "filters": filters,
-                                    "content": cleaned_content,
-                                    "embedding": doc.embedding,
-                                    "usage": doc.usage,
-                                    "content_hash": content_hash,
-                                }
-                                batch_records.append(record)
+                                batch_records.append(self._record(doc, filters))
                             except Exception as e:
                                 logger.error(f"Error processing document '{doc.name}': {e}")
 
                         # Insert the batch of records
-                        from sqlalchemy.dialects import postgresql
                         insert_stmt = postgresql.insert(self.table)
                         sess.execute(insert_stmt, batch_records)
                         sess.commit()  # Commit batch independently
@@ -204,46 +188,11 @@ class OptimizedPgVector(PgVector):
                                 # Skip embedding if the document already has an embedding
                                 if doc.embedding is None:
                                     doc.embed(embedder=self.embedder)
-                                
-                                # Merge filters into document metadata for searchability
-                                merged_meta_data = doc.meta_data.copy() if doc.meta_data else {}
-                                if filters:
-                                    merged_meta_data.update(filters)
-                                    logger.debug(f"Merged filters into meta_data: {filters}")
-                                    
-                                cleaned_content = self._clean_content(doc.content)
-                                content_hash = md5(cleaned_content.encode()).hexdigest()
-                                _id = doc.id or content_hash
-                                record = {
-                                    "id": _id,
-                                    "name": doc.name,
-                                    "meta_data": merged_meta_data,  # Use merged metadata
-                                    "filters": filters,
-                                    "content": cleaned_content,
-                                    "embedding": doc.embedding,
-                                    "usage": doc.usage,
-                                    "content_hash": content_hash,
-                                }
-                                batch_records.append(record)
+                                batch_records.append(self._record(doc, filters))
                             except Exception as e:
                                 logger.error(f"Error processing document '{doc.name}': {e}")
 
-                        # Upsert the batch of records
-                        from sqlalchemy.dialects import postgresql
-                        insert_stmt = postgresql.insert(self.table).values(batch_records)
-                        upsert_stmt = insert_stmt.on_conflict_do_update(
-                            index_elements=["id"],
-                            set_=dict(
-                                name=insert_stmt.excluded.name,
-                                meta_data=insert_stmt.excluded.meta_data,
-                                filters=insert_stmt.excluded.filters,
-                                content=insert_stmt.excluded.content,
-                                embedding=insert_stmt.excluded.embedding,
-                                usage=insert_stmt.excluded.usage,
-                                content_hash=insert_stmt.excluded.content_hash,
-                            ),
-                        )
-                        sess.execute(upsert_stmt)
+                        sess.execute(self._upsert_statement(batch_records))
                         sess.commit()  # Commit batch independently
                     except Exception as e:
                         logger.error(f"Error with batch starting at index {i}: {e}")
@@ -252,3 +201,63 @@ class OptimizedPgVector(PgVector):
         except Exception as e:
             logger.error(f"Error upserting documents: {e}")
             raise 
+
+    def _record(self, doc: Document, filters: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """One row for an embedded document, its filters merged into the
+        metadata so they are searchable."""
+        merged_meta_data = doc.meta_data.copy() if doc.meta_data else {}
+        if filters:
+            merged_meta_data.update(filters)
+        cleaned_content = self._clean_content(doc.content)
+        content_hash = md5(cleaned_content.encode()).hexdigest()
+        return {
+            "id": doc.id or content_hash,
+            "name": doc.name,
+            "meta_data": merged_meta_data,
+            "filters": filters,
+            "content": cleaned_content,
+            "embedding": doc.embedding,
+            "usage": doc.usage,
+            "content_hash": content_hash,
+        }
+
+    def _upsert_statement(self, records: List[Dict[str, Any]]):
+        insert_stmt = postgresql.insert(self.table).values(records)
+        return insert_stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_=dict(
+                name=insert_stmt.excluded.name,
+                meta_data=insert_stmt.excluded.meta_data,
+                filters=insert_stmt.excluded.filters,
+                content=insert_stmt.excluded.content,
+                embedding=insert_stmt.excluded.embedding,
+                usage=insert_stmt.excluded.usage,
+                content_hash=insert_stmt.excluded.content_hash,
+            ),
+        )
+
+    def upsert_page(self, documents: List[Document], filters: Dict[str, Any]) -> None:
+        """Store one page's embedded chunks in a single transaction, and drop
+        any chunk the page no longer has (a page that shrank since it was last
+        read leaves its old tail behind otherwise). Raises on failure, so the
+        caller knows the page is not searchable.
+
+        Every document must be a chunk of the same page of the same source.
+        """
+        if not documents:
+            return
+        page_id = page_id_of(documents[0].id)
+        records = [self._record(doc, filters) for doc in documents]
+        kept_ids = [record["id"] for record in records]
+        chunk_prefix = f"{page_id}{CHUNK_ID_SEPARATOR}"
+        stale = delete(self.table).where(
+            self.table.c.name == documents[0].name,
+            or_(
+                self.table.c.id == page_id,
+                func.left(self.table.c.id, len(chunk_prefix)) == chunk_prefix,
+            ),
+            self.table.c.id.notin_(kept_ids),
+        )
+        with self.Session() as sess, sess.begin():
+            sess.execute(self._upsert_statement(records))
+            sess.execute(stale)

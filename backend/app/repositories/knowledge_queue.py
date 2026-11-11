@@ -16,10 +16,10 @@ limitations under the License.
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
+from app.models.knowledge_queue import KnowledgeQueue, QueueStatus, STOPPED_AT_TIME_LIMIT
 from typing import List, Optional
-from datetime import datetime
-from app.core.logger import get_logger
+from datetime import datetime, timezone
+from uuid import UUID
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -147,3 +147,46 @@ class KnowledgeQueueRepository:
             
             return True
         return False
+
+    def attach_knowledge(self, queue_id: int, knowledge_id: int) -> None:
+        """Point the run at the source its pages land in. The caller commits,
+        so this lands with the source it names."""
+        self.db.query(KnowledgeQueue).filter(KnowledgeQueue.id == queue_id).update(
+            {KnowledgeQueue.knowledge_id: knowledge_id}, synchronize_session=False
+        )
+
+    def record_page_learned(self, queue_id: int) -> None:
+        """Count one more stored page. Done in SQL so it never loses a count
+        to a stale copy of the row; it also marks the run as alive for the
+        abandoned-item check."""
+        self.db.query(KnowledgeQueue).filter(KnowledgeQueue.id == queue_id).update(
+            {
+                KnowledgeQueue.pages_learned: KnowledgeQueue.pages_learned + 1,
+                KnowledgeQueue.updated_at: datetime.now(timezone.utc),
+            },
+            synchronize_session=False,
+        )
+        self.db.commit()
+
+    def last_run_left_partial(self, organization_id: UUID, source: str, exclude_id: int) -> bool:
+        """Whether the previous run of this source stopped partway with pages
+        stored. Its pages stay searchable, but adding it again must read the
+        site again rather than skip it as already learned."""
+        previous = self.db.query(KnowledgeQueue).filter(
+            KnowledgeQueue.organization_id == organization_id,
+            KnowledgeQueue.source == source,
+            KnowledgeQueue.id != exclude_id,
+        ).order_by(KnowledgeQueue.id.desc()).first()
+        return bool(
+            previous
+            and previous.status == QueueStatus.FAILED.value
+            and (previous.pages_learned or 0) > 0
+        )
+
+    def note_stopped_at_time_limit(self, queue_id: int) -> None:
+        """Record that the run kept what it read before its time limit."""
+        item = self.get_by_id(queue_id)
+        if item is None:
+            return
+        item.queue_metadata = {**(item.queue_metadata or {}), STOPPED_AT_TIME_LIMIT: True}
+        self.db.commit()

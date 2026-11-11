@@ -39,6 +39,8 @@ def mock_queue_item():
     queue_item.user_id = uuid4()
     queue_item.source = "test_document.pdf"
     queue_item.status = QueueStatus.PENDING
+    queue_item.pages_learned = 0
+    queue_item.queue_metadata = {}
     return queue_item
 
 @pytest.fixture

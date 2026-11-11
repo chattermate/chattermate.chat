@@ -28,6 +28,30 @@ export const isBeingRead = (item: { status: string }) =>
 
 export const isPdfSource = (item: QueueItem) => item.source_type.startsWith('pdf')
 
+/** Pages a site must have stored before the agent is worth trying while the
+ *  rest is still read: enough for more than the home page. */
+export const READY_PAGES = 3
+
+/** How far a website has got, for the "learning…" tag. Each page is
+ *  searchable as soon as it is stored. */
+export const learnedSoFar = (item: Pick<QueueItem, 'pages_learned'>) => {
+  const pages = item.pages_learned ?? 0
+  if (!pages) return 'learning…'
+  return `${pages} ${pages === 1 ? 'page' : 'pages'} so far`
+}
+
+/** Pages stored so far by the sources still being read. */
+export const pagesLearnedSoFar = (items: Array<Pick<QueueItem, 'pages_learned'>>) =>
+  items.reduce((sum, item) => sum + (item.pages_learned ?? 0), 0)
+
+/**
+ * Whether the agent has enough to be tried: everything is read and something
+ * was learned, or a site still being read has stored its first few pages.
+ * The wizard's Teach step and the setup assistant's journey both go by this.
+ */
+export const readyToTry = (state: { hasKnowledge: boolean; stillLearning: boolean; pagesSoFar: number }) =>
+  state.hasKnowledge && (!state.stillLearning || state.pagesSoFar >= READY_PAGES)
+
 /** What a queue row is called on screen: a site or sitemap as is, a PDF by its
  *  own name, without the path, the signature on an S3 link, or the upload
  *  prefix. */

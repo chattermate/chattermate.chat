@@ -61,6 +61,11 @@ _UPDATE_SQL = """
 """
 
 
+def agent_ids_for(knowledge: Knowledge) -> List[str]:
+    """The agent ids linked to a knowledge source (for vector filters)."""
+    return [str(link.agent_id) for link in knowledge.agent_links]
+
+
 def get_linked_agent_ids(db: Session, knowledge: Knowledge) -> Optional[List[str]]:
     """Agent ids currently recorded in the vector store for this source.
 

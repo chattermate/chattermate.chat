@@ -338,3 +338,74 @@ async def test_a_pdf_that_fails_is_never_marked_completed_first(knowledge_manage
         await knowledge_manager.process_knowledge(queue_item)
 
     queue_repo.return_value.update_status.assert_not_called()
+
+
+# ---- Websites: learned page by page ----
+
+from app.knowledge.page_sink import SourceRemoved  # noqa: E402
+
+SITE = "https://shop.example"
+
+
+@pytest.fixture
+def site_run(knowledge_manager):
+    """A queued website and the pieces _learn_site drives, stubbed."""
+    queue_item = MagicMock(id=42, source=SITE, organization_id=knowledge_manager.org_id)
+    queue_repo = MagicMock()
+    queue_repo.last_run_left_partial.return_value = False
+    kb = MagicMock(stopped_at_time_limit=False)
+    learning = MagicMock()
+    with patch('app.knowledge.knowledge_base.EnhancedWebsiteKnowledgeBase', return_value=kb), \
+         patch('app.knowledge.knowledge_base.SourceLearning', return_value=learning) as made:
+        yield queue_item, queue_repo, kb, learning, made
+
+
+@pytest.mark.asyncio
+async def test_a_site_is_read_with_its_pages_made_searchable_as_they_land(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, learning, made = site_run
+
+    await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    made.assert_called_once_with(
+        42, knowledge_manager.org_id, knowledge_manager.agent_id, SITE, "test_table", "test_schema"
+    )
+    assert kb.learning is learning
+    kb.load.assert_called_once()
+    assert kb.load.call_args.kwargs["skip_existing"] is True
+    assert kb.load.call_args.kwargs["filters"]["agent_id"] == [str(knowledge_manager.agent_id)]
+    # Also covers a site skipped as already learned: it is still linked
+    learning.ensure_source.assert_called_once()
+    queue_repo.note_stopped_at_time_limit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_site_whose_last_run_stopped_partway_is_read_again(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, learning, _ = site_run
+    queue_repo.last_run_left_partial.return_value = True
+
+    await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    queue_repo.last_run_left_partial.assert_called_once_with(knowledge_manager.org_id, SITE, 42)
+    assert kb.load.call_args.kwargs["skip_existing"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_site_that_hit_the_time_limit_is_noted(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, _, _ = site_run
+    kb.stopped_at_time_limit = True
+
+    await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    queue_repo.note_stopped_at_time_limit.assert_called_once_with(42)
+
+
+@pytest.mark.asyncio
+async def test_a_site_removed_mid_crawl_is_cleaned_up(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, learning, _ = site_run
+    kb.load.side_effect = SourceRemoved("removed")
+
+    with pytest.raises(SourceRemoved):
+        await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    learning.discard.assert_called_once()
+    learning.ensure_source.assert_not_called()
