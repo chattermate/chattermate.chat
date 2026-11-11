@@ -20,7 +20,8 @@ limitations under the License.
  * teammate is being found, or that the team will get back to the visitor when
  * nobody is online. The reply's own text is the card's body.
  */
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
+import { WIDGET_CTX } from '../controller'
 import { renderMarkdown } from '../../markdown'
 import { PANEL_COPY } from '../../copy'
 import { handoverOf } from '../answer-extras'
@@ -28,7 +29,10 @@ import type { WidgetMessage } from '../../../types/widget'
 
 const props = defineProps<{ message: WidgetMessage; index: number }>()
 
+const ctrl = inject(WIDGET_CTX)!
 const state = computed(() => handoverOf(props.message) ?? 'connecting')
+// Still connecting only while nothing came after it (a teammate's reply, a join).
+const pulsing = computed(() => state.value === 'connecting' && props.index === ctrl.messages.value.length - 1)
 const title = computed(() => (state.value === 'offline' ? PANEL_COPY.handoverOffline : PANEL_COPY.handoverConnecting))
 const html = computed(() => renderMarkdown(props.message.message || ''))
 </script>
@@ -40,7 +44,7 @@ const html = computed(() => renderMarkdown(props.message.message || ''))
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19a5.5 5.5 0 0 1 11 0"></path><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.2a5.5 5.5 0 0 1 2.5 4.8"></path></svg>
             </span>
             <span class="cm-handover__title">{{ title }}</span>
-            <span v-if="state === 'connecting'" class="cm-handover__pulse cm-pulse" aria-hidden="true"></span>
+            <span v-if="pulsing" class="cm-handover__pulse cm-pulse" aria-hidden="true"></span>
         </div>
         <div class="message-bubble cm-handover__body" v-html="html"></div>
     </div>

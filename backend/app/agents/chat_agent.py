@@ -23,6 +23,7 @@ from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import MessageSource, is_widget_channel
 from app.services.agent_steps import StepReporter
 from app.services.handover_payload import handover_payload
+from app.services.widget_answers import widget_choices
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
 from app.database import get_db, SessionLocal, engine, release_connection
@@ -376,6 +377,8 @@ class ChatAgent(ChatAgentMCPMixin):
         # receipt is stored on the reply and left on last_trace.
         self.step_reporter = step_reporter
         self.last_trace = None
+        # The handover card state stored on this turn's reply (handover_payload.py)
+        self.last_handover = None
         # Channels that can show tappable choices get a reply schema that
         # offers them (ChannelChatResponse); everyone else's is unchanged.
         self._response_model = ChannelChatResponse if choice_limits is not None else ChatResponse
@@ -1030,20 +1033,26 @@ Keep your responses concise and focused. Provide clear, actionable information i
     def _tool_hooks(self) -> Optional[list]:
         if self.step_reporter is None:
             return None
-        self.step_reporter.map_connectors(self.mcp_tools)
         return [self.step_reporter.tool_hook]
+
+    def _reset_turn(self) -> None:
+        """Before a context-overflow retry: what the failed attempt searched must be
+        searchable again, and its steps are not this turn's receipt."""
+        if getattr(self, "knowledge_tool", None) is not None:
+            self.knowledge_tool.reset_turn()
+        if getattr(self, "step_reporter", None) is not None:
+            self.step_reporter.reset()
 
     async def _arun(self, message: str, session_id: str):
         """One agent run under AGENT_RUN_TIMEOUT, with the context-overflow
         retry. The retry is a fresh turn, so what the failed attempt searched
         must be searchable again."""
-        knowledge_tool = getattr(self, "knowledge_tool", None)
         return await run_with_overflow_recovery(
             self.agent,
             message,
             session_id,
             timeout=settings.AGENT_RUN_TIMEOUT,
-            before_retry=knowledge_tool.reset_turn if knowledge_tool is not None else None,
+            before_retry=self._reset_turn,
         )
 
     async def _get_llm_response_only(self, message: str, session_id: str = None, org_id: str = None, agent_id: str = None, customer_id: str = None) -> ChatResponse:
@@ -1390,12 +1399,12 @@ Keep your responses concise and focused. Provide clear, actionable information i
         """What the redesigned widget restores from history: follow-up
         choices, the handover card and the receipt of this turn's steps."""
         extras = {}
-        choices = getattr(response_content, 'quick_replies', None)
+        choices = widget_choices(response_content) if is_widget_channel(self.channel) else []
         if choices:
-            extras["quick_replies"] = list(choices)
-        handover = handover_payload(response_content)
-        if handover:
-            extras["handover"] = handover
+            extras["quick_replies"] = choices
+        self.last_handover = handover_payload(response_content)
+        if self.last_handover:
+            extras["handover"] = self.last_handover
         self.last_trace = self.step_reporter.summary() if self.step_reporter else None
         if self.last_trace:
             extras["trace"] = self.last_trace
@@ -1416,6 +1425,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         """
         self.last_bot_message_id = None
         self.last_trace = None
+        self.last_handover = None
         try:
             # Update session and IDs if provided
             if session_id:

@@ -508,6 +508,9 @@ export function useWidgetSocket() {
 
     // Socket event handlers
     const handleError = (error: any) => {
+        // A thumb that did not save is put back where it was (useAnswerFeedback);
+        // it says nothing about the reply that may be on its way.
+        if (error?.type === 'feedback_error') return
         stopBotTyping()
         errorMessage.value = getErrorMessage(error as SocketError)
         showError.value = true

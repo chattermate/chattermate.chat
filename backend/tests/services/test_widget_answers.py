@@ -45,10 +45,21 @@ V2 = {"widget_ui": {"version": 2}}
 
 
 class TestReplyPayload:
-    def test_carries_the_row_id_and_the_receipt(self):
+    def test_carries_what_the_agent_stored(self):
         trace = {"turn_id": "t-1", "duration_ms": 900, "steps": []}
-        payload = reply_payload(_reply(), "s-1", message_id=42, trace=trace)
+        agent = SimpleNamespace(last_bot_message_id=42, last_trace=trace, last_handover={"state": "connecting"})
+        payload = reply_payload(_reply(transfer_to_human=True), "s-1", agent)
         assert payload["message_id"] == 42 and payload["turn_id"] == "t-1" and payload["trace"] == trace
+        assert payload["handover"] == {"state": "connecting"}
+
+    def test_a_canned_transfer_reply_has_no_card(self):
+        """The queued-chat replies are not stored with a card: live must match a reload."""
+        assert reply_payload(_reply(transfer_to_human=True), "s-1")["handover"] is None
+
+    def test_choices_are_clamped_for_chips(self):
+        reply = ChannelChatResponse(message="Hi", transfer_to_human=False, end_chat=False, request_rating=False,
+                                    create_ticket=False, quick_replies=["A", "x" * 41, "B", "C", "D"])
+        assert reply_payload(reply, "s-1")["quick_replies"] == ["A", "B", "C"]
 
     def test_an_old_style_reply_has_empty_extras(self):
         payload = reply_payload(_reply(), "s-1")
@@ -108,6 +119,7 @@ class TestFollowUpPrompt:
     def test_follow_ups_are_described_as_next_questions(self):
         text = choice_instructions(WIDGET_FOLLOW_UP_LIMITS)
         assert "follow-up questions" in text and "up to 3" in text and "40 characters" in text
+        assert "at most 3 options" in text
 
     def test_channel_choices_are_unchanged(self):
         assert "follow-up" not in choice_instructions(TELEGRAM_LIMITS)

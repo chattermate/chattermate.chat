@@ -16,6 +16,10 @@ limitations under the License.
 The live work trace: what reaches the widget while the agent uses its tools.
 """
 
+import asyncio
+import threading
+from types import SimpleNamespace
+
 import pytest
 
 from app.agents.tool_labels import label_for
@@ -107,16 +111,67 @@ class TestStepReporter:
         assert [s["done_label"] for s in summary["steps"]] == ["Searched the help center", "Checked your order"]
         assert set(summary["steps"][0]) == {"kind", "done_label", "status", "duration_ms"}
 
-    async def test_a_connector_tool_is_named_after_its_connector(self):
-        class Connector:
-            _connector_name = "Stripe"
-            functions = {"list_charges": object()}
+    async def test_a_connectors_tool_gets_the_generic_label(self):
+        """The team names its connectors; those names can be internal."""
+        emit = Recorder()
+        await StepReporter("s-1", emit=emit).tool_hook("list_charges", search_kb, {"query": "q"})
+        assert emit.sent[0][1]["label"] == "Working on it"
+
+    async def test_a_retry_starts_the_receipt_over(self):
+        reporter = StepReporter("s-1", emit=Recorder())
+        await reporter.tool_hook("search_knowledge_base", search_kb, {"query": "q"})
+        reporter.reset()
+        assert reporter.summary() is None
+        await reporter.tool_hook("get_order_status", sync_tool, {"order_number": "1"})
+        assert [s["done_label"] for s in reporter.summary()["steps"]] == ["Checked your order"]
+
+    async def test_a_step_cut_off_by_the_timeout_is_not_ok(self):
+        async def slow(**_):
+            await asyncio.sleep(10)
 
         emit = Recorder()
         reporter = StepReporter("s-1", emit=emit)
-        reporter.map_connectors([Connector()])
-        await reporter.tool_hook("list_charges", search_kb, {"query": "q"})
-        assert emit.sent[0][1]["label"] == "Checking Stripe"
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(reporter.tool_hook("create_ticket", slow, {}), timeout=0.01)
+        assert emit.sent[-1][1]["status"] == "error"
+
+
+@pytest.mark.asyncio
+class TestThroughAgno:
+    """The hook in agno's real call chain (agno 1.7.6 FunctionCall.aexecute)."""
+
+    def _call(self, entrypoint, reporter):
+        from agno.tools.function import Function, FunctionCall
+
+        function = Function.from_callable(entrypoint)
+        function.tool_hooks = [reporter.tool_hook]
+        function._agent = SimpleNamespace(_functions_for_model={function.name: function})
+        return FunctionCall(function=function, arguments={"query": "q"})
+
+    async def test_a_sync_tool_runs_off_the_event_loop(self):
+        loop_thread = threading.get_ident()
+        seen = {}
+
+        def search_knowledge_base(query: str) -> str:
+            """Search."""
+            seen["thread"] = threading.get_ident()
+            return f"found {query}"
+
+        result = await self._call(search_knowledge_base, StepReporter("s-1", emit=Recorder())).aexecute()
+        assert result.status == "success" and result.result == "found q"
+        assert seen["thread"] != loop_thread
+
+    async def test_an_async_tool_stays_on_the_loop(self):
+        loop_thread = threading.get_ident()
+        seen = {}
+
+        async def search_knowledge_base(query: str) -> str:
+            """Search."""
+            seen["thread"] = threading.get_ident()
+            return f"found {query}"
+
+        result = await self._call(search_knowledge_base, StepReporter("s-1", emit=Recorder())).aexecute()
+        assert result.result == "found q" and seen["thread"] == loop_thread
 
 
 def test_an_unknown_tool_gets_a_generic_label():

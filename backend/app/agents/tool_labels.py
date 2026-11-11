@@ -19,7 +19,7 @@ never its arguments or result.
 """
 
 from dataclasses import dataclass
-from typing import Mapping, Optional
+from typing import Mapping
 
 
 @dataclass(frozen=True)
@@ -60,11 +60,7 @@ _GENERIC = ToolLabel('other', 'Working on it', 'Done')
 HIDDEN_TOOLS = frozenset({'json'})
 
 
-def label_for(function_name: str, connector: Optional[str] = None) -> ToolLabel:
-    """The label for a tool call; a connector's tool reads "Checking <connector>"."""
-    known = TOOL_LABELS.get(function_name)
-    if known is not None:
-        return known
-    if connector:
-        return ToolLabel('mcp', f'Checking {connector}', f'Checked {connector}')
-    return _GENERIC
+def label_for(function_name: str) -> ToolLabel:
+    """The label for a tool call. Any other tool (a connector's, which the team
+    named) gets the generic label: its name can be internal."""
+    return TOOL_LABELS.get(function_name, _GENERIC)

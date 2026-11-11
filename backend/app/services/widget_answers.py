@@ -18,7 +18,7 @@ customization_metadata.answers so they need no migration:
 - `follow_ups`: up to three follow-up questions under an answer.
 """
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from app.channels.interactive_limits import WIDGET_FOLLOW_UP_LIMITS, InteractiveLimits
 from app.services.widget_ui import REDESIGN, WIDGET_UI_KEY, served_metadata
@@ -46,3 +46,13 @@ def offers_follow_ups(agent: Any) -> bool:
 def follow_up_limits(offered: bool) -> Optional[InteractiveLimits]:
     """The reply schema's choice limits for a session: None leaves it unchanged."""
     return WIDGET_FOLLOW_UP_LIMITS if offered else None
+
+
+def widget_choices(response: Any) -> List[str]:
+    """The reply's follow-up choices as the widget shows them: at most three, each
+    short enough for a chip. A longer one is dropped, not cut: its text is what a
+    tap sends."""
+    limits = WIDGET_FOLLOW_UP_LIMITS
+    choices = getattr(response, 'quick_replies', None) or []
+    kept = [c.strip() for c in choices if isinstance(c, str) and c.strip()]
+    return [c for c in kept if len(c) <= limits.button_title_max][:limits.max_buttons]

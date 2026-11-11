@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { useAnswerFeedback } from '@/composables/useAnswerFeedback'
+import { FEEDBACK_SETTLE_MS, useAnswerFeedback } from '@/composables/useAnswerFeedback'
 import type { WidgetMessage } from '@/types/widget'
 
 const setUp = () => {
@@ -28,19 +28,37 @@ const setUp = () => {
     return { sendFeedback, emit, listeners, messages }
 }
 
+beforeEach(() => { vi.useFakeTimers() })
+afterEach(() => { vi.useRealTimers() })
+const settle = () => vi.advanceTimersByTime(FEEDBACK_SETTLE_MS)
+
 describe('useAnswerFeedback', () => {
-    it('shows the thumb at once and sends it', () => {
+    it('shows the thumb at once and sends it once it settles', () => {
         const { sendFeedback, emit, messages } = setUp()
         sendFeedback(messages.value[0], 'up')
         expect(messages.value[0].attributes).toEqual({ sources: [], visitor_feedback: 'up' })
+        expect(emit).not.toHaveBeenCalled()
+        settle()
         expect(emit).toHaveBeenCalledWith('message_feedback', { message_id: 5, value: 'up' })
     })
 
-    it('puts the previous thumb back when the server refuses', () => {
+    it('sends only the last of quick taps, so saves cannot cross', () => {
+        const { sendFeedback, emit, messages } = setUp()
+        sendFeedback(messages.value[0], 'up')
+        sendFeedback(messages.value[0], 'down')
+        sendFeedback(messages.value[0], null)
+        settle()
+        expect(emit).toHaveBeenCalledTimes(1)
+        expect(emit).toHaveBeenCalledWith('message_feedback', { message_id: 5, value: null })
+    })
+
+    it('puts the saved thumb back when the server refuses', () => {
         const { sendFeedback, listeners, messages } = setUp()
         sendFeedback(messages.value[0], 'up')
+        settle()
         listeners.message_feedback_saved({ message_id: 5 })
         sendFeedback(messages.value[0], 'down')
+        settle()
         listeners.error({ type: 'feedback_error', message_id: 5 })
         expect(messages.value[0].attributes?.visitor_feedback).toBe('up')
     })
@@ -50,6 +68,7 @@ describe('useAnswerFeedback', () => {
         sendFeedback({ ...messages.value[0], id: undefined }, 'up')
         expect(emit).not.toHaveBeenCalled()
         sendFeedback(messages.value[0], 'down')
+        settle()
         listeners.error({ type: 'chat_error', message_id: 5 })
         expect(messages.value[0].attributes?.visitor_feedback).toBe('down')
     })

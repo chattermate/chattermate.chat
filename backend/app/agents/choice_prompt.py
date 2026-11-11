@@ -50,7 +50,8 @@ def follow_up_instructions(limits: InteractiveLimits) -> str:
         f"{limits.max_buttons} short follow-up questions in `quick_replies`, written the way the "
         f"customer would type them, each under {limits.button_title_max} characters, and only "
         "ones you could answer from your knowledge. When your reply asks them to pick from a "
-        "small, fixed set of options, put those options in `quick_replies` instead. Leave it "
+        f"small, fixed set of at most {limits.max_buttons} options, put those options in "
+        "`quick_replies` instead; with more options than that, list them in `message`. Leave it "
         "empty when you ask them for details they must type, when you hand the chat to a "
         "person, and when the conversation is ending."
     )

@@ -176,6 +176,14 @@ describe('the handover card', () => {
         expect(wrapper!.find('.cm-handover__pulse').exists()).toBe(true)
     })
 
+    it('stops pulsing once something came after it', () => {
+        ctrl = fakeController()
+        const card = answer({ attributes: { handover: { state: 'connecting' } } })
+        ctrl.messages.value = [card, { message_type: 'system', message: 'Sam joined the conversation', created_at: '', session_id: '' }]
+        wrapper = mountWithController(MessageItem, ctrl, { message: card, index: 0 })
+        expect(wrapper.find('.cm-handover__pulse').exists()).toBe(false)
+    })
+
     it('says the team will get back when nobody is online', () => {
         mountAnswer(answer({ attributes: { handover: { state: 'offline' } } }))
         expect(wrapper!.get('.cm-handover__title').text()).toBe('Our team will get back to you')

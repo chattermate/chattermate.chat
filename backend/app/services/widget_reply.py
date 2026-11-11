@@ -30,8 +30,7 @@ from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
 from app.services.agent_steps import StepReporter
-from app.services.handover_payload import handover_payload
-from app.services.widget_answers import follow_up_limits
+from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
 from app.services.lead_capture import record_lead_from_response
 
@@ -102,18 +101,19 @@ async def build_widget_agent(session: dict, host_actions: Iterable[AgentAction] 
     return await create_widget_agent(widget_agent_kwargs(session, host_actions, journey_hint))
 
 
-def reply_payload(response: ChatResponse, session_id: str, message_id: Optional[int] = None,
-                  trace: Optional[dict] = None) -> dict:
+def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[ChatAgent] = None) -> dict:
     """The visitor's copy of an AI reply. Notes for the team (transfer reason and
-    description) stay on the stored message and are never sent. `message_id` is
-    the stored reply's row, which the visitor's thumbs refer to; `trace` is the
-    receipt of the steps the agent took (agent_steps.py)."""
+    description) stay on the stored message and are never sent. From the agent
+    that wrote and stored it: the row id (the visitor's thumbs refer to it), the
+    receipt of its steps (agent_steps.py) and the handover card, exactly as
+    stored, so a reload shows the same thing."""
+    trace = getattr(chat_agent, 'last_trace', None)
     payload = {
-        'message_id': message_id,
+        'message_id': getattr(chat_agent, 'last_bot_message_id', None),
         'turn_id': trace['turn_id'] if trace else None,
         'trace': trace,
-        'quick_replies': list(getattr(response, 'quick_replies', None) or []) or None,
-        'handover': handover_payload(response),
+        'quick_replies': widget_choices(response) or None,
+        'handover': getattr(chat_agent, 'last_handover', None),
         'message': response.message,
         'type': 'chat_response',
         'session_id': session_id,
@@ -171,10 +171,8 @@ async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatRespo
         return
     session_id = session['session_id']
     customer_id = session['customer_id']
-    payload = reply_payload(response, session_id,
-                            message_id=getattr(chat_agent, 'last_bot_message_id', None),
-                            trace=getattr(chat_agent, 'last_trace', None))
-    await sio.emit('chat_response', payload, room=session_id, namespace=WIDGET_NAMESPACE)
+    await sio.emit('chat_response', reply_payload(response, session_id, chat_agent),
+                   room=session_id, namespace=WIDGET_NAMESPACE)
 
     # On human handoff, optionally collect the visitor's contact details (email/name)
     # so the human agent can follow up. Fires for both a live transfer and the

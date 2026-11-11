@@ -21,6 +21,7 @@ Only the tool's name is used. Arguments and results never leave the server:
 they can hold the visitor's own data, other customers' data or internal notes.
 """
 
+import asyncio
 import inspect
 import time
 import uuid
@@ -42,7 +43,25 @@ async def _socket_emit(event: str, payload: dict, room: str) -> None:
     await sio.emit(event, payload, room=room, namespace='/widget')
 
 
-async def _call(function: Callable, arguments: Dict[str, Any]) -> Any:
+def _is_sync_tool(agent: Any, function_name: str) -> bool:
+    """Whether the agent's tool of that name is a plain function. agno runs those
+    in a worker thread, but with an async hook in the chain it would call them on
+    the event loop and freeze the server for the length of the call."""
+    functions = getattr(agent, '_functions_for_model', None) or {}
+    entrypoint = getattr(functions.get(function_name), 'entrypoint', None)
+    return (entrypoint is not None and not inspect.iscoroutinefunction(entrypoint)
+            and not inspect.isasyncgenfunction(entrypoint))
+
+
+def _run_to_completion(function: Callable, arguments: Dict[str, Any]) -> Any:
+    """Run the rest of agno's chain (a coroutine around a sync tool) on this thread."""
+    result = function(**arguments)
+    return asyncio.run(result) if inspect.iscoroutine(result) else result
+
+
+async def _call(function: Callable, arguments: Dict[str, Any], in_thread: bool = False) -> Any:
+    if in_thread:
+        return await asyncio.to_thread(_run_to_completion, function, arguments)
     result = function(**arguments)
     if inspect.isawaitable(result):
         result = await result
@@ -56,24 +75,21 @@ class StepReporter:
         self.session_id = session_id
         self.turn_id = turn_id or uuid.uuid4().hex
         self._emit = emit or _socket_emit
-        self._started = time.monotonic()
+        self.reset()
+
+    def reset(self) -> None:
+        """Forget the steps so far: the turn starts again (a context-overflow retry)."""
+        self._started: Optional[float] = None
         self._seq = 0
         self._steps: List[dict] = []
-        self._connector_by_function: Dict[str, str] = {}
 
-    def map_connectors(self, mcp_tools: Optional[list]) -> None:
-        """Name a connector's tools after the connector ("Checking Stripe")."""
-        for tool in mcp_tools or []:
-            connector = getattr(tool, '_connector_name', None)
-            if not connector:
-                continue
-            for function_name in getattr(tool, 'functions', {}) or {}:
-                self._connector_by_function[function_name] = connector
-
-    async def tool_hook(self, function_name: str, function: Callable, arguments: Dict[str, Any]):
+    async def tool_hook(self, function_name: str, function: Callable, arguments: Dict[str, Any], agent: Any = None):
+        in_thread = _is_sync_tool(agent, function_name)
         if function_name in HIDDEN_TOOLS or len(self._steps) >= MAX_STEPS:
-            return await _call(function, arguments)
-        label = label_for(function_name, self._connector_by_function.get(function_name))
+            return await _call(function, arguments, in_thread)
+        label = label_for(function_name)
+        if self._started is None:
+            self._started = time.monotonic()
         self._seq += 1
         step = {'step_id': uuid.uuid4().hex, 'seq': self._seq, 'kind': label.kind}
         self._steps.append(step)
@@ -81,8 +97,8 @@ class StepReporter:
         started = time.monotonic()
         status = 'ok'
         try:
-            return await _call(function, arguments)
-        except Exception:
+            return await _call(function, arguments, in_thread)
+        except BaseException:  # a timeout's cancellation is a step that did not finish too
             status = 'error'
             raise
         finally:
@@ -100,7 +116,7 @@ class StepReporter:
     def summary(self) -> Optional[dict]:
         """The receipt stored on the reply, or None when no tool ran."""
         finished = [s for s in self._steps if 'status' in s]
-        if not finished:
+        if not finished or self._started is None:
             return None
         return {
             'turn_id': self.turn_id,
