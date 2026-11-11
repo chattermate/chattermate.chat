@@ -67,7 +67,10 @@ from app.services.host_action_runtime import (
 )
 from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
+from app.services.widget_answers import offers_follow_ups, serves_redesign_to_visitors
 from app.services.widget_reply import (
+    FOLLOW_UPS_SESSION_KEY,
+    REDESIGN_SESSION_KEY,
     create_widget_agent,
     deliver_ai_reply,
     emit_bot_typing,
@@ -431,6 +434,9 @@ async def widget_connect(sid, environ, auth):
             # Host page that embeds the widget (sent by the webclient). Recorded on
             # lead capture as lead_source.page_url so you can see WHERE leads convert.
             'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
+            # The redesign's live steps and follow-up chips (widget_reply.py)
+            REDESIGN_SESSION_KEY: serves_redesign_to_visitors(agent),
+            FOLLOW_UPS_SESSION_KEY: offers_follow_ups(agent),
         }
 
         # Log rate limiting settings
@@ -927,7 +933,7 @@ async def handle_widget_chat(sid, data):
             return # don't do anything if the session is closed or the user has already taken over
         
         if 'response' in locals():
-            await deliver_ai_reply(sid, session, response, db)
+            await deliver_ai_reply(sid, session, response, db, chat_agent=locals().get('chat_agent'))
 
     except Exception as e:
         logger.error(f"Widget chat error for sid {sid}: {str(e)}")
@@ -980,6 +986,7 @@ async def get_widget_chat_history(sid):
         formatted_messages = []
         for msg in messages:
             msg_dict = {
+                'id': msg.id,
                 'message': msg.message,
                 'message_type': msg.message_type,
                 'timestamp': format_datetime(msg.created_at),

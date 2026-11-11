@@ -34,7 +34,7 @@ import SuggestedReplies from './SuggestedReplies.vue'
 import ProductCartButton from './ProductCartButton.vue'
 import { canAddToCart } from './shopify-cart'
 import { openProduct, stripUrlsForProducts } from './products'
-import { citationLabel, citationTooltip } from './citations'
+import { citationLabel, citationTooltip, uniqueCitations } from './citations'
 import { fieldOptions } from './forms/options'
 import { SECRET_WARNING } from '../utils/secretGuard'
 import { AI_DISCLAIMER_TEXT } from '../utils/aiDisclaimer'
@@ -91,7 +91,7 @@ export default defineComponent({
             openProduct,
             ratingShown,
             reloadPage: () => window.location.reload(),
-            isValidEmail, renderMarkdown, canAddToCart, stripUrlsForProducts, citationLabel, citationTooltip, fieldOptions,
+            isValidEmail, renderMarkdown, canAddToCart, stripUrlsForProducts, citationLabel, citationTooltip, uniqueCitations, fieldOptions,
             SECRET_WARNING, AI_DISCLAIMER_TEXT, NEW_CHAT_LABEL,
         }
     },
@@ -960,7 +960,7 @@ export default defineComponent({
                         >
                             <span class="citation-label">Sources</span>
                             <span
-                                v-for="(src, sIdx) in message.sources"
+                                v-for="(src, sIdx) in uniqueCitations(message.sources)"
                                 :key="sIdx"
                                 class="citation-chip"
                                 :title="citationTooltip(src)"

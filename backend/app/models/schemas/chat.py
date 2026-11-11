@@ -211,9 +211,14 @@ class ChatDetailResponse(BaseModel):
         }
 
 class SourceRef(BaseModel):
-    """A knowledge-base source used to ground an answer (for citation chips)."""
+    """A knowledge-base source used to ground an answer (for citation chips).
+    `url`, `title` and `description` come from the page's stored metadata when
+    it has them (crawled pages), for the widget's link chips and link card."""
     name: str
     type: str
+    url: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

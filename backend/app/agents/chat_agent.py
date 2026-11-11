@@ -21,6 +21,8 @@ from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import MessageSource, is_widget_channel
+from app.services.agent_steps import StepReporter
+from app.services.handover_payload import handover_payload
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
 from app.database import get_db, SessionLocal, engine, release_connection
@@ -362,7 +364,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None):
+    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, step_reporter: Optional[StepReporter] = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -370,6 +372,10 @@ class ChatAgent(ChatAgentMCPMixin):
         self.channel = channel or 'web'
         # Row id of the reply the last get_response stored (see get_response)
         self.last_bot_message_id = None
+        # Reports tool calls to the widget as they run (agent_steps.py); its
+        # receipt is stored on the reply and left on last_trace.
+        self.step_reporter = step_reporter
+        self.last_trace = None
         # Channels that can show tappable choices get a reply schema that
         # offers them (ChannelChatResponse); everyone else's is unchanged.
         self._response_model = ChannelChatResponse if choice_limits is not None else ChatResponse
@@ -1017,8 +1023,15 @@ Keep your responses concise and focused. Provide clear, actionable information i
            structured_outputs=structured_outputs,
            system_message_role="system",
            user_message_role="user",
-           show_tool_calls=settings.ENVIRONMENT == "development"
+           show_tool_calls=settings.ENVIRONMENT == "development",
+           tool_hooks=self._tool_hooks(),
           )
+
+    def _tool_hooks(self) -> Optional[list]:
+        if self.step_reporter is None:
+            return None
+        self.step_reporter.map_connectors(self.mcp_tools)
+        return [self.step_reporter.tool_hook]
 
     async def _arun(self, message: str, session_id: str):
         """One agent run under AGENT_RUN_TIMEOUT, with the context-overflow
@@ -1312,6 +1325,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
             "shopify_output": updated_response.shopify_output
         }
         
+        attributes.update(self._widget_extras(updated_response))
+
         # Add workflow-specific attributes
         if is_workflow_transfer:
             attributes["workflow_transfer"] = True
@@ -1371,6 +1386,21 @@ Keep your responses concise and focused. Provide clear, actionable information i
             transfer_group_id=transfer_group_id
         )
 
+    def _widget_extras(self, response_content: ChatResponse) -> dict:
+        """What the redesigned widget restores from history: follow-up
+        choices, the handover card and the receipt of this turn's steps."""
+        extras = {}
+        choices = getattr(response_content, 'quick_replies', None)
+        if choices:
+            extras["quick_replies"] = list(choices)
+        handover = handover_payload(response_content)
+        if handover:
+            extras["handover"] = handover
+        self.last_trace = self.step_reporter.summary() if self.step_reporter else None
+        if self.last_trace:
+            extras["trace"] = self.last_trace
+        return extras
+
     def _store_bot_message(self, chat_repo: ChatRepository, message_data: dict) -> None:
         """Persist a reply and remember its row (see get_response). A ChatAgent
         serves a single turn, so the last one stored is this turn's reply."""
@@ -1385,6 +1415,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         on `last_bot_message_id` so a caller can annotate that exact row.
         """
         self.last_bot_message_id = None
+        self.last_trace = None
         try:
             # Update session and IDs if provided
             if session_id:
@@ -1591,6 +1622,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
         # Persist citations so reloaded history can render them too
         if response_content.sources:
             attributes["sources"] = [s.model_dump() for s in response_content.sources]
+        attributes.update(self._widget_extras(response_content))
 
         # Add ticket attributes if present
         if response_content.create_ticket:

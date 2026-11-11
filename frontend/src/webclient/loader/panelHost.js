@@ -47,7 +47,26 @@ export function createPanelHost(host) {
     const css = doc.defaultView && doc.defaultView.CSS
     const supports = !!css && typeof css.supports === 'function'
     const backdrop = supports && (css.supports('backdrop-filter', 'blur(1px)') || css.supports('-webkit-backdrop-filter', 'blur(1px)'))
-    return { type: 'HOST_CAPABILITIES', v: 1, expand: !!host.canExpand(), backdrop: !!backdrop }
+    return { type: 'HOST_CAPABILITIES', v: 1, expand: !!host.canExpand(), backdrop: !!backdrop, navigate: true }
+  }
+
+  /**
+   * Open a link to this site in the page itself (an answer's same-site link): an
+   * http(s) URL on the page's own origin only, checked here again whatever the
+   * frame says. True when it navigated.
+   */
+  function navigate(url) {
+    const win = doc.defaultView
+    if (!win || typeof url !== 'string') return false
+    let target
+    try {
+      target = new URL(url, win.location.href)
+    } catch (e) {
+      return false
+    }
+    if ((target.protocol !== 'http:' && target.protocol !== 'https:') || target.origin !== win.location.origin) return false
+    win.location.assign(target.href)
+    return true
   }
 
   /**
@@ -58,7 +77,7 @@ export function createPanelHost(host) {
   function announce(onlyIfChanged) {
     if (gone || !host.isV2() || !host.canAnnounce()) return
     const next = capabilities()
-    const key = next.expand + ':' + next.backdrop
+    const key = next.expand + ':' + next.backdrop + ':' + next.navigate
     if (onlyIfChanged && key === announced) return
     announced = key
     host.post(next)
@@ -85,6 +104,10 @@ export function createPanelHost(host) {
     }
     if (data.type === 'UNREAD_PREVIEW') {
       if (!closingUp) show(data.agentName, data.text)
+      return true
+    }
+    if (data.type === 'NAVIGATE') {
+      navigate(data.url)
       return true
     }
     if (data.type === 'WIDGET_ACTIVITY') {
@@ -121,5 +144,5 @@ export function createPanelHost(host) {
     peek.destroy()
   }
 
-  return { sync, announce, show, handleMessage, toggled, ownsEscape, reset, destroy }
+  return { sync, announce, show, handleMessage, toggled, ownsEscape, reset, destroy, navigate }
 }

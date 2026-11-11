@@ -20,12 +20,15 @@ limitations under the License.
  */
 
 import type { WidgetMessage } from '../../types/widget'
+import { handoverOf } from './answer-extras'
 
 export type MessageKind =
     /** The visitor's own message. */
     | 'user'
     /** An AI reply. */
     | 'answer'
+    /** The AI handing the chat to the team (its handover card). */
+    | 'handover'
     /** A reply from a person who took the conversation over. */
     | 'human'
     /** "<name> joined the conversation". */
@@ -63,7 +66,7 @@ const hasProducts = (message: WidgetMessage) => !!message.shopify_output
 export function messageKind(message: WidgetMessage): MessageKind {
     const type = message.message_type
     if (hasProducts(message)) return 'product'
-    if (AI_TYPES.has(type)) return 'answer'
+    if (AI_TYPES.has(type)) return handoverOf(message) ? 'handover' : 'answer'
     if (type === 'system') return isJoinedNote(message) ? 'joined' : 'system'
     return KIND_FOR_TYPE[type] || 'fallback'
 }

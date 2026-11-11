@@ -61,7 +61,8 @@ export interface Message {
   }
 
   // Knowledge-base citations used to ground this message (rendered as source chips)
-  sources?: Array<{ name: string; type: string }>
+  // url/title/description: a crawled page's link, for the redesign's link chips and card
+  sources?: Array<{ name: string; type: string; url?: string; title?: string; description?: string }>
 }
 
 export interface ShopifyProductImage {

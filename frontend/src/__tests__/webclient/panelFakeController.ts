@@ -38,6 +38,8 @@ import type { JourneyProgress } from '@/webclient/journeys/journeyClient'
 import type { PreviewFile, UploadedFile } from '@/composables/useWidgetFiles'
 import type { WorkflowForm } from '@/composables/useWorkflowScreens'
 import type { PresenceLine } from '@/utils/widgetPresence'
+import type { LiveStep } from '@/composables/useAgentTrace'
+import type { VisitorFeedback } from '@/webclient/panel/answer-extras'
 
 /** The controller with its read-only refs made writable, for tests. */
 type Writable<T> = { [K in keyof T]: T[K] extends Readonly<Ref<infer V>> ? Ref<V> : T[K] }
@@ -60,7 +62,7 @@ const baseController = () => ({
     quickActions: ref<string[]>([]),
     welcomeMessageText: ref(''),
     hostVisible: ref(true),
-    hostCapabilities: ref<HostCapabilities>({ expand: false, backdrop: false }),
+    hostCapabilities: ref<HostCapabilities>({ expand: false, backdrop: false, navigate: false }),
     themeVars: ref<Record<string, string>>({}),
     containerStyles: ref<Record<string, string>>({}),
     useAskAiPanel: ref(false),
@@ -87,6 +89,8 @@ const baseController = () => ({
     isStreaming: vi.fn((_index: number) => false),
     isRevealing: ref(false),
     skipReveal: vi.fn(),
+    liveTrace: ref<LiveStep[]>([]),
+    sendFeedback: vi.fn((_message: WidgetMessage, _value: VisitorFeedback | null) => {}),
     hoverRating: ref(0),
     isSubmittingRating: ref(false),
     handleStarHover: vi.fn((_rating: number) => {}),

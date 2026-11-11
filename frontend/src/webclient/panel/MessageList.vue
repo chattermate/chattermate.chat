@@ -24,6 +24,7 @@ limitations under the License.
 import { computed, inject } from 'vue'
 import { WIDGET_CTX } from './controller'
 import MessageItem from './MessageItem.vue'
+import TraceCard from './TraceCard.vue'
 import AnswerMessage from './messages/AnswerMessage.vue'
 import JourneyPlan from '../JourneyPlan.vue'
 import ActionReceiptLine from '../ActionReceiptLine.vue'
@@ -37,11 +38,11 @@ import type { WidgetMessage } from '../../types/widget'
 const ctrl = inject(WIDGET_CTX)!
 const {
     messages, loading, loadingHistory, pendingConfirm, shownPrompt, receiptCount, journeyProgress,
-    replyChips, chipBusy, isMessageInputEnabled, promptPlace,
+    replyChips, chipBusy, isMessageInputEnabled, promptPlace, liveTrace,
 } = ctrl
 
 const { scroller, content, unseen, onScroll, follow, scrollToBottom, remember, restore } = useStickyScroll([
-    () => messages.value.length, pendingConfirm, shownPrompt, receiptCount, loading,
+    () => messages.value.length, pendingConfirm, shownPrompt, receiptCount, loading, () => liveTrace.value.length,
 ])
 const { isFresh } = useMessageArrivals(messages)
 
@@ -90,7 +91,8 @@ defineExpose({ follow, scrollToBottom, remember, restore })
 
             <ActionConfirmCard v-if="pendingConfirm" :pending="pendingConfirm" @approve="ctrl.approveAction" @decline="ctrl.declineAction" />
 
-            <div v-if="loading && !pendingConfirm" class="cm-typing cm-fade" role="status" :aria-label="PANEL_COPY.replying">
+            <TraceCard v-if="loading && !pendingConfirm && liveTrace.length" :steps="liveTrace" />
+            <div v-else-if="loading && !pendingConfirm" class="cm-typing cm-fade" role="status" :aria-label="PANEL_COPY.replying">
                 <span class="cm-typing-dot"></span>
                 <span class="cm-typing-dot"></span>
                 <span class="cm-typing-dot"></span>

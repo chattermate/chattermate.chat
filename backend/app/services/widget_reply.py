@@ -29,12 +29,20 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
+from app.services.agent_steps import StepReporter
+from app.services.handover_payload import handover_payload
+from app.services.widget_answers import follow_up_limits
 from app.services.host_prompt import host_prompt_context
 from app.services.lead_capture import record_lead_from_response
 
 logger = get_logger(__name__)
 
 WIDGET_NAMESPACE = '/widget'
+
+# Socket session keys, read once at connect (widget_chat.widget_connect): the
+# visitor gets the redesigned widget, and its agent offers follow-up chips.
+REDESIGN_SESSION_KEY = 'widget_ui_v2'
+FOLLOW_UPS_SESSION_KEY = 'follow_ups'
 
 
 async def emit_bot_typing(session_id: str) -> None:
@@ -73,6 +81,8 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
             host_prompt_context(session.get('host_prompt')),
         ),
         host_action_functions=build_action_functions(actions) or None,
+        choice_limits=follow_up_limits(session.get(FOLLOW_UPS_SESSION_KEY, False)),
+        step_reporter=StepReporter(session['session_id']) if session.get(REDESIGN_SESSION_KEY) else None,
     )
 
 
@@ -92,10 +102,18 @@ async def build_widget_agent(session: dict, host_actions: Iterable[AgentAction] 
     return await create_widget_agent(widget_agent_kwargs(session, host_actions, journey_hint))
 
 
-def reply_payload(response: ChatResponse, session_id: str) -> dict:
+def reply_payload(response: ChatResponse, session_id: str, message_id: Optional[int] = None,
+                  trace: Optional[dict] = None) -> dict:
     """The visitor's copy of an AI reply. Notes for the team (transfer reason and
-    description) stay on the stored message and are never sent."""
+    description) stay on the stored message and are never sent. `message_id` is
+    the stored reply's row, which the visitor's thumbs refer to; `trace` is the
+    receipt of the steps the agent took (agent_steps.py)."""
     payload = {
+        'message_id': message_id,
+        'turn_id': trace['turn_id'] if trace else None,
+        'trace': trace,
+        'quick_replies': list(getattr(response, 'quick_replies', None) or []) or None,
+        'handover': handover_payload(response),
         'message': response.message,
         'type': 'chat_response',
         'session_id': session_id,
@@ -144,14 +162,19 @@ async def send_handoff_contact_form(session: dict, db) -> None:
         logger.error(f"Failed to emit handoff contact form: {contact_err}")
 
 
-async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatResponse], db) -> None:
+async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatResponse], db,
+                           chat_agent: Optional[ChatAgent] = None) -> None:
     """Send the AI's reply to the conversation, then act on what it asked for:
-    the hand-off contact form, a captured lead, or ending the chat."""
+    the hand-off contact form, a captured lead, or ending the chat. `chat_agent`
+    is the agent that wrote it, for the stored row's id and the step receipt."""
     if response is None or not response.message:
         return
     session_id = session['session_id']
     customer_id = session['customer_id']
-    await sio.emit('chat_response', reply_payload(response, session_id), room=session_id, namespace=WIDGET_NAMESPACE)
+    payload = reply_payload(response, session_id,
+                            message_id=getattr(chat_agent, 'last_bot_message_id', None),
+                            trace=getattr(chat_agent, 'last_trace', None))
+    await sio.emit('chat_response', payload, room=session_id, namespace=WIDGET_NAMESPACE)
 
     # On human handoff, optionally collect the visitor's contact details (email/name)
     # so the human agent can follow up. Fires for both a live transfer and the

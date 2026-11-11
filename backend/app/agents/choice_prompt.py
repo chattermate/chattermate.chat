@@ -26,6 +26,8 @@ from app.channels.interactive_limits import InteractiveLimits
 
 def choice_instructions(limits: InteractiveLimits) -> str:
     """What the agent is told about offering choices on a channel with these limits."""
+    if limits.follow_ups:
+        return follow_up_instructions(limits)
     most = min(limits.max_buttons, MAX_CHOICE_OPTIONS) if not limits.supports_list else MAX_CHOICE_OPTIONS
     shown = (f"up to {limits.max_buttons} short options show as buttons, more as a list"
              if limits.supports_list else "they show as buttons")
@@ -38,4 +40,17 @@ def choice_instructions(limits: InteractiveLimits) -> str:
         "Don't list the options again inside `message`. Leave `quick_replies` empty for "
         "open questions, for answers they must type (a name, an email, an order number), "
         "and when you are simply answering."
+    )
+
+
+def follow_up_instructions(limits: InteractiveLimits) -> str:
+    """Follow-up chips: questions the customer is likely to ask next."""
+    return (
+        "After you answer, you may suggest what the customer might ask next: put up to "
+        f"{limits.max_buttons} short follow-up questions in `quick_replies`, written the way the "
+        f"customer would type them, each under {limits.button_title_max} characters, and only "
+        "ones you could answer from your knowledge. When your reply asks them to pick from a "
+        "small, fixed set of options, put those options in `quick_replies` instead. Leave it "
+        "empty when you ask them for details they must type, when you hand the chat to a "
+        "person, and when the conversation is ending."
     )

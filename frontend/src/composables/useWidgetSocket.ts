@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { replyExtras } from '../webclient/panel/answer-extras'
 import { ref } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import type { HumanAgent, SocketError } from '../types/widget'
@@ -37,6 +38,10 @@ export interface SessionState {
 // How long to wait for the server to confirm a chat was closed. Generous enough for
 // a slow round trip, short enough that the visitor is not left staring at a button.
 const END_CHAT_TIMEOUT_MS = 5000
+
+/** A live AI reply's stored row id (its thumbs refer to it), when the server sent one. */
+const replyId = (data: { message_id?: unknown }): { id?: number } =>
+    typeof data.message_id === 'number' ? { id: data.message_id } : {}
 
 export function useWidgetSocket() {
     const messages = ref<Message[]>([])
@@ -316,6 +321,7 @@ export function useWidgetSocket() {
             } else if (data.shopify_output && typeof data.shopify_output === 'object' && data.shopify_output.products) {
                 // Handle structured Shopify product data
                 messages.value.push({
+                    ...replyId(data),
                     message: data.message, // Keep the accompanying text message
                     message_type: 'product', // Use 'product' type for rendering
                     created_at: new Date().toISOString(),
@@ -326,12 +332,14 @@ export function useWidgetSocket() {
                     // Remove the old flattened fields (product_id, product_title, etc.)
                     attributes: { // Keep other attributes if needed
                          end_chat: data.end_chat,
-                         request_rating: data.request_rating
+                         request_rating: data.request_rating,
+                         ...replyExtras(data),
                     }
                 })
             } else {
                 // Handle regular bot messages (without Shopify data)
                 messages.value.push({
+                    ...replyId(data),
                     message: data.message,
                     message_type: 'bot',
                     created_at: new Date().toISOString(),
@@ -344,7 +352,9 @@ export function useWidgetSocket() {
                         end_chat: data.end_chat,
                         end_chat_reason: data.end_chat_reason,
                         end_chat_description: data.end_chat_description,
-                        request_rating: data.request_rating
+                        request_rating: data.request_rating,
+                        // Follow-ups, the handover card and the steps' receipt (redesign)
+                        ...replyExtras(data),
                     }
                 })
             }
@@ -517,6 +527,7 @@ export function useWidgetSocket() {
             const historyMessages = data.messages.map((msg: Message) => {
                 // Base message structure
                 const messageObj = {
+                    ...(typeof msg.id === 'number' ? { id: msg.id } : {}),
                     message: msg.message,
                     message_type: msg.message_type as "assistant" | "user" | "error" | "bot" | "agent" | "system" | "product",
                     created_at: msg.created_at,

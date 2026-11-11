@@ -52,3 +52,18 @@ export const citationTooltip = (src: CitationSource): string => {
     const type = prettyType(src?.type)
     return label === type ? type : `${label} · ${type}`
 }
+
+/**
+ * One chip per label. A website's pages are cited one by one (each keeps its own
+ * link for the redesigned panel), but the classic views label a page by its
+ * site, so its pages would show as repeated chips.
+ */
+export const uniqueCitations = <T extends CitationSource>(sources: T[] | undefined | null): T[] => {
+    const seen = new Set<string>()
+    return (sources || []).filter((src) => {
+        const label = citationLabel(src)
+        if (seen.has(label)) return false
+        seen.add(label)
+        return true
+    })
+}

@@ -21,6 +21,7 @@ import { computed, type Component } from 'vue'
 import { messageKind, type MessageKind } from './message-kind'
 import UserBubble from './messages/UserBubble.vue'
 import AnswerMessage from './messages/AnswerMessage.vue'
+import HandoverCard from './messages/HandoverCard.vue'
 import HumanMessage from './messages/HumanMessage.vue'
 import JoinedDivider from './messages/JoinedDivider.vue'
 import FallbackMessage from './messages/FallbackMessage.vue'
@@ -40,6 +41,7 @@ const props = defineProps<{
 const COMPONENT_FOR: Record<MessageKind, Component> = {
     user: UserBubble,
     answer: AnswerMessage,
+    handover: HandoverCard,
     human: HumanMessage,
     joined: JoinedDivider,
     system: JoinedDivider,

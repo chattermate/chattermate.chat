@@ -88,7 +88,7 @@ describe('createPanelHost', () => {
 
         state.mounted = true
         host.announce()
-        expect(post).toHaveBeenLastCalledWith({ type: 'HOST_CAPABILITIES', v: 1, expand: true, backdrop: expect.any(Boolean) })
+        expect(post).toHaveBeenLastCalledWith({ type: 'HOST_CAPABILITIES', v: 1, expand: true, backdrop: expect.any(Boolean), navigate: true })
         host.announce(true)
         expect(post).toHaveBeenCalledTimes(1)
         state.expand = false
@@ -97,6 +97,29 @@ describe('createPanelHost', () => {
         // A mounting frame is always told, changed or not.
         host.announce()
         expect(post).toHaveBeenCalledTimes(3)
+    })
+
+    it('opens a same-site link from an answer in the page, and nothing else', () => {
+        const { host } = setUp()
+        const assign = vi.fn()
+        const fakeWindow = { location: { href: 'https://shop.example/cart', origin: 'https://shop.example', assign } }
+        const navigator = createPanelHost({
+            doc: { ...document, defaultView: fakeWindow, getElementById: () => null } as unknown as Document,
+            config: { peekId: 'p', launcher: true, panelExpanded: false },
+            button: document.createElement('div'),
+            container: document.createElement('div'),
+            isV2: () => true, isOpen: () => true, open: vi.fn(), post: vi.fn(),
+            canAnnounce: () => true, canExpand: () => true,
+        })
+        expect(navigator.handleMessage({ type: 'NAVIGATE', url: 'https://shop.example/returns' })).toBe(true)
+        expect(assign).toHaveBeenCalledWith('https://shop.example/returns')
+        for (const url of ['https://evil.example/x', 'javascript:alert(1)', 'data:text/html,hi', 42]) {
+            navigator.handleMessage({ type: 'NAVIGATE', url })
+        }
+        expect(assign).toHaveBeenCalledTimes(1)
+        expect(navigator.navigate('/help/returns')).toBe(true)
+        expect(assign).toHaveBeenLastCalledWith('https://shop.example/help/returns')
+        expect(host.handleMessage({ type: 'NAVIGATE' })).toBe(true)
     })
 
     it('says nothing to, and handles nothing from, a classic frame', () => {

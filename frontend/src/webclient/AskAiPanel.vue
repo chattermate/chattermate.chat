@@ -31,7 +31,7 @@ import { renderMarkdown } from './markdown'
 import { postToHost } from './host-bridge'
 import NewChatConfirm from './NewChatConfirm.vue'
 import { NEW_CHAT_LABEL } from './new-chat'
-import { citationLabel, citationTooltip } from './citations'
+import { citationLabel, citationTooltip, uniqueCitations } from './citations'
 import type { Message } from '../types/chat'
 
 const props = defineProps<{
@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
                         <div v-if="showCitations && !isStreaming(index) && message.sources && message.sources.length" class="askai__sources">
                             <span class="askai__label">Sources</span>
                             <span
-                                v-for="(source, sourceIndex) in message.sources"
+                                v-for="(source, sourceIndex) in uniqueCitations(message.sources)"
                                 :key="sourceIndex"
                                 class="askai__source"
                                 :title="citationTooltip(source)"

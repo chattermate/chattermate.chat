@@ -22,6 +22,8 @@ import { useCurrency } from './useCurrency'
 import { useWidgetSocket } from './useWidgetSocket'
 import { useHostPrompt } from './useHostPrompt'
 import { useTypewriter } from './useTypewriter'
+import { useAgentTrace } from './useAgentTrace'
+import { useAnswerFeedback } from './useAnswerFeedback'
 import { useUnreadBadge } from './useUnreadBadge'
 import { useEmailGate } from './useEmailGate'
 import { useWidgetAuth } from './useWidgetAuth'
@@ -78,7 +80,13 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
     // to the bottom as text grows.
     const { displayText, isStreaming, isRevealing, skipReveal } =
-        useTypewriter(messages, () => nextTick(() => view.scrollToBottom()))
+        useTypewriter(messages, () => nextTick(() => view.scrollToBottom()), {
+            byWord: () => widgetUiVersion(customization.value) === 2,
+        })
+
+    // The redesign's live work trace and the visitor's thumbs on replies.
+    const { liveTrace } = useAgentTrace({ on: socket.on, loading })
+    const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
 
     // Report unread agent messages (received while minimized) to the embedder badge.
     // The redesign also shows the reply itself in the loader's peek.
@@ -253,7 +261,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, ...rating, ...files, ...newChat,
+        isRevealing, skipReveal, liveTrace, sendFeedback, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory, hostCapabilities,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }
