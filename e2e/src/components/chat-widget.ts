@@ -622,6 +622,32 @@ export class ChatWidget {
     return this.frame.getByRole('region', { name: title })
   }
 
+  /** Start a new chat from the header, confirming that it ends this one. */
+  async startNewChat(): Promise<void> {
+    await step('Customer starts a new chat', async () => {
+      await this.frame.getByRole('button', { name: 'Start a new chat' }).first().click()
+      await this.frame.getByRole('button', { name: 'Start new chat' }).click()
+      // The new conversation is up once the old one's messages are gone
+      await expect(this.agentMessages).toHaveCount(0)
+    })
+  }
+
+  /** The redesign's "Your conversations" screen. */
+  get conversations(): Locator {
+    return this.frame.getByRole('region', { name: 'Your conversations' })
+  }
+
+  /** A past conversation opened from "Your conversations", named by its title. */
+  pastConversation(title: string): Locator {
+    return this.frame.getByRole('region', { name: title })
+  }
+
+  async openConversations(): Promise<void> {
+    await step('Customer opens their conversations', async () => {
+      await this.frame.getByRole('button', { name: 'Your conversations' }).click()
+    })
+  }
+
   /** The redesign's email check card: confirm an email with a code sent to it. */
   get emailCheck(): Locator {
     return this.frame.getByRole('region', { name: 'Confirm your email' })

@@ -25,6 +25,7 @@ from sqlalchemy import or_, func
 from app.models.user import User
 from app.models.chat_history import ChatHistory
 from app.services.conversation_token import session_key_for_scope
+from app.channels.constants import WIDGET_CHANNELS
 from app.utils.uuids import as_uuid
 
 logger = get_logger(__name__)
@@ -229,6 +230,18 @@ class SessionToAgentRepository:
         if active_only and own.status not in ACTIVE_STATUSES:
             return None
         return own
+
+    def widget_sessions(self, customer_id: UUID, scope: str, agent_id: UUID, organization_id: UUID):
+        """Query for a widget visitor's own conversations: this customer, created
+        under this token scope, with this agent, on the widget channels (the
+        visitor's history, visitor_history.py). `scope` is required."""
+        return self.db.query(SessionToAgent).filter(
+            SessionToAgent.customer_id == customer_id,
+            SessionToAgent.agent_id == agent_id,
+            SessionToAgent.organization_id == organization_id,
+            SessionToAgent.channel.in_(WIDGET_CHANNELS),
+            _in_scope(scope),
+        )
 
     def customer_has_sessions_outside_scope(self, customer_id: UUID | str, scope: str) -> bool:
         """True when the customer has a session this token scope did not create.

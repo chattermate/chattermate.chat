@@ -40,6 +40,7 @@ import type { WorkflowForm } from '@/composables/useWorkflowScreens'
 import type { PresenceLine } from '@/utils/widgetPresence'
 import type { LiveStep } from '@/composables/useAgentTrace'
 import type { EmailCheckState } from '@/composables/useEmailCheck'
+import { emptyHistory, type HistoryState } from '@/composables/useConversationHistory'
 import type { VisitorFeedback } from '@/webclient/panel/answer-extras'
 
 /** The controller with its read-only refs made writable, for tests. */
@@ -73,6 +74,7 @@ const baseController = () => ({
     minimizeWidget: vi.fn(),
     // connection
     isInitializing: ref(false),
+    hasConversationToken: ref(true),
     showAuthError: ref(false),
     isApiKeyAuthRequired: ref(false),
     authError: ref<string | null>(null),
@@ -97,6 +99,16 @@ const baseController = () => ({
     startEmailCheck: vi.fn((_email: string) => {}),
     verifyEmailCode: vi.fn((_code: string) => {}),
     restartEmailCheck: vi.fn(),
+    history: ref<HistoryState>(emptyHistory()),
+    openHistory: vi.fn(),
+    closeHistory: vi.fn(),
+    refreshConversations: vi.fn(),
+    loadMoreConversations: vi.fn(),
+    searchConversations: vi.fn((_q: string) => {}),
+    openConversation: vi.fn((_id: string) => {}),
+    closeConversation: vi.fn(),
+    loadOlderMessages: vi.fn(),
+    continueConversation: vi.fn(async (_id: string) => {}),
     hoverRating: ref(0),
     isSubmittingRating: ref(false),
     handleStarHover: vi.fn((_rating: number) => {}),

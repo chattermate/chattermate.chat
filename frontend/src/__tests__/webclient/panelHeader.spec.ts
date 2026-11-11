@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import PanelHeader from '@/webclient/panel/PanelHeader.vue'
 import AgentMark from '@/webclient/panel/AgentMark.vue'
@@ -123,9 +123,21 @@ describe('the panel header', () => {
         expect(wrapper!.find('button[aria-label="Make chat smaller"]').exists()).toBe(true)
     })
 
-    it('has no history or expand buttons yet', () => {
-        header({ canStartNewChat: ref(true) })
-        expect(wrapper!.findAll('button')).toHaveLength(2)
+    it('opens the visitor\'s conversations from the clock, and closes them again', async () => {
+        const { ctrl } = header({ canStartNewChat: ref(true) })
+        const clock = wrapper!.get('button[aria-label="Your conversations"]')
+        expect(clock.attributes('aria-pressed')).toBe('false')
+        await clock.trigger('click')
+        expect(ctrl.openHistory).toHaveBeenCalled()
+        ctrl.history.value = { ...ctrl.history.value, showing: true }
+        await nextTick()
+        await clock.trigger('click')
+        expect(ctrl.closeHistory).toHaveBeenCalled()
+    })
+
+    it('has no history button without a conversation of the visitor\'s own', () => {
+        header({ hasConversationToken: ref(false) })
+        expect(wrapper!.find('button[aria-label="Your conversations"]').exists()).toBe(false)
     })
 
     it('uses the agent photo instead of the mark', () => {

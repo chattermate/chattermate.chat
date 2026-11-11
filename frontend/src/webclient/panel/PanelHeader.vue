@@ -22,7 +22,7 @@ limitations under the License.
  * appears once they joined. The history button comes with plan 5.x.
  */
 import { computed, inject } from 'vue'
-import { WIDGET_CTX } from './controller'
+import { WIDGET_CTX, WIDGET_PREVIEW } from './controller'
 import AgentMark from './AgentMark.vue'
 import PersonAvatar from './PersonAvatar.vue'
 import { agentFace } from './agent-face'
@@ -39,8 +39,12 @@ const emit = defineEmits<{ (e: 'expand'): void }>()
 const ctrl = inject(WIDGET_CTX)!
 const {
     agentName, humanAgent, humanAgentPhotoUrl, photoUrl, orbStyle, presence, loading,
-    isHandedOverToHuman, canStartNewChat, startingNewChat, newChatArmed,
+    isHandedOverToHuman, canStartNewChat, startingNewChat, newChatArmed, history, hasConversationToken,
 } = ctrl
+
+// Past chats need a conversation of the visitor's own (none in the dashboard preview).
+const preview = inject(WIDGET_PREVIEW, false)
+const historyAvailable = computed(() => !preview && hasConversationToken.value)
 
 const face = computed(() => agentFace(ctrl.customization.value, photoUrl.value))
 const personName = computed(() => humanAgent.value.human_agent_name || '')
@@ -78,6 +82,19 @@ const statusText = computed(() => (working.value ? PANEL_COPY.working : presence
             </p>
         </div>
         <div class="cm-header__actions">
+            <button
+                v-if="historyAvailable"
+                type="button"
+                class="cm-icon-button cm-press"
+                :title="PANEL_COPY.openHistory"
+                :aria-label="PANEL_COPY.openHistory"
+                :aria-pressed="history.showing"
+                @click="history.showing ? ctrl.closeHistory() : ctrl.openHistory()"
+            >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path>
+                </svg>
+            </button>
             <button
                 v-if="canStartNewChat"
                 type="button"

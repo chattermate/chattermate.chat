@@ -49,7 +49,7 @@ from app.services import conversation_token as conversation_token_service
 from app.services.workflow_chat import WorkflowChatService
 from app.services.file_upload_service import FileUploadService
 from app.services.file_storage import resolve_public_url
-from app.services.visitor_payload import visitor_attributes, visitor_error
+from app.services.visitor_payload import visitor_attributes, visitor_message, visitor_error
 
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
@@ -983,34 +983,7 @@ async def get_widget_chat_history(sid):
             session_id=active_session.session_id
         )
 
-        # Convert datetime to ISO format string
-        formatted_messages = []
-        for msg in messages:
-            msg_dict = {
-                'id': msg.id,
-                'message': msg.message,
-                'message_type': msg.message_type,
-                'timestamp': format_datetime(msg.created_at),
-                'attributes': visitor_attributes(msg.attributes),
-                'user_name': msg.user.full_name if msg.user else None,
-                'agent_name': msg.agent.display_name or msg.agent.name if msg.agent else None
-            }
-            
-            # Add attachments with file info if they exist
-            if msg.attachments:
-                attachments = []
-                for attachment in msg.attachments:
-                    att_dict = {
-                        'id': attachment.id,
-                        'filename': attachment.filename,
-                        'file_url': attachment.file_url,  # signed by get_session_history
-                        'content_type': attachment.content_type,
-                        'file_size': attachment.file_size
-                    }
-                    attachments.append(att_dict)
-                msg_dict['attachments'] = attachments
-            
-            formatted_messages.append(msg_dict)
+        formatted_messages = [visitor_message(msg) for msg in messages]
 
         await sio.emit('chat_history', {
             'messages': formatted_messages,

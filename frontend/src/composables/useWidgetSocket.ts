@@ -416,6 +416,9 @@ export function useWidgetSocket() {
         return socket
     }
 
+    // Set when the conversation was ended (endChat): the next connect starts afresh.
+    let freshConnectionNext = false
+
     const connect = async (): Promise<boolean> => {
         try {
             // Keep a live connection that is already this visitor's. Tearing it down
@@ -424,10 +427,12 @@ export function useWidgetSocket() {
             // widget's authorization) vanished that way, and history is only loaded
             // once. A rotated token for the same visitor already reached the open
             // connection via refresh_token; another visitor still gets a new one.
-            if (socket?.connected && connectedVisitor && connectedVisitor === visitorOf(buildAuth().conversation_token)) {
+            if (!freshConnectionNext && socket?.connected && connectedVisitor
+                && connectedVisitor === visitorOf(buildAuth().conversation_token)) {
                 connectionStatus.value = 'connected'
                 return true
             }
+            freshConnectionNext = false
 
             connectionStatus.value = 'connecting'
             retryCount.value = 0
@@ -793,7 +798,13 @@ export function useWidgetSocket() {
                 clearTimeout(timer)
                 socket?.off('chat_ended', onClosed)
                 socket?.off('error', onFailed)
-                if (closed) resetConversationState()
+                if (closed) {
+                    resetConversationState()
+                    // The next connect must be a new connection: kept open, the old
+                    // one would reopen the closed conversation on the next message
+                    // instead of starting a new one.
+                    freshConnectionNext = true
+                }
                 resolve(closed)
             }
             const onClosed = () => settle(true)

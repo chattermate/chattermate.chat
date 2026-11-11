@@ -38,6 +38,8 @@ import FrontScreen from './screens/FrontScreen.vue'
 import ConversationEnded from './ConversationEnded.vue'
 import PreviewModal from './PreviewModal.vue'
 import ProductSheet from './ProductSheet.vue'
+import HistoryScreen from './history/HistoryScreen.vue'
+import PastConversation from './history/PastConversation.vue'
 import CartBar from './CartBar.vue'
 import { usePanelVisibility } from '../../composables/usePanelVisibility'
 import { usePanelActivity, usePanelCascade, usePanelExpand } from '../../composables/usePanelHostMotion'
@@ -47,6 +49,7 @@ import '../widget-panel-messages.css'
 import '../widget-panel-answers.css'
 import '../widget-panel-commerce.css'
 import '../widget-panel-status.css'
+import '../widget-panel-history.css'
 import '../widget-panel-composer.css'
 import '../widget-panel-start.css'
 import '../widget-panel-cards.css'
@@ -60,7 +63,7 @@ const {
     showLandingPage, landingPageData, showFullScreenForm, fullScreenFormData, awaitingEmail,
     shouldShowNewConversationOption, newChatArmed, canStartNewChat, startingNewChat, newChatError,
     messages, loadingHistory, loading, shownPrompt, journeyProgress, pendingConfirm, replyChips,
-    awaitingHistory, hostCapabilities,
+    awaitingHistory, hostCapabilities, history,
 } = ctrl
 
 // The loader's motion: the open cascade, the expand, the working dot while hidden.
@@ -161,15 +164,17 @@ const rootStyle = computed(() => ({
                      panel; the conversation scrolls itself (MessageList). -->
                 <div class="cm-panel__body">
                     <EmailCard v-if="awaitingEmail" ref="emailCard" />
-                    <Transition name="cm-start" mode="out-in">
+                    <PastConversation v-if="history.showing && history.viewing" />
+                    <HistoryScreen v-else-if="history.showing" />
+                    <Transition v-else name="cm-start" mode="out-in">
                         <StartState v-if="nothingInThread" />
                         <MessageList v-else ref="list" />
                     </Transition>
                 </div>
                 <div class="cm-panel__bottom">
                     <ConversationEnded v-if="shouldShowNewConversationOption" />
-                    <CartBar v-if="showComposer" />
-                    <Composer v-if="showComposer" ref="composer" />
+                    <CartBar v-if="showComposer && !history.showing" />
+                    <Composer v-if="showComposer && !history.showing" ref="composer" />
                     <PanelFooter />
                 </div>
             </template>

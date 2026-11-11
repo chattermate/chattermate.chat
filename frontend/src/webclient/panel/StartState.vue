@@ -28,6 +28,7 @@ import { WIDGET_CTX } from './controller'
 import AgentMark from './AgentMark.vue'
 import StartSuggestions from './StartSuggestions.vue'
 import HelpCenterRow from './HelpCenterRow.vue'
+import RecentRow from './history/RecentRow.vue'
 import { agentFace } from './agent-face'
 import { renderMarkdown } from '../markdown'
 import { PANEL_COPY } from '../copy'
@@ -54,7 +55,8 @@ const bodyHtml = computed(() => renderMarkdown(welcomeMessageText.value))
         <div class="cm-start__spacer"></div>
         <!-- The Recent row (past conversations) joins here with plan 5.x. -->
         <StartSuggestions class="cm-enter" style="--cm-i: 4" />
-        <HelpCenterRow class="cm-enter" style="--cm-i: 5" />
+        <RecentRow class="cm-enter" style="--cm-i: 5" />
+        <HelpCenterRow class="cm-enter" style="--cm-i: 6" />
     </div>
 </template>
 

@@ -85,3 +85,27 @@ def visitor_error(error: Optional[str], fallback: str = GENERIC_ERROR) -> str:
     if error:
         logger.warning("Workflow error kept from the visitor: %s", error)
     return fallback
+
+
+def visitor_message(msg: Any) -> dict:
+    """A stored message as the widget restores it: its text, kind, time, the
+    visitor-safe attributes, who wrote it, and its files (already signed by
+    ChatRepository.get_session_history)."""
+    payload = {
+        'id': msg.id,
+        'message': msg.message,
+        'message_type': msg.message_type,
+        'timestamp': msg.created_at.isoformat() if msg.created_at else None,
+        'attributes': visitor_attributes(msg.attributes),
+        'user_name': msg.user.full_name if msg.user else None,
+        'agent_name': msg.agent.display_name or msg.agent.name if msg.agent else None,
+    }
+    if msg.attachments:
+        payload['attachments'] = [{
+            'id': attachment.id,
+            'filename': attachment.filename,
+            'file_url': attachment.file_url,
+            'content_type': attachment.content_type,
+            'file_size': attachment.file_size,
+        } for attachment in msg.attachments]
+    return payload

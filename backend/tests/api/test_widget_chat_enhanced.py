@@ -504,7 +504,7 @@ class TestGetWidgetChatHistory:
         mock_message1.id = 11
         mock_message1.message = "Hello"
         mock_message1.message_type = "user"
-        mock_message1.created_at = datetime.now(timezone.utc)
+        mock_message1.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
         mock_message1.attributes = {}
         mock_message1.user = None
         mock_message1.agent = None
@@ -513,7 +513,7 @@ class TestGetWidgetChatHistory:
         mock_message2.id = 12
         mock_message2.message = "Hi there!"
         mock_message2.message_type = "bot"
-        mock_message2.created_at = datetime.now(timezone.utc)
+        mock_message2.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
         mock_message2.attributes = {}
         mock_message2.user = None
         mock_message2.agent = None
@@ -531,7 +531,7 @@ class TestGetWidgetChatHistory:
                             'id': 11,
                             'message': 'Hello',
                             'message_type': 'user',
-                            'timestamp': '2024-01-01T00:00:00Z',
+                            'timestamp': '2024-01-01T00:00:00+00:00',
                             'attributes': {},
                             'user_name': None,
                             'agent_name': None,
@@ -541,7 +541,7 @@ class TestGetWidgetChatHistory:
                             'id': 12,
                             'message': 'Hi there!',
                             'message_type': 'bot',
-                            'timestamp': '2024-01-01T00:00:00Z',
+                            'timestamp': '2024-01-01T00:00:00+00:00',
                             'attributes': {},
                             'user_name': None,
                             'agent_name': None,
