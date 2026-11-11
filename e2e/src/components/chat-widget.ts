@@ -432,8 +432,7 @@ export class ChatWidget {
   /** Rates the finished chat; `stars` is 1–5. */
   async rate(stars: number, feedback?: string): Promise<void> {
     await step(`Customer rates the chat ${stars}/5`, async () => {
-      // The star buttons are plain "★" glyphs with no accessible name.
-      await this.frame.locator('.star-button').nth(stars - 1).click()
+      await this.frame.getByRole('button', { name: `${stars} out of 5`, exact: true }).click()
       if (feedback) await this.frame.getByPlaceholder('Please share your feedback (optional)').fill(feedback)
       await this.frame.getByRole('button', { name: 'Submit Rating' }).click()
     })
@@ -548,7 +547,7 @@ export class ChatWidget {
 
   /** The bubble shown while the agent writes its reply. */
   get typingBubble(): Locator {
-    return this.frame.locator('.typing-indicator') // no accessible name of its own
+    return this.frame.getByRole('status', { name: 'Agent is replying' })
   }
 
   /** Whether the message list has picked up a sideways scrollbar. */

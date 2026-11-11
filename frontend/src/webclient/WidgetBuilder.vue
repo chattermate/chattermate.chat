@@ -2584,6 +2584,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                                             v-for="star in 5"
                                             :key="star"
                                             class="star-button"
+                                            :aria-label="`${star} out of 5`"
                                             :class="{
                                                 'warning': star <= (message.isSubmitted ? message.finalRating : (hoverRating || message.selectedRating)) && (message.isSubmitted ? message.finalRating : (hoverRating || message.selectedRating)) <= 3,
                                                 'success': star <= (message.isSubmitted ? message.finalRating : (hoverRating || message.selectedRating)) && (message.isSubmitted ? message.finalRating : (hoverRating || message.selectedRating)) > 3,
@@ -2973,7 +2974,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 
                 <!-- Loading indicator: "reading knowledge base" only when citations
                      are enabled; otherwise a plain typing indicator. -->
-                <div v-if="loading && !pendingConfirm" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
+                <div v-if="loading && !pendingConfirm" class="typing-indicator" :class="{ 'reading-indicator': showCitations }" role="status" aria-label="Agent is replying">
                     <template v-if="showCitations">
                         <div class="reading-bars" aria-hidden="true">
                             <span></span><span></span><span></span>
@@ -3153,6 +3154,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         @click="currentRating = star"
                         :class="{ active: star <= currentRating }"
                         class="star-button"
+                        :aria-label="`${star} out of 5`"
                     >
                         ★
                     </button>

@@ -15,8 +15,7 @@ limitations under the License.
 */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { mountWidget, resetSocket, socket, socketCalls } from './widgetHarness'
 
 /**
  * The composer while the assistant is answering.
@@ -26,77 +25,16 @@ import { ref } from 'vue'
  * message, and they had to click the box again to keep typing (#316).
  */
 
-const sendMessage = vi.fn()
+vi.mock('@/composables/useWidgetSocket', async () => (await import('./widgetHarness')).socketModule())
 
-const socket = {
-    messages: ref<any[]>([]),
-    loading: ref(false),
-    errorMessage: ref(''),
-    showError: ref(false),
-    loadingHistory: ref(false),
-    hasStartedChat: ref(true),
-    connectionStatus: ref('connected'),
-    humanAgent: ref({}),
-    currentForm: ref(null),
-    currentSessionId: ref('session-1'),
-    refusal: ref(null)
-}
-
-vi.mock('@/composables/useWidgetSocket', () => ({
-    useWidgetSocket: () => ({
-        ...socket,
-        sendMessage,
-        sendFileAttachments: vi.fn(),
-        endChat: vi.fn(),
-        loadChatHistory: vi.fn(),
-        connect: vi.fn().mockResolvedValue(true),
-        reconnect: vi.fn(),
-        cleanup: vi.fn(),
-        onTakeover: vi.fn(),
-        onSessionState: vi.fn(),
-        onReauthorize: vi.fn(),
-        submitRating: vi.fn(),
-        submitForm: vi.fn(),
-        getWorkflowState: vi.fn(),
-        proceedWorkflow: vi.fn(),
-        onWorkflowState: vi.fn(),
-        onWorkflowProceeded: vi.fn(),
-        setToken: vi.fn(),
-        setWidgetId: vi.fn(),
-        on: vi.fn(),
-        emit: vi.fn()
-    })
-}))
+let wrapper: any
 
 describe('the composer while a reply is in flight', () => {
-    let WidgetBuilder: any
-
-    beforeEach(async () => {
-        sendMessage.mockClear()
-        socket.loading.value = false
-        socket.hasStartedChat.value = true
-        socket.connectionStatus.value = 'connected'
-        socket.messages.value = []
-
-        ;(window as any).__INITIAL_DATA__ = {
-            widgetId: 'w-1',
-            agentName: 'Ada',
-            customization: {},
-            customerId: 'c-1',
-            customer: {},
-            initialToken: 'tok-1'
-        }
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: true,
-            status: 200,
-            json: async () => ({ agent: { name: 'Ada' } })
-        }))
-
-        vi.resetModules()
-        WidgetBuilder = (await import('@/webclient/WidgetBuilder.vue')).default
-    })
+    beforeEach(() => resetSocket())
 
     afterEach(() => {
+        wrapper?.unmount()
+        wrapper = undefined
         vi.unstubAllGlobals()
     })
 
@@ -104,7 +42,7 @@ describe('the composer while a reply is in flight', () => {
         wrapper.find('input.welcome-message-field, .message-input input')
 
     it('keeps the field typable while the assistant is answering', async () => {
-        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
+        ;({ wrapper } = await mountWidget())
 
         expect(composer(wrapper).attributes('disabled')).toBeUndefined()
 
@@ -113,23 +51,19 @@ describe('the composer while a reply is in flight', () => {
 
         // The moment this becomes `disabled`, the browser drops the cursor.
         expect(composer(wrapper).attributes('disabled')).toBeUndefined()
-
-        wrapper.unmount()
     })
 
     it('still refuses typing when the socket is not connected', async () => {
-        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
+        ;({ wrapper } = await mountWidget())
 
         socket.connectionStatus.value = 'connecting'
         await wrapper.vm.$nextTick()
 
         expect(composer(wrapper).attributes('disabled')).toBeDefined()
-
-        wrapper.unmount()
     })
 
     it('holds a message typed mid-reply and sends it when the reply lands', async () => {
-        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
+        ;({ wrapper } = await mountWidget())
 
         socket.loading.value = true
         await wrapper.vm.$nextTick()
@@ -139,22 +73,20 @@ describe('the composer while a reply is in flight', () => {
         await field.trigger('keypress', { key: 'Enter' })
 
         // Sending now would start a second agent run on the same conversation.
-        expect(sendMessage).not.toHaveBeenCalled()
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
 
         socket.loading.value = false
         await wrapper.vm.$nextTick()
         await wrapper.vm.$nextTick()
 
         // ...and it must not be lost either.
-        expect(sendMessage).toHaveBeenCalledWith(
+        expect(socketCalls.sendMessage).toHaveBeenCalledWith(
             'and one more thing', expect.anything(), expect.anything(), {}
         )
-
-        wrapper.unmount()
     })
 
     it('does not carry a queued message into the next conversation', async () => {
-        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
+        ;({ wrapper } = await mountWidget())
 
         socket.loading.value = true
         await wrapper.vm.$nextTick()
@@ -171,13 +103,11 @@ describe('the composer while a reply is in flight', () => {
         await wrapper.vm.$nextTick()
         await wrapper.vm.$nextTick()
 
-        expect(sendMessage).not.toHaveBeenCalled()
-
-        wrapper.unmount()
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
     })
 
     it('does not accept a second message while one is being answered', async () => {
-        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
+        ;({ wrapper } = await mountWidget())
 
         socket.loading.value = true
         await wrapper.vm.$nextTick()
@@ -185,7 +115,5 @@ describe('the composer while a reply is in flight', () => {
         // Typing carries on, but sending waits its turn.
         const send = wrapper.find('.welcome-send-button, .send-button')
         expect(send.attributes('disabled')).toBeDefined()
-
-        wrapper.unmount()
     })
 })
