@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { mountWidget, resetSocket } from './widgetHarness'
 import AskAiPanel from '@/webclient/AskAiPanel.vue'
-import widgetSource from '@/webclient/WidgetBuilder.vue?raw'
+import widgetSource from '@/webclient/ClassicWidget.vue?raw'
 
 /**
  * "Powered by ChatterMate" comes off only when the server says the plan removes

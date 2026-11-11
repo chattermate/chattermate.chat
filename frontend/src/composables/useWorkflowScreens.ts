@@ -14,11 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { ref, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import { validateFormField, type FormFieldRule } from '../webclient/forms/validation'
 
 /** A form field as the workflow sends it: the validation rules plus its key. */
-export type WorkflowField = FormFieldRule & { name: string }
+export type WorkflowField = FormFieldRule & {
+    name: string
+    placeholder?: string
+    /** A select or radio field's choices: a list, or one per line. */
+    options?: string[] | string
+}
 
 export interface WorkflowForm {
     fields?: WorkflowField[]
@@ -53,6 +58,8 @@ export interface WorkflowScreensOptions {
     proceedWorkflow: () => Promise<unknown>
     sendMessage: (text: string, email: string) => Promise<unknown>
     emailInput: Ref<string>
+    /** Whether this is a workflow agent; read at call time (authorizing can turn it on). */
+    isWorkflowAgent: () => boolean
 }
 
 const DEFAULT_BUTTON_TEXT = 'Start Chat'
@@ -79,6 +86,7 @@ export function useWorkflowScreens({
     proceedWorkflow,
     sendMessage,
     emailInput,
+    isWorkflowAgent,
 }: WorkflowScreensOptions) {
     const formData = ref<Record<string, any>>({})
     const isSubmittingForm = ref(false)
@@ -90,6 +98,20 @@ export function useWorkflowScreens({
 
     const showFullScreenForm = ref(false)
     const fullScreenFormData = ref<WorkflowForm | null>(null)
+
+    // A form in the chat that is still waiting for the visitor.
+    const hasActiveForm = computed(() => messages.value.some(isOpenForm))
+
+    // A finished workflow chat (its rating submitted) offers a new conversation
+    // instead of the message box.
+    // Pinned current behaviour (bug): for an agent that is not (yet) a workflow agent
+    // this reads no reactive source, so it is never re-evaluated: if authorizing later
+    // makes the agent a workflow agent, the option never turns on.
+    const shouldShowNewConversationOption = computed(() => {
+        if (!isWorkflowAgent()) return false
+        const ratingMessage = messages.value.find(msg => msg.message_type === 'rating')
+        return ratingMessage?.isSubmitted === true
+    })
 
     const showScreens = (landing: boolean, fullScreenForm: boolean) => {
         showLandingPage.value = landing
@@ -232,6 +254,8 @@ export function useWorkflowScreens({
         workflowButtonText,
         showFullScreenForm,
         fullScreenFormData,
+        hasActiveForm,
+        shouldShowNewConversationOption,
         handleWorkflowState,
         handleLandingPageProceed,
         handleFormSubmit,

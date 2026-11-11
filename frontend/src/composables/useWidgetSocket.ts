@@ -23,7 +23,7 @@ import { localTokenStore, readTokenClaims } from './useConversationToken'
 import { isFramed, reportedPageUrl } from '../webclient/frame-session'
 import type { Message } from '@/types/chat'
 
-type ConnectionStatus = 'connected' | 'connecting' | 'failed'
+export type ConnectionStatus = 'connected' | 'connecting' | 'failed'
 
 /** The conversation this connection landed in. */
 export interface SessionState {
@@ -635,7 +635,7 @@ export function useWidgetSocket() {
     }
 
     // Add rating submission function
-    const submitRating = async (rating: number, feedback?: string) => {
+    const submitRating = async (rating: number, feedback?: string | null) => {
         if (!socket || !rating) return
         
         socket.emit('submit_rating', {
@@ -867,3 +867,6 @@ export function useWidgetSocket() {
         emit
     }
 }
+
+/** The widget's socket connection, as the composables built on it see it. */
+export type WidgetSocket = ReturnType<typeof useWidgetSocket>

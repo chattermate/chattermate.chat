@@ -31,6 +31,7 @@ import { renderMarkdown } from './markdown'
 import { postToHost } from './host-bridge'
 import NewChatConfirm from './NewChatConfirm.vue'
 import { NEW_CHAT_LABEL } from './new-chat'
+import { citationLabel, citationTooltip } from './citations'
 import type { Message } from '../types/chat'
 
 const props = defineProps<{
@@ -55,8 +56,6 @@ const props = defineProps<{
     active: boolean
     /** False when the site disabled the ⌘K chord. */
     hotkey: boolean
-    citationLabel: (source: any) => string
-    citationTooltip: (source: any) => string
     /** Typewriter reveal, keyed by index into `messages` (see useTypewriter). */
     displayText: (index: number, fullText: string) => string
     isStreaming: (index: number) => boolean

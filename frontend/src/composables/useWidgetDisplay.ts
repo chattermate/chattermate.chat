@@ -16,7 +16,6 @@ limitations under the License.
 
 import { computed, ref, watch, type Ref } from 'vue'
 import type { AgentCustomization } from '../types/agent'
-import { postToHost } from '../webclient/host-bridge'
 
 /** The display geometry the embed loader reports with WIDGET_DISPLAY. */
 export interface WidgetDisplay {
@@ -41,6 +40,10 @@ export interface WidgetDisplayOptions {
     messages: Ref<DisplayMessage[]>
     /** Screens that gate the conversation (workflow screens, the email gate, ...). */
     gatingScreens: Readonly<Ref<boolean>>[]
+    /** The frame's viewport width, read when the Ask AI size is worked out. */
+    viewportWidth: () => number
+    /** Tells the embedder which surface is on screen (true: the Ask AI palette). */
+    reportSurface: (palette: boolean) => void
 }
 
 // Classic floating-window geometry: must mirror the chattermate.js config defaults
@@ -96,6 +99,8 @@ export function useWidgetDisplay({
     isExpanded,
     messages,
     gatingScreens,
+    viewportWidth,
+    reportSurface,
 }: WidgetDisplayOptions) {
     // Pushed by the embed loader (WIDGET_DISPLAY). Falls back to the dashboard
     // metadata for direct-iframe embeds where no loader is present.
@@ -106,7 +111,7 @@ export function useWidgetDisplay({
     // immediately with WIDGET_VISIBILITY on load.
     const hostVisible = ref(true)
 
-    const resolvedDisplay = computed<Record<string, any> | null>(() =>
+    const resolvedDisplay = computed<WidgetDisplay | null>(() =>
         parentDisplay.value
         || customization.value.customization_metadata?.widget_display
         || null
@@ -122,7 +127,7 @@ export function useWidgetDisplay({
             const isSidebar = mode === 'sidebar-left' || mode === 'sidebar-right'
             return isSidebar ? { ...BASE_STYLES, borderRadius: '0' } : { ...BASE_STYLES }
         }
-        if (isAskAnythingStyle.value) return askAnythingStyles(window.innerWidth)
+        if (isAskAnythingStyle.value) return askAnythingStyles(viewportWidth())
         return { ...BASE_STYLES }
     })
 
@@ -157,7 +162,7 @@ export function useWidgetDisplay({
     // Tell the embedder which surface is on screen, or it keeps the palette's
     // content-hugged geometry after the widget falls back to the chat panel.
     watch(useAskAiPanel, (palette) => {
-        postToHost({ type: 'WIDGET_SURFACE', palette })
+        reportSurface(palette)
     }, { immediate: true })
 
     // The embedder owns the ⌘K chord and can turn it off (loader `hotkey: false`).

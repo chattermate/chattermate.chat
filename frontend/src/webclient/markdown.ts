@@ -35,4 +35,4 @@ marked.setOptions({
 // Links open in a new tab (the widget lives in an iframe, so a same-tab navigation
 // would replace the chat rather than the page). sanitizeHtml already forces
 // target="_blank" + rel on every surviving anchor, so nothing is needed here.
-export const renderMarkdown = (text: string): string => sanitizeHtml(marked(text || '') as string)
+export const renderMarkdown = (text?: string | null): string => sanitizeHtml(marked(text || '') as string)

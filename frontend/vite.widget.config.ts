@@ -1,6 +1,23 @@
-import { defineConfig } from 'vite'
+import { defineConfig, transformWithEsbuild, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+
+// Vite never strips whitespace from an ES library build (it would drop the
+// /*#__PURE__*/ hints a consumer's bundler tree-shakes with). widget.js is loaded
+// as-is by the widget page, never re-bundled, so minify it fully once it is built.
+const minifyWidgetBundle = (): Plugin => ({
+  name: 'minify-widget-bundle',
+  apply: 'build',
+  enforce: 'post',
+  // After every renderChunk: Vite's own esbuild pass would re-print the whitespace.
+  async generateBundle(_options, bundle) {
+    for (const file of Object.values(bundle)) {
+      if (file.type !== 'chunk') continue
+      const result = await transformWithEsbuild(file.code, file.fileName, { minify: true, format: 'esm' })
+      file.code = result.code
+    }
+  },
+})
 
 export default defineConfig({
   plugins: [
@@ -11,7 +28,8 @@ export default defineConfig({
           isCustomElement: (tag) => tag.startsWith('s-')
         }
       }
-    })
+    }),
+    minifyWidgetBundle(),
   ],
   build: {
     lib: {

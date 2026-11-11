@@ -20,7 +20,7 @@ import { useWorkflowScreens, type WorkflowForm, type WorkflowMessage } from '@/c
 
 const emailField = { name: 'email', label: 'Email', type: 'email', required: true }
 
-const setup = () => {
+const setup = (workflowAgent = true) => {
     const messages = ref<WorkflowMessage[]>([])
     const currentForm = ref<WorkflowForm | null>(null)
     const submitForm = vi.fn().mockResolvedValue(undefined)
@@ -33,6 +33,7 @@ const setup = () => {
         proceedWorkflow,
         sendMessage,
         emailInput: ref('ada@example.com'),
+        isWorkflowAgent: () => workflowAgent,
     })
     return { ...screens, messages, currentForm, submitForm, proceedWorkflow, sendMessage }
 }
@@ -206,5 +207,28 @@ describe('useWorkflowScreens', () => {
         const message: WorkflowMessage = { message_type: 'user_input', userInputValue: 'yes' }
         await screens.handleUserInputSubmit(message)
         expect(message).toMatchObject({ isSubmitted: false, submittedValue: null, userInputValue: 'yes' })
+    })
+
+    it('knows when a form in the chat is still open', () => {
+        const screens = setup()
+        expect(screens.hasActiveForm.value).toBe(false)
+        screens.messages.value.push({ message_type: 'form', isSubmitted: false })
+        expect(screens.hasActiveForm.value).toBe(true)
+        screens.messages.value[0].isSubmitted = true
+        expect(screens.hasActiveForm.value).toBe(false)
+    })
+
+    it('offers a new conversation once a workflow chat is rated', () => {
+        const screens = setup()
+        screens.messages.value.push({ message_type: 'rating' })
+        expect(screens.shouldShowNewConversationOption.value).toBe(false)
+        screens.messages.value[0].isSubmitted = true
+        expect(screens.shouldShowNewConversationOption.value).toBe(true)
+    })
+
+    it('never offers it for an agent without a workflow', () => {
+        const screens = setup(false)
+        screens.messages.value.push({ message_type: 'rating', isSubmitted: true })
+        expect(screens.shouldShowNewConversationOption.value).toBe(false)
     })
 })

@@ -18,7 +18,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { nextTick, ref } from 'vue'
 
 const postToHost = vi.fn()
-vi.mock('@/webclient/host-bridge', () => ({ postToHost: (msg: unknown) => postToHost(msg) }))
 
 import { useWidgetDisplay, isCustomDisplay, CLASSIC_DISPLAY, type DisplayMessage } from '@/composables/useWidgetDisplay'
 
@@ -32,6 +31,8 @@ const setup = (chatStyle = 'CHATBOT', allowAttachments = false, metadata?: Recor
         isExpanded: ref(true),
         messages,
         gatingScreens: [gate],
+        viewportWidth: () => window.innerWidth,
+        reportSurface: (palette: boolean) => postToHost({ type: 'WIDGET_SURFACE', palette }),
     })
     return { ...display, messages, gate }
 }

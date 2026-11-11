@@ -156,25 +156,32 @@ export const revokeBlobUrls = (file: { url?: string; file_url?: string }) => {
   if (file.file_url && file.file_url.startsWith('blob:')) URL.revokeObjectURL(file.file_url)
 }
 
-export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTMLInputElement | null>) {
+/** A file staged for the next message, with its in-memory preview. */
+export interface UploadedFile {
+  content: string
+  filename: string
+  type: string
+  size: number
+  url: string
+  file_url: string
+}
+
+/** The file shown in the preview modal. */
+export interface PreviewFile {
+  url: string
+  filename: string
+  type: string
+  file_url?: string
+  size?: number
+}
+
+// The view owns the file input (and opening the picker); this is the files' state.
+export function useWidgetFiles(token: Ref<string | null>) {
   // File handling state
-  const uploadedAttachments = ref<Array<{
-    content: string
-    filename: string
-    type: string
-    size: number
-    url: string
-    file_url: string
-  }>>([])
+  const uploadedAttachments = ref<UploadedFile[]>([])
   
   const previewModal = ref(false)
-  const previewFile = ref<{
-    url: string
-    filename: string
-    type: string
-    file_url?: string
-    size?: number
-  } | null>(null)
+  const previewFile = ref<PreviewFile | null>(null)
 
   // Format file size for display
   const formatFileSize = (bytes: number): string => {
@@ -481,13 +488,7 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
   }
 
   // Open file preview modal
-  const openPreview = (file: {
-    url: string
-    filename: string
-    type: string
-    file_url?: string
-    size?: number
-  }) => {
+  const openPreview = (file: PreviewFile) => {
     previewFile.value = file
     previewModal.value = true
   }
@@ -499,11 +500,6 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
     setTimeout(() => {
       previewFile.value = null
     }, 300)
-  }
-
-  // Open file picker
-  const openFilePicker = () => {
-    fileInputRef.value?.click()
   }
 
   // Check if file type is image (utility function)
@@ -528,7 +524,6 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
     removeAttachment,
     openPreview,
     closePreview,
-    openFilePicker,
     isImage
   }
 }

@@ -35,7 +35,24 @@ export const productUrl = (product: ProductRef, shopDomain?: string | null): Pro
     return { error: 'missing_product' }
 }
 
-const MARKDOWN_IMAGE = /!\[([^\]]*)\]\(([^)]+)\)/g
+/**
+ * Opens the product on the storefront. Pinned current behaviour (odd): a missing
+ * shop or product is reported with a blocking alert() inside the chat frame.
+ */
+export const openProduct = (product: ProductRef | null | undefined, shopDomain?: string | null) => {
+    if (!product) return
+    const target = productUrl(product, shopDomain)
+    if ('url' in target) {
+        // noopener: the opened page must not get a handle on the widget's window
+        window.open(target.url, '_blank', 'noopener')
+        return
+    }
+    alert(target.error === 'missing_shop'
+        ? 'Unable to open product: Shop domain not available. Please contact support.'
+        : 'Unable to open product: Product information incomplete.')
+}
+
+const MARKDOWN_IMAGE =/!\[([^\]]*)\]\(([^)]+)\)/g
 const MARKDOWN_LINK = /\[([^\]]+)\]\(([^)]+)\)/g
 const BARE_URL = /https?:\/\/[^\s)]+/g
 
