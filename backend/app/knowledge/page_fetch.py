@@ -21,6 +21,8 @@ the worker ran for three hours before it hit its memory limit. The headers
 say what a link is, so a download is skipped before its body is fetched.
 """
 
+from typing import NamedTuple
+
 from app.knowledge.url_safety import safe_stream
 
 # What a crawl reads. Anything else (archives, installers, images, PDFs -
@@ -53,10 +55,18 @@ def media_type(content_type: str) -> str:
     return content_type.split(";", 1)[0].strip().lower()
 
 
-def fetch_page_text(client, url: str, max_bytes: int = MAX_PAGE_BYTES) -> str:
-    """The page at `url` as text. Raises NotAPage for a download or an
-    oversized body, httpx.HTTPStatusError for a non-2xx answer, and
-    BlockedHostError for a redirect to an address we may not fetch."""
+class FetchedPage(NamedTuple):
+    # Where the page was served from, after redirects. Its relative links
+    # resolve against this, not the address asked for: /docs redirects to
+    # /docs/, and "guide.html" on it means /docs/guide.html.
+    url: str
+    text: str
+
+
+def fetch_page(client, url: str, max_bytes: int = MAX_PAGE_BYTES) -> FetchedPage:
+    """The page at `url`. Raises NotAPage for a download or an oversized
+    body, httpx.HTTPStatusError for a non-2xx answer, and BlockedHostError
+    for a redirect to an address we may not fetch."""
     with safe_stream(client, url) as response:
         response.raise_for_status()
 
@@ -76,4 +86,7 @@ def fetch_page_text(client, url: str, max_bytes: int = MAX_PAGE_BYTES) -> str:
             if len(body) > max_bytes:
                 raise NotAPage(f"{url} is larger than {max_bytes} bytes", download=False)
 
-        return body.decode(response.encoding or "utf-8", errors="replace")
+        return FetchedPage(
+            url=str(response.url),
+            text=body.decode(response.encoding or "utf-8", errors="replace"),
+        )
