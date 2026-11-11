@@ -28,6 +28,12 @@ describe('the storefront link for a product', () => {
         expect(productUrl({ handle: 'blue-mug' }, null)).toEqual({ error: 'missing_shop' })
         expect(productUrl({}, 'shop.myshopify.com')).toEqual({ error: 'missing_product' })
     })
+
+    it('treats an id of 0 as missing', () => {
+        // Pinned current behaviour (bug): the id check is a truthiness test, so a
+        // numeric id of 0 counts as no id (Shopify never issues 0, so harmless today).
+        expect(productUrl({ id: 0 }, 'shop.myshopify.com')).toEqual({ error: 'missing_product' })
+    })
 })
 
 describe('the text above product cards', () => {
@@ -36,8 +42,18 @@ describe('the text above product cards', () => {
         expect(stripUrlsForProducts(text)).toBe('See [link removed] and [our guide](https://shop.example/guide)\n\nDone')
     })
 
+    it('keeps a markdown link whose text holds a dollar pattern', () => {
+        expect(stripUrlsForProducts('Buy [deal $& more](https://shop.example/d) now')).toBe('Buy [deal $& more](https://shop.example/d) now')
+    })
+
     it('handles empty text', () => {
         expect(stripUrlsForProducts('')).toBe('')
         expect(stripUrlsForProducts(null)).toBe('')
+    })
+
+    it('keeps ten or more markdown links each in its own place', () => {
+        const links = Array.from({ length: 12 }, (_, i) => `[item ${i}](https://shop.example/p/${i})`)
+        const text = links.join(' and ')
+        expect(stripUrlsForProducts(text)).toBe(text)
     })
 })

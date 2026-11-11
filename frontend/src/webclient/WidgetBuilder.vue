@@ -32,9 +32,8 @@ import ProductCartButton from './ProductCartButton.vue'
 import { canAddToCart, handleCartMessage } from './shopify-cart'
 import { productUrl, stripUrlsForProducts } from './products'
 import { citationLabel, citationTooltip } from './citations'
-import { validateFormField } from './forms/validation'
 import { useActionReceipts } from '../composables/useActionReceipts'
-import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
+import { SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
@@ -52,12 +51,14 @@ import { usePromptPlace } from '../composables/usePromptPlace'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
+import { useEmailGate } from '../composables/useEmailGate'
+import { useNewChat } from '../composables/useNewChat'
+import { useRating } from '../composables/useRating'
+import { useWorkflowScreens } from '../composables/useWorkflowScreens'
+import { useWidgetDisplay } from '../composables/useWidgetDisplay'
+import { useComposer } from '../composables/useComposer'
 import { useConversationToken, IDENTITY_EXPIRED_CODE, sanitizeToken } from '../composables/useConversationToken'
-import {
-    NEW_CHAT_CONFIRM_TIMEOUT_MS,
-    NEW_CHAT_FAILED_TEXT,
-    NEW_CHAT_LABEL,
-} from './new-chat'
+import { NEW_CHAT_LABEL } from './new-chat'
 import { themeCssVars } from './widget-theme'
 import './widget-surface.css'
 import { useCurrency } from '../composables/useCurrency'
@@ -82,6 +83,13 @@ const {
 } = useWidgetCustomization()
 
 const { formatCurrency } = useCurrency()
+
+// Aurora is the new dark ask-me-anything design (shares the ASK_ANYTHING flow).
+const isAuroraStyle = computed(() => customization.value.chat_style === 'AURORA')
+
+const isAskAnythingStyle = computed(() => {
+    return customization.value.chat_style === 'ASK_ANYTHING' || isAuroraStyle.value
+})
 
 const {
     messages,
@@ -199,10 +207,23 @@ const { displayText, isStreaming } = useTypewriter(messages, () => nextTick(() =
 // Report unread agent messages (received while minimized) to the embedder badge.
 useUnreadBadge(messages)
 
-const newMessage = ref('')
 const isExpanded = ref(true)
-const emailInput = ref('')
 const hasConversationToken = ref(false)
+
+const {
+    emailInput,
+    emailGateError,
+    submittingEmail,
+    shouldCollectEmail,
+    showEmailGate,
+    submitEmailGate,
+} = useEmailGate({
+    customization,
+    isAskAnythingStyle,
+    hasStartedChat,
+    // checkAuthorization is declared further down; it only runs on submit.
+    authorize: () => checkAuthorization(),
+})
 
 // Handle input synchronization
 const handleInputSync = (event: Event) => {
@@ -507,138 +528,54 @@ const hasActiveForm = computed(() => {
     )
 })
 
-// Update the computed property for message input enabled state
-const isMessageInputEnabled = computed(() => {
-    // If we already have a conversation started, allow input
-    if (hasStartedChat.value && hasConversationToken.value) {
-
-        return connectionStatus.value === 'connected' && !loading.value
-    }
-
-    // When email collection is off (Ask AI, or collect_email disabled), don't require email
-    if (!shouldCollectEmail.value) {
-
-        return connectionStatus.value === 'connected' && !loading.value
-    }
-
-
-
-    return (isValidEmail(emailInput.value.trim()) &&
-           connectionStatus.value === 'connected' && !loading.value)  || window.__INITIAL_DATA__?.workflow
-})
-
-// Whether the field accepts typing. Same conditions as sending, except that a
-// reply being in flight does not close the field: disabling an input blurs it, so
-// the visitor lost their cursor after every single reply and had to click back in
-// (#316). Sending stays gated on isMessageInputEnabled, so a second message
-// cannot jump the queue - only the typing carries on.
-const canTypeMessage = computed(() => isMessageInputEnabled.value || (
-    loading.value && connectionStatus.value === 'connected' && hasStartedChat.value
-))
-
-const placeholderText = computed(() => {
-    return connectionStatus.value === 'connected' ? (isAskAnythingStyle.value ? 'Ask me anything...' : 'Type a message...') : 'Connecting...'
-})
-
-// A message typed while the assistant is still answering. The field stays open
-// during a reply (see canTypeMessage), so this is reachable now in a way it never
-// was when the input was disabled — and neither obvious option is right on its
-// own: sending starts a second agent run on the same conversation, and dropping
-// it loses what the visitor typed without saying so. Hold it, and send it the
-// moment the reply lands.
-const pendingSend = ref(false)
-
-// Update the sendMessage function
-// A pasted password, key or card number is held back (the server also hides them).
-const secretInMessage = computed(() => looksSecret(newMessage.value))
-
-const sendMessage = async () => {
-    if (!newMessage.value.trim() && uploadedAttachments.value.length === 0) return
-    if (secretInMessage.value) return
-
-    if (loading.value && hasStartedChat.value) {
-        pendingSend.value = true
-        return
-    }
-
-    // If first message, fetch customization with email first
-    if (!hasStartedChat.value && emailInput.value) {
-        await checkAuthorization()
-    }
-
-    // Prepare files for upload (convert to format expected by backend)
-    const files = uploadedAttachments.value.map(file => ({
-        content: file.content,  // base64 content
-        filename: file.filename,
-        content_type: file.type,
-        size: file.size
-    }))
-
+// A page message being answered is stored with the reply (it never was before).
+// A journey step's replies stay until the step moves on; the server won't resend
+// them after a plain answer.
+const takeAnsweredPrompt = (): Record<string, unknown> => {
     noteActivity()
-    // A page message being answered is stored with the reply (it never was before).
     const answeredPrompt = visiblePrompt.value
     if (answeredPrompt) addPromptToChat(answeredPrompt)
-    // A journey step's replies stay until the step moves on; the server won't resend them after a plain answer.
     if (hostPrompt.value?.source !== 'journey') hostPrompt.value = null
+    return answeredPrompt ? { host_prompt: answeredPrompt.message, host_prompt_source: answeredPrompt.source } : {}
+}
 
-    // Send message with files in a single emit
-    await socketSendMessage(newMessage.value, emailInput.value, files,
-        answeredPrompt ? { host_prompt: answeredPrompt.message, host_prompt_source: answeredPrompt.source } : {})
-
-    // Clean up temporary object URLs
-    uploadedAttachments.value.forEach(file => {
-        if (file.url && file.url.startsWith('blob:')) {
-            URL.revokeObjectURL(file.url)
-        }
-        if (file.file_url && file.file_url.startsWith('blob:')) {
-            URL.revokeObjectURL(file.file_url)
-        }
-    })
-
-    newMessage.value = ''
-    uploadedAttachments.value = []
-
-    // Also clear the actual DOM input field to ensure it's visually cleared
+// The DOM may have changed after a send: clear the visible field, then reattach
+// the native listeners.
+const afterMessageSent = () => {
     const inputField = document.querySelector('input[placeholder*="Type a message"]') as HTMLInputElement
     if (inputField) {
         inputField.value = ''
     }
-
-    // Re-setup native event listeners after message is sent
-    // The DOM might have changed, so we need to reattach listeners
     scheduleNativeListenerSetup(500)
 }
 
-// Release a queued message once the reply lands. Ending a chat also clears
-// `loading` (resetConversationState stops the typing indicator), so hasStartedChat
-// is what tells the two apart: a conversation the visitor just closed must not
-// receive the message they typed into the one before it. A drop leaves it in the
-// box, where the composer already shows them it has not been sent.
-watch(loading, (isReplying) => {
-    if (isReplying || !pendingSend.value) return
-    pendingSend.value = false
-    if (connectionStatus.value === 'connected' && hasStartedChat.value) void sendMessage()
+// The message box: typing, sending, and a message held while a reply is coming.
+const {
+    newMessage,
+    secretInMessage,
+    isMessageInputEnabled,
+    canTypeMessage,
+    placeholderText,
+    sendMessage,
+    sendQuickAction,
+    handleKeyPress,
+    clearComposer,
+} = useComposer({
+    socket: { loading, hasStartedChat, connectionStatus, sendMessage: socketSendMessage },
+    emailGate: { emailInput, shouldCollectEmail },
+    hasConversationToken,
+    isAskAnythingStyle,
+    uploadedAttachments,
+    // checkAuthorization is declared further down; it only runs on a send.
+    authorize: () => checkAuthorization(),
+    beforeSend: takeAnsweredPrompt,
+    afterSend: afterMessageSent,
+    isWorkflowAgent: () => !!window.__INITIAL_DATA__?.workflow,
 })
-
-// Send a predefined quick-action: reuse the normal send path with the label text.
-const sendQuickAction = (label: string) => {
-    if (!isMessageInputEnabled.value) return
-    newMessage.value = label
-    sendMessage()
-}
 
 // Ask the embedder to minimize the widget (reuses the launcher toggle on that side).
 const minimizeWidget = () => {
     postToHost({ type: 'WIDGET_MINIMIZE' })
-}
-
-// Handle enter key
-const handleKeyPress = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault()
-        event.stopPropagation()
-        sendMessage()
-    }
 }
 
 // Update the checkAuthorization function
@@ -857,35 +794,45 @@ const handleReconnect = async () => {
     }
 }
 
-// Add these refs after other refs
+// The end-of-chat star rating.
+const {
+    hoverRating,
+    isSubmittingRating,
+    handleStarHover,
+    handleStarLeave,
+    handleStarClick,
+    handleSubmitRating,
+} = useRating({ messages, submitRating: socketSubmitRating })
+
+// The standalone rating dialog. Nothing opens it today (showRatingDialog is never
+// set); its template is kept until the classic view is removed.
 const showRatingDialog = ref(false)
 const currentRating = ref(0)
 const ratingFeedback = ref('')
 
-// Add these refs for star rating
-const hoverRating = ref(0)
-const isSubmittingRating = ref(false)
-
-// Form handling refs
-const formData = ref<Record<string, any>>({})
-const isSubmittingForm = ref(false)
-const formErrors = ref<Record<string, string>>({})
-
-// Landing page handling refs
-const showLandingPage = ref(false)
-const landingPageData = ref<any>(null)
-const workflowButtonText = ref('Start Chat')
-
-// Form full screen handling refs
-const showFullScreenForm = ref(false)
-const fullScreenFormData = ref<any>(null)
-
-
-
-// Add this after other computed properties
-const ratingEnabled = computed(() => {
-    const lastMessage = messages.value[messages.value.length - 1]
-    return lastMessage?.attributes?.request_rating || false
+// Workflow screens: landing page, full-screen form, inline forms, free-text questions.
+const {
+    formData,
+    isSubmittingForm,
+    formErrors,
+    showLandingPage,
+    landingPageData,
+    workflowButtonText,
+    showFullScreenForm,
+    fullScreenFormData,
+    handleWorkflowState,
+    handleLandingPageProceed,
+    handleFormSubmit,
+    handleFieldChange,
+    submitFullScreenForm,
+    handleUserInputSubmit,
+} = useWorkflowScreens({
+    messages,
+    currentForm,
+    submitForm,
+    proceedWorkflow,
+    sendMessage: socketSendMessage,
+    emailInput,
 })
 
 // Check if we should show "start new conversation" instead of chat input
@@ -949,198 +896,6 @@ const handleEndChat = async (message) => {
     }
 }
 
-const handleStarHover = (rating: number) => {
-    if (!isSubmittingRating.value) {
-        hoverRating.value = rating
-    }
-}
-
-const handleStarLeave = () => {
-    if (!isSubmittingRating.value) {
-        const lastMessage = messages.value[messages.value.length - 1]
-        hoverRating.value = lastMessage?.selectedRating || 0
-    }
-}
-
-const handleStarClick = async (rating: number) => {
-    if (!isSubmittingRating.value) {
-        hoverRating.value = rating
-        // Show feedback input after rating selection
-        const lastMessage = messages.value[messages.value.length - 1]
-        if (lastMessage && lastMessage.message_type === 'rating') {
-            lastMessage.showFeedback = true
-            lastMessage.selectedRating = rating
-        }
-    }
-}
-
-const handleSubmitRating = async (sessionId: string, rating: number, feedback: string | null = null) => {
-    try {
-        isSubmittingRating.value = true
-        await socketSubmitRating(rating, feedback)
-
-        // Instead of removing the rating message, mark it as submitted
-        const lastMessage = messages.value.find(msg => msg.message_type === 'rating')
-        if (lastMessage) {
-            lastMessage.isSubmitted = true
-            lastMessage.finalRating = rating
-            lastMessage.finalFeedback = feedback
-        }
-    } catch (error) {
-        console.error('Failed to submit rating:', error)
-    } finally {
-        isSubmittingRating.value = false
-    }
-}
-
-// Form validation function
-const validateForm = (formConfig: any): boolean => {
-    const errors: Record<string, string> = {}
-
-    for (const field of formConfig.fields) {
-        const value = formData.value[field.name]
-        const error = validateFormField(field, value)
-
-        if (error) {
-            errors[field.name] = error
-        }
-    }
-
-    formErrors.value = errors
-    return Object.keys(errors).length === 0
-}
-
-// Handle form submission
-const handleFormSubmit = async (formConfig: any) => {
-
-
-    if (isSubmittingForm.value) {
-        return
-    }
-
-
-    const isValid = validateForm(formConfig)
-
-
-    if (!isValid) {
-
-        return
-    }
-
-    try {
-
-        isSubmittingForm.value = true
-        await submitForm(formData.value)
-
-
-        // Remove the form message from messages array
-        const formIndex = messages.value.findIndex(msg =>
-            msg.message_type === 'form' &&
-            (!msg.isSubmitted || msg.isSubmitted === false)
-        )
-        if (formIndex !== -1) {
-            messages.value.splice(formIndex, 1)
-
-        }
-
-        // Clear form data after successful submission
-        formData.value = {}
-        formErrors.value = {}
-
-    } catch (error) {
-        console.error('Failed to submit form:', error)
-    } finally {
-        isSubmittingForm.value = false
-
-    }
-}
-
-// Handle form field change
-const handleFieldChange = (fieldName: string, value: any) => {
-
-    formData.value[fieldName] = value
-
-
-    // Real-time validation: validate the current field if it has a value
-    if (value && value.toString().trim() !== '') {
-        // Find the field configuration for real-time validation
-        let fieldConfig = null
-
-        // Check full screen form first
-        if (fullScreenFormData.value?.fields) {
-            fieldConfig = fullScreenFormData.value.fields.find(f => f.name === fieldName)
-        }
-
-        // If not found and there's a current form, check regular form
-        if (!fieldConfig && currentForm.value?.fields) {
-            fieldConfig = currentForm.value.fields.find(f => f.name === fieldName)
-        }
-
-        if (fieldConfig) {
-            const error = validateFormField(fieldConfig, value)
-            if (error) {
-                formErrors.value[fieldName] = error
-                console.log(`Validation error for ${fieldName}:`, error)
-            } else {
-                delete formErrors.value[fieldName]
-
-            }
-        }
-    } else {
-        // Clear error when field is cleared
-        delete formErrors.value[fieldName]
-        console.log(`Cleared error for ${fieldName}`)
-    }
-}
-
-// Handle full screen form submission
-const submitFullScreenForm = async () => {
-
-
-    if (isSubmittingForm.value || !fullScreenFormData.value) {
-        return
-    }
-
-    try {
-        isSubmittingForm.value = true
-        formErrors.value = {}
-
-        // Enhanced validation with field-specific rules
-        let hasErrors = false
-        for (const field of fullScreenFormData.value.fields || []) {
-            const value = formData.value[field.name]
-            const error = validateFormField(field, value)
-
-            if (error) {
-                formErrors.value[field.name] = error
-                hasErrors = true
-                console.log(`Validation error for field ${field.name}:`, error)
-            }
-        }
-
-
-        if (hasErrors) {
-            isSubmittingForm.value = false
-            console.log('Validation failed, not submitting')
-            return
-        }
-
-        // Submit form data through the workflow
-        await submitForm(formData.value)
-
-        // Hide full screen form after successful submission
-        showFullScreenForm.value = false
-        fullScreenFormData.value = null
-        formData.value = {}
-
-    } catch (error) {
-        console.error('Failed to submit full screen form:', error)
-    } finally {
-        isSubmittingForm.value = false
-        console.log('Full screen form submission completed')
-    }
-}
-
 // Opens the product on the storefront. Pinned current behaviour (odd): a missing
 // shop or product is reported with a blocking alert() inside the chat frame.
 const handleViewDetails = (product, shopDomain) => {
@@ -1186,41 +941,6 @@ const canUploadMore = computed(() => {
 
 
 
-
-// Handle landing page proceed action
-const handleLandingPageProceed = async () => {
-    try {
-        showLandingPage.value = false
-        landingPageData.value = null
-        await proceedWorkflow()
-    } catch (error) {
-        console.error('Failed to proceed workflow:', error)
-    }
-}
-
-// Handle user input submission
-const handleUserInputSubmit = async (message: any) => {
-    try {
-        if (!message.userInputValue || !message.userInputValue.trim()) {
-            return
-        }
-
-        const userInput = message.userInputValue.trim()
-
-        // Mark message as submitted
-        message.isSubmitted = true
-        message.submittedValue = userInput
-
-        // Send the user input as a regular message to continue the workflow
-        await socketSendMessage(userInput, emailInput.value)
-
-    } catch (error) {
-        console.error('Failed to submit user input:', error)
-        // Reset submission state on error
-        message.isSubmitted = false
-        message.submittedValue = null
-    }
-}
 
 /**
  * Close a session on the backend. `keepalive` lets the request finish while the
@@ -1424,167 +1144,29 @@ const setupEventListeners = () => {
     })
 
     // Register workflow state callback
-    onWorkflowState((data) => {
-
-        workflowButtonText.value = data.button_text || 'Start Chat'
-
-        if (data.type === 'landing_page') {
-            landingPageData.value = data.landing_page_data
-            showLandingPage.value = true
-            showFullScreenForm.value = false
-        } else if (data.type === 'form' || data.type === 'display_form') {
-            // Check if form should be displayed in full screen mode
-
-            if (data.form_data?.form_full_screen === true) {
-
-                fullScreenFormData.value = data.form_data
-                showFullScreenForm.value = true
-                showLandingPage.value = false
-
-            } else {
-
-                // For non-fullscreen forms, add a form message to the chat
-                const formMessage = {
-                    message: '',
-                    message_type: 'form',
-                    attributes: {
-                        form_data: data.form_data
-                    },
-                    created_at: new Date().toISOString(),
-                    isSubmitted: false
-                }
-
-                // Check if form message already exists to avoid duplicates
-                const existingFormIndex = messages.value.findIndex(msg =>
-                    msg.message_type === 'form' && !msg.isSubmitted
-                )
-
-                if (existingFormIndex === -1) {
-                    messages.value.push(formMessage)
-                }
-
-                showLandingPage.value = false
-                showFullScreenForm.value = false
-            }
-        } else {
-
-            showLandingPage.value = false
-            showFullScreenForm.value = false
-        }
-    })
+    onWorkflowState(handleWorkflowState)
 
     onWorkflowProceeded((data) => {
-        console.log('Workflow proceeded:', data)
     })
 }
 
-// Start new conversation workflow
-const startNewConversationWorkflow = async () => {
-    try {
-
-        await initializeWidget()
-        await getWorkflowState()
-    } catch (error) {
-        console.error('Failed to start new conversation:', error)
-        throw error
-    }
-}
-
-// Opt-in "New chat" control (customization.allow_new_chat). Hidden until there is
-// something to clear, and while a human agent is on the conversation — closing the
-// session would drop the visitor out of a live handover mid-sentence.
-const canStartNewChat = computed(() =>
-    customization.value.allow_new_chat === true
-    && messages.value.length > 0
-    && !humanAgent.value?.human_agent_name
-    && !showEmailGate.value
-)
-
-const startingNewChat = ref(false)
-const newChatError = ref('')
-
-// Ending a chat closes the session, and history is scoped to the active session —
-// so the old conversation is gone for good. The control asks first, in words, inside
-// the widget; the question withdraws itself if it is left unanswered.
-const newChatArmed = ref(false)
-let newChatArmTimer: ReturnType<typeof setTimeout> | null = null
-
-const disarmNewChat = () => {
-    newChatArmed.value = false
-    newChatError.value = ''
-    if (newChatArmTimer) {
-        clearTimeout(newChatArmTimer)
-        newChatArmTimer = null
-    }
-}
-
-const requestNewChat = () => {
-    if (startingNewChat.value) return
-    if (newChatArmed.value) {
-        disarmNewChat()
-        return
-    }
-    newChatArmed.value = true
-    newChatError.value = ''
-    newChatArmTimer = setTimeout(disarmNewChat, NEW_CHAT_CONFIRM_TIMEOUT_MS)
-}
-
-// A human agent taking the chat over (or the last message going away) hides the New
-// chat control - the open question has to go with it, or a visitor could confirm
-// their way out of a live handover the moment a person joined.
-watch(canStartNewChat, (can) => {
-    if (!can) disarmNewChat()
+// The "New chat" control and the workflow's "start a new conversation" button.
+const {
+    canStartNewChat,
+    startingNewChat,
+    newChatError,
+    newChatArmed,
+    disarmNewChat,
+    requestNewChat,
+    confirmNewChat,
+    handleStartNewConversation,
+} = useNewChat({
+    customization,
+    conversation: { messages, humanAgent, endChat: socketEndChat, getWorkflowState },
+    showEmailGate,
+    initializeWidget,
+    clearComposer,
 })
-
-// The visitor answered the confirmation.
-const confirmNewChat = async () => {
-    if (startingNewChat.value) return
-    if (newChatArmTimer) {
-        clearTimeout(newChatArmTimer)
-        newChatArmTimer = null
-    }
-    await handleStartNewChat()
-    // Keep the bar up when it failed, so the message has somewhere to live.
-    if (!newChatError.value) newChatArmed.value = false
-}
-
-// Close the session, drop the local conversation, and reconnect into a fresh one.
-const handleStartNewChat = async () => {
-    if (startingNewChat.value) return
-    startingNewChat.value = true
-    newChatError.value = ''
-    try {
-        // Only a confirmed close makes the next conversation a new one. Clearing the
-        // transcript after a failed close would show an empty chat that the server
-        // still considers open, and the old messages would come back on reconnect.
-        const closed = await socketEndChat()
-        if (!closed) {
-            newChatError.value = NEW_CHAT_FAILED_TEXT
-            return
-        }
-        humanAgent.value = {}
-        newMessage.value = ''
-        uploadedAttachments.value = []
-        await initializeWidget()
-    } catch (error) {
-        console.error('Failed to start a new chat:', error)
-        newChatError.value = NEW_CHAT_FAILED_TEXT
-    } finally {
-        startingNewChat.value = false
-    }
-}
-
-// Handle starting a new conversation
-const handleStartNewConversation = async () => {
-    shouldShowNewConversationOption.value = false
-    messages.value = [] // Clear messages
-    // Drop any human agent from the previous conversation. humanAgent is only ever
-    // set (on takeover, and from loaded history), never cleared, so without this the
-    // fresh AI-handled chat would keep the old agent's name in the header, keep
-    // attachments enabled, and hide the AI disclaimer while the AI is answering.
-    humanAgent.value = {}
-    await startNewConversationWorkflow()
-}
 
 onMounted(async () => {
     await initializeWidget()
@@ -1648,14 +1230,6 @@ onUnmounted(() => {
     disarmNewChat()
 
     cleanup()
-})
-
-// Aurora is the new dark ask-me-anything design (shares the ASK_ANYTHING flow).
-const isAuroraStyle = computed(() => customization.value.chat_style === 'AURORA')
-
-// Add after the existing computed properties, around line 120
-const isAskAnythingStyle = computed(() => {
-    return customization.value.chat_style === 'ASK_ANYTHING' || isAuroraStyle.value
 })
 
 // Use the generated aurora orb when the user explicitly picked "orb", or as the Aurora
@@ -1722,186 +1296,29 @@ const showAiDisclaimer = computed(() =>
     shouldShowAiDisclaimer(customization.value.show_ai_disclaimer, isHandedOverToHuman.value))
 
 
-// Pre-chat email gate: only when the agent opts in (and never for the gate-less Ask AI layout)
-const shouldCollectEmail = computed(() => customization.value.collect_email === true && !isAskAnythingStyle.value)
-
-// Pre-chat email gate: when the agent collects email, show a small form first (like a
-// workflow step). The chat (welcome message + quick actions + input) only appears once a
-// valid email is submitted, so quick actions can never fire before the email is captured.
-const emailCollected = ref(false)
-const emailGateError = ref('')
-const submittingEmail = ref(false)
-const showEmailGate = computed(() =>
-    !hasStartedChat.value && shouldCollectEmail.value && !emailCollected.value)
-
-const submitEmailGate = async () => {
-    const email = emailInput.value.trim()
-    if (!email) {
-        emailGateError.value = 'Please enter your email address.'
-        return
-    }
-    if (!isValidEmail(email)) {
-        emailGateError.value = 'Please enter a valid email address.'
-        return
-    }
-    emailGateError.value = ''
-    submittingEmail.value = true
-    try {
-        // Submit the email to the backend (associates it + (re)connects the socket).
-        await checkAuthorization()
-        emailCollected.value = true
-    } catch {
-        emailGateError.value = 'Something went wrong. Please try again.'
-    } finally {
-        submittingEmail.value = false
-    }
-}
-
-// Display geometry pushed by the embed loader (WIDGET_DISPLAY). Falls back to the
-// dashboard metadata for direct-iframe embeds where no loader is present.
-const parentDisplay = ref<{ mode?: string; width?: number; height?: number; hotkey?: boolean } | null>(null)
-
-// Whether the embedder currently shows the widget. Defaults to true for direct
-// iframe embeds (dashboard preview, raw <iframe>), where nobody reports visibility;
-// the loader corrects it immediately with WIDGET_VISIBILITY on load.
-const hostVisible = ref(true)
-
-// Classic floating-window geometry — must mirror the chattermate.js config defaults
-// (displayMode/containerWidth/containerHeight); at these values the loader behaves
-// exactly as before display modes existed.
-const CLASSIC_DISPLAY = { mode: 'floating', width: 400, height: 560 }
-
-const resolvedDisplay = computed<Record<string, any> | null>(() =>
-    parentDisplay.value
-    || (customization.value.customization_metadata as Record<string, any> | undefined)?.widget_display
-    || null
-)
-
-const hasCustomDisplay = computed(() => {
-    const display = resolvedDisplay.value
-    if (!display) return false
-    // Anything beyond the classic floating window means the host container has
-    // custom geometry the interior must fill rather than fight.
-    return (
-        (typeof display.mode === 'string' && display.mode !== CLASSIC_DISPLAY.mode) ||
-        (typeof display.width === 'number' && display.width !== CLASSIC_DISPLAY.width) ||
-        (typeof display.height === 'number' && display.height !== CLASSIC_DISPLAY.height)
-    )
-})
-
-const containerStyles = computed(() => {
-    // Always fill the embed iframe exactly. chattermate.js sizes the iframe itself
-    // (fixed size on desktop, full-screen on mobile), so 100%/100% here guarantees the
-    // panel fills it with no right-side gap. (Previously this branched on a one-shot,
-    // non-reactive window.innerWidth check + 100vw, which could leave the panel narrower
-    // than the iframe and clip the header's minimize control on mobile.)
-    const baseStyles = {
-        width: '100%',
-        height: '100%',
-        borderRadius: 'var(--radius-lg)'
-    }
-
-    // Sidebar / custom-size embeds: the loader drives the geometry — fill it.
-    // The fixed interior sizes below would fight a 100dvh drawer or a 520px window.
-    if (hasCustomDisplay.value) {
-        const mode = resolvedDisplay.value?.mode
-        const isSidebar = mode === 'sidebar-left' || mode === 'sidebar-right'
-        return isSidebar ? { ...baseStyles, borderRadius: '0' } : baseStyles
-    }
-
-    if (isAskAnythingStyle.value) {
-        // Mobile responsive adjustments for ASK_ANYTHING style
-        if (window.innerWidth <= 768) {
-            return {
-                ...baseStyles,
-                width: '100vw',
-                height: '100vh',
-                maxWidth: '100vw',
-                maxHeight: '100vh',
-                minWidth: 'unset',
-                borderRadius: '0'
-            }
-        } else if (window.innerWidth <= 1024) {
-            // Tablet adjustments
-            return {
-                ...baseStyles,
-                width: '95%',
-                maxWidth: '700px',
-                minWidth: '500px',
-                height: '650px'
-            }
-        } else {
-            // Desktop - same width as other chat styles
-            return {
-                ...baseStyles,
-                width: '100%',
-                maxWidth: '400px',
-                minWidth: '400px',
-                height: '580px'
-            }
-        }
-    }
-
-    return baseStyles
+// Display geometry, host visibility and the surface on screen (Ask AI palette or chat).
+const {
+    parentDisplay,
+    hostVisible,
+    containerStyles,
+    useAskAiPanel,
+    askAiHotkey,
+} = useWidgetDisplay({
+    customization,
+    isAskAnythingStyle,
+    allowAttachments,
+    isExpanded,
+    messages,
+    gatingScreens: [showLandingPage, showFullScreenForm, showEmailGate, shouldShowNewConversationOption],
 })
 
 const shouldShowWelcomeMessage = computed(() => {
     return isAskAnythingStyle.value && messages.value.length === 0
 })
 
-// Message kinds the palette deliberately doesn't render: they need the chat panel's
-// interactive UI (forms, rating, product cards) or its attachment rendering. Rather
-// than silently dropping them, the whole conversation falls back to the chat panel.
-const CHAT_ONLY_MESSAGE_TYPES = ['form', 'user_input', 'rating', 'product', 'shopify_output']
-
-const conversationNeedsChatPanel = computed(() =>
-    messages.value.some(m =>
-        CHAT_ONLY_MESSAGE_TYPES.includes(m.message_type)
-        || (Array.isArray(m.attachments) && m.attachments.length > 0)
-    )
-)
-
-// The Ask AI palette is the surface for the ask-anything styles AND for the
-// search-bar trigger whatever the style: a box labelled "Ask anything" that opens a
-// corner chat window is incoherent. The loader reports the palette as mode 'ask-ai';
-// 'search-bar' covers direct-iframe embeds, where no loader is involved.
-const isAskAiSurface = computed(() => {
-    if (isAskAnythingStyle.value) return true
-    const searchBarTrigger = resolvedDisplay.value?.mode === 'ask-ai'
-        || resolvedDisplay.value?.mode === 'search-bar'
-    // For the other chat styles the search bar alone promotes the palette — but not
-    // when the agent accepts file uploads: the palette has no attach control, and
-    // silently removing an enabled feature is worse than an odd-looking trigger.
-    return searchBarTrigger && !allowAttachments.value
-})
-
-// Workflow screens and the email gate still win — they gate the conversation, and
-// the palette has nowhere to host them.
-const useAskAiPanel = computed(() =>
-    isAskAiSurface.value
-    && isExpanded.value
-    && !showLandingPage.value
-    && !showFullScreenForm.value
-    && !showEmailGate.value
-    && !shouldShowNewConversationOption.value
-    && !conversationNeedsChatPanel.value
-)
-
-// Tell the embedder which surface is actually on screen. Without this the loader
-// keeps the palette's centred, content-hugged geometry after the widget falls back
-// to the chat panel (rating, product card, workflow form), leaving a full chat UI
-// squeezed into a box sized for a two-line answer.
-watch(useAskAiPanel, (palette) => {
-    postToHost({ type: 'WIDGET_SURFACE', palette })
-}, { immediate: true })
-
 const askAiSubtitle = computed(() =>
     customization.value.welcome_subtitle || `Ask a question — ${agentName.value || 'the assistant'} answers from what it knows.`
 )
-
-// The embedder owns the ⌘K chord and can turn it off (loader `hotkey: false`); it
-// reports the decision alongside the display geometry.
-const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 </script>
 
 <template>
@@ -2252,7 +1669,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 
                 <div class="form-actions">
                     <button
-                        @click="() => { console.log('Submit button clicked!'); submitFullScreenForm(); }"
+                        @click="submitFullScreenForm()"
                         :disabled="isSubmittingForm"
                         class="submit-form-button"
                         :style="userBubbleStyles"
@@ -2635,7 +2052,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 
                                     <div class="form-actions">
                                         <button
-                                            @click="() => { console.log('Regular form submit button clicked!'); handleFormSubmit(message.attributes?.form_data); }"
+                                            @click="handleFormSubmit(message.attributes?.form_data)"
                                             :disabled="isSubmittingForm"
                                             class="form-submit-button"
                                             :style="userBubbleStyles"

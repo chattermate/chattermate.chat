@@ -150,6 +150,12 @@ function validateExtension(filename: string, mimeType: string): { valid: boolean
   return { valid: true }
 }
 
+/** Frees the in-memory preview URLs of a staged file. */
+export const revokeBlobUrls = (file: { url?: string; file_url?: string }) => {
+  if (file.url && file.url.startsWith('blob:')) URL.revokeObjectURL(file.url)
+  if (file.file_url && file.file_url.startsWith('blob:')) URL.revokeObjectURL(file.file_url)
+}
+
 export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTMLInputElement | null>) {
   // File handling state
   const uploadedAttachments = ref<Array<{
@@ -469,13 +475,7 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
       console.error('Error calling delete API:', error)
     }
     
-    // Revoke blob URLs to free memory
-    if (file.url && file.url.startsWith('blob:')) {
-      URL.revokeObjectURL(file.url)
-    }
-    if (file.file_url && file.file_url.startsWith('blob:')) {
-      URL.revokeObjectURL(file.file_url)
-    }
+    revokeBlobUrls(file)
     
     uploadedAttachments.value.splice(index, 1)
   }

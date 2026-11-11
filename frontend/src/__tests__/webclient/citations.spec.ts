@@ -43,4 +43,23 @@ describe('citation labels', () => {
         expect(looksLikeOpaqueId('returns-faq')).toBe(false)
         expect(prettyType('FILE')).toBe('File')
     })
+
+    it('falls back to a friendly label when there is no source at all', () => {
+        expect(citationLabel(undefined as any)).toBe('Knowledge base')
+        expect(citationTooltip(undefined as any)).toBe('Knowledge base')
+    })
+
+    it('drops a hash prefix joined with a dash', () => {
+        expect(citationLabel({ name: 'ce983a1b2c3d4e5f6a7b-returns-faq', type: 'url' })).toBe('returns-faq')
+    })
+
+    it('drops an uppercase file extension', () => {
+        expect(citationLabel({ name: 'Price list.PDF', type: 'pdf' })).toBe('Price list')
+        expect(citationLabel({ name: 'Handbook.Docx', type: 'file' })).toBe('Handbook')
+    })
+
+    it('falls back to the type when nothing is left after the hash', () => {
+        expect(citationLabel({ name: '0123456789abcdef0_', type: 'file' })).toBe('File')
+        expect(citationLabel({ name: '0123456789abcdef0_.pdf', type: 'pdf' })).toBe('Pdf')
+    })
 })

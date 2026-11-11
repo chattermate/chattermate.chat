@@ -47,4 +47,27 @@ describe('form field validation', () => {
         expect(isValidPhoneNumber('123456')).toBe(false)
         expect(isValidPhoneNumber('1234567890123456')).toBe(false)
     })
+
+    it('accepts exactly 15 digits, with or without punctuation', () => {
+        expect(isValidPhoneNumber('123456789012345')).toBe(true)
+        expect(isValidPhoneNumber('+1 (234) 567-890-12345')).toBe(true)
+        expect(validateFormField({ label: 'Phone', type: 'tel' }, '+12 345 678 901 2345')).toBeNull()
+    })
+
+    it('accepts text exactly at its length limits', () => {
+        expect(validateFormField({ label: 'Note', type: 'text', minLength: 5 }, 'abcde')).toBeNull()
+        expect(validateFormField({ label: 'Note', type: 'textarea', maxLength: 3 }, 'abc')).toBeNull()
+    })
+
+    it('accepts numbers exactly at their bounds', () => {
+        expect(validateFormField({ label: 'Qty', type: 'number', minLength: 2 }, '2')).toBeNull()
+        expect(validateFormField({ label: 'Qty', type: 'number', maxLength: 9 }, '9')).toBeNull()
+    })
+
+    it('treats a numeric 0 on a required number field as blank', () => {
+        // Pinned current behaviour (bug): isBlank uses `!value`, so the number 0 is
+        // reported as missing; the string '0' passes.
+        expect(validateFormField({ label: 'Qty', type: 'number', required: true }, 0)).toBe('Qty is required')
+        expect(validateFormField({ label: 'Qty', type: 'number', required: true }, '0')).toBeNull()
+    })
 })

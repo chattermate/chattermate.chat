@@ -53,8 +53,9 @@ export const stripUrlsForProducts = (text?: string | null): string => {
             return `__MARKDOWN_LINK_${markdownLinks.length - 1}__`
         })
         .replace(BARE_URL, '[link removed]')
+    // A function replacer: a link text holding `$&` or `$1` must come back as written.
     markdownLinks.forEach((link, index) => {
-        processed = processed.replace(`__MARKDOWN_LINK_${index}__`, link)
+        processed = processed.replace(`__MARKDOWN_LINK_${index}__`, () => link)
     })
     // Clean up the blank lines left where images were.
     return processed.replace(/\n\s*\n\s*\n/g, '\n\n').trim()
