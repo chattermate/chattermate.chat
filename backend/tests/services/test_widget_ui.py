@@ -125,3 +125,16 @@ class TestBothVisitorRoutesServeTheSwitch:
                 patch("app.services.launcher.settings.S3_FILE_STORAGE", False):
             served = await widget_bootstrap._customization(MagicMock(), self._agent())
         assert served["customization_metadata"]["widget_ui"] == {"version": version}
+
+
+class TestServesRedesign:
+    @pytest.mark.parametrize("customization,expected", [
+        ({"customization_metadata": {"widget_ui": {"version": 2}}}, True),
+        ({"customization_metadata": {"widget_ui": {"version": 1}}}, False),
+        ({"customization_metadata": {}}, False),
+        ({"customization_metadata": None}, False),
+        ({}, False),
+        (None, False),
+    ])
+    def test_only_version_two(self, customization, expected):
+        assert widget_ui.serves_redesign(customization) is expected

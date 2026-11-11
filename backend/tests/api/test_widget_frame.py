@@ -313,6 +313,28 @@ class TestBootstrap:
         monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: False)
         assert bootstrap(client, test_widget).json()["hideBranding"] is False
 
+    def test_the_live_help_center_is_offered_on_the_redesign(self, client, test_widget, monkeypatch):
+        monkeypatch.setattr(widget_bootstrap, "help_center_url", lambda *a: "https://help.acme.example")
+        monkeypatch.setattr(widget_bootstrap.widget_ui, "serves_redesign", lambda *a: True)
+        assert bootstrap(client, test_widget).json()["helpCenterUrl"] == "https://help.acme.example"
+
+    def test_the_classic_widget_skips_the_help_center_lookup(self, client, test_widget, monkeypatch):
+        def lookup(*a):
+            raise AssertionError("looked up for a classic widget")
+        monkeypatch.setattr(widget_bootstrap, "help_center_url", lookup)
+        assert bootstrap(client, test_widget).json()["helpCenterUrl"] is None
+
+    def test_the_html_page_bakes_in_the_help_center(self, client, test_widget, monkeypatch):
+        monkeypatch.setattr(widget_bootstrap, "help_center_url", lambda *a: "https://help.acme.example/</script>")
+        monkeypatch.setattr(widget_bootstrap.widget_ui, "serves_redesign", lambda *a: True)
+        page = client.get(f"/api/v1/widgets/{test_widget.id}/data").text
+        assert "helpCenterUrl: " in page
+        # Escaped for a script block: the URL cannot close the tag.
+        assert "https://help.acme.example/</script>" not in page
+
+    def test_no_help_center_by_default(self, client, test_widget):
+        assert bootstrap(client, test_widget).json()["helpCenterUrl"] is None
+
     def test_a_plan_without_workflows_boots_a_plain_chat(self, client, db, test_widget, test_agent, monkeypatch):
         test_agent.use_workflow = True
         test_agent.active_workflow_id = uuid.uuid4()
@@ -329,6 +351,7 @@ class TestBootstrap:
         assert set(data) == {
             "widgetId", "agentName", "customization", "customerId", "initialToken",
             "customer", "workflow", "allowAttachments", "presence", "hideBranding",
+            "helpCenterUrl",
         }
         assert data["widgetId"] == test_widget.id
         assert data["agentName"] == (test_agent.display_name or test_agent.name)
@@ -343,6 +366,7 @@ class TestBootstrap:
         assert f'agentName: "{data["agentName"]}"' in page
         assert f'workflow: {str(data["workflow"]).lower()}' in page
         assert f'allowAttachments: {str(data["allowAttachments"]).lower()}' in page
+        assert "helpCenterUrl: null" in page
 
     def test_an_identified_visitor_keeps_their_identity(self, client, test_widget, identified_token):
         data = bootstrap(client, test_widget, identified_token).json()

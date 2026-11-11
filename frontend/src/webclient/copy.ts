@@ -113,6 +113,8 @@ export const PANEL_COPY = {
     stagedFiles: 'Files to send',
     previewImage: (name: string) => `Preview ${name}`,
     opensInNewTab: '(opens in a new tab)',
+    /** The start-state row that opens the org's public help center. */
+    helpCenter: 'Browse the help center',
     imagePreview: 'Image preview',
     closePreview: 'Close preview',
 } as const

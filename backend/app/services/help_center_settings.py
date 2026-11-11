@@ -247,6 +247,12 @@ def live_url(row: HelpCenterSettings) -> str:
     (self-host — no DNS/TLS/proxy needed, and correct scheme+port via BACKEND_URL)."""
     if row.domain_verified:
         return f"https://{row.custom_domain}"
+    return slug_url(row)
+
+
+def slug_url(row: HelpCenterSettings) -> str:
+    """The help center's own address (subdomain or path), which keeps working
+    whether or not a custom domain is set up."""
     if settings.HELP_CENTER_PUBLIC_MODE == "subdomain":
         return f"https://{row.slug}.{settings.HELP_CENTER_BASE_DOMAIN}"
     return f"{settings.BACKEND_URL.rstrip('/')}/help/{row.slug}"

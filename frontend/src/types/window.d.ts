@@ -27,5 +27,7 @@ interface Window {
         /** How soon the header may claim someone replies. */
         presence?: import('../utils/widgetPresence').WidgetPresence;
         hideBranding?: boolean;
+        /** The org's live public help center, when it has one. */
+        helpCenterUrl?: string | null;
     };
 } 

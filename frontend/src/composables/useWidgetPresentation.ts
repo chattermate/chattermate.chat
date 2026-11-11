@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { helpCenterLink } from '../webclient/help-center-link'
 import { computed, ref, type Ref } from 'vue'
 import type { AgentCustomization } from '../types/agent'
 import type { HumanAgent } from '../types/widget'
@@ -102,6 +103,9 @@ export function useWidgetPresentation({
     // The plan decides, so a page with no answer yet keeps the branding.
     const showBranding = computed(() => !window.__INITIAL_DATA__?.hideBranding)
 
+    // The org's live help center, offered on the redesign's start state.
+    const helpCenterUrl = computed(() => helpCenterLink(window.__INITIAL_DATA__?.helpCenterUrl))
+
     // Attachments only allowed when:
     // 1. allow_attachments setting is enabled
     // 2. Chat has been handed over to a human agent (no need to wait for agent message)
@@ -181,6 +185,7 @@ export function useWidgetPresentation({
         isHandedOverToHuman,
         presence,
         showBranding,
+        helpCenterUrl,
         canUploadMore,
         useOrbAvatar,
         orbStyle,

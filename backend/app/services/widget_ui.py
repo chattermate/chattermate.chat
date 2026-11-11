@@ -58,3 +58,11 @@ def for_visitors(db: Session, agent: Agent) -> Tuple[dict, Optional[str]]:
     launcher plan check, then the widget design switch."""
     metadata, logo_url = launcher.for_visitors(db, agent)
     return served_metadata(metadata), logo_url
+
+
+def serves_redesign(customization: Optional[dict]) -> bool:
+    """Whether the customization visitors are served (after the kill switch) is
+    the redesigned widget."""
+    metadata = (customization or {}).get("customization_metadata") or {}
+    return (metadata.get(WIDGET_UI_KEY) or {}).get("version") == 2
+
