@@ -30,6 +30,9 @@ import JourneyPlan from './JourneyPlan.vue'
 import SuggestedReplies from './SuggestedReplies.vue'
 import ProductCartButton from './ProductCartButton.vue'
 import { canAddToCart, handleCartMessage } from './shopify-cart'
+import { productUrl, stripUrlsForProducts } from './products'
+import { citationLabel, citationTooltip } from './citations'
+import { validateFormField } from './forms/validation'
 import { useActionReceipts } from '../composables/useActionReceipts'
 import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
@@ -1090,62 +1093,6 @@ const handleFieldChange = (fieldName: string, value: any) => {
     }
 }
 
-// Phone number validation function
-const isValidPhoneNumber = (phone: string): boolean => {
-    // Remove all non-digit characters
-    const cleanPhone = phone.replace(/\D/g, '')
-    // Check if it's between 7 and 15 digits (international standard)
-    return cleanPhone.length >= 7 && cleanPhone.length <= 15
-}
-
-// Enhanced form validation function
-const validateFormField = (field: any, value: any): string | null => {
-    // Required field validation
-    if (field.required && (!value || value.toString().trim() === '')) {
-        return `${field.label} is required`
-    }
-
-    // Skip further validation if field is empty and not required
-    if (!value || value.toString().trim() === '') {
-        return null
-    }
-
-    // Email validation
-    if (field.type === 'email' && !isValidEmail(value)) {
-        return `Please enter a valid email address`
-    }
-
-    // Phone number validation
-    if (field.type === 'tel' && !isValidPhoneNumber(value)) {
-        return `Please enter a valid phone number`
-    }
-
-    // Length validation for text fields
-    if ((field.type === 'text' || field.type === 'textarea') && field.minLength && value.length < field.minLength) {
-        return `${field.label} must be at least ${field.minLength} characters`
-    }
-
-    if ((field.type === 'text' || field.type === 'textarea') && field.maxLength && value.length > field.maxLength) {
-        return `${field.label} must not exceed ${field.maxLength} characters`
-    }
-
-    // Number validation
-    if (field.type === 'number') {
-        const numValue = parseFloat(value)
-        if (isNaN(numValue)) {
-            return `${field.label} must be a valid number`
-        }
-        if (field.minLength && numValue < field.minLength) {
-            return `${field.label} must be at least ${field.minLength}`
-        }
-        if (field.maxLength && numValue > field.maxLength) {
-            return `${field.label} must not exceed ${field.maxLength}`
-        }
-    }
-
-    return null
-}
-
 // Handle full screen form submission
 const submitFullScreenForm = async () => {
 
@@ -1194,79 +1141,19 @@ const submitFullScreenForm = async () => {
     }
 }
 
+// Opens the product on the storefront. Pinned current behaviour (odd): a missing
+// shop or product is reported with a blocking alert() inside the chat frame.
 const handleViewDetails = (product, shopDomain) => {
-    console.log('handleViewDetails called with:', { product, shopDomain });
-
-    if (!product) {
-        console.error('No product provided to handleViewDetails');
-        return;
-    }
-
-    // Try to construct the product URL
-    let productUrl = null;
-
-    // If product has a handle, construct the URL
-    if (product.handle && shopDomain) {
-        productUrl = `https://${shopDomain}/products/${product.handle}`;
-    } else if (product.id && shopDomain) {
-        // Fallback: use product ID
-        productUrl = `https://${shopDomain}/products/${product.id}`;
-    } else if (!shopDomain) {
-        console.error('Shop domain is missing! Product:', product);
-        alert('Unable to open product: Shop domain not available. Please contact support.');
-        return;
-    } else if (!product.handle && !product.id) {
-        console.error('Product handle and ID are both missing! Product:', product);
-        alert('Unable to open product: Product information incomplete.');
-        return;
-    }
-
-    // Open the product URL in new tab
-    if (productUrl) {
-        console.log('Opening product URL:', productUrl);
+    if (!product) return
+    const target = productUrl(product, shopDomain)
+    if ('url' in target) {
         // noopener: the opened page must not get a handle on the widget's window
-        window.open(productUrl, '_blank', 'noopener');
+        window.open(target.url, '_blank', 'noopener')
+        return
     }
-};
-
-// Add this function in the script section after the other helper functions
-const removeUrls = (text) => {
-    if (!text) return '';
-
-
-
-    // First, remove markdown images: ![alt text](url)
-    let processedText = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '');
-
-    // Then, temporarily replace regular markdown links with placeholders to preserve them
-    const markdownLinks = [];
-    processedText = processedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
-        const placeholder = `__MARKDOWN_LINK_${markdownLinks.length}__`;
-        console.log('Found markdown link:', match, '-> placeholder:', placeholder);
-        markdownLinks.push(match);
-        return placeholder;
-    });
-
-    console.log('After replacing markdown links with placeholders:', processedText);
-    console.log('Markdown links array:', markdownLinks);
-
-    // Now remove standalone URLs (not part of markdown links)
-    processedText = processedText.replace(/https?:\/\/[^\s\)]+/g, '[link removed]');
-
-    console.log('After removing standalone URLs:', processedText);
-
-    // Restore markdown links
-    markdownLinks.forEach((link, index) => {
-        processedText = processedText.replace(`__MARKDOWN_LINK_${index}__`, link);
-        console.log(`Restored markdown link ${index}:`, link);
-    });
-
-    // Clean up extra whitespace and newlines left after removing images
-    processedText = processedText.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
-
-
-
-    return processedText;
+    alert(target.error === 'missing_shop'
+        ? 'Unable to open product: Shop domain not available. Please contact support.'
+        : 'Unable to open product: Product information incomplete.')
 }
 
 
@@ -1834,31 +1721,6 @@ const showCitations = computed(() => customization.value.show_citations === true
 const showAiDisclaimer = computed(() =>
     shouldShowAiDisclaimer(customization.value.show_ai_disclaimer, isHandedOverToHuman.value))
 
-// Some knowledge documents are stored under an opaque id/hash rather than a
-// human-readable title. Showing that raw id in a chip looks broken, so fall back to
-// a friendly label derived from the source type (e.g. "Knowledge base").
-const looksLikeOpaqueId = (name: string) =>
-    /^[0-9a-f]{16,}$/i.test(name) || /^[0-9a-f-]{32,}$/i.test(name)
-const prettyType = (type?: string) => {
-    const t = (type || '').trim().toLowerCase()
-    if (!t || t === 'unknown') return 'Knowledge base'
-    return t.charAt(0).toUpperCase() + t.slice(1)
-}
-const citationLabel = (src: { name?: string; type?: string }) => {
-    let name = (src?.name || '').trim()
-    if (!name) return prettyType(src?.type)
-    // Knowledge docs are often stored as "<hash>_<real name>" (e.g.
-    // "ce983…497_coachiq-faq"). Drop the leading hash so the chip shows the
-    // readable part, then strip a common file extension for a cleaner label.
-    name = name.replace(/^[0-9a-f]{16,}[_-]/i, '').replace(/\.(pdf|txt|md|html?|docx?|csv|json)$/i, '')
-    if (!name || looksLikeOpaqueId(name)) return prettyType(src?.type)
-    return name
-}
-const citationTooltip = (src: { name?: string; type?: string }) => {
-    const label = citationLabel(src)
-    const type = prettyType(src?.type)
-    return label === type ? type : `${label} · ${type}`
-}
 
 // Pre-chat email gate: only when the agent opts in (and never for the gate-less Ask AI layout)
 const shouldCollectEmail = computed(() => customization.value.collect_email === true && !isAskAnythingStyle.value)
@@ -2827,7 +2689,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                             <template v-else-if="message.shopify_output || message.message_type === 'product'">
                                 <div class="product-message-container">
                                     <!-- Display the message text, removing images if products are present -->
-                                    <div v-if="message.message" v-html="renderMarkdown(message.shopify_output?.products?.length > 0 ? removeUrls(message.message) : message.message)" class="product-message-text"></div>
+                                    <div v-if="message.message" v-html="renderMarkdown(message.shopify_output?.products?.length > 0 ? stripUrlsForProducts(message.message) : message.message)" class="product-message-text"></div>
 
                                     <!-- Always use carousel/list display -->
                                     <div v-if="message.shopify_output?.products && message.shopify_output.products.length > 0" class="products-carousel">
