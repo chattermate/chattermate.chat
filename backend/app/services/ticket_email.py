@@ -142,9 +142,10 @@ def resolve_org_smtp(db: Session, organization_id) -> dict:
     return platform_smtp_config(settings.FROM_EMAIL)
 
 
-def send_smtp(cfg: dict, message: EmailMessage) -> None:
+def send_smtp(cfg: dict, message: EmailMessage, to_addrs: Optional[List[str]] = None) -> None:
+    """Send `message`; `to_addrs` names the only recipients (else its headers do)."""
     with open_smtp(cfg) as smtp:
-        smtp.send_message(message)
+        smtp.send_message(message, to_addrs=to_addrs)
 
 
 async def send_ticket_email(

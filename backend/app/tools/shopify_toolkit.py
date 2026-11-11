@@ -668,8 +668,10 @@ class ShopifyTools(Toolkit):
         proven = email_check.verified_email(self.session_id)
         if proven:
             return json.dumps({"confirmed": True, "message": "Their email is confirmed. Call list_my_orders."})
-        if self.turn_cards is not None:
-            self.turn_cards.email_check = True
+        # Only a conversation that was offered the check may send a code.
+        if self.turn_cards is None or not email_check.offer(str(self.session_id)):
+            return json.dumps({"confirmed": False, "message": "Ask the customer for their order number and email."})
+        self.turn_cards.email_check = True
         return json.dumps({"confirmed": False, "message": (
             "The chat now shows the customer a box to confirm their email with a code. "
             "Tell them to enter their email there. Do not ask them to type it in the chat.")})
@@ -682,6 +684,13 @@ class ShopifyTools(Toolkit):
         Returns:
             str: JSON with up to 5 recent orders: number, date and status.
         """
+        try:
+            return self._list_my_orders()
+        except Exception as e:
+            logger.error(f"list_my_orders failed: {e}")
+            return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
+
+    def _list_my_orders(self) -> str:
         email = email_check.verified_email(self.session_id)
         if not email:
             return json.dumps({"success": False, "message": "Their email is not confirmed yet. Call confirm_email."})

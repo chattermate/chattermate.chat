@@ -20,6 +20,8 @@ Either can answer email_check_error {reason, retry_in?, attempts_left?}.
 """
 
 import asyncio
+import smtplib
+from email.headerregistry import Address
 from email.message import EmailMessage
 
 from app.api.widget_actions import authenticated_session
@@ -39,7 +41,8 @@ SUBJECT = 'Your verification code'
 def _message(cfg: dict, to: str, code: str) -> EmailMessage:
     message = EmailMessage()
     message['From'] = cfg['from_email']
-    message['To'] = to
+    # One plain recipient, built as an address (valid_email already refused commas)
+    message['To'] = Address(addr_spec=to)
     message['Subject'] = SUBJECT
     message.set_content(
         f"Your verification code is {code}.\n\n"
@@ -50,10 +53,15 @@ def _message(cfg: dict, to: str, code: str) -> EmailMessage:
 
 
 def _send_code(org_id: str, to: str, code: str) -> None:
-    """Blocking: the SMTP send, from the org's own inbox when it has one."""
+    """Blocking: the SMTP send, from the org's own inbox when it has one, to that
+    one address only. A refused recipient reads as sent: the answer must not say
+    which mailboxes exist."""
     with SessionLocal() as db:
         cfg = resolve_org_smtp(db, org_id)
-    send_smtp(cfg, _message(cfg, to, code))
+    try:
+        send_smtp(cfg, _message(cfg, to, code), to_addrs=[to])
+    except smtplib.SMTPRecipientsRefused:
+        logger.info("Email check code refused by the recipient's server")
 
 
 async def _error(sid: str, result: email_check.CheckResult) -> None:
@@ -74,7 +82,7 @@ async def handle_email_check_start(sid, data):
     if session is None:
         return
     email = email_check.normalise(_text(data, 'email'))
-    result, code = email_check.start(session['session_id'], email)
+    result, code = await asyncio.to_thread(email_check.start, session['session_id'], session['org_id'], email)
     if not result.ok or code is None:
         await _error(sid, result)
         return
@@ -93,7 +101,8 @@ async def handle_email_check_verify(sid, data):
     session = await authenticated_session(sid)
     if session is None:
         return
-    result, email = email_check.verify(session['session_id'], _text(data, 'code'))
+    result, email = await asyncio.to_thread(
+        email_check.verify, session['session_id'], session.get('customer_id'), _text(data, 'code'))
     if not result.ok or email is None:
         await _error(sid, result)
         return

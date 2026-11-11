@@ -17,60 +17,89 @@ The widget's email check: the visitor proves an email is theirs with a 6-digit
 code sent to it, and the conversation may then look up that email's orders
 without the visitor typing it (shopify_order_access.py).
 
-- The code is kept only as an HMAC, bound to the conversation, in Redis for ten
-  minutes; five wrong tries end it.
-- Sending is limited: once every 30 seconds per conversation, and a few times an
-  hour per conversation and per email address.
-- The visitor gets the same answer whether or not the email has orders or an
-  account: the code is simply sent.
-- A proven email lasts for the day, for this conversation only.
+- Only a conversation whose agent asked for the check (confirm_email) may send a
+  code, so the widget can't be used to mail arbitrary addresses.
+- Only a plain address (the strict order-lookup form) gets a code, and it goes
+  to that one recipient.
+- The code is kept only as an HMAC, bound to the conversation, for ten minutes.
+  Five wrong tries per conversation, carried across resends, and ten failures a
+  day per email address, end it.
+- Sending is limited per conversation (every 30 seconds, a few an hour), per email
+  address and per organization. All counters live in Redis; when Redis fails the
+  check refuses rather than counting in one process's memory.
+- The visitor gets the same answer whether or not the email has orders.
+- A proven email lasts an hour for this conversation and this customer only, and
+  is forgotten when the conversation ends.
 
 Without Redis there is nowhere safe to keep a code, so the check is not offered.
+Every Redis call here is blocking: callers run it off the event loop.
 """
 
 import hashlib
 import hmac
 import json
-import re
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from app.core.config import settings
+from app.core.logger import get_logger
 from app.core.redis import get_redis
-from app.services.public_rate_limit import allow_request
+from app.tools.shopify_order_access import normalise_email, order_lookup_problem
+
+logger = get_logger(__name__)
 
 CODE_TTL_SECONDS = 600
 MAX_ATTEMPTS = 5
 RESEND_COOLDOWN_SECONDS = 30
-SENDS_PER_HOUR = 5
-VERIFIED_TTL_SECONDS = 24 * 3600
-
-_EMAIL = re.compile(r"^[^@\s]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
-_CODE = re.compile(r"^[0-9]{6}$")
+SENDS_PER_HOUR_PER_CONVERSATION = 5
+SENDS_PER_HOUR_PER_EMAIL = 10
+SENDS_PER_HOUR_PER_ORG = 200
+FAILURES_PER_DAY_PER_EMAIL = 10
+OFFER_TTL_SECONDS = 1800
+VERIFIED_TTL_SECONDS = 3600
 
 
 @dataclass(frozen=True)
 class CheckResult:
     ok: bool
-    # sent | verified | invalid_email | cooldown | too_many | expired | wrong_code | locked | unavailable
+    # sent | verified | not_offered | invalid_email | cooldown | too_many | expired
+    # | wrong_code | locked | unavailable
     reason: str
     retry_in: int = 0
     attempts_left: int = 0
 
 
+UNAVAILABLE = CheckResult(False, 'unavailable')
+
+
+def _client():
+    """The Redis client when it answers, else None."""
+    client = get_redis()
+    if client is None:
+        return None
+    try:
+        client.ping()
+        return client
+    except Exception as e:
+        logger.warning(f"Email check unavailable, Redis did not answer: {e}")
+        return None
+
+
 def available() -> bool:
     """The check needs Redis to keep codes."""
-    return get_redis() is not None
+    return _client() is not None
 
 
 def normalise(email: str) -> str:
-    return (email or '').strip().lower()
+    return normalise_email(email)
 
 
 def valid_email(email: str) -> bool:
-    return len(email) <= 254 and bool(_EMAIL.match(email))
+    """A plain address only: the strict form order lookups accept (no commas,
+    quotes or spaces that would reach more than one recipient)."""
+    return len(email) <= 254 and order_lookup_problem(email, "1001") is None
 
 
 def mask(email: str) -> str:
@@ -79,8 +108,20 @@ def mask(email: str) -> str:
     return f"{local[:1]}•••@{domain}"
 
 
-def _key(session_id: str) -> str:
-    return f"email_check:{session_id}"
+def _bucket(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()[:32]
+
+
+def _code_key(session_id: str) -> str:
+    return f"email_check:code:{session_id}"
+
+
+def _tries_key(session_id: str) -> str:
+    return f"email_check:tries:{session_id}"
+
+
+def _offer_key(session_id: str) -> str:
+    return f"email_check:offered:{session_id}"
 
 
 def _verified_key(session_id: str) -> str:
@@ -88,67 +129,128 @@ def _verified_key(session_id: str) -> str:
 
 
 def _digest(session_id: str, code: str) -> str:
-    return hmac.new(settings.SECRET_KEY.encode(), f"{session_id}:{code}".encode(), hashlib.sha256).hexdigest()
+    key = hmac.new(settings.SECRET_KEY.encode(), b"email-check", hashlib.sha256).digest()
+    return hmac.new(key, f"{session_id}:{code}".encode(), hashlib.sha256).hexdigest()
 
 
-def _email_bucket(email: str) -> str:
-    return hashlib.sha256(email.encode()).hexdigest()[:32]
+def _count(client, key: str, limit: int, window: int) -> bool:
+    """One more in a fixed window; True while within `limit`. SET NX EX first,
+    so the counter always carries its expiry."""
+    client.set(key, 0, nx=True, ex=window)
+    return int(client.incr(key)) <= limit
 
 
 def new_code() -> str:
     return f"{secrets.randbelow(10 ** 6):06d}"
 
 
-def start(session_id: str, email: str) -> tuple[CheckResult, Optional[str]]:
+def offer(session_id: str) -> bool:
+    """The agent asked this conversation to confirm an email (confirm_email)."""
+    client = _client()
+    if client is None:
+        return False
+    try:
+        client.set(_offer_key(session_id), 1, ex=OFFER_TTL_SECONDS)
+        return True
+    except Exception as e:
+        logger.warning(f"Email check offer not kept: {e}")
+        return False
+
+
+def start(session_id: str, org_id: str, email: str) -> Tuple[CheckResult, Optional[str]]:
     """Start (or restart) a check: (result, the code to email, or None when none
     is to be sent). The caller sends it; nothing here talks to SMTP."""
-    client = get_redis()
+    client = _client()
     if client is None:
-        return CheckResult(False, 'unavailable'), None
+        return UNAVAILABLE, None
     email = normalise(email)
-    if not valid_email(email):
-        return CheckResult(False, 'invalid_email'), None
-    existing = client.get(_key(session_id))
-    if existing:
-        sent_at = json.loads(existing).get('sent_at', 0)
-        wait = int(sent_at + RESEND_COOLDOWN_SECONDS - time.time())
-        if wait > 0:
-            return CheckResult(False, 'cooldown', retry_in=wait), None
-    if not (allow_request(f"email_check:session:{session_id}", SENDS_PER_HOUR, 3600)
-            and allow_request(f"email_check:email:{_email_bucket(email)}", SENDS_PER_HOUR, 3600)):
-        return CheckResult(False, 'too_many'), None
-    code = new_code()
-    record = {'email': email, 'digest': _digest(session_id, code), 'attempts': 0, 'sent_at': time.time()}
-    client.set(_key(session_id), json.dumps(record), ex=CODE_TTL_SECONDS)
-    return CheckResult(True, 'sent'), code
+    try:
+        if not client.get(_offer_key(session_id)):
+            return CheckResult(False, 'not_offered'), None
+        if not valid_email(email):
+            return CheckResult(False, 'invalid_email'), None
+        existing = client.get(_code_key(session_id))
+        if existing:
+            wait = int(json.loads(existing).get('sent_at', 0) + RESEND_COOLDOWN_SECONDS - time.time())
+            if wait > 0:
+                return CheckResult(False, 'cooldown', retry_in=wait), None
+        tries = int(client.get(_tries_key(session_id)) or 0)
+        failures = int(client.get(f"email_check:fail:{_bucket(email)}") or 0)
+        if tries >= MAX_ATTEMPTS or failures >= FAILURES_PER_DAY_PER_EMAIL:
+            return CheckResult(False, 'locked'), None
+        if not (_count(client, f"email_check:send:s:{session_id}", SENDS_PER_HOUR_PER_CONVERSATION, 3600)
+                and _count(client, f"email_check:send:e:{_bucket(email)}", SENDS_PER_HOUR_PER_EMAIL, 3600)
+                and _count(client, f"email_check:send:o:{org_id}", SENDS_PER_HOUR_PER_ORG, 3600)):
+            return CheckResult(False, 'too_many'), None
+        code = new_code()
+        record = {'email': email, 'digest': _digest(session_id, code), 'sent_at': time.time()}
+        client.set(_code_key(session_id), json.dumps(record), ex=CODE_TTL_SECONDS)
+        # Wrong tries carry across resends: a new code is not a new budget.
+        client.set(_tries_key(session_id), tries, ex=CODE_TTL_SECONDS)
+        return CheckResult(True, 'sent'), code
+    except Exception as e:
+        logger.error(f"Email check could not start: {e}")
+        return UNAVAILABLE, None
 
 
-def verify(session_id: str, code: str) -> tuple[CheckResult, Optional[str]]:
-    """Check a code: (result, the proven email on success)."""
+def verify(session_id: str, customer_id: str, code: str) -> Tuple[CheckResult, Optional[str]]:
+    """Check a code: (result, the proven email on success). Each try is counted
+    first (INCR, atomic across workers), then compared."""
+    client = _client()
+    if client is None:
+        return UNAVAILABLE, None
+    try:
+        raw = client.get(_code_key(session_id))
+        if not raw:
+            return CheckResult(False, 'expired'), None
+        record = json.loads(raw)
+        tries = int(client.incr(_tries_key(session_id)))
+        if tries > MAX_ATTEMPTS:
+            return CheckResult(False, 'locked'), None
+        candidate = (code or '').strip()
+        if not (candidate.isdigit() and len(candidate) == 6
+                and hmac.compare_digest(record['digest'], _digest(session_id, candidate))):
+            _count(client, f"email_check:fail:{_bucket(record['email'])}", FAILURES_PER_DAY_PER_EMAIL, 86400)
+            left = MAX_ATTEMPTS - tries
+            return CheckResult(False, 'wrong_code' if left else 'locked', attempts_left=left), None
+        for key in (_code_key(session_id), _tries_key(session_id), _offer_key(session_id)):
+            client.delete(key)
+        proof = json.dumps({'email': record['email'], 'customer_id': str(customer_id)})
+        client.set(_verified_key(session_id), proof, ex=VERIFIED_TTL_SECONDS)
+        return CheckResult(True, 'verified'), record['email']
+    except Exception as e:
+        logger.error(f"Email check could not verify: {e}")
+        return UNAVAILABLE, None
+
+
+def verified_email(session_id: Optional[str], customer_id: Optional[str] = None) -> Optional[str]:
+    """The email this conversation proved in the last hour, for this customer, or
+    None (also when Redis is down: order lookups then need the typed email)."""
+    if not session_id:
+        return None
     client = get_redis()
     if client is None:
-        return CheckResult(False, 'unavailable'), None
-    raw = client.get(_key(session_id))
-    if not raw:
-        return CheckResult(False, 'expired'), None
-    record = json.loads(raw)
-    if record['attempts'] >= MAX_ATTEMPTS:
-        return CheckResult(False, 'locked'), None
-    if not _CODE.match((code or '').strip()) or not hmac.compare_digest(record['digest'], _digest(session_id, code.strip())):
-        record['attempts'] += 1
-        ttl = client.ttl(_key(session_id))
-        client.set(_key(session_id), json.dumps(record), ex=ttl if ttl and ttl > 0 else CODE_TTL_SECONDS)
-        left = MAX_ATTEMPTS - record['attempts']
-        return CheckResult(False, 'wrong_code' if left else 'locked', attempts_left=left), None
-    client.delete(_key(session_id))
-    client.set(_verified_key(session_id), record['email'], ex=VERIFIED_TTL_SECONDS)
-    return CheckResult(True, 'verified'), record['email']
+        return None
+    try:
+        raw = client.get(_verified_key(str(session_id)))
+        proof = json.loads(raw) if raw else None
+    except Exception as e:
+        logger.warning(f"Proven email not read: {e}")
+        return None
+    if not isinstance(proof, dict) or not proof.get('email'):
+        return None
+    if customer_id is not None and proof.get('customer_id') != str(customer_id):
+        return None
+    return proof['email']
 
 
-def verified_email(session_id: Optional[str]) -> Optional[str]:
-    """The email this conversation proved today, or None."""
+def forget(session_id: Optional[str]) -> None:
+    """The conversation ended: its proof and any open check go with it."""
     client = get_redis()
     if client is None or not session_id:
-        return None
-    value = client.get(_verified_key(str(session_id)))
-    return value if isinstance(value, str) and value else None
+        return
+    try:
+        for key in (_verified_key(session_id), _code_key(session_id), _tries_key(session_id), _offer_key(session_id)):
+            client.delete(key)
+    except Exception as e:
+        logger.warning(f"Email check not cleared: {e}")

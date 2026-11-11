@@ -127,6 +127,7 @@ export const PANEL_COPY = {
         wrong_code: "That code isn't right.",
         locked: 'Too many wrong codes. Ask for a new one.',
         unavailable: "Email confirmation isn't available right now.",
+        not_offered: "Email confirmation isn't available right now.",
         send_failed: "We couldn't send the code. Please try again.",
     } as Record<string, string>,
     attemptsLeft: (n: number) => (n === 1 ? '1 try left.' : `${n} tries left.`),

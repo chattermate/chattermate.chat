@@ -70,3 +70,19 @@ async def test_verify_answers_with_the_result():
 def test_the_email_says_what_the_code_is_for():
     message = handlers._message({"from_email": "help@shop.example"}, "jane@acme.com", "123456")
     assert message["To"] == "jane@acme.com" and "123456" in message.get_content()
+
+
+
+def test_the_code_goes_to_that_one_address_and_a_refused_mailbox_reads_as_sent():
+    import smtplib
+    sent = {}
+
+    def fake_send(cfg, message, to_addrs=None):
+        sent["to"] = to_addrs
+        raise smtplib.SMTPRecipientsRefused({"jane@acme.com": (550, b"no such user")})
+
+    with patch.object(handlers, "SessionLocal"), \
+         patch.object(handlers, "resolve_org_smtp", return_value={"from_email": "help@shop.example"}), \
+         patch.object(handlers, "send_smtp", side_effect=fake_send):
+        handlers._send_code("o-1", "jane@acme.com", "123456")
+    assert sent["to"] == ["jane@acme.com"]

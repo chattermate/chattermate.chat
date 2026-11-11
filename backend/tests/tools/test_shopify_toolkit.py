@@ -873,9 +873,19 @@ class TestEmailCheckTools:
     def test_confirm_email_asks_for_the_check(self, shopify_tools):
         from app.cards.turn_cards import TurnCards
         shopify_tools.turn_cards = TurnCards()
-        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None):
+        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None), \
+             patch("app.tools.shopify_toolkit.email_check.offer", return_value=True) as offer:
             result = json.loads(shopify_tools.confirm_email())
         assert result["confirmed"] is False and shopify_tools.turn_cards.email_check is True
+        offer.assert_called_once_with("test_session_id")
+
+    def test_confirm_email_falls_back_when_the_check_cannot_be_offered(self, shopify_tools):
+        from app.cards.turn_cards import TurnCards
+        shopify_tools.turn_cards = TurnCards()
+        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None), \
+             patch("app.tools.shopify_toolkit.email_check.offer", return_value=False):
+            result = json.loads(shopify_tools.confirm_email())
+        assert "order number and email" in result["message"] and shopify_tools.turn_cards.email_check is False
 
     def test_list_my_orders_needs_a_proven_email(self, shopify_tools):
         with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None), \
