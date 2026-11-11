@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { describe, expect, it } from 'vitest'
-import { widgetUiVersion } from '@/webclient/widget-ui'
+import { createdOnRedesign, widgetUiVersion } from '@/webclient/widget-ui'
 
 describe('which widget design visitors get', () => {
     it('is the redesign only when the agent chose version 2', () => {
@@ -29,5 +29,15 @@ describe('which widget design visitors get', () => {
         expect(widgetUiVersion({ customization_metadata: {} })).toBe(1)
         expect(widgetUiVersion({})).toBe(1)
         expect(widgetUiVersion(null)).toBe(1)
+    })
+})
+
+describe('whether an agent was created on the redesign', () => {
+    it('is only the server\'s created_on_ui 2', () => {
+        expect(createdOnRedesign({ customization_metadata: { widget_ui: { version: 2, created_on_ui: 2 } } })).toBe(true)
+        expect(createdOnRedesign({ customization_metadata: { widget_ui: { version: 2 } } })).toBe(false)
+        expect(createdOnRedesign({ customization_metadata: { widget_ui: { version: 2, created_on_ui: '2' } } })).toBe(false)
+        expect(createdOnRedesign({ customization_metadata: {} })).toBe(false)
+        expect(createdOnRedesign(null)).toBe(false)
     })
 })

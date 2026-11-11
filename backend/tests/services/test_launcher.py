@@ -126,6 +126,19 @@ class TestCheckMetadataWrite:
             assert launcher.check_metadata_write(MagicMock(), uuid4(), {}, None) is None
         gate.assert_not_called()
 
+    @pytest.mark.parametrize("incoming", [{"avatar_style": "orb"}, {}])
+    def test_a_save_that_leaves_the_launcher_out_keeps_the_stored_one(self, incoming):
+        stored = {"launcher": {"size": "md", "logo_transparent": True}}
+        with patch("app.services.launcher.check_feature_access") as gate:
+            result = launcher.check_metadata_write(MagicMock(), uuid4(), stored, incoming)
+        gate.assert_not_called()
+        assert result == {**incoming, "launcher": {"size": "md", "logo_transparent": True}}
+
+    def test_an_explicit_null_still_clears_the_launcher(self):
+        stored = {"launcher": {"size": "md"}}
+        assert launcher.check_metadata_write(MagicMock(), uuid4(), stored, {"launcher": None}) == {"launcher": None}
+        assert launcher.check_metadata_write(MagicMock(), uuid4(), stored, None) is None
+
     def test_logo_transparent_comes_from_the_store_not_the_form(self):
         stored = {"launcher": {"logo_transparent": False}}
         result = launcher.check_metadata_write(MagicMock(), uuid4(), stored, {"launcher": {"logo_transparent": True}})

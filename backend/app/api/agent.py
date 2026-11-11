@@ -201,8 +201,17 @@ async def create_agent(
                 agent_dict["ask_for_rating"] = False
         
         # Create the agent
-        agent = agent_repo.create_agent(**agent_dict)
-        
+        # One transaction: the agent and its look's first row (the medium launcher,
+        # and the redesigned widget for good, stamped on insert by
+        # services/widget_ui.py). An agent without the row would read as legacy.
+        agent = agent_repo.create_agent(commit=False, **agent_dict)
+        customization = AgentCustomization(
+            agent_id=agent.id, customization_metadata=launcher.first_save_metadata(None))
+        db.add(customization)
+        db.commit()
+        db.refresh(agent)
+        db.refresh(customization)
+
         # Prepare response with empty knowledge list
         response = AgentWithCustomizationResponse(
             id=agent.id,
@@ -213,7 +222,7 @@ async def create_agent(
             instructions=agent.instructions,
             is_active=agent.is_active,
             organization_id=agent.organization_id,
-            customization=None,
+            customization=CustomizationResponse.model_validate(customization),
             transfer_to_human=agent.transfer_to_human or False,
             ai_replies_enabled=agent.ai_replies_enabled,
             channel_quick_replies=agent.channel_quick_replies,

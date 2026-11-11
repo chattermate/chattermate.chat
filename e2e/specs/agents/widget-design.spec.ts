@@ -1,7 +1,8 @@
-import { test, expect, env } from '@e2e'
+import { test, expect, env, makeLegacyAgent } from '@e2e'
 
-// Agent → Chat Customization → Design: the Original / New widget design. The chat
-// preview switches at once, and the choice is saved with the rest of the form.
+// Agent → Chat Customization → Design: the Original / New widget design, offered to
+// agents created before the new design (new ones start on it, new-agent-design.spec).
+// The chat preview switches at once, and the choice is saved with the rest of the form.
 // The classic run's stack serves visitors the original widget only, which the
 // form says; the redesign run's serves both.
 
@@ -10,9 +11,9 @@ const SAMPLE_QUESTION = 'Do you offer free returns?'
 const OFF_NOTES = env.widgetUi === 2 ? 0 : 1
 
 test.describe('widget design', () => {
-  test('switching an agent to the new design previews it at once and keeps it after saving @agents', async ({ agent, customizationPage }) => {
+  test('switching an existing agent to the new design previews it at once and keeps it after saving @agents', async ({ agent, customizationPage }) => {
+    makeLegacyAgent(agent.id)
     await customizationPage.goto(agent.id)
-    // From the original design, whichever this run's agents start on.
     await customizationPage.chooseWidgetDesign('Original')
     await expect(customizationPage.panelPreview).toHaveCount(0)
 

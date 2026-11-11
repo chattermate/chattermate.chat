@@ -16,7 +16,7 @@ export {
 } from './api/help-center'
 export { connectEmail, listChannelAccounts } from './api/channels'
 export { currentAiConfig, restoreAi, useFakeLlm, type AiConfig } from './api/ai'
-export { createAgent, enableLeadCapture } from './api/agents'
+export { createAgent, enableLeadCapture, makeLegacyAgent } from './api/agents'
 export { addKnowledgeText, clearKnowledgeQueue, deleteKnowledge, unfinishedKnowledge, uploadKnowledgePdf } from './api/knowledge'
 export { createWidget, loadWidgetFrom, openFramedWidgetFrom, requestFrameAfterHop, requestFrameFrom, setAllowedDomains } from './api/widgets'
 export { textPdf } from './support/pdf'

@@ -22,7 +22,12 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.widget import _visitor_customization
-from app.models.agent import AgentCustomization, ChatStyle, WidgetPosition
+from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.models.agent import Agent, AgentCustomization, AgentType, ChatStyle, WidgetPosition
+from app.repositories.agent import AgentRepository
 from app.models.schemas.agent_customization import CustomizationCreate
 from app.services import widget_bootstrap, widget_ui
 
@@ -95,8 +100,129 @@ class TestStoredChoiceOnSave:
     def test_nothing_to_keep(self, stored):
         assert widget_ui.keep_stored_choice(stored, {"avatar_style": "orb"}) == {"avatar_style": "orb"}
 
-    def test_a_save_without_metadata_is_left_alone(self):
+    def test_a_null_metadata_still_clears_a_legacy_agents_choice(self):
+        # Old behaviour, kept for agents made before the redesign: null replaces the
+        # whole dict. ({} keeps the choice, like any save that leaves the key out.)
         assert widget_ui.keep_stored_choice({"widget_ui": {"version": 2}}, None) is None
+        assert widget_ui.keep_stored_choice({"widget_ui": {"version": 2}}, {}) == {"widget_ui": {"version": 2}}
+
+
+class TestAgentsCreatedOnTheRedesign:
+    """created_on_ui is the server's: no client sets it, and an agent that has it
+    never goes back to the classic widget."""
+
+    STORED = {"widget_ui": {"version": 2, "created_on_ui": 2}, "launcher": {"size": "md"}}
+
+    def test_a_client_cannot_send_the_mark(self):
+        metadata = CustomizationCreate(customization_metadata={"widget_ui": {"version": 2, "created_on_ui": 2}})
+        assert metadata.customization_metadata["widget_ui"] == {"version": 2}
+
+    @pytest.mark.parametrize("incoming,kept", [
+        ({"avatar_style": "orb"}, {"avatar_style": "orb", "widget_ui": {"version": 2, "created_on_ui": 2}}),
+        ({"widget_ui": {"version": 2}}, {"widget_ui": {"version": 2, "created_on_ui": 2}}),
+        ({}, {"widget_ui": {"version": 2, "created_on_ui": 2}}),
+        (None, {"widget_ui": {"version": 2, "created_on_ui": 2}}),
+    ])
+    def test_every_save_keeps_the_mark(self, incoming, kept):
+        assert widget_ui.keep_stored_choice(self.STORED, incoming) == kept
+
+    @pytest.mark.parametrize("choice", [{"version": 1}, {}, None])
+    def test_going_back_to_classic_is_refused(self, choice):
+        with pytest.raises(HTTPException) as refused:
+            widget_ui.keep_stored_choice(self.STORED, {"widget_ui": choice})
+        assert refused.value.status_code == 400
+        assert refused.value.detail == widget_ui.STAYS_ON_REDESIGN
+
+    def test_the_kill_switch_still_serves_them_the_classic_widget(self):
+        with patch.object(widget_ui.settings, "WIDGET_UI_V2_ENABLED", False):
+            assert widget_ui.served_metadata(self.STORED)["widget_ui"] == {"version": 1}
+        assert self.STORED["widget_ui"] == {"version": 2, "created_on_ui": 2}
+
+
+class TestNewAgentRows:
+    """Every creation path goes through AgentRepository.create_agent; the first
+    customization row its caller inserts in that session is stamped."""
+
+    def _agent(self, db):
+        return AgentRepository(db).create_agent(
+            name="New", display_name="New", description="d", agent_type=AgentType.CUSTOMER_SUPPORT,
+            instructions=["i"], is_active=True, organization_id=uuid4())
+
+    def test_a_caller_that_makes_its_own_row_gets_one_row_on_the_redesign(self, db):
+        agent = self._agent(db)
+        db.add(AgentCustomization(agent_id=agent.id, accent_color="#f34611", chat_style=ChatStyle.CHATBOT))
+        db.flush()
+        rows = db.query(AgentCustomization).filter(AgentCustomization.agent_id == agent.id).all()
+        assert len(rows) == 1
+        assert rows[0].customization_metadata == {"widget_ui": {"version": 2, "created_on_ui": 2}}
+        assert rows[0].accent_color == "#f34611"
+
+    def test_only_the_new_agents_first_row_in_that_session(self, db):
+        agent = self._agent(db)
+        other = AgentCustomization(agent_id=uuid4(), customization_metadata={"launcher": {"size": "lg"}})
+        db.add(other)
+        db.flush()
+        assert other.customization_metadata == {"launcher": {"size": "lg"}}
+        first = AgentCustomization(agent_id=agent.id, customization_metadata={"launcher": {"size": "lg"}})
+        db.add(first)
+        db.flush()
+        assert first.customization_metadata == {"launcher": {"size": "lg"}, "widget_ui": {"version": 2, "created_on_ui": 2}}
+
+    def test_two_agents_created_in_one_session_are_both_stamped(self, db):
+        agents = [self._agent(db), AgentRepository(db).create_agent(
+            name="Second", display_name="Second", description="d", agent_type=AgentType.CUSTOMER_SUPPORT,
+            instructions=["i"], is_active=True, organization_id=uuid4())]
+        rows = [AgentCustomization(agent_id=agent.id, customization_metadata={}) for agent in agents]
+        db.add_all(rows)
+        db.flush()
+        assert [row.customization_metadata for row in rows] == [{"widget_ui": {"version": 2, "created_on_ui": 2}}] * 2
+
+    def test_a_second_row_for_the_same_agent_is_not_stamped(self, db):
+        agent = self._agent(db)
+        db.add(AgentCustomization(agent_id=agent.id, customization_metadata={}))
+        db.flush()
+        second = AgentCustomization(agent_id=agent.id, customization_metadata={})
+        db.add(second)
+        db.flush()
+        assert second.customization_metadata == {}
+
+    def test_a_failed_insert_retried_in_the_session_is_still_stamped(self, db):
+        taken = AgentCustomization(agent_id=uuid4(), customization_metadata={})
+        db.add(taken)
+        db.commit()
+        agent = self._agent(db)
+        # Its id is taken, so the insert fails.
+        db.add(AgentCustomization(id=taken.id, agent_id=agent.id, customization_metadata={}))
+        with pytest.raises(IntegrityError):
+            db.flush()
+        db.rollback()
+        retried = AgentCustomization(agent_id=agent.id, customization_metadata={})
+        db.add(retried)
+        db.flush()
+        assert retried.customization_metadata == {"widget_ui": {"version": 2, "created_on_ui": 2}}
+
+    def test_a_fresh_session_does_not_stamp_an_agents_first_row(self, db):
+        agent = self._agent(db)
+        db.commit()
+        fresh = Session(bind=db.get_bind())
+        try:
+            row = AgentCustomization(agent_id=agent.id, customization_metadata={})
+            fresh.add(row)
+            fresh.flush()
+            assert row.customization_metadata == {}
+        finally:
+            fresh.rollback()
+            fresh.close()
+
+    def test_an_agent_made_some_other_way_is_not_stamped(self, db):
+        agent = Agent(id=uuid4(), name="Old", display_name="Old", description="d",
+                      agent_type=AgentType.CUSTOMER_SUPPORT, instructions=["i"], organization_id=uuid4())
+        db.add(agent)
+        db.commit()
+        row = AgentCustomization(agent_id=agent.id, customization_metadata={})
+        db.add(row)
+        db.flush()
+        assert row.customization_metadata == {}
 
 
 class TestBothVisitorRoutesServeTheSwitch:

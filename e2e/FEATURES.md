@@ -52,7 +52,8 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Human handover | After hours, or nobody online: the chat waits in the team's queue with a reply that says so | `specs/handover/after-hours.org.spec.ts`, `nobody-online.spec.ts` | P1 | ✅ |
 | Human handover | A visitor's attachment reaches the teammate through a signed link | `specs/handover/attachments.spec.ts` | P2 | ✅ |
 | Agents | Create in the dashboard → edit instructions → they reach the model | `specs/agents/agent-editor.spec.ts` | P1 | ✅ |
-| Agents | Switch the widget design to New → the chat preview shows the redesigned panel → kept after saving | `specs/agents/widget-design.spec.ts` | P1 | ✅ |
+| Agents | An existing agent: switch the widget design to New → the chat preview shows the redesigned panel → kept after saving | `specs/agents/widget-design.spec.ts` | P1 | ✅ |
+| Agents | A new agent starts on the new widget design: no Original option, the preview and the site show it | `specs/agents/new-agent-design.spec.ts` | P1 | ✅ |
 | Agents | Toggles (handover, rating, reply buttons) | — | P1 | ⬜ |
 | Knowledge | Add text → answer is grounded in it (real search) | `specs/knowledge/knowledge-answer.spec.ts` | P1 | ✅ |
 | Knowledge | Deleted knowledge stops reaching the model; one agent's never reaches another's | `specs/knowledge/knowledge-lifecycle.spec.ts` | P1 | ✅ |

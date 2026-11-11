@@ -114,6 +114,15 @@ export class AgentCustomizationPage {
     return this.section('Design').getByText('Visitors see the original widget until')
   }
 
+  /** The chat preview, rather than the launcher on a page. */
+  async showChatPreview(): Promise<void> {
+    await step('Show the chat preview', async () => {
+      const chat = this.page.getByRole('radiogroup', { name: 'Preview' }).getByRole('radio', { name: 'Chat', exact: true })
+      await chat.click()
+      await expect(chat).toHaveAttribute('aria-checked', 'true')
+    })
+  }
+
   /** The redesigned widget as the chat preview draws it (the classic preview has no such region). */
   get panelPreview(): Locator {
     return this.page.getByRole('region', { name: 'Widget preview' })

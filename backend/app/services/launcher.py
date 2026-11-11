@@ -91,10 +91,14 @@ def adds_paid_options(stored: Optional[dict], incoming: Optional[dict]) -> bool:
 def check_metadata_write(db: Session, organization_id: UUID, stored_metadata: Optional[dict],
                          incoming_metadata: Optional[dict]) -> Optional[dict]:
     """Refuse newly chosen paid options and put back the server-owned keys.
-    Returns the metadata to store."""
+    A save that leaves the launcher out keeps the stored one (a whole-dict save
+    from an API client would otherwise drop it, the new agent's medium size with
+    it); an explicit null or {} still clears it. Returns the metadata to store."""
+    stored = (stored_metadata or {}).get(LAUNCHER_KEY) or {}
+    if incoming_metadata is not None and LAUNCHER_KEY not in incoming_metadata:
+        return {**incoming_metadata, LAUNCHER_KEY: stored} if stored else incoming_metadata
     if not incoming_metadata or not incoming_metadata.get(LAUNCHER_KEY):
         return incoming_metadata
-    stored = (stored_metadata or {}).get(LAUNCHER_KEY) or {}
     incoming = dict(incoming_metadata[LAUNCHER_KEY])
     if adds_paid_options(stored, incoming):
         check_feature_access(db, organization_id, LOGO_FEATURE, UPGRADE_MESSAGE)

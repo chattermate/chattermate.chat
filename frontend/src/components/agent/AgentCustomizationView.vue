@@ -30,7 +30,7 @@ import LauncherSection from './LauncherSection.vue'
 import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
 import WidgetDesignChoice from './WidgetDesignChoice.vue'
-import { widgetUiVersion } from '@/webclient/widget-ui'
+import { createdOnRedesign, widgetUiVersion } from '@/webclient/widget-ui'
 
 const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
@@ -219,6 +219,10 @@ const widgetDesign = computed<WidgetUiVersion>({
         emit('preview-mode', 'chat')
     },
 })
+
+// An agent created on the redesign keeps it (the server refuses the classic one),
+// so it gets no choice. Read from what is stored, not the unsaved form.
+const createdOnNewDesign = computed(() => createdOnRedesign(props.agent.customization))
 
 // Whether this server serves the redesign at all: read-only, on every agent the
 // dashboard loads (the agent's choice is still saved when it is off). An older
@@ -692,7 +696,7 @@ const hideInitiationPreview = () => {
                 :open="openSection === 'design'" @toggle="toggleSection('design')">
                 <!-- Chat design Section -->
                 <div class="subsection">
-                    <WidgetDesignChoice v-model="widgetDesign" :served="redesignServed" />
+                    <WidgetDesignChoice v-model="widgetDesign" :served="redesignServed" :choosable="!createdOnNewDesign" />
                     <h4 class="subsection-heading">Style</h4>
                     <p class="section-subtext">Pick the look that fits your store.</p>
 

@@ -514,6 +514,15 @@ export class ChatWidget {
     return this.page.locator('#chattermate-container')
   }
 
+  /**
+   * Which design the site was served: the loader frames the redesigned widget's
+   * panel differently. CSS: the loader marks that container with .cm-v2, nothing
+   * a visitor can name.
+   */
+  async design(): Promise<1 | 2> {
+    return (await this.panel.getAttribute('class'))?.split(/\s+/).includes('cm-v2') ? 2 : 1
+  }
+
   /** Shown by the loader instead of a chat when the widget refuses to load (e.g. no token). */
   get unavailableNotice(): Locator {
     return this.page.getByText('Chat Unavailable')

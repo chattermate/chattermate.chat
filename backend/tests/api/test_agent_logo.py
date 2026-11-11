@@ -216,6 +216,23 @@ class TestRemove:
         assert client.delete(f"/api/agent/{agent.id}/customization/logo").status_code == 404
 
 
+class TestNewAgentsMark:
+    """The logo routes rewrite the launcher; a new agent stays on the redesign."""
+
+    def test_logo_upload_and_removal_keep_it(self, client, db, user):
+        from app.repositories.agent import AgentRepository
+        agent = AgentRepository(db).create_agent(
+            name="N", display_name="N", description="d", agent_type=AgentType.CUSTOMER_SUPPORT,
+            instructions=["i"], is_active=True, organization_id=user.organization_id)
+        db.add(AgentCustomization(agent_id=agent.id, customization_metadata={"launcher": {"size": "md"}}))
+        db.commit()
+        mark = {"version": 2, "created_on_ui": 2}
+        assert client.post(f"/api/agent/{agent.id}/customization/logo", files=_files(_png())).status_code == 200
+        assert _row(db, agent).customization_metadata["widget_ui"] == mark
+        assert client.delete(f"/api/agent/{agent.id}/customization/logo").status_code == 200
+        assert _row(db, agent).customization_metadata["widget_ui"] == mark
+
+
 class TestCustomizationWrite:
     def _save(self, client, agent, **body):
         return client.post(f"/api/agent/{agent.id}/customization", json=body)

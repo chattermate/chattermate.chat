@@ -23,8 +23,15 @@
 import type { WidgetUiVersion } from '../types/agent'
 
 interface WithMetadata {
-    customization_metadata?: { widget_ui?: { version?: unknown } | null } | null
+    customization_metadata?: { widget_ui?: { version?: unknown; created_on_ui?: unknown } | null } | null
 }
 
 export const widgetUiVersion = (customization?: WithMetadata | null): WidgetUiVersion =>
     customization?.customization_metadata?.widget_ui?.version === 2 ? 2 : 1
+
+/**
+ * The agent was created on the redesign (created_on_ui, which only the server
+ * writes): it has no classic widget to go back to.
+ */
+export const createdOnRedesign = (customization?: WithMetadata | null): boolean =>
+    customization?.customization_metadata?.widget_ui?.created_on_ui === 2

@@ -26,8 +26,12 @@ withDefaults(defineProps<{
     modelValue: WidgetUiVersion
     /** Whether this server serves the redesign at all (its operator can turn it off). */
     served?: boolean
-}>(), { served: true })
+    /** False for an agent created on the redesign: nothing to choose, only the note. */
+    choosable?: boolean
+}>(), { served: true, choosable: true })
 const emit = defineEmits<{ (e: 'update:modelValue', version: WidgetUiVersion): void }>()
+
+const OFF_NOTE = 'Visitors see the original widget until the new design is turned on for this server.'
 
 const OPTIONS: Array<{ version: WidgetUiVersion; label: string }> = [
     { version: 1, label: 'Original' },
@@ -36,7 +40,8 @@ const OPTIONS: Array<{ version: WidgetUiVersion; label: string }> = [
 </script>
 
 <template>
-    <fieldset class="widget-design">
+    <p v-if="!choosable && !served" class="section-subtext widget-design__off">{{ OFF_NOTE }}</p>
+    <fieldset v-else-if="choosable" class="widget-design">
         <legend class="widget-design__heading">Widget design</legend>
         <div class="widget-design__chips">
             <label
@@ -56,9 +61,7 @@ const OPTIONS: Array<{ version: WidgetUiVersion; label: string }> = [
             </label>
         </div>
         <p class="section-subtext widget-design__note">You can switch back at any time.</p>
-        <p v-if="!served" class="section-subtext widget-design__note">
-            Visitors see the original widget until the new design is turned on for this server.
-        </p>
+        <p v-if="!served" class="section-subtext widget-design__note">{{ OFF_NOTE }}</p>
     </fieldset>
 </template>
 
@@ -98,6 +101,10 @@ const OPTIONS: Array<{ version: WidgetUiVersion; label: string }> = [
 .widget-design__chip:has(.widget-design__input:focus-visible) {
     outline: 2px solid var(--accent-ink);
     outline-offset: 2px;
+}
+/* Above the next heading (Style), which brings its own space. */
+p.widget-design__off {
+    margin: 0;
 }
 /* Outranks the form's own .section-subtext spacing. */
 .widget-design .widget-design__note {

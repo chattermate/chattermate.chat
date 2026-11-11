@@ -65,6 +65,17 @@ describe('WidgetDesignChoice', () => {
     })
 })
 
+describe('WidgetDesignChoice for an agent created on the new design', () => {
+    it('offers no choice, only the server note when the redesign is off', () => {
+        const locked = mount(WidgetDesignChoice, { props: { modelValue: 2, choosable: false } })
+        expect(locked.find('fieldset').exists()).toBe(false)
+        expect(locked.text()).toBe('')
+        const off = mount(WidgetDesignChoice, { props: { modelValue: 2, choosable: false, served: false } })
+        expect(off.find('input').exists()).toBe(false)
+        expect(off.text()).toBe('Visitors see the original widget until the new design is turned on for this server.')
+    })
+})
+
 describe('the design control in the customization form', () => {
     const agent = (metadata: Record<string, unknown>, served?: boolean) => ({
         id: 'agent-1',
@@ -90,6 +101,23 @@ describe('the design control in the customization form', () => {
         vi.spyOn(console, 'log').mockImplementation(() => {})
     })
     afterEach(() => vi.restoreAllMocks())
+
+    it('hides the choice for an agent created on the new design, and keeps it for the others', () => {
+        const created = mountForm({ widget_ui: { version: 2, created_on_ui: 2 } })
+        expect(design(created).exists()).toBe(false)
+        expect(created.text()).not.toContain('Original')
+        expect(design(mountForm({ widget_ui: { version: 2 } })).exists()).toBe(true)
+        expect(design(mountForm({})).exists()).toBe(true)
+    })
+
+    it('shows an agent created on the new design only the note when this server has it off', () => {
+        const off = mountForm({ widget_ui: { version: 2, created_on_ui: 2 } }, false)
+        expect(design(off).exists()).toBe(false)
+        expect(off.find('input[name="widget-design"]').exists()).toBe(false)
+        expect(off.text()).toContain('Visitors see the original widget until the new design is turned on for this server.')
+        expect(mountForm({ widget_ui: { version: 2, created_on_ui: 2 } }, true).text())
+            .not.toContain('Visitors see the original widget until')
+    })
 
     it('reflects the stored choice: Original when none is stored', () => {
         expect(checked(mountForm({}))).toBe('Original')
