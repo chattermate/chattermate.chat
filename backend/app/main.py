@@ -20,6 +20,7 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 
 # Add users import
 from fastapi.staticfiles import StaticFiles
+from app.core.widget_assets import WidgetAssets
 import socketio
 from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_frame, widget_apps, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, agent_actions, journeys, people, tickets
 from app.api import help_center as help_center_api
@@ -426,7 +427,7 @@ for folder in PUBLIC_UPLOAD_FOLDERS:
         StaticFiles(directory=os.path.join("uploads", folder), check_dir=False),
         name=f"uploads_{folder}",
     )
-app.mount("/assets", StaticFiles(directory=settings.WIDGET_ASSETS_DIR), name="assets")
+app.mount("/assets", WidgetAssets(settings.WIDGET_ASSETS_DIR), name="assets")
 
 # The API origin is not a website: no robots.txt meant crawlers were free to
 # discover /api/v1/... endpoints and report them as 404s.

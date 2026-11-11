@@ -29,5 +29,7 @@ interface Window {
         hideBranding?: boolean;
         /** The org's live public help center, when it has one. */
         helpCenterUrl?: string | null;
+        /** GET /widgets/{id}'s answer for initialToken, from /bootstrap (see prefetched-widget-data). */
+        widgetData?: import('../webclient/prefetched-widget-data').PrefetchedWidgetData;
     };
 } 

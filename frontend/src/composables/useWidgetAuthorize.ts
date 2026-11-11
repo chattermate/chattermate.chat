@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { takePrefetchedWidgetData } from '../webclient/prefetched-widget-data'
 import type { Ref } from 'vue'
 import { isValidEmail, isReauthorizingRefusal, type HumanAgent } from '../types/widget'
 import type { AgentCustomization } from '../types/agent'
@@ -163,10 +164,12 @@ export function useWidgetAuthorize({
 
             // Never a stored copy: this call is what binds the visitor to a customer,
             // and a cached answer left the socket holding the page's anonymous token.
-            const response = await fetch(url, {
-                headers,
-                cache: 'no-store'
-            })
+            // On first load /bootstrap has already answered it for this same token.
+            const response = takePrefetchedWidgetData(token.value, url.searchParams.get('email'))
+                ?? await fetch(url, {
+                    headers,
+                    cache: 'no-store'
+                })
 
             if (response.status === 401) {
                 // Check the error detail to determine the type of 401

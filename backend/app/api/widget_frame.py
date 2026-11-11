@@ -32,6 +32,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.api.widget import prefetched_widget_data
 from app.api.widget_common import (
     FONT_LINKS,
     FRAMED,
@@ -229,7 +230,11 @@ async def bootstrap_widget(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": denied.code, "message": message})
 
-    return JSONResponse(await widget_bootstrap.initial_data(db, session), headers=_NO_STORE)
+    data = await widget_bootstrap.initial_data(db, session)
+    # What the widget asks next (GET /widgets/{id}) for this same token, answered
+    # now: one round trip less before the chat is ready.
+    data["widgetData"] = await prefetched_widget_data(db, widget.id, session.token, body.source)
+    return JSONResponse(data, headers=_NO_STORE)
 
 
 def _own_widget(db: Session, widget_id: str, user: User):

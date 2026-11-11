@@ -33,8 +33,11 @@ test.describe('widget placement', () => {
     await siteOverrides.embed({ config: { position: { side: 'right' } } })
     const viewport = siteOverrides.page.viewportSize()!
     await expect(siteOverrides.launcher).toBeVisible()
+    // Revealed once the dashboard's settings have arrived (until then it is
+    // transparent, at the default size)
+    await expect.poll(() => siteOverrides.launcherShown()).toBe(true)
     await expect.poll(async () => (await siteOverrides.launcher.boundingBox())?.x).toBeGreaterThan(viewport.width - 150)
-    // …and stays there once the dashboard's settings arrive.
+    // …and stays there.
     await expectUnchanged('launcher position', async () => Math.round((await siteOverrides.launcher.boundingBox())!.x))
   })
 

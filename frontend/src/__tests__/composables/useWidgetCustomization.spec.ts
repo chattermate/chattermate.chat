@@ -16,9 +16,8 @@ limitations under the License.
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('webfontloader', () => ({ default: { load: vi.fn() } }))
 
-import { panelFrameFor, fontFamiliesFor, useWidgetCustomization } from '@/composables/useWidgetCustomization'
+import { panelFrameFor, useWidgetCustomization } from '@/composables/useWidgetCustomization'
 
 describe('useWidgetCustomization', () => {
     afterEach(() => {
@@ -94,20 +93,4 @@ describe('useWidgetCustomization', () => {
         expect(panelFrameFor(1, {})).toEqual({ ui: 1 })
     })
 
-    describe('fonts', () => {
-        it('the classic widget loads its display face', () => {
-            expect(fontFamiliesFor(1)).toContain('Space Grotesk:400,500,600,700')
-        })
-
-        it('the redesign loads only the body and mono faces', () => {
-            expect(fontFamiliesFor(2)).toEqual(['Instrument Sans:400,500,600', 'JetBrains Mono:400,500,600'])
-        })
-
-        it('adds a custom body font once', () => {
-            expect(fontFamiliesFor(2, '"Lora", serif')).toEqual([
-                'Instrument Sans:400,500,600', 'JetBrains Mono:400,500,600', 'Lora',
-            ])
-            expect(fontFamiliesFor(2, 'Instrument Sans, sans-serif')).toHaveLength(2)
-        })
-    })
 })

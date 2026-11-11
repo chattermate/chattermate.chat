@@ -157,6 +157,17 @@ export class ChatWidget {
       }
       await route.fulfill({ response, json: answer })
     })
+    // A starting widget gets that first answer inside /bootstrap's (widgetData)
+    await this.page.route(`**/widgets/${this.widgetId}/bootstrap`, async (route) => {
+      if (lost || !this.isStart(route.request())) return route.fallback()
+      const response = await route.fetch()
+      const answer = await response.json()
+      if (answer.widgetData?.data?.token) {
+        lost = true
+        delete answer.widgetData.data.token
+      }
+      await route.fulfill({ response, json: answer })
+    })
   }
 
   /**
