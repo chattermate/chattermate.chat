@@ -9,7 +9,8 @@ const BUDGETS = [
   // Raised from 60 KB for the launcher's sizes, icons, logo and animations (~3 KB gzipped).
   { file: 'embed loader (chattermate.min.js)', url: `${env.frontendUrl}/webclient/chattermate.min.js`, maxBytes: 82 * KB },
   { file: 'widget script (widget.js)', url: `${env.backendUrl}/assets/widget.js`, maxBytes: 500 * KB },
-  { file: 'widget styles (widget.css)', url: `${env.backendUrl}/assets/widget.css`, maxBytes: 135 * KB },
+  // Raised from 135 KB while the classic and redesigned widgets ship side by side; back down when the classic one is removed.
+  { file: 'widget styles (widget.css)', url: `${env.backendUrl}/assets/widget.css`, maxBytes: 150 * KB },
 ]
 
 test.describe('performance budgets', () => {

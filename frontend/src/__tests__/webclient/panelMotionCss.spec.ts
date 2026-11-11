@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -24,13 +24,18 @@ import { describe, expect, it } from 'vitest'
  * token, so both themes and every chat style stay right).
  */
 
-// Read from disk: vitest stubs CSS imports, ?raw included. widget-panel.css joins in 1.2.
+// Read from disk: vitest stubs CSS imports, ?raw included. Every widget-panel*.css
+// (the redesign's look, split by area) and the motion sheet.
 const SHEET_DIR = resolve(__dirname, '../../webclient')
+const PANEL_SHEET = /^widget-panel(?:-[a-z]+)?\.css$/
+const sheetNames = [
+    ...readdirSync(SHEET_DIR).filter(name => PANEL_SHEET.test(name)).sort(),
+    'widget-motion.css',
+].filter(name => existsSync(resolve(SHEET_DIR, name)))
 const sheets = Object.fromEntries(
-    ['widget-panel.css', 'widget-motion.css']
-        .filter(name => existsSync(resolve(SHEET_DIR, name)))
-        .map(name => [name, readFileSync(resolve(SHEET_DIR, name), 'utf8')]),
+    sheetNames.map(name => [name, readFileSync(resolve(SHEET_DIR, name), 'utf8')]),
 ) as Record<string, string>
+const allCss = Object.values(sheets).join('\n')
 
 const MOVABLE = new Set(['transform', 'opacity', 'none'])
 
@@ -88,8 +93,21 @@ const reducedMotionSelectors = (css: string): Set<string> => {
 const withoutVarFallbacks = (css: string) => css.replace(/var\([^()]*(?:\([^()]*\))?[^()]*\)/g, 'var()')
 
 describe('the redesign stylesheets', () => {
-    it('include the motion sheet', () => {
+    it('include the motion sheet and the panel sheets', () => {
         expect(Object.keys(sheets)).toContain('widget-motion.css')
+        expect(Object.keys(sheets)).toContain('widget-panel.css')
+    })
+
+    it('are all imported by the panel view', () => {
+        const view = readFileSync(resolve(SHEET_DIR, 'panel/PanelWidget.vue'), 'utf8')
+        for (const name of Object.keys(sheets)) expect(view).toContain(`import '../${name}'`)
+    })
+
+    // The per-sheet checks below pass trivially for a sheet with no keyframes or no
+    // animation; these prove the parsers still find them where they exist.
+    it('have keyframes and animated rules the checks can see', () => {
+        expect(keyframeProperties(withoutComments(allCss)).length).toBeGreaterThan(0)
+        expect(animatedSelectors(withoutComments(allCss)).length).toBeGreaterThan(0)
     })
 
     describe.each(Object.entries(sheets))('%s', (_path, raw) => {
@@ -101,8 +119,8 @@ describe('the redesign stylesheets', () => {
         })
 
         it('only animates transform and opacity in keyframes', () => {
+            // A sheet without keyframes passes trivially.
             const animated = keyframeProperties(css)
-            expect(animated.length).toBeGreaterThan(0)
             expect(animated.filter(prop => !MOVABLE.has(prop))).toEqual([])
         })
 
@@ -114,9 +132,9 @@ describe('the redesign stylesheets', () => {
         })
 
         it('stills every animation and transition for reduced motion', () => {
+            // A sheet that animates nothing passes trivially.
             const reduced = reducedMotionSelectors(css)
             const animated = animatedSelectors(css)
-            expect(animated.length).toBeGreaterThan(0)
             expect(animated.filter(selector => !reduced.has(selector))).toEqual([])
         })
 

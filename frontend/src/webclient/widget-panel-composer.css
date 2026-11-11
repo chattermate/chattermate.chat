@@ -1,0 +1,88 @@
+/**
+ * The redesigned widget's message box (ui 2). Rules and the other parts: see widget-panel.css.
+ */
+
+/* ===== Composer ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-composer {
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-composer:focus-within {
+    outline: 2px solid var(--cm-text);
+    outline-offset: 1px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-composer.is-disabled {
+    opacity: .6;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-composer__field {
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 14.5px;
+    line-height: 20px;
+    outline: none;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-composer__field::placeholder {
+    color: var(--cm-muted);
+    opacity: 1;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-send {
+    padding: 0;
+    border: 0;
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-line);
+    color: var(--cm-muted);
+    cursor: default;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-send.is-ready {
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    cursor: pointer;
+}
+/* Send ↔ stop: the arrow lifts away as the square grows in. */
+.chat-container.cm-surface.cm-ui-2 .cm-send__stop {
+    border-radius: 3px;
+    background: var(--cm-on-accent);
+    opacity: 0;
+    transform: scale(.3);
+    transition:
+        opacity calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-out),
+        transform calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-spring);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-send__arrow {
+    transition:
+        opacity calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-out),
+        transform calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-out);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-send.is-stop .cm-send__stop {
+    opacity: 1;
+    transform: scale(1);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-send.is-stop .cm-send__arrow {
+    opacity: 0;
+    transform: translateY(-6px);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-staged__file {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 12.5px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-secret-hint,
+.chat-container.cm-surface.cm-ui-2 .cm-composer-note {
+    margin: 6px 2px 0;
+    color: var(--cm-text);
+    font-size: 12.5px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-secret-hint {
+    font-weight: 600;
+}
+
+/* Reduced motion: send and stop swap with a short fade, nothing travels. */
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-send__stop,
+    .chat-container.cm-surface.cm-ui-2 .cm-send__arrow {
+        transition: opacity 150ms linear;
+    }
+}

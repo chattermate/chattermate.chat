@@ -202,6 +202,17 @@ describe('shape and motion per style', () => {
 
 })
 
+describe('the panel fill', () => {
+    it('is solid for Glass until the loader frosts what is behind it', () => {
+        expect(themeCssVars('GLASS', {}, { ui: 2 })['--cm-card']).toBe(getThemeTokens('GLASS').surface)
+        expect(themeCssVars('GLASS')['--cm-card']).toBe(getThemeTokens('GLASS').card)
+    })
+
+    it.each(['SUNRISE', 'AURORA', 'TERMINAL'])('is the %s card otherwise', (style) => {
+        expect(themeCssVars(style, {}, { ui: 2 })['--cm-card']).toBe(getThemeTokens(style).card)
+    })
+})
+
 describe('the panel look the loader gets', () => {
     it('marks only Glass as frosted', () => {
         expect(STYLES.filter(style => panelLookFor(style).glass)).toEqual(['GLASS'])

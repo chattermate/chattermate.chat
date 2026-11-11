@@ -87,4 +87,35 @@ describe('useTypewriter', () => {
     expect(text(0)).toBe('New chat')
     expect(api.isStreaming(0)).toBe(false)
   })
+
+  it('says when a reply is still revealing, and shows everything at once on stop', async () => {
+    const { messages, api, text } = setup()
+    expect(api.isRevealing.value).toBe(false)
+    messages.value.push({ message: 'A long reply', stream: true }, { message: 'And another', stream: true })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(30)
+    expect(api.isRevealing.value).toBe(true)
+
+    api.skipReveal()
+    await nextTick()
+
+    expect(api.isRevealing.value).toBe(false)
+    expect(text(0)).toBe('A long reply')
+    expect(text(1)).toBe('And another')
+    // Nothing keeps typing after the stop.
+    await finishTyping()
+    expect(text(1)).toBe('And another')
+  })
+
+  it('reveals a reply that arrives after a stop as usual', async () => {
+    const { messages, api, text } = setup()
+    messages.value.push({ message: 'First', stream: true })
+    await nextTick()
+    api.skipReveal()
+    messages.value.push({ message: 'Second', stream: true })
+    await nextTick()
+    expect(api.isStreaming(1)).toBe(true)
+    await finishTyping()
+    expect(text(1)).toBe('Second')
+  })
 })

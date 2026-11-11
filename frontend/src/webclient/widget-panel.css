@@ -1,0 +1,169 @@
+/**
+ * The redesigned widget's look (ui 2), split by area:
+ * - widget-panel.css: the panel, header, buttons, agent mark, avatars and footer;
+ * - widget-panel-messages.css: the conversation;
+ * - widget-panel-composer.css: the message box;
+ * - widget-panel-stopgaps.css: screens that later units replace (panel/stopgaps).
+ * Shared by the widget and (from plan 1.7) the dashboard preview; components keep
+ * only layout in their scoped styles. PanelWidget.vue imports all of them.
+ *
+ * Rules (enforced by __tests__/webclient/panelMotionCss.spec.ts for every
+ * widget-panel*.css):
+ * - every selector is scoped under `.chat-container.cm-surface.cm-ui-2`, which also
+ *   outranks widget-surface.css (the classic look) on the shared hooks
+ *   (.message-bubble, .agent-message, .user-message, .header-info h3);
+ * - every value comes from the --cm-* tokens (widget-theme.ts, panel/panel-theme.ts):
+ *   no colour literals, so both light and dark themes and every chat style work;
+ * - only transform and opacity move, and reduced motion stills them.
+ */
+
+/* ===== Panel (font and text colour come from widget-surface.css) ===== */
+.chat-container.cm-surface.cm-ui-2 {
+    font-size: 14.5px;
+    line-height: 1.45;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-panel {
+    background: var(--cm-card);
+}
+/* The shared Ask AI palette keeps its own focus style. The message box shows focus
+   on the composer around it (:focus-within below), so it is left out here. */
+.chat-container.cm-surface.cm-ui-2 .cm-panel :focus-visible:not(.cm-composer__field) {
+    outline: 2px solid var(--cm-text);
+    outline-offset: 2px;
+}
+
+/* ===== Header (the name, .header-info h3, is styled by widget-surface.css) ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-header {
+    border-bottom: 1px solid var(--cm-line);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status {
+    color: var(--cm-muted);
+    font-size: 12px;
+}
+/* Online is a filled dot, away a ring: the shape differs, and the words say it too. */
+.chat-container.cm-surface.cm-ui-2 .cm-status__dot {
+    border-radius: 50%;
+    background: var(--cm-accent);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-status.is-away .cm-status__dot {
+    background: none;
+    border: 1.5px solid var(--cm-muted);
+}
+
+/* ===== Buttons ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-icon-button {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cm-radius-control);
+    background: none;
+    color: var(--cm-muted);
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-icon-button--small {
+    width: 24px;
+    height: 24px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-icon-button:hover:not(:disabled),
+.chat-container.cm-surface.cm-ui-2 .cm-icon-button.is-armed {
+    background: var(--cm-tint);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-primary {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-chip {
+    min-height: 32px;
+    padding: 6px 14px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-chip:hover:not(:disabled) {
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-icon-button:disabled,
+.chat-container.cm-surface.cm-ui-2 .cm-primary:disabled,
+.chat-container.cm-surface.cm-ui-2 .cm-chip:disabled {
+    cursor: default;
+    opacity: .6;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-button {
+    min-height: 24px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* ===== Agent mark and avatars ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-mark {
+    background: var(--cm-accent);
+    border-radius: min(32%, var(--cm-avatar-radius));
+}
+.chat-container.cm-surface.cm-ui-2 .cm-mark--plain {
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-mark__dot {
+    background: var(--cm-on-accent);
+    border-radius: var(--cm-avatar-radius);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-mark__dot--human {
+    opacity: .45;
+    transition: opacity calc(var(--cm-dur-4) * var(--cm-dur-scale)) var(--cm-ease-out);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-mark__dot--human.is-joined {
+    opacity: 1;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-person {
+    border-radius: var(--cm-avatar-radius);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 12px;
+    font-weight: 700;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-person--sm {
+    font-size: 10.5px;
+}
+
+/* ===== Footer ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-footer {
+    color: var(--cm-muted);
+    font-size: 11.5px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-footer__brand {
+    color: var(--cm-muted);
+    text-decoration: none;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-footer__brand strong {
+    color: var(--cm-text);
+}
+
+/* Reduced motion: state changes fade briefly. */
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-mark__dot--human {
+        transition: opacity 150ms linear;
+    }
+}

@@ -75,8 +75,10 @@ class Settings(BaseSettings):
     # public origin.
     WIDGET_FRAME_URL: str = os.getenv("WIDGET_FRAME_URL", "").rstrip("/")
     # Operator kill switch for the redesigned widget: false serves every visitor the
-    # classic widget, whatever an agent chose, without a frontend deploy.
-    WIDGET_UI_V2_ENABLED: bool = os.getenv("WIDGET_UI_V2_ENABLED", "true").lower() == "true"
+    # classic widget, whatever an agent chose, without a frontend deploy. Off by
+    # default until the redesign renders every message kind (forms, ratings,
+    # products); until then a workflow agent on it could reach a dead end.
+    WIDGET_UI_V2_ENABLED: bool = os.getenv("WIDGET_UI_V2_ENABLED", "false").lower() == "true"
 
     # app.core.encryption owns the actual key loading (reads the env var directly and
     # refuses to start without it outside development). This mirror exists only so

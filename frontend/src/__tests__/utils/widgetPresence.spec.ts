@@ -16,6 +16,7 @@ limitations under the License.
 
 import { describe, expect, it } from 'vitest'
 import { presenceLine } from '@/utils/widgetPresence'
+import { PANEL_PRESENCE_TEXT } from '@/webclient/copy'
 
 describe('presenceLine', () => {
   it('promises instant replies only while the AI is answering', () => {
@@ -52,5 +53,16 @@ describe('presenceLine', () => {
     // on no evidence.
     expect(presenceLine(undefined).text).toBe('Online · replies instantly')
     expect(presenceLine({}).text).toBe('Online · replies instantly')
+  })
+
+  it('speaks the redesigned panel\'s words when given them, with the same honesty', () => {
+    expect(presenceLine({ mode: 'ai' }, false, PANEL_PRESENCE_TEXT))
+      .toEqual({ text: 'AI agent · replies instantly', online: true })
+    expect(presenceLine({ mode: 'human', available: true }, false, PANEL_PRESENCE_TEXT).text)
+      .toBe('Online · usually replies in a few minutes')
+    expect(presenceLine({ mode: 'human', available: false }, false, PANEL_PRESENCE_TEXT))
+      .toEqual({ text: "Away · we'll reply when we're back", online: false })
+    expect(presenceLine({ mode: 'ai' }, true, PANEL_PRESENCE_TEXT).text)
+      .toBe('Online · usually replies in a few minutes')
   })
 })

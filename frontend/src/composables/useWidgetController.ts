@@ -81,7 +81,8 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
 
     // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
     // to the bottom as text grows.
-    const { displayText, isStreaming } = useTypewriter(messages, () => nextTick(() => view.scrollToBottom()))
+    const { displayText, isStreaming, isRevealing, skipReveal } =
+        useTypewriter(messages, () => nextTick(() => view.scrollToBottom()))
 
     // Report unread agent messages (received while minimized) to the embedder badge.
     useUnreadBadge(messages)
@@ -155,7 +156,10 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         endChatForHost: endChat.endChatForHost,
         continueAnonymously: auth.continueAnonymously,
         adoptHostToken: auth.adoptHostToken,
-        setHostVisible: (open) => { display.hostVisible.value = open },
+        setHostVisible: (open) => {
+            display.hostVisible.value = open
+            view.hostVisibilityReported?.(open)
+        },
         setParentDisplay: (geometry) => { display.parentDisplay.value = geometry },
         prefill: (text) => {
             composer.newMessage.value = text
@@ -227,7 +231,8 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         ...pick(auth, 'isInitializing', 'hasConversationToken', 'authError', 'showAuthError',
             'isApiKeyAuthRequired', 'handleReconnect'),
         connectionStatus, errorMessage, showError,
-        messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming, ...rating,
+        messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
+        isRevealing, skipReveal, ...rating,
         ...pick(composer, 'newMessage', 'secretInMessage', 'isMessageInputEnabled', 'canTypeMessage',
             'placeholderText', 'sendMessage', 'sendQuickAction', 'handleKeyPress'),
         ...files,

@@ -97,6 +97,15 @@ function surfaceIsLight(tokens: ThemeTokens, colours: PanelColours): boolean {
     return inkFor(colours.customBackground) !== LIGHT_TEXT
 }
 
+/**
+ * The panel fill. Glass's translucent card only works over the loader's frosted
+ * backdrop (unit 1.5); until then a see-through panel shows the host page behind
+ * the messages, so the redesign paints Glass with its solid surface colour.
+ */
+function panelCard(tokens: ThemeTokens): string {
+    return tokens.glass ? tokens.surface : tokens.card
+}
+
 /** The loader's view of the panel for one theme and one agent's colours. */
 export function panelLook(tokens: ThemeTokens, colours: PanelColours): PanelLook {
     const elevation = surfaceIsLight(tokens, colours) ? 'light' : 'dark'
@@ -126,7 +135,7 @@ export function panelCssVars(tokens: ThemeTokens, colours: PanelColours): Record
     }
     // The classic vars take any background string and any custom text; the
     // redesign overrides them with the checked colours.
-    vars['--cm-card'] = colours.customBackground || tokens.card
+    vars['--cm-card'] = colours.customBackground || panelCard(tokens)
     vars['--cm-text'] = text
     if (colours.customBackground || text !== tokens.text) {
         // The muted line only as faint as still reads (theme defaults are already AA).

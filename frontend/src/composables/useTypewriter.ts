@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { reactive, toRaw, watch, onUnmounted, type Ref } from 'vue'
+import { computed, reactive, toRaw, watch, onUnmounted, type Ref } from 'vue'
 
 /**
  * Client-side "streaming" reveal for agent/bot replies. The full message already
@@ -112,9 +112,25 @@ export function useTypewriter(messages: Ref<any[]>, onReveal?: () => void) {
         return !!st && !st.done
     }
 
+    /** Whether any reply is still revealing. */
+    const isRevealing = computed(() => [...state.values()].some(st => !st.done))
+
+    /** Show every reply in full now (the visitor pressed stop). */
+    const skipReveal = () => {
+        if (timer) clearTimeout(timer)
+        timer = null
+        queue.length = 0
+        for (const [msg, st] of state.entries()) {
+            if (st.done) continue
+            st.shown = ((msg as any)?.message ?? '').length
+            st.done = true
+        }
+        onReveal?.()
+    }
+
     onUnmounted(() => {
         if (timer) clearTimeout(timer)
     })
 
-    return { displayText, isStreaming }
+    return { displayText, isStreaming, isRevealing, skipReveal }
 }

@@ -15,19 +15,23 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-// The widget root: one controller (state, socket, host page) provided to the view.
+// The widget root: one controller (state, socket, host page) provided to the view
+// the agent's design asks for (customization_metadata.widget_ui).
 import { provide } from 'vue'
 import { useWidgetController } from '../composables/useWidgetController'
 import { WIDGET_CTX, type WidgetControllerProps } from './panel/controller'
 import ClassicWidget from './ClassicWidget.vue'
+import PanelWidget from './panel/PanelWidget.vue'
 
 const props = defineProps<WidgetControllerProps>()
 
 // Its lifecycle hooks (initialize on mount, clean up on unmount) register here.
 const ctrl = useWidgetController(props)
 provide(WIDGET_CTX, ctrl)
+const { ui } = ctrl
 </script>
 
 <template>
-    <ClassicWidget />
+    <PanelWidget v-if="ui === 2" />
+    <ClassicWidget v-else />
 </template>

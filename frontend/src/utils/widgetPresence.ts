@@ -40,31 +40,40 @@ export interface PresenceLine {
   online: boolean
 }
 
-const PRESENCE_TEXT = {
+/** The words for each case; the redesigned widget brings its own (webclient/copy.ts). */
+export interface PresenceWording {
+  ai: string
+  human: string
+  away: string
+}
+
+export const PRESENCE_TEXT: PresenceWording = {
   ai: 'Online · replies instantly',
   human: 'Online · usually replies in a few minutes',
   away: "Away · we'll reply when we're back",
-} as const
+}
 
 /**
  * @param presence  what the server said when the widget loaded
  * @param handedOverToHuman  a person has taken this conversation over, so the
  *   AI is no longer answering it whatever the agent is configured to do
+ * @param wording  the words to use (the classic widget's by default)
  */
 export function presenceLine(
   presence?: WidgetPresence | null,
   handedOverToHuman = false,
+  wording: PresenceWording = PRESENCE_TEXT,
 ): PresenceLine {
   // Absent presence means an older widget payload: keep the previous wording
   // rather than declaring the team away on no evidence.
   const mode: PresenceMode = handedOverToHuman ? 'human' : (presence?.mode ?? 'ai')
 
   if (mode === 'ai') {
-    return { text: PRESENCE_TEXT.ai, online: true }
+    return { text: wording.ai, online: true }
   }
 
   const available = presence?.available !== false
   return available
-    ? { text: PRESENCE_TEXT.human, online: true }
-    : { text: PRESENCE_TEXT.away, online: false }
+    ? { text: wording.human, online: true }
+    : { text: wording.away, online: false }
 }

@@ -83,6 +83,8 @@ db_url() { local base="${PG_URL#postgres://}"; base="${base#postgresql://}"; ech
 backend_env() {
   export ENV_FILE="$E2E_DIR/.env.e2e"
   export WIDGET_FRAME_URL="${E2E_WIDGET_FRAME_URL-http://localhost:$BACKEND_PORT}"
+  # The redesigned widget is off by default; E2E_WIDGET_UI=2 runs need it served.
+  export WIDGET_UI_V2_ENABLED="${WIDGET_UI_V2_ENABLED:-$([[ "${E2E_WIDGET_UI:-}" == 2 ]] && echo true || echo false)}"
   export DATABASE_URL; DATABASE_URL="$(db_url "$1")"
   if [[ "$EDITION" == oss ]]; then
     export NO_ENTERPRISE=1

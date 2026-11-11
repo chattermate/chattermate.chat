@@ -1,0 +1,53 @@
+/**
+ * The redesigned widget's stopgap screens (ui 2): empty chat, email step, notices,
+ * workflow and unavailable screens (panel/stopgaps; plans 1.3 and 1.4 replace them).
+ * Rules and the other parts: see widget-panel.css.
+ */
+
+/* ===== Empty chat, email step, notices (stopgaps, see panel/stopgaps) ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-start__title,
+.chat-container.cm-surface.cm-ui-2 .cm-email__title,
+.chat-container.cm-surface.cm-ui-2 .cm-screen__title,
+.chat-container.cm-surface.cm-ui-2 .cm-blocked__title {
+    color: var(--cm-text);
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-start__subtitle,
+.chat-container.cm-surface.cm-ui-2 .cm-email__text,
+.chat-container.cm-surface.cm-ui-2 .cm-screen__text,
+.chat-container.cm-surface.cm-ui-2 .cm-blocked__text,
+.chat-container.cm-surface.cm-ui-2 .cm-ended__text {
+    color: var(--cm-muted);
+    font-size: 14px;
+    line-height: 21px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-field {
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font: inherit;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-field.is-invalid {
+    border-width: 2px;
+    border-color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email__error {
+    color: var(--cm-text);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-notice {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-notice--error {
+    border: 1px solid var(--cm-control-line);
+}

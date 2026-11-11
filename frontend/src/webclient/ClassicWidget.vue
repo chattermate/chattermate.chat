@@ -24,7 +24,7 @@ limitations under the License.
 import { defineComponent, inject, onMounted, onUnmounted, ref } from 'vue'
 import { isValidEmail, type WidgetMessage } from '../types/widget'
 import { renderMarkdown } from './markdown'
-import AskAiPanel from './AskAiPanel.vue'
+import AskAiSurface from './AskAiSurface.vue'
 import NewChatConfirm from './NewChatConfirm.vue'
 import BrandMark from '../components/common/BrandMark.vue'
 import ActionConfirmCard from './ActionConfirmCard.vue'
@@ -47,7 +47,7 @@ import './widget-surface.css'
 export default defineComponent({
     name: 'ClassicWidget',
     components: {
-        AskAiPanel, NewChatConfirm, BrandMark, ActionConfirmCard, ActionReceiptLine, JourneyPlan,
+        AskAiSurface, NewChatConfirm, BrandMark, ActionConfirmCard, ActionReceiptLine, JourneyPlan,
         SuggestedReplies, ProductCartButton,
     },
     setup() {
@@ -178,37 +178,7 @@ export default defineComponent({
         <!-- Ask AI surface (ASK_ANYTHING / AURORA): a command palette rather than a
              chat window. Workflow screens and the email gate still take precedence —
              they are flow-critical (see useAskAiPanel). -->
-        <AskAiPanel
-            v-if="useAskAiPanel"
-            :messages="messages"
-            :draft="newMessage"
-            :agent-name="agentName"
-            :suggestions="quickActions"
-            :welcome-title="customization.welcome_title"
-            :welcome-subtitle="askAiSubtitle"
-            :placeholder="placeholderText"
-            :input-enabled="isMessageInputEnabled"
-            :typing-enabled="canTypeMessage"
-            :loading="loading"
-            :show-citations="showCitations"
-            :disclaimer="showAiDisclaimer ? AI_DISCLAIMER_TEXT : ''"
-            :show-branding="showBranding"
-            :active="hostVisible"
-            :hotkey="askAiHotkey"
-            :can-start-new-chat="canStartNewChat"
-            :starting-new-chat="startingNewChat"
-            :new-chat-armed="newChatArmed"
-            :new-chat-error="newChatError"
-            @new-chat="requestNewChat"
-            @confirm-new-chat="confirmNewChat"
-            @cancel-new-chat="disarmNewChat"
-            :display-text="displayText"
-            :is-streaming="isStreaming"
-            @update:draft="newMessage = $event"
-            @send="sendMessage"
-            @ask="sendQuickAction"
-            @close="minimizeWidget"
-        />
+        <AskAiSurface v-if="useAskAiPanel" />
 
         <!-- Welcome Message for ASK_ANYTHING Style -->
         <div v-else-if="shouldShowWelcomeMessage" class="welcome-message-section" :class="{ aurora: isAuroraStyle }" :style="chatStyles">

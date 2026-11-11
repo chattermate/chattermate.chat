@@ -1,0 +1,161 @@
+<!--
+Copyright 2024-2026 ChatterMate
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<script setup lang="ts">
+/**
+ * The redesigned widget view (ui 2): header, conversation and composer in one
+ * panel, drawn from the widget controller its root provides, exactly like the
+ * classic view. This view owns its DOM work: scrolling (MessageList), focus and
+ * what survives the panel being hidden (usePanelVisibility).
+ * The Ask AI palette (ASK_ANYTHING / AURORA, search-bar trigger) is shared with the
+ * classic view. Stopgaps until later units live in ./stopgaps (each says which).
+ */
+import { computed, inject, ref } from 'vue'
+import { WIDGET_CTX } from './controller'
+import PanelHeader from './PanelHeader.vue'
+import MessageList from './MessageList.vue'
+import Composer from './Composer.vue'
+import PanelFooter from './PanelFooter.vue'
+import AskAiSurface from '../AskAiSurface.vue'
+import NewChatConfirm from '../NewChatConfirm.vue'
+import StatusNotices from './stopgaps/StatusNotices.vue'
+import AuthNotice from './stopgaps/AuthNotice.vue'
+import EmailStep from './stopgaps/EmailStep.vue'
+import WelcomeBlock from './stopgaps/WelcomeBlock.vue'
+import WorkflowScreen from './stopgaps/WorkflowScreen.vue'
+import ConversationEnded from './stopgaps/ConversationEnded.vue'
+import { usePanelVisibility } from '../../composables/usePanelVisibility'
+import '../widget-panel.css'
+import '../widget-panel-messages.css'
+import '../widget-panel-composer.css'
+import '../widget-panel-stopgaps.css'
+import '../widget-motion.css'
+
+const ctrl = inject(WIDGET_CTX)!
+const {
+    widgetId, showAuthError, themeVars, containerStyles, useAskAiPanel,
+    showLandingPage, landingPageData, showFullScreenForm, fullScreenFormData, showEmailGate,
+    shouldShowNewConversationOption, newChatArmed, canStartNewChat, startingNewChat, newChatError,
+    messages, loadingHistory, loading, shownPrompt, journeyProgress, pendingConfirm, replyChips,
+} = ctrl
+
+const list = ref<InstanceType<typeof MessageList> | null>(null)
+const composer = ref<InstanceType<typeof Composer> | null>(null)
+const emailStep = ref<InstanceType<typeof EmailStep> | null>(null)
+
+// The field a visitor starts with: the email step while it shows, else the composer.
+const focusField = () => (showEmailGate.value ? emailStep.value?.focus() : composer.value?.focus())
+
+const { report, focusIfShown } = usePanelVisibility(ctrl.hostVisible, {
+    focus: focusField,
+    onHide: () => list.value?.remember(),
+    onShow: () => list.value?.restore(),
+})
+
+ctrl.registerView({
+    // Live reveals and the page's SCROLL_TO_BOTTOM: follow only if at the bottom.
+    scrollToBottom: () => list.value?.follow(),
+    focusComposer: focusIfShown,
+    // The visitor's own message always brings them to the end.
+    afterSend: () => list.value?.scrollToBottom(),
+    hostVisibilityReported: report,
+})
+
+const showWorkflowScreen = computed(() =>
+    (showLandingPage.value && !!landingPageData.value) || (showFullScreenForm.value && !!fullScreenFormData.value))
+const showComposer = computed(() => !showEmailGate.value && !shouldShowNewConversationOption.value)
+
+// STOPGAP until the start state (plan 1.3): the welcome block stands in for the
+// conversation while there is nothing at all to show in it.
+const nothingInThread = computed(() =>
+    messages.value.length === 0 && !loadingHistory.value && !loading.value && !shownPrompt.value
+    && !journeyProgress.value && !pendingConfirm.value && replyChips.value.length === 0)
+
+// The panel's corners come from the theme, except where the display squares them (sidebars).
+// The display styles' height: 100% resolves against a frame page with no height;
+// the panel sizes itself to the frame instead (see .chat-container below).
+const withoutHeight = ({ height: _height, ...rest }: Record<string, string>) => rest
+
+const rootStyle = computed(() => ({
+    ...withoutHeight(containerStyles.value as Record<string, string>),
+    ...themeVars.value,
+    borderRadius: containerStyles.value.borderRadius === '0' ? '0' : 'var(--cm-radius)',
+}))
+</script>
+
+<template>
+    <div
+        v-if="widgetId || showAuthError"
+        class="chat-container cm-surface cm-ui-2"
+        :style="rootStyle"
+    >
+        <template v-if="useAskAiPanel && !showAuthError">
+            <StatusNotices />
+            <AskAiSurface />
+        </template>
+        <div v-else class="cm-panel">
+            <template v-if="showAuthError || showWorkflowScreen">
+                <AuthNotice v-if="showAuthError" />
+                <WorkflowScreen v-else />
+                <div class="cm-panel__bottom">
+                    <PanelFooter branding-only />
+                </div>
+            </template>
+            <template v-else>
+                <PanelHeader />
+                <StatusNotices />
+                <NewChatConfirm
+                    v-if="newChatArmed && canStartNewChat"
+                    :busy="startingNewChat"
+                    :error="newChatError"
+                    @confirm="ctrl.confirmNewChat"
+                    @cancel="ctrl.disarmNewChat"
+                />
+                <EmailStep v-if="showEmailGate" ref="emailStep" />
+                <WelcomeBlock v-else-if="nothingInThread" />
+                <MessageList v-else ref="list" />
+                <div class="cm-panel__bottom">
+                    <ConversationEnded v-if="shouldShowNewConversationOption && !showEmailGate" />
+                    <Composer v-if="showComposer" ref="composer" />
+                    <PanelFooter />
+                </div>
+            </template>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+.chat-container {
+    width: 100%;
+    /* The frame's page has no height of its own: fill the frame's viewport. The
+       dashboard preview (1.7) mounts the panel in a sized box and overrides this. */
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+.cm-panel {
+    flex-grow: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: inherit;
+    overflow: hidden;
+}
+.cm-panel__bottom { flex-shrink: 0; padding: 10px 14px 8px; }
+</style>

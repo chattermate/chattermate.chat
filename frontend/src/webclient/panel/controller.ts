@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import type { InjectionKey, Ref } from 'vue'
-import type { AgentCustomization } from '../../types/agent'
+import type { AgentCustomization, WidgetUiVersion } from '../../types/agent'
 import type { HumanAgent, WidgetMessage } from '../../types/widget'
 import type { PresenceLine } from '../../utils/widgetPresence'
 import type { HostPrompt, PageChip, PendingConfirm } from '../actions/hostActionsClient'
@@ -50,12 +50,20 @@ export interface WidgetViewHooks {
     focusComposer: () => void
     /** A message was just sent. */
     afterSend: () => void
+    /**
+     * The embedding page reported the widget open or closed (WIDGET_VISIBILITY),
+     * on every report, even one that repeats the current state: the first report
+     * after load is an "open" when the visitor clicked the launcher early.
+     */
+    hostVisibilityReported?: (open: boolean) => void
 }
 
 /** The agent's look, the surfaces on screen and the header. */
 export interface WidgetLook {
     widgetId: Shown<string | null | undefined>
     customization: Shown<Partial<AgentCustomization>>
+    /** Which view renders: the classic widget (1) or the redesigned panel (2). */
+    ui: Shown<WidgetUiVersion>
     agentName: Shown<string>
     isAuroraStyle: Shown<boolean>
     isAskAnythingStyle: Shown<boolean>
@@ -72,6 +80,8 @@ export interface WidgetLook {
     themeVars: Shown<CssStyle>
     photoUrl: Shown<string>
     humanAgentPhotoUrl: Shown<string>
+    /** A person has taken the conversation over from the AI. */
+    isHandedOverToHuman: Shown<boolean>
     useOrbAvatar: Shown<boolean>
     orbStyle: Shown<CssStyle>
     presence: Shown<PresenceLine>
@@ -118,6 +128,10 @@ export interface WidgetConversation {
     humanAgent: Shown<HumanAgent>
     displayText: (index: number, fullText: string) => string
     isStreaming: (index: number) => boolean
+    /** Whether any reply is still being revealed. */
+    isRevealing: Shown<boolean>
+    /** Show every reply in full at once (the panel's stop button). */
+    skipReveal: () => void
     hoverRating: Shown<number>
     isSubmittingRating: Shown<boolean>
     handleStarHover: (rating: number) => void
