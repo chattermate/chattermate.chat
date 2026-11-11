@@ -19,7 +19,7 @@ limitations under the License.
 // chattermate.min.js.
 
 // Relative, not '@/': the loader's esbuild build has no path aliases.
-import { hexToRgb, relativeLuminance } from '../utils/color'
+import { hexToRgb, readableInkOn, relativeLuminance } from '../utils/color'
 import { BRAND_COLORS } from '../config/brand'
 
 export type LauncherIcon = 'dots' | 'chat' | 'headset' | 'help' | 'sparkle' | 'logo'
@@ -136,20 +136,6 @@ export function launcherRadius(shape: LauncherShape, px: number): string {
   return `${round}px ${round}px ${round}px ${Math.round(px * 0.094)}px`
 }
 
-const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
-const luminanceOf = (hex: string) => relativeLuminance(hexToRgb(hex)!)
-
-const DARK_INK = '#0B0C10'
-const LIGHT_INK = '#FFFFFF'
-
-/** Whichever ink reads better on this fill, by WCAG contrast ratio. */
-export function inkOn(hex: string): string {
-  const rgb = hexToRgb(hex || '')
-  if (!rgb) return DARK_INK
-  const fill = relativeLuminance(rgb)
-  return contrast(fill, 1) >= contrast(fill, luminanceOf(DARK_INK)) ? LIGHT_INK : DARK_INK
-}
-
 export interface LauncherLook extends LauncherStyle {
   px: number
   badgePx: number
@@ -206,7 +192,7 @@ export function launcherFill(look: LauncherLook, brand: string) {
   const shadow = isPaleColor(brand)
     ? OUTLINED_SHADOW
     : `0 16px 40px -8px ${brand}cc, inset 0 0 0 1px rgba(255,255,255,0.08)`
-  return { fill: brand, ink: inkOn(brand), shadow }
+  return { fill: brand, ink: readableInkOn(brand), shadow }
 }
 
 /**

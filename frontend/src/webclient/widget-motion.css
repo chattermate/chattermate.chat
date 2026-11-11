@@ -1,0 +1,87 @@
+/**
+ * Motion for the redesigned widget (ui 2). Shared by the widget and the dashboard
+ * preview, scoped under `.chat-container.cm-surface.cm-ui-2`.
+ *
+ * Rules (enforced by __tests__/webclient/panelMotionCss.spec.ts):
+ * - only `transform` and `opacity` move, so nothing triggers layout;
+ * - every timing comes from the --cm-* motion properties that `themeCssVars(…, { ui: 2 })`
+ *   emits per theme personality (base, spring, gentle, stepped, blur);
+ * - no colour values here.
+ *
+ * Classes:
+ * - `cm-enter`: a message, card or row arriving (rise + fade). Set `--cm-i` on
+ *   siblings for a stagger.
+ * - `cm-fade`: opacity only.
+ * - `cm-press`: a button that dips when pressed.
+ * - `cm-pulse`: the agent mark while it is working.
+ * - `cm-typing-dot`: the three dots while a reply is coming.
+ */
+
+@keyframes cm-rise {
+    from {
+        opacity: 0;
+        transform: translateY(var(--cm-enter-y)) scale(var(--cm-enter-scale));
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes cm-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes cm-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .55; transform: scale(.82); }
+}
+
+@keyframes cm-typing {
+    0%, 60%, 100% { opacity: .35; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.chat-container.cm-surface.cm-ui-2 .cm-enter {
+    animation: cm-rise calc(var(--cm-dur-3) * var(--cm-dur-scale)) var(--cm-ease-enter) both;
+    animation-delay: calc(var(--cm-i, 0) * 40ms);
+}
+
+.chat-container.cm-surface.cm-ui-2 .cm-fade {
+    animation: cm-fade-in calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-enter) both;
+}
+
+.chat-container.cm-surface.cm-ui-2 .cm-press {
+    transition: transform var(--cm-dur-1) var(--cm-ease-out);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-press:active {
+    transform: scale(.96);
+}
+
+.chat-container.cm-surface.cm-ui-2 .cm-pulse {
+    animation: cm-pulse calc(1.4s * var(--cm-dur-scale)) var(--cm-ease-out) infinite;
+}
+
+.chat-container.cm-surface.cm-ui-2 .cm-typing-dot {
+    animation: cm-typing calc(1.2s * var(--cm-dur-scale)) var(--cm-ease-out) infinite;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-typing-dot:nth-child(2) { animation-delay: .15s; }
+.chat-container.cm-surface.cm-ui-2 .cm-typing-dot:nth-child(3) { animation-delay: .3s; }
+
+/* Reduced motion: every entrance becomes a short fade, nothing loops or travels. */
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-enter,
+    .chat-container.cm-surface.cm-ui-2 .cm-fade {
+        animation: cm-fade-in 150ms linear both;
+    }
+    .chat-container.cm-surface.cm-ui-2 .cm-pulse,
+    .chat-container.cm-surface.cm-ui-2 .cm-typing-dot {
+        animation: none;
+    }
+    .chat-container.cm-surface.cm-ui-2 .cm-press,
+    .chat-container.cm-surface.cm-ui-2 .cm-press:active {
+        transition: none;
+        transform: none;
+    }
+}

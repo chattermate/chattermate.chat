@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 
 vi.mock('webfontloader', () => ({ default: { load: vi.fn() } }))
 
-import { useWidgetCustomization } from '@/composables/useWidgetCustomization'
+import { fontFamiliesFor, useWidgetCustomization } from '@/composables/useWidgetCustomization'
 
 describe('useWidgetCustomization', () => {
     afterEach(() => {
@@ -77,5 +77,22 @@ describe('useWidgetCustomization', () => {
 
         const message = postMessage.mock.calls.at(-1)![0] as any
         expect(message.data.panel).toEqual({ ui })
+    })
+
+    describe('fonts', () => {
+        it('the classic widget loads its display face', () => {
+            expect(fontFamiliesFor(1)).toContain('Space Grotesk:400,500,600,700')
+        })
+
+        it('the redesign loads only the body and mono faces', () => {
+            expect(fontFamiliesFor(2)).toEqual(['Instrument Sans:400,500,600', 'JetBrains Mono:400,500,600'])
+        })
+
+        it('adds a custom body font once', () => {
+            expect(fontFamiliesFor(2, '"Lora", serif')).toEqual([
+                'Instrument Sans:400,500,600', 'JetBrains Mono:400,500,600', 'Lora',
+            ])
+            expect(fontFamiliesFor(2, 'Instrument Sans, sans-serif')).toHaveLength(2)
+        })
     })
 })

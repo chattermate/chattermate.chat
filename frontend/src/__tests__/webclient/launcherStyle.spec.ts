@@ -16,10 +16,10 @@ limitations under the License.
 
 import { describe, expect, it } from 'vitest'
 import { BRAND_COLORS } from '@/config/brand'
+import { readableInkOn as inkOn } from '@/utils/color'
 import {
   launcherMotionCss,
   LAUNCHER_DEFAULTS,
-  inkOn,
   DEFAULT_LAUNCHER_COLOR,
   isPaleColor,
   launcherDotColors,

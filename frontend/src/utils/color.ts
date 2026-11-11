@@ -36,6 +36,13 @@ export function hexToRgb(hex: string): Rgb | null {
   }
 }
 
+/** A 3- or 6-digit hex colour as lowercase #rrggbb, or null for anything else. */
+export function toHex6(value: string | null | undefined): string | null {
+  const rgb = hexToRgb(value || '')
+  if (!rgb) return null
+  return `#${[rgb.r, rgb.g, rgb.b].map((c) => c.toString(16).padStart(2, '0')).join('')}`
+}
+
 /** WCAG relative luminance (0 = black, 1 = white). */
 export function relativeLuminance({ r, g, b }: Rgb): number {
   const linear = (channel: number) => {
@@ -51,4 +58,59 @@ export function contrastInk(hex: string): '#12131A' | '#FFFFFF' {
   const rgb = hexToRgb(hex)
   if (!rgb) return '#FFFFFF'
   return relativeLuminance(rgb) > 0.45 ? '#12131A' : '#FFFFFF'
+}
+
+const DARK_INK = '#0B0C10'
+const LIGHT_INK = '#FFFFFF'
+
+const luminanceOf = (hex: string): number | null => {
+  const rgb = hexToRgb(hex || '')
+  return rgb ? relativeLuminance(rgb) : null
+}
+
+/** WCAG contrast ratio between two hex colours (1 to 21); 1 when either is not a hex. */
+export function contrastRatio(a: string, b: string): number {
+  const la = luminanceOf(a)
+  const lb = luminanceOf(b)
+  if (la === null || lb === null) return 1
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/**
+ * Whichever of two inks reads better on this fill, by real WCAG contrast. Used for
+ * text and icons on the accent (launcher, send button, user bubble).
+ */
+export function readableInkOn(fill: string, dark = DARK_INK, light = LIGHT_INK): string {
+  if (luminanceOf(fill) === null) return dark
+  return contrastRatio(fill, light) >= contrastRatio(fill, dark) ? light : dark
+}
+
+const toHex = (channel: number) => Math.round(Math.min(255, Math.max(0, channel))).toString(16).padStart(2, '0')
+
+/** `from` moved `amount` (0 to 1) of the way toward `to`, as #rrggbb; `from` when either is not a hex. */
+export function mixHex(from: string, to: string, amount: number): string {
+  const a = hexToRgb(from || '')
+  const b = hexToRgb(to || '')
+  if (!a || !b) return from
+  const mix = (x: number, y: number) => x + (y - x) * amount
+  return `#${toHex(mix(a.r, b.r))}${toHex(mix(a.g, b.g))}${toHex(mix(a.b, b.b))}`
+}
+
+/** A hex colour at an opacity, as rgba(); `hex` unchanged when it is not a hex. */
+export function hexWithAlpha(hex: string, alpha: number): string {
+  const rgb = hexToRgb(hex || '')
+  if (!rgb) return hex
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`
+}
+
+/**
+ * The least mix of `ink` into `surface` that reaches `ratio` against the surface
+ * (muted text, control borders), or `ink` itself when nothing weaker does.
+ */
+export function mixToContrast(surface: string, ink: string, ratio: number): string {
+  for (let step = 1; step <= 50; step++) {
+    const candidate = mixHex(surface, ink, step / 50)
+    if (contrastRatio(candidate, surface) >= ratio) return candidate
+  }
+  return ink
 }

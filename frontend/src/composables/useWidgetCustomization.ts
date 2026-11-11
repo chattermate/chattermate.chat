@@ -15,35 +15,34 @@ limitations under the License.
 */
 
 import { ref } from 'vue'
-import type { AgentCustomization } from '../types/agent'
+import type { AgentCustomization, WidgetUiVersion } from '../types/agent'
 import WebFont from 'webfontloader'
 import { postToHost } from '../webclient/host-bridge'
 import { DEFAULT_LAUNCHER_COLOR } from '../webclient/launcher-style'
 import { widgetUiVersion } from '../webclient/widget-ui'
 
-// Design fonts the redesigned widget always needs (display / body / mono), with
-// the weights it actually uses. The user's custom font_family is layered on top.
-const DESIGN_FONT_FAMILIES = [
-    'Space Grotesk:400,500,600,700',
-    'Instrument Sans:400,500,600',
-    'JetBrains Mono:400,500,600',
-]
+// Design fonts each widget design needs (display / body / mono), with the weights
+// it actually uses. The user's custom font_family is layered on top. The redesign
+// has no display face: headings use the body font.
+const DESIGN_FONT_FAMILIES: Record<WidgetUiVersion, string[]> = {
+    1: ['Space Grotesk:400,500,600,700', 'Instrument Sans:400,500,600', 'JetBrains Mono:400,500,600'],
+    2: ['Instrument Sans:400,500,600', 'JetBrains Mono:400,500,600'],
+}
+
+/** The Google Fonts families to load for a design and an optional custom body font. */
+export const fontFamiliesFor = (ui: WidgetUiVersion, customFontFamily?: string): string[] => {
+    const families = [...DESIGN_FONT_FAMILIES[ui]]
+    const primary = customFontFamily?.split(',')[0].trim().replace(/['"]/g, '') || ''
+    const alreadyLoaded = families.some(f => f.toLowerCase().startsWith(primary.toLowerCase()))
+    if (primary && !alreadyLoaded) families.push(primary)
+    return families
+}
 
 // Load the design fonts plus any custom body font, and apply the custom font to
 // the chat container once available.
-const loadFonts = (customFontFamily?: string) => {
-    const families = [...DESIGN_FONT_FAMILIES]
-
-    const primary = customFontFamily?.split(',')[0].trim().replace(/['"]/g, '') || ''
-    const alreadyLoaded = DESIGN_FONT_FAMILIES.some(
-        f => f.toLowerCase().startsWith(primary.toLowerCase())
-    )
-    if (primary && !alreadyLoaded) {
-        families.push(primary)
-    }
-
+const loadFonts = (ui: WidgetUiVersion, customFontFamily?: string) => {
     WebFont.load({
-        google: { families },
+        google: { families: fontFamiliesFor(ui, customFontFamily) },
         active: () => {
             if (!customFontFamily) return
             const chatContainer = document.querySelector('.chat-container') as HTMLElement
@@ -63,13 +62,13 @@ export function useWidgetCustomization() {
     const applyCustomization = (newCustomization: Partial<AgentCustomization>) => {
         customization.value = newCustomization
 
-
         if (newCustomization.photo_url) {
             customization.value.photo_url = newCustomization.photo_url
         }
 
         // Always load the design fonts; layer the custom font_family on top.
-        loadFonts(newCustomization.font_family)
+        const ui = widgetUiVersion(newCustomization)
+        loadFonts(ui, newCustomization.font_family)
 
         // Send customization update to parent
         postToHost({
@@ -84,7 +83,7 @@ export function useWidgetCustomization() {
                 launcher: newCustomization.customization_metadata?.launcher,
                 launcher_logo_url: newCustomization.launcher_logo_url,
                 // Which widget design the loader frames (classic or the redesign).
-                panel: { ui: widgetUiVersion(newCustomization) }
+                panel: { ui }
             }
         })
     }
