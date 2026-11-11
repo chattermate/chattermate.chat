@@ -35,6 +35,9 @@ import { useHostMessages } from './useHostMessages'
 import { useNewChat } from './useNewChat'
 import { useWidgetPresentation } from './useWidgetPresentation'
 import { useWidgetDisplay } from './useWidgetDisplay'
+import { widgetUiVersion } from '../webclient/widget-ui'
+import { usePanelEmail } from './usePanelEmail'
+import { useHistoryArrival } from './useHistoryArrival'
 
 export type { WidgetControllerProps }
 
@@ -89,8 +92,13 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
 
     const isExpanded = ref(true)
 
-    // checkAuthorization is set up just below; it only runs on submit.
-    const emailGate = useEmailGate({ customization, isAskAnythingStyle, hasStartedChat, authorize: () => auth.checkAuthorization() })
+    // checkAuthorization is set up just below; it only runs on submit. The panel's
+    // email handling (panelEmail, below) only runs on submit too.
+    const emailGate = useEmailGate({
+        customization, isAskAnythingStyle, hasStartedChat,
+        authorize: () => auth.checkAuthorization(),
+        recoverRefusal: () => panelEmail.recoverRefusal(),
+    })
 
     const initialData = window.__INITIAL_DATA__
     const allowAttachments = ref(false)
@@ -113,6 +121,19 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const styles = useWidgetStyles(customization)
     const files = useWidgetFiles(auth.token)
 
+    // The redesigned panel asks for the email inline, beside a usable composer: until
+    // the server took the email and the conversation started, every send waits. A
+    // refused or failed submit keeps the card up, unlike the classic gate.
+    const panelEmail = usePanelEmail({
+        isPanel: computed(() => widgetUiVersion(customization.value) === 2),
+        shouldCollectEmail: emailGate.shouldCollectEmail,
+        hasStartedChat,
+        auth,
+    })
+    const { awaitingEmail } = panelEmail
+    // A returning visitor's history is on its way: the panel's start state waits for it.
+    const { awaitingHistory } = useHistoryArrival(loadingHistory, messages)
+
     // The message box: typing, sending, and a message held while a reply is coming.
     const composer = useComposer({
         socket: { loading, hasStartedChat, connectionStatus, sendMessage: socket.sendMessage },
@@ -124,6 +145,8 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         beforeSend: hostPrompt.takeAnsweredPrompt,
         afterSend: () => view.afterSend(),
         isWorkflowAgent,
+        holdForEmail: awaitingEmail,
+        askForEmail: () => { void emailGate.submitEmailOnce() },
     })
 
     const endChat = useEndChat({
@@ -234,14 +257,15 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
         isRevealing, skipReveal, ...rating,
         ...pick(composer, 'newMessage', 'secretInMessage', 'isMessageInputEnabled', 'canTypeMessage',
-            'placeholderText', 'sendMessage', 'sendQuickAction', 'handleKeyPress'),
+            'placeholderText', 'sendMessage', 'sendQuickAction', 'handleKeyPress', 'heldForEmail'),
         ...files,
         ...pick(hostPrompt, 'pendingConfirm', 'approveAction', 'declineAction', 'receiptsAfter',
             'journeyProgress', 'chipBusy', 'skipStep', 'dismissJourney', 'shownPrompt', 'replyChips',
             'onPageChip', 'promptPlace'),
         receiptCount: computed(() => hostPrompt.receipts.value.length),
         ...pick(emailGate, 'emailInput', 'emailGateError', 'submittingEmail', 'shouldCollectEmail',
-            'showEmailGate', 'submitEmailGate'),
+            'showEmailGate', 'submitEmailGate', 'submitEmailOnce'),
+        awaitingEmail, awaitingHistory,
         ...pick(workflow, 'showLandingPage', 'landingPageData', 'workflowButtonText', 'showFullScreenForm',
             'fullScreenFormData', 'formData', 'formErrors', 'isSubmittingForm', 'shouldShowNewConversationOption',
             'handleLandingPageProceed', 'handleFormSubmit', 'handleFieldChange', 'submitFullScreenForm',

@@ -25,8 +25,8 @@ import type { AgentFace } from './agent-face'
 
 withDefaults(defineProps<{
     face?: AgentFace
-    /** 'md' in the header (34px), 'sm' on an answer's label row (20px). */
-    size?: 'md' | 'sm'
+    /** 'lg' on the start state (44px), 'md' in the header (34px), 'sm' on an answer's label row (20px). */
+    size?: 'lg' | 'md' | 'sm'
     photoUrl?: string
     orbStyle?: Record<string, string>
     /** A reply is being worked on. */
@@ -55,9 +55,11 @@ withDefaults(defineProps<{
     flex-shrink: 0;
     overflow: hidden;
 }
+.cm-mark--lg { width: 44px; height: 44px; gap: 5px; }
 .cm-mark--md { width: 34px; height: 34px; gap: 4px; }
 .cm-mark--sm { width: 20px; height: 20px; gap: 2.5px; }
 .cm-mark__dot { display: block; }
+.cm-mark--lg .cm-mark__dot { width: 10px; height: 10px; }
 .cm-mark--md .cm-mark__dot { width: 8px; height: 8px; }
 .cm-mark--sm .cm-mark__dot { width: 5px; height: 5px; }
 .cm-mark__photo,

@@ -51,16 +51,22 @@ export const PANEL_COPY = {
     /** The label row above an AI answer. */
     aiLabel: (agent: string) => (agent ? `${agent} AI` : 'AI'),
     sources: 'Sources',
-    /** Fallbacks for the empty chat until the start state (plan 1.3). */
+    /** The start state: greeting and headline when the agent set none (welcome_title / _subtitle). */
     welcomeTitle: 'Hi there',
     welcomeSubtitle: 'How can we help?',
-    /** The email step until the inline email card (plan 1.3). Same text as classic. */
+    /** The suggestion rows' accessible name (quick_actions). */
+    suggestions: 'Suggestions',
+    /** Why the suggestions rest while a typed message waits for the email. */
+    suggestionsHeld: 'Your typed message is waiting for your email. Send it first or clear it to pick a suggestion.',
+    /** The inline email card. Placeholder and button text as classic (the e2e page object uses them). */
     emailTitle: 'Before we start',
     emailText: "Enter your email and we'll continue the chat.",
     emailPlaceholder: 'you@example.com',
     emailLabel: 'Email',
     emailContinue: 'Continue to chat',
     emailWait: 'Please wait…',
+    /** Shown on the card while a message waits for the email. */
+    emailHeld: 'Your message is ready. It sends as soon as your email is in.',
     /** Status notices until the restyled banners (plan 1.4). Same text as classic. */
     initializing: 'Initializing chat...',
     connecting: 'Connecting to chat service...',

@@ -32,6 +32,19 @@
     outline-offset: 2px;
 }
 
+/* Read by screen readers, not shown. */
+.chat-container.cm-surface.cm-ui-2 .cm-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* ===== Header (the name, .header-info h3, is styled by widget-surface.css) ===== */
 .chat-container.cm-surface.cm-ui-2 .cm-header {
     border-bottom: 1px solid var(--cm-line);

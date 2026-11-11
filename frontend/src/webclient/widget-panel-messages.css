@@ -62,8 +62,7 @@
     font-weight: 600;
 }
 .chat-container.cm-surface.cm-ui-2 .cm-human .message-bubble,
-.chat-container.cm-surface.cm-ui-2 .cm-typing,
-.chat-container.cm-surface.cm-ui-2 .cm-welcome-block .message-bubble {
+.chat-container.cm-surface.cm-ui-2 .cm-typing {
     max-width: none;
     padding: 10px 14px;
     border: 0;

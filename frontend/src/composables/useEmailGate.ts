@@ -29,6 +29,14 @@ export interface EmailGateOptions {
     hasStartedChat: Ref<boolean>
     /** Sends the email to the backend (associates it and (re)connects the socket). */
     authorize: () => Promise<unknown>
+    /**
+     * The redesigned panel keeps its email card up when the server refuses or fails
+     * the email (the authorize call answers false): it clears the widget-wide error
+     * that refusal raised and returns true, and the card says to try again. Returns
+     * false when the refusal must show as it is (a widget that is not set up).
+     * Absent for the classic widget, whose gate lifts on any answer.
+     */
+    recoverRefusal?: () => boolean
 }
 
 /** The message shown for an email the visitor typed, or '' when it can be sent. */
@@ -43,7 +51,9 @@ export const emailGateProblem = (email: string): string => {
  * a workflow step); the chat (welcome message, quick actions, input) only appears once
  * a valid email is submitted, so quick actions can never fire before it is captured.
  */
-export function useEmailGate({ customization, isAskAnythingStyle, hasStartedChat, authorize }: EmailGateOptions) {
+export function useEmailGate({
+    customization, isAskAnythingStyle, hasStartedChat, authorize, recoverRefusal,
+}: EmailGateOptions) {
     const emailInput = ref('')
     const emailCollected = ref(false)
     const emailGateError = ref('')
@@ -66,13 +76,24 @@ export function useEmailGate({ customization, isAskAnythingStyle, hasStartedChat
         emailGateError.value = ''
         submittingEmail.value = true
         try {
-            await authorize()
+            const accepted = await authorize()
+            if (accepted === false && recoverRefusal?.()) {
+                emailGateError.value = EMAIL_GATE_FAILED_TEXT
+                return
+            }
             emailCollected.value = true
         } catch {
             emailGateError.value = EMAIL_GATE_FAILED_TEXT
         } finally {
             submittingEmail.value = false
         }
+    }
+
+    // The same submit, ignored while one is in flight (the panel's card and its held
+    // sends both submit). The classic gate keeps calling submitEmailGate directly.
+    const submitEmailOnce = async () => {
+        if (submittingEmail.value) return
+        await submitEmailGate()
     }
 
     return {
@@ -83,6 +104,7 @@ export function useEmailGate({ customization, isAskAnythingStyle, hasStartedChat
         shouldCollectEmail,
         showEmailGate,
         submitEmailGate,
+        submitEmailOnce,
     }
 }
 

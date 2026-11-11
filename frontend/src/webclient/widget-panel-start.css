@@ -1,0 +1,123 @@
+/**
+ * The redesigned widget's start state (ui 2): the empty chat's greeting, headline
+ * and suggestion rows, the inline email card, and the collapse into the thread on
+ * the first message. Rules and the other parts: see widget-panel.css.
+ */
+
+/* ===== Greeting, headline, welcome message ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-start__greeting {
+    color: var(--cm-muted);
+    font-size: 15px;
+    font-weight: 500;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-start__headline {
+    color: var(--cm-text);
+    font-size: 27px;
+    font-weight: 600;
+    line-height: 32px;
+    letter-spacing: -0.02em;
+}
+/* The welcome message reads as body text, not a bubble (it keeps the bubble hook,
+   so this outranks widget-surface.css's .message-bubble). */
+.chat-container.cm-surface.cm-ui-2 .cm-welcome-block .cm-start__body {
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--cm-muted);
+    font-size: 14px;
+    line-height: 21px;
+}
+
+/* ===== Suggestion rows ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-suggestions {
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-suggestions__item + .cm-suggestions__item {
+    border-top: 1px solid var(--cm-line);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-suggestion {
+    border: 0;
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-suggestion:hover:not(:disabled) {
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-suggestion:disabled {
+    cursor: default;
+    opacity: .6;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-suggestion__icon {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-agent-bg);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-suggestion__chevron {
+    color: var(--cm-muted);
+}
+
+/* ===== Email card ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-email-card {
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-card__title {
+    color: var(--cm-text);
+    font-size: 14.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-card__text,
+.chat-container.cm-surface.cm-ui-2 .cm-email-card__held {
+    color: var(--cm-muted);
+    font-size: 13px;
+    line-height: 19px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-email-card__error {
+    color: var(--cm-text);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-field {
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-card);
+    color: var(--cm-text);
+    font: inherit;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-field::placeholder {
+    color: var(--cm-muted);
+    opacity: 1;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-field.is-invalid {
+    border-width: 2px;
+    border-color: var(--cm-text);
+}
+
+/* ===== Collapse on the first message (Vue <Transition name="cm-start">) ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-start-leave-active {
+    transition:
+        opacity calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-in),
+        transform calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-in);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-start-leave-to {
+    opacity: 0;
+    transform: translateY(calc(var(--cm-enter-y) * -1)) scale(.98);
+}
+
+/* Reduced motion: the start state fades out in place. */
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-start-leave-active {
+        transition: opacity 150ms linear;
+    }
+    .chat-container.cm-surface.cm-ui-2 .cm-start-leave-to {
+        transform: none;
+    }
+}

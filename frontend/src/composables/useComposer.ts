@@ -61,6 +61,15 @@ export interface ComposerOptions {
      * Read at call time: the authorize call can turn workflow mode on.
      */
     isWorkflowAgent: () => boolean
+    /**
+     * The redesigned panel keeps the box and the suggestions usable while it asks
+     * for the email: while this is true a send is held, not sent, and goes out by
+     * itself once it turns false (the email is in). Absent for the classic widget,
+     * which hides the box behind its email gate instead.
+     */
+    holdForEmail?: Readonly<Ref<boolean>>
+    /** A send was just held for the email: ask for it (submit what was typed). */
+    askForEmail?: () => void
 }
 
 const toOutgoingFile = (file: StagedAttachment): OutgoingFile => ({
@@ -85,6 +94,8 @@ export function useComposer({
     beforeSend,
     afterSend,
     isWorkflowAgent,
+    holdForEmail = computed(() => false),
+    askForEmail = () => {},
 }: ComposerOptions) {
     const { loading, hasStartedChat, connectionStatus } = socket
     const { emailInput, shouldCollectEmail } = emailGate
@@ -100,10 +111,14 @@ export function useComposer({
 
     const canSendWhenIdle = () => connectionStatus.value === 'connected' && !loading.value
 
+    // A message held until the email is in (redesigned panel only, see holdForEmail).
+    const heldForEmail = ref(false)
+
     const isMessageInputEnabled = computed(() => {
         // A conversation already started, or no email to collect (Ask AI, or
         // collect_email off): only the connection and a reply in flight matter.
-        if ((hasStartedChat.value && hasConversationToken.value) || !shouldCollectEmail.value) {
+        // While the panel holds sends for the email, the box is usable: a send waits.
+        if ((hasStartedChat.value && hasConversationToken.value) || !shouldCollectEmail.value || holdForEmail.value) {
             return canSendWhenIdle()
         }
         return (isValidEmail(emailInput.value.trim()) && canSendWhenIdle()) || isWorkflowAgent()
@@ -125,6 +140,13 @@ export function useComposer({
     const sendMessage = async () => {
         if (!newMessage.value.trim() && uploadedAttachments.value.length === 0) return
         if (secretInMessage.value) return
+
+        // Nothing reaches the agent before the email does: hold it and ask.
+        if (holdForEmail.value) {
+            heldForEmail.value = true
+            askForEmail()
+            return
+        }
 
         if (loading.value && hasStartedChat.value) {
             pendingSend.value = true
@@ -157,9 +179,26 @@ export function useComposer({
         if (connectionStatus.value === 'connected' && hasStartedChat.value) void sendMessage()
     })
 
-    // Send a predefined quick action: the normal send path with the label text.
+    // Release a message held for the email once the email is in. Not when the
+    // connection dropped meanwhile: it stays in the box, visibly unsent.
+    watch(holdForEmail, (holding) => {
+        if (holding || !heldForEmail.value) return
+        heldForEmail.value = false
+        if (connectionStatus.value === 'connected') void sendMessage()
+    })
+
+    // The visitor emptied the box while a message waited for the email: nothing waits now.
+    watch([newMessage, () => uploadedAttachments.value.length], () => {
+        if (heldForEmail.value && !newMessage.value.trim() && uploadedAttachments.value.length === 0) {
+            heldForEmail.value = false
+        }
+    })
+
+    // Send a predefined quick action (a suggestion, a page's text reply): the normal
+    // send path with the label text. Not while a typed message waits for the email:
+    // the label would replace it, and only the label would go out.
     const sendQuickAction = (label: string) => {
-        if (!isMessageInputEnabled.value) return
+        if (!isMessageInputEnabled.value || heldForEmail.value) return
         newMessage.value = label
         sendMessage()
     }
@@ -168,6 +207,7 @@ export function useComposer({
     const clearComposer = () => {
         newMessage.value = ''
         uploadedAttachments.value = []
+        heldForEmail.value = false
     }
 
     const handleKeyPress = (event: KeyboardEvent) => {
@@ -181,6 +221,7 @@ export function useComposer({
     return {
         newMessage,
         pendingSend,
+        heldForEmail,
         secretInMessage,
         isMessageInputEnabled,
         canTypeMessage,

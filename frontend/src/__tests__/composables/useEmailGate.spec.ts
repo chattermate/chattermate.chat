@@ -94,4 +94,59 @@ describe('useEmailGate', () => {
         expect(gate.emailGateError.value).toBe(EMAIL_GATE_FAILED_TEXT)
         expect(gate.showEmailGate.value).toBe(true)
     })
+
+    describe('for the redesigned panel', () => {
+        const panelGate = (authorize: any, recover = vi.fn(() => true)) => {
+            const gate = useEmailGate({
+                customization: ref({ collect_email: true }),
+                isAskAnythingStyle: ref(false),
+                hasStartedChat: ref(false),
+                authorize,
+                recoverRefusal: recover,
+            })
+            gate.emailInput.value = 'ada@example.com'
+            return { ...gate, recover }
+        }
+
+        it('keeps the gate up with a retryable error when the server refuses or fails the email', async () => {
+            const gate = panelGate(vi.fn().mockResolvedValue(false))
+            await gate.submitEmailGate()
+            expect(gate.recover).toHaveBeenCalledTimes(1)
+            expect(gate.emailCollected.value).toBe(false)
+            expect(gate.emailGateError.value).toBe(EMAIL_GATE_FAILED_TEXT)
+            expect(gate.submittingEmail.value).toBe(false)
+        })
+
+        it('lifts the gate as the classic one does when the refusal must show (widget not set up)', async () => {
+            const gate = panelGate(vi.fn().mockResolvedValue(false), vi.fn(() => false))
+            await gate.submitEmailGate()
+            expect(gate.emailCollected.value).toBe(true)
+            expect(gate.emailGateError.value).toBe('')
+        })
+
+        it('accepts an email the server took', async () => {
+            const gate = panelGate(vi.fn().mockResolvedValue(true))
+            await gate.submitEmailGate()
+            expect(gate.recover).not.toHaveBeenCalled()
+            expect(gate.emailCollected.value).toBe(true)
+        })
+
+        it('ignores a second submit while one is in flight (submitEmailOnce)', async () => {
+            let finish = (_ok: boolean) => {}
+            const authorize = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve }))
+            const gate = panelGate(authorize)
+            const first = gate.submitEmailOnce()
+            await gate.submitEmailOnce()
+            finish(true)
+            await first
+            expect(authorize).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    it('keeps the classic gate lifting on any answer (no recoverRefusal)', async () => {
+        const gate = setup(true, vi.fn().mockResolvedValue(false))
+        gate.emailInput.value = 'ada@example.com'
+        await gate.submitEmailGate()
+        expect(gate.emailCollected.value).toBe(true)
+    })
 })

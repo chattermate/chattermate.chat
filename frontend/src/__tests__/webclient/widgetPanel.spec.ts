@@ -196,39 +196,309 @@ describe('the panel', () => {
     })
 })
 
-describe('the email step (stopgap until the inline email card)', () => {
+describe('the inline email card: nothing reaches the agent before the email does', () => {
+    const UNKNOWN_VISITOR = () => jsonResponse({ detail: 'Unauthorized' }, 401)
+    const AUTHORIZED = () => jsonResponse({ agent: { name: 'Ada' } })
+
     /** A brand-new visitor the server refuses until they give an email. */
-    const mountUnknownVisitor = async () => {
+    const mountUnknownVisitor = async (customization: Record<string, any> = {}) => {
         socket.hasStartedChat.value = false
-        hooks.beforeAuthorize = () =>
-            (globalThis.fetch as any).mockResolvedValue(jsonResponse({ detail: 'Unauthorized' }, 401))
-        const mounted = await mountPanel({ collect_email: true })
+        hooks.beforeAuthorize = () => (globalThis.fetch as any).mockResolvedValue(UNKNOWN_VISITOR())
+        const mounted = await mountPanel({ collect_email: true, quick_actions: ['Track my order'], ...customization })
         await settle(wrapper, 10)
         return mounted
     }
 
-    it('asks for an email before the chat, with the classic text, then opens the chat', async () => {
-        const { fetchMock } = await mountUnknownVisitor()
-        const email = wrapper.find('input[type="email"]')
-        expect(email.attributes('placeholder')).toBe('you@example.com')
-        expect(wrapper.text()).toContain("Enter your email and we'll continue the chat.")
+    const email = () => wrapper.find('input[type="email"]')
+    const card = () => wrapper.find('form.cm-email-card')
+    const suggestion = () => wrapper.find('button.cm-suggestion')
+    const typeAndPressEnter = async (text: string) => {
+        await composer().setValue(text)
+        await composer().trigger('keydown', { key: 'Enter' })
+        await settle(wrapper, 6)
+    }
+    /** Whether the socket send came after the last authorize call (the email's). */
+    const sentAfterAuthorize = (fetchMock: any) => {
+        const lastAuthorize = Math.max(...fetchMock.mock.invocationCallOrder)
+        return socketCalls.sendMessage.mock.invocationCallOrder[0] > lastAuthorize
+    }
+
+    it('sits on the start state with the classic placeholder and button, the composer and suggestions usable', async () => {
+        await mountUnknownVisitor()
+        expect(card().exists()).toBe(true)
+        // Above the start state, in the same scrolling body.
+        expect(wrapper.find('.cm-panel__body').element.contains(card().element)).toBe(true)
+        expect(wrapper.find('.cm-start').exists()).toBe(true)
+        expect(email().attributes('placeholder')).toBe('you@example.com')
         expect(wrapper.findAll('button').some((b: any) => b.text() === 'Continue to chat')).toBe(true)
-        expect(composer().exists()).toBe(false)
-
-        fetchMock.mockResolvedValue(jsonResponse({ agent: { name: 'Ada' } }))
-        await email.setValue('ada@example.com')
-        await wrapper.find('form.cm-email').trigger('submit')
-        await settle(wrapper, 10)
-
-        expect(wrapper.find('input[type="email"]').exists()).toBe(false)
-        expect(composer().exists()).toBe(true)
+        expect(composer().attributes('disabled')).toBeUndefined()
+        expect(suggestion().attributes('disabled')).toBeUndefined()
     })
 
-    it('says what is wrong with an empty address', async () => {
+    it('holds a message sent with Enter, says why, and points at the email field', async () => {
         await mountUnknownVisitor()
-        await wrapper.find('form.cm-email').trigger('submit')
-        await settle(wrapper)
+        await typeAndPressEnter('Where is my order?')
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        expect((composer().element as HTMLTextAreaElement).value).toBe('Where is my order?')
         expect(wrapper.find('[role="alert"]').text()).toBe('Please enter your email address.')
+        expect(wrapper.find('.cm-email-card__held').exists()).toBe(true)
+        expect(document.activeElement).toBe(email().element)
+    })
+
+    it('holds a message sent with the button', async () => {
+        await mountUnknownVisitor()
+        await composer().setValue('Hello')
+        await sendButton().trigger('click')
+        await settle(wrapper, 6)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('holds a suggestion', async () => {
+        await mountUnknownVisitor()
+        await suggestion().trigger('click')
+        await settle(wrapper, 6)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        expect((composer().element as HTMLTextAreaElement).value).toBe('Track my order')
+    })
+
+    it('holds pasted text, and stages no pasted file', async () => {
+        await mountUnknownVisitor()
+        // A real paste: text and a screenshot on the clipboard. The browser puts the
+        // text in the box; files are not accepted before a person joins.
+        const text = 'Order 1042 never arrived'
+        const shot = new File(['png'], 'shot.png', { type: 'image/png' })
+        const paste = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+        Object.defineProperty(paste, 'clipboardData', {
+            value: {
+                getData: (kind: string) => (kind === 'text/plain' ? text : ''),
+                items: [{ kind: 'file', getAsFile: () => shot }, { kind: 'string', getAsFile: () => null }],
+            },
+        })
+        composer().element.dispatchEvent(paste)
+        await composer().setValue(text)
+        await composer().trigger('keydown', { key: 'Enter' })
+        await settle(wrapper, 6)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        expect(wrapper.find('.cm-staged').exists()).toBe(false)
+        expect(wrapper.find('.cm-email-card__held').text()).toContain('sends as soon as your email is in')
+    })
+
+    it('holds a message of files only, then sends them with the email', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        // The page object sets files on the frame's file input directly.
+        const input = wrapper.find('input[type="file"]')
+        const note = new File(['order 1042'], 'note.txt', { type: 'text/plain' })
+        Object.defineProperty(input.element, 'files', { value: [note], configurable: true })
+        await input.trigger('change')
+        await vi.waitFor(() => expect(wrapper.find('.cm-staged').text()).toContain('note.txt'))
+
+        await sendButton().trigger('click')
+        await settle(wrapper, 6)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        expect(wrapper.find('.cm-email-card__held').text()).not.toBe('')
+
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+        const [text, , files] = socketCalls.sendMessage.mock.calls[0]
+        expect(text).toBe('')
+        expect(files.map((f: any) => f.filename)).toEqual(['note.txt'])
+    })
+
+    it('keeps a typed held message when a suggestion is tapped, and sends that message', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        await typeAndPressEnter('My order 1042 never arrived')
+        expect(suggestion().attributes('disabled')).toBeDefined()
+        await suggestion().trigger('click')
+        await settle(wrapper, 6)
+        expect((composer().element as HTMLTextAreaElement).value).toBe('My order 1042 never arrived')
+
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+        expect(socketCalls.sendMessage).toHaveBeenCalledWith('My order 1042 never arrived', 'ada@example.com', [], {})
+    })
+
+    it('lets go of a held message the visitor clears, and sends nothing when the email is in', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        await typeAndPressEnter('Hello')
+        expect(wrapper.find('.cm-email-card__held').text()).not.toBe('')
+        await composer().setValue('')
+        await settle(wrapper)
+        expect(wrapper.find('.cm-email-card__held').text()).toBe('')
+        expect(suggestion().attributes('disabled')).toBeUndefined()
+
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('holds a message while the typed email is invalid, and says so', async () => {
+        await mountUnknownVisitor()
+        await email().setValue('not-an-email')
+        await typeAndPressEnter('Hello')
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        expect(wrapper.find('[role="alert"]').text()).toBe('Please enter a valid email address.')
+        expect(card().exists()).toBe(true)
+    })
+
+    it('sends the held message by itself, once, after Continue with a valid email', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        await typeAndPressEnter('Where is my order?')
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+
+        expect(card().exists()).toBe(false)
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+        expect(socketCalls.sendMessage).toHaveBeenCalledWith('Where is my order?', 'ada@example.com', [], {})
+        expect(sentAfterAuthorize(fetchMock)).toBe(true)
+    })
+
+    it('takes the email and sends in one go when the visitor typed both and pressed Enter', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await email().setValue('ada@example.com')
+        await typeAndPressEnter('Hello')
+        await settle(wrapper, 12)
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+        expect(socketCalls.sendMessage).toHaveBeenCalledWith('Hello', 'ada@example.com', [], {})
+        expect(sentAfterAuthorize(fetchMock)).toBe(true)
+    })
+
+    it('sends a held suggestion once the email is in', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        await suggestion().trigger('click')
+        await settle(wrapper, 6)
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+        expect(socketCalls.sendMessage).toHaveBeenCalledWith('Track my order', 'ada@example.com', [], {})
+    })
+
+    it.each([
+        ['a server error', () => jsonResponse({ detail: 'Server error' }, 500)],
+        ['a network error', null],
+    ])('keeps the card, the composer and the held text on %s, and Continue retries', async (_name, answer) => {
+        const { fetchMock } = await mountUnknownVisitor()
+        await typeAndPressEnter('Hello')
+        if (answer) fetchMock.mockResolvedValue(answer())
+        else fetchMock.mockRejectedValue(new Error('offline'))
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+
+        // What the visitor sees: the panel, the card with a retryable error, their text.
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        expect(wrapper.text()).not.toContain('Authentication Error')
+        expect(wrapper.find('.cm-header').exists()).toBe(true)
+        expect(card().find('[role="alert"]').text()).toBe('Something went wrong. Please try again.')
+        expect(email().element).toBe(document.activeElement)
+        expect((composer().element as HTMLTextAreaElement).value).toBe('Hello')
+        expect(wrapper.find('.cm-email-card__held').text()).not.toBe('')
+
+        fetchMock.mockReset()
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(card().exists()).toBe(false)
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+        expect(socketCalls.sendMessage).toHaveBeenCalledWith('Hello', 'ada@example.com', [], {})
+    })
+
+    it('keeps holding, with the card up, when the server still refuses the visitor after the email', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        await typeAndPressEnter('Hello')
+        fetchMock.mockResolvedValue(UNKNOWN_VISITOR())
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        expect(card().exists()).toBe(true)
+        expect(card().find('[role="alert"]').text()).toBe('Something went wrong. Please try again.')
+        expect((composer().element as HTMLTextAreaElement).value).toBe('Hello')
+
+        // A second try that the server accepts sends it.
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('opens the chat on Continue with nothing held, and sends nothing by itself', async () => {
+        const { fetchMock } = await mountUnknownVisitor()
+        fetchMock.mockResolvedValue(AUTHORIZED())
+        await email().setValue('ada@example.com')
+        await card().trigger('submit')
+        await settle(wrapper, 12)
+        expect(card().exists()).toBe(false)
+        expect(composer().exists()).toBe(true)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+    })
+})
+
+describe('after the email was accepted', () => {
+    it('does not bring the card back while a new chat starts over', async () => {
+        socket.hasStartedChat.value = false
+        hooks.beforeAuthorize = () =>
+            (globalThis.fetch as any).mockResolvedValue(jsonResponse({ detail: 'Unauthorized' }, 401))
+        const { fetchMock } = await mountPanel({ collect_email: true })
+        await settle(wrapper, 10)
+        fetchMock.mockResolvedValue(jsonResponse({ agent: { name: 'Ada' } }))
+        await wrapper.find('input[type="email"]').setValue('ada@example.com')
+        await wrapper.find('form.cm-email-card').trigger('submit')
+        await settle(wrapper, 12)
+        expect(wrapper.find('form.cm-email-card').exists()).toBe(false)
+
+        // A new chat resets the conversation before it authorizes again.
+        socket.hasStartedChat.value = false
+        socket.messages.value = []
+        await settle(wrapper)
+        expect(wrapper.find('form.cm-email-card').exists()).toBe(false)
+    })
+})
+
+describe('a returning visitor', () => {
+    /** The real socket blinks loadingHistory while the request goes out; the answer comes later. */
+    const historyRequestedNotAnswered = () => {
+        socketCalls.loadChatHistory.mockImplementation(async () => {
+            socket.loadingHistory.value = true
+            socket.loadingHistory.value = false
+        })
+    }
+
+    it('does not see the start state flash before their history arrives', async () => {
+        socket.hasStartedChat.value = false
+        historyRequestedNotAnswered()
+        await mountPanel()
+        expect(socketCalls.loadChatHistory).toHaveBeenCalled()
+        expect(wrapper.find('.cm-start').exists()).toBe(false)
+
+        socket.messages.value = [{ message_type: 'user', message: 'Earlier question', created_at: '', session_id: '' }]
+        await settle(wrapper)
+        expect(wrapper.find('.cm-start').exists()).toBe(false)
+        expect(wrapper.find('.message.user-message').text()).toBe('Earlier question')
+    })
+
+    it('sees the start state once an empty history answered', async () => {
+        socket.hasStartedChat.value = false
+        historyRequestedNotAnswered()
+        await mountPanel()
+        expect(wrapper.find('.cm-start').exists()).toBe(false)
+        socket.messages.value = []
+        await settle(wrapper)
+        expect(wrapper.find('.cm-start').exists()).toBe(true)
     })
 })
 

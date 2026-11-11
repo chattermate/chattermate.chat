@@ -105,7 +105,7 @@ describe('the panel shell', () => {
 
     it('focuses the email field instead while the email step shows', async () => {
         vi.useFakeTimers()
-        panel({ showEmailGate: ref(true) })
+        panel({ awaitingEmail: ref(true) })
         viewHooks().hostVisibilityReported!(true)
         await vi.advanceTimersByTimeAsync(OPEN_FOCUS_DELAY_MS)
         expect(document.activeElement).toBe(wrapper!.get('input[type="email"]').element)
@@ -169,48 +169,6 @@ describe('the panel shell', () => {
 })
 
 describe('the stopgaps until later units', () => {
-    it('shows the welcome block in place of the conversation while there is nothing in it', async () => {
-        panel({ customization: ref({ welcome_title: 'Hi from Ada', welcome_subtitle: 'Ask away' }), quickActions: ref(['Track my order']) })
-        expect(wrapper!.find('[role="log"]').exists()).toBe(false)
-        expect(wrapper!.get('.cm-start__title').text()).toBe('Hi from Ada')
-        expect(wrapper!.get('.cm-start__subtitle').text()).toBe('Ask away')
-        await wrapper!.get('button.cm-chip').trigger('click')
-        expect(ctrl.sendQuickAction).toHaveBeenCalledWith('Track my order')
-
-        ctrl.messages.value = [msg('user', 'Track my order')]
-        await nextTick()
-        expect(wrapper!.find('.cm-start').exists()).toBe(false)
-        expect(wrapper!.find('[role="log"]').exists()).toBe(true)
-    })
-
-    it('shows the welcome message with the classic hook, and friendly defaults', () => {
-        panel({ welcomeMessageText: ref('We answer in seconds.') })
-        expect(wrapper!.get('.cm-welcome-block .message-bubble').text()).toBe('We answer in seconds.')
-        expect(wrapper!.get('.cm-start__title').text()).toBe('Hi there')
-        expect(wrapper!.get('.cm-start__subtitle').text()).toBe('How can we help?')
-    })
-
-    it('shows the conversation, not the welcome block, when the page put a message in it', () => {
-        panel({
-            shownPrompt: ref({ message: 'Need a hand?', chips: [], open: true, source: 'host' as const }),
-            promptPlace: { isBefore: () => false, isLast: () => true },
-        })
-        expect(wrapper!.find('.cm-start').exists()).toBe(false)
-        expect(wrapper!.get('[role="log"]').text()).toContain('Need a hand?')
-    })
-
-    it('waits for history before showing the welcome block', () => {
-        panel({ loadingHistory: ref(true) })
-        expect(wrapper!.find('.cm-start').exists()).toBe(false)
-    })
-
-    it('shows the email step instead of the conversation and composer', () => {
-        panel({ showEmailGate: ref(true) })
-        expect(wrapper!.find('[role="log"]').exists()).toBe(false)
-        expect(wrapper!.find('textarea').exists()).toBe(false)
-        expect(wrapper!.get('input[type="email"]').attributes('placeholder')).toBe('you@example.com')
-    })
-
     it('says when it is starting up or connecting, and offers a retry when the connection failed', async () => {
         panel({ isInitializing: ref(true) })
         expect(wrapper!.get('.cm-notice').text()).toBe('Initializing chat...')

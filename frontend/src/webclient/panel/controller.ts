@@ -150,6 +150,8 @@ export interface WidgetComposer {
     sendMessage: () => Promise<void>
     sendQuickAction: (label: string) => void
     handleKeyPress: (event: KeyboardEvent) => void
+    /** The redesigned panel is holding a send until the visitor's email is in. */
+    heldForEmail: Shown<boolean>
     uploadedAttachments: Shown<UploadedFile[]>
     isUploading: Shown<boolean>
     canUploadMore: Shown<boolean>
@@ -198,7 +200,16 @@ export interface WidgetScreens {
     submittingEmail: Shown<boolean>
     shouldCollectEmail: Shown<boolean>
     showEmailGate: Shown<boolean>
+    /**
+     * The redesigned panel's email card is up: the agent collects email and the
+     * conversation has not started (no authorized email yet). Sends wait meanwhile.
+     */
+    awaitingEmail: Shown<boolean>
+    /** History was asked for and has not answered yet (the start state waits). */
+    awaitingHistory: Shown<boolean>
     submitEmailGate: () => Promise<void>
+    /** submitEmailGate, ignored while a submit is in flight (the panel's card). */
+    submitEmailOnce: () => Promise<void>
     showLandingPage: Shown<boolean>
     landingPageData: Shown<LandingPage | null>
     workflowButtonText: Shown<string>

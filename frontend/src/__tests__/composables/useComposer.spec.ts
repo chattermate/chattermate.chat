@@ -274,4 +274,162 @@ describe('useComposer', () => {
         expect(composer.newMessage.value).toBe('')
         expect(composer.uploadedAttachments.value).toEqual([])
     })
+
+    describe('holding a send for the email (redesigned panel)', () => {
+        /** A panel composer whose email card is up (hold on), for a visitor with no email yet. */
+        const holding = () => {
+            const holdForEmail = ref(true)
+            const askForEmail = vi.fn()
+            const socket = {
+                loading: ref(false),
+                hasStartedChat: ref(false),
+                connectionStatus: ref('connected'),
+                sendMessage: vi.fn().mockResolvedValue(undefined),
+            }
+            const emailInput = ref('')
+            const uploadedAttachments = ref<StagedAttachment[]>([])
+            const composer = useComposer({
+                socket,
+                emailGate: { emailInput, shouldCollectEmail: ref(true) },
+                hasConversationToken: ref(false),
+                isAskAnythingStyle: ref(false),
+                uploadedAttachments,
+                authorize: vi.fn().mockResolvedValue(true),
+                beforeSend: vi.fn().mockReturnValue({}),
+                afterSend: vi.fn(),
+                isWorkflowAgent: () => false,
+                holdForEmail,
+                askForEmail,
+            })
+            return { ...composer, socket, holdForEmail, askForEmail, emailInput, uploadedAttachments }
+        }
+
+        it('keeps the box and suggestions usable while it waits for the email', () => {
+            const c = holding()
+            expect(c.isMessageInputEnabled.value).toBe(true)
+            expect(c.canTypeMessage.value).toBe(true)
+        })
+
+        it('holds a typed message, keeps it in the box and asks for the email', async () => {
+            const c = holding()
+            c.newMessage.value = 'Where is my order?'
+            await c.sendMessage()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+            expect(c.heldForEmail.value).toBe(true)
+            expect(c.newMessage.value).toBe('Where is my order?')
+            expect(c.askForEmail).toHaveBeenCalledTimes(1)
+        })
+
+        it('holds a suggestion and a page chip the same way', async () => {
+            const c = holding()
+            c.sendQuickAction('Track my order')
+            await nextTick()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+            expect(c.newMessage.value).toBe('Track my order')
+            expect(c.heldForEmail.value).toBe(true)
+        })
+
+        it('holds however often the visitor presses send', async () => {
+            const c = holding()
+            c.newMessage.value = 'hello'
+            for (let i = 0; i < 5; i++) await c.sendMessage()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+        })
+
+        it('sends the held message once, by itself, when the email is in', async () => {
+            const c = holding()
+            c.newMessage.value = 'Where is my order?'
+            await c.sendMessage()
+            c.emailInput.value = 'ada@example.com'
+            c.holdForEmail.value = false
+            await nextTick()
+            await Promise.resolve()
+            expect(c.socket.sendMessage).toHaveBeenCalledTimes(1)
+            expect(c.socket.sendMessage).toHaveBeenCalledWith('Where is my order?', 'ada@example.com', [], {})
+            expect(c.heldForEmail.value).toBe(false)
+        })
+
+        it('sends nothing when the email is in but nothing was held', async () => {
+            const c = holding()
+            c.newMessage.value = 'just typed'
+            c.holdForEmail.value = false
+            await nextTick()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+        })
+
+        it('leaves the held message in the box when the connection dropped meanwhile', async () => {
+            const c = holding()
+            c.newMessage.value = 'hello'
+            await c.sendMessage()
+            c.socket.connectionStatus.value = 'failed'
+            c.holdForEmail.value = false
+            await nextTick()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+            expect(c.newMessage.value).toBe('hello')
+        })
+
+        it('forgets a held message when a new chat clears the box', async () => {
+            const c = holding()
+            c.newMessage.value = 'hello'
+            await c.sendMessage()
+            c.clearComposer()
+            c.holdForEmail.value = false
+            await nextTick()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+            expect(c.heldForEmail.value).toBe(false)
+        })
+
+        it('still refuses a pasted secret before holding anything', async () => {
+            const c = holding()
+            c.newMessage.value = 'my password is hunter2'
+            expect(c.secretInMessage.value).toBe(true)
+            await c.sendMessage()
+            expect(c.heldForEmail.value).toBe(false)
+            expect(c.askForEmail).not.toHaveBeenCalled()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+        })
+
+        it('ignores a suggestion while a typed message is held, so the typed one goes out', async () => {
+            const c = holding()
+            c.newMessage.value = 'My order 1042 never arrived'
+            await c.sendMessage()
+            c.sendQuickAction('Track my order')
+            expect(c.newMessage.value).toBe('My order 1042 never arrived')
+            c.holdForEmail.value = false
+            await nextTick()
+            await Promise.resolve()
+            expect(c.socket.sendMessage).toHaveBeenCalledTimes(1)
+            expect(c.socket.sendMessage.mock.calls[0][0]).toBe('My order 1042 never arrived')
+        })
+
+        it('lets go when the visitor clears the box', async () => {
+            const c = holding()
+            c.newMessage.value = 'hello'
+            await c.sendMessage()
+            c.newMessage.value = '  '
+            await nextTick()
+            expect(c.heldForEmail.value).toBe(false)
+            c.holdForEmail.value = false
+            await nextTick()
+            expect(c.socket.sendMessage).not.toHaveBeenCalled()
+        })
+
+        it('holds files sent without text, and keeps holding while files remain', async () => {
+            const c = holding()
+            c.uploadedAttachments.value = [{ content: 'eA==', filename: 'note.txt', type: 'text/plain', size: 1 }]
+            await c.sendMessage()
+            expect(c.heldForEmail.value).toBe(true)
+            await nextTick()
+            expect(c.heldForEmail.value).toBe(true)
+            c.uploadedAttachments.value.splice(0, 1)
+            await nextTick()
+            expect(c.heldForEmail.value).toBe(false)
+        })
+
+        it('changes nothing for the classic widget, which passes no hold', () => {
+            const c = setup({ hasStartedChat: false, collectEmail: true })
+            // Classic keeps the box shut until the email is in.
+            expect(c.isMessageInputEnabled.value).toBe(false)
+        })
+    })
 })
