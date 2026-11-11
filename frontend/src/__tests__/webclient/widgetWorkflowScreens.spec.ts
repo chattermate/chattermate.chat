@@ -68,7 +68,7 @@ const buttonIn = (screen: any, name: string) =>
 
 /** The field a label names, as getByLabel would find it. */
 const fieldLabelled = (screen: any, label: string) => {
-    const tag = screen.findAll('label').find((l: any) => l.text().replace('*', '').trim() === label)
+    const tag = screen.findAll('label').find((l: any) => l.text().replace(/\*/g, '').trim() === label)
     return screen.find(`[id="${tag.attributes('for')}"]`)
 }
 
