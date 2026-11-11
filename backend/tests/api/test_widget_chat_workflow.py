@@ -282,3 +282,28 @@ class TestOneMessageWorkflowIsSentOnce:
 
         assert _chat_responses(sio) == ["Hello from the workflow"]
         assert _stored_bot_messages(db, session_id) == ["Hello from the workflow"]
+
+class TestWorkflowHandOverReply:
+    """A workflow's hand-over reply reaches the visitor without the notes for the team."""
+
+    @pytest.mark.asyncio
+    async def test_reason_and_description_are_not_sent(self, one_message_session, monkeypatch):
+        from app.api import widget_chat
+        from app.services.workflow_chat import WorkflowChatService
+        sio, session_id = one_message_session
+
+        transfer = MagicMock(message="Connecting you to the team", transfer_to_human=True,
+                             end_chat=False, request_rating=False,
+                             transfer_reason=MagicMock(value="billing"),
+                             transfer_description="Angry about a double charge; check Stripe.")
+        transfer._is_transfer_response = True
+        monkeypatch.setattr(WorkflowChatService, "handle_workflow_chat", AsyncMock(return_value=transfer))
+
+        await widget_chat.handle_widget_chat("test_sid", {"message": "I want a person"})
+
+        sent = [c.args[1] for c in sio.emit.call_args_list if c.args[0] == "chat_response"]
+        assert len(sent) == 1
+        assert sent[0]['message'] == 'Connecting you to the team'
+        assert sent[0]['transfer_to_human'] is True
+        assert 'transfer_reason' not in sent[0]
+        assert 'transfer_description' not in sent[0]

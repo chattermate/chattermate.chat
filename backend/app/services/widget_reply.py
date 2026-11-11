@@ -92,7 +92,9 @@ async def build_widget_agent(session: dict, host_actions: Iterable[AgentAction] 
     return await create_widget_agent(widget_agent_kwargs(session, host_actions, journey_hint))
 
 
-def _response_payload(response: ChatResponse, session_id: str) -> dict:
+def reply_payload(response: ChatResponse, session_id: str) -> dict:
+    """The visitor's copy of an AI reply. Notes for the team (transfer reason and
+    description) stay on the stored message and are never sent."""
     payload = {
         'message': response.message,
         'type': 'chat_response',
@@ -149,7 +151,7 @@ async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatRespo
         return
     session_id = session['session_id']
     customer_id = session['customer_id']
-    await sio.emit('chat_response', _response_payload(response, session_id), room=session_id, namespace=WIDGET_NAMESPACE)
+    await sio.emit('chat_response', reply_payload(response, session_id), room=session_id, namespace=WIDGET_NAMESPACE)
 
     # On human handoff, optionally collect the visitor's contact details (email/name)
     # so the human agent can follow up. Fires for both a live transfer and the
