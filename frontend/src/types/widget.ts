@@ -28,6 +28,29 @@ export interface WidgetProduct {
   currency?: string
   price_formatted?: string
   cart_variant_id?: string | null
+  price_max?: string | null
+  total_inventory?: number | null
+  /** Published to the Online Store: only then can the storefront's cart take it. */
+  published?: boolean | null
+  tracks_inventory?: boolean | null
+  /** What a customer picks between (Size, Colour); empty for a single-variant product. */
+  options?: WidgetProductOption[]
+  variants?: WidgetProductVariant[]
+}
+
+export interface WidgetProductOption {
+  name: string
+  values: string[]
+}
+
+export interface WidgetProductVariant {
+  id: string
+  title?: string | null
+  available: boolean
+  price?: string | null
+  /** Option name → value, e.g. { Size: 'M' }. */
+  options: Record<string, string>
+  image?: ShopifyProductImage | null
 }
 
 /** A chat message plus the state the widget keeps on it (forms, ratings, questions). */

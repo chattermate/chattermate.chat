@@ -17,7 +17,7 @@ limitations under the License.
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-from app.tools.shopify_toolkit import ShopifyTools, cart_variant_id, product_from_node
+from app.tools.shopify_toolkit import MAX_VARIANTS, ShopifyTools, cart_variant_id, product_choices, product_from_node
 from agno.tools.function import Function, FunctionCall
 from app.tools.shopify_order_access import (
     EMAIL_REQUIRED,
@@ -776,6 +776,51 @@ def test_product_from_node_flattens_a_full_node():
     assert product["cart_variant_id"] == "111"
 
 
+def _sized(variant_id, size, available=True, price="20.00"):
+    return {"node": {"id": f"gid://shopify/ProductVariant/{variant_id}", "title": size,
+                     "availableForSale": available, "price": price,
+                     "selectedOptions": [{"name": "Size", "value": size}],
+                     "image": {"url": f"https://cdn.example/{size}.png"}}}
+
+
+def test_a_product_with_sizes_offers_them_for_the_sheet():
+    product = product_from_node({
+        "id": "gid://shopify/Product/5", "publishedAt": PUBLISHED, "tracksInventory": True,
+        "options": [{"name": "Size", "values": ["S", "M", 3]}],
+        "variants": {"edges": [_sized("1", "S"), _sized("2", "M", available=False)]},
+    })
+    assert product["published"] is True and product["tracks_inventory"] is True
+    assert product["cart_variant_id"] is None
+    assert product["options"] == [{"name": "Size", "values": ["S", "M"]}]
+    assert product["variants"] == [
+        {"id": "1", "title": "S", "available": True, "price": "20.00", "options": {"Size": "S"},
+         "image": {"src": "https://cdn.example/S.png"}},
+        {"id": "2", "title": "M", "available": False, "price": "20.00", "options": {"Size": "M"},
+         "image": {"src": "https://cdn.example/M.png"}},
+    ]
+
+
+def test_a_single_variant_product_has_nothing_to_choose():
+    assert product_choices({"variants": {"edges": [_sized("1", "S")]}}) == {"options": [], "variants": []}
+    assert product_choices({}) == {"options": [], "variants": []}
+
+
+def test_variants_past_the_cap_are_left_out():
+    edges = [_sized(str(i), f"S{i}") for i in range(MAX_VARIANTS + 5)]
+    assert len(product_choices({"variants": {"edges": edges}})["variants"]) == MAX_VARIANTS
+
+
+def test_the_product_schema_keeps_the_choices():
+    from app.models.schemas.chat import ShopifyProduct
+    product = ShopifyProduct(**product_from_node({
+        "id": "gid://shopify/Product/5", "publishedAt": PUBLISHED,
+        "options": [{"name": "Size", "values": ["S", "M"]}],
+        "variants": {"edges": [_sized("1", "S"), _sized("2", "M")]},
+    }))
+    dumped = product.model_dump()
+    assert dumped["variants"][1]["options"] == {"Size": "M"} and dumped["published"] is True
+
+
 @pytest.mark.parametrize("call", [
     lambda tools: tools.search_products("board"),
     lambda tools: tools.recommend_products(product_type="board"),
@@ -794,7 +839,9 @@ def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools
         call(shopify_tools)
 
     query = mock_post.call_args.kwargs["json"]["query"]
-    assert "variants(first: 2)" in query
+    assert f"variants(first: {MAX_VARIANTS})" in query
+    assert "selectedOptions { name value }" in query
+    assert "options { name values }" in query and "tracksInventory" in query
     assert "publishedAt" in query
     cached = json.loads(get_redis.return_value.setex.call_args.args[2])
     assert cached["products"][0]["cart_variant_id"] == "111"

@@ -46,7 +46,12 @@ let nextRequest = 0
 const sameShop = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
 export function canAddToCart(product: { cart_variant_id?: string | null }, shopDomain?: string | null): boolean {
-  return !!(product.cart_variant_id && shopDomain && shop.value && sameShop(shop.value, shopDomain))
+  return !!product.cart_variant_id && cartAvailableFor(shopDomain)
+}
+
+/** Whether the loader announced this store's cart (products from another shop can't go in it). */
+export function cartAvailableFor(shopDomain?: string | null): boolean {
+  return !!(shopDomain && shop.value && sameShop(shop.value, shopDomain))
 }
 
 export function cartState(variantId: string): CartState {
@@ -82,10 +87,62 @@ export function viewCart(): void {
   postToHost({ type: 'VIEW_CART' })
 }
 
+export interface CartLine {
+  variant_id: string
+  title: string
+  quantity: number
+  image: string | null
+  /** In the store's minor unit (cents), as cart.js gives it. */
+  line_price: number
+}
+
+export interface CartSummary {
+  item_count: number
+  /** In the store's minor unit (cents). */
+  total_price: number
+  currency: string
+  items: CartLine[]
+}
+
+/** The storefront's cart, as the loader last read it (CART_STATE); null until then. */
+export const cartSummary = ref<CartSummary | null>(null)
+
+/** Ask the loader for the cart (it answers with CART_STATE). */
+export function requestCart(): void {
+  if (shop.value) postToHost({ type: 'GET_CART' })
+}
+
+export function goToCheckout(): void {
+  postToHost({ type: 'GO_TO_CHECKOUT' })
+}
+
+const count = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0)
+
+function summaryFrom(data: Record<string, unknown>): CartSummary {
+  const items = Array.isArray(data.items) ? data.items : []
+  return {
+    item_count: count(data.item_count),
+    total_price: count(data.total_price),
+    currency: typeof data.currency === 'string' ? data.currency : '',
+    items: items.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map(item => ({
+      variant_id: String(item.variant_id ?? ''),
+      title: typeof item.title === 'string' ? item.title : '',
+      quantity: count(item.quantity),
+      image: typeof item.image === 'string' && /^https?:\/\//.test(item.image) ? item.image : null,
+      line_price: count(item.line_price),
+    })),
+  }
+}
+
 /** A message from the loader. Returns true if it was for the cart. */
 export function handleCartMessage(data: Record<string, unknown>): boolean {
   if (data.type === 'CART_AVAILABLE') {
     shop.value = typeof data.shop === 'string' && data.shop ? data.shop : null
+    requestCart()
+    return true
+  }
+  if (data.type === 'CART_STATE') {
+    if (shop.value) cartSummary.value = summaryFrom(data)
     return true
   }
   if (data.type === 'ADD_TO_CART_DONE') {
@@ -99,6 +156,7 @@ export function handleCartMessage(data: Record<string, unknown>): boolean {
 /** Test seam: forget the store and every button's state. */
 export function resetShopifyCart(): void {
   shop.value = null
+  cartSummary.value = null
   waiting.forEach((request) => clearTimeout(request.timer))
   waiting.clear()
   latest.clear()

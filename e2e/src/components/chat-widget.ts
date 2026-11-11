@@ -588,6 +588,11 @@ export class ChatWidget {
     return this.frame.getByRole('group', { name: title })
   }
 
+  /** A product card's way to its store page: a button in the classic widget, a link in the redesign. */
+  viewProduct(title: string): Locator {
+    return this.productCard(title).getByRole(env.widgetUi === 2 ? 'link' : 'button', { name: /View product/ })
+  }
+
   async addToCart(title: string): Promise<void> {
     await step(`Customer adds ${title} to the cart`, async () => {
       await this.productCard(title).getByRole('button', { name: 'Add to cart' }).click()
@@ -598,6 +603,23 @@ export class ChatWidget {
     await step('Customer goes to the cart', async () => {
       await this.productCard(title).getByRole('button', { name: 'View cart' }).click()
     })
+  }
+
+  /** The redesign's product sheet: choosing a product's options (a modal dialog in the panel). */
+  productSheet(title: string): Locator {
+    return this.frame.getByRole('dialog', { name: title })
+  }
+
+  async chooseOptions(title: string, picks: string[]): Promise<void> {
+    await step(`Customer chooses ${picks.join(', ')} for ${title}`, async () => {
+      await this.productCard(title).getByRole('button', { name: 'Choose options' }).click()
+      for (const pick of picks) await this.productSheet(title).getByRole('button', { name: pick, exact: true }).click()
+    })
+  }
+
+  /** The redesign's cart bar above the message box. */
+  get cartBar(): Locator {
+    return this.frame.getByRole('region', { name: 'Your cart' })
   }
 
   /** The count the store's own cart page shows. */

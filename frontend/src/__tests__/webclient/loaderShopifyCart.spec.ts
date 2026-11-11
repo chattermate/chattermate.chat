@@ -71,6 +71,58 @@ describe('shopify cart in the loader', () => {
     expect(posted).toEqual([{ type: 'ADD_TO_CART_DONE', requestId: 'r1', ok: true }])
   })
 
+  describe('the cart bar\'s summary', () => {
+    const cartJs = {
+      item_count: 3, total_price: 5800, currency: 'GBP',
+      items: Array.from({ length: 25 }, (_, i) => ({
+        variant_id: 100 + i, product_title: 'Wool beanie '.repeat(20), quantity: 1,
+        image: 'https://cdn.shop/b.png', final_line_price: 1900,
+      })),
+    }
+
+    it('reads the store\'s cart on GET_CART, a short summary only', async () => {
+      const fetchMock = vi.fn(async () => jsonResponse(200, cartJs))
+      const { cart, posted } = storefront({ routes: { root: '/fr/' } }, fetchMock)
+      expect(cart.handleFrameMessage({ type: 'GET_CART' })).toBe(true)
+      await flush()
+      expect(fetchMock.mock.calls[0][0]).toBe('/fr/cart.js')
+      const [state] = posted
+      expect(state).toMatchObject({ type: 'CART_STATE', item_count: 3, total_price: 5800, currency: 'GBP' })
+      expect(state.items).toHaveLength(20)
+      expect(state.items[0]).toEqual({ variant_id: '100', title: 'Wool beanie '.repeat(20).slice(0, 120), quantity: 1, image: 'https://cdn.shop/b.png', line_price: 1900 })
+    })
+
+    it('says nothing when the cart can\'t be read, or off a storefront', async () => {
+      const { cart, posted } = storefront({}, vi.fn(async () => jsonResponse(500, {})))
+      cart.handleFrameMessage({ type: 'GET_CART' })
+      await flush()
+      expect(posted).toEqual([])
+      const off: any[] = []
+      createShopifyCart({ fetch: vi.fn() } as any, (m: any) => off.push(m)).handleFrameMessage({ type: 'GET_CART' })
+      await flush()
+      expect(off).toEqual([])
+    })
+
+    it('goes to the checkout', () => {
+      const { cart, win } = storefront({ routes: { root: '/fr/' } })
+      expect(cart.handleFrameMessage({ type: 'GO_TO_CHECKOUT' })).toBe(true)
+      expect(win.location.assign).toHaveBeenCalledWith('/fr/checkout')
+    })
+
+    it('follows the page\'s own cart changes until destroyed', async () => {
+      const doc = document.implementation.createHTMLDocument('store')
+      const fetchMock = vi.fn(async () => jsonResponse(200, cartJs))
+      const { cart, posted } = storefront({}, fetchMock, doc)
+      doc.dispatchEvent(new CustomEvent('chattermate:cart-updated'))
+      await flush()
+      expect(posted).toHaveLength(1)
+      cart.destroy()
+      doc.dispatchEvent(new CustomEvent('chattermate:cart-updated'))
+      await flush()
+      expect(posted).toHaveLength(1)
+    })
+  })
+
   describe('the theme\'s cart count', () => {
     // A page laid out as Dawn's is: the header's cart icon and the cart drawer
     function dawnPage(count = '0') {
@@ -95,7 +147,9 @@ describe('shopify cart in the loader', () => {
       expect(doc.querySelector('#cart-icon-bubble')!.textContent!.trim()).toBe('1')
       expect(doc.querySelector('#CartDrawer')!.textContent).toContain('The Videographer Snowboard')
       expect(doc.querySelector('cart-drawer')!.classList.contains('is-empty')).toBe(false)
-      expect(posted).toEqual([{ type: 'ADD_TO_CART_DONE', requestId: 'r1', ok: true }])
+      expect(posted[0]).toEqual({ type: 'ADD_TO_CART_DONE', requestId: 'r1', ok: true })
+      // The page heard the cart change, so the widget's cart bar is told too
+      expect(posted[1]).toMatchObject({ type: 'CART_STATE' })
     })
 
     it('tells the page the cart changed, for a theme it can\'t redraw', async () => {

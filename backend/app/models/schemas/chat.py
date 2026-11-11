@@ -72,6 +72,22 @@ class ShopifyProductImage(BaseModel):
         from_attributes = True
 
 # Define a model for a single Shopify product
+class ShopifyProductOption(BaseModel):
+    """A product option, e.g. Size with its values."""
+    name: Optional[str] = None
+    values: List[str] = Field(default_factory=list)
+
+
+class ShopifyProductVariant(BaseModel):
+    """One variant a customer can pick in the widget's product sheet."""
+    id: Optional[str] = None
+    title: Optional[str] = None
+    available: bool = False
+    price: Optional[str] = None
+    options: Dict[str, str] = Field(default_factory=dict)
+    image: Optional[ShopifyProductImage] = None
+
+
 class ShopifyProduct(BaseModel):
     id: Optional[str] = Field(default=None)
     title: Optional[str] = Field(default=None)
@@ -91,6 +107,11 @@ class ShopifyProduct(BaseModel):
     variant_title: Optional[str] = Field(default=None)
     # Set only when one click can add this product (see cart_variant_id)
     cart_variant_id: Optional[str] = Field(default=None)
+    # The widget's carousel and product sheet (shopify_toolkit.product_choices)
+    published: Optional[bool] = Field(default=None)
+    tracks_inventory: Optional[bool] = Field(default=None)
+    options: List[ShopifyProductOption] = Field(default_factory=list)
+    variants: List[ShopifyProductVariant] = Field(default_factory=list)
 
     class Config:
         json_encoders = {

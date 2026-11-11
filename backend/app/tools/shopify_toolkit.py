@@ -162,6 +162,39 @@ def cart_variant_id(node: dict) -> Optional[str]:
     return variant["id"].split("/")[-1]
 
 
+# A product shows at most this many variants in the widget's product sheet; the
+# query asks for this many (Admin API cost grows with it, per product).
+MAX_VARIANTS = 25
+
+
+def _variant_from_node(node: dict) -> Optional[dict]:
+    if not node.get("id"):
+        return None
+    image = (node.get("image") or {}).get("url")
+    return {
+        "id": node["id"].split("/")[-1],
+        "title": node.get("title"),
+        "available": bool(node.get("availableForSale")),
+        "price": node.get("price"),
+        "options": {o.get("name"): o.get("value") for o in node.get("selectedOptions") or []
+                    if o.get("name") and o.get("value") is not None},
+        "image": {"src": image} if image else None,
+    }
+
+
+def product_choices(node: dict) -> dict:
+    """What the widget's product sheet offers: the options (Size, Colour) with their
+    values, and each variant with what it is. Empty for a single-variant product:
+    there is nothing to choose."""
+    edges = (node.get("variants") or {}).get("edges") or []
+    variants = [v for v in (_variant_from_node(e.get("node") or {}) for e in edges[:MAX_VARIANTS]) if v]
+    if len(variants) < 2:
+        return {"options": [], "variants": []}
+    options = [{"name": o.get("name"), "values": [v for v in o.get("values") or [] if isinstance(v, str)]}
+               for o in node.get("options") or [] if o.get("name")]
+    return {"options": options, "variants": variants}
+
+
 def product_from_node(node: dict) -> dict:
     """Flatten one GraphQL product node into the shape the cache and cards use."""
     images = (node.get("images") or {}).get("edges") or []
@@ -184,6 +217,10 @@ def product_from_node(node: dict) -> dict:
         "created_at": node.get("createdAt"),
         "updated_at": node.get("updatedAt"),
         "cart_variant_id": cart_variant_id(node),
+        # For the widget's carousel ("Only 3 left") and product sheet (plan 3.x)
+        "published": bool(node.get("publishedAt")),
+        "tracks_inventory": node.get("tracksInventory"),
+        **product_choices(node),
     }
 
 
@@ -443,7 +480,7 @@ class ShopifyTools(Toolkit):
                     vendor
                     totalInventory
                     publishedAt
-                    variants(first: 2) { edges { node { id availableForSale } } }
+                    tracksInventory options { name values } variants(first: 25) { edges { node { id title availableForSale price selectedOptions { name value } image { url } } } }
                     priceRangeV2 {
                       minVariantPrice {
                         amount
@@ -982,7 +1019,7 @@ class ShopifyTools(Toolkit):
                         vendor
                         totalInventory
                         publishedAt
-                        variants(first: 2) {{ edges {{ node {{ id availableForSale }} }} }}
+                        tracksInventory options {{ name values }} variants(first: 25) {{ edges {{ node {{ id title availableForSale price selectedOptions {{ name value }} image {{ url }} }} }} }}
                         priceRangeV2 {{
                           minVariantPrice {{
                             amount
@@ -1046,7 +1083,7 @@ class ShopifyTools(Toolkit):
                         vendor
                         totalInventory
                         publishedAt
-                        variants(first: 2) { edges { node { id availableForSale } } }
+                        tracksInventory options { name values } variants(first: 25) { edges { node { id title availableForSale price selectedOptions { name value } image { url } } } }
                         priceRangeV2 {
                           minVariantPrice {
                             amount

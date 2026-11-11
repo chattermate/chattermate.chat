@@ -96,6 +96,21 @@ function addToCart(req: IncomingMessage, res: ServerResponse): void {
   })
 }
 
+// The storefront's cart.js, as the widget's cart bar reads it: every item is $40.00
+function cartJson(req: IncomingMessage): string {
+  const ids = cartIn(req)
+  const counts = new Map<string, number>()
+  ids.forEach((id) => counts.set(id, (counts.get(id) ?? 0) + 1))
+  return JSON.stringify({
+    item_count: ids.length,
+    total_price: ids.length * 4000,
+    currency: 'USD',
+    items: [...counts].map(([id, quantity]) => ({
+      variant_id: Number(id), product_title: `Item ${id}`, quantity, image: null, final_line_price: quantity * 4000,
+    })),
+  })
+}
+
 function cartPage(req: IncomingMessage): string {
   return `<!doctype html>
 <html lang="en">
@@ -212,6 +227,10 @@ function serve(listenPort: number, loader: string, legacy: boolean): void {
     }
     if (url.pathname === '/cart/add.js' && req.method === 'POST') {
       addToCart(req, res)
+      return
+    }
+    if (url.pathname === '/cart.js') {
+      res.writeHead(200, { 'content-type': 'application/json' }).end(cartJson(req))
       return
     }
     if (url.pathname === '/cart') {

@@ -23,6 +23,10 @@ limitations under the License.
 // and the widget shows no button.
 
 const ADD_TIMEOUT_MS = 15000
+const CART_TIMEOUT_MS = 8000
+// The cart summary the widget's cart bar shows: a few lines, never the whole cart
+const MAX_CART_ITEMS = 20
+const MAX_TITLE_LENGTH = 120
 const MAX_ERROR_LENGTH = 200
 // Short enough to stay exact as a JavaScript number
 const VARIANT_ID = /^[0-9]{1,15}$/
@@ -138,6 +142,51 @@ export function createShopifyCart(win, postToFrame) {
     postToFrame(Object.assign({ type: 'ADD_TO_CART_DONE', requestId: requestId }, answer))
   }
 
+  // The cart as the widget's cart bar shows it, from the storefront's own cart.js
+  function summaryFrom(cart) {
+    const items = Array.isArray(cart && cart.items) ? cart.items : []
+    return {
+      item_count: Number(cart && cart.item_count) || 0,
+      total_price: Number(cart && cart.total_price) || 0,
+      currency: typeof (cart && cart.currency) === 'string' ? cart.currency : '',
+      items: items.slice(0, MAX_CART_ITEMS).map(function (item) {
+        return {
+          variant_id: String(item.variant_id || ''),
+          title: String(item.product_title || item.title || '').slice(0, MAX_TITLE_LENGTH),
+          quantity: Number(item.quantity) || 0,
+          image: typeof item.image === 'string' ? item.image : null,
+          line_price: Number(item.final_line_price != null ? item.final_line_price : item.line_price) || 0,
+        }
+      }),
+    }
+  }
+
+  // Tell the frame what is in the cart (CART_STATE); nothing when it can't be read
+  async function sendCart() {
+    const shopify = storefront()
+    if (!shopify) return
+    const controller = new AbortController()
+    const timer = setTimeout(function () { controller.abort() }, CART_TIMEOUT_MS)
+    try {
+      const response = await win.fetch(urlFor(shopify, 'cart.js'), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      })
+      if (!response.ok) return
+      postToFrame(Object.assign({ type: 'CART_STATE' }, summaryFrom(await response.json())))
+    } catch (e) {
+      /* the bar keeps what it last showed */
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  function goToCheckout() {
+    const shopify = storefront()
+    if (shopify) win.location.assign(urlFor(shopify, 'checkout'))
+  }
+
   function viewCart() {
     const shopify = storefront()
     if (shopify) win.location.assign(urlFor(shopify, 'cart'))
@@ -153,8 +202,24 @@ export function createShopifyCart(win, postToFrame) {
       viewCart()
       return true
     }
+    if (data.type === 'GET_CART') {
+      void sendCart()
+      return true
+    }
+    if (data.type === 'GO_TO_CHECKOUT') {
+      goToCheckout()
+      return true
+    }
     return false
   }
 
-  return { announce, handleFrameMessage }
+  // The theme or another app changed the cart: the bar follows.
+  function onCartUpdated() { void sendCart() }
+  if (win.document && storefront()) win.document.addEventListener(CART_UPDATED_EVENT, onCartUpdated)
+
+  function destroy() {
+    if (win.document) win.document.removeEventListener(CART_UPDATED_EVENT, onCartUpdated)
+  }
+
+  return { announce, handleFrameMessage, sendCart, destroy }
 }

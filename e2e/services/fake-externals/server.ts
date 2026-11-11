@@ -416,7 +416,10 @@ function shopifyOrderNode(order: ShopifyOrder) {
   }
 }
 
-function shopifyProduct(id: number, title: string, variants: { id: number; onSale: boolean }[], onOnlineStore = true) {
+type FakeVariant = { id: number; onSale: boolean; size?: string }
+
+function shopifyProduct(id: number, title: string, variants: FakeVariant[], onOnlineStore = true) {
+  const sizes = variants.map((v) => v.size).filter((size): size is string => !!size)
   const handle = title.toLowerCase().replaceAll(' ', '-')
   return {
     id: `gid://shopify/Product/${id}`,
@@ -430,7 +433,12 @@ function shopifyProduct(id: number, title: string, variants: { id: number; onSal
     tags: [],
     priceRangeV2: { minVariantPrice: { amount: '40.00', currencyCode: 'USD' }, maxVariantPrice: { amount: '40.00', currencyCode: 'USD' } },
     images: { edges: [] },
-    variants: { edges: variants.map((v) => ({ node: { id: `gid://shopify/ProductVariant/${v.id}`, availableForSale: v.onSale } })) },
+    tracksInventory: true,
+    options: sizes.length ? [{ name: 'Size', values: sizes }] : [{ name: 'Title', values: ['Default Title'] }],
+    variants: { edges: variants.map((v) => ({ node: {
+      id: `gid://shopify/ProductVariant/${v.id}`, availableForSale: v.onSale, title: v.size ?? 'Default Title', price: '40.00',
+      selectedOptions: [v.size ? { name: 'Size', value: v.size } : { name: 'Title', value: 'Default Title' }], image: null,
+    } })) },
   }
 }
 
@@ -439,7 +447,7 @@ function shopifyProduct(id: number, title: string, variants: { id: number; onSal
 const shopifyProducts = [
   shopifyProduct(1, 'E2E Mug', [{ id: 111, onSale: true }]),
   shopifyProduct(2, 'E2E Cap', [{ id: 222, onSale: true }]),
-  shopifyProduct(3, 'E2E Shirt', [{ id: 331, onSale: true }, { id: 332, onSale: true }]),
+  shopifyProduct(3, 'E2E Shirt', [{ id: 331, onSale: false, size: 'S' }, { id: 332, onSale: true, size: 'M' }]),
   shopifyProduct(4, 'E2E Poster', [{ id: 444, onSale: false }]),
   shopifyProduct(5, 'E2E Draft', [{ id: 555, onSale: true }], false),
 ]
