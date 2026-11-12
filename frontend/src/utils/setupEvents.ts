@@ -24,3 +24,14 @@ export const SETUP_CHANGED_EVENT = 'chattermate:setup-changed'
 export function notifySetupChanged(): void {
   window.dispatchEvent(new Event(SETUP_CHANGED_EVENT))
 }
+
+/**
+ * Something other than the agent page changed an agent (the setup assistant
+ * in the help drawer): a page showing it reloads it, so what it shows, and
+ * what its next save sends, is current.
+ */
+export const AGENT_CHANGED_EVENT = 'chattermate:agent-changed'
+
+export function notifyAgentChanged(agentId: string): void {
+  window.dispatchEvent(new CustomEvent(AGENT_CHANGED_EVENT, { detail: { agentId } }))
+}

@@ -15,7 +15,7 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { userService } from '@/services/user'
 import { agentService } from '@/services/agent'
 import { widgetService } from '@/services/widget'
@@ -74,7 +74,7 @@ const resumePoint = async () => {
 }
 
 const orgId = userService.getCurrentUser()?.organization_id || ''
-const steps = ['Create', 'Teach', 'Test', 'Launch']
+const steps = ['Create', 'Teach', 'Try', 'Go live']
 
 const currentStep = ref<OnboardingStepIndex>(0)
 const agentId = ref<string | null>(null)
@@ -202,8 +202,13 @@ const handleSkip = () => {
   emit('complete')
 }
 
-const handleFinish = () => {
+// Finish tells the setup assistant first (it records the journey as done and
+// stays for the help button), then the wizard goes.
+const finished = ref(false)
+const handleFinish = async () => {
   onboarding.completeStep(orgId, 3)
+  finished.value = true
+  await nextTick()
   emit('complete')
 }
 </script>
@@ -279,6 +284,7 @@ const handleFinish = () => {
       :agent-id="agentId"
       :widget-id="widgetId"
       :org-id="orgId"
+      :finished="finished"
       @agent-created="handleCreated"
       @widget-created="handleWidgetCreated"
       @changed="handleAssistantChange"

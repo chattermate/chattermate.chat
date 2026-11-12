@@ -25,6 +25,7 @@ import { getGoogleFontsApiKey } from '@/config/api'
 import { AI_DISCLAIMER_TEXT } from '@/utils/aiDisclaimer'
 import { LAUNCHER_SWATCHES, launcherPreview, launcherSummary, useLauncherSettings, type LauncherPreview } from '@/composables/useLauncherSettings'
 import { DEFAULT_LAUNCHER_COLOR } from '@/webclient/launcher-style'
+import { THEME_PRESETS, themePreset } from '@/utils/chatThemes'
 import { WINDOW_PRESETS, WINDOW_STANDARD, useWindowSize } from '@/composables/useWindowSize'
 import LauncherSection from './LauncherSection.vue'
 import CustomizationSection from './CustomizationSection.vue'
@@ -175,21 +176,6 @@ const chatStyleOptions = [
 const legacyStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'legacy'))
 const newStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'new'))
 
-// Default palette per design. Selecting a design seeds these color fields so the look
-// matches the marketing presets; the user can still recolor afterwards.
-// Per-theme text colours copied from the design comp (Terminal greenish, Glass lavender, …).
-const THEME_PRESETS: Record<string, { chat_background_color: string; chat_text_color: string; chat_bubble_color: string; accent_color: string; font_family: string }> = {
-    CHATBOT: { chat_background_color: '#FFFFFF', chat_text_color: '#212529', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
-    ASK_ANYTHING: { chat_background_color: '#F8F9FA', chat_text_color: '#2A2A33', chat_bubble_color: DEFAULT_LAUNCHER_COLOR, accent_color: '#C9F24E', font_family: 'Inter, system-ui, sans-serif' },
-    GLASS: { chat_background_color: '#17151F', chat_text_color: '#ECEAFA', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
-    TERMINAL: { chat_background_color: '#070907', chat_text_color: '#D7F7C8', chat_bubble_color: '#C9F24E', accent_color: '#C9F24E', font_family: 'JetBrains Mono, monospace' },
-    PLAYFUL: { chat_background_color: '#FFFFFF', chat_text_color: '#2A2730', chat_bubble_color: '#FF7A6B', accent_color: '#FF7A6B', font_family: 'Instrument Sans, sans-serif' },
-    CALM_MINT: { chat_background_color: '#0E1A1A', chat_text_color: '#DDF7F3', chat_bubble_color: '#5FE3D6', accent_color: '#5FE3D6', font_family: 'Instrument Sans, sans-serif' },
-    AURORA: { chat_background_color: '#14111C', chat_text_color: '#F2F3F8', chat_bubble_color: '#9D8CFF', accent_color: '#9D8CFF', font_family: 'Instrument Sans, sans-serif' },
-    SUNRISE: { chat_background_color: '#FFFFFF', chat_text_color: '#2A2A33', chat_bubble_color: '#FF8A73', accent_color: '#FF8A73', font_family: 'Instrument Sans, sans-serif' },
-}
-
-const themePreset = (value: string) => THEME_PRESETS[value] || THEME_PRESETS.CHATBOT
 
 // Select a design and seed its preset palette into the editable color fields
 const selectChatStyle = (value: ChatStyle) => {
