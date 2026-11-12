@@ -20,7 +20,9 @@ the customer's email up in the store, and mint a verified conversation token
 for the store's widget, as /generate-token does for an app with an API key.
 
 Without a valid signature, a fresh timestamp, an installed store linked to the
-widget's organization and a signed-in customer, there is no token.
+widget's organization and a signed-in customer whose email the store has
+verified, there is no token. A classic customer account can be opened with any
+address, unconfirmed: that email names nobody.
 """
 
 import hashlib
@@ -52,7 +54,7 @@ SOURCE = 'shopify_storefront'
 
 CUSTOMER_GRAPHQL = """
 query Customer($id: ID!) {
-  customer(id: $id) { email firstName lastName }
+  customer(id: $id) { email verifiedEmail firstName lastName }
 }
 """
 
@@ -70,7 +72,9 @@ def signature_valid(query: Sequence[Tuple[str, str]], secret: str, now: Optional
             signature = value
         else:
             values.setdefault(key, []).append(value)
-    if not signature:
+    # Shopify signs a repeated key as one comma-joined value, but whoever reads it
+    # takes one of the copies: a request that repeats any key is not taken at all.
+    if not signature or any(len(joined) > 1 for joined in values.values()):
         return False
     # Sorted as whole key=value strings, as Shopify does (not by key alone)
     message = ''.join(sorted(f"{key}={','.join(joined)}" for key, joined in values.items()))
@@ -124,11 +128,11 @@ def identity_token(db: Session, query: Sequence[Tuple[str, str]]) -> Optional[di
     shop, widget = _store_widget(db, params.get('shop') or '', params.get('widget_id') or '')
     if widget is None:
         return None
-    found = _customer(shop, customer_id)
-    email = (found or {}).get('email') or ''
-    if not email:
+    found = _customer(shop, customer_id) or {}
+    email = found.get('email') or ''
+    if not email or found.get('verifiedEmail') is not True:
         return None
-    name = ' '.join(part for part in ((found or {}).get('firstName'), (found or {}).get('lastName')) if part) or None
+    name = ' '.join(part for part in (found.get('firstName'), found.get('lastName')) if part) or None
     customer = CustomerRepository(db).identify(email=email, organization_id=widget.organization_id, full_name=name)
     # One revocable session per customer and widget, however many pages they open
     jti = get_existing_valid_token_jti(email, str(widget.id), str(customer.id))
@@ -138,6 +142,7 @@ def identity_token(db: Session, query: Sequence[Tuple[str, str]]) -> Optional[di
         'customer_email': email,
         'customer_name': name or customer.full_name,
         'customer_id': str(customer.id),
-        'custom_data': {'source': SOURCE},
+        # Which store customer it is for: the storefront drops it when another signs in
+        'custom_data': {'source': SOURCE, 'shopify_customer_id': customer_id},
     }, ttl_seconds=TOKEN_TTL_SECONDS, jti=jti)
     return {'token': token, 'expires_in': ttl}

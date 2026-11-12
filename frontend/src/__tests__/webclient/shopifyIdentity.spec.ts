@@ -24,7 +24,7 @@ import { WIDGET_ID, cleanupPage, flush, loadLoader, resetPage } from './loaderHa
 
 const token = (claims: Record<string, unknown>) =>
   'h.' + btoa(JSON.stringify(claims)).replace(/=+$/, '') + '.s'
-const STORE_TOKEN = token({ sub: 'c-1', custom_data: { source: 'shopify_storefront' } })
+const STORE_TOKEN = token({ sub: 'c-1', custom_data: { source: 'shopify_storefront', shopify_customer_id: '7' } })
 const PAGE_TOKEN = token({ sub: 'c-2', customer_email: 'x@acme.com' })
 
 function store({ customer = '7', answer = { token: 'new-token' } as any, ok = true, extra = {} } = {}) {
@@ -61,6 +61,27 @@ describe('the storefront\'s signed-in customer', () => {
     const s = store()
     await s.sync(STORE_TOKEN)
     expect(s.identify).toHaveBeenCalledWith('new-token')
+  })
+
+  it('signs the previous customer out before asking for the one now signed in', async () => {
+    const s = store({ customer: '8' })
+    await s.sync(STORE_TOKEN)
+    expect(s.signOut).toHaveBeenCalled()
+    expect(s.signOut.mock.invocationCallOrder[0]).toBeLessThan(s.fetch.mock.invocationCallOrder[0])
+    expect(s.identify).toHaveBeenCalledWith('new-token')
+  })
+
+  it('leaves the previous customer signed out when the new one gets no token', async () => {
+    const s = store({ customer: '8', answer: { token: null } })
+    await s.sync(STORE_TOKEN)
+    expect(s.signOut).toHaveBeenCalledTimes(1)
+    expect(s.identify).not.toHaveBeenCalled()
+  })
+
+  it('keeps the same customer signed in while their token is renewed', async () => {
+    const s = store({ customer: '7' })
+    await s.sync(STORE_TOKEN)
+    expect(s.signOut).not.toHaveBeenCalled()
   })
 
   it('never replaces a token the page itself gave', async () => {

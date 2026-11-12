@@ -19,10 +19,11 @@ limitations under the License.
 // The store's page asks its own /apps/chattermate/identity; Shopify forwards that
 // to our backend through the app's App Proxy, signed and naming the signed-in
 // customer (app/services/shopify_app_proxy.py), and the answer is a conversation
-// token for them. Only asked when the page says a customer is signed in; when no
-// one is, a token this module set earlier is dropped, so signing out of the store
-// also signs the chat out. A token the page itself gave (ChatterMate.identify)
-// is never replaced.
+// token for them. Only asked when the page says a customer is signed in. A token
+// this module set earlier is dropped when no one is signed in, or someone else
+// is - before asking, so another customer never chats as the previous one while
+// the answer is on its way, or if it never comes. A token the page itself gave
+// (ChatterMate.identify) is never replaced.
 
 // The App Proxy's path on the store (shopify.app.toml: prefix "apps", subpath "chattermate")
 export const IDENTITY_PATH = 'apps/chattermate/identity'
@@ -55,10 +56,15 @@ export function signedInCustomer(win) {
   return CUSTOMER_ID.test(value) ? value : null
 }
 
+function storefrontData(token) {
+  const claims = claimsOf(token)
+  const data = claims && claims.custom_data
+  return data && data.source === STOREFRONT_SOURCE ? data : null
+}
+
 /** True when `token` came from this module (the store's sign-in), not the page. */
 export function isStorefrontToken(token) {
-  const claims = claimsOf(token)
-  return !!(claims && claims.custom_data && claims.custom_data.source === STOREFRONT_SOURCE)
+  return !!storefrontData(token)
 }
 
 /**
@@ -73,10 +79,13 @@ export async function syncStorefrontIdentity(win, { widgetId, current, identify,
   // A token the page gave is the page's business
   if (!fromStore) return
   const customer = signedInCustomer(win)
+  const ours = current ? storefrontData(current) : null
   if (!customer) {
     if (current) signOut()
     return
   }
+  // Someone else signed in on this browser: the previous customer's chat goes first
+  if (ours && String(ours.shopify_customer_id || '') !== customer) signOut()
   const root = shopify.routes && typeof shopify.routes.root === 'string' ? shopify.routes.root : '/'
   const url = root + IDENTITY_PATH + '?widget_id=' + encodeURIComponent(widgetId)
   const controller = typeof AbortController === 'function' ? new AbortController() : null

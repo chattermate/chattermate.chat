@@ -48,16 +48,36 @@ def _signed(secret=SECRET, **params):
 
 
 class TestSignature:
-    def test_shopifys_documented_example(self):
-        assert proxy.signature_valid(parse_qsl(DOC_QUERY), "hush", now=1317327555)
+    def test_shopifys_algorithm(self):
+        """Shopify's documented example: its HMAC over the sorted key=value strings."""
+        message = ("extra=1,2logged_in_customer_id=1path_prefix=/apps/awesome_reviews"
+                   "shop=shop-name.myshopify.comtimestamp=1317327555")
+        expected = hmac.new(b"hush", message.encode(), hashlib.sha256).hexdigest()
+        assert expected == dict(parse_qsl(DOC_QUERY))["signature"]
+        query = _signed("hush", shop="shop-name.myshopify.com", logged_in_customer_id="1",
+                        path_prefix="/apps/awesome_reviews", timestamp="1317327555")
+        assert proxy.signature_valid(query, "hush", now=1317327555)
+
+    def test_a_repeated_key_is_refused_even_when_signed(self):
+        """Signed as one comma-joined value, read as one of the copies: an attacker on
+        their own store could add a second shop or customer id."""
+        assert not proxy.signature_valid(parse_qsl(DOC_QUERY), "hush", now=1317327555)
+        query = _signed(shop="mine.myshopify.com", logged_in_customer_id="1")
+        message = "".join(sorted(["logged_in_customer_id=1", "path_prefix=/apps/chattermate",
+                                  "shop=mine.myshopify.com,victim.myshopify.com",
+                                  f"timestamp={dict(query)['timestamp']}"]))
+        signature = hmac.new(SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
+        repeated = [(k, v) for k, v in query if k != "signature"] + [("shop", "victim.myshopify.com"),
+                                                                     ("signature", signature)]
+        assert not proxy.signature_valid(repeated, SECRET)
 
     def test_a_changed_parameter_breaks_it(self):
-        tampered = DOC_QUERY.replace("logged_in_customer_id=1", "logged_in_customer_id=2")
-        assert not proxy.signature_valid(parse_qsl(tampered), "hush", now=1317327555)
+        query = [(k, "2" if k == "logged_in_customer_id" else v) for k, v in _signed(logged_in_customer_id="1")]
+        assert not proxy.signature_valid(query, SECRET)
 
     @pytest.mark.parametrize("secret", ["", "other"])
     def test_another_or_no_secret(self, secret):
-        assert not proxy.signature_valid(parse_qsl(DOC_QUERY), secret, now=1317327555)
+        assert not proxy.signature_valid(_signed(shop="s.myshopify.com"), secret)
 
     def test_no_signature(self):
         assert not proxy.signature_valid([("shop", "a.myshopify.com"), ("timestamp", "1")], SECRET, now=1)
@@ -65,7 +85,8 @@ class TestSignature:
     @pytest.mark.parametrize("age,ok", [(0, True), (proxy.MAX_AGE_SECONDS, True), (proxy.MAX_AGE_SECONDS + 1, False),
                                         (-proxy.MAX_AGE_SECONDS - 1, False)])
     def test_an_old_request_is_refused(self, age, ok):
-        assert proxy.signature_valid(parse_qsl(DOC_QUERY), "hush", now=1317327555 + age) is ok
+        query = _signed(shop="s.myshopify.com", timestamp="1317327555")
+        assert proxy.signature_valid(query, SECRET, now=1317327555 + age) is ok
 
     def test_a_bad_timestamp(self):
         query = _signed(timestamp="soon", shop="a.myshopify.com")
@@ -97,7 +118,7 @@ def signed_in(monkeypatch):
 
     def customer(shop, customer_id):
         seen["asked"] = (shop.shop_domain, customer_id)
-        return {"email": "jane@acme.com", "firstName": "Jane", "lastName": "Doe"}
+        return {"email": "jane@acme.com", "verifiedEmail": True, "firstName": "Jane", "lastName": "Doe"}
 
     monkeypatch.setattr(proxy, "_customer", customer)
     monkeypatch.setattr(proxy, "get_existing_valid_token_jti", lambda *a: None)
@@ -111,6 +132,7 @@ class TestToken:
         claims = conversation_token.claims_ignoring_expiry(result["token"])
         assert claims["customer_email"] == "jane@acme.com" and claims["widget_id"] == str(test_widget.id)
         assert claims["customer_name"] == "Jane Doe"
+        assert claims["custom_data"] == {"source": "shopify_storefront", "shopify_customer_id": "77"}
         assert conversation_token.is_identified(claims)
         assert conversation_token.is_verified_scope(conversation_token.conversation_scope(claims))
 
@@ -145,7 +167,15 @@ class TestToken:
         assert proxy.identity_token(db, _query(test_widget)) is None
 
     def test_a_customer_without_an_email(self, db, test_widget, store, signed_in, monkeypatch):
-        monkeypatch.setattr(proxy, "_customer", lambda shop, customer_id: {"email": None})
+        monkeypatch.setattr(proxy, "_customer", lambda shop, customer_id: {"email": None, "verifiedEmail": True})
+        assert proxy.identity_token(db, _query(test_widget)) is None
+
+    @pytest.mark.parametrize("verified", [False, None])
+    def test_an_email_the_store_never_verified_names_nobody(self, db, test_widget, store, signed_in, monkeypatch,
+                                                           verified):
+        """A classic account can be opened with anyone's address."""
+        monkeypatch.setattr(proxy, "_customer",
+                            lambda shop, customer_id: {"email": "victim@acme.com", "verifiedEmail": verified})
         assert proxy.identity_token(db, _query(test_widget)) is None
 
     def test_a_widget_id_that_is_not_a_uuid(self, db, test_widget, store, signed_in):
