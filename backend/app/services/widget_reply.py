@@ -94,6 +94,14 @@ async def build_widget_agent(session: dict, host_actions: Iterable[AgentAction] 
     return await create_widget_agent(widget_agent_kwargs(session, host_actions, journey_hint))
 
 
+def _web_choices(response: ChatResponse) -> Optional[list]:
+    """The agent's choices as the website chat shows them: as many as fit a
+    phone, each cut to a button's length (the prompt only asks for that)."""
+    choices = getattr(response, 'quick_replies', None) or []
+    shown = [c[:WEB_LIMITS.button_title_max].rstrip() for c in choices[:WEB_LIMITS.max_buttons]]
+    return shown or None
+
+
 def _response_payload(response: ChatResponse, session_id: str) -> dict:
     payload = {
         'message': response.message,
@@ -110,7 +118,7 @@ def _response_payload(response: ChatResponse, session_id: str) -> dict:
         # show_citations customization setting).
         'sources': [s.model_dump() for s in response.sources] if getattr(response, 'sources', None) else None,
         # Choices the agent offered, shown as reply buttons until answered
-        'quick_replies': getattr(response, 'quick_replies', None) or None,
+        'quick_replies': _web_choices(response),
     }
     shopify_output = getattr(response, 'shopify_output', None)
     if shopify_output:

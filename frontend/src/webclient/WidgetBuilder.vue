@@ -119,11 +119,24 @@ const {
 // a message it asked us to show (ChatterMate.prompt). The prompt lives outside
 // `messages` so loading history can't wipe it; it joins the chat once answered.
 const hostPrompt = ref<HostPrompt | null>(null)
+// A tap hides the reply buttons until what it started is over (see below).
+const tapped = ref(false)
+// The last message when a new step came: choices it offered are retired.
+const retiredChoices = ref<unknown>(null)
+const promptKey = (prompt: HostPrompt | null) => JSON.stringify([prompt?.message, prompt?.chips.map(c => c.label)])
+/** Shows a page message. A sync re-sends the same step: only a different one counts. */
+const showHostPrompt = (prompt: HostPrompt | null) => {
+    if (promptKey(prompt) !== promptKey(hostPrompt.value)) {
+        tapped.value = false
+        retiredChoices.value = messages.value[messages.value.length - 1] ?? null
+    }
+    hostPrompt.value = prompt
+}
 // Each action leaves a line in the chat saying what it did.
 const { receipts, addReceipt, receiptsAfter } = useActionReceipts(messages)
 const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHostActions(
     { on: onSocketEvent, emit: emitSocketEvent },
-    (prompt) => { hostPrompt.value = prompt },
+    showHostPrompt,
     addReceipt,
 )
 
@@ -137,7 +150,7 @@ const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivi
     on: onSocketEvent,
     emit: emitSocketEvent,
     currentPrompt: () => hostPrompt.value,
-    showPrompt: (prompt) => { hostPrompt.value = prompt },
+    showPrompt: showHostPrompt,
     addNotice: (text) => {
         messages.value.push({
             message: text,
@@ -170,24 +183,25 @@ const replying = computed(() => loading.value || typing.value)
 // A tap answers at once: the replies go that moment, and stay gone until what
 // it started (the reply, or the page's action) has finished.
 const TAP_SETTLE_MS = 10_000
-const tapped = ref(false)
 let tapFallback: ReturnType<typeof setTimeout> | undefined
-watch(tapped, (isTapped) => {
+// Nothing more coming (a refused send, or an action done that left the step
+// as it was): the replies come back rather than stay gone
+const settleTapLater = () => {
     clearTimeout(tapFallback)
-    // Nothing started (a refused send): the replies come back rather than stay gone
-    if (isTapped) tapFallback = setTimeout(() => { if (!replying.value && !chipBusy.value) tapped.value = false }, TAP_SETTLE_MS)
-})
-// What the tap started is over: its reply has typed out, or the step moved on.
+    tapFallback = setTimeout(() => { if (!replying.value && !chipBusy.value) tapped.value = false }, TAP_SETTLE_MS)
+}
+watch(tapped, (isTapped) => { if (isTapped) settleTapLater(); else clearTimeout(tapFallback) })
+watch(chipBusy, (busy) => { if (!busy && tapped.value) settleTapLater() })
+// What the tap started is over: its reply has typed out (a new step resets it in showHostPrompt).
 watch(replying, (isReplying, was) => { if (was && !isReplying) tapped.value = false })
-// A sync re-sends the same step: only a different one counts
-watch(() => JSON.stringify([hostPrompt.value?.message, hostPrompt.value?.chips.map(c => c.label)]), () => { tapped.value = false })
 onUnmounted(() => clearTimeout(tapFallback))
 
 // Choices the agent offered with its last reply: they stand in for the step's
 // replies until answered, and a later message of either side retires them.
 const offeredChips = computed<PageChip[]>(() => {
     const last = messages.value[messages.value.length - 1]
-    const options = last?.message_type === 'bot' ? last.attributes?.quick_replies : undefined
+    if (!last || last === retiredChoices.value) return []
+    const options = last.message_type === 'bot' ? last.attributes?.quick_replies : undefined
     return Array.isArray(options) ? options.map((label: string) => ({ label, kind: 'text' as const, value: label })) : []
 })
 
@@ -4377,6 +4391,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 }
 .cm-welcome-avatar { object-fit: cover; }
 .cm-welcome-bubble { max-width: 84%; }
+/* A page message's paragraphs (a journey step's "\n\n") stay apart */
+.cm-host-prompt .cm-welcome-bubble { white-space: pre-line; }
 /* Quick-action pills sit in a bar just above the input (comp layout). */
 .cm-quick-actions-bar {
     display: flex;

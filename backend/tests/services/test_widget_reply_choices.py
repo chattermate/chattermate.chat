@@ -43,6 +43,15 @@ def test_offered_choices_reach_the_widget():
     assert _response_payload(response, 's')['quick_replies'] == ['Blue', 'Green']
 
 
+def test_choices_are_held_to_what_fits_on_a_phone():
+    long = 'x' * 60
+    response = ChannelChatResponse(message='Pick one', quick_replies=['A', 'B', 'C', 'D', 'E', long])
+    shown = _response_payload(response, 's')['quick_replies']
+    assert shown == ['A', 'B', 'C', 'D']
+    one = _response_payload(ChannelChatResponse(message='Pick', quick_replies=[long]), 's')['quick_replies']
+    assert one == ['x' * WEB_LIMITS.button_title_max]
+
+
 def test_a_plain_reply_carries_no_choices():
     assert _response_payload(ChatResponse(message='Hi'), 's')['quick_replies'] is None
     assert _response_payload(ChannelChatResponse(message='Hi', quick_replies=[]), 's')['quick_replies'] is None
