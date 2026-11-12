@@ -194,6 +194,14 @@ class TestQueueRepository:
         repo = KnowledgeQueueRepository(db)
         assert repo.last_run_left_partial(test_organization.id, SITE, current.id) is partial
 
+    def test_a_run_that_stopped_at_the_time_limit_left_it_partial(self, db, test_organization):
+        """It completed with the pages it had; adding it again must read the
+        site again, not skip it as already learned."""
+        earlier = _run(db, test_organization.id, status=QueueStatus.COMPLETED, pages=400)
+        KnowledgeQueueRepository(db).note_stopped_at_time_limit(earlier.id)
+        current = _run(db, test_organization.id)
+        assert KnowledgeQueueRepository(db).last_run_left_partial(test_organization.id, SITE, current.id)
+
     def test_only_the_latest_earlier_run_counts(self, db, test_organization):
         _run(db, test_organization.id, status=QueueStatus.FAILED, pages=12)
         _run(db, test_organization.id, status=QueueStatus.COMPLETED, pages=40)

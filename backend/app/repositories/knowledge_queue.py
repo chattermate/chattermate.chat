@@ -170,18 +170,19 @@ class KnowledgeQueueRepository:
 
     def last_run_left_partial(self, organization_id: UUID, source: str, exclude_id: int) -> bool:
         """Whether the previous run of this source stopped partway with pages
-        stored. Its pages stay searchable, but adding it again must read the
-        site again rather than skip it as already learned."""
+        stored: it failed after its first page, or completed at the time limit.
+        Its pages stay searchable, but adding it again must read the site
+        again rather than skip it as already learned."""
         previous = self.db.query(KnowledgeQueue).filter(
             KnowledgeQueue.organization_id == organization_id,
             KnowledgeQueue.source == source,
             KnowledgeQueue.id != exclude_id,
         ).order_by(KnowledgeQueue.id.desc()).first()
-        return bool(
-            previous
-            and previous.status == QueueStatus.FAILED.value
-            and (previous.pages_learned or 0) > 0
-        )
+        if previous is None:
+            return False
+        if previous.status == QueueStatus.FAILED.value:
+            return (previous.pages_learned or 0) > 0
+        return bool((previous.queue_metadata or {}).get(STOPPED_AT_TIME_LIMIT))
 
     def note_stopped_at_time_limit(self, queue_id: int) -> None:
         """Record that the run kept what it read before its time limit."""
