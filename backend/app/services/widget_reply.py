@@ -21,6 +21,7 @@ from typing import Iterable, Optional
 
 from app.agents.chat_agent import ChatAgent, ChatResponse
 from app.agents.host_actions.tools import build_action_functions, host_extra_context
+from app.channels.interactive_limits import WEB_LIMITS
 from app.core.logger import get_logger
 from app.core.security import decrypt_api_key
 from app.core.socketio import sio
@@ -73,6 +74,7 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
             host_prompt_context(session.get('host_prompt')),
         ),
         host_action_functions=build_action_functions(actions) or None,
+        choice_limits=WEB_LIMITS if session.get('offer_choices') else None,
     )
 
 
@@ -107,6 +109,8 @@ def _response_payload(response: ChatResponse, session_id: str) -> dict:
         # Knowledge-base citations (rendering is gated client-side by the agent's
         # show_citations customization setting).
         'sources': [s.model_dump() for s in response.sources] if getattr(response, 'sources', None) else None,
+        # Choices the agent offered, shown as reply buttons until answered
+        'quick_replies': getattr(response, 'quick_replies', None) or None,
     }
     shopify_output = getattr(response, 'shopify_output', None)
     if shopify_output:

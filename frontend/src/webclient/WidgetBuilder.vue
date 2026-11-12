@@ -127,6 +127,10 @@ const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHost
     addReceipt,
 )
 
+// Client-side typewriter reveal for live agent/bot replies; keep the view pinned
+// to the bottom as text grows.
+const { displayText, isStreaming, typing } = useTypewriter(messages, () => nextTick(() => scrollToBottom()))
+
 // Journeys the agent runs on this site: a step's message and chips share the
 // page-message slot above; notices (a step's "then", the finish) join the chat.
 const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivity } = useJourneys({
@@ -150,19 +154,49 @@ const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivi
 // normal send; an action one runs straight away, so the step's message and the
 // reply join the chat here, and its receipt follows when the page is done.
 const onPageChip = (chip: PageChip) => {
+    tapped.value = true
     if (chip.kind === 'action' && !chipBusy.value && !pendingConfirm.value) {
         if (visiblePrompt.value) addPromptToChat(visiblePrompt.value)
         messages.value.push({ message: chip.label, message_type: 'user', created_at: new Date().toISOString(), session_id: '', attributes: { source: 'journey' } } as any)
     }
-    runChip(chip, sendQuickAction)
+    // A done action moves the step on (new replies arrive with it); one declined
+    // or failed brings these back to try again.
+    runChip(chip, sendQuickAction, (status) => { if (status !== 'ok') tapped.value = false })
 }
+
+// The agent is still answering: on its way, or typing out on screen.
+const replying = computed(() => loading.value || typing.value)
+
+// A tap answers at once: the replies go that moment, and stay gone until what
+// it started (the reply, or the page's action) has finished.
+const TAP_SETTLE_MS = 10_000
+const tapped = ref(false)
+let tapFallback: ReturnType<typeof setTimeout> | undefined
+watch(tapped, (isTapped) => {
+    clearTimeout(tapFallback)
+    // Nothing started (a refused send): the replies come back rather than stay gone
+    if (isTapped) tapFallback = setTimeout(() => { if (!replying.value && !chipBusy.value) tapped.value = false }, TAP_SETTLE_MS)
+})
+// What the tap started is over: its reply has typed out, or the step moved on.
+watch(replying, (isReplying, was) => { if (was && !isReplying) tapped.value = false })
+// A sync re-sends the same step: only a different one counts
+watch(() => JSON.stringify([hostPrompt.value?.message, hostPrompt.value?.chips.map(c => c.label)]), () => { tapped.value = false })
+onUnmounted(() => clearTimeout(tapFallback))
+
+// Choices the agent offered with its last reply: they stand in for the step's
+// replies until answered, and a later message of either side retires them.
+const offeredChips = computed<PageChip[]>(() => {
+    const last = messages.value[messages.value.length - 1]
+    const options = last?.message_type === 'bot' ? last.attributes?.quick_replies : undefined
+    return Array.isArray(options) ? options.map((label: string) => ({ label, kind: 'text' as const, value: label })) : []
+})
 
 // A step's replies stay offered until the step moves on, so a declined or failed
 // action can be tried again; they make way while anything else is under way.
 const replyChips = computed(() => {
-    const prompt = hostPrompt.value
-    if (!prompt?.chips.length || pendingConfirm.value || loading.value) return []
-    return prompt.chips
+    if (pendingConfirm.value || replying.value || tapped.value) return []
+    if (offeredChips.value.length) return offeredChips.value
+    return hostPrompt.value?.chips ?? []
 })
 
 // The server sends a step's message on every sync until the step is done, and a
@@ -175,9 +209,9 @@ const visiblePrompt = computed(() => {
     return inChat ? null : prompt
 })
 
-// A reply still being written comes first: a step that moves on mid-reply waits
-// for it, then keeps its place in the chat as anything newer arrives.
-const shownPrompt = computed(() => (loading.value ? null : visiblePrompt.value))
+// A reply still being written, or still typing out, comes first: a step that
+// moves on mid-reply waits for it, then keeps its place as anything newer arrives.
+const shownPrompt = computed(() => (replying.value ? null : visiblePrompt.value))
 const promptPlace = usePromptPlace(messages, shownPrompt)
 
 const addPromptToChat = (prompt: HostPrompt) => {
@@ -189,10 +223,6 @@ const addPromptToChat = (prompt: HostPrompt) => {
         attributes: { source: prompt.source },
     } as any)
 }
-
-// Client-side typewriter reveal for live agent/bot replies; keep the view pinned
-// to the bottom as text grows.
-const { displayText, isStreaming } = useTypewriter(messages, () => nextTick(() => scrollToBottom()))
 
 // Report unread agent messages (received while minimized) to the embedder badge.
 useUnreadBadge(messages)
@@ -574,7 +604,8 @@ const sendMessage = async () => {
 
     noteActivity()
     // A page message being answered is stored with the reply (it never was before).
-    const answeredPrompt = visiblePrompt.value
+    // Only one on screen: a step still waiting for a reply to type out wasn't seen.
+    const answeredPrompt = shownPrompt.value
     if (answeredPrompt) addPromptToChat(answeredPrompt)
     // A journey step's replies stay until the step moves on; the server won't resend them after a plain answer.
     if (hostPrompt.value?.source !== 'journey') hostPrompt.value = null

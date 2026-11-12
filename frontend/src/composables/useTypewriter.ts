@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { reactive, toRaw, watch, onUnmounted, type Ref } from 'vue'
+import { computed, reactive, toRaw, watch, onUnmounted, type Ref } from 'vue'
 
 /**
  * Client-side "streaming" reveal for agent/bot replies. The full message already
@@ -112,9 +112,12 @@ export function useTypewriter(messages: Ref<any[]>, onReveal?: () => void) {
         return !!st && !st.done
     }
 
+    /** Some reply is still being revealed: what follows it waits until it's read. */
+    const typing = computed(() => [...state.values()].some(st => !st.done))
+
     onUnmounted(() => {
         if (timer) clearTimeout(timer)
     })
 
-    return { displayText, isStreaming }
+    return { displayText, isStreaming, typing }
 }

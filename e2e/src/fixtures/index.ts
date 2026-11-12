@@ -35,7 +35,7 @@ export interface AgentSettings {
   requireTokenAuth: boolean
   /** Lead capture on, without the consent gate. */
   leadCapture: boolean
-  /** Quick replies become tappable buttons on messaging channels. */
+  /** Quick replies become tappable buttons (website chat and messaging channels). */
   channelQuickReplies: boolean
   /** Visitors may attach files once a person has joined the chat. */
   allowAttachments: boolean
