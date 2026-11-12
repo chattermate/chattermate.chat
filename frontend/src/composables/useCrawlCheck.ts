@@ -32,6 +32,10 @@ export const newestPerSource = (items: QueueItem[]) => {
   })
 }
 
+/** The website whose newest attempt failed, if any. PDFs are reported where they were picked. */
+export const newestFailedWebsite = (items: QueueItem[]) =>
+  newestPerSource(items).find((item) => item.status === 'failed' && item.source_type === 'website') ?? null
+
 /**
  * Whether any just-sent source has already failed - a domain that doesn't
  * exist is refused the moment it is added. One look, no waiting: every other
