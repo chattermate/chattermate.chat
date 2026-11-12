@@ -32,6 +32,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.api.widget import prefetched_widget_data
 from app.api.widget_common import (
     FONT_LINKS,
     FRAMED,
@@ -52,7 +53,7 @@ from app.database import get_db
 from app.models.schemas.widget import WidgetEmbedSettings, WidgetEmbedSettingsResponse
 from app.models.user import User
 from app.repositories.widget import WidgetRepository
-from app.services import conversation_token, widget_bootstrap, widget_embed_policy
+from app.services import conversation_token, launcher, widget_bootstrap, widget_embed_policy
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -229,7 +230,11 @@ async def bootstrap_widget(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": denied.code, "message": message})
 
-    return JSONResponse(await widget_bootstrap.initial_data(session), headers=_NO_STORE)
+    data = await widget_bootstrap.initial_data(db, session)
+    # What the widget asks next (GET /widgets/{id}) for this same token, answered
+    # now: one round trip less before the chat is ready.
+    data["widgetData"] = await prefetched_widget_data(db, widget.id, session.token, body.source)
+    return JSONResponse(data, headers=_NO_STORE)
 
 
 def _own_widget(db: Session, widget_id: str, user: User):
@@ -265,3 +270,24 @@ async def update_embed_settings(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(invalid))
     widget = WidgetRepository(db).set_allowed_domains(widget, domains)
     return WidgetEmbedSettings(allowed_domains=widget.allowed_domains or [])
+
+
+@router.get("/{widget_id}/launcher-logo")
+def launcher_logo(widget_id: str, db: Session = Depends(get_db)):
+    """The launcher logo for the embed loader's image: a redirect to the current file.
+
+    The loader builds this address itself, so the page never puts a URL it was sent
+    in a message into an image, and an expired signature is never its problem.
+    Served only while the plan covers the logo, like everything else visitors get.
+    """
+    widgets = WidgetRepository(db)
+    widget = widgets.get_widget(widget_id)
+    agent = widgets.get_widget_agent(widget) if widget else None
+    logo_url = launcher.for_visitors(db, agent)[1] if agent and agent.customization else None
+    if not logo_url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No launcher logo")
+    return RedirectResponse(
+        logo_url,
+        status_code=status.HTTP_302_FOUND,
+        headers={"Cache-Control": f"public, max-age={launcher.LOGO_REDIRECT_MAX_AGE}"},
+    )

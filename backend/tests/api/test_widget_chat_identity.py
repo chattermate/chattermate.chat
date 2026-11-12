@@ -22,6 +22,7 @@ from uuid import uuid4
 import pytest
 
 from app.api import widget_chat
+from app.services import host_action_runtime, widget_reply
 from app.models.customer import Customer
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
@@ -68,6 +69,10 @@ def connected(db, test_widget, test_ai_config, identified_customer, mock_sio, mo
     )
 
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
+
+    monkeypatch.setattr(widget_reply, "sio", mock_sio)
+
+    monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
     serve_socket_db(monkeypatch, db)
     monkeypatch.setattr(
         widget_chat,
@@ -134,6 +139,8 @@ async def test_an_anonymous_visitor_is_not_reported_as_authenticated(
         {"sub": str(test_customer.id), "widget_id": str(test_widget.id)}, ttl_seconds=600
     )
     monkeypatch.setattr(widget_chat, "sio", mock_sio)
+    monkeypatch.setattr(widget_reply, "sio", mock_sio)
+    monkeypatch.setattr(host_action_runtime, "sio", mock_sio)
     serve_socket_db(monkeypatch, db)
     monkeypatch.setattr(
         widget_chat,

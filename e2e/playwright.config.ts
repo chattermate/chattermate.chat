@@ -53,11 +53,11 @@ const projects: PlaywrightTestConfig['projects'] = [
   // Specs that change org-wide settings (AI config, business hours, …). Run them in a
   // separate invocation with --workers=1 (see package.json "test") so they never race
   // the parallel suite, and are not skipped when an unrelated parallel test fails.
-  { name: 'org', dependencies: ['setup'], testMatch: ORG_WIDE, use: signedInAsAdmin },
+  { name: 'org', dependencies: ['setup'], testMatch: ORG_WIDE, grepInvert: unsupported, use: signedInAsAdmin },
   ...(enterprise
     ? [
-        { name: 'enterprise', testDir: env.enterpriseSpecDir, dependencies: ['setup'], testIgnore: ORG_WIDE, use: signedInAsAdmin },
-        { name: 'enterprise-org', testDir: env.enterpriseSpecDir, dependencies: ['setup'], testMatch: ORG_WIDE, use: signedInAsAdmin },
+        { name: 'enterprise', testDir: env.enterpriseSpecDir, dependencies: ['setup'], testIgnore: ORG_WIDE, grepInvert: unsupported, use: signedInAsAdmin },
+        { name: 'enterprise-org', testDir: env.enterpriseSpecDir, dependencies: ['setup'], testMatch: ORG_WIDE, grepInvert: unsupported, use: signedInAsAdmin },
       ]
     : []),
   // Widget screenshots, light and dark. Baselines live next to the specs, Linux only.

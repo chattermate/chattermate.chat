@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.widget_assets import bundle_version
 from app.models.widget import Widget
 from app.services import widget_embed_policy
 from app.services.public_rate_limit import allow_request
@@ -46,21 +47,10 @@ _ASSETS_DIR = Path(settings.WIDGET_ASSETS_DIR)
 
 
 def asset_version() -> str:
-    """Cache-buster for the widget bundle URLs.
-
-    /assets/widget.js is served without a Cache-Control header and its URL never
-    changes, so browsers fall back to heuristic caching and can keep serving an old
-    bundle for hours after a release — the widget silently runs last week's code.
-    Stamping the build's mtime+size onto the URL makes a new build a new URL.
-    Recomputed per request (a stat is microseconds) so a rebuild takes effect
-    without restarting the backend.
-    """
-    try:
-        stat = (_ASSETS_DIR / "widget.js").stat()
-        return f"{int(stat.st_mtime)}-{stat.st_size}"
-    except OSError:
-        # Assets served from somewhere else (CDN, dev server) — nothing to stamp.
-        return ""
+    """Cache-buster for the widget bundle URLs: a hash of the build (see
+    app.core.widget_assets). A new build is a new URL, and the current one may
+    be cached for a year; "" when the bundle is served from somewhere else."""
+    return bundle_version(_ASSETS_DIR)
 
 
 # BACKEND_URL defaults to http://localhost:8000 and neither compose file sets

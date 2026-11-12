@@ -93,6 +93,13 @@ class SessionToAgentRepository:
             logger.error(f"Error getting session: {str(e)}")
             return None
 
+    def session_exists(self, session_id: UUID | str) -> bool:
+        """Whether the row is there at all. Unlike get_session a failed read
+        raises: a database error must not pass for a deleted conversation."""
+        return self.db.query(
+            self.db.query(SessionToAgent).filter(SessionToAgent.session_id == as_uuid(session_id)).exists()
+        ).scalar()
+
     def assign_user(self, session_id: UUID | str, user_id: UUID | str) -> bool:
         """Assign a user to a session"""
         try:

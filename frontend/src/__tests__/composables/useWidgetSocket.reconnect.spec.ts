@@ -256,6 +256,89 @@ describe('widget socket reconnection', () => {
     })
   })
 
+  describe('a conversation deleted while the widget was open', () => {
+    // The conversation and the visitor's record can be erased under an open
+    // socket. The server then says so and closes the connection, which
+    // socket.io never reconnects on its own.
+    const gone = { type: 'conversation_gone', error: 'This conversation has ended. Please send your message again.' }
+
+    it('connects again when the server closes the connection after saying why', async () => {
+      await connectWidget()
+      fire('connect')
+
+      fire('error', gone)
+      fire('disconnect', 'io server disconnect')
+
+      expect(socket.connect).toHaveBeenCalledTimes(1)
+    })
+
+    it('stays closed when the server closes the connection for any other reason', async () => {
+      await connectWidget()
+      fire('connect')
+
+      fire('disconnect', 'io server disconnect')
+
+      expect(socket.connect).not.toHaveBeenCalled()
+    })
+
+    it('starts over only once per request', async () => {
+      await connectWidget()
+      fire('connect')
+      fire('error', gone)
+      fire('disconnect', 'io server disconnect')
+      fire('connect')
+
+      fire('disconnect', 'io server disconnect')
+
+      expect(socket.connect).toHaveBeenCalledTimes(1)
+    })
+
+    it('forgets the request once any disconnect has followed it', async () => {
+      await connectWidget()
+      fire('connect')
+      fire('error', gone)
+      fire('disconnect', 'transport close') // socket.io reconnects this itself
+      fire('connect')
+
+      fire('disconnect', 'io server disconnect')
+
+      expect(socket.connect).not.toHaveBeenCalled()
+    })
+
+    it('authorizes a new visitor when that connection is refused', async () => {
+      const widget = await connectWidget()
+      const reauthorize = vi.fn()
+      widget.onReauthorize(reauthorize)
+      fire('connect')
+
+      fire('error', gone)
+      fire('disconnect', 'io server disconnect')
+      refuse('customer_required', 'Visitor not authorized yet')
+
+      expect(reauthorize).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows the server\'s request to send the message again', async () => {
+      const widget = await connectWidget()
+      fire('connect')
+
+      fire('error', gone)
+
+      expect(widget.errorMessage.value).toBe('This conversation has ended. Please send your message again.')
+    })
+
+    it('leaves other disconnects to socket.io', async () => {
+      await connectWidget()
+      fire('connect')
+
+      fire('error', gone)
+      fire('disconnect', 'transport close')
+      fire('disconnect', 'io client disconnect')
+
+      expect(socket.connect).not.toHaveBeenCalled()
+    })
+  })
+
   it('does not leave a retry running after the widget is torn down', async () => {
     const widget = await connectWidget()
 

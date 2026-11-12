@@ -23,7 +23,7 @@ import PasswordStrengthMeter from '@/components/common/PasswordStrengthMeter.vue
 import userAvatar from '@/assets/user.svg'
 import type { User } from '@/types/user'
 import { isAbsoluteUrl } from '@/utils/avatars'
-import { myAvatarUrl } from '@/config/api'
+import { useMyAvatar } from '@/composables/useMyAvatar'
 import { useNotificationSettings } from '@/composables/useNotificationSettings'
 import { useNotifications } from '@/composables/useNotifications'
 import type { NotificationSettings } from '@/services/notification'
@@ -118,12 +118,12 @@ const discardChanges = () => {
   message.value = ''
 }
 
+// Same reasoning as the header avatar: the stored URL was signed at login and
+// expires within the hour, so ask the API to sign a fresh one instead.
+const myAvatar = useMyAvatar(() => user.value?.profile_pic)
 const userAvatarSrc = computed(() => {
   if (profilePicPreview.value) return profilePicPreview.value
-  if (!user.value?.profile_pic) return userAvatar
-  // Same reasoning as the header avatar: the stored URL was signed at login and
-  // expires within the hour, so ask the API to sign a fresh one instead.
-  return myAvatarUrl(new Date().getTime())
+  return myAvatar.failed.value ? userAvatar : myAvatar.src.value ?? userAvatar
 })
 
 onMounted(async () => {
@@ -305,6 +305,7 @@ const handleProfilePicClick = () => {
               :src="userAvatarSrc"
               alt="Profile"
               class="profile-pic"
+              @error="myAvatar.onError"
             />
             <span v-else class="avatar-initial">{{ avatarInitial }}</span>
             <div class="profile-pic-overlay">

@@ -18,6 +18,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from typing import List, Union
 from app.core.logger import get_logger
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.database import get_db, release_connection
 from app.models.user import User, UserGroup
 from app.core.auth import (
@@ -30,6 +31,7 @@ from app.core.auth import (
 )
 from app.repositories.agent import AgentRepository
 from app.repositories.knowledge import KnowledgeRepository
+from app.repositories.workflow import WorkflowRepository
 from app.models.schemas.agent import AgentUpdate, AgentResponse, AgentCreate, AgentRosterItem, AgentWithCustomizationResponse
 from sqlalchemy.orm import Session
 from app.models.agent import Agent, AgentCustomization
@@ -42,7 +44,7 @@ from PIL import Image
 from uuid import UUID
 from app.core.s3 import upload_file_to_s3
 from app.core.config import settings
-from app.services import telegram_webhooks
+from app.services import launcher, telegram_webhooks
 from app.services.file_storage import local_upload_path
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
@@ -221,6 +223,8 @@ async def create_agent(
             enable_rate_limiting=agent.enable_rate_limiting or False,
             overall_limit_per_ip=agent.overall_limit_per_ip or 100,
             requests_per_sec=agent.requests_per_sec or 1.0,
+            messages_per_customer_per_minute=agent.messages_per_customer_per_minute,
+            replies_per_customer_per_day=agent.replies_per_customer_per_day,
             use_workflow=agent.use_workflow or False,
             active_workflow_id=agent.active_workflow_id,
             allow_attachments=agent.allow_attachments or False,
@@ -243,6 +247,15 @@ async def create_agent(
         logger.error(f"Error creating agent: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _require_agents_workflow(db: Session, agent: Agent, workflow_id: UUID) -> None:
+    """404 unless the workflow is this agent's own: every new session runs the
+    agent's active workflow, so another tenant's must never be settable."""
+    workflow = WorkflowRepository(db).get_by_id(workflow_id)
+    if (not workflow or workflow.organization_id != agent.organization_id
+            or workflow.agent_id != agent.id):
+        raise HTTPException(status_code=404, detail="Workflow not found")
 
 
 @router.put("/{agent_id}/shopify", response_model=AgentWithCustomizationResponse)
@@ -295,6 +308,9 @@ async def update_agent(
                     # If rating feature is not available, force ask_for_rating to False
                     update_dict["ask_for_rating"] = False
         
+        if update_dict.get("active_workflow_id") is not None:
+            _require_agents_workflow(db, agent, update_dict["active_workflow_id"])
+
         buttons_turned_on = update_dict.get("channel_quick_replies") is True and not agent.channel_quick_replies
         agent = agent_repo.update_agent(agent_id, **update_dict)
         if buttons_turned_on:
@@ -329,6 +345,8 @@ async def update_agent(
             enable_rate_limiting=agent.enable_rate_limiting,
             overall_limit_per_ip=agent.overall_limit_per_ip,
             requests_per_sec=agent.requests_per_sec,
+            messages_per_customer_per_minute=agent.messages_per_customer_per_minute,
+            replies_per_customer_per_day=agent.replies_per_customer_per_day,
             allow_attachments=agent.allow_attachments,
             allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth,
@@ -433,6 +451,8 @@ async def get_organization_agents(
                 enable_rate_limiting=agent.enable_rate_limiting or False,
                 overall_limit_per_ip=agent.overall_limit_per_ip or 100,
                 requests_per_sec=agent.requests_per_sec or 1.0,
+                messages_per_customer_per_minute=agent.messages_per_customer_per_minute,
+                replies_per_customer_per_day=agent.replies_per_customer_per_day,
                 use_workflow=agent.use_workflow or False,
                 active_workflow_id=agent.active_workflow_id,
                 created_at=agent.created_at,
@@ -485,6 +505,14 @@ async def create_agent_customization(
             AgentCustomization.agent_id == agent_id
         ).first()
 
+        if 'customization_metadata' in customization_data.model_fields_set:
+            customization_data.customization_metadata = launcher.check_metadata_write(
+                db,
+                auth_info["organization_id"],
+                db_customization.customization_metadata if db_customization else None,
+                customization_data.customization_metadata,
+            )
+
         if db_customization:
             # Update existing customization
             for field, value in customization_data.model_dump(exclude_unset=True).items():
@@ -492,10 +520,10 @@ async def create_agent_customization(
                     setattr(db_customization, field, value)
         else:
             # Create new customization
-            db_customization = AgentCustomization(
-                agent_id=agent_id,
-                **customization_data.model_dump(exclude={'id'})
-            )
+            new_customization = customization_data.model_dump(exclude={'id'})
+            new_customization['customization_metadata'] = launcher.first_save_metadata(
+                new_customization.get('customization_metadata'))
+            db_customization = AgentCustomization(agent_id=agent_id, **new_customization)
             db.add(db_customization)
 
         db.commit()
@@ -556,7 +584,8 @@ async def upload_agent_photo(
         else:
             db_customization = AgentCustomization(
                 agent_id=agent_id,
-                photo_url=photo_url
+                photo_url=photo_url,
+                customization_metadata=launcher.first_save_metadata(None)
             )
             db.add(db_customization)
 
@@ -631,6 +660,8 @@ async def update_agent_groups(
             enable_rate_limiting=agent.enable_rate_limiting,
             overall_limit_per_ip=agent.overall_limit_per_ip,
             requests_per_sec=agent.requests_per_sec,
+            messages_per_customer_per_minute=agent.messages_per_customer_per_minute,
+            replies_per_customer_per_day=agent.replies_per_customer_per_day,
             allow_attachments=agent.allow_attachments,
             allowed_attachment_types=agent.allowed_attachment_types,
             require_token_auth=agent.require_token_auth,
@@ -730,9 +761,9 @@ async def generate_instructions(
         base_url = None
 
         if HAS_ENTERPRISE:
-            # Use Groq/OpenAI with keys from env for ChatterMate model
+            # Managed model: OpenAI, with the key and model from env
             model_type = 'OPENAI'
-            model_name = os.getenv('CHATTERMATE_MODEL_NAME', 'gpt-4o-mini')
+            model_name = os.getenv('CHATTERMATE_MODEL_NAME', DEFAULT_CHATTERMATE_MODEL)
             api_key = os.getenv('CHATTERMATE_API_KEY', '')
             
             if not api_key:

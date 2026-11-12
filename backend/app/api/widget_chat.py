@@ -20,13 +20,15 @@ import json
 import os
 import re
 from types import SimpleNamespace
+from typing import Optional
 from fastapi import APIRouter
 from socketio.exceptions import ConnectionRefusedError as SocketRefused
 from app.channels.constants import MessageSource
 from app.core.socketio import sio
 from app.core.logger import get_logger
 import traceback
-from app.agents.chat_agent import ChatAgent, ChatResponse
+from app.agents.chat_agent import ChatResponse
+from app.agents.host_actions.turns import PausedTurn
 from app.core.auth_utils import (
     authenticate_socket,
     authenticate_socket_conversation_token,
@@ -51,7 +53,7 @@ from app.services.file_storage import resolve_public_url
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
 from app.repositories.agent import AgentRepository
-from app.services.agent_rooms import is_org_inbox_room, may_join_org_inbox
+from app.services.agent_rooms import USER_MESSAGE, is_org_inbox_room, may_join_org_inbox, relay_stored_message
 from app.services.chat_notifications import notify_new_chat
 from app.services.contact_capture import retain_unstored_email
 from app.services.human_routing import (
@@ -59,24 +61,31 @@ from app.services.human_routing import (
     QUEUED_FOR_HUMAN_NOTICE,
     notify_customer,
 )
-from app.services.lead_capture import record_lead_from_response
+from app.services.host_action_runtime import (
+    offered_actions, replay_open_call, start_paused_turn, waiting_on_page,
+)
+from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
+from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
+from app.services.widget_reply import (
+    create_widget_agent,
+    deliver_ai_reply,
+    emit_bot_typing,
+    send_handoff_contact_form,
+    widget_agent_kwargs,
+)
+from app.services.journey_runtime import step_actions_hint
+from app.services.host_prompt import clean_host_prompt, store_host_prompt
+from app.services.reply_limits import refuse_over_reply_limit
 from app.services.widget_identity import can_act_as, may_stand_for
 from app.services.message_delivery import deliver_to_customer
 from app.repositories.rating import RatingRepository
 from app.services.ticket_csat import record_conversation_rating
 from app.repositories.jira import JiraRepository
-from app.models.ai_config import AIModelType
 from app.services.workflow_execution import WorkflowExecutionService
 
 
-# Try to import enterprise modules
-try:
-    from app.enterprise.services.message_limit import check_message_limit
-    HAS_ENTERPRISE = True
-except ImportError:
-    HAS_ENTERPRISE = False
-
 from app.utils.sanitize import sanitize_message
+from app.utils.secret_redaction import redact_secrets
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -85,22 +94,13 @@ logger = get_logger(__name__)
 # stored-message ack so it can match the row it became
 MAX_CLIENT_ID_LENGTH = 64
 
-
-async def _emit_bot_typing(session_id: str) -> None:
-    """Tell the widget a reply is actually being produced.
-
-    The widget owns no opinion about this: it shows the typing indicator only
-    between this event and the reply that follows. Every path that answers
-    nothing — a human-only agent, a chat someone has taken over, a closed
-    session — simply never calls this, so the indicator cannot be left spinning
-    over a conversation nobody is answering.
-    """
-    await sio.emit('bot_typing', {'session_id': session_id},
-                   room=session_id, namespace='/widget')
-
 # Rating feedback comes from an anonymous widget visitor and is stored, shown
 # to agents and copied onto the linked ticket's activity feed — bound it.
 MAX_RATING_FEEDBACK_LENGTH = 2000
+
+# Shown when a visitor writes into a conversation that was deleted while their
+# page stayed open, and the visitor's record with it: the message wasn't kept.
+CONVERSATION_GONE_MESSAGE = 'This conversation has ended. Please send your message again.'
 
 
 def format_datetime(dt):
@@ -228,6 +228,90 @@ def _own_session(session_repo: SessionToAgentRepository, session: dict, active_o
         session.get('conversation_scope'), active_only=active_only)
 
 
+def _start_conversation(db, agent_id, customer_id, org_id, scope) -> str:
+    """Open a new widget conversation and return its id. The channel is stamped
+    now, the way the messaging channels do: an agent wired to a Shopify store is
+    serving that storefront, and the inbox labels the conversation accordingly.
+    Still a widget surface — see WIDGET_CHANNELS."""
+    session_id = str(uuid.uuid4())
+    shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
+    SessionToAgentRepository(db).create_session(
+        session_id=session_id,
+        agent_id=agent_id,
+        customer_id=customer_id,
+        organization_id=org_id,
+        channel='shopify' if shopify_config and shopify_config.enabled else 'web',
+        conversation_key=conversation_token_service.session_key_for_scope(scope)
+    )
+    return session_id
+
+
+async def _announce_conversation(sid: str, session: dict, created: bool) -> None:
+    """Tell the widget which conversation this socket is in, so end_chat and
+    uploads use it. `authenticated` lets the widget tell the host page whether
+    a conversation belongs to the identified visitor or to an anonymous one."""
+    await sio.emit('session_initialized', {
+        'session_id': session['session_id'],
+        'customer_id': session['customer_id'],
+        'agent_id': session['agent_id'],
+        'authenticated': bool(session.get('authenticated')),
+        'created': created
+    }, to=sid, namespace='/widget')
+
+
+# One restart at a time per socket: two quick messages into a deleted
+# conversation would otherwise each start a new one.
+_conversation_restarts = KeyedLock()
+
+
+async def _start_over(sid: str) -> None:
+    """Ask the visitor to resend, and close the socket so the widget connects
+    again: connect then opens a conversation, or refuses a visitor whose
+    record is gone and the widget authorizes a new one."""
+    await sio.emit('error', {'error': CONVERSATION_GONE_MESSAGE, 'type': 'conversation_gone'},
+                   to=sid, namespace='/widget')
+    await sio.disconnect(sid, namespace='/widget')
+
+
+def _conversation_deleted(session_repo: SessionToAgentRepository, session: dict) -> bool:
+    """True when the socket's conversation row is gone (erased), not merely
+    someone else's now."""
+    return not session_repo.session_exists(session['session_id'])
+
+
+def _may_continue_in_place(db, session: dict) -> bool:
+    """A new conversation can start under this socket only for the same visitor
+    and the agent the socket was set up for: a widget since pointed at another
+    agent reconnects, so connect reads that agent's settings. A visitor merged
+    into another record reconnects too: authorizing again resolves the merge."""
+    customer = CustomerRepository(db).get_by_id(session['customer_id'])
+    if not may_stand_for(customer, session.get('conversation_scope')) or customer.merged_into_customer_id:
+        return False
+    widget_repo = WidgetRepository(db)
+    widget = widget_repo.get_widget(session['widget_id'])
+    agent = widget_repo.get_widget_agent(widget) if widget else None
+    return agent is not None and str(agent.id) == str(session['agent_id'])
+
+
+async def _restart_deleted_conversation(sid: str, session: dict, db) -> bool:
+    """Move a socket whose conversation was deleted into a new one, updating
+    `session`. False when it had to start over instead (see _start_over)."""
+    if not _may_continue_in_place(db, session):
+        logger.info(f"Widget sid {sid}: conversation deleted, reconnecting to start over")
+        await _start_over(sid)
+        return False
+
+    deleted_id = session['session_id']
+    session['session_id'] = _start_conversation(
+        db, session['agent_id'], session['customer_id'], session['org_id'], session.get('conversation_scope'))
+    await sio.leave_room(sid, deleted_id, namespace='/widget')
+    await sio.enter_room(sid, session['session_id'], namespace='/widget')
+    await sio.save_session(sid, session, namespace='/widget')
+    await _announce_conversation(sid, session, created=True)
+    logger.info(f"Widget sid {sid}: conversation {deleted_id} was deleted, continuing in {session['session_id']}")
+    return True
+
+
 @sio.on('connect', namespace='/widget')
 async def widget_connect(sid, environ, auth):
     db = None
@@ -262,7 +346,9 @@ async def widget_connect(sid, environ, auth):
         db = await session_off_loop()
         widget_repo = WidgetRepository(db)
         widget = widget_repo.get_widget(widget_id)
-        if not widget:
+        # A widget whose agent isn't its own organization's serves nothing
+        agent = widget_repo.get_widget_agent(widget) if widget else None
+        if not agent:
             raise ValueError("Invalid widget ID")
 
         # A widget-issued token may not stand for a person the embedding app has
@@ -277,13 +363,6 @@ async def widget_connect(sid, environ, auth):
         if not ai_config:
             _refuse_connection('AI configuration required', 'ai_config_missing')
         
-        message_limit_reached = False
-        # Check message limits if enterprise module is available
-        if HAS_ENTERPRISE and ai_config.model_type == AIModelType.CHATTERMATE:
-            if not await check_message_limit(db, org_id, sid, sio):
-                message_limit_reached = True
-
-        
         session_repo = SessionToAgentRepository(db)
                 
         # Resume only a conversation this token's scope created
@@ -296,38 +375,18 @@ async def widget_connect(sid, environ, auth):
         session_created = active_session is None
         if active_session:
             session_id = str(active_session.session_id)
-            logger.debug(f"Active session: {session_id}")  
+            logger.debug(f"Active session: {session_id}")
         else:
-            # Create new session if none exists. Stamp the channel now, the way
-            # the messaging channels do: an agent wired to a Shopify store is
-            # serving that storefront, and the inbox labels the conversation
-            # accordingly. Still a widget surface — see WIDGET_CHANNELS.
-            new_session_id = str(uuid.uuid4())
-            shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(
-                str(widget.agent_id)
-            )
-            session_repo.create_session(
-                session_id=new_session_id,
-                agent_id=widget.agent_id,
-                customer_id=customer_id,
-                organization_id=org_id,
-                channel='shopify' if shopify_config and shopify_config.enabled else 'web',
-                conversation_key=conversation_token_service.session_key_for_scope(scope)
-            )
-            session_id = new_session_id
+            session_id = _start_conversation(db, widget.agent_id, customer_id, org_id, scope)
             logger.debug(f"New session: {session_id}")
 
         # Join the room using session_id
         await sio.enter_room(sid, session_id, namespace='/widget')
         
-        # Get agent to retrieve rate limiting settings
-        agent_repo = AgentRepository(db)
-        agent = agent_repo.get_agent(widget.agent_id)
-        
         # Store session data including rate limiting settings
-        enable_rate_limiting = agent.enable_rate_limiting if agent else False
-        overall_limit_per_ip = agent.overall_limit_per_ip if agent else 100
-        requests_per_sec = agent.requests_per_sec if agent else 1.0
+        enable_rate_limiting = agent.enable_rate_limiting
+        overall_limit_per_ip = agent.overall_limit_per_ip
+        requests_per_sec = agent.requests_per_sec
         
         # Snapshot only the fields the rest of the app reads from session['ai_config']
         # (encrypted_api_key/model_name/model_type) into a plain, DB-independent object.
@@ -356,13 +415,17 @@ async def widget_connect(sid, environ, auth):
             'enable_rate_limiting': enable_rate_limiting,
             'overall_limit_per_ip': overall_limit_per_ip,
             'requests_per_sec': requests_per_sec,
-            'message_limit_reached': message_limit_reached,
+            'messages_per_customer_per_minute': agent.messages_per_customer_per_minute if agent else None,
+            'replies_per_customer_per_day': agent.replies_per_customer_per_day if agent else None,
             # Cached like use_workflow: read once per connection so the
             # human-only check costs no query per message.
             'ai_replies_enabled': agent.ai_replies_enabled if agent else True,
             'use_workflow': agent.use_workflow if agent else False,
             'active_workflow_id': agent.active_workflow_id if agent else None,
             'source': source,
+            # Whether the token came from the embedding app: told to the page
+            # with each conversation this socket lands in (_announce_conversation)
+            'authenticated': is_identified,
             # Host page that embeds the widget (sent by the webclient). Recorded on
             # lead capture as lead_source.page_url so you can see WHERE leads convert.
             'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
@@ -378,16 +441,10 @@ async def widget_connect(sid, environ, auth):
         await sio.save_session(sid, session_data, namespace='/widget')
         logger.info(f"Widget client connected: {sid} joined room: {session_id}")
         
-        # Send session_id back to client immediately so it can be used for end_chat.
-        # `authenticated` lets the widget tell the host page whether a conversation it
-        # just started belongs to the identified visitor or to an anonymous one.
-        await sio.emit('session_initialized', {
-            'session_id': session_id,
-            'customer_id': customer_id,
-            'agent_id': str(widget.agent_id),
-            'authenticated': is_identified,
-            'created': session_created
-        }, to=sid, namespace='/widget')
+        await _announce_conversation(sid, session_data, session_created)
+
+        # A reply paused on a host action survives a reconnect: send its call again.
+        await replay_open_call(sid, session_id, db)
 
         return True
 
@@ -427,6 +484,10 @@ async def handle_widget_chat(sid, data):
         
         # Sanitize message to prevent XSS attacks
         message = sanitize_message(original_message)
+        # Passwords, keys and card numbers never reach storage or the model.
+        message, _ = redact_secrets(message)
+        # A message the page showed (ChatterMate.prompt) that this one answers.
+        host_prompt = clean_host_prompt(data.get('host_prompt'))
         
         files = data.get('files', [])  # List of file objects with base64 content
         
@@ -512,16 +573,19 @@ async def handle_widget_chat(sid, data):
         session_repo = SessionToAgentRepository(db)
                 
         own_session = _own_session(session_repo, session, active_only=False)
+        if own_session is None:
+            async with _conversation_restarts(sid):
+                # A message sent just before this one may have moved the socket already
+                session = await sio.get_session(sid, namespace='/widget')
+                if not session:
+                    return  # the socket went away while this message waited
+                own_session = _own_session(session_repo, session, active_only=False)
+                if own_session is None and _conversation_deleted(session_repo, session):
+                    if not await _restart_deleted_conversation(sid, session, db):
+                        return
+                    own_session = _own_session(session_repo, session, active_only=False)
+                session_id = session['session_id']
         active_session = own_session if own_session and own_session.status in ACTIVE_STATUSES else None
-
-        # Check message limit from session
-        if HAS_ENTERPRISE and session.get('message_limit_reached') and active_session and active_session.user_id is None:
-            logger.error(f"Message limit reached")
-            await sio.emit('error', {
-                    'error': 'Unable to process your message. Please contact support.',
-                    'type': 'message_limit_exceeded'
-            }, to=sid, namespace='/widget')
-            return
 
         if not active_session:
             # Reopen this socket's own closed session - unless the visitor has
@@ -558,6 +622,12 @@ async def handle_widget_chat(sid, data):
         if is_first_customer_message:
             await notify_new_chat(db, active_session)
 
+        if host_prompt:
+            store_host_prompt(db, session, host_prompt, data.get('host_prompt_source'))
+            session['host_prompt'] = host_prompt
+        else:
+            session.pop('host_prompt', None)
+
         # A human-only agent answers nothing: no model, no workflow, and no
         # transfer either — the chat was never with the AI, so there is nothing
         # to hand over. Every automated branch below is gated on this, leaving
@@ -565,11 +635,20 @@ async def handle_widget_chat(sid, data):
         # exactly like a chat a human already holds. notify_new_chat above has
         # already told the team it is waiting.
         # Older sessions predate the cached flag, so default to answering.
-        ai_replies_enabled = session.get('ai_replies_enabled', True)
+        agent_uses_ai = session.get('ai_replies_enabled', True)
+        # The plan can switch the AI off too, for this message only. Read per
+        # message, not at connect: a socket can stay open past the limit.
+        # Asked for human-only agents as well: a queued chat's availability
+        # reply below is written by the model.
+        plan_allows = (active_session.user_id is not None
+                       or plan_allows_ai(db, org_id, session['ai_config'].model_type))
+        ai_replies_enabled = agent_uses_ai and plan_allows
 
-        # Check if agent uses workflow and no human agent has taken over
-        if ai_replies_enabled and active_session.workflow_id and active_session.user_id is None:
-            await _emit_bot_typing(session_id)
+        # Check if agent uses workflow and no human agent has taken over. A plan
+        # without workflows falls through to the normal AI agent below.
+        if (ai_replies_enabled and active_session.workflow_id and active_session.user_id is None
+                and plan_feature_on(db, org_id, WORKFLOW_FEATURE)):
+            await emit_bot_typing(session_id)
             # Handle workflow chat using the dedicated service
             workflow_chat_service = WorkflowChatService(db)
             response = await workflow_chat_service.handle_workflow_chat(
@@ -601,27 +680,24 @@ async def handle_widget_chat(sid, data):
                 }, room=session_id, namespace='/widget')
                 return
         elif ai_replies_enabled and active_session.status == SessionStatus.OPEN and active_session.user_id is None: # open and user has not taken over
-            await _emit_bot_typing(session_id)
+            # One reply at a time: while the page is running an action for the
+            # last one, a new message would start a second, crossing reply.
+            if waiting_on_page(db, session_id):
+                await sio.emit('error', {
+                    'error': 'Still waiting for the app to finish the last step.',
+                    'type': 'action_pending',
+                }, to=sid, namespace='/widget')
+                return
+            if await refuse_over_reply_limit(sio, sid, session, session_id):
+                return
+            await emit_bot_typing(session_id)
             logger.debug(f"Initializing chat agent for model {session['ai_config'].model_type}")
-            ai_config = session['ai_config']
-            model = dict(
-                api_key=decrypt_api_key(ai_config.encrypted_api_key),
-                model_name=ai_config.model_name,
-                model_type=ai_config.model_type,
-                base_url=(ai_config.settings or {}).get('base_url'),
-            )
+            host_actions = offered_actions(db, session)
+            agent_kwargs = widget_agent_kwargs(session, host_actions, step_actions_hint(db, session, host_actions))
             # Everything the model call needs is read: let the connection go
             # rather than hold it through the call
             release_connection(db)
-            # Initialize chat agent with async factory method for MCP tools support
-            chat_agent = await ChatAgent.create_async(
-                **model,
-                org_id=org_id,
-                agent_id=session['agent_id'],
-                customer_id=customer_id,
-                session_id=session_id,
-                source=session.get('source')
-            )
+            chat_agent = await create_widget_agent(agent_kwargs)
             try:
                 # Get response from ai agent (this already handles end chat internally)
                 response = await chat_agent.get_response(
@@ -632,8 +708,12 @@ async def handle_widget_chat(sid, data):
                     customer_id=customer_id)
             finally:
                 await chat_agent.safe_cleanup_mcp_tools()
-        elif active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
-            await _emit_bot_typing(session_id)
+            if isinstance(response, PausedTurn):
+                # The page runs the action; the reply follows its answer.
+                await start_paused_turn(sid, session, response, host_actions, db)
+                return
+        elif plan_allows and active_session.status == SessionStatus.TRANSFERRED and active_session.user_id is None: # transferred and user has not taken over
+            await emit_bot_typing(session_id)
             logger.debug(f"Transferring chat to human for session {session_id}")
             # Get response from agent transfer ai agent
             chat_repo = ChatRepository(db)
@@ -665,6 +745,7 @@ async def handle_widget_chat(sid, data):
             chat_history = await chat_repo.get_session_history(session_id)
             jira_repo = JiraRepository(db)
             agent_data = jira_repo.get_agent_with_jira_config(session['agent_id']) if session['agent_id'] else None
+            queued_notice_source = {}
             if agent_data is not None and getattr(agent_data, 'groups', None):
                 availability_response = await get_agent_availability_response(
                     agent=agent_data,
@@ -684,6 +765,8 @@ async def handle_widget_chat(sid, data):
                 # Only reachable now that a chat can be queued without a group:
                 # human-only agents, and Hand to my team.
                 availability_response = {"message": QUEUED_FOR_HUMAN_NOTICE}
+                # A canned line: no model wrote it, so it doesn't count as a reply
+                queued_notice_source = {"source": MessageSource.SYSTEM.value}
 
                 # Create ChatResponse object
             response_content = ChatResponse(
@@ -712,7 +795,8 @@ async def handle_widget_chat(sid, data):
                     "end_chat_reason": response_content.end_chat_reason.value if response_content.end_chat_reason else None,
                     "end_chat_description": response_content.end_chat_description,
                     "request_rating": response_content.request_rating,
-                    "shopify_output": response_content.shopify_output
+                    "shopify_output": response_content.shopify_output,
+                    **queued_notice_source,
                                     }
                 })
             response = response_content
@@ -839,114 +923,16 @@ async def handle_widget_chat(sid, data):
             # otherwise the visitor sends into what looks like a dead widget.
             # Only on the opening message: after that the thread is visibly a
             # conversation with people in it.
-            if is_first_customer_message and not ai_replies_enabled:
+            if is_first_customer_message and not agent_uses_ai:
                 await notify_customer(db, active_session, HUMAN_ONLY_ACK,
                                       channels_only=False)
+            elif agent_uses_ai and not plan_allows and await tell_customer_ai_is_off(db, active_session):
+                await send_handoff_contact_form(session, db)
 
             return # don't do anything if the session is closed or the user has already taken over
         
-        # Only emit response if we have a response object and message
-        if 'response' in locals() and response.message:
-            # Emit response to the specific room
-            response_payload = {
-                'message': response.message,
-                'type': 'chat_response',
-                'session_id': session_id,
-                'transfer_to_human': response.transfer_to_human,
-                'end_chat': response.end_chat,
-                'end_chat_reason': response.end_chat_reason.value if response.end_chat_reason else None,
-                'end_chat_description': response.end_chat_description,
-                'request_rating': response.request_rating,
-                # Initialize shopify_output to None. It will be populated if data exists.
-                'shopify_output': None,
-                # Knowledge-base citations (rendering is gated client-side by the agent's
-                # show_citations customization setting).
-                'sources': [s.model_dump() for s in response.sources] if getattr(response, 'sources', None) else None
-            }
-            
-            # Check if the response object has the structured shopify_output field
-            # and assign it directly if it's valid (should be a Pydantic model or dict)
-            if hasattr(response, 'shopify_output') and response.shopify_output:
-                # Assuming response.shopify_output is already the correct 
-                # ShopifyOutputData model instance from ChatResponse
-                # We need to convert it to a dict for JSON serialization
-                try:
-                    response_payload['shopify_output'] = response.shopify_output.model_dump(exclude_unset=True)
-                except AttributeError:
-                     # Handle cases where it might be a plain dict already (less likely but safe)
-                     if isinstance(response.shopify_output, dict):
-                         response_payload['shopify_output'] = response.shopify_output
-                     else:
-                         logger.warning(f"Unexpected type for shopify_output: {type(response.shopify_output)}")
-
-            await sio.emit('chat_response', response_payload, room=session_id, namespace='/widget')
-
-            # On human handoff, optionally collect the visitor's contact details (email/name)
-            # so the human agent can follow up. Fires for both a live transfer and the
-            # no-agents/ticket case (request_contact). Only asks for enabled + missing fields.
-            if response.transfer_to_human or getattr(response, 'request_contact', False):
-                try:
-                    from app.services.contact_capture import build_handoff_contact_form
-                    agent_repo = AgentRepository(db)
-                    handoff_agent = agent_repo.get_agent(session['agent_id'])
-                    customer = CustomerRepository(db).get_by_id(customer_id)
-                    if handoff_agent and customer:
-                        contact_form = build_handoff_contact_form(
-                            customer,
-                            collect_email=getattr(handoff_agent, 'handoff_collect_email', True),
-                            collect_name=getattr(handoff_agent, 'handoff_collect_name', True),
-                        )
-                        if contact_form:
-                            await sio.emit('display_form', {
-                                'form_data': contact_form,
-                                'session_id': session_id,
-                            }, room=session_id, namespace='/widget')
-                except Exception as contact_err:
-                    logger.error(f"Failed to emit handoff contact form: {contact_err}")
-
-            # Lead capture: the agent collected the details conversationally and set
-            # request_lead_capture (like transfer_to_human). Persist the structured
-            # lead_data + AI summary — no form. Skipped on transfer/handoff (the elif
-            # above takes precedence), but NOT on end_chat: the model naturally captures
-            # and signs off in the same turn, and this runs before the close block below.
-            # record_lead_capture enforces valid-email + consent and captures once.
-            elif getattr(response, 'request_lead_capture', False):
-                lc_resp = record_lead_from_response(
-                    db, response,
-                    organization_id=org_id,
-                    agent_id=session['agent_id'],
-                    customer_id=customer_id,
-                    session_id=session_id,
-                    page_url=session.get('page_url'),
-                    scope=session.get('conversation_scope'),
-                )
-                # If the capture merged this anonymous visitor into an existing
-                # customer (email already known), repoint the live socket session
-                # so the rest of this conversation writes to the merged customer.
-                # Isolated so a session-store failure can't skip the end_chat
-                # close block below.
-                if lc_resp is not None and str(lc_resp.customer_id) != str(customer_id):
-                    try:
-                        session['customer_id'] = str(lc_resp.customer_id)
-                        await sio.save_session(sid, session, namespace='/widget')
-                        logger.info(
-                            f"Lead capture merged customer {customer_id} -> {lc_resp.customer_id}")
-                    except Exception as merge_err:
-                        logger.error(f"Failed to repoint socket session after merge: {merge_err}")
-
-            # If end_chat is true, close the session
-            if response.end_chat:
-                try:
-                    session_repo = SessionToAgentRepository(db)
-                    # Close the session with end_chat reason and description
-                    session_repo.close_session(
-                        session_id=session_id,
-                        reason=response.end_chat_reason.value if response.end_chat_reason else None,
-                        description=response.end_chat_description
-                    )
-                    logger.info(f"Session {session_id} closed due to end_chat with reason: {response.end_chat_reason}")
-                except Exception as close_error:
-                    logger.error(f"Error closing session {session_id}: {str(close_error)}")
+        if 'response' in locals():
+            await deliver_ai_reply(sid, session, response, db)
 
     except Exception as e:
         logger.error(f"Widget chat error for sid {sid}: {str(e)}")
@@ -1623,8 +1609,8 @@ async def handle_get_workflow_state(sid):
         chat_history = await chat_repo.get_session_history(session_id)
         has_history = len(chat_history) > 0
 
-        # If agent uses workflow, handle workflow state
-        if active_session.workflow_id:
+        # If agent uses workflow, handle workflow state, while the plan allows it
+        if active_session.workflow_id and workflow_may_run(db, org_id, session['ai_config'].model_type):
             current_node_id = active_session.current_node_id
             
             # If no current node and no history - start from beginning by executing workflow
@@ -1889,8 +1875,16 @@ async def handle_proceed_workflow(sid, data):
         
         active_session = _own_session(session_repo, session)
 
+        # The step belonged to a conversation that has since been deleted
+        if active_session is None and _conversation_deleted(session_repo, session):
+            await _start_over(sid)
+            return
         if not active_session or not active_session.workflow_id:
             raise ValueError("No active workflow session found")
+
+        # The visitor's next message goes to the normal agent, or the team
+        if not workflow_may_run(db, org_id, session['ai_config'].model_type):
+            return
 
         # Simply update to next node and execute it
         workflow_service = WorkflowExecutionService(db)
@@ -2152,6 +2146,10 @@ async def handle_form_submission(sid, data):
         
         active_session = _own_session(session_repo, session)
 
+        # The step belonged to a conversation that has since been deleted
+        if active_session is None and _conversation_deleted(session_repo, session):
+            await _start_over(sid)
+            return
         if not active_session or not active_session.workflow_id:
             raise ValueError("No active workflow session found")
 
@@ -2186,6 +2184,24 @@ async def handle_form_submission(sid, data):
                     'type': 'validation_error'
                 }, to=sid, namespace='/widget')
                 return
+
+        # The workflow can't carry on. What the visitor filled in still reaches
+        # the team.
+        if not workflow_may_run(db, org_id, session['ai_config'].model_type):
+            stored = ChatRepository(db).create_message({
+                "message": sanitize_message("\n".join(f"{name}: {value}" for name, value in form_data.items())),
+                "message_type": "user",
+                "session_id": session_id,
+                "organization_id": org_id,
+                "agent_id": session['agent_id'],
+                "customer_id": customer_id,
+            })
+            await relay_stored_message(active_session, stored, USER_MESSAGE)
+            if plan_allows_ai(db, org_id, session['ai_config'].model_type):
+                await acknowledge_form(db, active_session)
+            elif await tell_customer_ai_is_off(db, active_session):
+                await send_handoff_contact_form(session, db)
+            return
 
         # Submit form through workflow service
         workflow_service = WorkflowExecutionService(db)

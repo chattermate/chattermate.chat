@@ -19,6 +19,8 @@ import mitt from 'mitt'
 type Events = {
   'socket:reconnected': void
   'knowledge-updated': void
+  // The signed-in user's own picture changed (userService.uploadProfilePic)
+  'profile-pic-updated': void
   // Add other events here as needed
 }
 

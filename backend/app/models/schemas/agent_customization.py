@@ -20,6 +20,7 @@ from typing_extensions import Annotated
 from uuid import UUID
 import enum
 
+from app.core.brand import BRAND_COLORS
 from app.core.s3 import sign_s3_url, strip_s3_signature
 
 # Cap launcher/welcome copy so it can't balloon the widget (the launcher nudge is
@@ -76,6 +77,62 @@ class WidgetDisplayConfig(BaseModel):
     z_index: Optional[int] = Field(default=None, ge=1, le=2147483647)
 
 
+class LauncherIcon(str, enum.Enum):
+    DOTS = "dots"
+    CHAT = "chat"
+    HEADSET = "headset"
+    HELP = "help"
+    SPARKLE = "sparkle"
+    LOGO = "logo"
+
+
+class LauncherSize(str, enum.Enum):
+    SMALL = "sm"
+    MEDIUM = "md"
+    LARGE = "lg"
+
+
+class LauncherShape(str, enum.Enum):
+    BUBBLE = "bubble"
+    CIRCLE = "circle"
+
+
+class LauncherAnimation(str, enum.Enum):
+    NONE = "none"
+    CLASSIC = "classic"
+    BOUNCE = "bounce"
+    SWOOSH = "swoosh"
+    GLOW = "glow"
+
+
+class LauncherBackground(str, enum.Enum):
+    WHITE = "white"
+    BRAND = "brand"
+    NONE = "none"
+
+
+class LauncherConfig(BaseModel):
+    """Dashboard "Launcher" look, stored in customization_metadata.
+
+    Unset keys keep today's launcher. logo_transparent is set by the logo
+    upload, not by this form (see services/launcher.py).
+    """
+    icon: Optional[LauncherIcon] = None
+    size: Optional[LauncherSize] = None
+    shape: Optional[LauncherShape] = None
+    animation: Optional[LauncherAnimation] = None
+    background: Optional[LauncherBackground] = None
+    logo_transparent: Optional[bool] = None
+
+
+# customization_metadata keys with a fixed shape, read by the embed loader on
+# customer pages. The rest of the dict stays free-form.
+STRUCTURED_METADATA = {
+    'widget_display': WidgetDisplayConfig,
+    'launcher': LauncherConfig,
+}
+
+
 # Predefined chat initiation messages
 DEFAULT_CHAT_INITIATIONS = [
     "👋 Hi! Need help? Ask me anything!",
@@ -107,9 +164,9 @@ class CustomizationBase(BaseModel):
         """
         return strip_s3_signature(v)
     chat_background_color: Optional[str] = "#F8F9FA"
-    chat_bubble_color: Optional[str] = "#E9ECEF"
+    # The launcher colour; by default the ChatterMate mark's ink tile.
+    chat_bubble_color: Optional[str] = BRAND_COLORS["ink"]
     chat_text_color: Optional[str] = "#212529"
-    icon_url: Optional[str] = None
     icon_color: Optional[str] = "#6C757D"
     accent_color: Optional[str] = "#f34611"
     font_family: Optional[str] = "Inter, system-ui, sans-serif"
@@ -141,31 +198,41 @@ class CustomizationCreate(CustomizationBase):
 
     @field_validator('customization_metadata')
     @classmethod
-    def _validate_widget_display(cls, v: Optional[Dict]) -> Optional[Dict]:
-        """Validate and normalize the structured widget_display key on write.
+    def _validate_structured_metadata(cls, v: Optional[Dict]) -> Optional[Dict]:
+        """Validate and normalize the structured metadata keys on write.
 
         The rest of customization_metadata stays free-form (avatar_style etc.);
-        widget_display is consumed by the embed loader on customer pages, so bad
-        values must be rejected here. Unknown keys inside it are dropped and
+        these keys are consumed by the embed loader on customer pages, so bad
+        values must be rejected here. Unknown keys inside them are dropped and
         unset keys aren't stored. An explicit null clears the settings.
         """
-        if not v or v.get('widget_display') is None:
+        if not v:
             return v
-        validated = WidgetDisplayConfig.model_validate(v['widget_display'])
-        # mode='json' turns enums into plain strings — the dict goes straight into
-        # a JSON column, so it must hold JSON primitives, not enum members.
-        v['widget_display'] = validated.model_dump(mode='json', exclude_none=True)
+        for key, config in STRUCTURED_METADATA.items():
+            if v.get(key) is None:
+                continue
+            validated = config.model_validate(v[key])
+            # mode='json' turns enums into plain strings — the dict goes straight
+            # into a JSON column, so it must hold JSON primitives, not enum members.
+            v[key] = validated.model_dump(mode='json', exclude_none=True)
         return v
 
 
 class CustomizationResponse(CustomizationBase):
     id: int
     agent_id: UUID
+    # The launcher logo. Response-only: only the logo upload may set it, so a
+    # posted URL can't skip the plan check or the re-encode.
+    icon_url: Optional[str] = None
 
     @field_serializer('photo_url')
     def _sign_photo_url(self, v: Optional[str]) -> Optional[str]:
         """Sign on the way out, every response. Signing is a local HMAC (~0.05ms),
         so there is nothing to gain by caching the result in the database."""
+        return sign_s3_url(v) if v else v
+
+    @field_serializer('icon_url')
+    def _sign_icon_url(self, v: Optional[str]) -> Optional[str]:
         return sign_s3_url(v) if v else v
 
     class Config:

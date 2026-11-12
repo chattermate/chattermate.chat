@@ -52,6 +52,9 @@ class AgentCustomizationResponse(BaseModel):
     allow_new_chat: Optional[bool] = None
     # Free-form extras (avatar_style, widget_display placement defaults, ...)
     customization_metadata: Optional[dict] = None
+    # Already resolved for visitors: empty unless the plan covers it, and signed
+    # or absolute (see services/launcher.py). Not a column, so never the raw value.
+    launcher_logo_url: Optional[str] = None
 
     @field_serializer('photo_url')
     def _sign_photo_url(self, v: Optional[str]) -> Optional[str]:

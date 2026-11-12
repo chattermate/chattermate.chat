@@ -27,6 +27,7 @@ from app.models.channels import ChannelAccount, ChannelType
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.user import User
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import app.main  # noqa: F401 — ensures routers are registered on the FastAPI app
@@ -38,6 +39,7 @@ from app.api.channels.meta import _seal_signup_pages
 from app.channels.base import SendResult
 from app.repositories.channels import ChannelAccountRepository
 from app.repositories.channels.accounts import needs_reconnect
+from app.services import channel_access
 
 BASE = "/api/v1/channels/meta"
 WEBHOOK = "/api/v1/webhooks/meta"
@@ -49,6 +51,12 @@ APP_SECRET = "test-meta-secret"
 def client(db, test_user, test_organization, monkeypatch):
     monkeypatch.setattr(settings, "META_APP_SECRET", APP_SECRET)
     monkeypatch.setattr(settings, "META_WEBHOOK_VERIFY_TOKEN", "vtok")
+    # Manual connects ask Meta which app the token is from; here it is
+    # ChatterMate's own, which needs no secret and keeps the shared address
+    # (test_meta_own_app.py covers the customer's own app).
+    monkeypatch.setattr("app.services.meta_own_app.graph_get",
+                        AsyncMock(side_effect=lambda *a, **k: (True, {"id": settings.META_APP_ID or "OUR_APP"})))
+    monkeypatch.setattr(settings, "META_APP_ID", settings.META_APP_ID or "OUR_APP")
 
     # Reading templates is inbox work; SENDING one is a manage action — a
     # billable Meta message with opt-in obligations, gated like takeover and
@@ -537,6 +545,45 @@ class TestSignupAllowlist:
                         json={"code": "CODE", "redirect_uri": "https://x/cb"})
 
         assert r.status_code == 403
+
+
+class TestConnectOnAPlanWithoutChannels:
+    @pytest.fixture(autouse=True)
+    def plan_refuses(self, monkeypatch):
+        def refuse(db, organization_id, feature, message):
+            raise HTTPException(status_code=403, detail=message)
+        monkeypatch.setattr(channel_access, "check_feature_access", refuse)
+        monkeypatch.setattr(settings, "META_CONFIG_ID", "CFG1")
+
+    PAYLOAD = {"code": "CODE", "waba_id": "W1", "phone_number_id": "PN-new"}
+
+    def test_a_new_number_is_refused_before_anything_is_asked_of_meta(self, client, db):
+        exchange = AsyncMock(return_value=(True, {"access_token": "T"}))
+        register = AsyncMock(return_value=(True, {}))
+        with patch("app.api.channels.meta.exchange_signup_code", exchange), \
+             patch("app.api.channels.meta.register_phone_number", register):
+            r = client.post(f"{BASE}/whatsapp/embedded-signup", json=self.PAYLOAD)
+
+        assert r.status_code == 403
+        exchange.assert_not_awaited()
+        register.assert_not_awaited()
+
+    def test_a_new_manual_number_is_refused_and_nothing_is_stored(self, client, db):
+        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {"verified_name": "Acme"}))), \
+             patch("app.api.channels.meta.subscribe_app", AsyncMock(return_value=True)) as subscribe:
+            r = client.post(f"{BASE}/whatsapp", json={"phone_number_id": "PN-new", "access_token": "T",
+                                                      "waba_id": "W1"})
+
+        assert r.status_code == 403
+        subscribe.assert_not_awaited()
+        assert ChannelAccountRepository(db).get_by_external_id("whatsapp", "PN-new") is None
+
+    def test_a_number_it_already_has_can_be_reconnected(self, client, whatsapp_account):
+        with patch("app.api.channels.meta.graph_get", AsyncMock(return_value=(True, {"verified_name": "Acme"}))):
+            r = client.post(f"{BASE}/whatsapp", json={
+                "phone_number_id": whatsapp_account.external_account_id, "access_token": "new"})
+
+        assert r.status_code == 200
 
 
 class TestEmbeddedSignupConnect:

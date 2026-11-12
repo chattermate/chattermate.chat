@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, Header, Query, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -31,9 +32,9 @@ from app.database import get_db
 from app.repositories.widget import WidgetRepository
 from app.repositories.agent import AgentRepository
 from app.core.security import verify_conversation_token
-from app.services import conversation_token
+from app.services import conversation_token, launcher
 from app.repositories.customer import CustomerRepository
-from app.models.schemas.widget import WidgetCreate, WidgetResponse
+from app.models.schemas.widget import AgentCustomizationResponse, WidgetCreate, WidgetResponse
 from app.core.logger import get_logger
 from app.repositories.session_to_agent import SessionToAgentRepository, session_in_scope
 from app.services.contact_capture import CONTACT_EMAIL_META_KEY
@@ -87,6 +88,11 @@ def create_new_widget(
     current_user=Depends(get_current_user)
 ):
     """Create a new widget for the organization"""
+    # The agent must be the caller's own: a widget bound to another tenant's
+    # agent would serve that agent's config and answer from its knowledge.
+    if widget.agent_id is not None and not AgentRepository(db).get_agent_in_org(
+            widget.agent_id, current_user.organization_id):
+        raise HTTPException(status_code=404, detail="Agent not found")
     widget_repo = WidgetRepository(db)
     return widget_repo.create_widget(widget, current_user.organization_id)
 
@@ -140,7 +146,7 @@ async def get_widget_ui(
     except widget_bootstrap.WidgetAccessDenied as denied:
         raise _identity_expired() if denied.code == conversation_token.IDENTITY_EXPIRED_CODE else _token_required()
 
-    html_page = get_widget_html(await widget_bootstrap.initial_data(session), request)
+    html_page = get_widget_html(await widget_bootstrap.initial_data(db, session), request)
     response = _widget_html_response(html_page)
     if ancestors:
         response.headers["Content-Security-Policy"] = ancestors
@@ -184,7 +190,8 @@ def get_widget_html(data: dict, request: Optional[Request] = None) -> str:
                     customer: {{}},
                     workflow: {str(data['workflow']).lower()},
                     allowAttachments: {str(data['allowAttachments']).lower()},
-                    presence: {script_json(data['presence'])}
+                    presence: {script_json(data['presence'])},
+                    hideBranding: {str(data['hideBranding']).lower()}
                 }};
             </script>
         </head>
@@ -225,8 +232,18 @@ def _anonymous_customer(customer_repo: CustomerRepository, widget: Widget, conve
         meta_data=meta_data, conversation_key=conversation_key)
 
 
-def _widget_data_response(widget: Widget, agent: Agent, customer_id: Optional[str], human_agent_info: dict,
-                          token: Optional[str] = None) -> dict:
+def _visitor_customization(db: Session, agent: Agent) -> Optional[AgentCustomizationResponse]:
+    """The agent's customization as visitors may see it: this route re-applies it
+    after the bootstrap, so it has to pass the same launcher plan check."""
+    if not agent.customization:
+        return None
+    metadata, logo_url = launcher.for_visitors(db, agent)
+    return AgentCustomizationResponse.model_validate(agent.customization).model_copy(
+        update={"customization_metadata": metadata, "launcher_logo_url": logo_url})
+
+
+def _widget_data_response(db: Session, widget: Widget, agent: Agent, customer_id: Optional[str],
+                          human_agent_info: dict, runs_workflow: bool, token: Optional[str] = None) -> dict:
     """GET /widgets/{id}'s answer; `token` only when the visitor needs a new one."""
     # photo_url is signed by AgentCustomizationResponse on serialization.
     data = {
@@ -238,8 +255,8 @@ def _widget_data_response(widget: Widget, agent: Agent, customer_id: Optional[st
             "id": agent.id,
             "name": agent.name,
             "display_name": agent.display_name,
-            "customization": agent.customization,
-            "workflow": bool(agent.use_workflow and agent.active_workflow_id),
+            "customization": _visitor_customization(db, agent),
+            "workflow": runs_workflow,
             "allow_attachments": agent.allow_attachments
         }
     }
@@ -262,13 +279,30 @@ async def get_widget_data(
     # Binds this visitor to a customer: a stored copy would skip that and leave
     # the widget holding the page's anonymous token.
     response.headers["Cache-Control"] = "no-store"
+    return await authorize_visitor(db, widget_id, email, source, authorization)
 
+
+async def prefetched_widget_data(db: Session, widget_id: str, token: Optional[str], source: Optional[str]) -> dict:
+    """GET /widgets/{id}'s answer for `token`, as /bootstrap hands it to a starting
+    widget so it needn't ask again: {"status": 200, "data": ...} or the refusal as
+    {"status": ..., "detail": ...}. Exactly that route's logic, same token, no email."""
+    authorization = f"Bearer {token}" if token else None
+    try:
+        data = await authorize_visitor(db, widget_id, None, source, authorization)
+    except HTTPException as refused:
+        return {"status": refused.status_code, "detail": refused.detail}
+    return {"status": 200, "data": jsonable_encoder(WidgetResponse.model_validate(data))}
+
+
+async def authorize_visitor(db: Session, widget_id: str, email: Optional[str], source: Optional[str],
+                            authorization: Optional[str]) -> dict:
+    """Binds the visitor in `authorization` to a customer (minting one when needed)
+    and returns GET /widgets/{id}'s answer. Raises HTTPException when refused."""
     widget = db.query(Widget).filter(Widget.id == widget_id).first()
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
 
-    agent_repo = AgentRepository(db)
-    agent = agent_repo.get_by_id(widget.agent_id)
+    agent = WidgetRepository(db).get_widget_agent(widget)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -303,7 +337,7 @@ async def get_widget_data(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized - Token required")
 
     # Check if agent has workflow enabled
-    agent_has_workflow = bool(agent.use_workflow and agent.active_workflow_id)
+    agent_has_workflow = widget_bootstrap.agent_runs_workflow(db, agent)
 
     # Check if agent has ASK_ANYTHING chat style
     is_ask_anything_style = (agent.customization and
@@ -332,11 +366,11 @@ async def get_widget_data(
             anonymous = _anonymous_customer(customer_repo, widget, conversation_key, claimed_email=customer.email)
             new_token = widget_bootstrap.mint_widget_token(widget_id, conversation_key, customer_id=str(anonymous.id),
                                            source=source, token_payload=token_payload)
-            return _widget_data_response(widget, agent, str(anonymous.id), {}, new_token)
+            return _widget_data_response(db, widget, agent, str(anonymous.id), {}, agent_has_workflow, new_token)
 
         logger.debug(f"Using existing token for customer_id: {customer_id}")
         human_agent_info = await get_human_agent_session_info(db, str(customer.id), scope)
-        return _widget_data_response(widget, agent, customer_id, human_agent_info)
+        return _widget_data_response(db, widget, agent, customer_id, human_agent_info, agent_has_workflow)
 
     # A token-protected widget only ever runs on tokens its site issued: one whose
     # customer is gone is no reason to issue a widget token of our own.
@@ -368,7 +402,7 @@ async def get_widget_data(
     human_agent_info = await get_human_agent_session_info(db, str(customer.id), conversation_key)
     new_token = widget_bootstrap.mint_widget_token(widget_id, conversation_key, customer_id=str(customer.id),
                                    source=source, token_payload=token_payload)
-    return _widget_data_response(widget, agent, str(customer.id), human_agent_info, new_token)
+    return _widget_data_response(db, widget, agent, str(customer.id), human_agent_info, agent_has_workflow, new_token)
 
 
 @router.post("/{widget_id}/end-chat")
@@ -455,16 +489,9 @@ def get_widgets_by_agent(
     current_user=Depends(get_current_user)
 ):
     """Get all widgets for a specific agent"""
-    widget_repo = WidgetRepository(db)
-    widgets = widget_repo.get_widgets_by_agent(agent_id)
-    
-    # Verify the agent belongs to the user's organization
-    agent_repo = AgentRepository(db)
-    agent = agent_repo.get_by_id(agent_id)
-    if not agent or str(agent.organization_id) != str(current_user.organization_id):
+    if not AgentRepository(db).get_agent_in_org(agent_id, current_user.organization_id):
         raise HTTPException(status_code=404, detail="Agent not found")
-    
-    return widgets
+    return WidgetRepository(db).get_widgets_by_agent(agent_id)
 
 
 @router.delete("/{widget_id}")

@@ -20,6 +20,7 @@ from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
+from app.core.encryption import EncryptedText
 from app.database import Base
 
 class JiraToken(Base):
@@ -28,8 +29,9 @@ class JiraToken(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
-    access_token = Column(String, nullable=False)
-    refresh_token = Column(String, nullable=False)
+    # Encrypted at rest (app.core.encryption); rows from before read as plaintext.
+    access_token = Column(EncryptedText, nullable=False)
+    refresh_token = Column(EncryptedText, nullable=False)
     token_type = Column(String, nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cloud_id = Column(String, nullable=False)  # Jira Cloud instance ID

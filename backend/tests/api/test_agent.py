@@ -31,6 +31,7 @@ from app.core.auth import get_current_user, require_permissions, get_unified_aut
 from app.models.schemas.agent_customization import CustomizationCreate
 from app.database import get_db
 from app.models.organization import Organization
+from app.models.workflow import Workflow, WorkflowStatus
 
 # Create a test FastAPI app
 app = FastAPI()
@@ -564,21 +565,14 @@ def test_update_agent_workflow_settings(
     test_user,
     test_agent
 ):
-    """Test updating agent workflow settings"""
-    workflow_id = uuid4()
-    update_data = {
-        "use_workflow": True,
-        "active_workflow_id": str(workflow_id)
-    }
-    
+    """A workflow id that doesn't exist is refused, not stored"""
     response = client.put(
         f"/api/agents/{test_agent.id}",
-        json=update_data
+        json={"use_workflow": True, "active_workflow_id": str(uuid4())}
     )
-    assert response.status_code == 200
-    updated_agent = response.json()
-    assert updated_agent["use_workflow"] is True
-    assert updated_agent["active_workflow_id"] == str(workflow_id)
+    assert response.status_code == 404
+    db.refresh(test_agent)
+    assert test_agent.active_workflow_id is None
 
 def test_update_agent_rate_limiting(
     client,
@@ -1880,3 +1874,71 @@ def test_view_agents_grants_the_reads(db, test_organization_id, test_agent: Agen
         assert client.put(f"/api/agents/{test_agent.id}", json={"name": "X"}).status_code == 403
     finally:
         app.dependency_overrides.clear()
+
+
+def test_reply_limits_round_trip_and_clear(client, db, test_user, test_agent):
+    """Per-customer reply limits save, come back in the response, and clear with null."""
+    response = client.put(
+        f"/api/agents/{test_agent.id}",
+        json={"messages_per_customer_per_minute": 6, "replies_per_customer_per_day": 40},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["messages_per_customer_per_minute"] == 6
+    assert body["replies_per_customer_per_day"] == 40
+    db.refresh(test_agent)
+    assert test_agent.replies_per_customer_per_day == 40
+
+    response = client.put(f"/api/agents/{test_agent.id}", json={"replies_per_customer_per_day": None})
+    assert response.json()["replies_per_customer_per_day"] is None
+    assert response.json()["messages_per_customer_per_minute"] == 6
+
+    assert client.put(f"/api/agents/{test_agent.id}", json={"replies_per_customer_per_day": 0}).status_code == 422
+
+
+def _workflow(db, organization_id, agent_id, created_by):
+    workflow = Workflow(
+        name="Flow", status=WorkflowStatus.PUBLISHED, version=1, is_template=False,
+        default_language="en", canvas_data={}, settings={},
+        organization_id=organization_id, agent_id=agent_id, created_by=created_by,
+    )
+    db.add(workflow)
+    db.commit()
+    db.refresh(workflow)
+    return workflow
+
+
+def test_update_agent_sets_its_own_workflow(client, db, test_user, test_agent):
+    workflow = _workflow(db, test_user.organization_id, test_agent.id, test_user.id)
+    response = client.put(f"/api/agents/{test_agent.id}",
+                          json={"use_workflow": True, "active_workflow_id": str(workflow.id)})
+    assert response.status_code == 200
+    assert response.json()["active_workflow_id"] == str(workflow.id)
+
+
+def test_update_agent_refuses_another_orgs_workflow(client, db, test_user, test_agent):
+    """Every new session runs the active workflow, so another tenant's can't be set"""
+    other_org = Organization(name="Other Org", domain="other.com", timezone="UTC")
+    db.add(other_org)
+    db.commit()
+    other_agent = Agent(name="Theirs", agent_type=AgentType.CUSTOMER_SUPPORT,
+                        instructions=["x"], organization_id=other_org.id)
+    db.add(other_agent)
+    db.commit()
+    foreign = _workflow(db, other_org.id, other_agent.id, test_user.id)
+
+    response = client.put(f"/api/agents/{test_agent.id}",
+                          json={"use_workflow": True, "active_workflow_id": str(foreign.id)})
+    assert response.status_code == 404
+    db.refresh(test_agent)
+    assert test_agent.active_workflow_id is None
+
+
+def test_update_agent_refuses_a_sibling_agents_workflow(client, db, test_user, test_agent):
+    sibling = Agent(name="Sibling", agent_type=AgentType.CUSTOMER_SUPPORT,
+                    instructions=["x"], organization_id=test_user.organization_id)
+    db.add(sibling)
+    db.commit()
+    workflow = _workflow(db, test_user.organization_id, sibling.id, test_user.id)
+    response = client.put(f"/api/agents/{test_agent.id}", json={"active_workflow_id": str(workflow.id)})
+    assert response.status_code == 404

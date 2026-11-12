@@ -14,10 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import importlib.util
 from pathlib import Path
 
+import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+from app.database import Base
+import app.models  # noqa: F401  (registers every table on Base)
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -39,3 +44,26 @@ def test_migrations_have_a_single_head():
         Config(str(BACKEND_DIR / "alembic.ini"))
     ).get_heads()
     assert len(heads) == 1, f"expected one migration head, found: {heads}"
+
+
+def _load_migration(name: str):
+    path = BACKEND_DIR / "alembic" / "versions" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("name, columns", [
+    ("erasure_fk_indexes_001", "FOREIGN_KEYS"),
+    ("org_lookup_indexes_001", "ORGANIZATION_COLUMNS"),
+])
+def test_index_migrations_match_the_models(name, columns):
+    """The models declare the same indexes, under the same names, so a database
+    made by create_all and one made by migrating agree, and autogenerate sees
+    no drift."""
+    migration = _load_migration(name)
+    for table, column in getattr(migration, columns):
+        names = {index.name for index in Base.metadata.tables[table].indexes
+                 if [c.name for c in index.columns] == [column]}
+        assert migration.index_name(table, column) in names, f"{table}.{column} has no index=True"

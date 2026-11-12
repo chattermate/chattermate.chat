@@ -51,6 +51,9 @@ export function useWidgetSocket() {
     const humanAgent = ref<HumanAgent>({})
     const currentForm = ref<any>(null)
     const currentSessionId = ref<string>('')
+    // Listeners other widget features add (see `on`). Re-attached to every new
+    // socket, so they survive a reconnect that builds a fresh connection.
+    const extraListeners: Array<[string, (...args: any[]) => void]> = []
 
     // The typing indicator is driven solely by the server's `bot_typing`
     // event. The widget never guesses: a reply it optimistically waited for is
@@ -91,6 +94,8 @@ export function useWidgetSocket() {
     // worth another attempt.
     const FINAL_REFUSALS = new Set<SocketError['type']>(['ai_config_missing', ...REAUTHORIZING_REFUSALS])
     let refusedForGood = false
+    // The server is about to close the connection so the widget starts over
+    let startOverRequested = false
     // Why the last attempt was refused for good, for the caller of connect().
     const refusal = ref<SocketError['type'] | null>(null)
 
@@ -204,7 +209,7 @@ export function useWidgetSocket() {
             startBotTyping()
         })
 
-        socket.on('disconnect', () => {
+        socket.on('disconnect', (reason) => {
             // Nothing can arrive to clear it while we are disconnected.
             stopBotTyping()
 
@@ -212,6 +217,21 @@ export function useWidgetSocket() {
                 console.log('Socket disconnected, setting connection status to connecting')
                 connectionStatus.value = 'connecting'
             }
+
+            // socket.io doesn't reconnect after the server closes the connection.
+            // Only when the server said why first, because the visitor's
+            // conversation was deleted: connecting again opens a new one, or is
+            // refused with a reason that has the widget authorize a new visitor.
+            // Any other server-side close stays closed.
+            const startOver = startOverRequested
+            startOverRequested = false // only ever for the disconnect that follows it
+            if (reason === 'io server disconnect' && startOver) {
+                socket?.connect()
+            }
+        })
+
+        socket.on('error', (error?: SocketError) => {
+            if (error?.type === 'conversation_gone') startOverRequested = true
         })
 
         // A refusal carries its reason in `data`: events the server emits before
@@ -375,6 +395,7 @@ export function useWidgetSocket() {
         })
 
         socket.on('error', handleError)
+        for (const [event, listener] of extraListeners) socket.on(event, listener)
         socket.on('chat_history', handleChatHistory)
         socket.on('rating_submitted', handleRatingSubmitted)
         socket.on('display_form', handleDisplayForm)
@@ -668,7 +689,7 @@ export function useWidgetSocket() {
     }
 
     // Send message function
-    const sendMessage = async (newMessage: string, email: string, files: Array<{content: string, filename: string, content_type: string, size: number}> = []) => {
+    const sendMessage = async (newMessage: string, email: string, files: Array<{content: string, filename: string, content_type: string, size: number}> = [], extra: Record<string, unknown> = {}) => {
         if (!socket || (!newMessage.trim() && files.length === 0)) return
         
         // Add user message to display with temporary blob URLs for images
@@ -711,6 +732,7 @@ export function useWidgetSocket() {
 
         // Emit to socket WITH files (files will be uploaded on backend)
         socket.emit('chat', {
+            ...extra,
             message: newMessage,
             email: email,
             files: files  // Send files with base64 content
@@ -801,6 +823,17 @@ export function useWidgetSocket() {
         onWorkflowProceededCallback = null
     }
 
+    /** Listen to a socket event, now and on every later connection. */
+    const on = (event: string, listener: (...args: any[]) => void) => {
+        extraListeners.push([event, listener])
+        socket?.on(event, listener)
+    }
+
+    /** Send an event on the current connection, if there is one. */
+    const emit = (event: string, data: unknown) => {
+        socket?.emit(event, data)
+    }
+
     return {
         messages,
         loading,
@@ -829,6 +862,8 @@ export function useWidgetSocket() {
         onWorkflowProceeded,
         currentSessionId,
         setToken,
-        setWidgetId
+        setWidgetId,
+        on,
+        emit
     }
 }

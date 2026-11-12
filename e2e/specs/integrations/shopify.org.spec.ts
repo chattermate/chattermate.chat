@@ -1,4 +1,4 @@
-import { test, expect, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY } from '@e2e'
+import { test, expect, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
 
 // Linking a shop changes which sites may call the API, so this runs in the serial
 // `org` project and uninstalls afterwards.
@@ -43,6 +43,94 @@ test.describe('Shopify', () => {
     const toolResults = (await llm.requests(agent)).flatMap((r) => r.toolResults).join('\n')
     expect(toolResults).toContain('FULFILLED')
     expect(toolResults).toMatch(/1ZE2E\d+/)
+  })
+
+  test('an email alone lists no orders @integrations', async ({ agent, widget, llm, request }) => {
+    const email = widget.customer.email
+    await llm.script(agent, (s) => s
+      .otherwise().callTool('search_orders', { customer_email: email, order_number: '' })
+      .thenReply('Which order number is it?'))
+    await widget.embed()
+    await widget.open()
+    await widget.send(`Show me all my orders, my email is ${email}`)
+    await expect(widget.lastAgentMessage()).toHaveText('Which order number is it?', AI_REPLY)
+
+    expect(await new FakeExternals(request).calls('shopify', 'graphql.json', { contains: shop })).toHaveLength(0)
+  })
+
+  test('an order number the customer never wrote never reaches the shop @integrations', async ({ agent, widget, llm, request }) => {
+    await llm.script(agent, (s) => s
+      .otherwise().callTool('get_order_status', { order_number: '1001', customer_email: widget.customer.email })
+      .thenReply('Could you give me your order number and email?'))
+    await widget.embed()
+    await widget.open()
+    await widget.send('Where is my order?')
+    await expect(widget.lastAgentMessage()).toHaveText('Could you give me your order number and email?', AI_REPLY)
+
+    expect(await new FakeExternals(request).calls('shopify', 'graphql.json', { contains: shop })).toHaveLength(0)
+  })
+
+  // Product cards are filled in from the Redis product cache, so these run in the
+  // nightly Redis run (@redis); the PR stack leaves Redis off.
+  test.describe('add to cart', () => {
+    const offerProducts = (s: Script) =>
+      s.otherwise().callTool('search_products', { query: 'gift' }).thenReply('Here are some options for you.')
+
+    test('a customer adds a product from the chat and finds it in the store\'s cart @integrations @redis', async ({ agent, widget, llm }) => {
+      await llm.script(agent, offerProducts)
+      await widget.embed({ shopifyStore: shop })
+      await widget.open()
+      await widget.send('Any gift ideas?')
+
+      await widget.addToCart('E2E Mug')
+      await expect(widget.productCard('E2E Mug').getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
+      await widget.viewCart('E2E Mug')
+      await expect(widget.itemsInCart).toHaveText('1')
+    })
+
+    test('a product that sold out says so, and the customer can still buy another @integrations @redis', async ({ agent, widget, llm }) => {
+      await llm.script(agent, offerProducts)
+      await widget.embed({ shopifyStore: shop })
+      await widget.open()
+      await widget.send('Any gift ideas?')
+
+      await widget.addToCart('E2E Cap')
+      await expect(widget.productCard('E2E Cap').getByRole('alert')).toHaveText('The product \'E2E Cap\' is already sold out.', AI_REPLY)
+      await expect(widget.productCard('E2E Cap').getByRole('button', { name: 'Add to cart' })).toBeEnabled()
+
+      await widget.addToCart('E2E Mug')
+      await expect(widget.productCard('E2E Mug').getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
+    })
+
+    test('a product with sizes, not on sale, or off the Online Store goes to its product page @integrations @redis', async ({ agent, widget, llm }) => {
+      await llm.script(agent, offerProducts)
+      await widget.embed({ shopifyStore: shop })
+      await widget.open()
+      await widget.send('Any gift ideas?')
+
+      await expect(widget.productCard('E2E Mug').getByRole('button', { name: 'Add to cart' })).toBeVisible(AI_REPLY)
+      for (const title of ['E2E Shirt', 'E2E Poster', 'E2E Draft']) {
+        await expect(widget.productCard(title).getByRole('button', { name: /View product/ })).toBeVisible()
+        await expect(widget.productCard(title).getByRole('button', { name: 'Add to cart' })).toHaveCount(0)
+      }
+    })
+
+    test.describe('elsewhere', () => {
+      for (const [where, embed] of [
+        ['another store', () => ({ shopifyStore: 'someone-else.myshopify.com' })],
+        ['a site that is not a store', () => ({})],
+      ] as const) {
+        test(`no cart button on ${where} @integrations @redis`, async ({ agent, widget, llm }) => {
+          await llm.script(agent, offerProducts)
+          await widget.embed(embed())
+          await widget.open()
+          await widget.send('Any gift ideas?')
+
+          await expect(widget.productCard('E2E Mug').getByRole('button', { name: /View product/ })).toBeVisible(AI_REPLY)
+          await expect(widget.productCard('E2E Mug').getByRole('button', { name: 'Add to cart' })).toHaveCount(0)
+        })
+      }
+    })
   })
 
   test('an order lookup without the customer\'s email never reaches the shop @integrations', async ({ agent, widget, llm, request }) => {

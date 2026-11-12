@@ -1,0 +1,101 @@
+{
+  "key": "trial_to_paid",
+  "name": "Trial to paid",
+  "group": "Growth & lifecycle",
+  "summary": "Show what the user did in their trial, suggest the plan that fits, and open your checkout.",
+  "goal_event": "subscription_started",
+  "needs_actions": {
+    "open_checkout": "never"
+  },
+  "definition": {
+    "audience": {
+      "kind": "rules",
+      "rules": [
+        {
+          "kind": "ctx",
+          "value": "trial_days_left",
+          "op": "lte",
+          "operand": 7
+        }
+      ]
+    },
+    "start": {
+      "kind": "url",
+      "value": "/*"
+    },
+    "steps": [
+      {
+        "id": "recap",
+        "title": "Value recap",
+        "message": "In your trial you {{ctx.usage_summary}}. Want to keep going?",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "plans_viewed"
+          },
+          {
+            "kind": "action",
+            "value": "open_checkout"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "See plans",
+            "value": "Which plan fits me?"
+          }
+        ]
+      },
+      {
+        "id": "plan_fit",
+        "title": "Plan fit",
+        "message": "Based on {{ctx.seats}} seats, {{ctx.suggested_plan}} fits. Open checkout?",
+        "done_when": [
+          {
+            "kind": "action",
+            "value": "open_checkout"
+          },
+          {
+            "kind": "event",
+            "value": "checkout_opened"
+          }
+        ],
+        "skippable": true,
+        "chips": [
+          {
+            "label": "Open checkout",
+            "kind": "action",
+            "value": "open_checkout"
+          },
+          {
+            "label": "Talk to someone",
+            "value": "Can I talk to someone about pricing?"
+          }
+        ],
+        "allowed_actions": [
+          "open_checkout"
+        ]
+      },
+      {
+        "id": "checkout",
+        "title": "Checkout",
+        "message": "Checkout is open. Payment happens there, not in this chat.",
+        "done_when": [
+          {
+            "kind": "event",
+            "value": "subscription_started"
+          }
+        ],
+        "skippable": false
+      }
+    ],
+    "finish": {
+      "message": "Thanks for upgrading!"
+    },
+    "variable_fallbacks": {
+      "ctx.usage_summary": "got started",
+      "ctx.seats": "your",
+      "ctx.suggested_plan": "our Pro plan"
+    }
+  }
+}

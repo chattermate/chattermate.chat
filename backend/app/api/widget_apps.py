@@ -56,7 +56,7 @@ def check_widget_app_feature_access(current_user: User, db: Session):
     if not plan_repo.check_feature_availability(str(subscription.plan_id), 'api_access'):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Widget Apps feature is not available in your current plan. Please upgrade to Pro to access this feature."
+            detail="Widget Apps feature is not available in your current plan. Upgrade your plan to turn it on."
         )
 
 

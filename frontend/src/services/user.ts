@@ -17,6 +17,8 @@ limitations under the License.
 import type { Role, User } from '@/types/user'
 import api from './api'
 import { uploadProfilePic } from './users'
+import { notifySignedOut } from '@/utils/sessionEvents'
+import emitter from '@/utils/emitter'
 
 
 
@@ -50,6 +52,7 @@ export const userService = {
   clearCurrentUser() {
     this.userInfo = null
     localStorage.removeItem('user_info')
+    notifySignedOut()
   },
 
   isAuthenticated(): boolean {
@@ -73,19 +76,6 @@ export const userService = {
     return response.data
   },
 
-  // Unregisters one device. The token is required: clearing every token for
-  // the account would knock the user's other signed-in devices off push.
-  async clearFCMToken(token: string): Promise<unknown> {
-    try {
-      const response = await api.delete('/users/token/fcm-token', { data: { token } })
-      return response.data
-    } catch (error) {
-      console.error('Failed to clear FCM token:', error)
-      // Never block logout on this — a token left behind is pruned server-side
-      // on its next failed delivery.
-    }
-  },
-
   async updateProfile(data: {
     full_name?: string
     email?: string
@@ -104,5 +94,8 @@ export const userService = {
   async uploadProfilePic(formData: FormData): Promise<void> {
     const user = await uploadProfilePic(formData)
     this.setCurrentUser(user)
+    // The header holds its own copy of the user; without this it kept the
+    // old picture until a reload.
+    emitter.emit('profile-pic-updated')
   },
 }

@@ -1704,7 +1704,8 @@ export interface paths {
         post: operations["register_fcm_token_api_v1_users_token_fcm_token_post"];
         /**
          * Unregister Fcm Token
-         * @description Drop this browser's token on logout.
+         * @description Drop one of this user's device tokens. The dashboard no longer calls
+         *     this — its logout sends the token with POST /logout — but API clients may.
          *
          *     The token is required: clearing every token for the account (what this used
          *     to do) meant signing out on a laptop silently killed push on the user's
@@ -2944,6 +2945,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/{agent_id}/customization/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Launcher Logo
+         * @description Store a new launcher logo, replacing any previous one.
+         */
+        post: operations["upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post"];
+        /**
+         * Remove Launcher Logo
+         * @description Remove the logo. Open to every plan, so a lapsed org can still clean up.
+         */
+        delete: operations["remove_launcher_logo_api_v1_agent__agent_id__customization_logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/customization/logo/shopify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Launcher Logo
+         * @description Store a new launcher logo, replacing any previous one.
+         */
+        post: operations["upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post"];
+        /**
+         * Remove Launcher Logo
+         * @description Remove the logo. Open to every plan, so a lapsed org can still clean up.
+         */
+        delete: operations["remove_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/{agent_id}/lead-capture": {
         parameters: {
             query?: never;
@@ -2968,6 +3017,251 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/{agent_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Actions */
+        get: operations["list_actions_api_v1_agent__agent_id__actions_get"];
+        put?: never;
+        /** Create Action */
+        post: operations["create_action_api_v1_agent__agent_id__actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/actions/{action_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Action */
+        put: operations["update_action_api_v1_agent__agent_id__actions__action_id__put"];
+        post?: never;
+        /** Delete Action */
+        delete: operations["delete_action_api_v1_agent__agent_id__actions__action_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Set Action Enabled
+         * @description Turn an action on or off without re-validating the rest of it.
+         */
+        patch: operations["set_action_enabled_api_v1_agent__agent_id__actions__action_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/actions/{action_id}/model-view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Action Model View
+         * @description What the model is told about this action, for the dashboard preview.
+         */
+        get: operations["get_action_model_view_api_v1_agent__agent_id__actions__action_id__model_view_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Journeys */
+        get: operations["list_journeys_api_v1_agent__agent_id__journeys_get"];
+        put?: never;
+        /** Create Journey */
+        post: operations["create_journey_api_v1_agent__agent_id__journeys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Journey Templates */
+        get: operations["journey_templates_api_v1_agent__agent_id__journeys_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/context-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Context Keys
+         * @description Fields pages have sent for this agent: what {{ctx.*}} can use.
+         */
+        get: operations["context_keys_api_v1_agent__agent_id__journeys_context_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/from-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create From Template
+         * @description A draft copy of a template, to map to the agent's own actions.
+         */
+        post: operations["create_from_template_api_v1_agent__agent_id__journeys_from_template_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Journeys */
+        put: operations["reorder_journeys_api_v1_agent__agent_id__journeys_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/{journey_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Journey */
+        get: operations["get_journey_api_v1_agent__agent_id__journeys__journey_id__get"];
+        /** Update Journey */
+        put: operations["update_journey_api_v1_agent__agent_id__journeys__journey_id__put"];
+        post?: never;
+        /** Delete Journey */
+        delete: operations["delete_journey_api_v1_agent__agent_id__journeys__journey_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/{journey_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Journey Status */
+        patch: operations["set_journey_status_api_v1_agent__agent_id__journeys__journey_id__status_patch"];
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/{journey_id}/funnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Journey Funnel */
+        get: operations["journey_funnel_api_v1_agent__agent_id__journeys__journey_id__funnel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/{agent_id}/journeys/{journey_id}/steps/{step_id}/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stuck Users
+         * @description Users waiting on this step, for follow-up. ?format=csv to download.
+         */
+        get: operations["stuck_users_api_v1_agent__agent_id__journeys__journey_id__steps__step_id__users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/people/{customer_id}/journeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Person Journeys
+         * @description One person's journeys, for their page in People.
+         */
+        get: operations["person_journeys_api_v1_people__customer_id__journeys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/people": {
         parameters: {
             query?: never;
@@ -2981,7 +3275,8 @@ export interface paths {
          *
          *     The default view is identified people (real email, phone, or a qualifying
          *     capture); anonymous browser sessions live behind view=anonymous — they are
-         *     a lead-capture funnel signal, not directory content.
+         *     a lead-capture funnel signal, not directory content — and users the app
+         *     signed in live behind view=signed_in.
          */
         get: operations["list_people_api_v1_people_get"];
         put?: never;
@@ -3586,6 +3881,30 @@ export interface paths {
          * @description Replace the widget's allowed domains. An empty list allows any site.
          */
         put: operations["update_embed_settings_api_v1_widgets__widget_id__embed_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/widgets/{widget_id}/launcher-logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Launcher Logo
+         * @description The launcher logo for the embed loader's image: a redirect to the current file.
+         *
+         *     The loader builds this address itself, so the page never puts a URL it was sent
+         *     in a message into an image, and an expired signature is never its problem.
+         *     Served only while the plan covers the logo, like everything else visitors get.
+         */
+        get: operations["launcher_logo_api_v1_widgets__widget_id__launcher_logo_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4735,18 +5054,9 @@ export interface paths {
         put?: never;
         /**
          * Shopify Customers Data Request Webhook
-         * @description GDPR Compliance Webhook: Customer Data Request
-         *
-         *     This webhook is called when a customer requests access to their data.
-         *     You must provide the customer's data within a specified timeframe.
-         *
-         *     Shopify sends the following information:
-         *     - shop_id: The ID of the shop
-         *     - shop_domain: The shop's domain
-         *     - customer: Customer information including email, phone
-         *     - orders_requested: List of order IDs the customer has placed
-         *
-         *     Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
+         * @description A customer asked the merchant for their data. Records which of our
+         *     customer records it covers; the export is then sent to the merchant.
+         *     https://shopify.dev/docs/apps/build/privacy-law-compliance
          */
         post: operations["shopify_customers_data_request_webhook_api_v1_shopify_webhooks_customers_data_request_post"];
         delete?: never;
@@ -4766,18 +5076,8 @@ export interface paths {
         put?: never;
         /**
          * Shopify Customers Redact Webhook
-         * @description GDPR Compliance Webhook: Customer Data Erasure
-         *
-         *     This webhook is called when a customer requests their data to be deleted.
-         *     You must delete all customer data within a specified timeframe.
-         *
-         *     Shopify sends the following information:
-         *     - shop_id: The ID of the shop
-         *     - shop_domain: The shop's domain
-         *     - customer: Customer information including email, phone
-         *     - orders_to_redact: List of order IDs to redact
-         *
-         *     Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
+         * @description Erase one customer's conversations and personal data.
+         *     https://shopify.dev/docs/apps/build/privacy-law-compliance
          */
         post: operations["shopify_customers_redact_webhook_api_v1_shopify_webhooks_customers_redact_post"];
         delete?: never;
@@ -4797,16 +5097,8 @@ export interface paths {
         put?: never;
         /**
          * Shopify Shop Redact Webhook
-         * @description GDPR Compliance Webhook: Shop Data Erasure
-         *
-         *     This webhook is called 48 hours after a shop owner uninstalls your app.
-         *     You must delete all shop-related data.
-         *
-         *     Shopify sends the following information:
-         *     - shop_id: The ID of the shop
-         *     - shop_domain: The shop's domain
-         *
-         *     Documentation: https://shopify.dev/docs/apps/build/privacy-law-compliance
+         * @description Sent 48 hours after uninstall: erase the store's visitor data.
+         *     https://shopify.dev/docs/apps/build/privacy-law-compliance
          */
         post: operations["shopify_shop_redact_webhook_api_v1_shopify_webhooks_shop_redact_post"];
         delete?: never;
@@ -5079,6 +5371,15 @@ export interface components {
             config: components["schemas"]["AIConfigResponse"];
         };
         /**
+         * ActionConfirmPolicy
+         * @description When the visitor must approve an action before the host page runs it.
+         *
+         *     Stored as a plain string (not a DB enum) so a new policy never needs a
+         *     migration. The widget enforces it, so the model cannot skip it.
+         * @enum {string}
+         */
+        ActionConfirmPolicy: "never" | "always" | "when_overwriting";
+        /**
          * ActionType
          * @enum {string}
          */
@@ -5094,6 +5395,132 @@ export interface components {
         AdminPasswordReset: {
             /** New Password */
             new_password: string;
+        };
+        /** AgentActionCreate */
+        AgentActionCreate: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /** @default never */
+            confirm: components["schemas"]["ActionConfirmPolicy"];
+            /** Timeout S */
+            timeout_s?: number;
+            /**
+             * Sensitive Form
+             * @default false
+             */
+            sensitive_form: boolean;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** AgentActionEnabledUpdate */
+        AgentActionEnabledUpdate: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** AgentActionListResponse */
+        AgentActionListResponse: {
+            /** Actions */
+            actions: components["schemas"]["AgentActionResponse"][];
+            /** Cap */
+            cap: number;
+        };
+        /**
+         * AgentActionModelView
+         * @description Exactly what the model is told about the action.
+         */
+        AgentActionModelView: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+        };
+        /** AgentActionResponse */
+        AgentActionResponse: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /** @default never */
+            confirm: components["schemas"]["ActionConfirmPolicy"];
+            /** Timeout S */
+            timeout_s?: number;
+            /**
+             * Sensitive Form
+             * @default false
+             */
+            sensitive_form: boolean;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Last Registered At */
+            last_registered_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * AgentActionUpdate
+         * @description Full replace: the edit form always sends every field.
+         */
+        AgentActionUpdate: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /** @default never */
+            confirm: components["schemas"]["ActionConfirmPolicy"];
+            /** Timeout S */
+            timeout_s?: number;
+            /**
+             * Sensitive Form
+             * @default false
+             */
+            sensitive_form: boolean;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
         };
         /** AgentChannelConfigRequest */
         AgentChannelConfigRequest: {
@@ -5178,6 +5605,10 @@ export interface components {
              * @default 1
              */
             requests_per_sec: number;
+            /** Messages Per Customer Per Minute */
+            messages_per_customer_per_minute?: number | null;
+            /** Replies Per Customer Per Day */
+            replies_per_customer_per_day?: number | null;
             /**
              * Use Workflow
              * @default false
@@ -5272,6 +5703,8 @@ export interface components {
             customization_metadata?: {
                 [key: string]: unknown;
             } | null;
+            /** Launcher Logo Url */
+            launcher_logo_url?: string | null;
         };
         /** AgentInfo */
         AgentInfo: {
@@ -5430,6 +5863,10 @@ export interface components {
             overall_limit_per_ip?: number | null;
             /** Requests Per Sec */
             requests_per_sec?: number | null;
+            /** Messages Per Customer Per Minute */
+            messages_per_customer_per_minute?: number | null;
+            /** Replies Per Customer Per Day */
+            replies_per_customer_per_day?: number | null;
             /** Use Workflow */
             use_workflow?: boolean | null;
             /** Active Workflow Id */
@@ -5516,6 +5953,10 @@ export interface components {
             overall_limit_per_ip?: number | null;
             /** Requests Per Sec */
             requests_per_sec?: number | null;
+            /** Messages Per Customer Per Minute */
+            messages_per_customer_per_minute?: number | null;
+            /** Replies Per Customer Per Day */
+            replies_per_customer_per_day?: number | null;
             /**
              * Use Workflow
              * @default false
@@ -5559,6 +6000,17 @@ export interface components {
              * @default []
              */
             groups: components["schemas"]["app__models__schemas__user_group__UserGroupResponse"][];
+        };
+        /** Audience */
+        Audience: {
+            /**
+             * Kind
+             * @default everyone
+             * @enum {string}
+             */
+            kind: "everyone" | "new_users" | "rules";
+            /** Rules */
+            rules?: components["schemas"]["Condition"][];
         };
         /** Body_add_subpage_api_v1_knowledge__knowledge_id__subpage_post */
         Body_add_subpage_api_v1_knowledge__knowledge_id__subpage_post: {
@@ -5629,6 +6081,16 @@ export interface components {
         Body_upload_favicon_api_v1_help_center_favicon_post: {
             /** File */
             file: string;
+        };
+        /** Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post */
+        Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post: {
+            /** Logo */
+            logo: string;
+        };
+        /** Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post */
+        Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post: {
+            /** Logo */
+            logo: string;
         };
         /** Body_upload_logo_api_v1_help_center_logo_post */
         Body_upload_logo_api_v1_help_center_logo_post: {
@@ -5781,6 +6243,38 @@ export interface components {
          * @enum {string}
          */
         ChatStyle: "CHATBOT" | "ASK_ANYTHING" | "GLASS" | "TERMINAL" | "PLAYFUL" | "CALM_MINT" | "AURORA" | "SUNRISE";
+        /** Chip */
+        Chip: {
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @default text
+             * @enum {string}
+             */
+            kind: "text" | "action";
+            /** Value */
+            value: string;
+            hide_when?: components["schemas"]["Condition"] | null;
+        };
+        /**
+         * Condition
+         * @description One thing that can be true about a user: on a page, an app event, a
+         *     field value, or an action that just succeeded.
+         */
+        Condition: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "url" | "event" | "ctx" | "user" | "action";
+            /** Value */
+            value: string;
+            /** Op */
+            op?: ("eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "exists") | null;
+            /** Operand */
+            operand?: string | number | boolean | null;
+        };
         /** CreateJiraIssueModel */
         CreateJiraIssueModel: {
             /** Projectkey */
@@ -5880,7 +6374,7 @@ export interface components {
             chat_background_color: string | null;
             /**
              * Chat Bubble Color
-             * @default #E9ECEF
+             * @default #12150E
              */
             chat_bubble_color: string | null;
             /**
@@ -5888,8 +6382,6 @@ export interface components {
              * @default #212529
              */
             chat_text_color: string | null;
-            /** Icon Url */
-            icon_url?: string | null;
             /**
              * Icon Color
              * @default #6C757D
@@ -5960,7 +6452,7 @@ export interface components {
             chat_background_color: string | null;
             /**
              * Chat Bubble Color
-             * @default #E9ECEF
+             * @default #12150E
              */
             chat_bubble_color: string | null;
             /**
@@ -5968,8 +6460,6 @@ export interface components {
              * @default #212529
              */
             chat_text_color: string | null;
-            /** Icon Url */
-            icon_url?: string | null;
             /**
              * Icon Color
              * @default #6C757D
@@ -6035,6 +6525,8 @@ export interface components {
              * Format: uuid
              */
             agent_id: string;
+            /** Icon Url */
+            icon_url?: string | null;
         };
         /** DBConnectorColumnOut */
         DBConnectorColumnOut: {
@@ -6488,6 +6980,21 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** Finish */
+        Finish: {
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+        };
+        /** FromTemplate */
+        FromTemplate: {
+            /** Template Key */
+            template_key: string;
+            /** Key */
+            key?: string | null;
+        };
         /**
          * GenerateRequest
          * @description Optional narrowing to specific knowledge sources; empty = new sources
@@ -6935,6 +7442,95 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** JourneyDefinition */
+        JourneyDefinition: {
+            audience?: components["schemas"]["Audience"];
+            start?: components["schemas"]["Start"];
+            /** Steps */
+            steps: components["schemas"]["Step"][];
+            finish?: components["schemas"]["Finish"];
+            /** Variable Fallbacks */
+            variable_fallbacks?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * JourneyOrder
+         * @description Journey ids, highest priority first.
+         */
+        JourneyOrder: {
+            /** Ids */
+            ids: string[];
+        };
+        /** JourneyResponse */
+        JourneyResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            status: components["schemas"]["JourneyStatus"];
+            /** Priority */
+            priority: number;
+            /** Auto Open */
+            auto_open: boolean;
+            /** Goal Event */
+            goal_event?: string | null;
+            /** Template Key */
+            template_key?: string | null;
+            /** Version */
+            version: number;
+            /** Definition */
+            definition: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * JourneyStatus
+         * @enum {string}
+         */
+        JourneyStatus: "draft" | "live" | "paused";
+        /** JourneyStatusUpdate */
+        JourneyStatusUpdate: {
+            status: components["schemas"]["JourneyStatus"];
+        };
+        /** JourneyWrite */
+        JourneyWrite: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** @default draft */
+            status: components["schemas"]["JourneyStatus"];
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /**
+             * Auto Open
+             * @default false
+             */
+            auto_open: boolean;
+            /** Goal Event */
+            goal_event?: string | null;
+            /** Template Key */
+            template_key?: string | null;
+            definition: components["schemas"]["JourneyDefinition"];
+        };
         /**
          * LeadAssignmentMode
          * @description Where a qualified lead is routed. Phase 1: stored only, not acted on.
@@ -7048,6 +7644,11 @@ export interface components {
             channel_secret: string;
             /** Channel Access Token */
             channel_access_token: string;
+        };
+        /** LogoutRequest */
+        LogoutRequest: {
+            /** Fcm Token */
+            fcm_token?: string | null;
         };
         /** MCPToolCreate */
         MCPToolCreate: {
@@ -7425,6 +8026,13 @@ export interface components {
          * @enum {string}
          */
         NotificationType: "knowledge_processed" | "knowledge_failed" | "faq_generated" | "faq_generation_failed" | "system" | "chat";
+        /** Nudge */
+        Nudge: {
+            /** After Min */
+            after_min: number;
+            /** Message */
+            message: string;
+        };
         /** OrganizationCreate */
         OrganizationCreate: {
             /** Name */
@@ -7725,6 +8333,11 @@ export interface components {
              * @default 0
              */
             anonymous: number;
+            /**
+             * Signed In
+             * @default 0
+             */
+            signed_in: number;
             /** New Leads 7D */
             new_leads_7d: number;
             /** Customers */
@@ -8139,6 +8752,8 @@ export interface components {
             price_formatted?: string | null;
             /** Variant Title */
             variant_title?: string | null;
+            /** Cart Variant Id */
+            cart_variant_id?: string | null;
         };
         /** ShopifyProductImage */
         ShopifyProductImage: {
@@ -8211,6 +8826,44 @@ export interface components {
             label: string;
             /** Fields */
             fields: unknown[];
+        };
+        /** Start */
+        Start: {
+            /**
+             * Kind
+             * @default url
+             * @enum {string}
+             */
+            kind: "url" | "event" | "manual";
+            /** Value */
+            value?: string | null;
+        };
+        /** Step */
+        Step: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Skippable
+             * @default true
+             */
+            skippable: boolean;
+            /** Triggers */
+            triggers?: components["schemas"]["Condition"][];
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Chips */
+            chips?: components["schemas"]["Chip"][];
+            /** Allowed Actions */
+            allowed_actions?: string[];
+            /** Done When */
+            done_when: components["schemas"]["Condition"][];
+            then?: components["schemas"]["Then"];
+            nudge?: components["schemas"]["Nudge"] | null;
         };
         /** TeamAgentStats */
         TeamAgentStats: {
@@ -8407,6 +9060,17 @@ export interface components {
             content: string;
             /** Agent Id */
             agent_id?: string | null;
+        };
+        /** Then */
+        Then: {
+            /**
+             * Kind
+             * @default next
+             * @enum {string}
+             */
+            kind: "next" | "message" | "block" | "start_journey";
+            /** Value */
+            value?: string | null;
         };
         /** TicketActivityOut */
         TicketActivityOut: {
@@ -12630,7 +13294,11 @@ export interface operations {
                 access_token?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LogoutRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -15109,6 +15777,138 @@ export interface operations {
             };
         };
     };
+    upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_launcher_logo_api_v1_agent__agent_id__customization_logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_launcher_logo_api_v1_agent__agent_id__customization_logo_shopify_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_lead_capture_config_api_v1_agent__agent_id__lead_capture_get: {
         parameters: {
             query?: never;
@@ -15166,6 +15966,676 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeadCaptureConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_actions_api_v1_agent__agent_id__actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_action_api_v1_agent__agent_id__actions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentActionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_action_api_v1_agent__agent_id__actions__action_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                action_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentActionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_action_api_v1_agent__agent_id__actions__action_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                action_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_action_enabled_api_v1_agent__agent_id__actions__action_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                action_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentActionEnabledUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_action_model_view_api_v1_agent__agent_id__actions__action_id__model_view_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                action_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionModelView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_journeys_api_v1_agent__agent_id__journeys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JourneyResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_journey_api_v1_agent__agent_id__journeys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JourneyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JourneyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_templates_api_v1_agent__agent_id__journeys_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    context_keys_api_v1_agent__agent_id__journeys_context_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_from_template_api_v1_agent__agent_id__journeys_from_template_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FromTemplate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JourneyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_journeys_api_v1_agent__agent_id__journeys_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JourneyOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JourneyResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_journey_api_v1_agent__agent_id__journeys__journey_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                journey_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JourneyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_journey_api_v1_agent__agent_id__journeys__journey_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                journey_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JourneyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JourneyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_journey_api_v1_agent__agent_id__journeys__journey_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                journey_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_journey_status_api_v1_agent__agent_id__journeys__journey_id__status_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                journey_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JourneyStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JourneyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_funnel_api_v1_agent__agent_id__journeys__journey_id__funnel_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+                journey_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stuck_users_api_v1_agent__agent_id__journeys__journey_id__steps__step_id__users_get: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+                journey_id: string;
+                step_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_journeys_api_v1_people__customer_id__journeys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -16410,6 +17880,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WidgetEmbedSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    launcher_logo_api_v1_widgets__widget_id__launcher_logo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                widget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -32,9 +32,7 @@ import WhatsAppTemplatePicker from '@/components/conversations/WhatsAppTemplateP
 import MessageStatusTicks from '@/components/conversations/MessageStatusTicks.vue'
 import QuickReplyChips from '@/components/conversations/QuickReplyChips.vue'
 import MessageTag from '@/components/conversations/MessageTag.vue'
-import { marked } from 'marked'
-import { sanitizeHtml } from '@/utils/sanitize'
-import type { Renderer } from 'marked'
+import { renderChatMarkdown } from '@/utils/chatMarkdown'
 
 const props = defineProps<{
   chat: ChatDetail
@@ -124,31 +122,6 @@ async function refreshLinkedTicket() {
   const ticket = await ticketService.getTicketBySession(currentChat.value.session_id)
   linkedTicketId.value = ticket?.id || null
 }
-
-
-// Add marked configuration
-marked.setOptions({
-  renderer: new marked.Renderer(),
-  gfm: true,
-  breaks: true
-})
-
-// Configure marked renderer to add target="_blank" to links
-const renderer = new marked.Renderer() as Renderer
-renderer.link = function({ href, title, text }) {
-  if (!href) return text || ''
-  const link = `<a href="${href}"${title ? ` title="${title}"` : ''}>${text}</a>`
-  return link.replace(/^<a /, '<a target="_blank" rel="nofollow" ')
-}
-marked.use({ renderer })
-
-// Create helper function to render and sanitize markdown
-const renderMarkdown = (text: string) => {
-  return sanitizeHtml(marked.parse(text, { async: false }) as string)
-}
-
-
-
 
 
 // Computed property to determine if the current user can create a ticket
@@ -318,7 +291,7 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
               <!-- Product message -->
               <template v-if="message.message_type === 'product' && message.attributes?.shopify_output?.products?.length">
                 <div class="products-carousel">
-                  <div v-html="renderMarkdown(message.message || '')" class="product-message-text"></div>
+                  <div v-html="renderChatMarkdown(message.message || '')" class="product-message-text"></div>
                   <div class="carousel-items">
                     <div 
                       v-for="product in message.attributes.shopify_output.products" 
@@ -359,7 +332,17 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
                   icon="fa-solid fa-plug"
                   :label="`Sent by ${message.attributes?.app_name || 'an app'}`"
                 />
-                <div v-html="renderMarkdown(message.message || '')"></div>
+                <MessageTag
+                  v-if="message.attributes?.source === 'journey'"
+                  icon="fa-solid fa-route"
+                  label="Journey step"
+                />
+                <MessageTag
+                  v-if="message.attributes?.source === 'host'"
+                  icon="fa-solid fa-window-maximize"
+                  label="Shown by the site"
+                />
+                <div v-html="renderChatMarkdown(message.message || '')"></div>
                 <QuickReplyChips :sent="message.attributes?.interactive_sent" />
                 
                 <!-- Display attachments if present -->

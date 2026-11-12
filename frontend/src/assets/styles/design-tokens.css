@@ -15,6 +15,10 @@
   --c-purple: #9D8CFF;
   --c-coral: #FF8A73;
 
+  /* Hairline ring on the ChatterMate mark (BrandMark.vue) so its ink tile keeps an
+     edge on dark surfaces. The logo colours themselves are in config/brand.ts. */
+  --logo-ring: rgba(245,246,240,.16);
+
   /* Contrast inks — text/icon placed on top of a fill */
   --on-accent: #0B0C10;   /* on lime accent */
   --on-light: #0B0C10;    /* on any light fill */
@@ -117,6 +121,7 @@
   --font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
   --font-sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
   --font-display: 'Space Grotesk', sans-serif;
+  --font-brand: 'Bricolage Grotesque', var(--font-display);  /* wordmark only: 800, condensed */
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Font weights */
@@ -251,6 +256,7 @@
   /* Accent and status inks are used as text on white and on their own pale
      tints: darkened until they reach WCAG AA 4.5:1 on both. */
   --accent-ink: #44700A;
+  --logo-ring: transparent;
   --c-lime: #44700A;
   --c-teal: #097171;
   --c-purple: #6454BF;

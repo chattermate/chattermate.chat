@@ -31,6 +31,14 @@ export interface EmbedOptions {
    * fresh conversation token. Counted in tokenRequests.
    */
   tokenProvider?: () => Promise<string>
+  /** The site registers its in-app actions (open_page, send_invoice, set_currency, slow_open, fail_task). */
+  withActions?: boolean
+  /** ChatterMate.setContext(context) from the site's code. */
+  context?: Record<string, unknown>
+  /** ChatterMate.prompt(prompt) from the site's code. */
+  prompt?: { message: string; suggestions?: string[]; open?: boolean }
+  /** The page is a Shopify storefront of this shop, with a cart. */
+  shopifyStore?: string
 }
 
 type JsApiMethod = 'open' | 'close' | 'toggle' | 'isOpen' | 'showLauncher' | 'hideLauncher' | 'identify' | 'logout'
@@ -149,6 +157,17 @@ export class ChatWidget {
       }
       await route.fulfill({ response, json: answer })
     })
+    // A starting widget gets that first answer inside /bootstrap's (widgetData)
+    await this.page.route(`**/widgets/${this.widgetId}/bootstrap`, async (route) => {
+      if (lost || !this.isStart(route.request())) return route.fallback()
+      const response = await route.fetch()
+      const answer = await response.json()
+      if (answer.widgetData?.data?.token) {
+        lost = true
+        delete answer.widgetData.data.token
+      }
+      await route.fulfill({ response, json: answer })
+    })
   }
 
   /**
@@ -192,6 +211,10 @@ export class ChatWidget {
       if (options.token) params.set('token', options.token)
       if (options.withTriggerButton) params.set('trigger', '1')
       if (options.snippet) params.set('snippet', options.snippet)
+      if (options.withActions) params.set('actions', '1')
+      if (options.context) params.set('context', JSON.stringify(options.context))
+      if (options.prompt) params.set('prompt', JSON.stringify(options.prompt))
+      if (options.shopifyStore) params.set('shopify', options.shopifyStore)
       if (options.tokenProvider) {
         params.set('tokenProvider', '1')
         await this.answerTokenRequests(options.tokenProvider)
@@ -217,6 +240,18 @@ export class ChatWidget {
       // The loader's own storage key (chattermate.js tokenKey)
       await this.page.evaluate((stored) => localStorage.setItem('ctid', stored), token)
       await this.page.reload()
+    })
+  }
+
+  /**
+   * The visitor comes back to the site on a network so slow that the chat itself
+   * never arrives: the widget frame's request is held for the rest of the test.
+   */
+  async returnWithChatHeldBack(): Promise<void> {
+    await step('Customer comes back while the chat is slow to load', async () => {
+      await this.page.route(`**/widgets/${this.widgetId}/frame**`, () => new Promise<void>(() => {}))
+      // The held frame keeps the page's load event from firing
+      await this.page.reload({ waitUntil: 'domcontentloaded' })
     })
   }
 
@@ -445,6 +480,44 @@ export class ChatWidget {
     return this.page.locator('#chattermate-button')
   }
 
+  /** Whether the launcher has been revealed: until then it is in the page but transparent. */
+  async launcherShown(): Promise<boolean> {
+    return this.launcher.evaluate((button) => !button.classList.contains('chattermate-pending'))
+  }
+
+  /** The launcher's chosen icon (an inline SVG); absent while it shows the default dots. */
+  get launcherIcon(): Locator {
+    return this.launcher.locator('.cm-icon svg')
+  }
+
+  /** The launcher's uploaded logo. */
+  get launcherLogo(): Locator {
+    return this.launcher.locator('.cm-icon img')
+  }
+
+  /** The default three dots. */
+  get launcherDots(): Locator {
+    return this.launcher.locator('.cm-dots')
+  }
+
+  /** The launcher's running CSS animation, `none` when still. */
+  async launcherAnimation(): Promise<string> {
+    return this.launcher.evaluate((button) => getComputedStyle(button).animationName)
+  }
+
+  /** The suite runs with reduced motion; this visitor's browser doesn't ask for it. */
+  async allowMotion(): Promise<void> {
+    await this.page.emulateMedia({ reducedMotion: 'no-preference' })
+  }
+
+  async openWithKeyboard(): Promise<void> {
+    await step('Customer opens the chat from the keyboard', async () => {
+      await this.launcher.focus()
+      await this.page.keyboard.press('Enter')
+      await expect(this.panel).toHaveClass(/active/)
+    })
+  }
+
   /** The chat panel; it carries `.active` while open. */
   get panel(): Locator {
     return this.page.locator('#chattermate-container')
@@ -484,9 +557,41 @@ export class ChatWidget {
     return this.frame.getByRole('log', { name: 'Messages' })
   }
 
+  /** The bubble shown while the agent writes its reply. */
+  get typingBubble(): Locator {
+    return this.frame.locator('.typing-indicator') // no accessible name of its own
+  }
+
+  /** Whether the message list has picked up a sideways scrollbar. */
+  async scrollsSideways(): Promise<boolean> {
+    return this.messageLog.evaluate((list) => list.scrollWidth > list.clientWidth)
+  }
+
   /** Bot and human-agent replies — the widget renders both the same way. */
   get agentMessages(): Locator {
     return this.messageLog.locator('.message.agent-message .message-bubble')
+  }
+
+  /** One product's card in the chat. */
+  productCard(title: string): Locator {
+    return this.frame.getByRole('group', { name: title })
+  }
+
+  async addToCart(title: string): Promise<void> {
+    await step(`Customer adds ${title} to the cart`, async () => {
+      await this.productCard(title).getByRole('button', { name: 'Add to cart' }).click()
+    })
+  }
+
+  async viewCart(title: string): Promise<void> {
+    await step('Customer goes to the cart', async () => {
+      await this.productCard(title).getByRole('button', { name: 'View cart' }).click()
+    })
+  }
+
+  /** The count the store's own cart page shows. */
+  get itemsInCart(): Locator {
+    return this.page.getByLabel('Items in cart')
   }
 
   lastAgentMessage(): Locator {
@@ -507,12 +612,104 @@ export class ChatWidget {
     return this.frame.locator('.cm-welcome-block .message-bubble')
   }
 
+  /** The "Powered by ChatterMate" link, unless the plan hides the branding. */
+  get poweredBy(): Locator {
+    return this.frame.getByRole('link', { name: 'Powered by ChatterMate' })
+  }
+
   get contactForm(): Locator {
     return this.frame.locator('.form-message').filter({ hasText: 'Before we connect you to a teammate' })
   }
 
   get ratingThanks(): Locator {
     return this.frame.getByText('Thank you for your rating!')
+  }
+
+  /** The card asking the visitor before the site runs an action, named after the action. */
+  actionConfirm(label: string): Locator {
+    return this.frame.getByRole('group', { name: label })
+  }
+
+  /** The card's buttons say what happens ("Send an invoice", "Change to GBP"); the first one goes ahead. */
+  async approveAction(label: string): Promise<void> {
+    await step(`Customer approves "${label}"`, async () => {
+      await this.actionConfirm(label).getByRole('button').first().click()
+    })
+  }
+
+  /** "Not now", or "Keep <current value>" when the action would overwrite something. */
+  async declineAction(label: string, button = 'Not now'): Promise<void> {
+    await step(`Customer says no to "${label}"`, async () => {
+      await this.actionConfirm(label).getByRole('button', { name: button }).click()
+    })
+  }
+
+  /** The chat's line about what an action did: "Set default currency: USD → GBP", "Kept USD". */
+  actionReceipt(text: string): Locator {
+    return this.frame.getByRole('status').filter({ hasText: text })
+  }
+
+  /** What the site's own app shows (services/customer-site HOST_ACTIONS_SCRIPT). */
+  get appStatus(): Locator {
+    return this.page.getByRole('status', { name: 'App status' })
+  }
+
+  get appActionRuns(): Locator {
+    return this.page.getByLabel('Action runs')
+  }
+
+  get appCurrency(): Locator {
+    return this.page.getByLabel('Currency')
+  }
+
+  /** Shown under the message box when it looks like a password or key. */
+  get secretWarning(): Locator {
+    return this.frame.getByRole('alert').filter({ hasText: "Please don't paste passwords or keys here." })
+  }
+
+  get sendButton(): Locator {
+    return this.frame.getByRole('button', { name: 'Send message' })
+  }
+
+  /** A reply chip under a message the site showed (ChatterMate.prompt). */
+  replyChip(text: string): Locator {
+    return this.frame.getByRole('button', { name: text, exact: true })
+  }
+
+  /** The journey's plan, pinned to the top of the chat: its name, the step the visitor is on, "1 of 3". */
+  get journeyProgress(): Locator {
+    return this.frame.getByRole('region', { name: /^Guide: / })
+  }
+
+  /** Folded by default; its steps, Skip and Hide show once opened. */
+  async openJourneyPlan(): Promise<void> {
+    const toggle = this.journeyProgress.getByRole('button', { expanded: false })
+    if (await toggle.count()) await toggle.click()
+  }
+
+  async skipJourneyStep(): Promise<void> {
+    await step('Customer skips the step', async () => {
+      await this.openJourneyPlan()
+      await this.journeyProgress.getByRole('button', { name: 'Skip this step' }).click()
+    })
+  }
+
+  async hideJourney(): Promise<void> {
+    await step('Customer hides the guide', async () => {
+      await this.openJourneyPlan()
+      await this.journeyProgress.getByRole('button', { name: 'Hide guide' }).click()
+    })
+  }
+
+  /** The site's own code reporting something the user did: ChatterMate.notify(event). */
+  async siteReports(event: string): Promise<void> {
+    await step(`The site reports "${event}"`, async () => {
+      await this.page.evaluate((name) => (window as unknown as { ChatterMate: { notify: (e: string) => void } }).ChatterMate.notify(name), event)
+    })
+  }
+
+  async typeOnly(text: string): Promise<void> {
+    await this.messageInput.fill(text)
   }
 
   get ratingPrompt(): Locator {

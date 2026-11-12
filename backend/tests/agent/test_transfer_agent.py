@@ -243,6 +243,27 @@ async def test_get_business_context():
         assert "Available Agents: 5" in context
 
 @pytest.mark.asyncio
+async def test_transfer_response_never_claims_a_ticket():
+    """This agent has no tools, so a line telling it to create a ticket could only
+    ever produce a ticket that doesn't exist."""
+    with patch('app.utils.agno_utils.create_model', return_value=MagicMock()), \
+         patch('app.agents.transfer_agent.Agent', return_value=MockPhiAgent()):
+        agent = TransferResponseAgent(api_key="test_key", model_name="gpt-4", model_type="OPENAI")
+        agent.agent.arun = AsyncMock(return_value=MagicMock(content="The team will follow up."))
+
+        await agent.get_transfer_response(
+            chat_history=[MagicMock(message_type="user", message="I need help")],
+            business_hours={},
+            available_agents=0,
+            is_business_hours=False,
+        )
+
+    prompt = agent.agent.arun.await_args.kwargs["message"].lower()
+    assert "jira" not in prompt
+    assert "never say you created a ticket" in prompt
+
+
+@pytest.mark.asyncio
 async def test_get_transfer_response():
     """Test get_transfer_response method"""
     

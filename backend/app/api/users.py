@@ -48,13 +48,12 @@ from app.services.chat_scope_roles import resolve_role
 from app.core.s3 import get_s3_signed_url, sign_s3_url, delete_file_from_s3
 from app.core.config import settings
 from app.services.file_storage import local_upload_path, profile_pic_folder, store_upload
+from app.services.feature_gate import feature_limit
 from app.services.shopify_links import link_shop_at_sign_in
 from app.core.params import MAX_DB_INT
 # Try to import enterprise modules
 try:
     from app.enterprise.repositories.subscription import SubscriptionRepository
-    from app.enterprise.repositories.plan import PlanRepository
-    from app.enterprise.services.feature_access import require_accessible_subscription
 
     HAS_ENTERPRISE = True
 except ImportError:
@@ -128,19 +127,13 @@ async def create_user(
         if HAS_ENTERPRISE:
             # Accessible = active/trial/past-due-in-period OR cancelled-but-
             # still-in-paid-period; raises 403 when the org has no plan.
-            subscription = require_accessible_subscription(db, current_user.organization_id)
-
-            # Check if max_users feature exists in plan
-            plan_repo = PlanRepository(db)
-            if plan_repo.check_feature_availability(subscription.plan_id, 'max_users'):
-                # Get current active users count
+            max_users = feature_limit(db, current_user.organization_id, 'max_users')
+            if max_users is not None:
                 active_users = user_repo.get_active_users_count(str(current_user.organization_id))
-
-                # Check against subscription quantity (user seats)
-                if subscription.quantity is not None and active_users >= subscription.quantity:
+                if active_users >= max_users:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"Maximum number of users ({subscription.quantity}) reached for your plan. Please upgrade your plan to add more users."
+                        detail=f"Maximum number of users ({max_users}) reached for your plan. Please upgrade your plan to add more users."
                     )
         
         # The role must belong to the caller's own organization.
@@ -634,14 +627,26 @@ async def refresh_token(
         )
 
 
+class LogoutRequest(BaseModel):
+    # This browser's push token. Sent with the logout itself rather than as a
+    # DELETE beforehand: that call needs the session this one ends, so the
+    # dashboard had to wait on Firebase before it could sign out.
+    fcm_token: Optional[str] = None
+
+
 @router.post("/logout")
 async def logout(
     response: Response,
     request: Request,
+    body: Optional[LogoutRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Logout user, end the session and clear cookies"""
+    # Only this device's token: the user's other devices keep their push.
+    if body and body.fcm_token:
+        FCMTokenRepository(db).remove(current_user.id, body.fcm_token)
+
     # End the session server-side, so a copy of either token stops working
     revoke_presented_sessions(db, request)
 
@@ -695,7 +700,8 @@ async def unregister_fcm_token(
     current_user: User = Depends(get_current_user),
     db=Depends(get_db)
 ):
-    """Drop this browser's token on logout.
+    """Drop one of this user's device tokens. The dashboard no longer calls
+    this — its logout sends the token with POST /logout — but API clients may.
 
     The token is required: clearing every token for the account (what this used
     to do) meant signing out on a laptop silently killed push on the user's
@@ -852,16 +858,16 @@ async def update_user(
     if HAS_ENTERPRISE and hasattr(user_data, 'is_active') and user_data.is_active != user.is_active:
         # Accessible sub (incl. cancelled-but-still-in-paid-period), or None.
         subscription = SubscriptionRepository(db).get_active_subscription(str(user.organization_id))
-        # When activating a user, enforce the plan's seat limit. A returned
+        # When activating a user, enforce the plan's team limit. A returned
         # subscription is always currently accessible, so no is_active recheck.
         if subscription and user_data.is_active:
-            plan_repo = PlanRepository(db)
-            if plan_repo.check_feature_availability(subscription.plan_id, 'max_users'):
+            max_users = feature_limit(db, user.organization_id, 'max_users')
+            if max_users is not None:
                 active_users = user_repo.get_active_users_count(str(user.organization_id))
-                if subscription.quantity is not None and active_users >= subscription.quantity:
+                if active_users >= max_users:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"Cannot activate user: Maximum number of users ({subscription.quantity}) reached for your plan. Please upgrade your plan to add more users."
+                        detail=f"Cannot activate user: Maximum number of users ({max_users}) reached for your plan. Please upgrade your plan to add more users."
                     )
     
     try:

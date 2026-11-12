@@ -20,12 +20,15 @@ import type { AgentCustomization } from '@/types/agent'
 import { resolveUploadUrl } from '@/config/api'
 import { orbSvgDataUri, resolveOrbStyle } from '@/utils/orb'
 import { themeCssVars } from '@/webclient/widget-theme'
+import BrandMark from '@/components/common/BrandMark.vue'
 import '@/webclient/widget-surface.css'
 import { useAgentChat } from '@/composables/useAgentChat'
 import WebFont from 'webfontloader'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '@/utils/aiDisclaimer'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { useImageFallback } from '@/composables/useImageFallback'
 
 const props = defineProps<{
     isActive: boolean
@@ -36,7 +39,19 @@ const props = defineProps<{
     // Seed for the fallback orb; pass the agent slug so it matches the list and
     // detail header. Falls back to agentName when not given.
     orbSeed?: string
+    // The chat window size chosen in Placement; the classic window when not given.
+    windowWidth?: number
+    windowHeight?: number
 }>()
+
+// The preview matches what visitors see: a plan with custom branding drops
+// "Powered by" (the server decides the same for the live widget). Open
+// source always shows it. Read from the store so it follows the plan once
+// it loads, not just whatever was cached when the panel mounted.
+const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore } = useEnterpriseFeatures()
+const showBranding = computed(() =>
+    !(hasEnterpriseModule && subscriptionStore.value.currentPlan?.plan?.features?.custom_branding === true))
+onMounted(() => { if (hasEnterpriseModule) initializeSubscriptionStore() })
 console.log('AgentChatPreviewPanel props:', props.customization)
 const isExpanded = ref(true)
 const emailInput = ref('')
@@ -327,12 +342,15 @@ const messageNameStyles = computed(() => ({
     color: 'var(--cm-text)'
 }))
 
+// When the uploaded photo won't load, the orb stands in for it
+const { failed: photoFailed, onError: onPhotoError } = useImageFallback(() => props.customization.photo_url)
+
 const photoUrl = computed(() => {
     // These are <img> slots in chat bubbles, so the fallback has to be an image:
     // the orb as an SVG data URI. Previously the retired /avatars/*.svg artwork.
     // Seeded off orbSeed (the agent slug) so it matches the orb on the detail
     // header and in the list, which use the same seed.
-    if (!props.customization.photo_url) {
+    if (!props.customization.photo_url || photoFailed.value) {
         return orbSvgDataUri(
             props.orbSeed || props.agentName,
             props.customization.customization_metadata?.orb_variant,
@@ -387,8 +405,8 @@ const orbStyle = computed(() => resolveOrbStyle(props.agentName, orbMeta.value?.
 // Computed property for container styles
 const containerStyles = computed(() => {
     const baseStyles = {
-        width: '384px',
-        height: '560px',
+        width: `${props.windowWidth ?? 384}px`,
+        height: `${props.windowHeight ?? 560}px`,
         borderRadius: 'var(--cm-radius, 24px)'
     }
 
@@ -554,8 +572,8 @@ const handleInitiationClick = () => {
         <div class="toggle-container" v-if="!isExpanded || customization.showBubblePreview || customization.showInitiationPreview">
             <button class="chat-toggle" :class="{ preview: customization.showBubblePreview || customization.showInitiationPreview }" :style="chatIconStyles"
                 @click="isExpanded = !isExpanded">
-                <!-- New launcher mark: 3 dots in the contrast ink (matches chattermate.js) -->
-                <div class="cm-toggle-dots"><span></span><span></span><span></span></div>
+                <!-- Launcher mark: the ChatterMate AI + human dots in the contrast ink (matches chattermate.js) -->
+                <div class="cm-toggle-dots"><span></span><span></span></div>
             </button>
         </div>
 
@@ -568,6 +586,7 @@ const handleInitiationClick = () => {
                         v-else-if="photoUrl"
                         :src="photoUrl"
                         :alt="agentName"
+                        @error="onPhotoError"
                         class="welcome-avatar"
                     >
                     <h1 class="welcome-title">{{ welcomeTitle }}</h1>
@@ -606,13 +625,8 @@ const handleInitiationClick = () => {
             </div>
             
             <!-- Powered by footer for welcome message -->
-            <div class="powered-by-welcome" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+            <div v-if="showBranding" class="powered-by-welcome" :style="messageNameStyles">
+                <BrandMark class="chattermate-logo" :size="15" />
                 <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
@@ -624,7 +638,7 @@ const handleInitiationClick = () => {
         ]" :style="chatStyles" v-if="isExpanded && !customization.showBubblePreview && !customization.showInitiationPreview && shouldShowChatPanel">
             <div v-if="!isAskAnythingStyle" class="chat-header">
                 <div class="header-content">
-                    <img :src="photoUrl" :alt="agentName" class="header-avatar">
+                    <img :src="photoUrl" @error="onPhotoError" :alt="agentName" class="header-avatar">
                     <div class="header-info">
                         <h3 :style="messageNameStyles">{{ agentName }}</h3>
                         <div class="status">
@@ -651,7 +665,7 @@ const handleInitiationClick = () => {
                 <div v-for="(message, index) in messages" :key="index" :class="['message', message.role === 'bot' ? 'agent-message' : `${message.role}-message`]">
                     <div v-if="message.role === 'bot'" class="cm-msg-avatar">
                         <div v-if="useOrbAvatar" class="cm-msg-avatar-orb" :style="orbStyle"></div>
-                        <img v-else :src="photoUrl" :alt="agentName" class="cm-msg-avatar-img">
+                        <img v-else :src="photoUrl" @error="onPhotoError" :alt="agentName" class="cm-msg-avatar-img">
                     </div>
                     <div class="message-bubble"
                         :style="message.role === 'bot' ? agentBubbleStyles : userBubbleStyles"
@@ -709,13 +723,8 @@ const handleInitiationClick = () => {
             </div>
 
             <!-- Add powered by footer -->
-            <div class="powered-by" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="15" height="15" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+            <div v-if="showBranding" class="powered-by" :style="messageNameStyles">
+                <BrandMark class="chattermate-logo" :size="15" />
                 <span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong>
             </div>
         </div>
@@ -773,13 +782,13 @@ const handleInitiationClick = () => {
 
 .cm-toggle-dots {
     display: flex;
-    gap: 5px;
+    gap: 3px;
     align-items: center;
     justify-content: center;
 }
 .cm-toggle-dots span {
-    width: 7px;
-    height: 7px;
+    width: 13px;
+    height: 13px;
     border-radius: 50%;
     background: currentColor;
 }
@@ -1236,6 +1245,13 @@ const handleInitiationClick = () => {
 
 .chat-container.ask-anything-style {
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+    /* The rules below were written against the dashboard's own colour variables,
+       which turn dark with the dashboard. Inside the preview they must follow the
+       widget's theme, which stays whatever the agent's design is. */
+    --background-base: var(--cm-card);
+    --text-primary: var(--cm-text);
+    --text-secondary: var(--cm-muted);
+    --border-color: var(--cm-border);
 }
 
 /* Welcome Message Section for ASK_ANYTHING Style */

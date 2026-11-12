@@ -29,12 +29,12 @@ class FileAttachment(Base):
     file_size = Column(BigInteger, nullable=False)  # File size in bytes
     
     # Links to chat history message
-    chat_history_id = Column(Integer, ForeignKey("chat_history.id", ondelete="CASCADE"), nullable=True)
+    chat_history_id = Column(Integer, ForeignKey("chat_history.id", ondelete="CASCADE"), nullable=True, index=True)
     
     # Additional metadata
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     uploaded_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    uploaded_by_customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    uploaded_by_customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)
     
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())

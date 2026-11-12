@@ -50,6 +50,7 @@ const props = defineProps<{
     loading: boolean
     showCitations: boolean
     disclaimer?: string
+    showBranding: boolean
     /** Whether the embedder is actually showing the widget — gates autofocus. */
     active: boolean
     /** False when the site disabled the ⌘K chord. */
@@ -325,9 +326,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="askai__foot">
+        <div v-if="disclaimer || showBranding" class="askai__foot">
             <span v-if="disclaimer">{{ disclaimer }}</span>
-            <a class="askai__brand" href="https://chattermate.chat" target="_blank" rel="noopener noreferrer">Powered by ChatterMate</a>
+            <a v-if="showBranding" class="askai__brand" href="https://chattermate.chat" target="_blank" rel="noopener noreferrer">Powered by ChatterMate</a>
         </div>
     </div>
 </template>

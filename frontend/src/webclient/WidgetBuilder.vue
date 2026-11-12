@@ -23,6 +23,15 @@ import {
 import { renderMarkdown } from './markdown'
 import AskAiPanel from './AskAiPanel.vue'
 import NewChatConfirm from './NewChatConfirm.vue'
+import BrandMark from '../components/common/BrandMark.vue'
+import ActionConfirmCard from './ActionConfirmCard.vue'
+import ActionReceiptLine from './ActionReceiptLine.vue'
+import JourneyPlan from './JourneyPlan.vue'
+import SuggestedReplies from './SuggestedReplies.vue'
+import ProductCartButton from './ProductCartButton.vue'
+import { canAddToCart, handleCartMessage } from './shopify-cart'
+import { useActionReceipts } from '../composables/useActionReceipts'
+import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
 import { AI_DISCLAIMER_TEXT, shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
@@ -33,7 +42,12 @@ import { hostSharesIdentity, isFramed, setHostPageUrl, tokenStoreFor } from './f
 import { useWidgetStyles } from '../composables/useWidgetStyles'
 import { useWidgetFiles } from '../composables/useWidgetFiles'
 import { useWidgetSocket } from '../composables/useWidgetSocket'
+import { useHostActions } from '../composables/useHostActions'
+import type { HostPrompt, PageChip } from './actions/hostActionsClient'
+import { useJourneys } from '../composables/useJourneys'
+import { usePromptPlace } from '../composables/usePromptPlace'
 import { useWidgetCustomization } from '../composables/useWidgetCustomization'
+import { takePrefetchedWidgetData } from './prefetched-widget-data'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useUnreadBadge } from '../composables/useUnreadBadge'
 import { useConversationToken, IDENTITY_EXPIRED_CODE, sanitizeToken } from '../composables/useConversationToken'
@@ -96,8 +110,85 @@ const {
     setToken,
     setWidgetId,
     onSessionState,
-    onReauthorize
+    onReauthorize,
+    on: onSocketEvent,
+    emit: emitSocketEvent
 } = useWidgetSocket()
+
+// In-app actions the embedding page registered (ChatterMate.registerActions), and
+// a message it asked us to show (ChatterMate.prompt). The prompt lives outside
+// `messages` so loading history can't wipe it; it joins the chat once answered.
+const hostPrompt = ref<HostPrompt | null>(null)
+// Each action leaves a line in the chat saying what it did.
+const { receipts, addReceipt, receiptsAfter } = useActionReceipts(messages)
+const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHostActions(
+    { on: onSocketEvent, emit: emitSocketEvent },
+    (prompt) => { hostPrompt.value = prompt },
+    addReceipt,
+)
+
+// Journeys the agent runs on this site: a step's message and chips share the
+// page-message slot above; notices (a step's "then", the finish) join the chat.
+const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivity } = useJourneys({
+    on: onSocketEvent,
+    emit: emitSocketEvent,
+    currentPrompt: () => hostPrompt.value,
+    showPrompt: (prompt) => { hostPrompt.value = prompt },
+    addNotice: (text) => {
+        messages.value.push({
+            message: text,
+            message_type: 'bot',
+            created_at: new Date().toISOString(),
+            session_id: '',
+            attributes: { source: 'journey' },
+        } as any)
+    },
+    runLocalAction,
+})
+
+// A tapped reply reads as the visitor's answer. A text one goes through the
+// normal send; an action one runs straight away, so the step's message and the
+// reply join the chat here, and its receipt follows when the page is done.
+const onPageChip = (chip: PageChip) => {
+    if (chip.kind === 'action' && !chipBusy.value && !pendingConfirm.value) {
+        if (visiblePrompt.value) addPromptToChat(visiblePrompt.value)
+        messages.value.push({ message: chip.label, message_type: 'user', created_at: new Date().toISOString(), session_id: '', attributes: { source: 'journey' } } as any)
+    }
+    runChip(chip, sendQuickAction)
+}
+
+// A step's replies stay offered until the step moves on, so a declined or failed
+// action can be tried again; they make way while anything else is under way.
+const replyChips = computed(() => {
+    const prompt = hostPrompt.value
+    if (!prompt?.chips.length || pendingConfirm.value || loading.value) return []
+    return prompt.chips
+})
+
+// The server sends a step's message on every sync until the step is done, and a
+// reply doesn't finish a step. Once it is in the chat (answered, or in the
+// loaded history) it isn't shown — or stored — a second time.
+const visiblePrompt = computed(() => {
+    const prompt = hostPrompt.value
+    if (!prompt || prompt.source !== 'journey') return prompt
+    const inChat = messages.value.some(m => m.message_type === 'bot' && m.message === prompt.message)
+    return inChat ? null : prompt
+})
+
+// A reply still being written comes first: a step that moves on mid-reply waits
+// for it, then keeps its place in the chat as anything newer arrives.
+const shownPrompt = computed(() => (loading.value ? null : visiblePrompt.value))
+const promptPlace = usePromptPlace(messages, shownPrompt)
+
+const addPromptToChat = (prompt: HostPrompt) => {
+    messages.value.splice(promptPlace.index(), 0, {
+        message: prompt.message,
+        message_type: 'bot',
+        created_at: new Date().toISOString(),
+        session_id: '',
+        attributes: { source: prompt.source },
+    } as any)
+}
 
 // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
 // to the bottom as text grows.
@@ -456,8 +547,12 @@ const placeholderText = computed(() => {
 const pendingSend = ref(false)
 
 // Update the sendMessage function
+// A pasted password, key or card number is held back (the server also hides them).
+const secretInMessage = computed(() => looksSecret(newMessage.value))
+
 const sendMessage = async () => {
     if (!newMessage.value.trim() && uploadedAttachments.value.length === 0) return
+    if (secretInMessage.value) return
 
     if (loading.value && hasStartedChat.value) {
         pendingSend.value = true
@@ -477,8 +572,16 @@ const sendMessage = async () => {
         size: file.size
     }))
 
+    noteActivity()
+    // A page message being answered is stored with the reply (it never was before).
+    const answeredPrompt = visiblePrompt.value
+    if (answeredPrompt) addPromptToChat(answeredPrompt)
+    // A journey step's replies stay until the step moves on; the server won't resend them after a plain answer.
+    if (hostPrompt.value?.source !== 'journey') hostPrompt.value = null
+
     // Send message with files in a single emit
-    await socketSendMessage(newMessage.value, emailInput.value, files)
+    await socketSendMessage(newMessage.value, emailInput.value, files,
+        answeredPrompt ? { host_prompt: answeredPrompt.message, host_prompt_source: answeredPrompt.source } : {})
 
     // Clean up temporary object URLs
     uploadedAttachments.value.forEach(file => {
@@ -566,10 +669,12 @@ const checkAuthorization = async ({ afterRefusal = false } = {}): Promise<boolea
 
         // Never a stored copy: this call is what binds the visitor to a customer,
         // and a cached answer left the socket holding the page's anonymous token.
-        const response = await fetch(url, {
-            headers,
-            cache: 'no-store'
-        })
+        // On first load /bootstrap has already answered it for this same token.
+        const response = takePrefetchedWidgetData(token.value, url.searchParams.get('email'))
+            ?? await fetch(url, {
+                headers,
+                cache: 'no-store'
+            })
 
         if (response.status === 401) {
             // Check the error detail to determine the type of 401
@@ -709,6 +814,12 @@ watch(() => messages.value, (newMessages) => {
         scrollToBottom()
     })
 }, { deep: true })
+
+// The confirm card, a page or journey message and the typing bubble can sit after
+// the messages, so a new one is below the fold unless the list follows it.
+watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading], ([confirm, prompt, receiptCount, typing]) => {
+    if (confirm || prompt || receiptCount || typing) nextTick(() => scrollToBottom())
+})
 
 // Watch for connection status changes to set up event listeners when needed
 watch(connectionStatus, (newStatus, oldStatus) => {
@@ -881,33 +992,6 @@ const handleSubmitRating = async (sessionId: string, rating: number, feedback: s
         isSubmittingRating.value = false
     }
 }
-
-const handleAddToCart = (message) => {
-    const productData = message.shopify_output || {
-        id: message.product_id,
-        title: message.product_title,
-        price: message.product_price,
-        image: message.product_image,
-        vendor: message.product_vendor
-    };
-
-    if (productData) {
-        // Send a message to the parent window (the main shop)
-        postToHost({
-            type: 'ADD_TO_CART',
-            product: productData
-        });
-    }
-};
-
-const handleAddToCartFromCarousel = (product) => {
-    if (product) {
-        postToHost({
-            type: 'ADD_TO_CART',
-            product: product
-        });
-    }
-};
 
 // Form validation function
 const validateForm = (formConfig: any): boolean => {
@@ -1204,6 +1288,9 @@ const isHandedOverToHuman = computed(() => !!humanAgent.value?.human_agent_name)
 const presence = computed(() =>
   presenceLine(window.__INITIAL_DATA__?.presence, isHandedOverToHuman.value))
 
+// The plan decides, so a page with no answer yet keeps the branding.
+const showBranding = computed(() => !window.__INITIAL_DATA__?.hideBranding)
+
 const canUploadMore = computed(() => {
   // Attachments only allowed when:
   // 1. allow_attachments setting is enabled
@@ -1369,6 +1456,7 @@ window.addEventListener('message', (event) => {
     // widget; hostile sibling frames can reach this window via top.frames[i].
     if (event.source !== window.parent) return
     if (!event.data || typeof event.data.type !== 'string') return
+    if (handleCartMessage(event.data)) return
     if (event.data.type === 'SCROLL_TO_BOTTOM') {
         scrollToBottom()
     }
@@ -1972,13 +2060,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             <p class="widget-unavailable-message">
                 This chat widget is not currently configured. Please contact the website administrator to enable chat support.
             </p>
-            <div class="widget-unavailable-footer">
-                <svg class="chattermate-logo-small" width="14" height="14" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+            <div v-if="showBranding" class="widget-unavailable-footer">
+                <BrandMark class="chattermate-logo-small" :size="14" />
                 <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
@@ -2057,6 +2140,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             :loading="loading"
             :show-citations="showCitations"
             :disclaimer="showAiDisclaimer ? AI_DISCLAIMER_TEXT : ''"
+            :show-branding="showBranding"
             :active="hostVisible"
             :hotkey="askAiHotkey"
             :can-start-new-chat="canStartNewChat"
@@ -2124,7 +2208,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         :class="{ 'aurora-send': isAuroraStyle }"
                         :style="userBubbleStyles"
                         @click="sendMessage"
-                        :disabled="!newMessage.trim() || !isMessageInputEnabled"
+                        :disabled="!newMessage.trim() || !isMessageInputEnabled || secretInMessage"
                     >
                         <svg v-if="isAuroraStyle" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 19V5M12 5L5 12M12 5L19 12" stroke="currentColor" stroke-width="2"
@@ -2139,13 +2223,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             </div>
 
             <!-- Powered by footer for welcome message -->
-            <div class="powered-by-welcome" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+            <div v-if="showBranding" class="powered-by-welcome" :style="messageNameStyles">
+                <BrandMark class="chattermate-logo" :size="16" />
                 <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
@@ -2171,13 +2250,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                 </div>
             </div>
             <!-- Powered by footer for landing page -->
-            <div class="powered-by-landing" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+            <div v-if="showBranding" class="powered-by-landing" :style="messageNameStyles">
+                <BrandMark class="chattermate-logo" :size="16" />
                 <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
@@ -2334,13 +2408,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                 </div>
             </div>
             <!-- Powered by footer for form -->
-            <div class="powered-by-landing" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+            <div v-if="showBranding" class="powered-by-landing" :style="messageNameStyles">
+                <BrandMark class="chattermate-logo" :size="16" />
                 <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
@@ -2463,6 +2532,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             />
 
             <div v-show="!showEmailGate" class="chat-messages" ref="messagesContainer" role="log" aria-label="Messages">
+                <JourneyPlan v-if="journeyProgress" :progress="journeyProgress" @skip="skipStep" @hide="dismissJourney" />
                 <!-- Welcome message on open (cleared after the first send). Quick actions
                      render as a bar above the input — see below. -->
                 <div v-if="showWelcomeBlock" class="cm-welcome-block">
@@ -2474,6 +2544,11 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                 </div>
 
                 <template v-for="(message, index) in messages" :key="index">
+                    <div v-if="promptPlace.isBefore(message)" class="message agent-message cm-welcome-row cm-host-prompt">
+                        <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
+                        <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
+                        <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ shownPrompt?.message }}</div>
+                    </div>
                     <div
                         :class="[
                             'message',
@@ -2760,7 +2835,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                                     <div v-if="message.shopify_output?.products && message.shopify_output.products.length > 0" class="products-carousel">
                                         <h3 class="carousel-title">Products</h3>
                                         <div class="carousel-items">
-                                            <div v-for="product in message.shopify_output.products" :key="product.id" class="product-card-compact carousel-item">
+                                            <div v-for="product in message.shopify_output.products" :key="product.id" class="product-card-compact carousel-item" role="group" :aria-label="product.title">
                                                 <div class="product-image-compact" v-if="product.image?.src">
                                                     <img :src="product.image.src" :alt="product.title" class="product-thumbnail">
                                                 </div>
@@ -2771,6 +2846,10 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                                                         <div class="product-price-compact">{{ product.price_formatted || formatCurrency(product.price, product.currency) }}</div>
                                                     </div>
                                                     <div class="product-actions-compact">
+                                                        <ProductCartButton
+                                                            v-if="canAddToCart(product, message.shopify_output?.shop_domain)"
+                                                            :variant-id="product.cart_variant_id"
+                                                        />
                                                         <button
                                                             class="view-details-button-compact"
                                                             @click="handleViewDetails(product, message.shopify_output?.shop_domain)"
@@ -2872,11 +2951,32 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </div>
                         </div>
                     </div>
+                    <ActionReceiptLine v-for="(receipt, r) in receiptsAfter(index + 1)" :key="`receipt-${index}-${r}`" :receipt="receipt" />
                 </template>
+
+                <div v-if="promptPlace.isLast()" class="message agent-message cm-welcome-row cm-host-prompt">
+                    <div v-if="useOrbAvatar || !photoUrl" class="cm-welcome-orb" :style="orbStyle"></div>
+                    <img v-else :src="photoUrl" :alt="agentName" class="cm-welcome-avatar">
+                    <div class="message-bubble cm-welcome-bubble" :style="agentBubbleStyles">{{ shownPrompt?.message }}</div>
+                </div>
+
+                <SuggestedReplies
+                    v-if="replyChips.length"
+                    :chips="replyChips"
+                    :disabled="!isMessageInputEnabled || chipBusy"
+                    @pick="onPageChip"
+                />
+
+                <ActionConfirmCard
+                    v-if="pendingConfirm"
+                    :pending="pendingConfirm"
+                    @approve="approveAction"
+                    @decline="declineAction"
+                />
 
                 <!-- Loading indicator: "reading knowledge base" only when citations
                      are enabled; otherwise a plain typing indicator. -->
-                <div v-if="loading" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
+                <div v-if="loading && !pendingConfirm" class="typing-indicator" :class="{ 'reading-indicator': showCitations }">
                     <template v-if="showCitations">
                         <div class="reading-bars" aria-hidden="true">
                             <span></span><span></span><span></span>
@@ -3006,7 +3106,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         :class="{ 'ask-anything-send': isAskAnythingStyle }"
                         :style="userBubbleStyles"
                         @click="sendMessage"
-                        :disabled="(!newMessage.trim() && uploadedAttachments.length === 0) || !isMessageInputEnabled"
+                        :disabled="(!newMessage.trim() && uploadedAttachments.length === 0) || !isMessageInputEnabled || secretInMessage"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2"
@@ -3014,6 +3114,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
                         </svg>
                     </button>
                 </div>
+                <p v-if="secretInMessage" class="cm-secret-hint" role="alert">{{ SECRET_WARNING }}</p>
             </div>
 
             <!-- New Conversation Section (Shown when conversation is ended in workflow) -->
@@ -3036,13 +3137,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
             </div>
 
             <!-- Powered by footer -->
-            <div class="powered-by" :style="messageNameStyles">
-                <svg class="chattermate-logo" width="16" height="16" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 3H41A16 16 0 0 1 57 19V41A16 16 0 0 1 41 57H9A6 6 0 0 1 3 51V19A16 16 0 0 1 19 3Z" fill="#C9F24E"/>
-                    <circle cx="19.7" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="30" cy="30" r="4.3" fill="#0B0C10"/>
-                    <circle cx="40.3" cy="30" r="4.3" fill="#0B0C10"/>
-                </svg>
+            <div v-if="showBranding" class="powered-by" :style="messageNameStyles">
+                <BrandMark class="chattermate-logo" :size="16" />
                 <a class="cm-powered-link" href="https://chattermate.chat" target="_blank" rel="noopener"><span class="cm-powered-prefix">Powered by </span><strong class="cm-brand">ChatterMate</strong></a>
             </div>
         </div>
@@ -3604,6 +3700,12 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 .message-input input:disabled {
     background-color: rgba(0, 0, 0, 0.05);
     cursor: not-allowed;
+}
+
+.cm-secret-hint {
+    margin: 6px 4px 0;
+    font-size: 12px;
+    color: var(--cm-muted);
 }
 
 .send-button {
@@ -5015,6 +5117,7 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 
 .product-actions-compact {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-xs);
     margin-top: var(--space-sm); /* Add margin for single card */
 }
@@ -5028,7 +5131,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
     padding-top: var(--space-xs);
 }
 
-.add-to-cart-button-compact,
 .view-details-button-compact {
     flex: none; /* Don't grow */
     padding: 6px 10px; /* Adjusted padding */
@@ -5045,14 +5147,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
     line-height: 1;
 }
 
-.add-to-cart-button-compact {
-    background-color: var(--accent-solid);
-    color: white;
-    border-color: transparent;
-    box-shadow: var(--shadow-xs);
-    flex: 1; /* Allow add button to take space in carousel */
-}
-
 .view-details-button-compact {
      display: inline-flex; /* Align icon */
      align-items: center;
@@ -5063,18 +5157,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
     font-size: 1em;
     line-height: 1;
     display: inline-block;
-}
-
-.add-to-cart-button-compact:hover:not(:disabled) {
-    opacity: 0.9;
-    box-shadow: var(--shadow-sm);
-}
-
-.add-to-cart-button-compact:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-    opacity: 0.7;
-    box-shadow: none;
 }
 
 .view-details-button-compact:hover {
@@ -5098,7 +5180,6 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 /* .product-type { ... } */
 /* .product-description { ... } */
 /* .product-actions { ... } */
-/* .add-to-cart-button { ... } */
 /* .view-details-button { ... } */
 
 /* Ensure product message container uses full width */

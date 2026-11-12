@@ -34,7 +34,7 @@ from app.models.agent import Agent
 from app.models.customer import Customer
 from app.models.organization import Organization
 from app.models.widget import Widget
-from app.services import conversation_token
+from app.services import conversation_token, widget_bootstrap
 
 
 @pytest.fixture
@@ -305,6 +305,21 @@ class TestDataPageEmbedding:
 
 
 class TestBootstrap:
+    def test_the_plan_decides_on_the_branding(self, client, test_widget, monkeypatch):
+        monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: True)
+        assert bootstrap(client, test_widget).json()["hideBranding"] is True
+
+    def test_branding_stays_by_default(self, client, test_widget, monkeypatch):
+        monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: False)
+        assert bootstrap(client, test_widget).json()["hideBranding"] is False
+
+    def test_a_plan_without_workflows_boots_a_plain_chat(self, client, db, test_widget, test_agent, monkeypatch):
+        test_agent.use_workflow = True
+        test_agent.active_workflow_id = uuid.uuid4()
+        monkeypatch.setattr(widget_bootstrap, "plan_feature_on", lambda *a: False)
+
+        assert bootstrap(client, test_widget).json()["workflow"] is False
+
     def test_a_new_visitor_gets_an_anonymous_token_and_the_widget_data(self, client, test_widget, test_agent):
         response = bootstrap(client, test_widget)
 
@@ -313,7 +328,7 @@ class TestBootstrap:
         data = response.json()
         assert set(data) == {
             "widgetId", "agentName", "customization", "customerId", "initialToken",
-            "customer", "workflow", "allowAttachments", "presence",
+            "customer", "workflow", "allowAttachments", "presence", "hideBranding", "widgetData",
         }
         assert data["widgetId"] == test_widget.id
         assert data["agentName"] == (test_agent.display_name or test_agent.name)
@@ -376,6 +391,43 @@ class TestBootstrap:
     def test_source_is_ignored_for_other_widgets(self, client, test_widget):
         token = bootstrap(client, test_widget, source="https://visitor-site.example").json()["initialToken"]
         assert "source" not in conversation_token.inspect(token, test_widget.id).payload
+
+    def test_answers_the_widget_data_request_up_front(self, client, db, test_widget, test_agent):
+        before = db.query(Customer).count()
+        data = bootstrap(client, test_widget).json()
+        widget_data = data["widgetData"]
+
+        assert widget_data["status"] == 200
+        # The same answer GET /widgets/{id} gives for that token: a customer of
+        # its own, bound into a new token for this widget
+        asked = client.get(f"/api/v1/widgets/{test_widget.id}",
+                           headers={"Authorization": f"Bearer {data['initialToken']}"}).json()
+        assert set(widget_data["data"]) == set(asked)
+        assert widget_data["data"]["agent"] == asked["agent"]
+        bound = conversation_token.inspect(widget_data["data"]["token"], test_widget.id)
+        assert bound.is_live and bound.payload["sub"]
+        # One customer for the bootstrap, one for the GET made here to compare
+        assert db.query(Customer).count() == before + 2
+
+    def test_an_identified_visitor_gets_their_own_widget_data(self, client, test_widget, identified_token):
+        widget_data = bootstrap(client, test_widget, identified_token).json()["widgetData"]
+
+        assert widget_data["status"] == 200
+        # Their token already names them: no new one, so they stay who they are
+        assert widget_data["data"].get("token") is None
+
+    def test_an_email_first_agent_gets_the_refusal_up_front(self, client, db, test_widget, test_agent):
+        from app.models.agent import AgentCustomization
+        customization = db.query(AgentCustomization).filter_by(agent_id=test_agent.id).first()
+        if customization is None:
+            customization = AgentCustomization(agent_id=test_agent.id)
+            db.add(customization)
+        customization.collect_email = True
+        db.commit()
+
+        response = bootstrap(client, test_widget)
+        assert response.status_code == 200
+        assert response.json()["widgetData"] == {"status": 401, "detail": "Unauthorized"}
 
     def test_unknown_widget(self, client):
         response = client.post(f"/api/v1/widgets/{uuid.uuid4()}/bootstrap", json={})

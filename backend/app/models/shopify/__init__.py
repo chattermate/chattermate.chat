@@ -16,4 +16,5 @@ limitations under the License.
 
 # Import models
 from .shopify_shop import ShopifyShop
-from .agent_shopify_config import AgentShopifyConfig 
+from .agent_shopify_config import AgentShopifyConfig
+from .shopify_compliance_event import ShopifyComplianceEvent

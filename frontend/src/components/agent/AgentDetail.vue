@@ -23,7 +23,10 @@ import { ORB_PALETTE_COUNT, getOrbStyleAt, resolveOrbStyle, orbSvgDataUri, termi
 
 import KnowledgeExplorer from '@/components/knowledge/KnowledgeExplorer.vue'
 import AgentCustomizationView from './AgentCustomizationView.vue'
+import type { LauncherBackdrop, LauncherPreview } from '@/composables/useLauncherSettings'
 import AgentChatPreviewPanel from './AgentChatPreviewPanel.vue'
+import LauncherPreviewStage from './LauncherPreviewStage.vue'
+import { DEFAULT_LAUNCHER_COLOR } from '@/webclient/launcher-style'
 import AgentIntegrationsTab from './AgentIntegrationsTab.vue'
 import AgentWidgetTab from './AgentWidgetTab.vue'
 
@@ -32,6 +35,10 @@ import AgentInstructionsTab from './AgentInstructionsTab.vue'
 import AgentWorkflowTab from './AgentWorkflowTab.vue'
 import AgentMCPToolsTab from './AgentMCPToolsTab.vue'
 import AgentLeadCaptureTab from './AgentLeadCaptureTab.vue'
+import AgentActionsTab from './actions/AgentActionsTab.vue'
+import AgentJourneysTab from './journeys/AgentJourneysTab.vue'
+import { FEATURE_GATES, type GateKey } from './featureGates'
+import { useFeatureLock } from '@/composables/useFeatureLock'
 import { Cropper, CircleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
 import { useAgentChat } from '@/composables/useAgentChat'
@@ -152,12 +159,39 @@ const activeTab = ref(props.agent.use_workflow ? 'workflow-builder' : 'agent') /
 const isEditingHeader = ref(false)
 const editDisplayName = ref(agentData.value.display_name || agentData.value.name)
 const editIsActive = ref(agentData.value.is_active)
+const launcherPreview = ref<LauncherPreview | null>(null)
+const customizationPreviewMode = ref<'chat' | 'launcher'>('chat')
+const LAUNCHER_BACKDROPS: { value: LauncherBackdrop; label: string }[] = [
+    { value: 'light', label: 'Light site' },
+    { value: 'dark', label: 'Dark site' },
+]
+const launcherBackdrop = ref<LauncherBackdrop>('light')
+
+// The chat preview at the window size chosen in Placement, shrunk only when that
+// doesn't fit beside the settings. Ask AI designs keep their own palette size.
+const CHAT_PREVIEW_MAX = { width: 480, height: 600 }
+const ASK_AI_PREVIEW_STYLES = ['ASK_ANYTHING', 'AURORA']
+const chatPreviewFit = computed(() => {
+    const preview = launcherPreview.value
+    if (!preview || ASK_AI_PREVIEW_STYLES.includes(previewCustomization.value.chat_style as string)) {
+        return { width: undefined, height: undefined, box: {}, inner: {} }
+    }
+    const { windowWidth: width, windowHeight: height } = preview
+    const scale = Math.min(1, CHAT_PREVIEW_MAX.width / width, CHAT_PREVIEW_MAX.height / height)
+    return {
+        width,
+        height,
+        box: { width: `${Math.round(width * scale)}px`, height: `${Math.round(height * scale)}px` },
+        inner: scale < 1 ? { transform: `scale(${scale})`, transformOrigin: 'top left' } : {},
+    }
+})
+
 const previewCustomization = ref<AgentCustomization>({
     id: agentData.value.customization?.id ?? 0,
     agent_id: agentData.value.id,
     chat_background_color: agentData.value.customization?.chat_background_color ?? '#F8F9FA',
     chat_text_color: agentData.value.customization?.chat_text_color ?? '#212529',
-    chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? '#E9ECEF',
+    chat_bubble_color: agentData.value.customization?.chat_bubble_color ?? DEFAULT_LAUNCHER_COLOR,
     accent_color: agentData.value.customization?.accent_color ?? '#C9F24E',
     font_family: agentData.value.customization?.font_family ?? 'Inter, system-ui, sans-serif',
     photo_url: agentData.value.customization?.photo_url,
@@ -376,7 +410,7 @@ const showTips = ref(false)
 // Dialog state for upgrade modal
 const router = useRouter()
 const showUpgradeModal = ref(false)
-const upgradeModalType = ref<'workflow' | 'mcp' | 'advanced' | 'lead-capture'>('workflow')
+const upgradeModalType = ref<GateKey>('workflow')
 
 const openTips = () => {
     showTips.value = true
@@ -396,12 +430,7 @@ const handleUpgrade = () => {
 }
 
 /** The feature the gate notice unlocks, by type - never derived from UI copy. */
-const gateFeatureLabel = computed(() => ({
-    workflow: 'Workflow',
-    mcp: 'MCP Tools',
-    advanced: 'Advanced Settings',
-    'lead-capture': 'Lead Capture',
-}[upgradeModalType.value] ?? 'this feature'))
+const gateFeatureLabel = computed(() => FEATURE_GATES[upgradeModalType.value].name)
 
 // Tab switching function
 const switchTab = (tab: string) => {
@@ -418,134 +447,20 @@ const hasWorkflowFeature = computed(() => {
     return subscriptionStorage.hasFeature('workflow')
 })
 
-// Check if subscription is active
-const isSubscriptionActive = computed(() => {
-    return subscriptionStorage.isSubscriptionActive()
-})
+// Paid agent features (see featureGates.ts). OSS deployments are never locked.
+const { isLocked } = useFeatureLock()
+const isWorkflowLocked = computed(() => isLocked('workflow'))
+const isMCPLocked = computed(() => isLocked('mcp'))
+const isAdvancedLocked = computed(() => isLocked('advanced'))
+const isTicketingLocked = computed(() => isLocked('ticketing'))
+const isLeadCaptureLocked = computed(() => isLocked('lead-capture'))
+const isJourneysLocked = computed(() => isLocked('journeys'))
 
-// Determine if workflow is locked (feature not available or subscription not active)
-const isWorkflowLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasWorkflowFeature.value || !isSubscriptionActive.value
-})
-
-// Check if MCP tools feature is available in current plan
-const hasMCPFeature = computed(() => {
-    return subscriptionStorage.hasFeature('mcp_tools')
-})
-
-// Determine if MCP tools is locked
-const isMCPLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasMCPFeature.value || !isSubscriptionActive.value
-})
-
-// Check if advanced features are available in current plan
-const hasAdvancedFeature = computed(() => {
-    return subscriptionStorage.hasFeature('advanced_settings')
-})
-
-// Determine if advanced tab is locked
-const isAdvancedLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasAdvancedFeature.value || !isSubscriptionActive.value
-})
-
-// AI Ticketing is a Pro-plan feature (the 'ai_ticketing' flag is true only for
-// Pro/Enterprise). Lock the per-agent toggle when the plan lacks it; OSS is
-// never locked.
-const hasTicketingFeature = computed(() => {
-    return subscriptionStorage.hasFeature('ai_ticketing')
-})
-const isTicketingLocked = computed(() => {
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasTicketingFeature.value || !isSubscriptionActive.value
-})
-
-// Check if lead capture feature is available in current plan (Pro+ only)
-const hasLeadCaptureFeature = computed(() => {
-    return subscriptionStorage.hasFeature('lead_capture')
-})
-
-// Determine if lead capture is locked. Lead Capture is a Pro-plan feature — the
-// 'lead_capture' flag is true only for Pro/Enterprise (not Free/Base), matching the
-// backend gate (check_feature_availability). OSS deployments are never locked.
-const isLeadCaptureLocked = computed(() => {
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    return !hasLeadCaptureFeature.value || !isSubscriptionActive.value
-})
-
-// Computed properties for dynamic modal content
-const modalTitle = computed(() => {
-    switch (upgradeModalType.value) {
-        case 'workflow':
-            return 'Unlock Workflow Features'
-        case 'mcp':
-            return 'Unlock MCP Tools'
-        case 'advanced':
-            return 'Unlock Advanced Settings'
-        case 'lead-capture':
-            return 'Unlock Lead Capture'
-        default:
-            return 'Unlock Premium Features'
-    }
-})
-
-const modalDescription = computed(() => {
-    switch (upgradeModalType.value) {
-        case 'workflow':
-            return 'Workflow mode allows you to create sophisticated automation flows with conditional logic, multiple steps, and advanced integrations.'
-        case 'mcp':
-            return 'MCP Tools enable integration with Model Context Protocol servers to extend your agent\'s capabilities with external data sources and services.'
-        case 'advanced':
-            return 'Advanced settings provide fine-grained control over your agent\'s behavior, performance tuning, and enterprise-grade configuration options.'
-        case 'lead-capture':
-            return 'Lead Capture lets your agent collect and qualify contact details from visitors — with triggers, qualifying questions, and custom fields — then routes qualified leads to your team.'
-        default:
-            return 'Upgrade your plan to access premium features and unlock the full potential of your AI agent.'
-    }
-})
-
-const modalFeatures = computed(() => {
-    switch (upgradeModalType.value) {
-        case 'workflow':
-            return [
-                'Visual workflow builder',
-                'Conditional logic & branching',
-                'Advanced integrations',
-                'Custom automation flows'
-            ]
-        case 'mcp':
-            return [
-                'Connect to MCP servers',
-                'External data integration',
-                'Custom tool extensions',
-                'Protocol-based communication'
-            ]
-        case 'advanced':
-            return [
-                'Performance optimization',
-                'Custom system prompts',
-                'Enterprise configurations',
-                'Advanced debugging tools'
-            ]
-        default:
-            return ['Premium features', 'Advanced capabilities', 'Enhanced functionality', 'Priority support']
-    }
-})
+// The upgrade modal's copy, by gate
+const modalGate = computed(() => FEATURE_GATES[upgradeModalType.value])
+const modalTitle = computed(() => modalGate.value.title)
+const modalDescription = computed(() => modalGate.value.description)
+const modalFeatures = computed(() => modalGate.value.bullets)
 
 // Determine if we should show workflow or general tab
 const showWorkflowTab = computed(() => {
@@ -808,7 +723,14 @@ onMounted(async () => {
     // Check if we should switch to knowledge tab based on URL query parameter
     const urlParams = new URLSearchParams(window.location.search)
     const tab = urlParams.get('tab')
-    if (tab && ['agent', 'preview', 'knowledge', 'integrations', 'mcp-tools', 'widget', 'advanced', 'workflow-builder', 'customization'].includes(tab)) {
+    // A link to a tab the plan locks opens its upgrade modal over the Agent tab.
+    const lockedTabs: Record<string, GateKey> = { 'lead-capture': 'lead-capture', 'mcp-tools': 'mcp', journeys: 'journeys', advanced: 'advanced', 'workflow-builder': 'workflow' }
+    if (tab && lockedTabs[tab] && isLocked(lockedTabs[tab])) {
+        // switchTab so the URL names the tab on show, not the locked one.
+        switchTab('agent')
+        upgradeModalType.value = lockedTabs[tab]
+        showUpgradeModal.value = true
+    } else if (tab && ['agent', 'preview', 'knowledge', 'integrations', 'lead-capture', 'mcp-tools', 'actions', 'journeys', 'widget', 'advanced', 'workflow-builder', 'customization'].includes(tab)) {
         activeTab.value = tab
     } else if (agentData.value.use_workflow === true) {
         // Show workflow builder tab by default when using workflow
@@ -1055,6 +977,22 @@ onMounted(async () => {
                             MCP Tools
                             <font-awesome-icon v-if="hasEnterpriseModule && isMCPLocked" icon="fa-solid fa-lock" class="lock-icon-small" />
                         </button>
+                        <button
+                            class="tab-button"
+                            :class="{ 'active': activeTab === 'actions' }"
+                            @click="switchTab('actions')"
+                        >
+                            Actions
+                        </button>
+                        <button
+                            class="tab-button"
+                            :class="{ 'active': activeTab === 'journeys', 'locked': isJourneysLocked }"
+                            @click="isJourneysLocked ? (upgradeModalType = 'journeys', showUpgradeModal = true) : switchTab('journeys')"
+                            :title="isJourneysLocked ? 'Upgrade your plan to unlock Journeys' : 'Journeys'"
+                        >
+                            Journeys
+                            <font-awesome-icon v-if="hasEnterpriseModule && isJourneysLocked" icon="fa-solid fa-lock" class="lock-icon-small" />
+                        </button>
                         <button 
                             class="tab-button" 
                             :class="{ 'active': activeTab === 'widget' }"
@@ -1204,6 +1142,16 @@ onMounted(async () => {
                             />
                         </div>
 
+                        <!-- Actions Tab -->
+                        <div v-if="activeTab === 'actions'" class="tab-content">
+                            <AgentActionsTab :agent-id="agentData.id" />
+                        </div>
+
+                        <!-- Journeys Tab -->
+                        <div v-if="activeTab === 'journeys' && !isJourneysLocked" class="tab-content">
+                            <AgentJourneysTab :agent-id="agentData.id" />
+                        </div>
+
                         <!-- Widget Tab -->
                         <div v-if="activeTab === 'widget'" class="tab-content">
                             <AgentWidgetTab
@@ -1244,17 +1192,52 @@ onMounted(async () => {
                                         @save="handleCustomizationSave"
                                         @cancel="() => switchTab('agent')"
                                         @chat-style-changed="handleChatStyleChange"
+                                        @launcher-preview="launcherPreview = $event"
+                                        @launcher-editing="customizationPreviewMode = 'launcher'"
+                                        @preview-mode="customizationPreviewMode = $event"
                                     />
                                 </div>
                                 <div class="customization-preview">
-                                    <AgentChatPreviewPanel
-                                        :is-active="agentData.is_active"
-                                        :customization="previewCustomization"
-                                        :agent-type="agentData.agent_type"
+                                    <div class="preview-toolbar">
+                                        <div class="preview-switch" role="radiogroup" aria-label="Preview">
+                                            <button type="button" role="radio" class="preview-switch-option"
+                                                :class="{ active: customizationPreviewMode === 'chat' }"
+                                                :aria-checked="customizationPreviewMode === 'chat'"
+                                                @click="customizationPreviewMode = 'chat'">Chat</button>
+                                            <button type="button" role="radio" class="preview-switch-option"
+                                                :class="{ active: customizationPreviewMode === 'launcher' }"
+                                                :aria-checked="customizationPreviewMode === 'launcher'"
+                                                @click="customizationPreviewMode = 'launcher'">Launcher</button>
+                                        </div>
+                                        <div v-if="customizationPreviewMode === 'launcher'" class="preview-switch"
+                                            role="radiogroup" aria-label="Site background">
+                                            <button v-for="option in LAUNCHER_BACKDROPS" :key="option.value" type="button"
+                                                role="radio" class="preview-switch-option"
+                                                :class="{ active: launcherBackdrop === option.value }"
+                                                :aria-checked="launcherBackdrop === option.value"
+                                                @click="launcherBackdrop = option.value">{{ option.label }}</button>
+                                        </div>
+                                    </div>
+                                    <LauncherPreviewStage
+                                        v-if="customizationPreviewMode === 'launcher' && launcherPreview"
+                                        v-bind="launcherPreview"
+                                        :backdrop="launcherBackdrop"
                                         :agent-name="agentData.display_name || agentData.name"
-                                        :orb-seed="agentData.name"
-                                        :agent-id="agentData.id"
                                     />
+                                    <div v-else class="chat-preview-fit" :style="chatPreviewFit.box">
+                                        <div :style="chatPreviewFit.inner">
+                                            <AgentChatPreviewPanel
+                                                :is-active="agentData.is_active"
+                                                :customization="previewCustomization"
+                                                :agent-type="agentData.agent_type"
+                                                :agent-name="agentData.display_name || agentData.name"
+                                                :orb-seed="agentData.name"
+                                                :agent-id="agentData.id"
+                                                :window-width="chatPreviewFit.width"
+                                                :window-height="chatPreviewFit.height"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1327,7 +1310,7 @@ onMounted(async () => {
 
         <!-- Upgrade Modal (only shown when enterprise module exists) -->
         <div v-if="hasEnterpriseModule && showUpgradeModal" class="upgrade-modal-overlay">
-            <div class="upgrade-modal">
+            <div class="upgrade-modal" role="dialog" aria-modal="true" :aria-label="modalTitle">
                 <div class="upgrade-modal-header">
                     <div class="upgrade-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1337,7 +1320,7 @@ onMounted(async () => {
                         </svg>
                     </div>
                     <h3>{{ modalTitle }}</h3>
-                    <button class="close-button" @click="closeUpgradeModal">×</button>
+                    <button class="close-button" aria-label="Close" @click="closeUpgradeModal">×</button>
                 </div>
                 <div class="upgrade-modal-content">
                     <p class="upgrade-description">
@@ -1352,7 +1335,7 @@ onMounted(async () => {
                         </div>
                     </div>
                     <!-- Live promo offer, when one applies to this organization -->
-                    <PromoGateNotice :feature="gateFeatureLabel" @claim="closeUpgradeModal" />
+                    <PromoGateNotice :feature="gateFeatureLabel" :feature-key="modalGate.feature" @claim="closeUpgradeModal" />
                 </div>
                 <div class="upgrade-modal-footer">
                     <button class="upgrade-button" @click="handleUpgrade">
@@ -2924,11 +2907,50 @@ input:checked + .slider:before {
     background-color: var(--o25);
 }
 
+/* The preview shows the widget's own colours, which can match the dashboard's
+   (a dark design on the dark theme). A hairline keeps its edge visible. */
+.customization-preview :deep(.chat-container) {
+    box-shadow: 0 0 0 1px var(--o12), 0 24px 48px -16px rgba(0, 0, 0, 0.35);
+}
+
+.preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    width: 100%;
+    margin-bottom: var(--space-sm);
+}
+
+.preview-switch {
+    display: flex;
+    gap: 6px;
+}
+
+.preview-switch-option {
+    padding: 6px 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border-radius: var(--radius-chip);
+    border: 1px solid var(--o12);
+    background: var(--bg);
+    color: var(--text3);
+    cursor: pointer;
+}
+
+.preview-switch-option.active {
+    background: var(--accent-bg-12);
+    border-color: var(--accent-ink);
+    color: var(--accent-ink);
+}
+
 .customization-preview {
     flex: 0 1 auto;
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
     padding-top: 0;
@@ -3016,6 +3038,32 @@ input:checked + .slider:before {
         /* Keep matching the 600px chat preview, even on laptop widths */
         height: 600px;
         max-height: 600px;
+    }
+}
+
+/* Tablets and phones: settings full width, the preview below them. */
+@media (max-width: 768px) {
+    .customization-tab-layout {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .customization-panel {
+        min-width: 0;
+        flex: 1 1 auto;
+        max-width: none;
+        width: 100%;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+    }
+
+    .customization-preview {
+        padding: 0;
     }
 }
 

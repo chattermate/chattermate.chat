@@ -54,7 +54,9 @@ class TelegramConnectRequest(BaseModel):
 
 class OwnMetaAppSecret(BaseModel):
     """The secret of the customer's own Meta app, for manual credentials:
-    Meta signs that app's webhooks with it. Blank means not given."""
+    Meta signs that app's webhooks with it, so a token from the customer's
+    app is refused without it. Only a token from ChatterMate's own app (a
+    one-click account reconnected by hand) needs none. Blank means not given."""
     app_secret: Optional[str] = None
 
     @field_validator("app_secret")

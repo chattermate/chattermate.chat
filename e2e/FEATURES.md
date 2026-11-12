@@ -16,6 +16,27 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on refusals: an unknown address is told to ask for an invite; an account the provider can't vouch for isn't linked and the password still works; cancelling at the provider; a deep link survives the round trip; the return link can't be replayed in another browser | `specs/auth/sso.spec.ts` | P1 | ✅ |
 | Team | The Agent role is refused every admin API; sees channels without secrets; assigned-only sees just its group's handovers | `specs/team/permissions.spec.ts` | P1 | ✅ |
+| In-app actions | The agent runs a site action and answers from its result; two actions in a row; a failing action is reported; arguments that break the schema never reach the site | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | Always-ask shows what the site says it will do and waits for the visitor (no stops it, yes runs it once); an overwrite shows current vs new | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | A dropped connection mid-action still runs it exactly once | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | No actions on a widget not limited to the site, or once turned off | `specs/actions/in-app-actions.spec.ts` | P1 | ✅ |
+| In-app actions | A site message is answered with a chip; page context reaches the agent as data; a pasted password is held back | `specs/actions/site-messages.spec.ts` | P1 | ✅ |
+| In-app actions | Actions tab: the form refuses a bad name or JSON, saves, turns an action off and deletes it | `specs/actions/actions-tab.spec.ts` | P1 | ✅ |
+| In-app actions | Actions tab: a name already taken is refused by the server and the form stays open | `specs/actions/actions-tab.spec.ts` | P1 | ✅ |
+| In-app actions | Actions tab: switches and delete buttons stay in view beside the open form; the tab fits a phone | `specs/actions/actions-tab.spec.ts` | P2 | ✅ |
+| Journeys | A journey opens by itself with its plan, moves on app events and a tapped reply (shown as the visitor's answer, with a line saying what the action did), then finishes, without calling the model; keeping a value leaves the step and offers the reply again | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A reply to a step reaches the agent with the step's message, stored once; the step stays until done | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The agent is told which actions finish the user's step, and still has every other action | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | After sending, the list follows down to the typing bubble; the pinned guide adds no sideways scroll | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A step that moves on during a reply waits for it; a later message (a human agent's) goes below the step's message, never above | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The visitor skips a step, or hides the guide for good | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | The funnel shows how far visitors got, per step, who is stuck on a step, and opens that step | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | A step's replies stay after a plain answer and after a failed action, and its message shows once | `specs/journeys/journeys.spec.ts` | P1 | ✅ |
+| Journeys | Build from a template: sample-context preview, "Action succeeds" picks a declared action, an action chip allows it, save, put live | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
+| Journeys | Leaving the editor with unsaved changes asks first; Keep editing / Leave | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
+| Journeys | The editor blocks a step with no title; a key already taken is refused and stays unsaved | `specs/journeys/journey-editor.spec.ts` | P1 | ✅ |
+| Journeys | The tab lines up with the agent header; the editor fits a phone | `specs/journeys/journey-editor.spec.ts` | P2 | ✅ |
+| People | A user the site's app signed in, who only followed a journey, is on the Signed in tab (not the lead directory) with the journey's progress | `specs/leads/signed-in-people.spec.ts` | P1 | ✅ |
 | Widget chat | Customer gets the AI answer | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | History survives a reload | `specs/widget/widget-chat.spec.ts` | P1 | ✅ |
 | Widget chat | The dashboard's iframe snippet chats (its socket comes from the API's own origin) | `specs/widget/iframe-snippet.spec.ts` | P1 | ✅ |
@@ -51,6 +72,8 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Widget frame | Server error on start → "Chat is unavailable right now", opening again retries and chats; a refused visitor (token required) or a refused site (allowed domains) is not retried | `specs/widget/frame-recovery.spec.ts` | P1 | ✅ |
 | Widget frame | A site with a strict Content-Security-Policy: one that lets our frame in gets the framed chat; one that allows no frames still chats, built inside the page by the in-page fallback (the frozen last-release loader), and keeps the conversation across a reload; on a site our CORS doesn't list, the in-page chat shows its can't-load card rather than nothing | `specs/widget/strict-csp.spec.ts` | P1 | ✅ |
 | Widget frame | The last release's cached loader (v1.0.27, served as `/webclient/chattermate-legacy.min.js`: srcdoc + cross-origin /data, on the CORS-listed legacy origin 127.0.0.1:13001) still chats, keeps history across a reload, and is held to the widget's allowed domains (the server checks its origin) | `specs/widget/legacy-loader.spec.ts` | P1 | ✅ |
+| Widget launcher | A new agent gets the medium launcher; size, shape, icon and animation chosen in the dashboard (preview at real size) show on the site, still under reduced motion; a transparent logo floats with no button and gets one while open; an opaque logo can't drop its background; a refused file (type, too small) saves nothing; removing the logo brings back the dots; a returning visitor's launcher shows in its saved look before the chat has loaded; the site's own `launcherStyle` wins; the launcher opens from the keyboard and reports `aria-expanded` | `specs/widget/launcher.spec.ts` | P1 | ✅ |
+| Widget window size | A preset chosen in Widget placement sizes the chat window on the site | `specs/widget/launcher.spec.ts` | P1 | ✅ |
 | Widget placement | `open({message})`, events | — | P1 | ⬜ |
 | Token-auth widget | Server-issued token → chat works; no, tampered, other-widget or expired token is refused | `specs/widget/token-auth.spec.ts` | P1 | ✅ |
 | Reply buttons | Telegram, WhatsApp, Messenger, Instagram: AI offers buttons, a tap gets the next answer | `specs/channels/reply-buttons.spec.ts` | P2 | ✅ |
@@ -73,7 +96,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | CRM | HubSpot install, manual sync and automatic push (worker) with the lead's details | `specs/crm/hubspot.org.spec.ts` | P2 | ✅ |
 | CRM | Pipedrive install (Basic-auth token exchange) and a captured lead pushed as organisation, person, lead and note | `specs/crm/pipedrive.org.spec.ts` | P2 | ✅ |
 | Integrations | Jira connect from Settings (real browser OAuth round trip) and the AI filing an issue in the agent's project | `specs/integrations/jira.org.spec.ts` | P2 | ✅ |
-| Integrations | Shopify install and link (the org keeps its website, the storefront is allowed), a store not linked yet is told to connect, order status answered from the shop, lookup refused without the customer's email | `specs/integrations/shopify.org.spec.ts` | P2 | ✅ |
+| Integrations | Shopify install and link (the org keeps its website, the storefront is allowed), a store not linked yet is told to connect, order status answered from the shop, lookup refused without the customer's email, an email alone lists nothing, a number the customer never wrote is refused, add to cart from the chat (`@redis`: added, sold out, no button for sizes, off sale, off the Online Store, another store or a non-store) | `specs/integrations/shopify.org.spec.ts` | P2 | ✅ |
 | Visual and cross-browser widget | Widget on Firefox, WebKit, Android, iPhone; screenshots light/dark | `--project=widget-*`, `specs/visual` | P2 | ✅ (nightly) |
 | Accessibility | axe on key screens (dark and light themes) and the widget: no serious findings anywhere; a per-screen baseline catches regressions | `specs/a11y` | P2 | ✅ |
 | Performance | Loader/widget size budgets; reply-time budget | `specs/perf` | P2 | ✅ |

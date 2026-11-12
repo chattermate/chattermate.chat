@@ -37,23 +37,23 @@ logger = get_logger(__name__)
 HOSTED_MODEL_TYPE = "CHATTERMATE"
 
 
+def model_is_hosted(model_type) -> bool:
+    """The widget hands over an enum, channels a string."""
+    value = model_type.value if hasattr(model_type, "value") else str(model_type)
+    return value.upper() == HOSTED_MODEL_TYPE
+
+
 def is_hosted_model(db: Session, organization_id: UUID) -> bool:
     """True when the org runs on the platform-hosted model, so its LLM usage is
     billable against the message budget."""
     config = AIConfigRepository(db).get_active_config(organization_id)
-    if not config:
-        return False
-    model_type = (
-        config.model_type.value if hasattr(config.model_type, "value")
-        else str(config.model_type)
-    )
-    return model_type.upper() == HOSTED_MODEL_TYPE
+    return bool(config) and model_is_hosted(config.model_type)
 
 
 def remaining_message_credits(db: Session, organization_id: UUID) -> Optional[int]:
     """Message credits left in the current billing period, or None when
     unlimited (no enterprise module, no subscription cap, or the check errored
-    — fail open, matching check_message_limit's posture)."""
+    — fail open, matching plan_allows_ai's posture)."""
     try:
         from app.enterprise.services.message_limit import get_remaining_messages
     except ImportError:

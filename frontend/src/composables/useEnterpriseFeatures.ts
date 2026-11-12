@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { ref, readonly, defineComponent, defineAsyncComponent, h, computed } from 'vue'
+import { ref, readonly, defineComponent, defineAsyncComponent, h } from 'vue'
 import type { Component } from 'vue'
 
 // Create a proper Vue component for the fallback
@@ -52,12 +52,9 @@ interface SubscriptionStore {
   isInTrial: boolean
   trialDaysLeft: number
   fetchCurrentPlan: () => Promise<void>
-}
-
-interface MessageLimitStatus {
-  type: 'warning' | 'error'
-  message: string
-  percentage: number
+  /** The plan catalog, once fetched (absent in the open-source build). */
+  availablePlans?: readonly Plan[]
+  fetchPlans?: () => Promise<void>
 }
 
 interface SubscriptionGuard {
@@ -91,6 +88,7 @@ const moduleImports = {
   shopifyAgentManagement: '/src/modules/enterprise/views/ShopifyAgentManagementView.vue',
   shopifyInbox: '/src/modules/enterprise/views/ShopifyInboxView.vue',
   shopifyPricing: '/src/modules/enterprise/views/ShopifyPricingView.vue',
+  shopifyCustomize: '/src/modules/enterprise/views/ShopifyCustomizeView.vue',
   shopifyAppBridge: '/src/modules/enterprise/plugins/shopifyAppBridge.ts',
   shopifyAppBridgeUtilities: '/src/modules/enterprise/plugins/shopifyAppBridgeUtilities.ts',
   shopifyIntegration: '/src/modules/enterprise/composables/useShopifyIntegration.ts',
@@ -100,8 +98,12 @@ const moduleImports = {
   promoUsageCard: '/src/modules/enterprise/components/promo/PromoUsageCard.vue',
   promoGateNotice: '/src/modules/enterprise/components/promo/PromoGateNotice.vue',
   promoLimitToast: '/src/modules/enterprise/components/promo/PromoLimitToast.vue',
+  // Connected channels on a plan without them: AI paused, inbox still on
+  channelsPausedNotice: '/src/modules/enterprise/components/promo/ChannelsPausedNotice.vue',
   // Help button for the hosted support chat (renders nothing in open source)
   supportChatButton: '/src/modules/enterprise/components/support/SupportChatButton.vue',
+  // "Contact us" to sales where a plan limit is reached (empty in OSS)
+  contactUsLink: '/src/modules/enterprise/components/support/ContactUsLink.vue',
   // External apps driving channel conversations (settings page)
   appIntegrationsView: '/src/modules/enterprise/views/AppIntegrationsView.vue',
   // Personal access tokens for the CLI and API (settings page)
@@ -113,6 +115,8 @@ const moduleImports = {
   // "Set this up from your AI coding tool" on the wizard's Create step (nothing in open source)
   aiToolSetupNudge: '/src/modules/enterprise/components/setup/AiToolSetupNudge.vue',
   setupService: '/src/modules/enterprise/utils/setupService.ts',
+  // The setup assistant docked beside the onboarding wizard (nothing in open source)
+  setupAssistant: '/src/modules/enterprise/components/setup/SetupAssistantDock.vue',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */
@@ -140,46 +144,6 @@ const defaultSubscriptionState: SubscriptionStore = {
 
 export const useEnterpriseFeatures = () => {
   const subscriptionStore = ref<SubscriptionStore>(defaultSubscriptionState)
-
-  const showMessageLimitWarning = computed(() => {
-    const plan = subscriptionStore.value.currentPlan
-    if (!plan?.plan) return false
-
-    const messageCount = plan.message_count || 0
-    const messageLimit = plan.message_limit
-
-    if (!messageLimit) return false
-
-    return messageCount >= messageLimit * 0.9
-  })
-
-  const messageLimitStatus = computed<MessageLimitStatus | null>(() => {
-    const plan = subscriptionStore.value.currentPlan
-    if (!plan?.plan) return null
-
-    const messageCount = plan.message_count || 0
-    const messageLimit = plan.message_limit
-
-    if (!messageLimit) return null
-
-    const usagePercentage = (messageCount / messageLimit) * 100
-
-    if (messageCount >= messageLimit) {
-      return {
-        type: 'error',
-        message: 'Message limit exceeded! Switch to your own model or upgrade plan.',
-        percentage: 100,
-      }
-    } else if (usagePercentage >= 90) {
-      return {
-        type: 'warning',
-        message: `Approaching message limit (${Math.round(usagePercentage)}%). Consider upgrading your plan.`,
-        percentage: usagePercentage,
-      }
-    }
-
-    return null
-  })
 
   const modules = allEnterpriseModules
 
@@ -242,7 +206,5 @@ export const useEnterpriseFeatures = () => {
     moduleImports,
     enterpriseComponent,
     NotAvailableComponent,
-    showMessageLimitWarning,
-    messageLimitStatus,
   }
 }

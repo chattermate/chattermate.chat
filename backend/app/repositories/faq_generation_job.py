@@ -149,7 +149,7 @@ class FAQGenerationJobRepository:
                 FAQGenerationJob.organization_id == organization_id,
                 FAQGenerationJob.metered.is_(True),
                 FAQGenerationJob.created_at >= start_date,
-                FAQGenerationJob.created_at <= end_date,
+                FAQGenerationJob.created_at < end_date,
             )
             .scalar()
         )

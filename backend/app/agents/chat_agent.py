@@ -19,7 +19,8 @@ from typing import Optional, Type
 from agno.agent import Agent
 from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
-from app.channels.constants import is_widget_channel
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
+from app.channels.constants import MessageSource, is_widget_channel
 from app.tools.knowledge_search_byagent import KnowledgeSearchByAgent
 from app.tools.mcp_manager import ChatAgentMCPMixin
 from app.database import get_db, SessionLocal, engine, release_connection
@@ -27,8 +28,10 @@ from app.agents.choice_prompt import choice_instructions
 from app.channels.interactive_limits import InteractiveLimits
 from app.agents.encrypted_storage import EncryptedPostgresAgentStorage
 from app.agents.history_memory import BoundedHistoryMemory, run_with_overflow_recovery
+from app.agents.host_actions.turns import fill_results, paused_run_tools, paused_turn
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services.feature_gate import LEAD_CAPTURE_FEATURE, plan_feature_on
 from app.services.widget_identity import trusts_identity_in_session
 from app.models.session_to_agent import SessionStatus
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse, TransferReasonType, EndChatReasonType
@@ -39,6 +42,8 @@ from app.agents.structured_output import (
     salvage_groq_json_error,
 )
 from app.agents.transfer_agent import get_agent_availability_response
+from app.agents.channel_products import with_product_list
+from app.agents.handover_prompt import TOOLS_OR_PERSON_RULES, ticket_criteria
 from app.agents.guardrail_policy import (
     GuardrailContext,
     apply_guardrail_policy,
@@ -357,7 +362,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None):
+    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -460,7 +465,7 @@ class ChatAgent(ChatAgentMCPMixin):
                 try:
                     from app.repositories.lead_capture import LeadCaptureConfigRepository
                     lcc = LeadCaptureConfigRepository(db).get_by_agent(agent_id)
-                    if lcc:
+                    if lcc and plan_feature_on(db, org_id, LEAD_CAPTURE_FEATURE):
                         self.lead_capture_enabled = bool(lcc.enabled)
                         self.lead_capture_fields = lcc.fields or []
                         self.lead_capture_require_consent = bool(lcc.require_consent)
@@ -513,11 +518,16 @@ class ChatAgent(ChatAgentMCPMixin):
         # Initialize tools
         self.tools = []
         
+        # Tools attach whether or not this agent can hand over: a handover is one
+        # more way out of the conversation, and the prompt says which to use
+        # (TOOLS_OR_PERSON_RULES).
+        has_session = bool(self.agent_id and self.org_id and self.session_id)
+
         # Ticket tools: an agent's explicit Jira config wins (existing orgs
         # keep their Jira flow unchanged); native AI ticketing is the default
         # for everyone else. Never both — two create-ticket functions would
         # confuse the model.
-        if self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and self.agent_data and self.agent_data.jira_enabled:
+        if has_session and self.agent_data and self.agent_data.jira_enabled:
             try:
                 self.jira_tools = JiraTools(
                     agent_id=self.agent_id,
@@ -527,7 +537,7 @@ class ChatAgent(ChatAgentMCPMixin):
                 self.tools.append(self.jira_tools)
             except Exception as e:
                 logger.error(f"Failed to initialize Jira tools: {e}")
-        elif self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and self.ticketing_enabled:
+        elif has_session and self.ticketing_enabled:
             try:
                 from app.tools.ticket_toolkit import TicketTools
                 self.ticket_tools = TicketTools(
@@ -540,7 +550,7 @@ class ChatAgent(ChatAgentMCPMixin):
                 logger.error(f"Failed to initialize ticket tools: {e}")
         
         # Add Shopify tools if agent has Shopify enabled
-        if self.agent_id and self.org_id and self.session_id and not self.transfer_to_human and shopify_config and shopify_config.enabled:
+        if has_session and shopify_config and shopify_config.enabled:
             try:
                 self.shopify_tools = ShopifyTools(
                     agent_id=self.agent_id,
@@ -776,9 +786,13 @@ Keep your responses concise and focused. Provide clear, actionable information i
             else:
                 system_message += f"\n{end_chat_without_rating}"
             
+            # Without a group the handover is dropped at the end of the turn, so a
+            # ticket stays the way to reach the team
+            can_reach_a_person = bool(self.transfer_to_human and getattr(self.agent_data, 'groups', None))
+
             # Add native ticketing instructions when AI ticketing drives the
             # ticket tools (explicit agent Jira config takes precedence below)
-            if self.ticketing_enabled and not self.transfer_to_human and not (self.agent_data and self.agent_data.jira_enabled):
+            if self.ticketing_enabled and not (self.agent_data and self.agent_data.jira_enabled):
                 # For an already-identified customer, hand the agent their known
                 # email/name so it passes them straight to create_ticket instead
                 # of asking the customer to repeat details we already have.
@@ -804,17 +818,18 @@ Keep your responses concise and focused. Provide clear, actionable information i
                         "customer_email and customer_name. Never invent an email or name; if the "
                         "customer declines, create the ticket without them."
                     )
+                when_to_ticket = ticket_criteria(
+                    can_reach_a_person,
+                    "The issue is a technical problem you cannot resolve from the knowledge base",
+                    "The user explicitly asks for a ticket or escalation",
+                )
                 ticket_instructions = f"""
                 You have access to native support-ticket tools:
                 1. check_existing_ticket — check if this conversation already has a ticket (always call this first)
                 2. create_ticket — open a support ticket that the team's AI investigator and humans will work on
                 3. get_ticket_status — look up a ticket's current status
 
-                Only create a ticket if:
-                - The issue is a technical problem you cannot resolve from the knowledge base
-                - The user explicitly asks for a ticket or escalation
-                - You've tried to resolve the issue but were unable to do so
-                - No ticket already exists for this conversation
+                {when_to_ticket}
 
                 {identity_instruction}
 
@@ -824,8 +839,13 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 system_message += "\n\n" + ticket_instructions
                 self.jira_instructions_added = True
             # Add Jira instructions if Jira is enabled (and native ticketing is not)
-            elif self.agent_data and self.agent_data.jira_enabled and not self.transfer_to_human:
-                jira_instructions = """
+            elif self.agent_data and self.agent_data.jira_enabled:
+                when_to_ticket = ticket_criteria(
+                    can_reach_a_person,
+                    "The issue is complex and requires human intervention",
+                    "The user explicitly requests to create a ticket",
+                )
+                jira_instructions = f"""
                 You have access to Jira integration tools. You can use these tools to:
                 1. Create a Jira ticket for issues that need further attention
                 2. Check if a ticket already exists for the current conversation
@@ -839,11 +859,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 - ticket_description: A detailed description of the issue (required if create_ticket is true)
                 - ticket_priority: The priority level of the ticket (optional, defaults to "Medium")
 
-                Only create a ticket if:
-                - The issue is complex and requires human intervention
-                - The user explicitly requests to create a ticket
-                - You've tried to resolve the issue but were unable to do so
-                - No ticket already exists for this conversation
+                {when_to_ticket}
                 """
                 system_message += "\n\n" + jira_instructions
                 self.jira_instructions_added = True
@@ -877,9 +893,12 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
                 DO NOT include any other fields (shop_domain, total_count, products, etc.) - backend will populate everything from cache
 
+                **Cart:** you cannot add anything to a customer's cart. Never say you did. Customers add products themselves, from the product card or the store.
+
                 **Order Tools:**
                 - Before looking up an order, ask for BOTH the order number and the email address used at checkout. Order details are only shared when both match
-                - Only use an email the customer typed in this chat; never guess one
+                - Only use an email the customer typed in this chat; never guess one. An email from your own instructions or their account details does not count: ask them to type it
+                - You can look up one order at a time and cannot list a customer's orders. If they ask for all their orders, ask for the order number they mean
                 - Use customer-friendly language: "Your order has been shipped" not "FULFILLED"
                 - Make tracking numbers clickable links
                 """
@@ -896,6 +915,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 """
                 system_message += "\n\n" + mcp_instructions
                 self.mcp_instructions_added = True
+
+            # Settles the overlap between the lists above, so it comes after them
+            if can_reach_a_person and (self.tools or host_action_functions):
+                system_message += "\n\n" + TOOLS_OR_PERSON_RULES
         else:
             system_message = [
                 "You are a helpful customer service agent.",
@@ -952,6 +975,10 @@ Keep your responses concise and focused. Provide clear, actionable information i
         all_tools = tools.copy()
         if hasattr(self, 'tools') and self.tools:
            all_tools.extend(self.tools)
+        # Actions the host page runs for the visitor; calling one pauses the run
+        # until the page answers (see app.agents.host_actions).
+        if host_action_functions:
+            all_tools.extend(host_action_functions)
 
         # Groq can't combine response_format (JSON mode) with tools, so its native
         # structured-output path degrades to unreliable prompt-only JSON. For Groq we
@@ -1418,7 +1445,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
                         "organization_id": org_id,
                         "agent_id": agent_id,
                         "customer_id": customer_id,
-                        "attributes": guardrail_verdict.as_attributes()
+                        "attributes": {**guardrail_verdict.as_attributes(), "source": MessageSource.SYSTEM.value}
                     })
                     return blocked_response
 
@@ -1449,164 +1476,215 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     _salvaged_content = _build_chat_response_from_capture(salvaged, self._response_model)
                     response = None
 
-                # Groq path returns the structured turn via the `json` tool; everything
-                # else parses agno's native structured output.
-                if _salvaged_content is not None:
-                    response_content = _salvaged_content
-                elif self._use_groq_json_tool and self._groq_json_capture:
-                    response_content = _build_chat_response_from_capture(self._groq_json_capture, self._response_model)
-                elif self._use_groq_json_tool:
-                    # Groq finished without the `json` tool — recover its answer text.
-                    response_content = recover_groq_no_capture(response)
-                else:
-                    response_content = parse_response_content(response, self._response_model)
+                # The model called host actions: nothing is stored or sent until
+                # the page answers and continue_response finishes the reply.
+                paused = paused_turn(response)
+                if paused is not None:
+                    return paused
 
-                # Attach knowledge-base citations gathered during this turn (overrides any
-                # value the LLM may have produced — this field is system-managed).
-                if self.knowledge_tool is not None and self.knowledge_tool.collected_sources:
-                    from app.models.schemas.chat import SourceRef
-                    response_content.sources = [
-                        SourceRef(**s) for s in self.knowledge_tool.collected_sources
-                    ]
-                else:
-                    response_content.sources = None
+                return await self._finish_turn(response, _salvaged_content, session_id, org_id,
+                                               agent_id, customer_id, db, chat_repo)
 
-                # request_contact is system-managed (set only by the transfer handler);
-                # clear anything the LLM may have produced.
-                response_content.request_contact = False
+        except Exception as e:
+            return self._error_turn(e, session_id, org_id, agent_id, customer_id)
 
-                # What the model itself wrote — before an empty-turn fallback or
-                # the guardrail can replace it (see drop_stale_choices)
-                model_message = response_content.message
-                response_content = ensure_nonempty_message(response_content)
-                logger.debug(f"Response content: {response_content}")
+    async def _finish_turn(self, response, _salvaged_content, session_id: str, org_id: str, agent_id: str,
+                           customer_id: str, db, chat_repo: ChatRepository) -> ChatResponse:
+        """Turn a finished agno run into the reply: parse it, attach citations,
+        apply the output guardrail, handle end-chat and transfer, store it."""
+        # Groq path returns the structured turn via the `json` tool; everything
+        # else parses agno's native structured output.
+        if _salvaged_content is not None:
+            response_content = _salvaged_content
+        elif self._use_groq_json_tool and self._groq_json_capture:
+            response_content = _build_chat_response_from_capture(self._groq_json_capture, self._response_model)
+        elif self._use_groq_json_tool:
+            # Groq finished without the `json` tool — recover its answer text.
+            response_content = recover_groq_no_capture(response)
+        else:
+            response_content = parse_response_content(response, self._response_model)
 
-                # Output guardrail: replace a reply that leaked policy text,
-                # count the model's own scope refusals.
-                response_content.message, _ = check_output(
-                    response_content.message,
-                    ctx=self._guardrail_ctx,
-                    surface=self._guardrail_surface,
-                    session_id=session_id,
-                )
-                drop_stale_choices(response_content, model_message)
+        # Attach knowledge-base citations gathered during this turn (overrides any
+        # value the LLM may have produced — this field is system-managed).
+        if self.knowledge_tool is not None and self.knowledge_tool.collected_sources:
+            from app.models.schemas.chat import SourceRef
+            response_content.sources = [
+                SourceRef(**s) for s in self.knowledge_tool.collected_sources
+            ]
+        else:
+            response_content.sources = None
 
-                # Enrich Shopify response with full product data from Redis
-                response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
+        # request_contact is system-managed (set only by the transfer handler);
+        # clear anything the LLM may have produced.
+        response_content.request_contact = False
 
-                # If shopify_output has products, remove URLs from message
-                # (URLs should only be removed when products are being displayed separately)
-                if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
-                    response_content.message = remove_urls_from_message(response_content.message)
-                    logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
-                
-                # Handle end chat and rating request
-                if response_content.end_chat:
-                    response_content = await self._handle_end_chat(response_content, session_id, db)
+        # What the model itself wrote — before an empty-turn fallback or
+        # the guardrail can replace it (see drop_stale_choices)
+        model_message = response_content.message
+        response_content = ensure_nonempty_message(response_content)
+        logger.debug(f"Response content: {response_content}")
 
-                # Handle transfer 
-                if self.agent_data and self.transfer_to_human and response_content.transfer_to_human and hasattr(self.agent_data, 'groups') and self.agent_data.groups:
-                    response_content = await self._handle_transfer(
-                        response_content=response_content,
+        # Output guardrail: replace a reply that leaked policy text,
+        # count the model's own scope refusals.
+        response_content.message, _ = check_output(
+            response_content.message,
+            ctx=self._guardrail_ctx,
+            surface=self._guardrail_surface,
+            session_id=session_id,
+        )
+        drop_stale_choices(response_content, model_message)
+
+        # Enrich Shopify response with full product data from Redis
+        response_content = enrich_shopify_response(response_content, session_id, fallback_cache_key=self._shopify_fallback_cache_key())
+
+        # If shopify_output has products, remove URLs from message
+        # (URLs should only be removed when products are being displayed separately)
+        if response_content.shopify_output and hasattr(response_content.shopify_output, 'products') and response_content.shopify_output.products:
+            response_content.message = remove_urls_from_message(response_content.message)
+            logger.debug(f"Cleaned message for Shopify output: {response_content.message}")
+
+        if not is_widget_channel(self.channel):
+            response_content.message = with_product_list(response_content.message, response_content.shopify_output)
+
+        # Handle end chat and rating request
+        if response_content.end_chat:
+            response_content = await self._handle_end_chat(response_content, session_id, db)
+
+        # Handle transfer 
+        if self.agent_data and self.transfer_to_human and response_content.transfer_to_human and hasattr(self.agent_data, 'groups') and self.agent_data.groups:
+            response_content = await self._handle_transfer(
+                response_content=response_content,
+                session_id=session_id,
+                org_id=org_id,
+                agent_id=agent_id,
+                customer_id=customer_id,
+                db=db,
+                chat_repo=chat_repo,
+                transfer_group_id=None  # Use agent's default group for regular transfers
+            )
+            return response_content
+
+        # Reaching here means no live transfer happened — either transfer is
+        # disabled for this agent, the model didn't actually request one, or the
+        # agent has no groups to route to. Clear any stray transfer flag the model
+        # may have set so the widget does not prompt the visitor for contact
+        # details or tell them it will connect them to a teammate.
+        if response_content.transfer_to_human:
+            logger.debug(
+                "Clearing model-set transfer_to_human flag (no transfer performed)")
+            response_content.transfer_to_human = False
+            response_content.transfer_reason = None
+            response_content.transfer_description = None
+
+        # Store AI response with all attributes
+        attributes = {
+            "transfer_to_human": response_content.transfer_to_human,
+            "transfer_reason": response_content.transfer_reason.value if response_content.transfer_reason else None,
+            "transfer_description": response_content.transfer_description,
+            "end_chat": response_content.end_chat,
+            "end_chat_reason": response_content.end_chat_reason.value if response_content.end_chat_reason else None,
+            "end_chat_description": response_content.end_chat_description,
+            "request_rating": response_content.request_rating,
+            "shopify_output": response_content.shopify_output
+        }
+
+        # Persist citations so reloaded history can render them too
+        if response_content.sources:
+            attributes["sources"] = [s.model_dump() for s in response_content.sources]
+
+        # Add ticket attributes if present
+        if response_content.create_ticket:
+            attributes.update({
+                "create_ticket": response_content.create_ticket,
+                "ticket_summary": response_content.ticket_summary,
+                "ticket_description": response_content.ticket_description,
+                "integration_type": response_content.integration_type,
+                "ticket_id": response_content.ticket_id,
+                "ticket_status": response_content.ticket_status,
+                "ticket_priority": response_content.ticket_priority
+            })
+        
+        
+        self._store_bot_message(chat_repo, {
+            "message": response_content.message,
+            "message_type": "bot",
+            "session_id": session_id,
+            "organization_id": org_id,
+            "agent_id": agent_id,
+            "customer_id": customer_id,
+            "attributes": attributes
+        })
+        return response_content
+
+    async def continue_response(self, run_id: str, results: dict, session_id: str = None, org_id: str = None,
+                                agent_id: str = None, customer_id: str = None):
+        """Resume a reply that paused on host actions, now that each call has an
+        outcome (`results`: tool-call id -> text for the model). May pause again."""
+        self.last_bot_message_id = None
+        try:
+            with SessionLocal() as db:
+                chat_repo = ChatRepository(db)
+                self.agent.session_id = session_id
+                if self.knowledge_tool is not None:
+                    self.knowledge_tool.reset_turn()
+                release_connection(db)
+                self._groq_json_capture.clear()
+                tools = paused_run_tools(self.agent, run_id, session_id)
+                if tools is None:
+                    raise RuntimeError(f"No paused run {run_id} in session {session_id}")
+                response = await asyncio.wait_for(
+                    self.agent.acontinue_run(
+                        run_id=run_id,
+                        updated_tools=fill_results(tools, results),
                         session_id=session_id,
-                        org_id=org_id,
-                        agent_id=agent_id,
-                        customer_id=customer_id,
-                        db=db,
-                        chat_repo=chat_repo,
-                        transfer_group_id=None  # Use agent's default group for regular transfers
-                    )
-                    return response_content
+                        stream=False,
+                    ),
+                    timeout=settings.AGENT_RUN_TIMEOUT,
+                )
+                paused = paused_turn(response)
+                if paused is not None:
+                    return paused
+                return await self._finish_turn(response, None, session_id, org_id, agent_id, customer_id, db, chat_repo)
+        except Exception as e:
+            return self._error_turn(e, session_id, org_id, agent_id, customer_id)
 
-                # Reaching here means no live transfer happened — either transfer is
-                # disabled for this agent, the model didn't actually request one, or the
-                # agent has no groups to route to. Clear any stray transfer flag the model
-                # may have set so the widget does not prompt the visitor for contact
-                # details or tell them it will connect them to a teammate.
-                if response_content.transfer_to_human:
-                    logger.debug(
-                        "Clearing model-set transfer_to_human flag (no transfer performed)")
-                    response_content.transfer_to_human = False
-                    response_content.transfer_reason = None
-                    response_content.transfer_description = None
-
-                # Store AI response with all attributes
-                attributes = {
-                    "transfer_to_human": response_content.transfer_to_human,
-                    "transfer_reason": response_content.transfer_reason.value if response_content.transfer_reason else None,
-                    "transfer_description": response_content.transfer_description,
-                    "end_chat": response_content.end_chat,
-                    "end_chat_reason": response_content.end_chat_reason.value if response_content.end_chat_reason else None,
-                    "end_chat_description": response_content.end_chat_description,
-                    "request_rating": response_content.request_rating,
-                    "shopify_output": response_content.shopify_output
-                }
-
-                # Persist citations so reloaded history can render them too
-                if response_content.sources:
-                    attributes["sources"] = [s.model_dump() for s in response_content.sources]
-
-                # Add ticket attributes if present
-                if response_content.create_ticket:
-                    attributes.update({
-                        "create_ticket": response_content.create_ticket,
-                        "ticket_summary": response_content.ticket_summary,
-                        "ticket_description": response_content.ticket_description,
-                        "integration_type": response_content.integration_type,
-                        "ticket_id": response_content.ticket_id,
-                        "ticket_status": response_content.ticket_status,
-                        "ticket_priority": response_content.ticket_priority
-                    })
-                
-                
+    def _error_turn(self, e: Exception, session_id: str, org_id: str, agent_id: str, customer_id: str) -> ChatResponse:
+        """The reply when a turn fails: logged, stored and returned."""
+        traceback.print_exc()
+        logger.error(f"Chat agent error: {str(e)}")
+        error_message = GENERIC_ERROR_MESSAGE
+        
+        # Create error response
+        error_response = ChatResponse(
+            message=error_message,
+            transfer_to_human=False,
+            transfer_reason=None,
+            transfer_description=None,
+            end_chat=False,
+            end_chat_reason=None,
+            end_chat_description=None,
+            request_rating=False,
+            create_ticket=False,
+            shopify_output=None
+        )
+        
+        # Store error message
+        try:
+            with SessionLocal() as db:
+                chat_repo = ChatRepository(db)
                 self._store_bot_message(chat_repo, {
-                    "message": response_content.message,
+                    "message": error_message,
                     "message_type": "bot",
                     "session_id": session_id,
                     "organization_id": org_id,
                     "agent_id": agent_id,
                     "customer_id": customer_id,
-                    "attributes": attributes
+                    "attributes": {"error": str(e), "source": MessageSource.SYSTEM.value}
                 })
-
-                return response_content
-
-        except Exception as e:
-            traceback.print_exc()
-            logger.error(f"Chat agent error: {str(e)}")
-            error_message = GENERIC_ERROR_MESSAGE
-            
-            # Create error response
-            error_response = ChatResponse(
-                message=error_message,
-                transfer_to_human=False,
-                transfer_reason=None,
-                transfer_description=None,
-                end_chat=False,
-                end_chat_reason=None,
-                end_chat_description=None,
-                request_rating=False,
-                create_ticket=False,
-                shopify_output=None
-            )
-            
-            # Store error message
-            try:
-                with SessionLocal() as db:
-                    chat_repo = ChatRepository(db)
-                    self._store_bot_message(chat_repo, {
-                        "message": error_message,
-                        "message_type": "bot",
-                        "session_id": session_id,
-                        "organization_id": org_id,
-                        "agent_id": agent_id,
-                        "customer_id": customer_id,
-                        "attributes": {"error": str(e)}
-                    })
-            except Exception as store_error:
-                logger.error(f"Failed to store error message: {str(store_error)}")
-            
-            return error_response
+        except Exception as store_error:
+            logger.error(f"Failed to store error message: {str(store_error)}")
+        
+        return error_response
 
     @staticmethod
     async def test_api_key(api_key: str, model_type: str, model_name: str, base_url: str = None) -> bool:

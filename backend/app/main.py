@@ -20,8 +20,9 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 
 # Add users import
 from fastapi.staticfiles import StaticFiles
+from app.core.widget_assets import WidgetAssets
 import socketio
-from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_frame, widget_apps, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, people, tickets
+from app.api import chat, organizations, users, ai_setup, knowledge, agent, notification, widget, widget_frame, widget_apps, user_groups, roles, analytics, jira, shopify, workflow, workflow_node, mcp_tool, file_upload, token, lead_capture, agent_actions, journeys, people, tickets
 from app.api import help_center as help_center_api
 from app.api import help_center_images
 from app.api import channels as channels_api
@@ -30,6 +31,8 @@ from app.api import sso as sso_api
 from app.api import user_identities as user_identities_api
 # Import widget_chat to register socket.io event handlers for /widget namespace
 from app.api import widget_chat  # noqa: F401 - imported for side effects (socket.io handlers registration)
+from app.api import widget_actions  # noqa: F401 - registers the host-action socket handlers
+from app.api import widget_journeys  # noqa: F401 - registers the journey socket handlers
 from fastapi import FastAPI, BackgroundTasks
 from app.core.config import settings, verify_secret_configuration
 from app.core.encryption import verify_encryption_key
@@ -59,7 +62,10 @@ try:
 except ImportError:
     print("Enterprise models not available")
 from app.api import session_to_agent
+from app.api import agent_logo
 from app.workers.chat_auto_closer import run_auto_closer_loop
+from app.workers.journey_data_purge import run_purge_loop
+from app.workers.shopify_token_keepalive import run_keepalive_loop
 
 logger = get_logger(__name__)
 
@@ -113,6 +119,10 @@ async def startup_event(api: FastAPI):
     # Start chat auto-closer background task, AI chat will auto close after 1 day.
     # Held on app.state so the task cannot be garbage-collected mid-run.
     api.state.auto_closer_task = asyncio.create_task(run_auto_closer_loop())
+    # Old action calls and journey progress hold visitor data: deleted daily.
+    api.state.journey_purge_task = asyncio.create_task(run_purge_loop())
+    # Shopify refresh tokens lapse after 90 days unused: renewed before then.
+    api.state.shopify_token_keepalive_task = asyncio.create_task(run_keepalive_loop())
 
 # Include routers
 app.include_router(
@@ -229,9 +239,33 @@ app.include_router(
 )
 
 app.include_router(
+    agent_logo.router,
+    prefix=f"{settings.API_V1_STR}/agent",
+    tags=["agent"]
+)
+
+app.include_router(
     lead_capture.router,
     prefix=f"{settings.API_V1_STR}/agent",
     tags=["lead-capture"]
+)
+
+app.include_router(
+    agent_actions.router,
+    prefix=f"{settings.API_V1_STR}/agent",
+    tags=["agent-actions"]
+)
+
+app.include_router(
+    journeys.router,
+    prefix=f"{settings.API_V1_STR}/agent",
+    tags=["journeys"]
+)
+
+app.include_router(
+    journeys.people_router,
+    prefix=f"{settings.API_V1_STR}/people",
+    tags=["journeys"]
 )
 
 app.include_router(
@@ -393,7 +427,7 @@ for folder in PUBLIC_UPLOAD_FOLDERS:
         StaticFiles(directory=os.path.join("uploads", folder), check_dir=False),
         name=f"uploads_{folder}",
     )
-app.mount("/assets", StaticFiles(directory=settings.WIDGET_ASSETS_DIR), name="assets")
+app.mount("/assets", WidgetAssets(settings.WIDGET_ASSETS_DIR), name="assets")
 
 # The API origin is not a website: no robots.txt meant crawlers were free to
 # discover /api/v1/... endpoints and report them as 404s.

@@ -41,7 +41,7 @@ class ChatHistory(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey(
         "users.id", ondelete="SET NULL"), nullable=True)
     customer_id = Column(UUID(as_uuid=True), ForeignKey(
-        "customers.id", ondelete="SET NULL"), nullable=True)
+        "customers.id", ondelete="SET NULL"), nullable=True, index=True)
     agent_id = Column(UUID(as_uuid=True), ForeignKey(
         "agents.id", ondelete="SET NULL"), nullable=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("session_to_agents.session_id"), nullable=True)

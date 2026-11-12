@@ -6,7 +6,8 @@ import { test, expect, env, AI_REPLY } from '@e2e'
 
 const KB = 1024
 const BUDGETS = [
-  { file: 'embed loader (chattermate.min.js)', url: `${env.frontendUrl}/webclient/chattermate.min.js`, maxBytes: 60 * KB },
+  // Raised from 60 KB for the launcher's sizes, icons, logo and animations (~3 KB gzipped).
+  { file: 'embed loader (chattermate.min.js)', url: `${env.frontendUrl}/webclient/chattermate.min.js`, maxBytes: 82 * KB },
   { file: 'widget script (widget.js)', url: `${env.backendUrl}/assets/widget.js`, maxBytes: 500 * KB },
   { file: 'widget styles (widget.css)', url: `${env.backendUrl}/assets/widget.css`, maxBytes: 135 * KB },
 ]

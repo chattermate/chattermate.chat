@@ -41,6 +41,8 @@ export interface PeopleStats {
   total_people: number
   /** Engaged-but-unidentified sessions — the count behind the Anonymous tab */
   anonymous: number
+  /** Users the business's app signed in — the count behind the Signed in tab */
+  signed_in: number
   new_leads_7d: number
   customers: number
   synced_to_crm: number

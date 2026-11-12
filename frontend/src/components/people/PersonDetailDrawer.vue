@@ -19,6 +19,7 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { peopleService, type PersonCrmStatus } from '@/services/people'
 import channelsService, { type ChannelAccount } from '@/services/channels'
+import PersonJourneys from './PersonJourneys.vue'
 import NewWhatsAppConversation from '@/components/conversations/NewWhatsAppConversation.vue'
 import type { PersonDetail } from '@/types/people'
 import { permissionChecks } from '@/utils/permissions'
@@ -283,6 +284,9 @@ onMounted(() => { load(); loadWhatsAppAccounts(); loadCrm() })
             <span class="pdd-tl-time">{{ fmt(t.at) }}</span>
           </div>
         </div>
+
+        <!-- Journeys (Journeys tab on the agent) -->
+        <PersonJourneys :customer-id="person.id" />
 
         <!-- Captured attributes -->
         <div class="pdd-section-title">CAPTURED ATTRIBUTES</div>

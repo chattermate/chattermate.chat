@@ -20,12 +20,14 @@ from time import monotonic
 from typing import List, Optional
 from agno.tools.mcp import MCPTools
 from app.channels.interactive_limits import InteractiveLimits
+from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.database import SessionLocal
 from app.repositories.mcp_tool import MCPToolRepository
 from app.models.mcp_tool import MCPTransportType
 from app.models.schemas.mcp_tool import MAX_USAGE_GUIDANCE_CHARS
 from app.core.logger import get_logger
 from app.core.outbound_policy import check_outbound_target
+from app.services.feature_gate import MCP_TOOLS_FEATURE, plan_feature_on
 from app.tools.mcp_connection import HeldConnection
 from app.tools.mcp_outbound import remote_params_classes
 from app.core.config import settings
@@ -156,6 +158,8 @@ class MCPToolsManager:
             return []
         try:
             with SessionLocal() as db:
+                if not plan_feature_on(db, org_id, MCP_TOOLS_FEATURE):
+                    return []
                 configs = MCPToolRepository(db).get_by_ids(org_id, tool_ids)
         except Exception as e:
             logger.error(f"Failed to load MCP tools {tool_ids} for org {org_id}: {e}")
@@ -180,6 +184,8 @@ class MCPToolsManager:
         try:
             # Get MCP tools for this agent from database
             with SessionLocal() as db:
+                if not plan_feature_on(db, org_id, MCP_TOOLS_FEATURE):
+                    return self.mcp_tools
                 mcp_tool_repo = MCPToolRepository(db)
                 agent_mcp_tools = mcp_tool_repo.get_agent_mcp_tools(agent_id)
         except Exception as e:
@@ -479,12 +485,13 @@ class ChatAgentMCPMixin:
     """
     
     @classmethod
-    async def create_async(cls, api_key: str, model_name: str = "gpt-4o-mini", model_type: str = "OPENAI",
+    async def create_async(cls, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI",
                           org_id: str = None, agent_id: str = None, customer_id: str = None,
                           session_id: str = None, custom_system_prompt: str = None,
                           transfer_to_human: bool | None = None, source: str = None,
                           channel: str = None, extra_context: str = None, base_url: str = None,
-                          choice_limits: Optional[InteractiveLimits] = None):
+                          choice_limits: Optional[InteractiveLimits] = None,
+                          host_action_functions: Optional[list] = None):
         """
         Async factory method to create a ChatAgent with MCP tools initialized.
         """
@@ -517,6 +524,7 @@ class ChatAgentMCPMixin:
             extra_context=extra_context,
             base_url=base_url,
             choice_limits=choice_limits,
+            host_action_functions=host_action_functions,
         )
         
         # Attach the MCP manager to the instance for cleanup

@@ -26,7 +26,7 @@ from app.models.agent import Agent
 from app.models.session_to_agent import SessionToAgent
 from app.repositories.channels import ChannelConversationRepository
 from app.core.logger import get_logger
-from app.channels.constants import is_widget_channel, MessageSource
+from app.channels.constants import UNMETERED_SOURCES, is_widget_channel
 from app.channels.sent_choices import SENT_CHOICES_ATTRIBUTE, decode_sent_choices
 from app.models.user import User
 from app.repositories.customer import CustomerRepository
@@ -66,6 +66,13 @@ class ChatRepository:
             ChatHistory.message_type == 'user'
         ).first() is not None
 
+    def has_message_flag(self, session_id: str, flag: str) -> bool:
+        """Whether any message in the session carries this attribute as true."""
+        return self.db.query(ChatHistory.id).filter(
+            ChatHistory.session_id == UUID(str(session_id)),
+            ChatHistory.attributes[flag].as_boolean().is_(True),
+        ).first() is not None
+
     def get_message_count_for_period(
         self,
         org_id: UUID | str,
@@ -74,8 +81,9 @@ class ChatRepository:
     ) -> int:
         """
         Get the total number of bot messages for an organization within a specific date range.
-        Only counts messages with message_type='bot', and not ones an external
-        app sent (attributes.source == 'app'): they cost no AI.
+        Only counts messages with message_type='bot', and not ones that cost no
+        AI (attributes.source in UNMETERED_SOURCES: an external app, the
+        embedding page, a journey step).
         
         Args:
             org_id: Organization ID
@@ -95,14 +103,14 @@ class ChatRepository:
                 ChatHistory.organization_id == org_id,
                 ChatHistory.message_type == 'bot',  # Only count bot messages
                 # NULL-safe: nearly every row has no source at all
-                or_(source.is_(None), source != MessageSource.APP.value),
+                or_(source.is_(None), source.notin_(UNMETERED_SOURCES)),
             ]
             
             # Add date range conditions if they are not None
             if start_date is not None:
                 conditions.append(ChatHistory.created_at >= start_date)
             if end_date is not None:
-                conditions.append(ChatHistory.created_at <= end_date)
+                conditions.append(ChatHistory.created_at < end_date)
             
             count = self.db.query(func.count(ChatHistory.id))\
                 .filter(and_(*conditions))\
@@ -319,6 +327,16 @@ class ChatRepository:
         except Exception as e:
             logger.error(f"Error updating session sentiment: {str(e)}")
             self.db.rollback()
+
+    def get_customer_messages(self, session_id: str | UUID) -> List[str]:
+        """What the customer wrote in this conversation, oldest first."""
+        rows = (
+            self.db.query(ChatHistory.message)
+            .filter(ChatHistory.session_id == UUID(str(session_id)), ChatHistory.message_type == "user")
+            .order_by(ChatHistory.created_at.asc(), ChatHistory.id.asc())
+            .all()
+        )
+        return [row.message for row in rows]
 
     async def get_session_history(self, session_id: str | UUID) -> List[ChatHistory]:
         """Get chat history for a session with joined relationships"""

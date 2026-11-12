@@ -46,6 +46,7 @@ export interface AgentCustomization {
     font_family?: string;
     custom_css?: string;
     customization_metadata?: Record<string, any>;
+    launcher_logo_url?: string | null;
     chat_style?: ChatStyle;
     widget_position?: WidgetPosition;
     welcome_title?: string;
@@ -58,7 +59,7 @@ export interface AgentCustomization {
 
 
 export interface SocketError {
-    type: 'connection_error' | 'auth_error' | 'chat_error' | 'ai_config_missing' | 'customer_required' | 'token_invalid';
+    type: 'connection_error' | 'auth_error' | 'chat_error' | 'ai_config_missing' | 'customer_required' | 'token_invalid' | 'conversation_gone';
     error?: string;
 }
 

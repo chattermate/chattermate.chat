@@ -17,6 +17,7 @@ limitations under the License.
 from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean, Enum as SQLEnum, ForeignKey, JSON, Table, Float, func
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
+from app.core.brand import BRAND_COLORS
 from app.database import Base
 import enum
 import json
@@ -56,7 +57,7 @@ class AgentCustomization(Base):
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"))
     photo_url = Column(String)
     chat_background_color = Column(String, default="#F8F9FA")
-    chat_bubble_color = Column(String, default="#E9ECEF")
+    chat_bubble_color = Column(String, default=BRAND_COLORS["ink"])
     chat_text_color = Column(String, default="#212529")
     icon_url = Column(String)
     icon_color = Column(String, default="#6C757D")
@@ -127,6 +128,9 @@ class Agent(Base):
     enable_rate_limiting = Column(Boolean, default=False, nullable=True)
     overall_limit_per_ip = Column(Integer, default=100, nullable=True)
     requests_per_sec = Column(Float, default=1, nullable=True)
+    # Per customer, only messages that reach the model; null = no limit (see services/reply_limits).
+    messages_per_customer_per_minute = Column(Integer, nullable=True)
+    replies_per_customer_per_day = Column(Integer, nullable=True)
     use_workflow = Column(Boolean, default=False, nullable=True)
     active_workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id"), nullable=True)
     allow_attachments = Column(Boolean, default=False, nullable=False)

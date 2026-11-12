@@ -71,10 +71,11 @@ test.describe('a number or Page from the customer\'s own Meta app', () => {
     await expectUnchanged('replies on the other app\'s number', () => forged.replies())
   })
 
-  test('without the app secret a Page has no address of its own @channels', async ({ adminApi }) => {
+  test('a token from the customer\'s own app is refused without its secret @channels', async ({ adminApi }) => {
     const pageId = digits(15)
-    const account = await connectMessenger(adminApi, pageId, ownMetaApp().token(pageId))
-    expect(account.webhook_url).toBeFalsy()
-    expect(account.webhook_verify_token).toBeFalsy()
+    await expect(connectMessenger(adminApi, pageId, ownMetaApp().token(pageId)))
+      .rejects.toThrow(/400: .*Enter your Meta app's secret/)
+    await expect(connectWhatsAppNumber(adminApi, digits(15), { ...ownMetaApp(), secret: '' }))
+      .rejects.toThrow(/400: .*Enter your Meta app's secret/)
   })
 })

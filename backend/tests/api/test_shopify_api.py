@@ -25,7 +25,7 @@ import hmac
 import hashlib
 import base64
 from urllib.parse import urlencode, quote
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from app.models.schemas.shopify.agent_shopify_config import AgentShopifyConfig
 from app.models.shopify.agent_shopify_config import AgentShopifyConfig
 
@@ -382,47 +382,52 @@ async def test_check_connection_not_connected(mock_shop_repo, mock_db, mock_orga
 
 @pytest.mark.asyncio
 @patch('app.services.shopify_session.ShopifySessionService.get_session_token_from_request')
-@patch('app.api.shopify.ShopifyShopRepository')
-@patch('app.api.shopify.requests.post')
+@patch('app.services.shopify_tokens.requests.post')
 @patch('jwt.decode')
-async def test_exchange_session_token_success(mock_jwt_decode, mock_requests_post, mock_shop_repo, mock_get_token, mock_db):
-    """Test successful session token exchange"""
-    # Arrange
+async def test_exchange_session_token_success(mock_jwt_decode, mock_requests_post, mock_get_token, db):
+    """The session token is exchanged for an expiring offline token, and the
+    access token, refresh token and both expiries are stored on a new shop row."""
     shop_domain = "test-shop.myshopify.com"
-    session_token = "mock_session_token"
-    access_token = "mock_access_token"
-    
-    mock_get_token.return_value = session_token
+    mock_get_token.return_value = "mock_session_token"
     mock_jwt_decode.return_value = {"dest": f"https://{shop_domain}"}
-    
-    # Mock Shopify API response
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"access_token": access_token}
-    mock_requests_post.return_value = mock_response
-    
-    # Mock repository
-    mock_shop_repo_instance = MagicMock()
-    mock_shop_repo.return_value = mock_shop_repo_instance
-    mock_shop_repo_instance.get_shop_by_domain.return_value = None
-    
-    mock_created_shop = MagicMock()
-    mock_created_shop.id = str(uuid.uuid4())
-    mock_created_shop.shop_domain = shop_domain
-    mock_created_shop.organization_id = None
-    mock_shop_repo_instance.create_shop.return_value = mock_created_shop
-    
-    mock_request = MagicMock()
-    
-    # Act
+    mock_requests_post.return_value = MagicMock(status_code=200, json=MagicMock(return_value={
+        "access_token": "shpat_new", "scope": "read_orders", "expires_in": 3600,
+        "refresh_token": "shprt_new", "refresh_token_expires_in": 7776000,
+    }))
+
     from app.api.shopify import exchange_session_token
-    response = await exchange_session_token(mock_request, mock_db)
-    
-    # Assert
-    assert response["shop_id"] == str(mock_created_shop.id)
-    assert response["shop_domain"] == shop_domain
-    assert response["organization_id"] is None
-    assert response["is_installed"] is True
+    response = await exchange_session_token(MagicMock(), db)
+
+    sent = mock_requests_post.call_args.kwargs["data"]
+    assert sent["expiring"] == "1"
+    assert sent["subject_token"] == "mock_session_token"
+    assert sent["requested_token_type"] == "urn:shopify:params:oauth:token-type:offline-access-token"
+
+    shop = db.query(ShopifyShop).filter_by(shop_domain=shop_domain).one()
+    assert response == {"shop_id": shop.id, "shop_domain": shop_domain,
+                        "organization_id": None, "is_installed": True}
+    assert (shop.access_token, shop.refresh_token, shop.scope) == ("shpat_new", "shprt_new", "read_orders")
+    assert shop.access_token_expires_at is not None and shop.refresh_token_expires_at is not None
+    assert shop.refresh_token_expires_at - shop.access_token_expires_at > timedelta(days=89)
+
+
+@pytest.mark.asyncio
+@patch('app.services.shopify_session.ShopifySessionService.get_session_token_from_request')
+@patch('app.services.shopify_tokens.requests.post')
+@patch('jwt.decode')
+async def test_exchange_session_token_shopify_refusal_is_reported(mock_jwt_decode, mock_requests_post, mock_get_token, db):
+    """Shopify refusing the exchange surfaces as an error and stores nothing."""
+    mock_get_token.return_value = "mock_session_token"
+    mock_jwt_decode.return_value = {"dest": "https://test-shop.myshopify.com"}
+    mock_requests_post.return_value = MagicMock(status_code=400, text="bad",
+                                                json=MagicMock(return_value={"error": "invalid_request"}))
+
+    from app.api.shopify import exchange_session_token
+    with pytest.raises(HTTPException) as exc_info:
+        await exchange_session_token(MagicMock(), db)
+
+    assert exc_info.value.status_code == 400
+    assert db.query(ShopifyShop).count() == 0
 
 
 @pytest.mark.asyncio
@@ -733,8 +738,8 @@ async def test_get_status_not_connected(mock_shop_repo, mock_db, mock_organizati
 @pytest.mark.asyncio
 @patch('app.api.shopify.require_shopify_session')
 @patch('app.api.shopify.AgentShopifyConfigRepository')
-@patch('app.api.shopify.WidgetRepository')
-async def test_get_shop_config_status_success(mock_widget_repo, mock_config_repo, mock_require_session, mock_db):
+@patch('app.api.shopify.shop_widget')
+async def test_get_shop_config_status_success(mock_shop_widget, mock_config_repo, mock_require_session, mock_db):
     """Test shop config status endpoint"""
     # Arrange
     shop_id = str(uuid.uuid4())
@@ -759,13 +764,10 @@ async def test_get_shop_config_status_success(mock_widget_repo, mock_config_repo
     mock_agent_config.agent_id = str(uuid.uuid4())
     mock_config_repo_instance.get_configs_by_shop.return_value = [mock_agent_config]
     
-    # Mock widget repository
-    mock_widget_repo_instance = MagicMock()
-    mock_widget_repo.return_value = mock_widget_repo_instance
-    
+    # The store's widget
     mock_widget = MagicMock()
     mock_widget.id = widget_id
-    mock_widget_repo_instance.get_widgets_by_agent.return_value = [mock_widget]
+    mock_shop_widget.return_value = mock_widget
     
     # Act
     from app.api.shopify import get_shop_config_status
@@ -899,81 +901,8 @@ async def test_shopify_app_uninstalled_webhook_invalid_hmac(mock_verify_webhook,
     assert "Invalid webhook signature" in str(exc_info.value.detail)
 
 
-@pytest.mark.asyncio
-@patch('app.api.shopify.ShopifyHelperService.verify_shopify_webhook')
-async def test_shopify_customers_data_request_webhook_success(mock_verify_webhook, mock_db):
-    """Test customers data request webhook"""
-    # Arrange
-    mock_verify_webhook.return_value = True
-    
-    mock_request = MagicMock()
-    webhook_data = {
-        "shop_id": 12345,
-        "shop_domain": "test-shop.myshopify.com",
-        "customer": {"id": 67890}
-    }
-    
-    # Mock request body
-    mock_request.body = AsyncMock(return_value=json.dumps(webhook_data).encode())
-    
-    # Act
-    from app.api.shopify import shopify_customers_data_request_webhook
-    response = await shopify_customers_data_request_webhook(mock_request, mock_db)
-    
-    # Assert
-    assert response["success"] is True
-    assert "Customer data request received and logged" in response["message"]
-
-
-@pytest.mark.asyncio
-@patch('app.api.shopify.ShopifyHelperService.verify_shopify_webhook')
-async def test_shopify_customers_redact_webhook_success(mock_verify_webhook, mock_db):
-    """Test customers redact webhook"""
-    # Arrange
-    mock_verify_webhook.return_value = True
-    
-    mock_request = MagicMock()
-    webhook_data = {
-        "shop_id": 12345,
-        "shop_domain": "test-shop.myshopify.com",
-        "customer": {"id": 67890}
-    }
-    
-    # Mock request body
-    mock_request.body = AsyncMock(return_value=json.dumps(webhook_data).encode())
-    
-    # Act
-    from app.api.shopify import shopify_customers_redact_webhook
-    response = await shopify_customers_redact_webhook(mock_request, mock_db)
-    
-    # Assert
-    assert response["success"] is True
-    assert "Customer data redaction request received and logged" in response["message"]
-
-
-@pytest.mark.asyncio
-@patch('app.api.shopify.ShopifyHelperService.verify_shopify_webhook')
-async def test_shopify_shop_redact_webhook_success(mock_verify_webhook, mock_db):
-    """Test shop redact webhook"""
-    # Arrange
-    mock_verify_webhook.return_value = True
-    
-    mock_request = MagicMock()
-    webhook_data = {
-        "shop_id": 12345,
-        "shop_domain": "test-shop.myshopify.com"
-    }
-    
-    # Mock request body
-    mock_request.body = AsyncMock(return_value=json.dumps(webhook_data).encode())
-    
-    # Act
-    from app.api.shopify import shopify_shop_redact_webhook
-    response = await shopify_shop_redact_webhook(mock_request, mock_db)
-    
-    # Assert
-    assert response["success"] is True
-    assert "Shop data redacted successfully" in response["message"]
+# The privacy webhooks (customers/data_request, customers/redact, shop/redact)
+# are tested against a real database in test_shopify_privacy_webhooks.py.
 
 
 @pytest.mark.asyncio
@@ -1030,8 +959,8 @@ async def test_get_connected_agents_shop_id_mismatch(mock_require_session, mock_
 @pytest.mark.asyncio
 @patch('app.api.shopify.require_shopify_session')
 @patch('app.api.shopify.AgentShopifyConfigRepository')
-@patch('app.api.shopify.WidgetRepository')
-async def test_get_shop_config_status_no_widget(mock_widget_repo, mock_config_repo, mock_require_session, mock_db):
+@patch('app.api.shopify.shop_widget')
+async def test_get_shop_config_status_no_widget(mock_shop_widget, mock_config_repo, mock_require_session, mock_db):
     """Test shop config status when no widget exists"""
     # Arrange
     shop_id = str(uuid.uuid4())
@@ -1052,9 +981,8 @@ async def test_get_shop_config_status_no_widget(mock_widget_repo, mock_config_re
     mock_config_repo.return_value = mock_config_repo_instance
     mock_config_repo_instance.get_configs_by_shop.return_value = []  # No agent configs
     
-    # Mock widget repository (won't be called since no configs)
-    mock_widget_repo_instance = MagicMock()
-    mock_widget_repo.return_value = mock_widget_repo_instance
+    # No agent connected, so no widget
+    mock_shop_widget.return_value = None
     
     # Act
     from app.api.shopify import get_shop_config_status

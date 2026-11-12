@@ -33,6 +33,25 @@ export class AgentsPage {
     await expect(this.page.getByRole('button', { name: 'Back to agents' })).toBeVisible()
   }
 
+  /** Clicks a tab of the open agent ("Lead Capture", "MCP Tools", "Advanced", …). */
+  async openTab(name: string): Promise<void> {
+    await step(`Open the ${name} tab`, async () => {
+      await this.page.getByRole('button', { name, exact: true }).click()
+    })
+  }
+
+  /** "Unlock …": what a tab the plan doesn't include opens instead (hosted editions only). */
+  get upgradeDialog(): Locator {
+    return this.page.getByRole('dialog', { name: /^Unlock / })
+  }
+
+  async closeUpgradeDialog(): Promise<void> {
+    await step('Close the upgrade dialog', async () => {
+      await this.upgradeDialog.getByRole('button', { name: 'Close' }).click()
+      await expect(this.upgradeDialog).toBeHidden()
+    })
+  }
+
   async setInstructions(instructions: string): Promise<void> {
     await step('Edit the agent instructions', async () => {
       await this.page.getByPlaceholder('Enter instructions for the agent...').fill(instructions)
@@ -49,6 +68,21 @@ export class AgentsPage {
   /** Shown instead of the list while the org has no agents. */
   get onboardingHeading(): Locator {
     return this.page.getByRole('heading', { name: "Let's get your first agent live" })
+  }
+
+  /** The agent's Journeys tab, then the funnel of one journey. */
+  async openJourneyFunnel(agentId: string, journeyName: string): Promise<void> {
+    await step(`Open the funnel of "${journeyName}"`, async () => {
+      await this.openAgent(agentId, 'journeys')
+      const row = this.page.getByRole('row').filter({ has: this.page.getByRole('button', { name: journeyName, exact: true }) })
+      await row.getByRole('button', { name: 'Funnel', exact: true }).click()
+      await expect(this.page.getByRole('heading', { name: journeyName })).toBeVisible()
+    })
+  }
+
+  /** A step's bar in the funnel, named "<done> of <reached> done". */
+  funnelStep(title: string): Locator {
+    return this.page.getByRole('row').filter({ has: this.page.getByRole('button', { name: title, exact: true }) }).getByRole('img')
   }
 
   card(name: string): Locator {
