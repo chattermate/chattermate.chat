@@ -70,6 +70,10 @@ class SessionToAgent(Base):
     transfer_description = Column(EncryptedText, nullable=True)
     end_chat_reason = Column(SQLEnum(EndChatReasonType), nullable=True)
     end_chat_description = Column(EncryptedText, nullable=True)
+    # A short AI-written title for the visitor's history, once the chat closed
+    # (app/services/conversation_titles.py); titled_at: looked at, titled or not
+    title = Column(EncryptedText, nullable=True)
+    titled_at = Column(DateTime(timezone=True), nullable=True)
 
     # Ticket-related fields
     ticket_id = Column(String, nullable=True)

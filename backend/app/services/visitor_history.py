@@ -148,6 +148,13 @@ def _first_and_last(db: Session, session_ids: List[UUID]) -> Dict[UUID, Tuple[Op
     return {sid: (pair[0], pair[1]) for sid, pair in found.items()}
 
 
+def _title(conversation: SessionToAgent, first: Optional[ChatHistory]) -> str:
+    """The AI-written title once the chat closed (conversation_titles.py), else
+    its first question."""
+    return (_shorten(conversation.title, TITLE_MAX) or _shorten(first.message if first else None, TITLE_MAX)
+            or DEFAULT_TITLE)
+
+
 def _item(conversation: SessionToAgent, last_at: datetime, first: Optional[ChatHistory],
           last: Optional[ChatHistory], current_id: Optional[UUID]) -> dict:
     # The teammate who wrote the last reply of a finished chat, never just the assignee
@@ -155,7 +162,7 @@ def _item(conversation: SessionToAgent, last_at: datetime, first: Optional[ChatH
     person = last.user if (last is not None and last.message_type == 'agent' and not is_open) else None
     return {
         'id': str(conversation.session_id),
-        'title': _shorten(first.message if first else None, TITLE_MAX) or DEFAULT_TITLE,
+        'title': _title(conversation, first),
         'last_message': _shorten(last.message if last else None, SNIPPET_MAX),
         'last_from_visitor': bool(last and last.message_type == 'user'),
         'last_at': last_at.isoformat() if last_at else None,
@@ -252,6 +259,10 @@ def search_conversations(db: Session, socket_session: dict, q: Any) -> dict:
         at = body.casefold().find(needle)
         if at >= 0:
             hits[message.session_id] = _snippet(body, at, len(needle))
+    for conversation, _ in sessions:
+        title = conversation.title or ''
+        if conversation.session_id not in hits and needle in title.casefold():
+            hits[conversation.session_id] = _shorten(title, SNIPPET_MAX)
     current_id = _as_uuid(socket_session.get('session_id'))
     newest = [(c, at) for c, at in sessions if c.session_id in hits][:PAGE_SIZE]
     ends = _first_and_last(db, [c.session_id for c, _ in newest])
@@ -296,7 +307,7 @@ def continue_conversation(db: Session, socket_session: dict, session_id: Any) ->
     if earlier is None or current is None or earlier.session_id == current.session_id:
         return None
     first, _ = _first_and_last(db, [earlier.session_id]).get(earlier.session_id, (None, None))
-    title = _shorten(first.message if first else None, TITLE_MAX) or DEFAULT_TITLE
+    title = _title(earlier, first)
     recent = db.query(ChatHistory).filter(ChatHistory.session_id == earlier.session_id) \
         .order_by(ChatHistory.created_at.desc(), ChatHistory.id.desc()).limit(CONTEXT_MESSAGES).all()
     context = {'session_id': str(current.session_id), 'context': _context(title, list(reversed(recent)))}
