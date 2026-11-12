@@ -21,8 +21,9 @@ const setUp = () => {
     const listeners: Record<string, (data: any) => void> = {}
     const emit = vi.fn()
     const announce = vi.fn()
-    const check = useEmailCheck({ on: (event, fn) => { listeners[event] = fn }, emit, announce })
-    return { ...check, emit, announce, hear: (event: string, data?: unknown) => listeners[event](data) }
+    const onVerified = vi.fn()
+    const check = useEmailCheck({ on: (event, fn) => { listeners[event] = fn }, emit, announce, onVerified })
+    return { ...check, emit, announce, onVerified, hear: (event: string, data?: unknown) => listeners[event](data) }
 }
 
 describe('useEmailCheck', () => {
@@ -62,5 +63,32 @@ describe('useEmailCheck', () => {
         check.hear('email_check_sent', { email_masked: 'j•••@acme.com' })
         check.restartEmailCheck()
         expect(check.emailCheck.value).toMatchObject({ stage: 'email', maskedEmail: '', error: '' })
+    })
+
+    it('asked from the history screen: says so to the server, and tells the history, not the agent', () => {
+        const check = setUp()
+        check.startEmailCheck('jane@acme.com', 'history')
+        expect(check.emit).toHaveBeenCalledWith('email_check_start', { email: 'jane@acme.com', purpose: 'history' })
+        check.hear('email_check_sent', { email_masked: 'j•••@acme.com' })
+        check.verifyEmailCode('123456')
+        check.hear('email_check_verified', { email_masked: 'j•••@acme.com' })
+        expect(check.announce).not.toHaveBeenCalled()
+        expect(check.onVerified).toHaveBeenCalledWith('history')
+    })
+
+    it('another address keeps who asked', () => {
+        const check = setUp()
+        check.startEmailCheck('jane@acme.com', 'history')
+        check.hear('email_check_sent', { email_masked: 'j•••@acme.com' })
+        check.restartEmailCheck()
+        expect(check.emailCheck.value).toMatchObject({ stage: 'email', purpose: 'history' })
+    })
+
+    it('a check the agent asked for still tells it', () => {
+        const check = setUp()
+        check.startEmailCheck('jane@acme.com')
+        check.hear('email_check_verified', { email_masked: 'j•••@acme.com' })
+        expect(check.onVerified).toHaveBeenCalledWith('chat')
+        expect(check.announce).toHaveBeenCalledTimes(1)
     })
 })

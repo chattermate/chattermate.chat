@@ -25,6 +25,7 @@ import pytest
 
 from app.models.chat_history import ChatHistory
 from app.models.customer import Customer
+from app.models.session_to_agent import SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import visitor_history as history
 
@@ -93,7 +94,8 @@ class TestListing:
     def test_no_scope_or_the_dashboards_support_chat_sees_nothing(self, db, test_widget, test_customer, scope):
         _conversation(db, test_widget, test_customer, scope=None)
         socket = {**_socket(test_widget, test_customer), "conversation_scope": scope}
-        assert history.list_conversations(db, socket) == {"items": [], "next_cursor": None, "total": 0}
+        assert history.list_conversations(db, socket) == {
+            "items": [], "next_cursor": None, "total": 0, "other_browsers": {"email": None, "offer": False}}
 
     def test_pages_through_everything_without_duplicates(self, db, test_widget, test_customer):
         made = {str(_conversation(db, test_widget, test_customer, at=i)) for i in range(45)}
@@ -205,3 +207,101 @@ class TestResolvedBy:
         SessionToAgentRepository(db).close_session(session_id=str(sid))
         item = history.list_conversations(db, socket)["items"][0]
         assert item["resolved_by"]["name"] == test_user.full_name
+
+
+class TestOtherBrowsers:
+    """After the visitor proves an email with a code, the chats where the same
+    email was proved, from any browser; never chats where it was only typed."""
+
+    EMAIL = "jane@acme.com"
+
+    @pytest.fixture(autouse=True)
+    def _keys_old_enough(self, monkeypatch):
+        monkeypatch.setattr(history, "KEYS_INTRODUCED", START - timedelta(days=1))
+
+    def _prove(self, monkeypatch, email=EMAIL):
+        monkeypatch.setattr(history.email_check, "verified_email", lambda session_id, customer_id=None: email)
+
+    def _phone(self, db, widget, email=EMAIL, text="Chat from my phone"):
+        """A chat in another browser (another customer row, another token scope)."""
+        phone = _other_customer(db, widget)
+        session_id = _conversation(db, widget, phone, (text,), scope="phone-key", at=5)
+        if email:
+            history.link_proven_email(db, _socket(widget, phone, scope="phone-key"), email)
+        return session_id
+
+    def test_a_proven_email_shows_the_other_browsers_chats(self, db, test_widget, test_customer, monkeypatch):
+        mine = _conversation(db, test_widget, test_customer)
+        phone = self._phone(db, test_widget)
+        self._prove(monkeypatch)
+        page = history.list_conversations(db, _socket(test_widget, test_customer))
+        assert {i["id"] for i in page["items"]} == {str(mine), str(phone)}
+        assert page["other_browsers"] == {"email": "j•••@acme.com", "offer": False}
+        opened = history.get_conversation(db, _socket(test_widget, test_customer), str(phone))
+        assert opened["messages"][0]["message"] == "Chat from my phone"
+        found = history.search_conversations(db, _socket(test_widget, test_customer), "phone")["items"]
+        assert [i["id"] for i in found] == [str(phone)]
+
+    def test_without_the_proof_they_stay_hidden(self, db, test_widget, test_customer, monkeypatch):
+        self._phone(db, test_widget)
+        monkeypatch.setattr(history.email_check, "verified_email", lambda *a, **k: None)
+        monkeypatch.setattr(history.email_check, "available", lambda: True)
+        page = history.list_conversations(db, _socket(test_widget, test_customer))
+        assert page["items"] == [] and page["other_browsers"] == {"email": None, "offer": True}
+
+    @pytest.mark.parametrize("phone_email", [None, "someone.else@acme.com"])
+    def test_a_chat_never_proved_or_proved_by_another_email(self, db, test_widget, test_customer, monkeypatch, phone_email):
+        self._phone(db, test_widget, email=phone_email)
+        self._prove(monkeypatch)
+        assert history.list_conversations(db, _socket(test_widget, test_customer))["items"] == []
+
+    def test_a_typed_email_is_not_a_proof(self, db, test_widget, test_customer, monkeypatch):
+        """A customer whose email field holds the address, but who never proved it."""
+        other = Customer(id=uuid4(), organization_id=test_widget.organization_id, email=self.EMAIL)
+        db.add(other)
+        db.commit()
+        _conversation(db, test_widget, other, scope="typed-key")
+        self._prove(monkeypatch)
+        assert history.list_conversations(db, _socket(test_widget, test_customer))["items"] == []
+
+    def test_only_this_agents_chats(self, db, test_widget, test_customer, monkeypatch):
+        from app.models.agent import Agent
+        agent = Agent(id=uuid4(), name="Other", organization_id=test_widget.organization_id,
+                      agent_type="customer_support", instructions=["x"])
+        db.add(agent)
+        db.commit()
+        phone = _other_customer(db, test_widget)
+        _conversation(db, test_widget, phone, scope="phone-key", agent_id=agent.id)
+        socket = {**_socket(test_widget, phone, scope="phone-key"), "agent_id": str(agent.id)}
+        history.link_proven_email(db, socket, self.EMAIL)
+        self._prove(monkeypatch)
+        assert history.list_conversations(db, _socket(test_widget, test_customer))["items"] == []
+
+    def test_linking_takes_only_this_browsers_chats_and_keeps_an_earlier_email(self, db, test_widget, test_customer):
+        mine = _conversation(db, test_widget, test_customer)
+        earlier = _conversation(db, test_widget, test_customer, at=3)
+        someone = _conversation(db, test_widget, _other_customer(db, test_widget))
+        socket = _socket(test_widget, test_customer)
+        assert history.link_proven_email(db, socket, "first@acme.com") == 2
+        assert history.link_proven_email(db, socket, "second@acme.com") == 0
+        rows = {r.session_id: r.verified_email_key for r in db.query(SessionToAgent)}
+        assert rows[mine] == rows[earlier] == history.email_check.email_key("first@acme.com")
+        assert rows[someone] is None
+
+    def test_the_stored_key_is_not_the_email(self, db, test_widget, test_customer):
+        key = history.email_check.email_key(" Jane@Acme.com ")
+        assert key == history.email_check.email_key("jane@acme.com")
+        assert "jane" not in key and len(key) == 64
+
+    def test_the_dashboards_support_chat_never_links(self, db, test_widget, test_customer):
+        _conversation(db, test_widget, test_customer, scope=None)
+        socket = {**_socket(test_widget, test_customer), "conversation_scope": "account:42"}
+        assert history.link_proven_email(db, socket, self.EMAIL) == 0
+
+    def test_continuing_a_chat_from_the_other_browser(self, db, test_widget, test_customer, monkeypatch):
+        current = _conversation(db, test_widget, test_customer, at=20)
+        phone = self._phone(db, test_widget)
+        self._prove(monkeypatch)
+        result = history.continue_conversation(db, _socket(test_widget, test_customer, current=current), str(phone))
+        assert result["title"] == "Chat from my phone"
+

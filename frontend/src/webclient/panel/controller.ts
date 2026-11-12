@@ -25,7 +25,7 @@ import type { ConnectionStatus } from '../../composables/useWidgetSocket'
 import type { HostCapabilities } from '../../composables/useHostMessages'
 import type { PreviewFile, UploadedFile } from '../../composables/useWidgetFiles'
 import type { WorkflowForm, WorkflowMessage } from '../../composables/useWorkflowScreens'
-import type { EmailCheckState } from '../../composables/useEmailCheck'
+import type { EmailCheckPurpose, EmailCheckState } from '../../composables/useEmailCheck'
 import type { HistoryState } from '../../composables/useConversationHistory'
 import type { PageSuggestions } from '../../composables/usePageSuggestions'
 import type { VisitorFeedback } from './answer-extras'
@@ -158,7 +158,7 @@ export interface WidgetConversation {
     continueConversation: (id: string) => Promise<void>
     /** The email check: the visitor proves an email is theirs with a code (useEmailCheck). */
     emailCheck: Shown<EmailCheckState>
-    startEmailCheck: (email: string) => void
+    startEmailCheck: (email: string, purpose?: EmailCheckPurpose) => void
     verifyEmailCode: (code: string) => void
     restartEmailCheck: () => void
     hoverRating: Shown<number>

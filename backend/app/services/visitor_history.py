@@ -38,6 +38,7 @@ from app.models.chat_history import ChatHistory
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.agents.guardrail_policy import visitor_data_block
+from app.services import email_check
 from app.services.conversation_token import is_account_key, session_key_for_scope
 from app.services.file_storage import public_url
 from app.services.visitor_payload import visitor_message
@@ -62,22 +63,55 @@ def _as_uuid(value: Any) -> Optional[UUID]:
         return None
 
 
-def own_sessions(db: Session, socket_session: dict) -> Optional[Query]:
+def _proven_email(socket_session: dict) -> Optional[str]:
+    """The email this socket's conversation proved with a code (email_check.py), for
+    this customer, while the proof lasts."""
+    return email_check.verified_email(socket_session.get('session_id'), socket_session.get('customer_id'))
+
+
+def own_sessions(db: Session, socket_session: dict, other_browsers: bool = True) -> Optional[Query]:
     """The socket visitor's widget conversations with this agent, or None when the
     socket has no usable identity or scope (fail closed). The dashboard's own
-    support chat (an account-key scope) has no history here."""
+    support chat (an account-key scope) has no history here.
+
+    Once the visitor proved an email with a code, also the conversations where that
+    same email was proved, in any browser (`other_browsers`). An email a visitor
+    only typed never counts: anyone can type anyone's email."""
     scope = socket_session.get('conversation_scope')
     customer_id = _as_uuid(socket_session.get('customer_id'))
     agent_id = _as_uuid(socket_session.get('agent_id'))
     org_id = _as_uuid(socket_session.get('org_id'))
     if not scope or is_account_key(scope) or not customer_id or not agent_id or not org_id:
         return None
-    query = SessionToAgentRepository(db).widget_sessions(customer_id, scope, agent_id, org_id)
-    if session_key_for_scope(scope) is None:
-        # A keyless row from before conversation keys existed may be a chat an
-        # anonymous visitor started by typing this customer's email: not theirs.
-        query = query.filter(SessionToAgent.assigned_at >= KEYS_INTRODUCED)
-    return query
+    # A keyless row from before conversation keys existed may be a chat an
+    # anonymous visitor started by typing this customer's email: not theirs.
+    since = KEYS_INTRODUCED if session_key_for_scope(scope) is None else None
+    proven = _proven_email(socket_session) if other_browsers else None
+    return SessionToAgentRepository(db).widget_sessions(
+        customer_id, scope, agent_id, org_id, since=since,
+        verified_email_key=email_check.email_key(proven) if proven else None)
+
+
+def link_proven_email(db: Session, socket_session: dict, email: str) -> int:
+    """The visitor proved `email` here: this browser's conversations with this
+    agent carry it from now on, so their other browsers find them by the same
+    proof. A conversation already linked to an email keeps it."""
+    query = own_sessions(db, socket_session, other_browsers=False)
+    if query is None:
+        return 0
+    linked = query.filter(SessionToAgent.verified_email_key.is_(None)) \
+        .update({SessionToAgent.verified_email_key: email_check.email_key(email)}, synchronize_session=False)
+    db.commit()
+    return linked
+
+
+def other_browsers(socket_session: dict) -> dict:
+    """For the history screen: the email whose chats from other browsers it shows,
+    or whether it can offer the email check that finds them."""
+    proven = _proven_email(socket_session)
+    if proven:
+        return {'email': email_check.mask(proven), 'offer': False}
+    return {'email': None, 'offer': email_check.available()}
 
 
 def own_session(db: Session, socket_session: dict, session_id: Any) -> Optional[SessionToAgent]:
@@ -177,7 +211,7 @@ def list_conversations(db: Session, socket_session: dict, cursor: Any = None) ->
     """A page of the visitor's conversations that have messages, newest first."""
     base = own_sessions(db, socket_session)
     if base is None:
-        return {'items': [], 'next_cursor': None, 'total': 0}
+        return {'items': [], 'next_cursor': None, 'total': 0, 'other_browsers': {'email': None, 'offer': False}}
     latest = _latest_activity(db, base)
     query = base.join(latest, latest.c.session_id == SessionToAgent.session_id).add_columns(latest.c.last_at)
     total = db.query(func.count()).select_from(latest).scalar() or 0
@@ -192,7 +226,7 @@ def list_conversations(db: Session, socket_session: dict, cursor: Any = None) ->
     current_id = _as_uuid(socket_session.get('session_id'))
     items = [_item(c, at, *ends.get(c.session_id, (None, None)), current_id) for c, at in page]
     next_cursor = _encode_cursor(page[-1][1], page[-1][0].session_id) if more and page else None
-    return {'items': items, 'next_cursor': next_cursor, 'total': total}
+    return {'items': items, 'next_cursor': next_cursor, 'total': total, 'other_browsers': other_browsers(socket_session)}
 
 
 def get_conversation(db: Session, socket_session: dict, session_id: Any, before: Any = None) -> Optional[dict]:

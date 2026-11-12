@@ -74,6 +74,9 @@ class SessionToAgent(Base):
     # (app/services/conversation_titles.py); titled_at: looked at, titled or not
     title = Column(EncryptedText, nullable=True)
     titled_at = Column(DateTime(timezone=True), nullable=True)
+    # A keyed hash of an email the visitor proved with a code in this conversation
+    # (email_check.email_key): their other browsers find it by the same proof
+    verified_email_key = Column(String(64), nullable=True)
 
     # Ticket-related fields
     ticket_id = Column(String, nullable=True)

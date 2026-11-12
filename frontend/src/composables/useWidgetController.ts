@@ -105,10 +105,12 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         on: socket.on, emit: socket.emit,
         active: computed(() => connectionStatus.value === 'connected' && messages.value.length === 0),
     })
-    // The email check: once confirmed, the visitor tells the agent so it can look up their orders.
+    // The email check: once confirmed, the visitor tells the agent so it can look up their
+    // orders; asked from the history screen, the list then shows their other browsers' chats.
     const emailChecks = useEmailCheck({
         on: socket.on, emit: socket.emit,
         announce: () => composer.sendQuickAction(PANEL_COPY.emailConfirmedMessage),
+        onVerified: (purpose) => { if (purpose === 'history') conversationHistory.refreshConversations() },
     })
 
     // Report unread agent messages (received while minimized) to the embedder badge.

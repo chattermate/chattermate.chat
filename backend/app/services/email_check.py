@@ -128,6 +128,13 @@ def _verified_key(session_id: str) -> str:
     return f"email_check:verified:{session_id}"
 
 
+def email_key(email: str) -> str:
+    """A keyed hash of a proven email, stored on the conversations it was proved
+    in (session_to_agents.verified_email_key): matched, never readable."""
+    key = hmac.new(settings.SECRET_KEY.encode(), b"verified-email", hashlib.sha256).digest()
+    return hmac.new(key, normalise(email).encode(), hashlib.sha256).hexdigest()
+
+
 def _digest(session_id: str, code: str) -> str:
     key = hmac.new(settings.SECRET_KEY.encode(), b"email-check", hashlib.sha256).digest()
     return hmac.new(key, f"{session_id}:{code}".encode(), hashlib.sha256).hexdigest()
