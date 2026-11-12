@@ -306,20 +306,30 @@ class EnhancedWebsiteReader(WebsiteReader):
     )
 
     @staticmethod
-    def _link_base(page_url: str, soup: Optional[BeautifulSoup]) -> str:
+    def _link_base(
+        page_url: str,
+        soup: Optional[BeautifulSoup],
+        scope: CrawlScope,
+        requested_url: str,
+    ) -> str:
         """What a page's relative links resolve against, as a browser does it:
         its ``<base href>`` if it has one, else ``page_url``.
 
         ``page_url`` must be where the page was served from, not the canonical
         id: a directory's trailing slash matters here. On /docs/ the link
         "guide.html" is /docs/guide.html; on /docs it would be /guide.html.
+
+        A base outside the crawl's scope (the page redirected to another host,
+        or ``<base>`` names a CDN) would put every link out of scope, so the
+        links resolve against ``requested_url`` instead, as they always did.
         """
-        base = soup.find("base", href=True) if soup is not None else None
-        if isinstance(base, Tag):
-            resolved = urljoin(page_url, str(base["href"]).strip())
+        base = page_url
+        tag = soup.find("base", href=True) if soup is not None else None
+        if isinstance(tag, Tag):
+            resolved = urljoin(page_url, str(tag["href"]).strip())
             if urlparse(resolved).scheme in ("http", "https"):
-                return resolved
-        return page_url
+                base = resolved
+        return base if scope.allows(base) else requested_url
 
     def _looks_like_bot_challenge(self, text: str) -> bool:
         """True if the extracted text is a bot-check/interstitial, not real content.
@@ -758,7 +768,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                 # Parse HTML with BeautifulSoup
                 soup = BeautifulSoup(html, 'html.parser')
                 served_soup = soup
-                link_base = self._link_base(page.url, soup)
+                link_base = self._link_base(page.url, soup, scope, current_url)
 
                 logger.info(f"HTML length: {len(html)} characters")
                 
@@ -1021,7 +1031,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                     # Note: fetch_with_browser returns (content, soup, screenshot)
                     # We don't need screenshot for backend crawling, so ignore it
                     crawl4ai_content, crawl4ai_soup, _ = crawl4ai.fetch_with_browser(current_url, take_screenshot=False)
-                    link_base = self._link_base(current_url, crawl4ai_soup)
+                    link_base = self._link_base(current_url, crawl4ai_soup, scope, current_url)
                     
                     if crawl4ai_content and len(crawl4ai_content) >= self.min_content_length:
                         logger.info(f"✓ Crawl4AI successfully bypassed error and extracted {len(crawl4ai_content)} chars")

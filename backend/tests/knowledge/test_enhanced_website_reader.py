@@ -847,8 +847,35 @@ class TestRelativeLinksResolveFromWhereThePageIs(unittest.TestCase):
 
     def test_a_base_that_is_not_a_web_address_is_ignored(self):
         soup = BeautifulSoup('<base href="javascript:void(0)">', 'html.parser')
-        self.assertEqual(EnhancedWebsiteReader._link_base("https://example.com/docs/", soup),
-                         "https://example.com/docs/")
+        scope = CrawlScope.for_seed("https://example.com/docs")
+        self.assertEqual(
+            EnhancedWebsiteReader._link_base("https://example.com/docs/", soup, scope, "https://example.com/docs"),
+            "https://example.com/docs/")
+
+    def test_a_base_on_another_host_is_not_used(self):
+        """A <base> naming a CDN would put every link outside the crawl."""
+        soup = BeautifulSoup('<base href="https://cdn.example.net/assets/">', 'html.parser')
+        scope = CrawlScope.for_seed("https://example.com/docs")
+        self.assertEqual(
+            EnhancedWebsiteReader._link_base("https://example.com/docs/", soup, scope, "https://example.com/docs"),
+            "https://example.com/docs")
+
+    def test_a_site_that_redirects_to_another_host(self):
+        """help.example.com serves from example.com/help/. Its links resolve
+        on the host the crawl was given, as before, so they stay in scope and
+        are followed; each one redirects the same way."""
+        def site(request):
+            path = request.url.path
+            if request.url.host == "help.example.com":
+                target = "/help/" if path == "/" else f"/help{path}"
+                return httpx.Response(301, headers={"location": f"https://example.com{target}"})
+            pages = {"/help/": '<a href="a.html">A</a>', "/help/a.html": ""}
+            if path in pages:
+                return httpx.Response(200, html=f"<main><p>{PAGE_TEXT}</p>{pages[path]}</main>")
+            return httpx.Response(404)
+
+        result, _ = self.crawl(site, "https://help.example.com")
+        self.assertEqual(sorted(result), ["https://help.example.com", "https://help.example.com/a.html"])
 
     def test_links_in_the_stored_text_point_at_the_real_pages(self):
         documents = []
