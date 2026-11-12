@@ -127,5 +127,5 @@ const wording = computed(() =>
 }
 .cm-action-apply { background: var(--cm-accent); color: var(--cm-on-accent); border: none; }
 .cm-action-cancel { background: transparent; color: var(--cm-text); border: 1px solid var(--cm-hairline); }
-.cm-action-buttons button:focus-visible { outline: 2px solid var(--cm-accent); outline-offset: 2px; }
+.cm-action-buttons button:focus-visible { outline: 2px solid var(--cm-accent-ink, var(--cm-accent)); outline-offset: 2px; }
 </style>

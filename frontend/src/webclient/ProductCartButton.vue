@@ -67,7 +67,7 @@ const state = computed(() => cartState(props.variantId))
 }
 
 .cm-cart-button:focus-visible {
-  outline: 2px solid var(--cm-accent);
+  outline: 2px solid var(--cm-accent-ink, var(--cm-accent));
   outline-offset: 2px;
 }
 

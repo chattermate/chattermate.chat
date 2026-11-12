@@ -337,7 +337,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* Every colour is a --cm-* theme token, so light (Ask Anything) and dark (Aurora)
-   both work, and a custom accent_color flows through untouched. */
+   both work. The accent is drawn as --cm-accent-ink, the custom accent_color darkened
+   or lightened only as far as it needs to read on the panel. */
 .askai {
     display: flex;
     flex-direction: column;
@@ -358,7 +359,7 @@ onBeforeUnmount(() => {
 }
 
 .askai__bar-icon {
-    color: var(--cm-accent);
+    color: var(--cm-accent-ink, var(--cm-accent));
     flex-shrink: 0;
 }
 
@@ -399,14 +400,14 @@ onBeforeUnmount(() => {
 
 .askai__new:hover:not(:disabled) {
     color: var(--cm-text);
-    border-color: var(--cm-accent);
+    border-color: var(--cm-accent-ink, var(--cm-accent));
 }
 
 .askai__new:disabled { opacity: 0.5; cursor: default; }
 
 .askai__new--armed {
     color: var(--cm-text);
-    border-color: var(--cm-accent);
+    border-color: var(--cm-accent-ink, var(--cm-accent));
 }
 
 .askai__close {
@@ -422,7 +423,7 @@ onBeforeUnmount(() => {
 
 .askai__close:hover {
     color: var(--cm-text);
-    border-color: var(--cm-accent);
+    border-color: var(--cm-accent-ink, var(--cm-accent));
 }
 
 .askai__kbd {
@@ -491,7 +492,7 @@ onBeforeUnmount(() => {
 }
 
 .askai__suggestion:hover:not(:disabled) {
-    border-color: var(--cm-accent);
+    border-color: var(--cm-accent-ink, var(--cm-accent));
     transform: translateX(2px);
 }
 
@@ -523,7 +524,7 @@ onBeforeUnmount(() => {
     height: 1em;
     margin-left: 2px;
     vertical-align: -0.15em;
-    background: var(--cm-accent, currentColor);
+    background: var(--cm-accent-ink, var(--cm-accent));
     animation: askai-blink 1s steps(1) infinite;
 }
 
@@ -537,7 +538,7 @@ onBeforeUnmount(() => {
 .askai__answer :deep(ul),
 .askai__answer :deep(ol) { margin: 0 0 10px; padding-left: 20px; }
 .askai__answer :deep(li) { margin-bottom: 4px; }
-.askai__answer :deep(a) { color: var(--cm-accent); }
+.askai__answer :deep(a) { color: var(--cm-accent-ink, var(--cm-accent)); }
 .askai__answer :deep(code) {
     background: var(--cm-agent-bg);
     padding: 1px 5px;
@@ -592,7 +593,7 @@ onBeforeUnmount(() => {
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: var(--cm-accent);
+    background: var(--cm-accent-ink, var(--cm-accent));
     animation: askai-pulse 1.4s ease-in-out infinite;
 }
 

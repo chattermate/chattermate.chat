@@ -70,6 +70,42 @@ describe('text on the accent', () => {
     })
 })
 
+describe('the accent drawn on the panel (icons, links, focus rings)', () => {
+    const inkOf = (style: string, overrides: Record<string, string> = {}) => {
+        const vars = themeCssVars(style, overrides, { panel: true })
+        return { ink: vars['--cm-accent-ink'], tint: vars['--cm-tint'], text: vars['--cm-text'], accent: vars['--cm-accent'] }
+    }
+
+    it('darkens a lime accent on the white Ask AI bar until it reads', () => {
+        const { ink, tint, accent } = inkOf('ASK_ANYTHING', { accent_color: '#C9F24E' })
+        expect(accent).toBe('#C9F24E')
+        expect(ink).not.toBe('#C9F24E')
+        expect(contrastRatio(ink, tint)).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it('keeps an accent that already reads exactly as picked', () => {
+        expect(inkOf('SUNRISE', { accent_color: '#4338CA' }).ink).toBe('#4338CA')
+    })
+
+    it('lightens a dark accent on a dark panel', () => {
+        const { ink, tint } = inkOf('AURORA', { accent_color: '#1E1B4B' })
+        expect(ink).not.toBe('#1E1B4B')
+        expect(contrastRatio(ink, tint)).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it.each(STYLES)('reads on %s for any accent, as well as the text itself does', (style) => {
+        for (const accent of colours(11, 120)) {
+            const { ink, tint, text } = inkOf(style, { accent_color: accent })
+            expect(contrastRatio(ink, tint), accent).toBeGreaterThanOrEqual(Math.min(4.5, contrastRatio(text, tint)) - 1e-9)
+        }
+    })
+
+    it('reads on a custom panel background too', () => {
+        const { ink, tint } = inkOf('SUNRISE', { accent_color: '#FFE066', chat_background_color: '#FFF8E1' })
+        expect(contrastRatio(ink, tint)).toBeGreaterThanOrEqual(4.5)
+    })
+})
+
 describe('custom panel colours', () => {
     it('keep text and muted text at 4.5:1 on every background', () => {
         // 16 levels per channel: 4096 backgrounds, mid greys included.

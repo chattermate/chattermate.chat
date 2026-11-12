@@ -20,7 +20,7 @@ limitations under the License.
  * the classic widget renders exactly as before.
  */
 
-import { contrastRatio, hexWithAlpha, mixHex, mixToContrast, readableInkOn } from '../../utils/color'
+import { contrastRatio, hexWithAlpha, mixHex, mixToContrast, readableInkOn, readableOn } from '../../utils/color'
 import type { ThemeTokens } from '../widget-theme'
 import { motionCssVars } from './motion-tokens'
 
@@ -136,6 +136,9 @@ export function panelCssVars(
         '--cm-line': hexWithAlpha(text, LINE_ALPHA),
         '--cm-control-line': mixToContrast(tint, text, CONTROL_CONTRAST),
         '--cm-on-accent': readableInkOn(colours.accent),
+        // The accent drawn as an icon, link or caret on the panel: a light accent on a
+        // light panel (lime on white) darkens just enough to read; fills keep --cm-accent.
+        '--cm-accent-ink': readableOn(tint, colours.accent, text, TEXT_CONTRAST),
         ...motionCssVars(tokens.motion),
     }
     // The classic vars take any background string and any custom text; the
