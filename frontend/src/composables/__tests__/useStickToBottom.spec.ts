@@ -78,6 +78,13 @@ describe('useStickToBottom', () => {
         wrapper.unmount()
     })
 
+    it('stops listening once the chat is gone', () => {
+        const { wrapper, el } = mountLog()
+        const removed = vi.spyOn(el, 'removeEventListener')
+        wrapper.unmount()
+        expect(removed).toHaveBeenCalledWith('scroll', expect.any(Function))
+    })
+
     it('ignores scrolling while the log is hidden', () => {
         const { wrapper, el, size, scrollToBottom } = mountLog()
         size(2000, 0, 0)

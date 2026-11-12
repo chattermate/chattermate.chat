@@ -127,6 +127,8 @@ const retiredChoices = ref<unknown>(null)
 const promptKey = (prompt: HostPrompt | null) => JSON.stringify([prompt?.message, prompt?.chips.map(c => c.label)])
 /** Shows a page message. A sync re-sends the same step: only a different one counts. */
 const showHostPrompt = (prompt: HostPrompt | null) => {
+    // An identical re-send keeps the shown one, so nothing watching it scrolls a reader back down
+    if (JSON.stringify(prompt) === JSON.stringify(hostPrompt.value)) return
     if (promptKey(prompt) !== promptKey(hostPrompt.value)) {
         tapped.value = false
         retiredChoices.value = messages.value[messages.value.length - 1] ?? null
@@ -864,9 +866,11 @@ watch(() => messages.value, (newMessages) => {
 
 // The confirm card, a page or journey message, the reply buttons and the typing
 // bubble can sit after the messages, so a new one is below the fold unless the
-// list follows it. Reply buttons come once a reply has typed out, after its last scroll.
-watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading, replyChips], ([confirm, prompt, receiptCount, typing, chips]) => {
-    if (confirm || prompt || receiptCount || typing || chips.length) nextTick(() => scrollToBottom())
+// list follows it. Reply buttons come once a reply has typed out, after its last
+// scroll; they're watched by label, as a step re-sync rebuilds the same ones.
+const replyChipLabels = computed(() => replyChips.value.map(chip => chip.label).join('\n'))
+watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading, replyChipLabels], ([confirm, prompt, receiptCount, typing, chipLabels]) => {
+    if (confirm || prompt || receiptCount || typing || chipLabels) nextTick(() => scrollToBottom())
 })
 
 // Watch for connection status changes to set up event listeners when needed

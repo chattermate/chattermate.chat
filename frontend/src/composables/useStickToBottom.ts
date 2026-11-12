@@ -28,24 +28,26 @@ const NEAR_BOTTOM_PX = 40
 export function useStickToBottom(container: Ref<HTMLElement | null>, scrollToBottom: () => void) {
     let atBottom = true
     let observer: ResizeObserver | null = null
+    // Kept from mount: the template ref is already cleared when onUnmounted runs
+    let log: HTMLElement | null = null
 
     const onScroll = () => {
-        const el = container.value
         // A hidden log has no size to judge by
-        if (!el || el.clientHeight === 0) return
-        atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
+        if (!log || log.clientHeight === 0) return
+        atBottom = log.scrollHeight - log.scrollTop - log.clientHeight <= NEAR_BOTTOM_PX
     }
 
     onMounted(() => {
-        const el = container.value
-        if (!el || typeof ResizeObserver === 'undefined') return
-        el.addEventListener('scroll', onScroll, { passive: true })
+        log = container.value
+        if (!log || typeof ResizeObserver === 'undefined') return
+        log.addEventListener('scroll', onScroll, { passive: true })
         observer = new ResizeObserver(() => { if (atBottom) scrollToBottom() })
-        observer.observe(el)
+        observer.observe(log)
     })
 
     onUnmounted(() => {
         observer?.disconnect()
-        container.value?.removeEventListener('scroll', onScroll)
+        log?.removeEventListener('scroll', onScroll)
+        log = null
     })
 }

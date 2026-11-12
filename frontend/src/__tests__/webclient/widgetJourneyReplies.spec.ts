@@ -233,6 +233,24 @@ describe('journey replies in the widget', () => {
         wrapper.unmount()
     })
 
+    it('leaves a reader where they are when the page re-sends the same step', async () => {
+        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
+        handlers.get('journey_state')!(teachStep)
+        await typedOut()
+        const log = wrapper.find('.chat-messages').element as HTMLElement
+        let scrolledTo = 120
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, get: () => 900 })
+        Object.defineProperty(log, 'scrollTop', { configurable: true, get: () => scrolledTo, set: (top: number) => { scrolledTo = top } })
+
+        // A sync brings the same step (and its buttons) as a new object
+        handlers.get('journey_state')!(JSON.parse(JSON.stringify(teachStep)))
+        await nextTick()
+        await nextTick()
+        expect(buttons(wrapper)).toEqual(['Paste some text'])
+        expect(scrolledTo).toBe(120)
+        wrapper.unmount()
+    })
+
     it('brings the buttons back when a tap started nothing', async () => {
         const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
         handlers.get('journey_state')!(teachStep)
