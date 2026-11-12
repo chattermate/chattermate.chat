@@ -17,13 +17,14 @@ limitations under the License.
 /**
  * What the redesigned panel reads from an AI reply besides its text, as the server
  * sends it on a live reply (chat_response) and stores it in a restored message's
- * attributes: follow-up choices, the handover card, the receipt of the agent's
- * steps and the visitor's thumb. Every reader validates: history rows are old.
+ * attributes: follow-up choices, the handover card, status cards and the
+ * visitor's thumb. Every reader validates: history rows are old.
  */
 
 import type { WidgetMessage } from '../../types/widget'
+import { visitorFeedbackIn, type VisitorFeedback } from '../../utils/visitorFeedback'
 
-export type VisitorFeedback = 'up' | 'down'
+export type { VisitorFeedback }
 export type HandoverState = 'connecting' | 'offline'
 
 /** At most this many follow-up chips, as the server's limit. */
@@ -57,8 +58,7 @@ export function handoverOf(message: WidgetMessage): HandoverState | null {
 
 /** The visitor's thumb on this reply, or null. */
 export function feedbackOf(message: WidgetMessage): VisitorFeedback | null {
-    const value = attributesOf(message).visitor_feedback
-    return value === 'up' || value === 'down' ? value : null
+    return visitorFeedbackIn(message.attributes)
 }
 
 /** The extras of a live reply (chat_response), to keep in its attributes like history does. */
