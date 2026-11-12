@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import asyncio
+import sqlite3
 from typing import Optional, Tuple
 from bs4 import BeautifulSoup
 from app.core.logger import get_logger
@@ -34,6 +35,14 @@ except ImportError:
 
 # Note: We use threading for async compatibility instead of nest_asyncio
 # This avoids conflicts with uvloop and other event loop implementations
+
+# Crawl4AI keeps its cache in one SQLite file shared by every crawler in the process
+SQLITE_LOCK_ATTEMPTS = 3
+SQLITE_LOCK_RETRY_SECONDS = 1
+
+
+def _is_sqlite_locked(error: BaseException) -> bool:
+    return isinstance(error, sqlite3.OperationalError) and "locked" in str(error).lower()
 
 
 class Crawl4AIFallback:
@@ -58,6 +67,26 @@ class Crawl4AIFallback:
         """Check if Crawl4AI is available."""
         return self._is_available
     
+    async def _arun_with_lock_retry(self, url: str, browser_config, crawler_config):
+        """
+        Run one Crawl4AI crawl, retrying when its shared SQLite file is locked.
+
+        The site crawler fetches pages on parallel workers, and two pages that
+        fall back at the same moment each start a crawler against that file.
+        The second one is refused with "database is locked", and the page would
+        keep its thin plain-HTTP text. The lock is gone within moments.
+        """
+        for attempt in range(1, SQLITE_LOCK_ATTEMPTS + 1):
+            try:
+                async with AsyncWebCrawler(config=browser_config) as crawler:
+                    return await crawler.arun(url=url, config=crawler_config)
+            except Exception as e:
+                if attempt == SQLITE_LOCK_ATTEMPTS or not _is_sqlite_locked(e):
+                    raise
+                delay = SQLITE_LOCK_RETRY_SECONDS * attempt
+                logger.warning(f"Crawl4AI database is locked (attempt {attempt}/{SQLITE_LOCK_ATTEMPTS}); retrying {url} in {delay}s")
+                await asyncio.sleep(delay)
+
     async def _async_fetch(self, url: str, take_screenshot: bool = False) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Async method to fetch content using Crawl4AI.
@@ -175,27 +204,27 @@ class Crawl4AIFallback:
             
             logger.info(f"🌐 Starting Crawl4AI for content extraction: {url}")
             
-            async with AsyncWebCrawler(config=browser_config) as crawler:
-                result = await crawler.arun(url=url, config=crawler_config)
-                
-                if result.success:
-                    html_length = len(result.html) if result.html else 0
-                    markdown_length = len(result.markdown.raw_markdown) if result.markdown and result.markdown.raw_markdown else 0
-                    
-                    logger.info(f"✓ Crawl4AI content extraction successful - HTML: {html_length} chars, Markdown: {markdown_length} chars")
-                    
-                    # Use Crawl4AI's HTML if we didn't get it from Playwright
-                    if not html_content:
-                        html_content = result.html
-                    
-                    markdown_content = result.markdown.raw_markdown if result.markdown else None
-                    
-                    return html_content, markdown_content, screenshot_base64
-                else:
-                    logger.error(f"❌ Crawl4AI failed: {result.error_message}")
-                    # Return whatever we got from Playwright
-                    return html_content, None, screenshot_base64
-                    
+            result = await self._arun_with_lock_retry(url, browser_config, crawler_config)
+
+            if result.success:
+                html_length = len(result.html) if result.html else 0
+                markdown_length = len(result.markdown.raw_markdown) if result.markdown and result.markdown.raw_markdown else 0
+
+                logger.info(f"✓ Crawl4AI content extraction successful - HTML: {html_length} chars, Markdown: {markdown_length} chars")
+
+                # Use Crawl4AI's HTML if we didn't get it from Playwright
+                if not html_content:
+                    html_content = result.html
+
+                markdown_content = result.markdown.raw_markdown if result.markdown else None
+
+                return html_content, markdown_content, screenshot_base64
+            else:
+                logger.error(f"❌ Crawl4AI failed: {result.error_message}")
+                # Return whatever we got from Playwright
+                return html_content, None, screenshot_base64
+
+
         except Exception as e:
             logger.error(f"❌ Crawl4AI async fetch error: {str(e)}", exc_info=True)
             return None, None, None

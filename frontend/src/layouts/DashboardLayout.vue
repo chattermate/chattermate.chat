@@ -26,6 +26,7 @@ import userAvatar from '@/assets/user.svg'
 import notificationIcon from '@/assets/notification.svg'
 import NotificationList from '@/components/notifications/NotificationList.vue'
 import EnablePushPrompt from '@/components/notifications/EnablePushPrompt.vue'
+import FailedSourceNotice from '@/components/knowledge/FailedSourceNotice.vue'
 import { userService } from '@/services/user'
 import { permissionChecks } from '@/utils/permissions'
 import type { User } from '@/types/user'
@@ -373,6 +374,8 @@ const openNotificationsFromSheet = () => {
             <main class="content">
                 <!-- The agents page shows its own copy, beside the wizard and list -->
                 <SetupProgressBar v-if="route.name !== 'ai-agents'" />
+                <!-- The knowledge page lists the failed source itself -->
+                <FailedSourceNotice v-if="route.name !== 'knowledge'" />
                 <slot></slot>
             </main>
 
