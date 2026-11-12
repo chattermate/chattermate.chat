@@ -89,18 +89,21 @@ def own_sessions(db: Session, socket_session: dict, other_browsers: bool = True)
     proven = _proven_email(socket_session) if other_browsers else None
     return SessionToAgentRepository(db).widget_sessions(
         customer_id, scope, agent_id, org_id, since=since,
-        verified_email_key=email_check.email_key(proven) if proven else None)
+        verified_email_key=email_check.email_key(proven, org_id) if proven else None)
 
 
 def link_proven_email(db: Session, socket_session: dict, email: str) -> int:
-    """The visitor proved `email` here: this browser's conversations with this
-    agent carry it from now on, so their other browsers find them by the same
-    proof. A conversation already linked to an email keeps it."""
+    """The visitor proved `email` in this conversation: it carries the email from
+    now on, so their other browsers find it by the same proof. Only this one: on
+    a shared computer the browser's earlier chats may be someone else's. A
+    conversation already linked to an email keeps it."""
     query = own_sessions(db, socket_session, other_browsers=False)
-    if query is None:
+    current = _as_uuid(socket_session.get('session_id'))
+    if query is None or current is None:
         return 0
-    linked = query.filter(SessionToAgent.verified_email_key.is_(None)) \
-        .update({SessionToAgent.verified_email_key: email_check.email_key(email)}, synchronize_session=False)
+    linked = query.filter(SessionToAgent.session_id == current, SessionToAgent.verified_email_key.is_(None)) \
+        .update({SessionToAgent.verified_email_key: email_check.email_key(email, socket_session.get('org_id'))},
+                synchronize_session=False)
     db.commit()
     return linked
 

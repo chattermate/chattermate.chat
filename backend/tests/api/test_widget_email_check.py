@@ -71,15 +71,30 @@ async def test_verify_answers_with_the_result():
 @pytest.mark.parametrize("purpose,offered", [("history", True), (None, False), ("orders", False)])
 async def test_only_the_history_screen_offers_the_check_itself(purpose, offered):
     data = {"email": "jane@acme.com", **({"purpose": purpose} if purpose else {})}
-    with patch.object(handlers, "authenticated_session", AsyncMock(return_value=SESSION)), \
+    panel = {**SESSION, "panel": True}
+    with patch.object(handlers, "authenticated_session", AsyncMock(return_value=panel)), \
          patch.object(handlers, "sio") as sio, \
          patch.object(handlers.email_check, "offer") as offer, \
-         patch.object(handlers.email_check, "start", return_value=(CheckResult(False, "not_offered"), None)):
+         patch.object(handlers.email_check, "start", return_value=(CheckResult(False, "not_offered"), None)) as start:
         sio.emit = AsyncMock()
         await handlers.handle_email_check_start("sid", data)
     assert offer.called is offered
     if offered:
         offer.assert_called_once_with("s-1")
+        assert start.call_args.args[3] == "history"
+
+
+@pytest.mark.asyncio
+async def test_a_socket_without_the_panel_cannot_ask_for_a_history_check():
+    with patch.object(handlers, "authenticated_session", AsyncMock(return_value=SESSION)), \
+         patch.object(handlers, "sio") as sio, \
+         patch.object(handlers.email_check, "offer") as offer, \
+         patch.object(handlers.email_check, "start") as start:
+        sio.emit = AsyncMock()
+        await handlers.handle_email_check_start("sid", {"email": "jane@acme.com", "purpose": "history"})
+    offer.assert_not_called()
+    start.assert_not_called()
+    assert sio.emit.await_args.args[:2][0] == "email_check_error"
 
 
 @pytest.mark.asyncio

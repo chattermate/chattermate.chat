@@ -153,6 +153,16 @@ class TestEmailCheck:
         _offered(fresh)
         assert email_check.start(fresh, ORG, "jane@acme.com")[0].reason == "locked"
 
+    def test_failures_in_another_organization_do_not_lock_the_email_here(self, redis):
+        for _ in range(2):
+            sid = str(uuid4())
+            code = _sent(sid)
+            for _ in range(5):
+                email_check.verify(sid, CUSTOMER, f"{code[:5]}{(int(code[5]) + 1) % 10}")
+        fresh = str(uuid4())
+        _offered(fresh)
+        assert email_check.start(fresh, "another-org", "jane@acme.com")[0].ok
+
     @pytest.mark.parametrize("bad", ["12345", "1234567", "abcdef", "", None])
     def test_a_malformed_code_counts_as_wrong(self, redis, session_id, bad):
         _sent(session_id)
@@ -221,3 +231,18 @@ class TestEmailCheck:
 
 def test_mask():
     assert email_check.mask("jane@acme.com") == "j•••@acme.com"
+
+
+class TestHistoryBudget:
+    def test_history_checks_spend_their_own_budget_not_the_order_checks(self, redis, monkeypatch):
+        monkeypatch.setattr(email_check, "SENDS_PER_HOUR_PER_ORG_HISTORY", 2)
+        reasons = []
+        for i in range(3):
+            sid = str(uuid4())
+            _offered(sid)
+            reasons.append(email_check.start(sid, ORG, f"h{i}@acme.com", email_check.HISTORY_PURPOSE)[0].reason)
+        assert reasons == ["sent", "sent", "too_many"]
+        sid = str(uuid4())
+        _offered(sid)
+        assert email_check.start(sid, ORG, "order@acme.com")[0].ok
+

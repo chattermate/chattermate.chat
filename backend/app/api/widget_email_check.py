@@ -32,13 +32,12 @@ from app.database import SessionLocal
 from app.services import email_check, visitor_history
 from app.services.socket_rate_limit import socket_rate_limit
 from app.services.ticket_email import resolve_org_smtp, send_smtp
-from app.services.widget_reply import WIDGET_NAMESPACE
+from app.services.widget_reply import PANEL_SESSION_KEY, WIDGET_NAMESPACE
 
 logger = get_logger(__name__)
 
 SUBJECT = 'Your verification code'
-# email_check_start {purpose}: asked from the history screen, not by the agent
-HISTORY_PURPOSE = 'history'
+
 
 
 def _message(cfg: dict, to: str, code: str) -> EmailMessage:
@@ -90,11 +89,16 @@ async def handle_email_check_start(sid, data):
     if session is None:
         return
     email = email_check.normalise(_text(data, 'email'))
-    # The history screen asks for the check itself, to find the visitor's chats
-    # from their other browsers; otherwise only the agent offers it (confirm_email).
-    if _text(data, 'purpose') == HISTORY_PURPOSE:
+    # The widget panel's history screen asks for the check itself, to find the
+    # visitor's chats from their other browsers (its own, smaller send budget);
+    # otherwise only the agent offers it (confirm_email).
+    purpose = email_check.HISTORY_PURPOSE if _text(data, 'purpose') == email_check.HISTORY_PURPOSE else 'chat'
+    if purpose == email_check.HISTORY_PURPOSE:
+        if not session.get(PANEL_SESSION_KEY):
+            await _error(sid, email_check.CheckResult(False, 'not_offered'))
+            return
         await asyncio.to_thread(email_check.offer, str(session['session_id']))
-    result, code = await asyncio.to_thread(email_check.start, session['session_id'], session['org_id'], email)
+    result, code = await asyncio.to_thread(email_check.start, session['session_id'], session['org_id'], email, purpose)
     if not result.ok or code is None:
         await _error(sid, result)
         return
