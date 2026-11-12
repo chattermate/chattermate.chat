@@ -218,6 +218,21 @@ describe('journey replies in the widget', () => {
         wrapper.unmount()
     })
 
+    it('scrolls the buttons into view once the reply that brings them has typed out', async () => {
+        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
+        const log = wrapper.find('.chat-messages').element as HTMLElement
+        let scrolledTo = 0
+        // The buttons land after the reply's last character, making the list taller
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, get: () => (log.querySelector('.cm-reply') ? 460 : 400) })
+        Object.defineProperty(log, 'scrollTop', { configurable: true, get: () => scrolledTo, set: (top: number) => { scrolledTo = top } })
+        socket.messages.value.push({ message: 'Which colour?', message_type: 'bot', created_at: '', session_id: '', stream: true, attributes: { quick_replies: ['Blue', 'Green'] } })
+        await typedOut()
+        await nextTick()
+        expect(buttons(wrapper)).toEqual(['Blue', 'Green'])
+        expect(scrolledTo).toBe(460)
+        wrapper.unmount()
+    })
+
     it('brings the buttons back when a tap started nothing', async () => {
         const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
         handlers.get('journey_state')!(teachStep)

@@ -31,6 +31,7 @@ import SuggestedReplies from './SuggestedReplies.vue'
 import ProductCartButton from './ProductCartButton.vue'
 import { canAddToCart, handleCartMessage } from './shopify-cart'
 import { useActionReceipts } from '../composables/useActionReceipts'
+import { useStickToBottom } from '../composables/useStickToBottom'
 import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
@@ -851,6 +852,7 @@ const scrollToBottom = () => {
         messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
 }
+useStickToBottom(messagesContainer, scrollToBottom)
 
 // Add watch effect for messages
 watch(() => messages.value, (newMessages) => {
@@ -860,10 +862,11 @@ watch(() => messages.value, (newMessages) => {
     })
 }, { deep: true })
 
-// The confirm card, a page or journey message and the typing bubble can sit after
-// the messages, so a new one is below the fold unless the list follows it.
-watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading], ([confirm, prompt, receiptCount, typing]) => {
-    if (confirm || prompt || receiptCount || typing) nextTick(() => scrollToBottom())
+// The confirm card, a page or journey message, the reply buttons and the typing
+// bubble can sit after the messages, so a new one is below the fold unless the
+// list follows it. Reply buttons come once a reply has typed out, after its last scroll.
+watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading, replyChips], ([confirm, prompt, receiptCount, typing, chips]) => {
+    if (confirm || prompt || receiptCount || typing || chips.length) nextTick(() => scrollToBottom())
 })
 
 // Watch for connection status changes to set up event listeners when needed
