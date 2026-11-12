@@ -28,7 +28,7 @@
   "tracking": "Sendungsverfolgung",
   "track": "Beim Versanddienst verfolgen",
   "get_help": "Hilfe zu dieser Bestellung",
-  "help_message": "Ich brauche Hilfe mit Bestellung {name}",
+  "help_message": "Ich brauche Hilfe bei meiner Bestellung {name}",
   "total": "Gesamt",
   "order_title": "Bestellung {name}",
   "recent_title": "Deine letzten Bestellungen",

@@ -27,8 +27,8 @@
   "ship_to": "收货地址",
   "tracking": "物流单号",
   "track": "在承运商网站查询",
-  "get_help": "获取此订单的帮助",
-  "help_message": "我需要订单 {name} 的帮助",
+  "get_help": "咨询此订单",
+  "help_message": "我想咨询订单 {name}",
   "total": "合计",
   "order_title": "订单 {name}",
   "recent_title": "您最近的订单",
@@ -44,6 +44,6 @@
   "ticket_step_in_progress": "处理中",
   "ticket_step_resolved": "已解决",
   "ticket": "工单",
-  "support_ticket": "支持工单",
+  "support_ticket": "客服工单",
   "date": "{month_number}月{day}日"
 }

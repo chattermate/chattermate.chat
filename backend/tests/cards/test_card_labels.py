@@ -77,6 +77,9 @@ def test_every_translation_fills_the_same_blanks(code):
     (['zh-TW'], 'zh-Hant'),
     (['zh-Hant-HK'], 'zh-Hant'),
     (['zh_HK'], 'zh-Hant'),
+    (['zh-Hans-HK'], 'zh'),
+    (['zh-Hans-TW'], 'zh'),
+    (['zh-Hant'], 'zh-Hant'),
     (['no'], 'nb'),
     (['nn-NO'], 'nb'),
     ('es', 'es'),
@@ -140,7 +143,7 @@ def test_an_order_card_in_german():
     track, get_help = card.actions
     assert track.label == 'Beim Versanddienst verfolgen'
     # Sent as the visitor's own message, so in their language too
-    assert get_help.value == 'Ich brauche Hilfe mit Bestellung #1042'
+    assert get_help.value == 'Ich brauche Hilfe bei meiner Bestellung #1042'
     assert card.fallback_text == 'Bestellung #1042: Unterwegs'
 
 
@@ -183,6 +186,10 @@ def test_a_ticket_card_in_french():
     assert card.status.label == 'En cours d’examen' and card.status.key == 'investigating'
     assert [s.label for s in card.steps] == ['Reçu', 'En cours', 'Résolu']
     assert card.fallback_text == 'Ticket TKT-7: En cours d’examen'
+
+
+def test_a_french_order_agrees_with_commande():
+    assert order_card(_order(), labels_for('fr')).steps[2].label == 'Expédiée'
 
 
 def test_cards_default_to_english():

@@ -123,11 +123,13 @@ const act = (action: CardAction) => {
 .cm-status-card__pill { flex: none; white-space: nowrap; }
 .cm-status-card__track { position: relative; height: 4px; overflow: hidden; }
 .cm-status-card__fill { position: absolute; inset: 0; transform-origin: 0 50%; }
+/* A right-to-left card (dir="auto" on Arabic words) fills from its first step, on the right */
+.cm-status-card__fill:dir(rtl) { transform-origin: 100% 50%; }
 .cm-status-card__steps { list-style: none; margin: 6px 0 0; padding: 0; display: flex; justify-content: space-between; gap: 4px; }
 .cm-status-card__rows { margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .cm-status-card__row { display: flex; justify-content: space-between; gap: 12px; }
 .cm-status-card__row dt, .cm-status-card__row dd { margin: 0; }
-.cm-status-card__row dd { text-align: right; overflow-wrap: anywhere; }
+.cm-status-card__row dd { text-align: end; overflow-wrap: anywhere; }
 .cm-status-card__items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .cm-status-card__item { display: flex; align-items: center; gap: 10px; }
 .cm-status-card__thumb { flex: none; width: 36px; height: 36px; overflow: hidden; }

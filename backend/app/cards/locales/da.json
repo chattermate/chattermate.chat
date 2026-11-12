@@ -28,7 +28,7 @@
   "tracking": "Sporing",
   "track": "Spor hos fragtfirmaet",
   "get_help": "Få hjælp til denne ordre",
-  "help_message": "Jeg har brug for hjælp med ordre {name}",
+  "help_message": "Jeg har brug for hjælp til ordre {name}",
   "total": "I alt",
   "order_title": "Ordre {name}",
   "recent_title": "Dine seneste ordrer",

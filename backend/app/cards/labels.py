@@ -33,7 +33,7 @@ MAX_TAG_LENGTH = 35
 # Primary tags that read as another table
 _ALIASES = {'no': 'nb', 'nn': 'nb'}
 # Traditional Chinese, by script or region
-_TRADITIONAL = ('hant', 'tw', 'hk', 'mo')
+_TRADITIONAL = ('tw', 'hk', 'mo')
 
 
 @lru_cache(maxsize=None)
@@ -53,7 +53,10 @@ def _table_for(tag: Any) -> Optional[str]:
     parts = tag.strip().replace('_', '-').lower().split('-')
     primary = _ALIASES.get(parts[0], parts[0])
     if primary == 'zh':
-        primary = 'zh-Hant' if any(part in _TRADITIONAL for part in parts[1:]) else 'zh'
+        # The script decides when given (zh-Hans-HK is Simplified); else the region
+        scripts = {'hans', 'hant'} & set(parts[1:])
+        traditional = 'hant' in scripts if scripts else any(part in _TRADITIONAL for part in parts[1:])
+        primary = 'zh-Hant' if traditional else 'zh'
     return primary if primary in supported() else None
 
 
