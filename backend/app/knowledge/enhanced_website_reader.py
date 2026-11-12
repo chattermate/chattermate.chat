@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import random
 import re
 import socket
 import threading
@@ -22,13 +21,12 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Dict, List, Set, Tuple, Optional, Callable
+from typing import Dict, List, Tuple, Optional, Callable
 from urllib.parse import urljoin, urlparse, urldefrag, urlunparse
 from app.knowledge.crawler_identity import CRAWLER_USER_AGENT
 from app.knowledge.url_safety import BlockedHostError
 from app.knowledge.deadline import Deadline
 from app.knowledge.page_fetch import NotAPage, fetch_page
-import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bs4 import BeautifulSoup, Tag
