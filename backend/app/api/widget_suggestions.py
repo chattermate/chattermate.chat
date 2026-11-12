@@ -27,6 +27,7 @@ from app.core.socketio import sio
 from app.database import SessionLocal
 from app.repositories.agent import AgentRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
+from app.services.feature_gate import PAGE_SUGGESTIONS_FEATURE, plan_feature_on
 from app.services.page_suggestions import suggestions_for
 from app.services.public_rate_limit import allow_request
 from app.services.widget_reply import WIDGET_NAMESPACE
@@ -43,6 +44,8 @@ def _suggestions(agent_id: str, org_id: str, url, title) -> dict:
         agent = AgentRepository(db).get_agent(agent_id)
         if agent is None or str(agent.organization_id) != str(org_id):
             return NONE
+        if not plan_feature_on(db, agent.organization_id, PAGE_SUGGESTIONS_FEATURE):
+            return suggestions_for(db, agent.organization_id, agent, url, title, for_page=False)
         shopify = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
         return suggestions_for(db, agent.organization_id, agent, url, title,
                                store=bool(shopify and shopify.enabled))

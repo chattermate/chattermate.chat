@@ -56,6 +56,44 @@ async def test_too_many_asks_get_no_answer():
     sio.emit.assert_not_awaited()
 
 
+def _plan_check(plan_on: bool):
+    """_suggestions for a Shopify agent with one page rule, under a plan that has page
+    suggestions (plan_on) or not."""
+    agent = SimpleNamespace(organization_id="o-1", customization=SimpleNamespace(
+        quick_actions=[{"label": "Does it run small?", "match": "/products/*"}, "Track my order"]))
+    with patch.object(handlers, "SessionLocal", MagicMock()), \
+         patch.object(handlers, "AgentRepository") as repo, \
+         patch.object(handlers, "AgentShopifyConfigRepository") as shopify, \
+         patch.object(handlers, "plan_feature_on", return_value=plan_on) as gate:
+        repo.return_value.get_agent.return_value = agent
+        shopify.return_value.get_agent_shopify_config.return_value = SimpleNamespace(enabled=True)
+        result = handlers._suggestions("a-1", "o-1", "https://shop.example/products/tee", "Tee")
+    assert gate.call_args.args[1:] == ("o-1", handlers.PAGE_SUGGESTIONS_FEATURE)
+    return [i["label"] for i in result["items"]]
+
+
+def test_a_paid_plan_gets_rows_for_the_page():
+    assert _plan_check(True)[0] == "Does it run small?"
+
+
+def test_free_gets_every_page_rows_only():
+    assert _plan_check(False) == ["Track my order"]
+
+
+def test_a_self_hosted_install_gets_rows_for_the_page():
+    """No enterprise module: the real gate leaves the feature on."""
+    agent = SimpleNamespace(organization_id="o-1", customization=SimpleNamespace(
+        quick_actions=[{"label": "Does it run small?", "match": "/products/*"}]))
+    with patch.object(handlers, "SessionLocal", MagicMock()), \
+         patch.object(handlers, "AgentRepository") as repo, \
+         patch.object(handlers, "AgentShopifyConfigRepository") as shopify, \
+         patch("app.services.feature_gate.feature_on", None):
+        repo.return_value.get_agent.return_value = agent
+        shopify.return_value.get_agent_shopify_config.return_value = None
+        result = handlers._suggestions("a-1", "o-1", "https://shop.example/products/tee", "Tee")
+    assert [i["label"] for i in result["items"]] == ["Does it run small?"]
+
+
 def test_another_orgs_agent_suggests_nothing():
     agent = SimpleNamespace(organization_id="someone-else", customization=None)
     with patch.object(handlers, "SessionLocal", MagicMock()), \

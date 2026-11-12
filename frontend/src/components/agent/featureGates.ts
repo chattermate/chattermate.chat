@@ -51,6 +51,13 @@ export const FEATURE_GATES = {
     description: 'Guide users through your app step by step, and see where they drop off.',
     bullets: ['Step-by-step guides', 'Do-it-for-me actions', 'Drop-off funnel'],
   },
+  'page-suggestions': {
+    feature: 'page_suggestions',
+    name: 'Page suggestions',
+    title: 'Unlock Page Suggestions',
+    description: 'Show quick actions only on the pages they fit, such as your product or cart pages.',
+    bullets: ['Quick actions for a page path', 'Product, cart and order pages', 'Questions from that page’s help articles'],
+  },
   ticketing: {
     feature: 'ai_ticketing',
     name: 'AI Ticketing',

@@ -31,6 +31,7 @@ import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
 import { followUpsOn, withFollowUpsSetting } from '@/webclient/widget-answers'
 import { actionLabel, actionMatch, toQuickAction } from '@/webclient/quick-actions'
+import { useFeatureLock } from '@/composables/useFeatureLock'
 
 const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
@@ -88,6 +89,11 @@ const isChatInitiationsLocked = computed(() => {
     
     return false
 })
+
+// Quick actions for some pages only (a page path) are a paid feature; saved ones stay
+// saved on Free, the widget just shows every-page actions there.
+const { isLocked } = useFeatureLock()
+const isPageRulesLocked = computed(() => isLocked('page-suggestions'))
 
 // Upgrade handler
 const handleUpgrade = () => {
@@ -931,6 +937,7 @@ const loadDefaultQuickActions = () => {
                             @keyup.enter="addQuickAction"
                         >
                         <input
+                            v-if="!isPageRulesLocked"
                             type="text"
                             v-model="newQuickActionMatch"
                             placeholder="Every page, or e.g. /products/*"
@@ -946,6 +953,11 @@ const loadDefaultQuickActions = () => {
                             :disabled="!newQuickAction.trim()"
                             title="Add quick action"
                         >+</button>
+                    </div>
+                    <div v-if="isPageRulesLocked" class="page-rules-locked" data-testid="page-rules-locked">
+                        <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
+                        <span>Paid plans can show a quick action only on some pages, like your product pages.</span>
+                        <button type="button" class="page-rules-locked__upgrade" @click="handleUpgrade">Upgrade</button>
                     </div>
 
                     <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list">
@@ -964,6 +976,7 @@ const loadDefaultQuickActions = () => {
                                     @keyup.esc="cancelEditQuickAction"
                                 >
                                 <input
+                                    v-if="!isPageRulesLocked"
                                     type="text"
                                     v-model="editingQuickActionMatch"
                                     class="init-edit-input init-input--match"
@@ -973,6 +986,13 @@ const loadDefaultQuickActions = () => {
                                     @keyup.enter="saveEditQuickAction"
                                     @keyup.esc="cancelEditQuickAction"
                                 >
+                                <button
+                                    v-else-if="editingQuickActionMatch"
+                                    type="button"
+                                    class="page-rules-locked__upgrade"
+                                    data-testid="quick-action-every-page"
+                                    @click="editingQuickActionMatch = ''"
+                                >Show on every page</button>
                                 <button type="button" class="init-icon-btn save" @click="saveEditQuickAction" title="Save">
                                     <font-awesome-icon icon="fa-solid fa-check" />
                                 </button>
@@ -983,7 +1003,12 @@ const loadDefaultQuickActions = () => {
                             <template v-else>
                                 <span class="init-handle">☰</span>
                                 <span class="init-text">{{ actionLabel(action) }}</span>
-                                <span v-if="actionMatch(action)" class="init-match" :title="`Shown on ${actionMatch(action)}`">{{ actionMatch(action) }}</span>
+                                <span
+                                    v-if="actionMatch(action)"
+                                    class="init-match"
+                                    :class="{ 'init-match--off': isPageRulesLocked }"
+                                    :title="isPageRulesLocked ? 'Not shown on your plan' : `Shown on ${actionMatch(action)}`"
+                                ><font-awesome-icon v-if="isPageRulesLocked" icon="fa-solid fa-lock" aria-hidden="true" /> {{ actionMatch(action) }}<span v-if="isPageRulesLocked" class="sr-only"> (not shown on your plan)</span></span>
                                 <button type="button" class="init-icon-btn edit" @click="startEditQuickAction(index)" title="Edit">
                                     <font-awesome-icon icon="fa-solid fa-pen" />
                                 </button>
@@ -2178,5 +2203,33 @@ const loadDefaultQuickActions = () => {
     color: var(--text-muted);
     font-size: 11px;
     font-family: var(--font-mono, monospace);
+}
+.init-match--off {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.page-rules-locked {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+}
+.page-rules-locked__icon {
+    flex: none;
+    font-size: 11px;
+}
+.page-rules-locked__upgrade {
+    flex: none;
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent-ink);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
 }
 </style>

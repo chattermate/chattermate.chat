@@ -50,6 +50,8 @@ WORKFLOW_FEATURE = "workflow"
 MCP_TOOLS_FEATURE = "mcp_tools"
 LEAD_CAPTURE_FEATURE = "lead_capture"
 CUSTOM_BRANDING_FEATURE = "custom_branding"
+# The start screen's rows for the page the visitor is on; without it, every-page rows only
+PAGE_SUGGESTIONS_FEATURE = "page_suggestions"
 
 
 def feature_allowed(db: Session, organization_id: UUID, feature: str) -> bool:

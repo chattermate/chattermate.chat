@@ -19,6 +19,7 @@ first sources first, without repeats, at most three:
 2. the page's type on a store (a product, the cart or checkout, the orders page);
 3. the org's published FAQs generated from this page (FAQ.source_url);
 4. the agent's quick actions for every page (today's behaviour).
+Sources 1-3 need the plan's page_suggestions flag (paid plans); without it only 4.
 Nothing is generated per view. Each row's icon comes from where it came from, or
 a small keyword map for free-text quick actions.
 """
@@ -156,23 +157,29 @@ def _faq_rows(db: Session, org_id: Any, page: Optional[str]) -> List[Dict[str, s
     return rows
 
 
-def suggestions_for(db: Session, org_id: Any, agent: Any, url: Any, title: Any = None,
-                    store: bool = False) -> dict:
-    """{heading: 'page' | 'popular', pill, items: [{label, icon, source}]} for this page."""
-    page = normalise_url(url)
+def _page_rows(db: Session, org_id: Any, rules: List[Dict[str, str]], page: Optional[str],
+               store: bool) -> List[Dict[str, str]]:
+    """Sources 1-3: the rows about the page the visitor is on."""
     path = path_of(page)
-    rules = [r for r in (_rule(e) for e in _quick_actions(agent)) if r]
-    found: List[Dict[str, str]] = []
-
-    for rule in rules:
-        if 'match' in rule and _matches(rule['match'], path):
-            found.append({'label': rule['label'], 'icon': rule.get('icon') or keyword_icon(rule['label']), 'source': 'rule'})
+    found = [{'label': rule['label'], 'icon': rule.get('icon') or keyword_icon(rule['label']), 'source': 'rule'}
+             for rule in rules if 'match' in rule and _matches(rule['match'], path)]
     if store:
         for pattern, questions, icon in _STORE_PAGES:
             if pattern.match(path):
                 found += [{'label': q, 'icon': icon, 'source': 'page'} for q in questions]
                 break
-    found += _faq_rows(db, org_id, page)
+    return found + _faq_rows(db, org_id, page)
+
+
+def suggestions_for(db: Session, org_id: Any, agent: Any, url: Any, title: Any = None,
+                    store: bool = False, for_page: bool = True) -> dict:
+    """{heading: 'page' | 'popular', pill, items: [{label, icon, source}]} for this page.
+
+    `for_page` False (a plan without page suggestions): the every-page rows only,
+    so a page rule saved on a paid plan stays saved but is not shown."""
+    page = normalise_url(url)
+    rules = [r for r in (_rule(e) for e in _quick_actions(agent)) if r]
+    found = _page_rows(db, org_id, rules, page, store) if for_page else []
     for_this_page = bool(found)
     for rule in rules:
         if 'match' not in rule:

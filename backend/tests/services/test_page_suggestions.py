@@ -104,6 +104,14 @@ class TestSuggestions:
     def test_no_quick_actions_and_nothing_for_the_page_shows_nothing(self, db, test_organization_id):
         assert suggestions_for(db, test_organization_id, _agent(None), "https://shop.example/x")["items"] == []
 
+    def test_without_page_suggestions_only_every_page_rows_show(self, db, test_organization_id):
+        page = "https://shop.example/products/tee"
+        _faq(db, test_organization_id, "Is the tee organic?", page)
+        agent = _agent([{"label": "Does it run small?", "match": "/products/*"}, "Track my order"])
+        result = suggestions_for(db, test_organization_id, agent, page, "Tee", store=True, for_page=False)
+        assert [i["label"] for i in result["items"]] == ["Track my order"]
+        assert result["heading"] == "popular" and result["pill"] is None
+
 
 
 @pytest.mark.parametrize("pattern,path,hit", [
