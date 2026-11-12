@@ -274,8 +274,8 @@ export function usePreviewController(
         handleFieldChange: noop,
         submitFullScreenForm: asyncNoop,
         handleUserInputSubmit: asyncNoop,
-        // "New chat" (when allowed) goes back to the start state; nothing is ended.
-        canStartNewChat: computed(() => customization.value.allow_new_chat === true && messages.value.length > 0),
+        // "New chat" goes back to the start state; nothing is ended.
+        canStartNewChat: computed(() => messages.value.length > 0),
         startingNewChat: ref(false),
         newChatError: ref(''),
         newChatArmed: ref(false),

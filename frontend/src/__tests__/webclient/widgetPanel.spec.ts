@@ -95,9 +95,9 @@ describe('the panel', () => {
         expect(wrapper.find('button[aria-label="Send message"]').exists()).toBe(true)
     })
 
-    it('says the AI replies instantly, and "Working on it…" with a typing status while it works', async () => {
+    it('says it replies instantly, and "Working on it…" with a typing status while it works', async () => {
         await mountPanel()
-        expect(status()).toBe('AI agent · replies instantly')
+        expect(status()).toBe('Replies instantly')
         socket.loading.value = true
         await settle(wrapper)
         expect(status()).toBe('Working on it…')
@@ -134,7 +134,7 @@ describe('the panel', () => {
         await settle(wrapper)
         expect(wrapper.find('.message.user-message .message-bubble').text()).toBe('Hi')
         expect(wrapper.find('.message.agent-message .message-bubble').text()).toBe('Hello, how can I help?')
-        expect(wrapper.find('.cm-answer__name').text()).toBe('Ada AI')
+        expect(wrapper.find('.cm-answer__name').text()).toBe('Ada')
     })
 
     it('turns send into Stop while a live reply is revealing, and Stop shows it in full', async () => {

@@ -119,7 +119,6 @@ const customization = ref<AgentCustomization>({
     show_citations: props.agent.customization?.show_citations ?? false,
     collect_email: props.agent.customization?.collect_email ?? false,
     show_ai_disclaimer: props.agent.customization?.show_ai_disclaimer ?? true,
-    allow_new_chat: props.agent.customization?.allow_new_chat ?? false,
 })
 
 // Chat style options grouped into Classic (existing looks) and New (premium presets)
@@ -338,7 +337,6 @@ const BEHAVIOUR_SWITCHES: { key: keyof AgentCustomization; label: string }[] = [
     { key: 'show_citations', label: 'Citations' },
     { key: 'collect_email', label: 'Email first' },
     { key: 'show_ai_disclaimer', label: 'AI disclaimer' },
-    { key: 'allow_new_chat', label: 'New chat' },
 ]
 
 const countOf = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
@@ -461,7 +459,6 @@ watch(() => props.agent.customization, (newCustomization) => {
             show_citations: newCustomization.show_citations ?? false,
             collect_email: newCustomization.collect_email ?? false,
             show_ai_disclaimer: newCustomization.show_ai_disclaimer ?? true,
-            allow_new_chat: newCustomization.allow_new_chat ?? false,
         }
         nextTick(() => {
             isInternalUpdate.value = false
@@ -1180,15 +1177,6 @@ const loadDefaultQuickActions = () => {
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Show AI disclaimer</span>
                             <span class="citations-toggle-desc">Shows “{{ AI_DISCLAIMER_TEXT }}” under the chat while the AI answers.</span>
-                        </span>
-                    </label>
-
-                    <label class="citations-toggle">
-                        <input type="checkbox" v-model="customization.allow_new_chat">
-                        <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
-                        <span class="citations-toggle-text">
-                            <span class="citations-toggle-title">Let visitors start a new chat</span>
-                            <span class="citations-toggle-desc">Adds a “New chat” button that starts a fresh conversation.</span>
                         </span>
                     </label>
                 </div>

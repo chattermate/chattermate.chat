@@ -130,7 +130,7 @@ describe('useWidgetPresentation', () => {
             const panel = setup({ chat_style: 'SUNRISE' } as Partial<AgentCustomization>)
             expect(panel.themeVars.value['--cm-tint']).toBeDefined()
             expect(panel.themeVars.value['--cm-ease-enter']).toBeDefined()
-            expect(panel.presence.value.text).toBe('AI agent · replies instantly')
+            expect(panel.presence.value.text).toBe('Replies instantly')
         })
     })
 })

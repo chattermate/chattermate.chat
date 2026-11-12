@@ -22,10 +22,11 @@ limitations under the License.
 
 import { PRESENCE_TEXT, type PresenceWording } from '../utils/widgetPresence'
 
-/** The header's status line, by who answers. Human and away keep the classic, honest wording. */
+/** The header's status line, by who answers. Human and away keep the classic, honest wording.
+ * The AI is not named here or on answers: the footer's disclaimer says it once. */
 export const PANEL_PRESENCE_TEXT: PresenceWording = {
     ...PRESENCE_TEXT,
-    ai: 'AI agent · replies instantly',
+    ai: 'Replies instantly',
 }
 
 export const PANEL_COPY = {
@@ -52,8 +53,8 @@ export const PANEL_COPY = {
     poweredBy: 'Powered by',
     brandName: 'ChatterMate',
     removeFile: (name: string) => `Remove ${name}`,
-    /** The label row above an AI answer. */
-    aiLabel: (agent: string) => (agent ? `${agent} AI` : 'AI'),
+    /** The label row above an answer: the agent's own name, as the merchant wrote it. */
+    answerLabel: (agent: string) => agent.trim() || 'Assistant',
     sources: 'Sources',
     /** The start state: greeting and headline when the agent set none (welcome_title / _subtitle). */
     welcomeTitle: 'Hi there',

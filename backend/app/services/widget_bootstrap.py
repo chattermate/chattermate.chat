@@ -190,7 +190,6 @@ async def _customization(db: Session, agent: Agent) -> dict:
         # A human-only agent never produces an AI reply, so disclosing one
         # would be untrue — same reason the widget hides it after takeover.
         "show_ai_disclaimer": customization.show_ai_disclaimer and agent.ai_replies_enabled,
-        "allow_new_chat": customization.allow_new_chat,
         "customization_metadata": metadata,
         "launcher_logo_url": logo_url,
     }

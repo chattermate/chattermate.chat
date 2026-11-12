@@ -59,7 +59,7 @@ const props = defineProps<{
     /** Typewriter reveal, keyed by index into `messages` (see useTypewriter). */
     displayText: (index: number, fullText: string) => string
     isStreaming: (index: number) => boolean
-    /** Opt-in "New chat" control (customization.allow_new_chat). */
+    /** The "New chat" control (shown once there is a conversation to leave). */
     canStartNewChat: boolean
     /** The dashboard preview: no embedding page to size or take keys from. */
     preview?: boolean

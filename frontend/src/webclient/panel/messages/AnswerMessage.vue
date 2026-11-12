@@ -83,7 +83,7 @@ const answerText = () => body.value?.text() ?? ''
     <div class="message agent-message cm-answer">
         <div class="cm-answer__label">
             <AgentMark size="sm" :face="face" :photo-url="photoUrl" :orb-style="orbStyle" />
-            <span class="cm-answer__name">{{ PANEL_COPY.aiLabel(agentName) }}</span>
+            <span class="cm-answer__name">{{ PANEL_COPY.answerLabel(agentName) }}</span>
         </div>
         <AnswerBody ref="body" :html="answer.html" :busy="streaming" />
         <LinkCard v-if="answer.card && !streaming" :source="answer.card" class="cm-fade" />

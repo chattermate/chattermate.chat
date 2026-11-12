@@ -221,7 +221,6 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
 
     // The "New chat" control and the workflow's "start a new conversation" button.
     const newChat = useNewChat({
-        customization,
         conversation: { messages, humanAgent, endChat: socket.endChat, getWorkflowState: socket.getWorkflowState },
         showEmailGate: emailGate.showEmailGate,
         initializeWidget: auth.initializeWidget,

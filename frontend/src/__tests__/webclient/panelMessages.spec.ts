@@ -40,10 +40,10 @@ const item = (message: Record<string, unknown>, overrides: Partial<FakeControlle
 }
 
 describe('a message in the panel', () => {
-    it('draws an AI reply full width under "<agent> AI", keeping the agent-message hook', () => {
+    it('draws an AI reply full width under the agent\'s own name, keeping the agent-message hook', () => {
         item({ message_type: 'bot', message: 'Hello **there**' })
         expect(wrapper!.classes()).toEqual(expect.arrayContaining(['message', 'agent-message', 'cm-answer']))
-        expect(wrapper!.get('.cm-answer__name').text()).toBe('Ada AI')
+        expect(wrapper!.get('.cm-answer__name').text()).toBe('Ada')
         expect(wrapper!.get('.message-bubble').html()).toContain('<strong>there</strong>')
     })
 

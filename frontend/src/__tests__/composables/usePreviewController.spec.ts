@@ -162,7 +162,7 @@ describe('usePreviewController', () => {
     })
 
     it('is inert: typing works, nothing is sent, stored or posted to a host', async () => {
-        const { ctrl } = setUp({ allow_new_chat: true })
+        const { ctrl } = setUp()
         ctrl.newMessage.value = 'Hello?'
         await ctrl.sendMessage()
         expect(ctrl.newMessage.value).toBe('Hello?')
