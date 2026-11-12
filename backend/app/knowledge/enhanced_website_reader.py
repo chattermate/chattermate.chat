@@ -45,7 +45,7 @@ from app.knowledge.crawl_scope import (
     url_scheme,
 )
 from app.knowledge.domains import registrable_domain
-from app.knowledge.failure_advice import FAILURE_ADVICE, FailureCause, SourceUnreadable
+from app.knowledge.failure_advice import FailureCause, SourceUnreadable
 from app.knowledge.login_wall import is_auth_path, looks_like_login_wall
 from app.knowledge.main_content import select_main_node
 
@@ -1331,14 +1331,22 @@ class EnhancedWebsiteReader(WebsiteReader):
 
         return document
 
-    def read(self, url: str, vector_db_callback: Optional[Callable[[Document], None]] = None, url_crawled_callback: Optional[Callable[[str], None]] = None) -> List[Document]:
+    def read(
+        self,
+        url: str,
+        vector_db_callback: Optional[Callable[[Document], None]] = None,
+        url_crawled_callback: Optional[Callable[[str], None]] = None,
+        page_callback: Optional[Callable[[List[Document]], None]] = None,
+    ) -> List[Document]:
         """
         Read content from a URL, crawl related pages, and convert the content into Documents.
-        Optionally sends documents to vector DB as they are created.
-        
+
         :param url: The URL to read from.
-        :param vector_db_callback: Optional callback to send documents to vector DB as they're created
+        :param vector_db_callback: Optional callback given each document as it is created
         :param url_crawled_callback: Optional callback called when each URL is successfully crawled
+        :param page_callback: Optional callback given each page's documents (its
+            chunks) as the page is read. They are handed over, not kept: with
+            it, read() returns an empty list and holds one page at a time.
         :return: A list of Document objects.
         """
         # Normalize URL to ensure it has a protocol
@@ -1349,14 +1357,19 @@ class EnhancedWebsiteReader(WebsiteReader):
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting to read from {url} with parallel processing")
         
         documents = []
-        
-        # Create a callback for immediate document processing. A page becomes
-        # one document per chunk (see app.knowledge.chunking); each is queued
-        # for embedding on its own so the whole page is searchable.
+        created = 0
+
+        # A page becomes one document per chunk (see app.knowledge.chunking);
+        # each is embedded on its own so the whole page is searchable.
         def on_document_created(page_url: str, content: str):
-            index = len(documents) + 1
-            page = self._create_document_from_content(page_url, content, url, index)
-            for document in chunk_page(page):
+            nonlocal created
+            page = self._create_document_from_content(page_url, content, url, created + 1)
+            chunks = chunk_page(page)
+            created += len(chunks)
+            if page_callback:
+                page_callback(chunks)
+                return
+            for document in chunks:
                 documents.append(document)
 
                 # Call vector DB callback if provided
@@ -1372,6 +1385,6 @@ class EnhancedWebsiteReader(WebsiteReader):
         
         end_time = time.time()
         duration = end_time - start_time
-        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed reading from {url} - Created {len(documents)} documents (Total time: {duration:.2f}s)")
+        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed reading from {url} - Created {created} documents (Total time: {duration:.2f}s)")
         
         return documents 

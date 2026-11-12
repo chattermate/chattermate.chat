@@ -31,9 +31,8 @@ from app.models.organization import Organization
 from uuid import UUID, uuid4
 from app.api import knowledge as knowledge_router
 from app.core.auth import get_current_user, require_permissions
-from app.main import app
 from app.core.config import settings
-from tests.conftest import engine, TestingSessionLocal, create_tables
+from tests.conftest import engine, TestingSessionLocal
 from datetime import datetime, timezone
 import io
 import os
@@ -938,7 +937,7 @@ def test_add_subpage_with_enterprise_limits_mocked():
             with pytest.raises(HTTPException) as exc_info:
                 # Call the endpoint function directly
                 import asyncio
-                result = asyncio.run(add_subpage(
+                asyncio.run(add_subpage(
                     knowledge_id=1,
                     subpage_name="test",
                     content="test content",
@@ -1303,3 +1302,16 @@ class TestSourcesGoToTheLoneAgent:
             )
         assert response.status_code == 200
         assert self._queued_agent(db) == test_agent.id
+
+
+def test_a_queue_row_says_how_many_pages_are_searchable_so_far(db, test_organization):
+    """A website is learned page by page: the wizard and the setup
+    assistant show "learned 12 pages so far" from these."""
+    item = KnowledgeQueue(organization_id=test_organization.id, source="https://shop.example",
+                          source_type="website", status="processing", pages_learned=12)
+    db.add(item)
+    db.commit()
+
+    shown = knowledge_router._serialize_queue_item(item)
+
+    assert (shown["pages_learned"], shown["knowledge_id"]) == (12, None)

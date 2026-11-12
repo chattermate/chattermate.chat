@@ -259,3 +259,44 @@ describe('KnowledgeExplorer: replacing a source at the plan limit', () => {
     expect(wrapper.find('.limit').exists()).toBe(false)
   })
 })
+
+describe('KnowledgeExplorer: a website still being read', () => {
+  const SITE = 'https://shop.example.com'
+  const reading = (pages: number, status = 'processing') => ({
+    queue_items: [{ id: 7, source: SITE, source_type: 'website', status, created_at: '', pages_learned: pages }],
+  })
+  const label = (wrapper: Wrapper) => wrapper.find(`[aria-label="${SITE}"] .src__count`).text()
+
+  it('says it is crawling before its first page is stored', async () => {
+    kb.getAgentQueueItems.mockResolvedValue(reading(0))
+    expect(label(await mountExplorer('agent'))).toBe('Crawling')
+  })
+
+  it('counts the pages stored so far, once there are some', async () => {
+    kb.getAgentQueueItems.mockResolvedValue(reading(12))
+    kb.getKnowledgeByAgent.mockResolvedValue(page([{ id: 5, name: SITE, type: 'website', agents: [], pages: [] }]))
+    expect(label(await mountExplorer('agent'))).toBe('Crawling · 12\u00a0pages')
+  })
+
+  it('on the organization page too', async () => {
+    kb.getOrgQueueItems.mockResolvedValue(reading(1))
+    kb.getKnowledgeByOrganization.mockResolvedValue(page([{ id: 5, name: SITE, type: 'website', agents: [], pages: [] }]))
+    expect(label(await mountExplorer('org'))).toBe('Crawling · 1\u00a0page')
+  })
+
+  it('a source read again says so until its first new page is stored', async () => {
+    kb.getAgentQueueItems.mockResolvedValue(reading(0))
+    kb.getKnowledgeByAgent.mockResolvedValue(page([{
+      id: 5, name: SITE, type: 'website', agents: [], pages: [{ subpage: 'a' }, { subpage: 'b' }],
+    }]))
+    expect(label(await mountExplorer('agent'))).toBe('Crawling')
+  })
+
+  it('goes back to its page count when the crawl is done', async () => {
+    kb.getAgentQueueItems.mockResolvedValue(reading(3, 'completed'))
+    kb.getKnowledgeByAgent.mockResolvedValue(page([{
+      id: 5, name: SITE, type: 'website', agents: [], pages: [{ subpage: 'a' }, { subpage: 'b' }, { subpage: 'c' }],
+    }]))
+    expect(label(await mountExplorer('agent'))).toBe('3 sub-pages')
+  })
+})

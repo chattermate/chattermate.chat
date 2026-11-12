@@ -19,6 +19,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useKnowledgeManagement } from '@/composables/useKnowledgeManagement'
 import { knowledgeService } from '@/services/knowledge'
 import { groupChunksIntoPages } from '@/utils/knowledgePages'
+import { isPdfSource, learnedSoFar } from '@/composables/useLearningWatch'
 import DeleteIcon from '@/assets/delete.svg'
 import EditIcon from '@/assets/edit.svg'
 import mitt from '@/utils/emitter'
@@ -308,7 +309,11 @@ const closeKnowledgeModal = () => {
                             </div>
                         </div>
 
-                        <div v-if="item.status === 'processing' && item.progress_percentage"
+                        <!-- A website is learned page by page: a count, not a percentage -->
+                        <div v-if="item.status === 'processing' && !isPdfSource(item)" class="progress-bar-container">
+                            <span class="progress-text">{{ learnedSoFar(item) }}</span>
+                        </div>
+                        <div v-else-if="item.status === 'processing' && item.progress_percentage"
                             class="progress-bar-container">
                             <div class="progress-bar">
                                 <div class="progress-fill" :style="{ width: item.progress_percentage + '%' }"></div>

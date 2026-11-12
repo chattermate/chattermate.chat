@@ -23,9 +23,9 @@ import httpx
 from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE, CrawlScope
 from app.knowledge.enhanced_website_reader import (
     EnhancedWebsiteReader,
-    FAILURE_ADVICE,
     FailureCause,
 )
+from app.knowledge.failure_advice import FAILURE_ADVICE
 
 
 _RealClient = httpx.Client
