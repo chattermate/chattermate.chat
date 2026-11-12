@@ -2785,6 +2785,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/customization-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Customization Schema
+         * @description Every setting of an agent's chat look, with its allowed values. Tools
+         *     that build their own forms or actions read it (the setup assistant's
+         *     actions are generated from it), so a new setting reaches them without
+         *     code.
+         *
+         *     Declared before /{agent_id} so the literal path wins the route match.
+         */
+        get: operations["get_customization_schema_api_v1_agent_customization_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/list": {
         parameters: {
             query?: never;
@@ -15506,6 +15531,26 @@ export interface operations {
         };
     };
     get_guardrail_default_api_v1_agent_guardrail_default_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_customization_schema_api_v1_agent_customization_schema_get: {
         parameters: {
             query?: never;
             header?: never;
