@@ -374,8 +374,9 @@ const openNotificationsFromSheet = () => {
             <main class="content">
                 <!-- The agents page shows its own copy, beside the wizard and list -->
                 <SetupProgressBar v-if="route.name !== 'ai-agents'" />
-                <!-- The knowledge page lists the failed source itself -->
-                <FailedSourceNotice v-if="route.name !== 'knowledge'" />
+                <!-- Not on the knowledge page (it lists the failed source itself), nor on
+                     full-page layouts, whose .content is a fixed 100vh with no room for it -->
+                <FailedSourceNotice v-if="!props.hideHeader && route.name !== 'knowledge'" />
                 <slot></slot>
             </main>
 

@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { nextTick, reactive } from 'vue'
 
 const getOrgQueueItems = vi.fn()
 const getKnowledgeByOrganization = vi.fn()
 const push = vi.fn()
 const canManageKnowledge = vi.fn()
-const route = reactive({ fullPath: '/' })
 
 vi.mock('@/services/knowledge', () => ({
   knowledgeService: {
@@ -22,11 +20,11 @@ vi.mock('@/utils/permissions', () => ({
   permissionChecks: { canManageKnowledge: () => canManageKnowledge() },
 }))
 vi.mock('vue-router', () => ({
-  useRoute: () => route,
   useRouter: () => ({ push }),
 }))
 
-import FailedSourceNotice from '@/components/knowledge/FailedSourceNotice.vue'
+// A fresh copy per test: the notice remembers within a visit that something was indexed.
+let FailedSourceNotice: typeof import('@/components/knowledge/FailedSourceNotice.vue').default
 
 const failed = (over: Record<string, unknown> = {}) => ({
   id: 7,
@@ -46,10 +44,11 @@ const mountNotice = async () => {
 }
 
 describe('FailedSourceNotice', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    vi.resetModules()
+    FailedSourceNotice = (await import('@/components/knowledge/FailedSourceNotice.vue')).default
     localStorage.clear()
-    route.fullPath = '/'
     canManageKnowledge.mockReturnValue(true)
     getKnowledgeByOrganization.mockResolvedValue(none)
     getOrgQueueItems.mockResolvedValue({ queue_items: [failed()] })
@@ -128,16 +127,31 @@ describe('FailedSourceNotice', () => {
     expect(fresh.text()).toContain('https://other.example')
   })
 
-  it('looks again on the next page, so a crawl that fails later is reported', async () => {
+  it('looks again on each page, so a crawl that fails later is reported', async () => {
     getOrgQueueItems.mockResolvedValue({ queue_items: [failed({ status: 'processing' })] })
-    const wrapper = await mountNotice()
-    expect(wrapper.find('.failed-source').exists()).toBe(false)
+    expect((await mountNotice()).find('.failed-source').exists()).toBe(false)
 
     getOrgQueueItems.mockResolvedValue({ queue_items: [failed()] })
-    route.fullPath = '/conversations'
-    await nextTick()
-    await flushPromises()
 
-    expect(wrapper.find('.failed-source').exists()).toBe(true)
+    expect((await mountNotice()).find('.failed-source').exists()).toBe(true)
+  })
+
+  it('does not fetch the queue when something is indexed, and stops asking for the visit', async () => {
+    getKnowledgeByOrganization.mockResolvedValue({ knowledge: [{ id: 1 }], pagination: { total: 1 } })
+
+    await mountNotice()
+    await mountNotice()
+
+    expect(getOrgQueueItems).not.toHaveBeenCalled()
+    expect(getKnowledgeByOrganization).toHaveBeenCalledTimes(1)
+  })
+
+  it('checks permission when the page mounts, not once for the whole app', async () => {
+    canManageKnowledge.mockReturnValue(false)
+    await mountNotice()
+    expect(getOrgQueueItems).not.toHaveBeenCalled()
+
+    canManageKnowledge.mockReturnValue(true)
+    expect((await mountNotice()).find('.failed-source').exists()).toBe(true)
   })
 })

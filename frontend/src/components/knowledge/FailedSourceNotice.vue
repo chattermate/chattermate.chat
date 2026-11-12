@@ -15,22 +15,16 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useFailedSource } from '@/composables/useFailedSource'
 import { permissionChecks } from '@/utils/permissions'
 
-const route = useRoute()
 const router = useRouter()
 const { failure, refresh, dismiss } = useFailedSource()
-const canManage = permissionChecks.canManageKnowledge()
-
+// Every page mounts its own layout, so each one looks afresh: a crawl may have failed since.
 onMounted(() => {
-  if (canManage) refresh()
-})
-// A fresh look on each page: the crawl may have failed since the last one.
-watch(() => route.fullPath, () => {
-  if (canManage) refresh()
+  if (permissionChecks.canManageKnowledge()) refresh()
 })
 
 const addSource = () => router.push({ name: 'knowledge' })

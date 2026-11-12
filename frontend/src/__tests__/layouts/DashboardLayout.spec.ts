@@ -218,3 +218,45 @@ describe('DashboardLayout', () => {
     expect(true).toBe(true)
   })
 }) 
+describe('DashboardLayout - unreadable website notice', () => {
+  const mountAt = async (path: string, props: Record<string, unknown> = {}) => {
+    const pageRouter = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/', component: { template: '<div>Home</div>' } },
+        { path: '/knowledge', name: 'knowledge', component: { template: '<div>Knowledge</div>' } }
+      ]
+    })
+    await pageRouter.push(path)
+    await pageRouter.isReady()
+    return mount(DashboardLayout, {
+      props,
+      global: {
+        plugins: [pageRouter],
+        stubs: { AppSidebar: true, NotificationList: true, UserSettings: true, FailedSourceNotice: true }
+      }
+    })
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('shows on an ordinary page', async () => {
+    const page = await mountAt('/')
+
+    expect(page.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(true)
+  })
+
+  it('is left off the knowledge page, which lists the failed source itself', async () => {
+    const page = await mountAt('/knowledge')
+
+    expect(page.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(false)
+  })
+
+  it('is left off full-page layouts, whose content is a fixed viewport height', async () => {
+    const page = await mountAt('/', { hideHeader: true })
+
+    expect(page.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(false)
+  })
+})

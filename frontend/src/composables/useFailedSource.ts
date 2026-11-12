@@ -17,8 +17,11 @@ limitations under the License.
 import { computed, ref } from 'vue'
 import { knowledgeService } from '@/services/knowledge'
 import { userService } from '@/services/user'
-import { newestPerSource } from '@/composables/useCrawlCheck'
+import { newestFailedWebsite } from '@/composables/useCrawlCheck'
 import type { QueueItem } from '@/types/knowledge'
+
+// Once indexed knowledge has been seen there is nothing left to report until a reload
+let learnedThisVisit = false
 
 const DISMISSED_KEY = 'chattermate:failed-source-dismissed:v1'
 
@@ -45,23 +48,31 @@ export function useFailedSource() {
 
   const visible = computed(() => (failure.value && failure.value.id !== dismissedId.value ? failure.value : null))
 
+  // Newest call wins: a slow earlier answer must not overwrite a later one.
+  let latest = 0
+
   const refresh = async () => {
+    // An organization that has learned something does not go back to knowing nothing.
+    if (learnedThisVisit) return
     const orgId = userService.getCurrentUser()?.organization_id
     if (!orgId) return
+    const call = ++latest
     try {
-      const [queue, indexed] = await Promise.all([
-        knowledgeService.getOrgQueueItems(orgId),
-        knowledgeService.getKnowledgeByOrganization(orgId, 1, 1),
-      ])
-      const items = newestPerSource((queue?.queue_items ?? []) as QueueItem[])
-      const learned = (indexed?.pagination?.total ?? indexed?.knowledge?.length ?? 0) > 0
+      const indexed = await knowledgeService.getKnowledgeByOrganization(orgId, 1, 1)
+      if (call !== latest) return
+      if ((indexed?.pagination?.total ?? indexed?.knowledge?.length ?? 0) > 0) {
+        learnedThisVisit = true
+        failure.value = null
+        return
+      }
+      const queue = await knowledgeService.getOrgQueueItems(orgId)
+      if (call !== latest) return
+      const items = (queue?.queue_items ?? []) as QueueItem[]
       const crawling = items.some((i) => i.status === 'pending' || i.status === 'processing')
-      failure.value = learned || crawling
-        ? null
-        : items.find((i) => i.status === 'failed' && i.source_type === 'website') ?? null
+      failure.value = crawling ? null : newestFailedWebsite(items)
     } catch (err) {
       // No permission to see knowledge, or the call failed: say nothing.
-      failure.value = null
+      if (call === latest) failure.value = null
       console.error('Failed to check for an unreadable website:', err)
     }
   }
