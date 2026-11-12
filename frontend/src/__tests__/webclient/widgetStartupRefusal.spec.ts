@@ -100,6 +100,8 @@ describe('a widget whose socket is refused at startup', () => {
         refusalReason = 'customer_required'
         socket.refusal.value = null
         socket.connectionStatus.value = 'connecting'
+        // Startup marks the chat started; each test starts from a fresh visitor.
+        socket.hasStartedChat.value = false
         ;(window as any).__INITIAL_DATA__ = {
             widgetId: 'w-1',
             agentName: 'Ada',
@@ -124,6 +126,10 @@ describe('a widget whose socket is refused at startup', () => {
     }
     const authorizationCalls = () =>
         fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/widgets/w-1'))
+    // The status banner under the header says "Initializing chat..." while starting up.
+    const stillStarting = (wrapper: any) => wrapper.text().includes('Initializing chat...')
+    const reconnectButton = (wrapper: any) =>
+        wrapper.findAll('button').find((b: any) => b.text() === 'Click here to reconnect')
 
     it('authorizes again and finishes starting up', async () => {
         connect.mockImplementationOnce(refused).mockImplementationOnce(connected)
@@ -132,7 +138,7 @@ describe('a widget whose socket is refused at startup', () => {
 
         expect(authorizationCalls()).toHaveLength(2)
         expect(connect).toHaveBeenCalledTimes(2)
-        expect(wrapper.find('.initializing-overlay').exists()).toBe(false)
+        expect(stillStarting(wrapper)).toBe(false)
         expect(onTakeover).toHaveBeenCalled() // the rest of startup ran
     })
 
@@ -144,7 +150,7 @@ describe('a widget whose socket is refused at startup', () => {
 
         expect(authorizationCalls()).toHaveLength(2)
         expect(connect).toHaveBeenCalledTimes(2)
-        expect(wrapper.find('.initializing-overlay').exists()).toBe(false)
+        expect(stillStarting(wrapper)).toBe(false)
     })
 
     it('authorizes again when a later reconnect is refused for an expired token', async () => {
@@ -174,12 +180,13 @@ describe('a widget whose socket is refused at startup', () => {
         const wrapper = await start()
 
         expect(authorizationCalls()).toHaveLength(2)
-        expect(wrapper.find('.initializing-overlay').exists()).toBe(false)
-        expect(wrapper.find('.reconnect-button').exists()).toBe(true)
+        expect(stillStarting(wrapper)).toBe(false)
+        expect(reconnectButton(wrapper)).toBeDefined()
         expect(onTakeover).toHaveBeenCalled()
     })
 
     it('shows the email form when authorizing again needs an email first', async () => {
+        ;(window as any).__INITIAL_DATA__.customization = { collect_email: true }
         connect.mockImplementation(refused)
         fetchMock
             .mockResolvedValueOnce(authorized('anonymous'))
@@ -188,8 +195,9 @@ describe('a widget whose socket is refused at startup', () => {
         const wrapper = await start()
 
         expect(authorizationCalls()).toHaveLength(2)
-        expect(wrapper.find('.initializing-overlay').exists()).toBe(false)
-        expect(wrapper.find('.reconnect-button').exists()).toBe(false)
+        expect(stillStarting(wrapper)).toBe(false)
+        expect(reconnectButton(wrapper)).toBeUndefined()
+        expect(wrapper.find('input[type="email"]').exists()).toBe(true)
         expect(onTakeover).toHaveBeenCalled()
     })
 })

@@ -28,10 +28,9 @@ import { fakeController } from '../webclient/panelFakeController'
  * the sample conversation, and inert: nothing is sent, stored or posted anywhere.
  */
 
-const V2 = { customization_metadata: { widget_ui: { version: 2 } } }
 
 function setUp(customization: Partial<AgentCustomization> = {}, context: Partial<PreviewContext> = {}) {
-    const look = ref<Partial<AgentCustomization>>({ chat_style: 'SUNRISE', ...V2, ...customization })
+    const look = ref<Partial<AgentCustomization>>({ chat_style: 'SUNRISE', ...customization })
     const scope = effectScope()
     const ctrl = scope.run(() => usePreviewController(look, previewSampleConversation(), {
         widgetId: ref('agent-1'),
@@ -64,7 +63,6 @@ describe('usePreviewController', () => {
         expect(members.length).toBeGreaterThan(100)
         for (const member of members) expect(ctrl, member).toHaveProperty(member)
         for (const [member, value] of Object.entries(ctrl)) expect(value, member).not.toBeUndefined()
-        expect(ctrl.ui.value).toBe(2)
         expect(ctrl.widgetId.value).toBe('agent-1')
     })
 
@@ -186,7 +184,7 @@ describe('usePreviewController', () => {
         expect(fetchSpy).not.toHaveBeenCalled()
         expect(postSpy).not.toHaveBeenCalled()
         expect(ctrl.connectionStatus.value).toBe('connected')
-        expect(ctrl.hostCapabilities.value).toEqual({ expand: false, backdrop: false, navigate: false })
+        expect(ctrl.hostCapabilities.value).toEqual({ expand: false, backdrop: false, navigate: false, swipe: false })
         ctrl.sendFeedback(ctrl.messages.value[1], 'up')
         expect(ctrl.liveTrace.value).toEqual([])
 

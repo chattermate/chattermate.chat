@@ -35,11 +35,18 @@ afterEach(() => {
     wrapper?.unmount()
     wrapper = undefined
     vi.unstubAllGlobals()
+    document.body.innerHTML = ''
 })
+
+/** Mount, attached so a submit button submits its form as in the frame. */
+const mountAttached = async () => {
+    ;({ wrapper } = await mountWidget({ initialData: { workflow: true } }))
+    document.body.appendChild(wrapper.element)
+}
 
 /** Mount and hand back the onWorkflowState callback the widget registers. */
 const mountWorkflow = async () => {
-    ;({ wrapper } = await mountWidget({ initialData: { workflow: true } }))
+    await mountAttached()
     await vi.waitFor(() => expect(socketCalls.onWorkflowState).toHaveBeenCalled())
     const pushState = async (data: Record<string, any>) => {
         socketCalls.onWorkflowState.mock.calls[0][0](data)
@@ -71,6 +78,10 @@ const fieldLabelled = (screen: any, label: string) => {
     const tag = screen.findAll('label').find((l: any) => l.text().replace(/\*/g, '').trim() === label)
     return screen.find(`[id="${tag.attributes('for')}"]`)
 }
+
+/** A form posted into the chat, by its title (a line, not a heading). */
+const chatForm = (title: string) =>
+    wrapper.findAll('form').find((f: any) => f.text().startsWith(title))
 
 /** How many times a piece of text appears on screen. */
 const occurrences = (text: string) => wrapper.text().split(text).length - 1
@@ -243,12 +254,12 @@ describe('a workflow form posted into the chat', () => {
 
         expect(socket.messages.value.filter((m) => m.message_type === 'form')).toHaveLength(1)
         expect(occurrences('Quick question')).toBe(1)
-        expect(fieldLabelled(screenTitled('Quick question'), 'Email').attributes('type')).toBe('email')
+        expect(fieldLabelled(chatForm('Quick question'), 'Email').attributes('type')).toBe('email')
     })
 
     it('shows validation errors on submit and keeps the form', async () => {
         await showInlineForm()
-        const form = screenTitled('Quick question')
+        const form = chatForm('Quick question')
 
         await fieldLabelled(form, 'Email').setValue('nope')
         await fieldLabelled(form, 'Phone').setValue('123')
@@ -259,7 +270,7 @@ describe('a workflow form posted into the chat', () => {
         expect(form.text()).toContain('Please enter a valid email address')
         expect(form.text()).toContain('Please enter a valid phone number')
         expect(socketCalls.submitForm).not.toHaveBeenCalled()
-        expect(heading('Quick question')).toBeDefined()
+        expect(chatForm('Quick question')).toBeDefined()
     })
 
     it('does not validate as the visitor types (only on submit)', async () => {
@@ -267,14 +278,14 @@ describe('a workflow form posted into the chat', () => {
         // full-screen form or the socket's currentForm, and a chat form is in neither.
         await showInlineForm()
 
-        await fieldLabelled(screenTitled('Quick question'), 'Email').setValue('nope')
+        await fieldLabelled(chatForm('Quick question'), 'Email').setValue('nope')
 
         expect(wrapper.text()).not.toContain('Please enter a valid email address')
     })
 
     it('submits the values and removes the form message', async () => {
         await showInlineForm()
-        const form = screenTitled('Quick question')
+        const form = chatForm('Quick question')
 
         await fieldLabelled(form, 'Name').setValue('Ada')
         await fieldLabelled(form, 'Email').setValue('ada@example.com')
@@ -283,13 +294,13 @@ describe('a workflow form posted into the chat', () => {
 
         expect(socketCalls.submitForm).toHaveBeenCalledWith({ name: 'Ada', email: 'ada@example.com' })
         expect(socket.messages.value.some((m) => m.message_type === 'form')).toBe(false)
-        expect(heading('Quick question')).toBeUndefined()
+        expect(chatForm('Quick question')).toBeUndefined()
     })
 })
 
 describe('a workflow step asking for free text', () => {
     const showUserInput = async (attributes: Record<string, any> = {}) => {
-        ;({ wrapper } = await mountWidget({ initialData: { workflow: true } }))
+        await mountAttached()
         socket.messages.value = [{
             message: '',
             message_type: 'user_input',
@@ -298,13 +309,14 @@ describe('a workflow step asking for free text', () => {
         await settle(wrapper)
     }
 
-    // The box has no label; its placeholder is what the visitor reads.
+    // The box is labelled by the prompt above it; its placeholder is what the visitor reads.
     const answerBox = () => wrapper.find('textarea[placeholder="Type your message here..."]')
     const submit = () => buttonIn(screenAround(answerBox()), 'Submit')
-    /** The line that echoes what was sent, from "Your input:" to the end of its block. */
-    const submittedLine = () => {
-        const label = wrapper.findAll('strong').find((s: any) => s.text().trim() === 'Your input:')
-        return label ? new DOMWrapper(label.element.parentElement as HTMLElement) : undefined
+    /** The lines that echo what was sent: "Your input", the answer, any confirmation. */
+    const submittedLines = () => {
+        const label = wrapper.findAll('p').find((p: any) => p.text().trim() === 'Your input')
+        if (!label) return undefined
+        return new DOMWrapper(label.element.parentElement as HTMLElement).findAll('p').map((p: any) => p.text().trim())
     }
 
     it('shows the prompt and keeps Submit disabled while the box is empty or blank', async () => {
@@ -327,8 +339,7 @@ describe('a workflow step asking for free text', () => {
 
         expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
         expect(socketCalls.sendMessage.mock.calls[0][0]).toBe('#1042')
-        expect(submittedLine()?.text()).toContain('Your input: #1042')
-        expect(wrapper.text()).toContain('Thanks, looking it up.')
+        expect(submittedLines()).toEqual(['Your input', '#1042', 'Thanks, looking it up.'])
         expect(answerBox().exists()).toBe(false)
     })
 
@@ -350,7 +361,7 @@ describe('a workflow step asking for free text', () => {
         await submit().trigger('click')
         await settle(wrapper)
 
-        expect(submittedLine()?.text().trim()).toBe('Your input: #9')
+        expect(submittedLines()).toEqual(['Your input', '#9'])
     })
 
     it('reopens the box when sending fails', async () => {
@@ -361,7 +372,7 @@ describe('a workflow step asking for free text', () => {
         await submit().trigger('click')
         await settle(wrapper)
 
-        expect(submittedLine()).toBeUndefined()
+        expect(submittedLines()).toBeUndefined()
         expect((answerBox().element as HTMLTextAreaElement).value).toBe('#5')
     })
 })

@@ -1227,9 +1227,7 @@ onMounted(async () => {
                                     <div v-else class="chat-preview-fit" :style="chatPreviewFit.box">
                                         <div :style="chatPreviewFit.inner">
                                             <AgentChatPreviewPanel
-                                                :is-active="agentData.is_active"
                                                 :customization="previewCustomization"
-                                                :agent-type="agentData.agent_type"
                                                 :agent-name="agentData.display_name || agentData.name"
                                                 :orb-seed="agentData.name"
                                                 :agent-id="agentData.id"

@@ -42,7 +42,6 @@ import { NO_HOST_CAPABILITIES, useHostMessages, type HostCapabilities } from './
 import { useNewChat } from './useNewChat'
 import { useWidgetPresentation } from './useWidgetPresentation'
 import { useWidgetDisplay } from './useWidgetDisplay'
-import { widgetUiVersion } from '../webclient/widget-ui'
 import { usePanelEmail } from './usePanelEmail'
 import { useHistoryArrival } from './useHistoryArrival'
 import { useViewHooks, viewedParts } from './widgetControllerParts'
@@ -55,7 +54,7 @@ export type { WidgetControllerProps }
  * display. Call once, in the widget root's setup; its lifecycle hooks belong there.
  * The composables are created in the order the widget always created them, since
  * several register window listeners and watchers at once. DOM work (scrolling,
- * focus, the classic view's input listeners) belongs to the view: see registerView.
+ * focus) belongs to the view: see registerView.
  */
 export function useWidgetController(props: WidgetControllerProps): WidgetController {
     // Get widget ID from props or initial data
@@ -72,7 +71,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const isAuroraStyle = computed(() => customization.value.chat_style === 'AURORA')
     const isAskAnythingStyle = computed(() => customization.value.chat_style === 'ASK_ANYTHING' || isAuroraStyle.value)
 
-    const socket = useWidgetSocket()
+    const socket = useWidgetSocket({ panel: true })
     const { messages, loading, errorMessage, showError, loadingHistory, hasStartedChat, connectionStatus, humanAgent } = socket
 
     // Page messages, in-app actions and journeys. A tapped text reply goes through
@@ -86,10 +85,10 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     // to the bottom as text grows.
     const { displayText, isStreaming, isRevealing, skipReveal } =
         useTypewriter(messages, () => nextTick(() => view.scrollToBottom()), {
-            byWord: () => widgetUiVersion(customization.value) === 2,
+            byWord: () => true,
         })
 
-    // The redesign's live work trace and the visitor's thumbs on replies.
+    // The live work trace and the visitor's thumbs on replies.
     const { liveTrace } = useAgentTrace({ on: socket.on, loading })
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
     // The product sheet's options, read from the shop when it opens.
@@ -103,11 +102,10 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
             return !newChat.newChatError.value
         },
     })
-    // "Suggested for this page", asked while the redesign's start state can show.
+    // "Suggested for this page", asked while the start state can show.
     const { pageSuggestions } = usePageSuggestions({
         on: socket.on, emit: socket.emit,
-        active: computed(() => widgetUiVersion(customization.value) === 2
-            && connectionStatus.value === 'connected' && messages.value.length === 0),
+        active: computed(() => connectionStatus.value === 'connected' && messages.value.length === 0),
     })
     // The email check: once confirmed, the visitor tells the agent so it can look up their orders.
     const emailChecks = useEmailCheck({
@@ -116,9 +114,8 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     })
 
     // Report unread agent messages (received while minimized) to the embedder badge.
-    // The redesign also shows the reply itself in the loader's peek.
+    // The loader's peek also shows the reply itself.
     useUnreadBadge(messages, {
-        enabled: () => widgetUiVersion(customization.value) === 2,
         agentName: () => agentName.value,
     })
 
@@ -155,11 +152,10 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const styles = useWidgetStyles(customization)
     const files = useWidgetFiles(auth.token)
 
-    // The redesigned panel asks for the email inline, beside a usable composer: until
-    // the server took the email and the conversation started, every send waits. A
-    // refused or failed submit keeps the card up, unlike the classic gate.
+    // The panel asks for the email inline, beside a usable composer: until the
+    // server took the email and the conversation started, every send waits. A
+    // refused or failed submit keeps the card up.
     const panelEmail = usePanelEmail({
-        isPanel: computed(() => widgetUiVersion(customization.value) === 2),
         shouldCollectEmail: emailGate.shouldCollectEmail,
         hasStartedChat,
         auth,

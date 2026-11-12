@@ -125,26 +125,11 @@ class LauncherConfig(BaseModel):
     logo_transparent: Optional[bool] = None
 
 
-class WidgetUiConfig(BaseModel):
-    """Which widget design the agent's visitors get: 1 is the classic widget, 2 the
-    redesigned one. Absent means 1. See services/widget_ui.py."""
-    version: Literal[1, 2] = 1
-
-    @field_validator('version', mode='before')
-    @classmethod
-    def _whole_number_only(cls, v):
-        # A Literal also accepts True (== 1) and 2.0 (== 2); only real integers count.
-        if type(v) is not int:
-            raise ValueError('version must be 1 or 2')
-        return v
-
-
 # customization_metadata keys with a fixed shape, read by the embed loader on
 # customer pages. The rest of the dict stays free-form.
 STRUCTURED_METADATA = {
     'widget_display': WidgetDisplayConfig,
     'launcher': LauncherConfig,
-    'widget_ui': WidgetUiConfig,
 }
 
 

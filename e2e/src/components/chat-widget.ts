@@ -588,9 +588,9 @@ export class ChatWidget {
     return this.frame.getByRole('group', { name: title })
   }
 
-  /** A product card's way to its store page: a button in the classic widget, a link in the redesign. */
+  /** A product card's way to its store page: a link. */
   viewProduct(title: string): Locator {
-    return this.productCard(title).getByRole(env.widgetUi === 2 ? 'link' : 'button', { name: /View product/ })
+    return this.productCard(title).getByRole('link', { name: /View product/ })
   }
 
   async addToCart(title: string): Promise<void> {

@@ -94,8 +94,8 @@ describe('launcher customization', () => {
       customize({ size })
       expect(css()).toContain(widthRule(px))
       expect(css()).toContain(`height: ${px}px;`)
-      // The nudge sits 12px above the launcher, 20px from the page edge.
-      expect(css()).toContain(`bottom: ${20 + px + 12}px !important`)
+      // The peek sits 12px above the launcher, 20px from the page edge.
+      expect(css()).toContain(`bottom: ${20 + px + 12}px;`)
       // The window keeps its gap: 100 at full size.
       expect(css()).toContain(`bottom: ${100 - (64 - px)}px;`)
     })
@@ -120,7 +120,7 @@ describe('launcher customization', () => {
       api().init?.({ displayMode: 'search-bar' })
       bringUp()
       customize({ size: 'sm' })
-      expect(css()).toContain(`bottom: ${20 + 48 + 12}px !important`)
+      expect(css()).toContain(`bottom: ${20 + 48 + 12}px;`)
       expect(css()).toContain('height: 48px;')
       expect(css()).toContain('.cm-has-icon .cm-icon')
     })

@@ -20,9 +20,8 @@ import { usePanelEmail } from '@/composables/usePanelEmail'
 
 let scope: EffectScope | null = null
 
-const setup = ({ isPanel = true, collect = true, started = false, apiKeyRequired = false } = {}) => {
+const setup = ({ collect = true, started = false, apiKeyRequired = false } = {}) => {
     const state = {
-        isPanel: ref(isPanel),
         shouldCollectEmail: ref(collect),
         hasStartedChat: ref(started),
         auth: { isApiKeyAuthRequired: ref(apiKeyRequired), showAuthError: ref(true), authError: ref<string | null>('Server error') },
@@ -38,9 +37,8 @@ describe('usePanelEmail', () => {
         scope = null
     })
 
-    it('awaits the email on the panel while the agent collects it and nothing started', () => {
+    it('awaits the email while the agent collects it and nothing started', () => {
         expect(setup().awaitingEmail.value).toBe(true)
-        expect(setup({ isPanel: false }).awaitingEmail.value).toBe(false)
         expect(setup({ collect: false }).awaitingEmail.value).toBe(false)
         expect(setup({ started: true }).awaitingEmail.value).toBe(false)
     })
@@ -62,10 +60,9 @@ describe('usePanelEmail', () => {
         expect(panel.auth.authError.value).toBeNull()
     })
 
-    it('lets the error show for a widget that is not set up, and on the classic widget', () => {
-        for (const panel of [setup({ apiKeyRequired: true }), setup({ isPanel: false })]) {
-            expect(panel.recoverRefusal()).toBe(false)
-            expect(panel.auth.showAuthError.value).toBe(true)
-        }
+    it('lets the error show for a widget that is not set up', () => {
+        const panel = setup({ apiKeyRequired: true })
+        expect(panel.recoverRefusal()).toBe(false)
+        expect(panel.auth.showAuthError.value).toBe(true)
     })
 })

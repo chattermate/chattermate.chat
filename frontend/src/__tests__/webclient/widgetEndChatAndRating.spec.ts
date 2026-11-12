@@ -213,7 +213,7 @@ describe('the rating prompt', () => {
         expect(socketCalls.submitRating).toHaveBeenCalledTimes(1)
     })
 
-    it('submits the last HOVERED star, not the clicked one, after the pointer leaves', async () => {
+    it('submits the picked number, whatever the pointer passed over after', async () => {
         await endWithRating()
 
         await stars(wrapper)[3].trigger('click')
@@ -223,9 +223,8 @@ describe('the rating prompt', () => {
         await submitButton(wrapper).trigger('click')
         await settle(wrapper)
 
-        // Pinned current behaviour (bug): the mouseleave handler is referenced, never
-        // called, so the hover is not reset to the picked star and Submit sends the hover.
-        expect(socketCalls.submitRating).toHaveBeenCalledWith(2, null)
+        // The classic stars sent the last hovered star here; the panel's numbers have no hover state.
+        expect(socketCalls.submitRating).toHaveBeenCalledWith(4, null)
     })
 })
 

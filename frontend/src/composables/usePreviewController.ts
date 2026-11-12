@@ -114,7 +114,6 @@ export function usePreviewController(
         // look
         widgetId: context.widgetId,
         customization,
-        ui: presentation.ui,
         agentName: context.agentName,
         isAuroraStyle,
         isAskAnythingStyle,

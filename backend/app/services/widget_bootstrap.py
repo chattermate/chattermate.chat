@@ -161,7 +161,6 @@ async def _customization(db: Session, agent: Agent) -> dict:
     customization = agent.customization
     if not customization:
         defaults = launcher.uncustomized_defaults()
-        # Through the design switch too, so the kill switch covers every agent.
         defaults['customization_metadata'] = widget_ui.served_metadata(defaults['customization_metadata'])
         return defaults
 
@@ -212,8 +211,5 @@ async def initial_data(db: Session, session: WidgetSession) -> dict:
         "allowAttachments": bool(agent.allow_attachments),
         "presence": session.presence,
         "hideBranding": session.hide_branding,
-        # Only the redesign shows the help center row; skip the lookup for classic.
-        "helpCenterUrl": (
-            help_center_url(db, agent.organization_id) if widget_ui.serves_redesign(customization) else None
-        ),
+        "helpCenterUrl": help_center_url(db, agent.organization_id),
     }

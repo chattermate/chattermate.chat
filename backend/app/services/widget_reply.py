@@ -40,8 +40,10 @@ logger = get_logger(__name__)
 WIDGET_NAMESPACE = '/widget'
 
 # Socket session keys, read once at connect (widget_chat.widget_connect): the
-# visitor gets the redesigned widget, and its agent offers follow-up chips.
-REDESIGN_SESSION_KEY = 'widget_ui_v2'
+# client is the widget panel (it draws live steps, status cards and the email
+# check; the dashboard's onboarding test chat does not), and the agent offers
+# follow-up chips.
+PANEL_SESSION_KEY = 'panel'
 FOLLOW_UPS_SESSION_KEY = 'follow_ups'
 # The earlier conversation's context for the agent (visitor_history.CONTINUED_KEY)
 CONTINUED_CONTEXT_KEY = 'continued_context'
@@ -86,8 +88,8 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
         ),
         host_action_functions=build_action_functions(actions) or None,
         choice_limits=follow_up_limits(session.get(FOLLOW_UPS_SESSION_KEY, False)),
-        step_reporter=StepReporter(session['session_id']) if session.get(REDESIGN_SESSION_KEY) else None,
-        turn_cards=TurnCards() if session.get(REDESIGN_SESSION_KEY) else None,
+        step_reporter=StepReporter(session['session_id']) if session.get(PANEL_SESSION_KEY) else None,
+        turn_cards=TurnCards() if session.get(PANEL_SESSION_KEY) else None,
     )
 
 

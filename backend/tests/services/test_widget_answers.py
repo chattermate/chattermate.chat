@@ -26,9 +26,9 @@ from app.agents.choice_prompt import choice_instructions
 from app.channels.interactive_limits import TELEGRAM_LIMITS, WIDGET_FOLLOW_UP_LIMITS
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse
 from app.services.handover_payload import handover_payload
-from app.services.widget_answers import follow_up_limits, offers_follow_ups, serves_redesign_to_visitors
+from app.services.widget_answers import follow_up_limits, offers_follow_ups
 from app.services.widget_reply import (
-    FOLLOW_UPS_SESSION_KEY, REDESIGN_SESSION_KEY, reply_payload, widget_agent_kwargs,
+    FOLLOW_UPS_SESSION_KEY, PANEL_SESSION_KEY, reply_payload, widget_agent_kwargs,
 )
 
 
@@ -39,9 +39,6 @@ def _reply(**fields):
 
 def _agent(metadata):
     return SimpleNamespace(customization=SimpleNamespace(customization_metadata=metadata))
-
-
-V2 = {"widget_ui": {"version": 2}}
 
 
 class TestReplyPayload:
@@ -90,26 +87,21 @@ class TestHandoverPayload:
 
 
 class TestFollowUpSwitch:
-    def test_on_for_a_redesign_agent_that_turned_them_on(self):
-        agent = _agent({**V2, "answers": {"follow_ups": True}})
-        assert offers_follow_ups(agent) and serves_redesign_to_visitors(agent)
-
     @pytest.mark.parametrize("metadata", [
-        {**V2, "answers": {"follow_ups": "yes"}},
-        {**V2},
+        {"answers": {"follow_ups": True}},
+        # An old classic choice no longer matters
         {"widget_ui": {"version": 1}, "answers": {"follow_ups": True}},
-        {},
     ])
+    def test_on_for_an_agent_that_turned_them_on(self, metadata):
+        assert offers_follow_ups(_agent(metadata))
+
+    @pytest.mark.parametrize("metadata", [{"answers": {"follow_ups": "yes"}}, {"answers": "on"}, {}, None])
     def test_off_otherwise(self, metadata):
         assert not offers_follow_ups(_agent(metadata))
 
-    def test_the_kill_switch_turns_them_off(self):
-        with patch("app.services.widget_ui.settings.WIDGET_UI_V2_ENABLED", False):
-            assert not offers_follow_ups(_agent({**V2, "answers": {"follow_ups": True}}))
-
     def test_an_agent_without_a_customization(self):
-        assert not serves_redesign_to_visitors(SimpleNamespace(customization=None))
-        assert not serves_redesign_to_visitors(None)
+        assert not offers_follow_ups(SimpleNamespace(customization=None))
+        assert not offers_follow_ups(None)
 
     def test_limits(self):
         assert follow_up_limits(True) is WIDGET_FOLLOW_UP_LIMITS and follow_up_limits(False) is None
@@ -131,13 +123,16 @@ class TestAgentKwargs:
         return {"ai_config": config, "org_id": "o", "agent_id": "a", "customer_id": "c",
                 "session_id": "s-1", **flags}
 
-    def test_a_redesign_session_reports_its_steps_and_offers_follow_ups(self):
+    def test_the_panels_session_reports_its_steps_and_offers_follow_ups(self):
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
-            kwargs = widget_agent_kwargs(self._session(**{REDESIGN_SESSION_KEY: True, FOLLOW_UPS_SESSION_KEY: True}))
+            kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True, FOLLOW_UPS_SESSION_KEY: True}))
         assert kwargs["step_reporter"].session_id == "s-1"
+        assert kwargs["turn_cards"] is not None
         assert kwargs["choice_limits"] is WIDGET_FOLLOW_UP_LIMITS
 
-    def test_a_classic_session_is_unchanged(self):
+    def test_another_client_gets_plain_replies(self):
+        # The dashboard's onboarding test chat draws no steps, cards or email check.
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
             kwargs = widget_agent_kwargs(self._session())
-        assert kwargs["step_reporter"] is None and kwargs["choice_limits"] is None
+        assert kwargs["step_reporter"] is None and kwargs["turn_cards"] is None
+        assert kwargs["choice_limits"] is None

@@ -44,7 +44,7 @@ from PIL import Image
 from uuid import UUID
 from app.core.s3 import upload_file_to_s3
 from app.core.config import settings
-from app.services import launcher, telegram_webhooks, widget_ui
+from app.services import launcher, telegram_webhooks
 from app.services.file_storage import local_upload_path
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
@@ -201,9 +201,7 @@ async def create_agent(
                 agent_dict["ask_for_rating"] = False
         
         # Create the agent
-        # One transaction: the agent and its look's first row (the medium launcher,
-        # and the redesigned widget for good, stamped on insert by
-        # services/widget_ui.py). An agent without the row would read as legacy.
+        # One transaction: the agent and its look's first row (the medium launcher).
         agent = agent_repo.create_agent(commit=False, **agent_dict)
         customization = AgentCustomization(
             agent_id=agent.id, customization_metadata=launcher.first_save_metadata(None))
@@ -522,8 +520,6 @@ async def create_agent_customization(
                 stored_metadata,
                 customization_data.customization_metadata,
             )
-            customization_data.customization_metadata = widget_ui.keep_stored_choice(
-                stored_metadata, customization_data.customization_metadata)
 
         if db_customization:
             # Update existing customization

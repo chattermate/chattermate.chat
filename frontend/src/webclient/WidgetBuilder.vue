@@ -15,13 +15,11 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-// The widget root: one controller (state, socket, host page) provided to the view
-// the agent's design asks for (customization_metadata.widget_ui).
+// The widget root: one controller (state, socket, host page) provided to the panel.
 import { provide } from 'vue'
 import { useWidgetController } from '../composables/useWidgetController'
-import { useFrameDocument } from '../composables/useFrameDocument'
+import { fitFrameDocument } from '../composables/useFrameDocument'
 import { WIDGET_CTX, type WidgetControllerProps } from './panel/controller'
-import ClassicWidget from './ClassicWidget.vue'
 import PanelWidget from './panel/PanelWidget.vue'
 
 const props = defineProps<WidgetControllerProps>()
@@ -29,12 +27,10 @@ const props = defineProps<WidgetControllerProps>()
 // Its lifecycle hooks (initialize on mount, clean up on unmount) register here.
 const ctrl = useWidgetController(props)
 provide(WIDGET_CTX, ctrl)
-const { ui } = ctrl
-// The redesign fills its frame edge to edge (the classic view keeps the page as it was).
-useFrameDocument(() => ui.value === 2)
+// The panel fills its frame edge to edge.
+fitFrameDocument()
 </script>
 
 <template>
-    <PanelWidget v-if="ui === 2" />
-    <ClassicWidget v-else />
+    <PanelWidget />
 </template>

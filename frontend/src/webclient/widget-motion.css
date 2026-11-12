@@ -4,7 +4,7 @@
  *
  * Rules (enforced by __tests__/webclient/panelMotionCss.spec.ts):
  * - only `transform` and `opacity` move, so nothing triggers layout;
- * - every timing comes from the --cm-* motion properties that `themeCssVars(…, { ui: 2 })`
+ * - every timing comes from the --cm-* motion properties that `themeCssVars(…, { panel: true })`
  *   emits per theme personality (base, spring, gentle, stepped, blur);
  * - no colour values here.
  *

@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { describe, expect, it } from 'vitest'
-import { CLASSIC_FRAME, pickPanelLook, safeGlow } from '@/webclient/panel-style'
+import { DEFAULT_FRAME, pickPanelLook, safeGlow } from '@/webclient/panel-style'
 import { panelCss, panelOrigin, panelShadow, PANEL_DEFAULT_HEIGHT, PANEL_DEFAULT_WIDTH } from '@/webclient/loader/panelMotion.js'
 import { panelLookFor } from '@/webclient/widget-theme'
 
@@ -24,41 +24,41 @@ import { panelLookFor } from '@/webclient/widget-theme'
  * stylesheet it builds from it. These values reach CSS on customer pages.
  */
 
-const V2 = { ui: 2, radius: 22, elevation: 'dark', glow: 'rgba(157,140,255,.26)', glass: true }
+const LOOK = { radius: 22, elevation: 'dark', glow: 'rgba(157,140,255,.26)', glass: true }
 
 describe('pickPanelLook', () => {
-    it('takes the frame\'s framing for the redesign as it is when it is well formed', () => {
-        expect(pickPanelLook(V2)).toEqual(V2)
-        expect(pickPanelLook({ ui: 2, radius: 24, elevation: 'light', glow: null, glass: false }))
-            .toEqual({ ui: 2, radius: 24, elevation: 'light', glow: null, glass: false })
+    it('takes the frame\'s framing as it is when it is well formed', () => {
+        expect(pickPanelLook(LOOK)).toEqual(LOOK)
+        expect(pickPanelLook({ radius: 24, elevation: 'light', glow: null, glass: false }))
+            .toEqual({ radius: 24, elevation: 'light', glow: null, glass: false })
     })
 
     it('accepts what panelLookFor produces for every chat style', () => {
         for (const style of ['SUNRISE', 'PLAYFUL', 'GLASS', 'AURORA', 'CALM_MINT', 'TERMINAL', 'CHATBOT', 'ASK_ANYTHING']) {
-            const look = { ui: 2, ...panelLookFor(style) }
-            expect(pickPanelLook(look)).toEqual(look)
+            const look = panelLookFor(style)
+            expect(pickPanelLook({ ...look })).toEqual(look)
         }
     })
 
-    it('is the classic framing unless the frame asked for version 2 exactly', () => {
-        for (const input of [undefined, null, 'x', 42, [], {}, { ui: 1 }, { ui: '2' }, { ui: 2.5 }, { ui: true }]) {
-            expect(pickPanelLook(input)).toEqual(CLASSIC_FRAME)
+    it('is the default framing when the frame sent nothing usable', () => {
+        for (const input of [undefined, null, 'x', 42, [], {}, { ui: 1 }]) {
+            expect(pickPanelLook(input)).toEqual(DEFAULT_FRAME)
         }
     })
 
     it('clamps the radius and falls back for anything that is not a number', () => {
-        expect(pickPanelLook({ ui: 2, radius: 1e9 }).radius).toBe(40)
-        expect(pickPanelLook({ ui: 2, radius: -5 }).radius).toBe(0)
-        expect(pickPanelLook({ ui: 2, radius: 12.6 }).radius).toBe(13)
+        expect(pickPanelLook({ radius: 1e9 }).radius).toBe(40)
+        expect(pickPanelLook({ radius: -5 }).radius).toBe(0)
+        expect(pickPanelLook({ radius: 12.6 }).radius).toBe(13)
         for (const radius of ['12px', NaN, Infinity, null, {}]) {
-            expect(pickPanelLook({ ui: 2, radius }).radius).toBe(24)
+            expect(pickPanelLook({ radius }).radius).toBe(24)
         }
     })
 
     it('knows two elevations and treats glass as true only when it is', () => {
-        expect(pickPanelLook({ ui: 2, elevation: 'neon' }).elevation).toBe('light')
-        expect(pickPanelLook({ ui: 2, glass: 'true' }).glass).toBe(false)
-        expect(pickPanelLook({ ui: 2, glass: 1 }).glass).toBe(false)
+        expect(pickPanelLook({ elevation: 'neon' }).elevation).toBe('light')
+        expect(pickPanelLook({ glass: 'true' }).glass).toBe(false)
+        expect(pickPanelLook({ glass: 1 }).glass).toBe(false)
     })
 
     it.each([
@@ -78,7 +78,7 @@ describe('pickPanelLook', () => {
         '#123456;',
     ])('refuses a glow of any other shape: %s', (glow) => {
         expect(safeGlow(glow)).toBeNull()
-        expect(pickPanelLook({ ui: 2, glow }).glow).toBeNull()
+        expect(pickPanelLook({ glow }).glow).toBeNull()
     })
 
     it('keeps a glow of the two known shapes, spaces dropped', () => {
@@ -94,7 +94,7 @@ describe('the v2 stylesheet', () => {
         mode: 'floating', side: 'right', floating: true, sizeIsExplicit: { width: false, height: false },
         dotsScale: 1, peekBottom: 96, sideOffset: 20, zIndex: 999999, ...overrides,
     })
-    const css = (overrides: Record<string, unknown> = {}, frame: any = pickPanelLook(V2)) => panelCss(ids, layout(overrides), frame)
+    const css = (overrides: Record<string, unknown> = {}, frame: any = pickPanelLook(LOOK)) => panelCss(ids, layout(overrides), frame)
 
     /** Every selector of every rule (outside @keyframes). */
     const selectors = (text: string) => text
@@ -123,13 +123,13 @@ describe('the v2 stylesheet', () => {
 
     it('takes the panel\'s radius and casts one long shadow, with the glow ring on dark themes', () => {
         expect(css()).toContain('border-radius: 22px;')
-        expect(panelShadow(pickPanelLook(V2))).toContain('0 0 0 1px rgba(157,140,255,.26)')
-        expect(panelShadow(pickPanelLook({ ui: 2, elevation: 'light' }))).toContain('0 24px 64px -12px')
+        expect(panelShadow(pickPanelLook(LOOK))).toContain('0 0 0 1px rgba(157,140,255,.26)')
+        expect(panelShadow(pickPanelLook({ elevation: 'light' }))).toContain('0 24px 64px -12px')
     })
 
     it('frosts the page behind Glass only, and keeps the frame see-through (R6)', () => {
         expect(css()).toContain('backdrop-filter: blur(20px) saturate(1.4)')
-        expect(css({}, pickPanelLook({ ...V2, glass: false }))).not.toContain('backdrop-filter')
+        expect(css({}, pickPanelLook({ ...LOOK, glass: false }))).not.toContain('backdrop-filter')
         expect(css()).toContain('color-scheme: normal;')
     })
 
@@ -182,7 +182,7 @@ describe('the v2 stylesheet', () => {
     })
 
     it('never carries a refused glow into the page', () => {
-        const text = css({}, pickPanelLook({ ...V2, glow: 'red;}body{display:none' }))
+        const text = css({}, pickPanelLook({ ...LOOK, glow: 'red;}body{display:none' }))
         expect(text).not.toContain('display:none')
         expect(text).not.toContain('red;')
     })

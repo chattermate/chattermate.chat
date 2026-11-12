@@ -21,7 +21,6 @@ import json
 from sqlalchemy.orm import joinedload
 from uuid import UUID
 from app.core.logger import get_logger
-from app.services import widget_ui
 
 logger = get_logger(__name__)
 
@@ -53,9 +52,6 @@ class AgentRepository:
             self.db.refresh(agent)
         else:
             self.db.flush()
-        # New agents start on the redesigned widget, stamped on their first
-        # customization row (services/widget_ui.py).
-        widget_ui.mark_new_agent(self.db, agent.id)
         return agent
 
     def get_by_name(self, name: str, organization_id: UUID) -> Optional[Agent]:

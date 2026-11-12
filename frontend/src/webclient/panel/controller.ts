@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import type { InjectionKey, Ref } from 'vue'
-import type { AgentCustomization, WidgetUiVersion } from '../../types/agent'
+import type { AgentCustomization } from '../../types/agent'
 import type { HumanAgent, WidgetMessage } from '../../types/widget'
 import type { PresenceLine } from '../../utils/widgetPresence'
 import type { HostPrompt, PageChip, PendingConfirm } from '../actions/hostActionsClient'
@@ -68,8 +68,6 @@ export interface WidgetViewHooks {
 export interface WidgetLook {
     widgetId: Shown<string | null | undefined>
     customization: Shown<Partial<AgentCustomization>>
-    /** Which view renders: the classic widget (1) or the redesigned panel (2). */
-    ui: Shown<WidgetUiVersion>
     agentName: Shown<string>
     isAuroraStyle: Shown<boolean>
     isAskAnythingStyle: Shown<boolean>
@@ -104,7 +102,7 @@ export interface WidgetLook {
     askAiSubtitle: Shown<string>
     /** Whether the embedding page shows the widget at all. */
     hostVisible: Shown<boolean>
-    /** What the embed loader can do for the redesigned panel (HOST_CAPABILITIES). */
+    /** What the embed loader can do for the panel (HOST_CAPABILITIES). */
     hostCapabilities: Shown<HostCapabilities>
     /** The Ask AI palette is on screen instead of the chat. */
     useAskAiPanel: Shown<boolean>

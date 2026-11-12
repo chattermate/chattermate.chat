@@ -29,7 +29,7 @@ function setUp(overrides: Record<string, unknown> = {}) {
     container.id = 'chattermate-container'
     container.appendChild(document.createElement('iframe'))
     document.body.append(button, container)
-    const state = { v2: true, open: false, mounted: true, expand: true }
+    const state = { open: false, mounted: true, expand: true }
     const config = { peekId: 'chattermate-peek', launcher: true, panelExpanded: false }
     const post = vi.fn()
     const open = vi.fn(() => { state.open = true })
@@ -38,7 +38,6 @@ function setUp(overrides: Record<string, unknown> = {}) {
         config,
         button,
         container,
-        isV2: () => state.v2,
         isOpen: () => state.open,
         open,
         post,
@@ -61,23 +60,16 @@ afterEach(() => {
 })
 
 describe('createPanelHost', () => {
-    it('scopes the redesign\'s classes to it, and takes them off again for the classic widget', () => {
-        const { host, button, container, state, config } = setUp()
+    it('scopes the panel\'s classes to the launcher and the container', () => {
+        const { host, button, container, config } = setUp()
         config.panelExpanded = true
         host.sync()
         expect(button.classList.contains('cm-v2')).toBe(true)
         expect(button.getAttribute('aria-controls')).toBe('chattermate-container')
         expect(container.className).toBe('cm-v2 cm-expanded')
-
-        button.classList.add('cm-busy')
-        host.show('Ada', 'Your order shipped')
-        state.v2 = false
+        config.panelExpanded = false
         host.sync()
-        expect(button.classList.contains('cm-v2')).toBe(false)
-        expect(button.classList.contains('cm-busy')).toBe(false)
-        expect(button.hasAttribute('aria-controls')).toBe(false)
-        expect(container.className).toBe('')
-        expect(shown()).toBe(false)
+        expect(container.className).toBe('cm-v2')
     })
 
     it('tells the frame its capabilities once mounted, and again on a resize only when they change', () => {
@@ -88,7 +80,7 @@ describe('createPanelHost', () => {
 
         state.mounted = true
         host.announce()
-        expect(post).toHaveBeenLastCalledWith({ type: 'HOST_CAPABILITIES', v: 1, expand: true, backdrop: expect.any(Boolean), navigate: true })
+        expect(post).toHaveBeenLastCalledWith({ type: 'HOST_CAPABILITIES', v: 1, expand: true, backdrop: expect.any(Boolean), navigate: true, swipe: false })
         host.announce(true)
         expect(post).toHaveBeenCalledTimes(1)
         state.expand = false
@@ -108,7 +100,7 @@ describe('createPanelHost', () => {
             config: { peekId: 'p', launcher: true, panelExpanded: false },
             button: document.createElement('div'),
             container: document.createElement('div'),
-            isV2: () => true, isOpen: () => true, open: vi.fn(), post: vi.fn(),
+            isOpen: () => true, open: vi.fn(), post: vi.fn(),
             canAnnounce: () => true, canExpand: () => true,
         })
         expect(navigator.handleMessage({ type: 'NAVIGATE', url: 'https://shop.example/returns' })).toBe(true)
@@ -144,17 +136,6 @@ describe('createPanelHost', () => {
         expect(document.body.style.overflow).toBe('hidden')
         host.destroy()
         expect(document.body.style.overflow).toBe('auto')
-    })
-
-    it('says nothing to, and handles nothing from, a classic frame', () => {
-        const { host, state, post } = setUp()
-        state.v2 = false
-        host.announce()
-        expect(post).not.toHaveBeenCalled()
-        for (const type of ['WIDGET_EXPAND', 'UNREAD_PREVIEW', 'WIDGET_ACTIVITY']) {
-            expect(host.handleMessage({ type, expanded: true, text: 'Hi', busy: true }, false)).toBe(false)
-        }
-        expect(peek()).toBeNull()
     })
 
     it('keeps an outgoing visitor\'s reply out of the peek', () => {
@@ -235,5 +216,97 @@ describe('createPanelHost', () => {
         expect(peek()).toBeNull()
         expect(host.show('', 'Hi')).toBe(false)
         expect(peek()).toBeNull()
+    })
+})
+
+describe('swipe down to close on a phone', () => {
+    const phone = (open = true) => {
+        const close = vi.fn()
+        const env = setUp({ isPhone: () => true, close })
+        env.state.open = open
+        return { ...env, close }
+    }
+
+    afterEach(() => vi.useRealTimers())
+
+    it('is offered to the frame on a phone only', () => {
+        const { host, post } = phone()
+        host.announce()
+        expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'HOST_CAPABILITIES', swipe: true }))
+        const desktop = setUp({ isPhone: () => false })
+        desktop.host.announce()
+        expect(desktop.post).toHaveBeenLastCalledWith(expect.objectContaining({ swipe: false }))
+    })
+
+    it('moves the panel with the finger, never above where it sits', () => {
+        const { host, container } = phone()
+        expect(host.handleMessage({ type: 'WIDGET_DRAG', dy: 64.4 }, false)).toBe(true)
+        expect(container.style.transform).toBe('translateY(64px)')
+        expect(container.style.transition).toBe('none')
+        host.handleMessage({ type: 'WIDGET_DRAG', dy: -40 }, false)
+        expect(container.style.transform).toBe('translateY(0px)')
+    })
+
+    it('closes past 120px, sliding down from where the finger let go', () => {
+        vi.useFakeTimers()
+        const { host, container, close } = phone()
+        host.handleMessage({ type: 'WIDGET_DRAG', dy: 140 }, false)
+        host.handleMessage({ type: 'WIDGET_DRAG', dy: 140, end: true }, false)
+        expect(close).toHaveBeenCalledTimes(1)
+        expect(container.style.transform).toBe('translateY(100%)')
+        vi.advanceTimersByTime(400)
+        expect(container.style.transform).toBe('')
+        expect(container.style.transition).toBe('')
+    })
+
+    it('closes on a flick however short, and springs back otherwise', () => {
+        vi.useFakeTimers()
+        const flicked = phone()
+        flicked.host.handleMessage({ type: 'WIDGET_DRAG', dy: 30, end: true, flick: true }, false)
+        expect(flicked.close).toHaveBeenCalledTimes(1)
+
+        const held = phone()
+        held.host.handleMessage({ type: 'WIDGET_DRAG', dy: 80 }, false)
+        held.host.handleMessage({ type: 'WIDGET_DRAG', dy: 80, end: true }, false)
+        expect(held.close).not.toHaveBeenCalled()
+        expect(held.container.style.transform).toBe('')
+        expect(held.container.style.transition).toContain('transform')
+        vi.advanceTimersByTime(400)
+        expect(held.container.style.transition).toBe('')
+    })
+
+    it('ignores a drag while closed, off a phone, or with a dy that is not a number', () => {
+        const closed = phone(false)
+        closed.host.handleMessage({ type: 'WIDGET_DRAG', dy: 200, end: true }, false)
+        expect(closed.close).not.toHaveBeenCalled()
+        expect(closed.container.style.transform).toBe('')
+
+        const close = vi.fn()
+        const desktop = setUp({ isPhone: () => false, close })
+        desktop.state.open = true
+        desktop.host.handleMessage({ type: 'WIDGET_DRAG', dy: 200, end: true }, false)
+        expect(close).not.toHaveBeenCalled()
+
+        const odd = phone()
+        odd.host.handleMessage({ type: 'WIDGET_DRAG', dy: 'calc(100vh)' }, false)
+        expect(odd.container.style.transform).toBe('translateY(0px)')
+    })
+
+    it('lets the swipe\'s close finish when another touch comes in meanwhile', () => {
+        vi.useFakeTimers()
+        const { host, container, state } = phone()
+        host.handleMessage({ type: 'WIDGET_DRAG', dy: 150, end: true }, false)
+        state.open = false
+        host.handleMessage({ type: 'WIDGET_DRAG', dy: 20 }, false)
+        expect(container.style.transform).toBe('translateY(100%)')
+        vi.advanceTimersByTime(400)
+        expect(container.style.transform).toBe('')
+    })
+
+    it('lets go of a half-finished drag when the frame is replaced', () => {
+        const { host, container } = phone()
+        host.handleMessage({ type: 'WIDGET_DRAG', dy: 50 }, false)
+        host.reset()
+        expect(container.style.transform).toBe('')
     })
 })

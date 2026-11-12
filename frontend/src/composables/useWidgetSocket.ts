@@ -43,7 +43,11 @@ const END_CHAT_TIMEOUT_MS = 5000
 const replyId = (data: { message_id?: unknown }): { id?: number } =>
     typeof data.message_id === 'number' ? { id: data.message_id } : {}
 
-export function useWidgetSocket() {
+/**
+ * `panel`: this socket is the widget panel's, which draws live steps, status cards
+ * and the email check; the onboarding test chat says nothing and gets plain replies.
+ */
+export function useWidgetSocket({ panel = false }: { panel?: boolean } = {}) {
     const messages = ref<Message[]>([])
     const loading = ref(false)
     const errorMessage = ref('')
@@ -172,6 +176,7 @@ export function useWidgetSocket() {
         if (widgetIdAuth) {
             auth.widget_id = widgetIdAuth
         }
+        if (panel) auth.panel = true
         // Host page embedding the widget, recorded server-side on lead capture
         // (lead_source.page_url). A framed widget is told it by the loader; a srcdoc
         // one (older loaders) can read its same-origin parent; else the referrer.

@@ -5,8 +5,7 @@ name: E2E
 # same `stack.sh` path developers run locally. No secrets: runs on fork PRs too.
 #
 # On pull requests and main: the suite on Chromium (parallel, then the org-wide
-# specs serially), and the widget specs again with every agent on the redesigned
-# widget (widget_ui 2). Nightly (and on demand) it also runs, as separate jobs:
+# specs serially). Nightly (and on demand) it also runs, as separate jobs:
 #   prod-like  Redis on and gunicorn (--preload) with 2 workers, as a scaled-out deployment runs
 #   browsers   the widget on Firefox, WebKit, Android and iPhone
 #   visual     widget screenshots (run by hand with update_snapshots to refresh them)
@@ -123,50 +122,6 @@ jobs:
             e2e/.stack/*.log
           retention-days: 14
 
-  # The @widget specs with every agent on the redesigned widget (E2E_WIDGET_UI=2),
-  # set up exactly as the job above. Blocking, like it.
-  widget-v2:
-    name: Playwright (widget v2)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: [ '5432:5432' ]
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 20
-
-    env:
-      E2E_WIDGET_UI: '2'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/e2e-setup
-
-      - name: Start the stack
-        working-directory: e2e
-        run: ./scripts/stack.sh up
-
-      - name: Run the widget specs on the redesigned widget
-        working-directory: e2e
-        run: npm run test:widget-v2 -- --grep-invert @quarantine
-
-      - name: Upload report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-widget-v2
-          path: |
-            e2e/playwright-report/
-            e2e/test-results/
-            e2e/.stack/*.log
-          retention-days: 14
-
   nightly:
     name: Nightly (${{ matrix.variant }})
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
@@ -276,7 +231,7 @@ jobs:
 
   report-nightly-failure:
     name: Report a failed nightly
-    needs: [ e2e, widget-v2, nightly ]
+    needs: [ e2e, nightly ]
     if: ${{ failure() && github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
     permissions:

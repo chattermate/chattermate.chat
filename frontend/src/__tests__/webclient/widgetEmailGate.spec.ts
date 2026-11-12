@@ -17,11 +17,13 @@ limitations under the License.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The pre-chat email gate (customization.collect_email).
+ * The email gate (customization.collect_email): the panel's inline email card.
  *
  * An agent that collects email gets a lead for every conversation; a gate that lets a
  * quick action or a message slip through first loses that lead, and one that never
- * lifts loses the visitor. Characterization: this pins what the widget does today.
+ * lifts loses the visitor. The card sits beside a usable composer and suggestions, and
+ * every send is held until the email is in. Characterization: this pins what the widget
+ * does today.
  */
 
 // The server answers a visitor it doesn't know yet (no customer, no email) with a plain
@@ -66,16 +68,20 @@ const mountUnknownVisitor = async (customization: Record<string, any>) => {
     hooks.beforeAuthorize = () => (globalThis.fetch as any).mockResolvedValue(UNKNOWN_VISITOR)
     const mounted = await mountWidget({ customization: { quick_actions: QUICK_ACTIONS, ...customization } })
     wrapper = mounted.wrapper
+    // In the document, so pressing Continue submits the card's form as in a browser.
+    document.body.appendChild(wrapper.element)
     await settle(wrapper, 10)
     return mounted
 }
 
 const gate = () => wrapper.find('input[type="email"]')
+const card = () => wrapper.find('form.cm-email-card')
+const alertText = () => card().find('[role="alert"]').text()
 const buttonNamed = (name: string) =>
     wrapper.findAll('button').find((b: any) => b.text().trim() === name)
 const continueButton = () => buttonNamed('Continue to chat')
 const quickActionButton = (label: string) => buttonNamed(label)
-const composer = () => wrapper.find('input[placeholder="Type a message..."]')
+const composer = () => wrapper.find('textarea[aria-label="Message"]')
 const authorizeCalls = (fetchMock: any) =>
     fetchMock.mock.calls.filter(([url]: any[]) => /\/widgets\/w-1(\?|$)/.test(String(url)))
 
@@ -93,25 +99,33 @@ afterEach(() => {
     wrapper = undefined
     hooks.beforeAuthorize = null
     vi.unstubAllGlobals()
+    document.body.innerHTML = ''
 })
 
 describe('the email gate when the agent collects email', () => {
-    it('shows the gate instead of the chat for a visitor with no email yet', async () => {
+    it('shows the card for a visitor with no email yet, and holds anything sent beside it', async () => {
         await mountUnknownVisitor({ collect_email: true })
 
-        expect(wrapper.text()).toContain('Before we start')
-        expect(wrapper.text()).toContain("Enter your email and we'll continue the chat.")
+        expect(card().text()).toContain('Before we start')
+        expect(card().text()).toContain("Enter your email and we'll continue the chat.")
         expect(gate().attributes('placeholder')).toBe('you@example.com')
-        // No composer and no quick actions behind it: nothing can be sent yet.
-        expect(composer().exists()).toBe(false)
-        QUICK_ACTIONS.forEach((label) => expect(quickActionButton(label)).toBeUndefined())
+        // The composer and the quick actions stay usable, but nothing reaches the agent yet.
+        expect(composer().attributes('disabled')).toBeUndefined()
+        await composer().setValue('Hello')
+        await composer().trigger('keydown', { key: 'Enter' })
+        await settle(wrapper)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+        await composer().setValue('')
+        await quickActionButton('Pricing').trigger('click')
+        await settle(wrapper)
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
     })
 
-    it('uses the welcome title as the gate heading when one is set', async () => {
-        await mountUnknownVisitor({ collect_email: true, welcome_title: 'Hi there' })
+    it('keeps its own heading, with the welcome title greeting below it', async () => {
+        await mountUnknownVisitor({ collect_email: true, welcome_title: 'Welcome back' })
 
-        expect(wrapper.text()).toContain('Hi there')
-        expect(wrapper.text()).not.toContain('Before we start')
+        expect(card().text()).toContain('Before we start')
+        expect(wrapper.text()).toContain('Welcome back')
     })
 
     it('asks for an address when Continue is pressed with the field empty', async () => {
@@ -121,10 +135,9 @@ describe('the email gate when the agent collects email', () => {
         await continueButton().trigger('click')
         await settle(wrapper)
 
-        expect(wrapper.text()).toContain('Please enter your email address.')
+        expect(alertText()).toBe('Please enter your email address.')
         expect(authorizeCalls(fetchMock).length).toBe(before)
-        expect(gate().exists()).toBe(true)
-        expect(composer().exists()).toBe(false)
+        expect(card().exists()).toBe(true)
     })
 
     it('refuses an invalid address with its error and does not call the server', async () => {
@@ -135,15 +148,15 @@ describe('the email gate when the agent collects email', () => {
         await continueButton().trigger('click')
         await settle(wrapper)
 
-        expect(wrapper.text()).toContain('Please enter a valid email address.')
-        expect(gate().classes()).toContain('invalid')
+        expect(alertText()).toBe('Please enter a valid email address.')
+        expect(gate().classes()).toContain('is-invalid')
+        expect(gate().attributes('aria-invalid')).toBe('true')
         expect(authorizeCalls(fetchMock).length).toBe(before)
-        expect(gate().exists()).toBe(true)
-        expect(composer().exists()).toBe(false)
+        expect(card().exists()).toBe(true)
 
         // Typing again clears the error.
         await gate().setValue('not-an-email-either')
-        expect(wrapper.text()).not.toContain('Please enter a valid email address.')
+        expect(alertText()).toBe('')
     })
 
     it('lets the chat start once a valid address is submitted', async () => {
@@ -151,7 +164,8 @@ describe('the email gate when the agent collects email', () => {
         fetchMock.mockResolvedValue(AUTHORIZED)
 
         await gate().setValue('  ada@example.com ')
-        await gate().trigger('keyup', { key: 'Enter' })
+        // Enter in the field submits the form, as Continue does.
+        await card().trigger('submit')
         await settle(wrapper, 10)
 
         // The address goes to the server on the authorize call, trimmed.
@@ -161,8 +175,7 @@ describe('the email gate when the agent collects email', () => {
         expect(socketCalls.loadChatHistory).toHaveBeenCalled()
         expect(socket.hasStartedChat.value).toBe(true)
 
-        expect(gate().exists()).toBe(false)
-        expect(composer().exists()).toBe(true)
+        expect(card().exists()).toBe(false)
         expect(composer().attributes('disabled')).toBeUndefined()
         expect(quickActionButton('Pricing')).toBeDefined()
         expect(quickActionButton('Pricing').attributes('disabled')).toBeUndefined()
@@ -178,39 +191,34 @@ describe('the email gate when the agent collects email', () => {
         expect(socketCalls.sendMessage).toHaveBeenCalledWith('Talk to sales', 'ada@example.com', [], {})
     })
 
-    it('keeps the gate up while an address is only typed, valid or not', async () => {
+    it('keeps the card up while an address is only typed, valid or not', async () => {
         const { fetchMock } = await mountUnknownVisitor({ collect_email: true })
         const before = authorizeCalls(fetchMock).length
 
         await gate().setValue('ada@')
         await settle(wrapper)
-        expect(gate().exists()).toBe(true)
-        expect(composer().exists()).toBe(false)
-        expect(quickActionButton('Pricing')).toBeUndefined()
+        expect(card().exists()).toBe(true)
 
         // A valid address is not enough on its own: only Continue (or Enter) submits it.
         await gate().setValue('ada@example.com')
         await settle(wrapper)
-        expect(gate().exists()).toBe(true)
-        expect(composer().exists()).toBe(false)
-        expect(quickActionButton('Pricing')).toBeUndefined()
+        expect(card().exists()).toBe(true)
         expect(authorizeCalls(fetchMock).length).toBe(before)
         expect(socketCalls.sendMessage).not.toHaveBeenCalled()
     })
 
-    it('lifts the gate even when the server still refuses the visitor', async () => {
+    it('keeps the card up, with a retryable error, when the server still refuses the visitor', async () => {
         await mountUnknownVisitor({ collect_email: true })
 
-        // Pinned current behaviour (bug): a second 401 still drops the gate, because
-        // submitting ignores the authorize result (it only catches a throw, which never comes).
+        // The authorize call answers 401 again (the hook's answer is still in place).
         await gate().setValue('ada@example.com')
         await continueButton().trigger('click')
         await settle(wrapper, 10)
 
-        expect(gate().exists()).toBe(false)
+        expect(card().exists()).toBe(true)
+        expect(alertText()).toBe('Something went wrong. Please try again.')
         expect(socket.hasStartedChat.value).toBe(false)
         expect(composer().exists()).toBe(true)
-        expect(wrapper.text()).not.toContain('Something went wrong. Please try again.')
     })
 
     it('disables Continue while the address is being checked', async () => {
@@ -228,10 +236,10 @@ describe('the email gate when the agent collects email', () => {
 
         answer(AUTHORIZED)
         await settle(wrapper, 10)
-        expect(gate().exists()).toBe(false)
+        expect(card().exists()).toBe(false)
     })
 
-    it('authorizes twice when Continue is pressed twice within one tick', async () => {
+    it('authorizes once when Continue is pressed twice within one tick', async () => {
         const { fetchMock } = await mountUnknownVisitor({ collect_email: true })
         fetchMock.mockResolvedValue(AUTHORIZED)
         await gate().setValue('ada@example.com')
@@ -243,10 +251,9 @@ describe('the email gate when the agent collects email', () => {
         button.trigger('click')
         await settle(wrapper, 10)
 
-        // Pinned current behaviour (bug): the submit has no in-flight guard of its own;
-        // only the disabled button stops a second press, so a same-tick double press sends two.
-        expect(authorizeCalls(fetchMock).length - before).toBe(2)
-        expect(gate().exists()).toBe(false)
+        // The card's submit has its own in-flight guard (the classic gate sent two).
+        expect(authorizeCalls(fetchMock).length - before).toBe(1)
+        expect(card().exists()).toBe(false)
     })
 })
 
@@ -277,7 +284,7 @@ describe('when authorizing fails', () => {
         expect(socketCalls.connect).not.toHaveBeenCalled()
     })
 
-    it('replaces the gate with the error when the submit answers 500', async () => {
+    it('keeps the card with a retryable error when the submit answers 500', async () => {
         const { fetchMock } = await mountUnknownVisitor({ collect_email: true })
         fetchMock.mockResolvedValue(SERVER_ERROR)
 
@@ -285,14 +292,14 @@ describe('when authorizing fails', () => {
         await continueButton().trigger('click')
         await settle(wrapper, 10)
 
-        expect(wrapper.text()).toContain('Authentication Error')
-        expect(wrapper.text()).toContain('Server error')
-        expect(gate().exists()).toBe(false)
-        expect(composer().exists()).toBe(false)
+        // Not the whole-widget error: the visitor fixes it here and tries again.
+        expect(wrapper.text()).not.toContain('Authentication Error')
+        expect(alertText()).toBe('Something went wrong. Please try again.')
+        expect(composer().exists()).toBe(true)
         expect(socketCalls.connect).not.toHaveBeenCalled()
     })
 
-    it('replaces the gate with a generic error when the submit request fails', async () => {
+    it('keeps the card with a retryable error when the submit request fails', async () => {
         const { fetchMock } = await mountUnknownVisitor({ collect_email: true })
         fetchMock.mockRejectedValue(new Error('offline'))
 
@@ -300,12 +307,9 @@ describe('when authorizing fails', () => {
         await continueButton().trigger('click')
         await settle(wrapper, 10)
 
-        // The gate's own "Something went wrong" never shows: authorizing catches the
-        // failure itself and swaps the whole widget for its error card.
-        expect(wrapper.text()).toContain('An unexpected error occurred. Please try again.')
-        expect(wrapper.text()).not.toContain('Something went wrong. Please try again.')
-        expect(gate().exists()).toBe(false)
-        expect(composer().exists()).toBe(false)
+        expect(wrapper.text()).not.toContain('An unexpected error occurred. Please try again.')
+        expect(alertText()).toBe('Something went wrong. Please try again.')
+        expect(composer().exists()).toBe(true)
     })
 })
 

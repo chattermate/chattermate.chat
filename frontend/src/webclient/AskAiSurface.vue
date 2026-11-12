@@ -15,8 +15,8 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-// The Ask AI palette wired to the widget controller, so the classic view and the
-// panel view show the same palette (ASK_ANYTHING / AURORA, or the search-bar trigger).
+// The Ask AI palette wired to the widget controller (ASK_ANYTHING / AURORA, or the
+// search-bar trigger).
 import { inject } from 'vue'
 import AskAiPanel from './AskAiPanel.vue'
 import { WIDGET_CTX, WIDGET_PREVIEW } from './panel/controller'

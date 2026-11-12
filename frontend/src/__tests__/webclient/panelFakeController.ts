@@ -29,7 +29,7 @@ import { mount } from '@vue/test-utils'
 import { ref, type Component, type Ref } from 'vue'
 import { WIDGET_CTX, type LandingPage, type WidgetController } from '@/webclient/panel/controller'
 import { PANEL_PRESENCE_TEXT } from '@/webclient/copy'
-import type { AgentCustomization, WidgetUiVersion } from '@/types/agent'
+import type { AgentCustomization } from '@/types/agent'
 import type { HumanAgent, WidgetMessage } from '@/types/widget'
 import type { ConnectionStatus } from '@/composables/useWidgetSocket'
 import type { HostCapabilities } from '@/composables/useHostMessages'
@@ -51,7 +51,6 @@ const baseController = () => ({
     // look
     widgetId: ref<string | null | undefined>('w-1'),
     customization: ref<Partial<AgentCustomization>>({}),
-    ui: ref<WidgetUiVersion>(2),
     agentName: ref('Ada'),
     photoUrl: ref(''),
     humanAgentPhotoUrl: ref(''),
@@ -65,7 +64,7 @@ const baseController = () => ({
     quickActions: ref<string[]>([]),
     welcomeMessageText: ref(''),
     hostVisible: ref(true),
-    hostCapabilities: ref<HostCapabilities>({ expand: false, backdrop: false, navigate: false }),
+    hostCapabilities: ref<HostCapabilities>({ expand: false, backdrop: false, navigate: false, swipe: false }),
     themeVars: ref<Record<string, string>>({}),
     containerStyles: ref<Record<string, string>>({}),
     useAskAiPanel: ref(false),

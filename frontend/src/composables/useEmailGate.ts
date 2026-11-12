@@ -30,11 +30,10 @@ export interface EmailGateOptions {
     /** Sends the email to the backend (associates it and (re)connects the socket). */
     authorize: () => Promise<unknown>
     /**
-     * The redesigned panel keeps its email card up when the server refuses or fails
+     * The panel keeps its email card up when the server refuses or fails
      * the email (the authorize call answers false): it clears the widget-wide error
      * that refusal raised and returns true, and the card says to try again. Returns
      * false when the refusal must show as it is (a widget that is not set up).
-     * Absent for the classic widget, whose gate lifts on any answer.
      */
     recoverRefusal?: () => boolean
 }
@@ -90,7 +89,7 @@ export function useEmailGate({
     }
 
     // The same submit, ignored while one is in flight (the panel's card and its held
-    // sends both submit). The classic gate keeps calling submitEmailGate directly.
+    // sends both submit).
     const submitEmailOnce = async () => {
         if (submittingEmail.value) return
         await submitEmailGate()

@@ -18,13 +18,11 @@ limitations under the License.
  * How the embed loader frames the widget's panel, as the frame reports it in
  * CUSTOMIZATION_UPDATE.panel (panelLookFor() in widget-theme.ts). These values end
  * up in CSS on the customer's page, so the loader only ever uses what passes
- * here: a known design version, clamped numbers, a colour of one strict shape and
- * booleans. Anything else falls back to the classic widget's framing.
+ * here: clamped numbers, a colour of one strict shape and booleans. Anything else
+ * falls back to the default framing.
  */
 
 export interface PanelFrame {
-    /** 1: the classic widget, framed as it always was. 2: the redesigned panel. */
-    ui: 1 | 2
     /** Corner radius, px. */
     radius: number
     /** Which long shadow the panel casts. */
@@ -35,7 +33,7 @@ export interface PanelFrame {
     glass: boolean
 }
 
-export const CLASSIC_FRAME: PanelFrame = { ui: 1, radius: 24, elevation: 'light', glow: null, glass: false }
+export const DEFAULT_FRAME: PanelFrame = { radius: 24, elevation: 'light', glow: null, glass: false }
 
 const RADIUS_MIN = 0
 const RADIUS_MAX = 40
@@ -63,11 +61,9 @@ const clampRadius = (value: unknown): number =>
 
 /** The panel framing the loader may use, from whatever the frame sent. */
 export function pickPanelLook(input: unknown): PanelFrame {
-    if (!input || typeof input !== 'object') return { ...CLASSIC_FRAME }
+    if (!input || typeof input !== 'object') return { ...DEFAULT_FRAME }
     const look = input as Record<string, unknown>
-    if (look.ui !== 2) return { ...CLASSIC_FRAME }
     return {
-        ui: 2,
         radius: clampRadius(look.radius),
         elevation: look.elevation === 'dark' ? 'dark' : 'light',
         glow: safeGlow(look.glow),

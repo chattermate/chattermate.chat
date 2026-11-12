@@ -5999,13 +5999,6 @@ export interface components {
              * @default []
              */
             groups: components["schemas"]["app__models__schemas__user_group__UserGroupResponse"][];
-            /**
-             * Widget Ui V2 Enabled
-             * @description Whether this server serves the redesigned widget at all (the operator's
-             *     WIDGET_UI_V2_ENABLED), on every agent the dashboard loads, customized or not.
-             *     Read-only: the design choice says so beside it, and saving it is still allowed.
-             */
-            readonly widget_ui_v2_enabled: boolean;
         };
         /** Audience */
         Audience: {

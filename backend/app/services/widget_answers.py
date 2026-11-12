@@ -21,26 +21,17 @@ customization_metadata.answers so they need no migration:
 from typing import Any, List, Optional
 
 from app.channels.interactive_limits import WIDGET_FOLLOW_UP_LIMITS, InteractiveLimits
-from app.services.widget_ui import REDESIGN, WIDGET_UI_KEY, served_metadata
 
 ANSWERS_KEY = 'answers'
 FOLLOW_UPS_KEY = 'follow_ups'
 
 
-def _served(agent: Any) -> dict:
-    customization = getattr(agent, 'customization', None)
-    return served_metadata(getattr(customization, 'customization_metadata', None) or {})
-
-
-def serves_redesign_to_visitors(agent: Any) -> bool:
-    """Whether this agent's visitors get the redesigned widget (after the kill switch)."""
-    return (_served(agent).get(WIDGET_UI_KEY) or {}).get('version') == REDESIGN
-
-
 def offers_follow_ups(agent: Any) -> bool:
-    """Whether the agent's visitors get the redesign with follow-up chips on."""
-    answers = _served(agent).get(ANSWERS_KEY) or {}
-    return serves_redesign_to_visitors(agent) and answers.get(FOLLOW_UPS_KEY) is True
+    """Whether the agent turned follow-up chips on."""
+    customization = getattr(agent, 'customization', None)
+    metadata = getattr(customization, 'customization_metadata', None) or {}
+    answers = metadata.get(ANSWERS_KEY) if isinstance(metadata, dict) else None
+    return isinstance(answers, dict) and answers.get(FOLLOW_UPS_KEY) is True
 
 
 def follow_up_limits(offered: bool) -> Optional[InteractiveLimits]:

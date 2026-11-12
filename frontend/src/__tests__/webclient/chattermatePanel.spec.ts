@@ -18,9 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, bringUp, cleanupPage, flush, frame, fromFrame, handshake, loadLoader, resetPage, spyOnFrame, tokenFor, WIDGET_ID } from './loaderHarness'
 
 /**
- * The embed loader framing the redesigned panel (widget_ui 2), and the classic
- * widget it must leave exactly as it was: capabilities, open/close, Escape and
- * focus, reopening where the visitor was, expand, the peek and the working dot.
+ * The embed loader framing the panel: capabilities, open/close, Escape and focus,
+ * reopening where the visitor was, expand, the peek and the working dot.
  */
 
 const V2 = { ui: 2, radius: 22, elevation: 'dark', glow: 'rgba(157,140,255,.26)', glass: true }
@@ -55,37 +54,16 @@ async function upWith(panel?: unknown, extra: Record<string, unknown> = {}) {
     return post
 }
 
-describe('the classic widget', () => {
-    it('is framed as it always was: no redesign classes, rules, messages or aria-controls', async () => {
-        const post = await upWith({ ui: 1 })
-        expect(button().classList.contains('cm-v2')).toBe(false)
-        expect(container().classList.contains('cm-v2')).toBe(false)
-        expect(button().hasAttribute('aria-controls')).toBe(false)
-        expect(css()).not.toContain('.cm-v2')
-        expect(sentTypes(post)).not.toContain('HOST_CAPABILITIES')
+describe('the panel', () => {
+    it('is framed as the panel before the frame says how, with the default corners', async () => {
+        await loadLoader()
+        bringUp()
+        expect(button().classList.contains('cm-v2')).toBe(true)
+        expect(container().classList.contains('cm-v2')).toBe(true)
+        expect(css()).toContain('#chattermate-container.cm-v2')
+        expect(css()).toContain('border-radius: 24px;')
     })
 
-    it('still scrolls to the bottom on open, without a cascade, and keeps floating open on Escape', async () => {
-        const post = await upWith({ ui: 1 })
-        api().open()
-        expect(sentTypes(post)).toContain('SCROLL_TO_BOTTOM')
-        expect(sent(post, 'WIDGET_VISIBILITY').at(-1)).toEqual({ type: 'WIDGET_VISIBILITY', open: true })
-        fromFrame({ type: 'WIDGET_ESCAPE' })
-        expect(api().isOpen()).toBe(true)
-    })
-
-    it('ignores what only the redesign says', async () => {
-        await upWith({ ui: 1 })
-        fromFrame({ type: 'WIDGET_EXPAND', expanded: true })
-        fromFrame({ type: 'UNREAD_PREVIEW', text: 'Hi', agentName: 'Ada' })
-        fromFrame({ type: 'WIDGET_ACTIVITY', busy: true })
-        expect(container().classList.contains('cm-expanded')).toBe(false)
-        expect(peek()).toBeNull()
-        expect(button().classList.contains('cm-busy')).toBe(false)
-    })
-})
-
-describe('the redesigned panel', () => {
     it('is framed by its own rules, scoped to it, and the launcher names the panel it opens', async () => {
         await upWith(V2)
         expect(button().classList.contains('cm-v2')).toBe(true)
@@ -319,25 +297,5 @@ describe('the opening-line peek for a returning visitor', () => {
         customize(V2, { chat_initiation_messages: ['Welcome back'] })
         await vi.advanceTimersByTimeAsync(1500)
         expect(peek()!.querySelector('.cm-peek-text')!.textContent).toBe('Welcome back')
-    })
-
-    it('does not show for a page that switched back to the classic widget meanwhile', async () => {
-        vi.useFakeTimers()
-        await loadLoader({ fakeTimers: true })
-        bringUp()
-        customize({ ui: 1 }, { chat_initiation_messages: ['Welcome back'] })
-        await vi.advanceTimersByTimeAsync(1500)
-        expect(peek()).toBeNull()
-    })
-
-    it('hides a showing peek when the page switches back to the classic widget', async () => {
-        await loadLoader()
-        bringUp()
-        customize(V2)
-        fromFrame({ type: 'UNREAD_PREVIEW', text: 'Hi', agentName: 'Ada' })
-        expect(peek()!.classList.contains('show')).toBe(true)
-        customize({ ui: 1 })
-        expect(peek()!.classList.contains('show')).toBe(false)
-        expect(button().classList.contains('cm-v2')).toBe(false)
     })
 })

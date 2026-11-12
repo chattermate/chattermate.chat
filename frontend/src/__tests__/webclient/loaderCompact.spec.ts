@@ -24,7 +24,7 @@ import { loaderBuildOptions } from '../../../scripts/loader-build'
 /**
  * The build step that takes the comments and indentation out of the loader's
  * template-literal CSS: what it touches, and that the bundle it makes gives the
- * page exactly the same stylesheet and markup as the plain one, classic and redesign.
+ * page exactly the same stylesheet and markup as the plain one.
  */
 
 describe('compactLoaderSource', () => {
@@ -99,22 +99,21 @@ describe('the compacted loader bundle', () => {
         expect(bundles.compact.length).toBeLessThan(bundles.plain.length - 8000)
     })
 
-    const V2 = { ui: 2, radius: 22, elevation: 'dark', glow: 'rgba(157,140,255,.26)', glass: true }
+    const LOOK = { ui: 2, radius: 22, elevation: 'dark', glow: 'rgba(157,140,255,.26)', glass: true }
     it.each([
-        ['the classic widget', {}, { chat_bubble_color: '#2F5BEA' }],
-        ['a classic drawer', { displayMode: 'sidebar-left' }, { chat_bubble_color: '#2F5BEA' }],
-        ['the classic search bar', { displayMode: 'search-bar' }, { chat_bubble_color: '#2F5BEA', chat_style: 'ASK_ANYTHING' }],
-        ['the classic bottom sheet', { mobileMode: 'sheet', launcher: false }, { chat_bubble_color: '#2F5BEA' }],
-        ['the redesign', {}, { chat_bubble_color: '#2F5BEA', panel: V2 }],
-        ['the redesign in a drawer', { displayMode: 'sidebar-right' }, { chat_bubble_color: '#2F5BEA', panel: V2 }],
+        ['the widget before the frame says how to frame it', {}, { chat_bubble_color: '#2F5BEA' }],
+        ['the widget', {}, { chat_bubble_color: '#2F5BEA', panel: LOOK }],
+        ['a drawer', { displayMode: 'sidebar-right' }, { chat_bubble_color: '#2F5BEA', panel: LOOK }],
+        ['the search bar', { displayMode: 'search-bar' }, { chat_bubble_color: '#2F5BEA', chat_style: 'ASK_ANYTHING', panel: LOOK }],
+        ['the bottom sheet', { mobileMode: 'sheet', launcher: false }, { chat_bubble_color: '#2F5BEA', panel: LOOK }],
     ])('gives %s the same stylesheet and markup', async (_name, options, look) => {
         const plain = await render(bundles.plain, options, look)
         const compact = await render(bundles.compact, options, look)
         expect(compact.css).toBe(plain.css)
         expect(compact.markup).toBe(plain.markup)
         expect(compact.rawCss).toBeLessThan(plain.rawCss)
-        // The look really arrived: the redesign's rules for it, none for the classic widget.
-        expect(plain.css.includes('#chattermate-container.cm-v2')).toBe('panel' in look)
+        // The panel's rules are always there; the look really arrived.
+        expect(plain.css).toContain('#chattermate-container.cm-v2')
         expect(plain.css).toContain('#2F5BEA')
     })
 })

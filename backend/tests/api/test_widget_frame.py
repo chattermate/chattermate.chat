@@ -30,7 +30,7 @@ from app.api import widget_frame as frame_router
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.database import get_db
-from app.models.agent import Agent
+from app.models.agent import Agent, AgentCustomization
 from app.models.customer import Customer
 from app.models.organization import Organization
 from app.models.widget import Widget
@@ -313,20 +313,19 @@ class TestBootstrap:
         monkeypatch.setattr(widget_bootstrap, "plan_hides_branding", lambda *a: False)
         assert bootstrap(client, test_widget).json()["hideBranding"] is False
 
-    def test_the_live_help_center_is_offered_on_the_redesign(self, client, test_widget, monkeypatch):
+    def test_the_live_help_center_is_offered(self, client, test_widget, monkeypatch):
         monkeypatch.setattr(widget_bootstrap, "help_center_url", lambda *a: "https://help.acme.example")
-        monkeypatch.setattr(widget_bootstrap.widget_ui, "serves_redesign", lambda *a: True)
         assert bootstrap(client, test_widget).json()["helpCenterUrl"] == "https://help.acme.example"
 
-    def test_the_classic_widget_skips_the_help_center_lookup(self, client, test_widget, monkeypatch):
-        def lookup(*a):
-            raise AssertionError("looked up for a classic widget")
-        monkeypatch.setattr(widget_bootstrap, "help_center_url", lookup)
-        assert bootstrap(client, test_widget).json()["helpCenterUrl"] is None
+    def test_every_agent_is_served_the_redesign(self, client, db, test_widget, test_agent):
+        # An agent that once chose the classic widget gets the redesign all the same.
+        db.add(AgentCustomization(agent_id=test_agent.id, customization_metadata={"widget_ui": {"version": 1}}))
+        db.commit()
+        metadata = bootstrap(client, test_widget).json()["customization"]["customization_metadata"]
+        assert metadata["widget_ui"] == {"version": 2}
 
     def test_the_html_page_bakes_in_the_help_center(self, client, test_widget, monkeypatch):
         monkeypatch.setattr(widget_bootstrap, "help_center_url", lambda *a: "https://help.acme.example/</script>")
-        monkeypatch.setattr(widget_bootstrap.widget_ui, "serves_redesign", lambda *a: True)
         page = client.get(f"/api/v1/widgets/{test_widget.id}/data").text
         assert "helpCenterUrl: " in page
         # Escaped for a script block: the URL cannot close the tag.

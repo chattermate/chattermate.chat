@@ -5,7 +5,7 @@ import { createShopifyCart } from './loader/shopifyCart.js'
 import { createLookCache } from './loader/lookCache.js'
 import { panelCss } from './loader/panelMotion.js'
 import { createPanelHost } from './loader/panelHost.js'
-import { CLASSIC_FRAME, pickPanelLook } from './panel-style'
+import { DEFAULT_FRAME, pickPanelLook } from './panel-style'
 // TypeScript declarations for global variables
 /** @type {string} */
 window.chattermateId;
@@ -107,21 +107,15 @@ import {
     surfaceIsPalette: null, // Reported by the widget (WIDGET_SURFACE); null until then
     chatStyle: null, // Reported by the widget; decides whether it draws its own close
     chatInitiationMessages: [], // Will be populated from widget data
-    initiationMessageId: 'chattermate-initiation',
     initiationShownKey: 'ctim_shown', // Key for tracking if initiation was shown
     unreadCount: 0, // unread agent messages (reported by the iframe) once chat opened
     hasOpened: false, // whether the visitor has opened the chat at least once
-    panel: { ...CLASSIC_FRAME }, // How the frame asks to be framed (pickPanelLook): classic until it says ui 2
-    panelExpanded: false, // The redesigned panel's header asked for the bigger size (WIDGET_EXPAND)
-    peekId: 'chattermate-peek', // The redesigned panel's peek nudge (peekNudge.js)
+    panel: { ...DEFAULT_FRAME }, // How the frame asks to be framed (pickPanelLook)
+    panelExpanded: false, // The panel's header asked for the bigger size (WIDGET_EXPAND)
+    peekId: 'chattermate-peek', // The panel's peek nudge (peekNudge.js)
   }
 
-  // The redesigned widget (widget_ui version 2) asked for its own framing. Everything
-  // the loader does differently for it checks this; the classic widget never changes.
-  function isPanelV2() {
-    return config.panel.ui === 2
-  }
-  // How long the page has to be in view before the redesigned panel's peek shows.
+  // How long the page has to be in view before the panel's peek shows.
   const PEEK_DWELL_MS = 1400
 
   // Keys the developer set explicitly (via chattermateConfig / init / setPosition).
@@ -697,8 +691,7 @@ import {
         #${config.buttonId},
         #${config.buttonId} .cm-ring,
         #${config.buttonId} .cm-dot,
-        #${config.buttonId} .cm-swoosh span,
-        .initiation-orb { animation: none !important; }
+        #${config.buttonId} .cm-swoosh span { animation: none !important; }
         /* Open and close in place: no slide, scale or fade for people who asked for less motion. */
         #${config.buttonId},
         #${config.containerId},
@@ -1003,241 +996,6 @@ import {
         }
       }
 
-      /* Chat Initiation Message Styles */
-      #${config.initiationMessageId} {
-        position: fixed !important;
-        /* Sit above the launcher (+12px gap) and align to its edge on the active side,
-           so it never overlaps the icon regardless of the configured position/mode. */
-        bottom: ${(config.launcherBottom || 20) + launcherHeight + 12}px !important;
-        ${side}: ${config.launcherRight || 20}px !important;
-        max-width: 260px !important;
-        background: white !important;
-        padding: 12px 36px 12px 14px !important;
-        border-radius: 14px !important;
-        box-shadow: 0 3px 16px rgba(0, 0, 0, 0.1) !important;
-        z-index: ${config.zIndex - 1} !important;
-        cursor: pointer !important;
-        opacity: 0;
-        visibility: hidden;
-        transform: translateY(10px) scale(0.95);
-        transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1) !important;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
-        font-size: 14px !important;
-        box-sizing: border-box !important;
-        margin: 0 !important;
-        border: none !important;
-        display: block !important;
-        width: auto !important;
-        height: auto !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
-        max-height: none !important;
-        line-height: 1.4 !important;
-        text-align: left !important;
-        vertical-align: baseline !important;
-        overflow: visible !important;
-      }
-      /* Clamp the nudge text to 4 lines with an ellipsis so a long welcome/initiation
-         message can never balloon the bubble over the page or into the launcher.
-         Applied to the text node only, so the orb (left:-34px) is never clipped. */
-      #${config.initiationMessageId} .initiation-message-text {
-        margin: 0 !important;
-        display: -webkit-box !important;
-        -webkit-line-clamp: 4 !important;
-        -webkit-box-orient: vertical !important;
-        overflow: hidden !important;
-      }
-
-      /* Siri-style orb avatar beside the nudge (design comp) */
-      .initiation-orb {
-        position: absolute !important;
-        left: -34px !important;
-        bottom: 2px !important;
-        width: 26px !important;
-        height: 26px !important;
-        border-radius: 50% !important;
-        background: conic-gradient(from 0deg, #C9F24E, #9D8CFF, #5FE3D6, #FF8A73, #C9F24E) !important;
-        box-shadow: 0 4px 14px rgba(157, 140, 255, 0.4) !important;
-        animation: chattermate-orb-spin 6s linear infinite !important;
-        z-index: 1 !important;
-      }
-      @keyframes chattermate-orb-spin { to { transform: rotate(360deg); } }
-      ${side === 'left' ? `
-      /* On the left edge the orb (which protrudes 34px past the bubble) would clip
-         off-screen — mirror it to the bubble's page-facing side. */
-      .initiation-orb {
-        left: auto !important;
-        right: -34px !important;
-      }
-      ` : ''}
-
-      #${config.initiationMessageId}.show {
-        opacity: 1;
-        visibility: visible;
-        transform: translateY(0) scale(1);
-        animation: chattermate-bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      }
-
-      @keyframes chattermate-bounce-in {
-        0% {
-          opacity: 0;
-          transform: translateY(20px) scale(0.8);
-        }
-        50% {
-          transform: translateY(-5px) scale(1.02);
-        }
-        100% {
-          opacity: 1;
-          transform: translateY(0) scale(1);
-        }
-      }
-
-      #${config.initiationMessageId}:hover {
-        transform: translateY(-2px) scale(1.02);
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.14);
-      }
-
-      #${config.initiationMessageId}::after {
-        content: '' !important;
-        position: absolute !important;
-        bottom: -7px !important;
-        ${side}: 30px !important;
-        width: 14px !important;
-        height: 14px !important;
-        min-width: 14px !important;
-        min-height: 14px !important;
-        max-width: 14px !important;
-        max-height: 14px !important;
-        background: white !important;
-        transform: rotate(45deg) !important;
-        box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.06) !important;
-        clip-path: polygon(0 0, 100% 0, 100% 100%) !important;
-        border: none !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        box-sizing: border-box !important;
-        z-index: -1 !important;
-      }
-
-      .initiation-message-text {
-        font-size: 13px !important;
-        line-height: 1.4 !important;
-        color: #374151 !important;
-        margin: 0 !important;
-        padding: 0 4px 0 0 !important;
-        position: relative !important;
-        z-index: 1 !important;
-        min-height: 18px !important;
-        box-sizing: border-box !important;
-        border: none !important;
-        background: transparent !important;
-        display: block !important;
-        width: 100% !important;
-        height: auto !important;
-        max-width: none !important;
-        max-height: none !important;
-        text-align: left !important;
-        vertical-align: baseline !important;
-        font-weight: normal !important;
-        font-style: normal !important;
-        text-decoration: none !important;
-        text-transform: none !important;
-        letter-spacing: normal !important;
-        word-spacing: normal !important;
-        white-space: normal !important;
-        overflow-wrap: break-word !important;
-        word-wrap: break-word !important;
-      }
-
-      .initiation-message-text::after {
-        content: '|';
-        animation: blink 1s step-end infinite;
-        margin-left: 2px;
-        color: ${config.chatBubbleColor};
-        font-weight: 500;
-      }
-
-      .initiation-message-text.typing-complete::after {
-        display: none;
-      }
-
-      @keyframes blink {
-        0%, 50% { opacity: 1; }
-        51%, 100% { opacity: 0; }
-      }
-
-      .initiation-close {
-        position: absolute !important;
-        top: 10px !important;
-        right: 10px !important;
-        width: 20px !important;
-        height: 20px !important;
-        min-width: 20px !important;
-        min-height: 20px !important;
-        max-width: 20px !important;
-        max-height: 20px !important;
-        background: rgba(0, 0, 0, 0.04) !important;
-        border: none !important;
-        border-radius: 5px !important;
-        cursor: pointer !important;
-        opacity: 0.5 !important;
-        transition: all 0.2s ease !important;
-        z-index: 2 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        box-sizing: border-box !important;
-        outline: none !important;
-        box-shadow: none !important;
-        text-decoration: none !important;
-        font-size: 0 !important;
-        line-height: 0 !important;
-        overflow: hidden !important;
-        flex-shrink: 0 !important;
-      }
-
-      .initiation-close:hover {
-        opacity: 1 !important;
-        background: rgba(0, 0, 0, 0.08) !important;
-        transform: scale(1.05) !important;
-      }
-
-      .initiation-close::before,
-      .initiation-close::after {
-        content: '' !important;
-        position: absolute !important;
-        width: 9px !important;
-        height: 1.5px !important;
-        min-width: 9px !important;
-        min-height: 1.5px !important;
-        max-width: 9px !important;
-        max-height: 1.5px !important;
-        background: #4a5568 !important;
-        border-radius: 1px !important;
-        top: 50% !important;
-        left: 50% !important;
-        margin: -0.75px 0 0 -4.5px !important;
-        padding: 0 !important;
-        border: none !important;
-        box-sizing: border-box !important;
-      }
-
-      .initiation-close::before {
-        transform: rotate(45deg) !important;
-      }
-
-      .initiation-close::after {
-        transform: rotate(-45deg) !important;
-      }
-
-      @media (max-width: 768px) {
-        #${config.initiationMessageId} {
-          display: none !important;
-        }
-      }
-
       /* Error UI Styles */
       .chattermate-error-ui {
         width: 100%;
@@ -1394,7 +1152,7 @@ import {
       #${config.buttonId}, #${config.buttonId}.mobile-closed { display: none !important; }
       `}
     `
-    if (isPanelV2()) style.textContent += panelCss(
+    style.textContent += panelCss(
       { button: config.buttonId, container: config.containerId, peek: config.peekId },
       {
         mode,
@@ -1421,19 +1179,19 @@ import {
     syncLauncherContent()
   }
 
-  // The redesigned panel's rules are scoped to .cm-v2 on the launcher and the
-  // container (see panelHost.sync); nothing until the widget is built.
+  // The panel's rules are scoped to .cm-v2 on the launcher and the container (see
+  // panelHost.sync); nothing until the widget is built.
   function syncPanelClasses() {
     if (panelHost) panelHost.sync()
   }
 
-  // Tell a redesigned frame what this loader can do for it (panelHost.announce).
+  // Tell the frame what this loader can do for it (panelHost.announce).
   function announceCapabilities(onlyIfChanged) {
     if (panelHost) panelHost.announce(onlyIfChanged)
   }
 
   // A floating window, as opposed to a drawer or the Ask AI palette: the only
-  // surface the redesign's corners, shadow and expand size apply to.
+  // surface the panel's corners, shadow and expand size apply to.
   function isFloatingWindow() {
     const mode = config.displayMode
     return mode !== 'sidebar-left' && mode !== 'sidebar-right' && !isAskAiModal()
@@ -1600,107 +1358,6 @@ import {
     sessionStorage.setItem(config.initiationShownKey, 'true');
   }
 
-  // Create initiation message element
-  function createInitiationMessage() {
-    const message = getRandomInitiationMessage();
-    if (!message) return null;
-
-    const initiationDiv = document.createElement('div');
-    initiationDiv.id = config.initiationMessageId;
-    initiationDiv.innerHTML = `
-      <span class="initiation-orb"></span>
-      <button class="initiation-close" aria-label="Close"></button>
-      <p class="initiation-message-text"></p>
-    `;
-
-    // Store the full message for typewriting effect
-    initiationDiv.dataset.fullMessage = message;
-
-    return initiationDiv;
-  }
-
-  // Typewriting effect for initiation message
-  function typeWriteMessage(element, text, speed = 50) {
-    const textElement = element.querySelector('.initiation-message-text');
-    if (!textElement) return;
-
-    let index = 0;
-    
-    const typeInterval = setInterval(() => {
-      if (index < text.length) {
-        textElement.textContent += text.charAt(index);
-        index++;
-      } else {
-        clearInterval(typeInterval);
-        // Remove cursor after typing is complete
-        textElement.classList.add('typing-complete');
-        element.typeInterval = null;
-      }
-    }, speed);
-
-    // Store interval ID to clear it if needed
-    element.typeInterval = typeInterval;
-  }
-
-  // Show initiation message with animation
-  function showInitiationMessage(initiationDiv, toggleChatFn) {
-    if (!initiationDiv || !shouldShowInitiation()) return;
-
-    document.body.appendChild(initiationDiv);
-
-    // Show after a short delay for better UX
-    setTimeout(() => {
-      initiationDiv.classList.add('show');
-      
-      // Start typewriting effect after bubble appears
-      setTimeout(() => {
-        const fullMessage = initiationDiv.dataset.fullMessage;
-        if (fullMessage) {
-          typeWriteMessage(initiationDiv, fullMessage, 40);
-        }
-      }, 300);
-    }, 1500);
-
-    // Click on message opens chat
-    initiationDiv.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('initiation-close')) {
-        // Clear typewriting interval if still running
-        if (initiationDiv.typeInterval) {
-          clearInterval(initiationDiv.typeInterval);
-        }
-        hideInitiationMessage(initiationDiv);
-        toggleChatFn();
-        markInitiationShown();
-      }
-    });
-
-    // Close button hides message
-    const closeBtn = initiationDiv.querySelector('.initiation-close');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // Clear typewriting interval if still running
-        if (initiationDiv.typeInterval) {
-          clearInterval(initiationDiv.typeInterval);
-        }
-        hideInitiationMessage(initiationDiv);
-        markInitiationShown();
-      });
-    }
-  }
-
-  // Hide initiation message
-  function hideInitiationMessage(initiationDiv) {
-    if (!initiationDiv) return;
-    
-    initiationDiv.classList.remove('show');
-    setTimeout(() => {
-      if (initiationDiv.parentNode) {
-        initiationDiv.parentNode.removeChild(initiationDiv);
-      }
-    }, 400);
-  }
-
   // Initialize function to create and append elements
   function initialize() {
     isDestroyed = false
@@ -1781,16 +1438,15 @@ import {
     let policyListener = null
     let refusedOrigin = null
     let iframe = null
-    let initiationMessageElement = null
-    // The redesigned panel: its classes, capabilities, messages and peek nudge.
+    // The panel: its classes, capabilities, messages and peek nudge.
     const panel = createPanelHost({
       doc: document,
       config,
       button,
       container,
-      isV2: isPanelV2,
       isOpen: function () { return isOpen },
       open: function () { toggleChat() },
+      close: function () { if (isOpen) toggleChat({ returnFocus: true }) },
       post: postToFrame,
       canAnnounce: function () { return widgetMounted },
       canExpand: function () { return isFloatingWindow() && !isMobileDevice() },
@@ -1811,7 +1467,7 @@ import {
     }
 
     // `options.returnFocus`: the close came from the keyboard, Escape or the panel's
-    // own minimize, so focus goes back to the launcher (redesigned panel only).
+    // own minimize, so focus goes back to the launcher.
     function toggleChat(options) {
       isOpen = !isOpen
       container.classList.toggle('active')
@@ -1829,11 +1485,9 @@ import {
           prefetchWidget()
         }
       }
-      // Tell the iframe whether it's visible so it can track unread messages. The
-      // redesigned panel also plays its open cascade.
-      postToFrame(isPanelV2()
-        ? { type: 'WIDGET_VISIBILITY', open: isOpen, cascade: isOpen }
-        : { type: 'WIDGET_VISIBILITY', open: isOpen })
+      // Tell the iframe whether it's visible so it can track unread messages, and
+      // play the panel's open cascade.
+      postToFrame({ type: 'WIDGET_VISIBILITY', open: isOpen, cascade: isOpen })
       if (isOpen) {
         reportPage()
         // A cross-origin frame can't take focus on its own; the click that opened
@@ -1845,12 +1499,6 @@ import {
       // The peek fades as the panel grows, so it seems to turn into it.
       panel.toggled(isOpen)
 
-      // Hide initiation message when chat is opened
-      if (isOpen && initiationMessageElement) {
-        hideInitiationMessage(initiationMessageElement);
-        initiationMessageElement = null;
-        markInitiationShown();
-      }
 
       // Handle mobile button visibility
       if (isMobileDevice()) {
@@ -1871,11 +1519,8 @@ import {
         }
       }
 
-      // The redesigned panel keeps where the visitor was (it follows new messages
-      // only from the bottom, with a "New messages" pill otherwise).
-      if (isOpen && !isPanelV2()) postToFrame({ type: 'SCROLL_TO_BOTTOM' })
       // Focus back on the launcher once it is showing again (phones re-show it above).
-      if (!isOpen && isPanelV2() && options && options.returnFocus === true) button.focus()
+      if (!isOpen && options && options.returnFocus === true) button.focus()
 
       emitEvent(isOpen ? 'open' : 'close')
     }
@@ -1950,17 +1595,11 @@ import {
       window.removeEventListener('popstate', reportPage)
       window.removeEventListener('hashchange', reportPage)
       unwatchHistory()
-      // The nudge is appended to <body>, not to our container, and it runs a
-      // typewriter interval that would keep ticking on a detached node.
+      // The peek is appended to <body>, not to our container, so it goes on its own.
       panel.destroy()
       panelHost = null
       // The storefront's cart events would still read cart.js for a widget that is gone.
       shopifyCart.destroy()
-      if (initiationMessageElement) {
-        if (initiationMessageElement.typeInterval) clearInterval(initiationMessageElement.typeInterval)
-        removeNode(initiationMessageElement)
-        initiationMessageElement = null
-      }
       ;[button, backdrop, container, mobileCloseButton, mobileTopbar].forEach(removeNode)
       removeNode(document.getElementById('chattermate-styles'))
       document.body.classList.remove('ask-anything-mobile')
@@ -2327,14 +1966,8 @@ import {
       }
       if (event.data.type === 'WIDGET_ESCAPE') {
         // Escape pressed inside the frame, which the page's own key handlers can't
-        // see. A drawer closes on it, as it would with focus on the page; the
-        // redesigned panel closes on it in every mode, focus back on the launcher.
-        if (isPanelV2()) {
-          if (isOpen) toggleChat({ returnFocus: true })
-          return
-        }
-        const drawer = config.displayMode === 'sidebar-left' || config.displayMode === 'sidebar-right'
-        if (drawer && isOpen) toggleChat()
+        // see. The panel closes on it in every mode, focus back on the launcher.
+        if (isOpen) toggleChat({ returnFocus: true })
         return
       }
       if (panel.handleMessage(event.data, closingUp)) return
@@ -2474,27 +2107,15 @@ import {
     // Start prefetching immediately
     prefetchWidget()
 
-    // Show initiation message shortly after the launcher becomes visible — scheduling
-    // this from page-load time (rather than from reveal) could show a nudge bubble
-    // pointing at a launcher that isn't on screen yet.
-    // The redesigned panel's peek: once per session, after a 1.4s dwell. onReveal,
-    // as a returning visitor's cached look can reveal the launcher before this point.
+    // The agent's opening line in the peek: once per session, after a 1.4s dwell
+    // from when the launcher shows (onReveal, not page load, so it never points at a
+    // launcher that isn't on screen yet; a returning visitor's cached look can
+    // reveal it straight away).
     onReveal(() => {
-      if (!isPanelV2()) return
       setTimeout(() => {
-        if (isOpen || !isPanelV2() || !shouldShowInitiation()) return
+        if (isDestroyed || isOpen || !shouldShowInitiation()) return
         if (panel.show('', getRandomInitiationMessage())) markInitiationShown()
       }, PEEK_DWELL_MS)
-    })
-    onRevealCallbacks.push(() => {
-      if (isPanelV2()) return
-      setTimeout(() => {
-        if (isDestroyed) return
-        if (!isOpen && config.chatInitiationMessages.length > 0) {
-          initiationMessageElement = createInitiationMessage();
-          showInitiationMessage(initiationMessageElement, toggleChat);
-        }
-      }, 2000)
     })
 
     // Don't auto-open on mobile devices - let user initiate
@@ -2600,9 +2221,9 @@ import {
       controller.close()
     }
   })
-  // The redesigned panel closes on Escape in every mode, focus on the page too.
+  // The panel closes on Escape in every mode, focus on the page too.
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape' || e.defaultPrevented || !controller || !isPanelV2() || isAskAiModal()) return
+    if (e.key !== 'Escape' || e.defaultPrevented || !controller || isAskAiModal()) return
     // Not while the visitor is closing the site's own dialog: Esc inside our frame
     // arrives as WIDGET_ESCAPE instead.
     if (controller.isOpen() && panelHost && panelHost.ownsEscape()) controller.close({ returnFocus: true })
@@ -2661,8 +2282,8 @@ import {
     }
     // Header chevron inside the widget asks to minimize.
     if (event.data.type === 'WIDGET_MINIMIZE') {
-      // The redesigned panel's own minimize hands focus back to the launcher.
-      withController(function () { controller.close(isPanelV2() ? { returnFocus: true } : undefined) })
+      // The panel's own minimize hands focus back to the launcher.
+      withController(function () { controller.close({ returnFocus: true }) })
       return
     }
     if (event.data.type === 'CUSTOMIZATION_UPDATE') {

@@ -58,7 +58,7 @@ const mountAttached = async (options: Parameters<typeof mountWidget>[0] = {}) =>
     return mounted
 }
 
-const chatComposer = (wrapper: any) => wrapper.find('input[placeholder="Type a message..."]')
+const chatComposer = (wrapper: any) => wrapper.find('textarea[aria-label="Message"]')
 const paletteInput = (wrapper: any) => wrapper.find('input[aria-label="Ask me anything..."]')
 
 describe('PREFILL_MESSAGE', () => {
@@ -79,7 +79,7 @@ describe('PREFILL_MESSAGE', () => {
 
         await postFromParent(wrapper, { type: 'PREFILL_MESSAGE', text: 'x'.repeat(2500) })
 
-        expect((chatComposer(wrapper).element as HTMLInputElement).value).toHaveLength(2000)
+        expect((chatComposer(wrapper).element as HTMLTextAreaElement).value).toHaveLength(2000)
     })
 
     it('ignores a prefill whose text is not a string', async () => {
@@ -87,7 +87,7 @@ describe('PREFILL_MESSAGE', () => {
 
         await postFromParent(wrapper, { type: 'PREFILL_MESSAGE', text: 42 })
 
-        expect((chatComposer(wrapper).element as HTMLInputElement).value).toBe('')
+        expect((chatComposer(wrapper).element as HTMLTextAreaElement).value).toBe('')
     })
 
     it('replaces whatever the visitor had typed when a chat is already underway', async () => {
@@ -101,13 +101,13 @@ describe('PREFILL_MESSAGE', () => {
 
         await postFromParent(wrapper, { type: 'PREFILL_MESSAGE', text: 'Track my parcel' })
 
-        expect((chatComposer(wrapper).element as HTMLInputElement).value).toBe('Track my parcel')
+        expect((chatComposer(wrapper).element as HTMLTextAreaElement).value).toBe('Track my parcel')
         expect(socketCalls.sendMessage).not.toHaveBeenCalled()
     })
 
     it('fills the Ask AI palette but does not move focus to it', async () => {
-        // Pinned current behaviour (odd): the prefill focus looks for the chat-panel and
-        // welcome inputs only, so in the palette focus stays wherever it was.
+        // Pinned current behaviour (odd): the prefill focuses the panel's composer, which
+        // the palette does not show, so focus stays wherever it was.
         await mountAttached({ customization: { chat_style: 'ASK_ANYTHING' } })
         const input = paletteInput(wrapper)
         ;(input.element as HTMLInputElement).blur()
@@ -149,7 +149,9 @@ describe('WIDGET_VISIBILITY', () => {
 })
 
 describe('SCROLL_TO_BOTTOM', () => {
-    it('scrolls the message list to its end', async () => {
+    it('scrolls the message list to its end while the visitor is at the bottom', async () => {
+        // The panel follows only a visitor who has not scrolled up, on the next frame.
+        socket.messages.value = [{ message: 'Hi', message_type: 'user' }]
         await mountAttached()
         const log = wrapper.find('[role="log"][aria-label="Messages"]').element as HTMLElement
         let scrollTop = 0
@@ -159,6 +161,7 @@ describe('SCROLL_TO_BOTTOM', () => {
         })
 
         await postFromParent(wrapper, { type: 'SCROLL_TO_BOTTOM' })
+        await new Promise((done) => requestAnimationFrame(() => done(null)))
 
         expect(scrollTop).toBe(940)
     })
@@ -269,14 +272,14 @@ describe('IDENTITY_UNAVAILABLE', () => {
 describe('WIDGET_DISPLAY', () => {
     it("takes the loader's display geometry: a search-bar trigger opens the palette", async () => {
         await mountAttached()
-        expect(wrapper.find('[role="log"][aria-label="Messages"]').exists()).toBe(true)
+        expect(chatComposer(wrapper).exists()).toBe(true)
         expect(posted('WIDGET_SURFACE').at(-1)).toEqual({ type: 'WIDGET_SURFACE', palette: false })
 
         await postFromParent(wrapper, { type: 'WIDGET_DISPLAY', mode: 'search-bar', width: 640, height: 72, hotkey: true })
         await settle(wrapper)
 
         expect(wrapper.find('input[aria-label="Type a message..."]').exists()).toBe(true)
-        expect(wrapper.find('[role="log"][aria-label="Messages"]').exists()).toBe(false)
+        expect(chatComposer(wrapper).exists()).toBe(false)
         expect(posted('WIDGET_SURFACE').at(-1)).toEqual({ type: 'WIDGET_SURFACE', palette: true })
     })
 })
@@ -289,7 +292,7 @@ describe('a message posted while the widget is still starting', () => {
         await postFromParent(wrapper, { type: 'PREFILL_MESSAGE', text: 'Early bird' })
         await settle(wrapper, 6)
 
-        expect((chatComposer(wrapper).element as HTMLInputElement).value).toBe('Early bird')
+        expect((chatComposer(wrapper).element as HTMLTextAreaElement).value).toBe('Early bird')
     })
 })
 
@@ -305,7 +308,7 @@ describe('messages the widget does not act on', () => {
         await postFromStranger(wrapper, { type: 'PREFILL_MESSAGE', text: 'from a sibling' })
         await postFromStranger(wrapper, { type: 'END_CHAT', sessionId: 'session-9' })
 
-        expect((chatComposer(wrapper).element as HTMLInputElement).value).toBe('')
+        expect((chatComposer(wrapper).element as HTMLTextAreaElement).value).toBe('')
         expect(fetchMock).not.toHaveBeenCalled()
         expect(hostPost).not.toHaveBeenCalled()
     })

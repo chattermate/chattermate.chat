@@ -64,33 +64,18 @@ describe('useWidgetCustomization', () => {
         expect(message.data.widget_display).toBeUndefined()
     })
 
-    it.each([
-        [{ widget_ui: { version: 2 } }, 2],
-        [{ widget_ui: { version: 1 } }, 1],
-        [{}, 1],
-    ])('tells the loader which widget design to frame (%j → %i)', (metadata, ui) => {
+    it('frames the panel with its theme\'s radius, shadow, glow and backdrop', () => {
         const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
         const { applyCustomization } = useWidgetCustomization()
-
-        applyCustomization({ customization_metadata: metadata } as any)
-
-        const message = postMessage.mock.calls.at(-1)![0] as any
-        expect(message.data.panel.ui).toBe(ui)
-        // The classic widget says only which design; the redesign adds its framing.
-        if (ui === 1) expect(message.data.panel).toEqual({ ui: 1 })
-    })
-
-    it('frames the redesign with its theme\'s radius, shadow, glow and backdrop', () => {
-        const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
-        const { applyCustomization } = useWidgetCustomization()
-        applyCustomization({ chat_style: 'GLASS', customization_metadata: { widget_ui: { version: 2 } } } as any)
+        // An agent that once chose the classic widget gets the panel all the same
+        applyCustomization({ chat_style: 'GLASS', customization_metadata: { widget_ui: { version: 1 } } } as any)
         const panel = (postMessage.mock.calls.at(-1)![0] as any).data.panel
         expect(panel).toEqual({ ui: 2, radius: 22, elevation: 'dark', glow: 'rgba(157,140,255,.26)', glass: true })
 
-        applyCustomization({ chat_style: 'SUNRISE', customization_metadata: { widget_ui: { version: 2 } } } as any)
+        applyCustomization({ chat_style: 'SUNRISE' } as any)
         const sunrise = (postMessage.mock.calls.at(-1)![0] as any).data.panel
         expect(sunrise).toMatchObject({ ui: 2, radius: 24, elevation: 'light', glass: false })
-        expect(panelFrameFor(1, {})).toEqual({ ui: 1 })
+        expect(panelFrameFor({})).toMatchObject({ ui: 2 })
     })
 
 })

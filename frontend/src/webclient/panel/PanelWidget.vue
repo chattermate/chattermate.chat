@@ -16,12 +16,11 @@ limitations under the License.
 
 <script setup lang="ts">
 /**
- * The redesigned widget view (ui 2): header, conversation and composer in one
- * panel, drawn from the widget controller its root provides, exactly like the
- * classic view. This view owns its DOM work: scrolling (MessageList), focus and
- * what survives the panel being hidden (usePanelVisibility).
- * The Ask AI palette (ASK_ANYTHING / AURORA, search-bar trigger) is shared with the
- * classic view.
+ * The widget view: header, conversation and composer in one panel, drawn from the
+ * widget controller its root provides. This view owns its DOM work: scrolling
+ * (MessageList), focus and what survives the panel being hidden
+ * (usePanelVisibility). The Ask AI palette (ASK_ANYTHING / AURORA, search-bar
+ * trigger) shows instead for those styles.
  */
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { WIDGET_CTX, WIDGET_PREVIEW } from './controller'

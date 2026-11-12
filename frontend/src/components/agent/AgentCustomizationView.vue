@@ -16,7 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { ref, watch, onMounted, computed, onUnmounted, nextTick } from 'vue'
-import type { AgentWithCustomization, AgentCustomization, ChatStyle, WidgetUiVersion } from '@/types/agent'
+import type { AgentWithCustomization, AgentCustomization, ChatStyle } from '@/types/agent'
 import { agentService } from '@/services/agent'
 import WebFont from 'webfontloader'
 import { useSubscriptionStorage } from '@/utils/storage'
@@ -29,10 +29,8 @@ import { WINDOW_PRESETS, WINDOW_STANDARD, useWindowSize } from '@/composables/us
 import LauncherSection from './LauncherSection.vue'
 import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
-import WidgetDesignChoice from './WidgetDesignChoice.vue'
 import { followUpsOn, withFollowUpsSetting } from '@/webclient/widget-answers'
 import { actionLabel, actionMatch, toQuickAction } from '@/webclient/quick-actions'
-import { createdOnRedesign, widgetUiVersion } from '@/webclient/widget-ui'
 
 const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
@@ -42,7 +40,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
     (e: 'cancel'): void
-    (e: 'preview', customization: AgentCustomization & { showBubblePreview?: boolean; showInitiationPreview?: boolean }): void
+    (e: 'preview', customization: AgentCustomization): void
     (e: 'chat-style-changed', oldStyle: ChatStyle, newStyle: ChatStyle): void
     (e: 'launcher-preview', preview: LauncherPreview): void
     (e: 'launcher-editing'): void
@@ -209,20 +207,7 @@ const selectChatStyle = (value: ChatStyle) => {
     emit('preview', { ...customization.value })
 }
 
-// ---- Widget design (customization_metadata.widget_ui): classic or the redesign ----
-// Saved with the rest of the form; the preview switches at once. Reassigned
-// wholesale, like the placement below, so the preview's watcher sees the change.
-const widgetDesign = computed<WidgetUiVersion>({
-    get: () => widgetUiVersion(customization.value),
-    set: (version) => {
-        const meta = { ...((customization.value.customization_metadata as Record<string, any>) ?? {}) }
-        meta.widget_ui = { ...(meta.widget_ui ?? {}), version }
-        customization.value.customization_metadata = meta
-        emit('preview-mode', 'chat')
-    },
-})
-
-// Follow-up questions under answers (customization_metadata.answers): the new design only.
+// Follow-up questions under answers (customization_metadata.answers).
 const followUps = computed<boolean>({
     get: () => followUpsOn(customization.value),
     set: (on) => {
@@ -230,15 +215,6 @@ const followUps = computed<boolean>({
             withFollowUpsSetting(customization.value.customization_metadata as Record<string, any>, on)
     },
 })
-
-// An agent created on the redesign keeps it (the server refuses the classic one),
-// so it gets no choice. Read from what is stored, not the unsaved form.
-const createdOnNewDesign = computed(() => createdOnRedesign(props.agent.customization))
-
-// Whether this server serves the redesign at all: read-only, on every agent the
-// dashboard loads (the agent's choice is still saved when it is off). An older
-// server says nothing: no note.
-const redesignServed = computed(() => props.agent.widget_ui_v2_enabled !== false)
 
 // ---- Widget placement (stored in customization_metadata.widget_display) ----
 // The embed loader reads these as site-wide defaults; options set in the install
@@ -639,7 +615,7 @@ const loadDefaultInitiations = () => {
 
 // Quick actions management (mirrors chat initiation messages)
 const newQuickAction = ref('')
-// "Show on pages": a URL path pattern for the new design's "Suggested for this page"
+// "Show on pages": a URL path pattern for the widget's "Suggested for this page"
 const newQuickActionMatch = ref('')
 const editingQuickActionIndex = ref<number | null>(null)
 const editingQuickAction = ref('')
@@ -650,7 +626,7 @@ const addQuickAction = () => {
     if (!customization.value.quick_actions) {
         customization.value.quick_actions = []
     }
-    customization.value.quick_actions.push(toQuickAction(newQuickAction.value, widgetDesign.value === 2 ? newQuickActionMatch.value : ''))
+    customization.value.quick_actions.push(toQuickAction(newQuickAction.value, newQuickActionMatch.value))
     newQuickAction.value = ''
     newQuickActionMatch.value = ''
 }
@@ -671,7 +647,7 @@ const saveEditQuickAction = () => {
     if (editingQuickActionIndex.value !== null && customization.value.quick_actions && editingQuickAction.value.trim()) {
         const index = editingQuickActionIndex.value
         customization.value.quick_actions[index] = toQuickAction(
-            editingQuickAction.value, widgetDesign.value === 2 ? editingQuickActionMatch.value : actionMatch(customization.value.quick_actions[index]),
+            editingQuickAction.value, editingQuickActionMatch.value,
             customization.value.quick_actions[index])
         editingQuickActionIndex.value = null
         editingQuickAction.value = ''
@@ -687,25 +663,6 @@ const loadDefaultQuickActions = () => {
     customization.value.quick_actions = [...DEFAULT_QUICK_ACTIONS]
 }
 
-// Initiation message preview handlers
-const showInitiationPreview = () => {
-    emit('preview', { 
-        ...customization.value, 
-        showBubblePreview: false,
-        showInitiationPreview: true 
-    })
-}
-
-const hideInitiationPreview = () => {
-    emit('preview', { 
-        ...customization.value, 
-        showBubblePreview: false,
-        showInitiationPreview: false 
-    })
-}
-
-
-
 </script>
 
 <template>
@@ -715,7 +672,6 @@ const hideInitiationPreview = () => {
                 :open="openSection === 'design'" @toggle="toggleSection('design')">
                 <!-- Chat design Section -->
                 <div class="subsection">
-                    <WidgetDesignChoice v-model="widgetDesign" :served="redesignServed" :choosable="!createdOnNewDesign" />
                     <h4 class="subsection-heading">Style</h4>
                     <p class="section-subtext">Pick the look that fits your store.</p>
 
@@ -978,7 +934,6 @@ const hideInitiationPreview = () => {
                             @keyup.enter="addQuickAction"
                         >
                         <input
-                            v-if="widgetDesign === 2"
                             type="text"
                             v-model="newQuickActionMatch"
                             placeholder="Every page, or e.g. /products/*"
@@ -1012,7 +967,6 @@ const hideInitiationPreview = () => {
                                     @keyup.esc="cancelEditQuickAction"
                                 >
                                 <input
-                                    v-if="widgetDesign === 2"
                                     type="text"
                                     v-model="editingQuickActionMatch"
                                     class="init-edit-input init-input--match"
@@ -1202,7 +1156,7 @@ const hideInitiationPreview = () => {
                         </span>
                     </label>
 
-                    <label v-if="widgetDesign === 2" class="citations-toggle">
+                    <label class="citations-toggle">
                         <input type="checkbox" v-model="followUps">
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">

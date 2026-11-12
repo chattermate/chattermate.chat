@@ -126,27 +126,11 @@ describe('useWidgetPresentation', () => {
     })
 
     describe('the design', () => {
-        const V2 = { customization_metadata: { widget_ui: { version: 2 } } } as Partial<AgentCustomization>
-
-        it('is the classic widget, with its tokens and wording, unless version 2 was chosen', () => {
-            const classic = setup({ chat_style: 'SUNRISE' } as Partial<AgentCustomization>)
-            expect(classic.ui.value).toBe(1)
-            expect(classic.themeVars.value['--cm-tint']).toBeUndefined()
-            expect(classic.presence.value.text).toBe('Online · replies instantly')
-        })
-
-        it('gives the redesign its own tokens and wording', () => {
-            const panel = setup(V2)
-            expect(panel.ui.value).toBe(2)
+        it('gives the panel its own tokens and wording', () => {
+            const panel = setup({ chat_style: 'SUNRISE' } as Partial<AgentCustomization>)
             expect(panel.themeVars.value['--cm-tint']).toBeDefined()
             expect(panel.themeVars.value['--cm-ease-enter']).toBeDefined()
             expect(panel.presence.value.text).toBe('AI agent · replies instantly')
-        })
-
-        it('switches when the customization does', () => {
-            const widget = setup({})
-            widget.customization.value = V2
-            expect(widget.ui.value).toBe(2)
         })
     })
 })

@@ -110,8 +110,8 @@ export const cartSummary = ref<CartSummary | null>(null)
 /** Whether the loader announced a store cart on this page at all. */
 export const cartOnPage = computed(() => !!shop.value)
 
-/** Ask the loader for the cart (it answers with CART_STATE). Only the redesign's
- * cart bar asks, while the panel is open: the classic widget never reads it. */
+/** Ask the loader for the cart (it answers with CART_STATE). The cart bar asks,
+ * while the panel is open. */
 export function requestCart(): void {
   if (shop.value) postToHost({ type: 'GET_CART' })
 }

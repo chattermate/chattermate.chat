@@ -68,10 +68,10 @@ from app.services.host_action_runtime import (
 from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
 from app.services import email_check
-from app.services.widget_answers import offers_follow_ups, serves_redesign_to_visitors
+from app.services.widget_answers import offers_follow_ups
 from app.services.widget_reply import (
     FOLLOW_UPS_SESSION_KEY,
-    REDESIGN_SESSION_KEY,
+    PANEL_SESSION_KEY,
     create_widget_agent,
     deliver_ai_reply,
     emit_bot_typing,
@@ -435,8 +435,8 @@ async def widget_connect(sid, environ, auth):
             # Host page that embeds the widget (sent by the webclient). Recorded on
             # lead capture as lead_source.page_url so you can see WHERE leads convert.
             'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
-            # The redesign's live steps and follow-up chips (widget_reply.py)
-            REDESIGN_SESSION_KEY: serves_redesign_to_visitors(agent),
+            # The widget panel's live steps and cards, and follow-up chips (widget_reply.py)
+            PANEL_SESSION_KEY: (auth or {}).get('panel') is True,
             FOLLOW_UPS_SESSION_KEY: offers_follow_ups(agent),
         }
 

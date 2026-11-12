@@ -16,9 +16,9 @@ limitations under the License.
 
 <script setup lang="ts">
 /**
- * The dashboard preview of the redesigned widget (widget_ui 2): the widget's own
- * PanelWidget, under a preview controller (usePreviewController) instead of the live
- * one, so the preview and the widget share every component.
+ * The dashboard preview of the widget: the widget's own PanelWidget, under a
+ * preview controller (usePreviewController) instead of the live one, so the preview
+ * and the widget share every component.
  */
 import { computed, provide, toRef } from 'vue'
 import type { AgentCustomization } from '@/types/agent'
@@ -38,7 +38,7 @@ const props = defineProps<{
     windowHeight?: number
 }>()
 
-// The redesign's window (the loader's 400 px default) unless Placement set one.
+// The loader's default window (400 px wide) unless Placement set one.
 const width = computed(() => props.windowWidth ?? 400)
 const height = computed(() => props.windowHeight ?? 600)
 

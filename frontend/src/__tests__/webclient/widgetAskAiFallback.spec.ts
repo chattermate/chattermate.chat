@@ -54,11 +54,12 @@ const mountStyle = async (chat_style?: string, options: Parameters<typeof mountW
 
 // The palette's input is labelled by its placeholder: "Ask me anything..." for the
 // ask-anything styles, "Type a message..." for a search-bar trigger on a chat style.
-// Matched by that exact label, so a labelled chat composer can't pass for it; the
-// chat panel's message list is a log.
+// Matched by that exact label, so the chat panel's composer ("Message") can't pass
+// for it. The panel's message list is a log, drawn once there is a message.
 const PALETTE_LABEL = 'Ask me anything...'
 const palette = (wrapper: any, label = PALETTE_LABEL) => wrapper.find(`input[aria-label="${label}"]`)
 const chatLog = (wrapper: any) => wrapper.find('[role="log"][aria-label="Messages"]')
+const chatComposer = (wrapper: any) => wrapper.find('textarea[aria-label="Message"]')
 const surfaces = () => hostPost.mock.calls.map(([m]) => m as any).filter((m) => m?.type === 'WIDGET_SURFACE')
 
 const showMessages = async (wrapper: any, messages: any[]) => {
@@ -148,11 +149,12 @@ describe('the other chat styles', () => {
     it.each([undefined, 'CHATBOT', 'GLASS', 'TERMINAL'])('%s shows the chat panel and never the palette', async (style) => {
         await mountStyle(style)
 
-        expect(chatLog(wrapper).exists()).toBe(true)
+        expect(chatComposer(wrapper).exists()).toBe(true)
         expect(palette(wrapper).exists()).toBe(false)
         expect(surfaces().at(-1)).toEqual({ type: 'WIDGET_SURFACE', palette: false })
 
         await showMessages(wrapper, [question, { message: 'We do.', message_type: 'bot' }])
+        expect(chatLog(wrapper).exists()).toBe(true)
         expect(palette(wrapper).exists()).toBe(false)
     })
 
@@ -164,7 +166,7 @@ describe('the other chat styles', () => {
         await mountStyle('CHATBOT', { customization: searchBar })
 
         expect(palette(wrapper, 'Type a message...').exists()).toBe(true)
-        expect(chatLog(wrapper).exists()).toBe(false)
+        expect(chatComposer(wrapper).exists()).toBe(false)
         expect(surfaces().at(-1)).toEqual({ type: 'WIDGET_SURFACE', palette: true })
     })
 
@@ -175,63 +177,65 @@ describe('the other chat styles', () => {
         })
 
         expect(palette(wrapper, 'Type a message...').exists()).toBe(false)
-        expect(chatLog(wrapper).exists()).toBe(true)
+        expect(chatComposer(wrapper).exists()).toBe(true)
     })
 })
 
-describe('the ASK_ANYTHING welcome section', () => {
-    // The palette sits first in the v-if chain, so the welcome section only shows when
-    // something displaces the palette - in practice a workflow landing page.
+describe('the chat panel of an ask-anything style', () => {
+    // The palette steps aside for a workflow landing page or a chat-only message;
+    // the panel that takes its place keeps the ask-anything wording.
     const showLandingPage = async (wrapper: any) => {
         const onWorkflowState = socketCalls.onWorkflowState.mock.calls[0][0]
         onWorkflowState({ type: 'landing_page', landing_page_data: { heading: 'Spring sale', content: 'Ask us' } })
         await settle(wrapper, 4)
     }
-    const welcomeField = (wrapper: any) => wrapper.find('input.welcome-message-field')
+    const rating = { message: 'Rate us', message_type: 'rating' }
 
     it('is hidden by the palette when nothing displaces it', async () => {
         await mountStyle('ASK_ANYTHING')
 
         expect(wrapper.text()).toContain('Ask Ada')
-        expect(wrapper.text()).not.toContain('Welcome to Ada')
-        expect(welcomeField(wrapper).exists()).toBe(false)
+        expect(chatComposer(wrapper).exists()).toBe(false)
     })
 
-    it('shows with no messages, with the ask-anything placeholder', async () => {
+    it('shows a workflow landing page in place of the palette', async () => {
         await mountStyle('ASK_ANYTHING')
         await showLandingPage(wrapper)
 
         expect(palette(wrapper).exists()).toBe(false)
-        expect(wrapper.find('h1').text()).toBe('Welcome to Ada')
-        expect(welcomeField(wrapper).attributes('placeholder')).toBe('Ask me anything...')
+        expect(wrapper.text()).toContain('Spring sale')
+    })
+
+    it('keeps the ask-anything placeholder in its composer', async () => {
+        await mountStyle('ASK_ANYTHING')
+        await showMessages(wrapper, [question, rating])
+
+        expect(chatComposer(wrapper).attributes('placeholder')).toBe('Ask me anything...')
     })
 
     it('says "Connecting..." until the socket is connected', async () => {
         socket.connectionStatus.value = 'connecting'
         await mountStyle('ASK_ANYTHING')
-        await showLandingPage(wrapper)
+        await showMessages(wrapper, [question, rating])
 
-        expect(welcomeField(wrapper).attributes('placeholder')).toBe('Connecting...')
+        expect(chatComposer(wrapper).attributes('placeholder')).toBe('Connecting...')
     })
 
-    it('goes away once the conversation has a message', async () => {
+    it('keeps the landing page up when a message arrives', async () => {
         await mountStyle('ASK_ANYTHING')
         await showLandingPage(wrapper)
 
         await showMessages(wrapper, [question])
 
-        // The chat panel is in the landing page's v-if chain, so while the landing page
-        // is up nothing replaces the welcome section: only the landing page remains.
-        expect(welcomeField(wrapper).exists()).toBe(false)
+        // The landing page stands in front of the chat until the visitor moves on.
         expect(wrapper.text()).toContain('Spring sale')
         expect(chatLog(wrapper).exists()).toBe(false)
         expect(palette(wrapper).exists()).toBe(false)
     })
 
-    it('never shows for the chat styles', async () => {
+    it('is "Type a message..." for the chat styles', async () => {
         await mountStyle('CHATBOT')
-        await showLandingPage(wrapper)
 
-        expect(welcomeField(wrapper).exists()).toBe(false)
+        expect(chatComposer(wrapper).attributes('placeholder')).toBe('Type a message...')
     })
 })
