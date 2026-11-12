@@ -188,33 +188,6 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
         self.assertIn("Refund Policy", content)
 
-    def test_the_page_title_and_description_are_kept_for_link_cards(self):
-        body = "Refund terms and conditions apply to all orders. " * 20
-        html = f"""
-        <html><head><title>Refunds</title>
-        <meta name="description" content="  How refunds   work. "></head>
-        <body><div class="c"><h1>Refund Policy</h1><p>{body}</p></div></body></html>
-        """
-        url = "https://shop.example/refunds"
-        self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'), url)
-        document = self.reader._create_document_from_content(url, body, url, 1)
-        self.assertEqual(document.meta_data["title"], "Refund Policy")
-        self.assertEqual(document.meta_data["description"], "How refunds work.")
-        self.assertNotIn(url, self.reader._page_meta)
-
-    def test_the_open_graph_description_is_the_fallback(self):
-        html = '<html><head><meta property="og:description" content="Shipping times"></head><body></body></html>'
-        self.assertEqual(self.reader._page_description(BeautifulSoup(html, 'html.parser')), "Shipping times")
-
-    def test_a_page_without_a_description_stores_none(self):
-        body = "Refund terms and conditions apply to all orders. " * 20
-        html = f'<html><body><div class="c"><p>{body}</p></div></body></html>'
-        url = "https://shop.example/plain"
-        self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'), url)
-        document = self.reader._create_document_from_content(url, body, url, 1)
-        self.assertNotIn("description", document.meta_data)
-        self.assertNotIn("title", document.meta_data)
-
     def test_the_title_is_not_duplicated_when_already_in_the_content(self):
         """The usual case: the <h1> is inside the content container already."""
         body = "Every plan we offer, billed monthly or yearly. " * 20

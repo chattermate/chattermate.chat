@@ -38,7 +38,6 @@ import type { JourneyProgress } from '@/webclient/journeys/journeyClient'
 import type { PreviewFile, UploadedFile } from '@/composables/useWidgetFiles'
 import type { WorkflowForm } from '@/composables/useWorkflowScreens'
 import type { PresenceLine } from '@/utils/widgetPresence'
-import type { LiveStep } from '@/composables/useAgentTrace'
 import type { EmailCheckState } from '@/composables/useEmailCheck'
 import { emptyHistory, type HistoryState } from '@/composables/useConversationHistory'
 import type { PageSuggestions } from '@/composables/usePageSuggestions'
@@ -92,7 +91,6 @@ const baseController = () => ({
     isStreaming: vi.fn((_index: number) => false),
     isRevealing: ref(false),
     skipReveal: vi.fn(),
-    liveTrace: ref<LiveStep[]>([]),
     sendFeedback: vi.fn((_message: WidgetMessage, _value: VisitorFeedback | null) => {}),
     requestProductOptions: vi.fn((_productId: string) => {}),
     emailCheck: ref<EmailCheckState>({ stage: 'email', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),

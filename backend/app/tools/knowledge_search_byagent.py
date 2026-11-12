@@ -38,7 +38,7 @@ NO_FURTHER_RESULTS = (
 class _Hit:
     """One chunk row as rendered to the model, plus what groups and orders it."""
 
-    __slots__ = ("id", "content", "page_id", "chunk", "chunk_count", "url", "name", "title", "description")
+    __slots__ = ("id", "content", "page_id", "chunk", "chunk_count", "url", "name")
 
     def __init__(self, id: str, content: str, meta: Dict[str, Any], name: str):
         self.id = id
@@ -48,40 +48,10 @@ class _Hit:
         self.chunk = meta.get("chunk") if isinstance(meta.get("chunk"), int) else None
         self.chunk_count = meta.get("chunk_count") if isinstance(meta.get("chunk_count"), int) else None
         self.url = meta.get("url")
-        self.title = meta.get("title")
-        self.description = meta.get("description")
 
     @property
     def is_chunked(self) -> bool:
         return self.chunk is not None and self.chunk_count is not None and self.chunk_count > 1
-
-
-# Link metadata a citation carries, capped so a long page description cannot
-# bloat every reply and history row it is stored on.
-_TITLE_MAX = 200
-_DESCRIPTION_MAX = 300
-
-
-def _short_text(value: Any, limit: int) -> Optional[str]:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return " ".join(value.split())[:limit]
-
-
-def source_link(hit: "_Hit") -> Dict[str, str]:
-    """The page's URL, title and description for a citation, when it has an
-    http(s) URL. Other sources (files, editor pages) are cited by name only."""
-    url = hit.url if isinstance(hit.url, str) else ""
-    if not url.startswith(("http://", "https://")):
-        return {}
-    link = {"url": url[:2000]}
-    title = _short_text(hit.title, _TITLE_MAX)
-    description = _short_text(hit.description, _DESCRIPTION_MAX)
-    if title:
-        link["title"] = title
-    if description:
-        link["description"] = description
-    return link
 
 
 class KnowledgeSearchByAgent(Toolkit):
@@ -247,17 +217,14 @@ class KnowledgeSearchByAgent(Toolkit):
         return neighbours, heads
 
     def _record_sources(self, hits: Iterable[_Hit], source_types: Dict[str, str]) -> None:
-        # Record structured citations so the chat agent can surface them to the
-        # widget: one per page (a website source's pages share its name), so each
-        # cited page keeps its own link.
-        seen = {(s['name'], s['type'], s.get('url')) for s in self.collected_sources}
+        # Record structured citations (deduped by name+type) so the chat agent
+        # can surface them to the widget.
+        seen = {(s['name'], s['type']) for s in self.collected_sources}
         for hit in hits:
-            source_type = source_types.get(hit.name, 'unknown')
-            link = source_link(hit)
-            key = (hit.name, source_type, link.get('url'))
+            key = (hit.name, source_types.get(hit.name, 'unknown'))
             if key not in seen:
                 seen.add(key)
-                self.collected_sources.append({'name': hit.name, 'type': source_type, **link})
+                self.collected_sources.append({'name': key[0], 'type': key[1]})
 
     def _render(
         self, hits: Iterable[_Hit], heads: Dict[str, _Hit], source_types: Dict[str, str]

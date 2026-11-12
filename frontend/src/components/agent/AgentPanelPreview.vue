@@ -26,7 +26,6 @@ import PanelWidget from '@/webclient/panel/PanelWidget.vue'
 import { WIDGET_CTX, WIDGET_PREVIEW } from '@/webclient/panel/controller'
 import { previewSampleConversation } from '@/webclient/panel/preview-sample'
 import { usePreviewController } from '@/composables/usePreviewController'
-import '@/webclient/widget-surface.css'
 
 const props = defineProps<{
     customization: AgentCustomization

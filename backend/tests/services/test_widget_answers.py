@@ -43,10 +43,11 @@ def _agent(metadata):
 
 class TestReplyPayload:
     def test_carries_what_the_agent_stored(self):
-        trace = {"turn_id": "t-1", "duration_ms": 900, "steps": []}
-        agent = SimpleNamespace(last_bot_message_id=42, last_trace=trace, last_handover={"state": "connecting"})
+        agent = SimpleNamespace(last_bot_message_id=42, last_handover={"state": "connecting"})
         payload = reply_payload(_reply(transfer_to_human=True), "s-1", agent)
-        assert payload["message_id"] == 42 and payload["turn_id"] == "t-1" and payload["trace"] == trace
+        assert payload["message_id"] == 42
+        # Steps are not shown: no live steps, no receipt
+        assert "trace" not in payload and "turn_id" not in payload
         assert payload["handover"] == {"state": "connecting"}
 
     def test_a_canned_transfer_reply_has_no_card(self):
@@ -60,7 +61,7 @@ class TestReplyPayload:
 
     def test_an_old_style_reply_has_empty_extras(self):
         payload = reply_payload(_reply(), "s-1")
-        assert payload["message_id"] is None and payload["turn_id"] is None
+        assert payload["message_id"] is None
         assert payload["quick_replies"] is None and payload["handover"] is None
 
     def test_follow_up_choices_are_sent(self):
@@ -123,16 +124,16 @@ class TestAgentKwargs:
         return {"ai_config": config, "org_id": "o", "agent_id": "a", "customer_id": "c",
                 "session_id": "s-1", **flags}
 
-    def test_the_panels_session_reports_its_steps_and_offers_follow_ups(self):
+    def test_the_panels_session_gets_cards_and_follow_ups(self):
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
             kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True, FOLLOW_UPS_SESSION_KEY: True}))
-        assert kwargs["step_reporter"].session_id == "s-1"
+        assert "step_reporter" not in kwargs
         assert kwargs["turn_cards"] is not None
         assert kwargs["choice_limits"] is WIDGET_FOLLOW_UP_LIMITS
 
     def test_another_client_gets_plain_replies(self):
-        # The dashboard's onboarding test chat draws no steps, cards or email check.
+        # The dashboard's onboarding test chat draws no cards or email check.
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
             kwargs = widget_agent_kwargs(self._session())
-        assert kwargs["step_reporter"] is None and kwargs["turn_cards"] is None
+        assert kwargs["turn_cards"] is None
         assert kwargs["choice_limits"] is None

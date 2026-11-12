@@ -153,7 +153,6 @@ describe('usePreviewController', () => {
         const { ctrl, look } = setUp()
         const answer = () => ctrl.messages.value[1]
         expect(answer().attributes?.quick_replies).toBeUndefined()
-        expect(answer().attributes?.trace?.steps).toHaveLength(1)
         look.value = {
             ...look.value,
             customization_metadata: { ...look.value.customization_metadata, answers: { follow_ups: true } },
@@ -186,7 +185,6 @@ describe('usePreviewController', () => {
         expect(ctrl.connectionStatus.value).toBe('connected')
         expect(ctrl.hostCapabilities.value).toEqual({ expand: false, backdrop: false, navigate: false, swipe: false })
         ctrl.sendFeedback(ctrl.messages.value[1], 'up')
-        expect(ctrl.liveTrace.value).toEqual([])
 
         // "New chat" goes back to the start state; nothing is ended.
         expect(ctrl.canStartNewChat.value).toBe(true)

@@ -16,7 +16,7 @@ limitations under the License.
 
 import { describe, expect, it } from 'vitest'
 import {
-    feedbackOf, followUpsOf, formatDuration, handoverOf, replyExtras, traceOf,
+    feedbackOf, followUpsOf, handoverOf, replyExtras,
 } from '@/webclient/panel/answer-extras'
 import type { WidgetMessage } from '@/types/widget'
 
@@ -24,20 +24,6 @@ const reply = (attributes: Record<string, unknown>): WidgetMessage =>
     ({ message_type: 'bot', message: 'Hi', created_at: '', session_id: '', attributes })
 
 describe('reading an answer\'s extras', () => {
-    it('reads the receipt, skipping steps it cannot show', () => {
-        const trace = traceOf(reply({ trace: { turn_id: 't', duration_ms: 2400, steps: [
-            { kind: 'knowledge', done_label: 'Searched the help center', status: 'ok', duration_ms: 900 },
-            { kind: 'x' },
-            { done_label: 'Checked your order', status: 'weird' },
-        ] } }))
-        expect(trace!.steps.map(s => [s.done_label, s.status])).toEqual([
-            ['Searched the help center', 'ok'], ['Checked your order', 'ok'],
-        ])
-        expect(traceOf(reply({ trace: { steps: [] } }))).toBeNull()
-        expect(traceOf(reply({ trace: 'nope' }))).toBeNull()
-        expect(traceOf(reply({}))).toBeNull()
-    })
-
     it('keeps at most three distinct follow-ups', () => {
         expect(followUpsOf(reply({ quick_replies: ['A', ' a ', 'B', '', 7, 'C', 'D'] }))).toEqual(['A', 'B', 'C'])
         expect(followUpsOf(reply({ quick_replies: 'A' }))).toEqual([])
@@ -56,13 +42,8 @@ describe('reading an answer\'s extras', () => {
     })
 
     it('keeps a live reply\'s extras the way history stores them', () => {
-        expect(replyExtras({ quick_replies: ['A'], handover: null, trace: undefined, message: 'x' }))
+        expect(replyExtras({ quick_replies: ['A'], handover: null, cards: undefined, trace: { steps: [] }, message: 'x' }))
             .toEqual({ quick_replies: ['A'] })
     })
 
-    it('formats a turn\'s time', () => {
-        expect(formatDuration(300)).toBe('<1s')
-        expect(formatDuration(2400)).toBe('2.4s')
-        expect(formatDuration(12600)).toBe('13s')
-    })
 })

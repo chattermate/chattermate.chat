@@ -21,7 +21,6 @@ from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import MessageSource, is_widget_channel
-from app.services.agent_steps import StepReporter
 from app.cards.turn_cards import TurnCards
 from app.services.handover_payload import handover_payload
 from app.services.widget_answers import widget_choices
@@ -366,7 +365,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, step_reporter: Optional[StepReporter] = None, turn_cards: Optional[TurnCards] = None):
+    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, turn_cards: Optional[TurnCards] = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -374,10 +373,6 @@ class ChatAgent(ChatAgentMCPMixin):
         self.channel = channel or 'web'
         # Row id of the reply the last get_response stored (see get_response)
         self.last_bot_message_id = None
-        # Reports tool calls to the widget as they run (agent_steps.py); its
-        # receipt is stored on the reply and left on last_trace.
-        self.step_reporter = step_reporter
-        self.last_trace = None
         # The handover card state stored on this turn's reply (handover_payload.py)
         self.last_handover = None
         # Status cards the tools produce this turn (app/cards), and the reply's
@@ -1037,22 +1032,14 @@ Keep your responses concise and focused. Provide clear, actionable information i
            structured_outputs=structured_outputs,
            system_message_role="system",
            user_message_role="user",
-           show_tool_calls=settings.ENVIRONMENT == "development",
-           tool_hooks=self._tool_hooks(),
+           show_tool_calls=settings.ENVIRONMENT == "development"
           )
-
-    def _tool_hooks(self) -> Optional[list]:
-        if self.step_reporter is None:
-            return None
-        return [self.step_reporter.tool_hook]
 
     def _reset_turn(self) -> None:
         """Before a context-overflow retry: what the failed attempt searched must be
-        searchable again, and its steps are not this turn's receipt."""
+        searchable again, and its cards are not this turn's."""
         if getattr(self, "knowledge_tool", None) is not None:
             self.knowledge_tool.reset_turn()
-        if getattr(self, "step_reporter", None) is not None:
-            self.step_reporter.reset()
         if getattr(self, "turn_cards", None) is not None:
             self.turn_cards.reset()
 
@@ -1410,7 +1397,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
     def _widget_extras(self, response_content: ChatResponse) -> dict:
         """What the redesigned widget restores from history: follow-up
-        choices, the handover card and the receipt of this turn's steps."""
+        choices, the handover card and this turn's status cards."""
         extras = {}
         choices = widget_choices(response_content) if is_widget_channel(self.channel) else []
         if choices:
@@ -1418,9 +1405,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_handover = handover_payload(response_content)
         if self.last_handover:
             extras["handover"] = self.last_handover
-        self.last_trace = self.step_reporter.summary() if self.step_reporter else None
-        if self.last_trace:
-            extras["trace"] = self.last_trace
         self.last_cards = (self.turn_cards.payload() or None) if self.turn_cards else None
         if self.last_cards:
             extras["cards"] = self.last_cards
@@ -1443,7 +1427,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
         on `last_bot_message_id` so a caller can annotate that exact row.
         """
         self.last_bot_message_id = None
-        self.last_trace = None
         self.last_handover = None
         self.last_cards = None
         self.last_email_check = False

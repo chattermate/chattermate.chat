@@ -40,10 +40,9 @@ VISITOR_ATTRIBUTE_KEYS = frozenset({
     'request_rating',
     'end_chat',
     # The redesigned widget (plan phase 2): follow-up choices, the handover
-    # card's state, the receipt of the agent's steps and the visitor's thumbs.
+    # card's state and the visitor's thumbs.
     'quick_replies',
     'handover',
-    'trace',
     'visitor_feedback',
     # Status cards (order, ticket), shortened for the visitor before they are stored
     'cards',

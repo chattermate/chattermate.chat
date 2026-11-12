@@ -186,7 +186,7 @@ export const PANEL_COPY = {
     stagedFiles: 'Files to send',
     previewImage: (name: string) => `Preview ${name}`,
     opensInNewTab: '(opens in a new tab)',
-    /** Answers (plan phase 2): source numbers, actions, follow-ups, the steps and handover. */
+    /** Answers (plan phase 2): source numbers, actions, follow-ups and handover. */
     sourceNumber: (n: number) => `source ${n}`,
     sourceChip: (n: number, label: string) => `Source ${n}: ${label}`,
     answerActions: 'Answer actions',
@@ -195,10 +195,6 @@ export const PANEL_COPY = {
     helpful: 'Helpful',
     notHelpful: 'Not helpful',
     followUps: 'Ask next',
-    stepsTaken: 'Steps taken',
-    traceSummary: (label: string, steps: number, time: string) =>
-        steps === 1 ? `${label} · ${time}` : `${steps} steps · ${time}`,
-    stepFailed: "Couldn't finish",
     handoverConnecting: 'Connecting you to the team',
     handoverOffline: 'Our team will get back to you',
     /** The start-state row that opens the org's public help center. */
@@ -219,7 +215,6 @@ export const PREVIEW_SAMPLE_COPY = {
         { name: 'Shipping FAQ', type: 'file' },
     ],
     receipt: 'Opened your order page',
-    /** What the agent did for the answer, and what the visitor might ask next. */
-    step: 'Searched the help center',
+    /** What the visitor might ask next. */
     followUps: ['How long does a refund take?', 'Can I exchange instead?'],
 } as const

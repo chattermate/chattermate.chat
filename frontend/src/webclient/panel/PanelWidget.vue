@@ -43,6 +43,8 @@ import CartBar from './CartBar.vue'
 import { usePanelVisibility } from '../../composables/usePanelVisibility'
 import { usePanelActivity, usePanelCascade, usePanelExpand } from '../../composables/usePanelHostMotion'
 import { postToHost } from '../host-bridge'
+// The shared widget surface first (markdown, message rows, header name); the panel's own rules build on it
+import '../widget-surface.css'
 import '../widget-panel.css'
 import '../widget-panel-messages.css'
 import '../widget-panel-answers.css'

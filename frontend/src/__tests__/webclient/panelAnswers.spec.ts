@@ -24,7 +24,7 @@ import type { WidgetMessage } from '@/types/widget'
 
 /**
  * An answer in the redesigned panel (plan phase 2): its receipt, link card,
- * numbered sources, copy and thumbs, follow-ups, the live trace and handover.
+ * numbered sources, copy and thumbs, follow-ups and handover.
  */
 
 let wrapper: VueWrapper<any> | undefined
@@ -114,30 +114,6 @@ describe('follow-up questions', () => {
     })
 })
 
-describe('the receipt of the agent\'s steps', () => {
-    it('folds to one line and opens to the steps', async () => {
-        mountAnswer(answer({ attributes: { trace: { turn_id: 't', duration_ms: 2400, steps: [
-            { kind: 'knowledge', done_label: 'Searched the help center', status: 'ok', duration_ms: 900 },
-            { kind: 'order', done_label: 'Checked your order', status: 'error', duration_ms: 400 },
-        ] } } }))
-        const toggle = wrapper!.get('.cm-trace-receipt__toggle')
-        expect(toggle.text()).toBe('2 steps · 2.4s')
-        expect(toggle.attributes('aria-expanded')).toBe('false')
-        await toggle.trigger('click')
-        expect(toggle.attributes('aria-expanded')).toBe('true')
-        expect(wrapper!.findAll('.cm-trace-receipt__step').map(s => s.text())).toEqual([
-            'Searched the help center<1s', "Checked your order · Couldn't finish<1s",
-        ])
-    })
-
-    it('reads as the step itself for a single step', () => {
-        mountAnswer(answer({ attributes: { trace: { turn_id: 't', duration_ms: 1200, steps: [
-            { kind: 'knowledge', done_label: 'Searched the help center', status: 'ok', duration_ms: 900 },
-        ] } } }))
-        expect(wrapper!.get('.cm-trace-receipt__toggle').text()).toBe('Searched the help center · 1.2s')
-    })
-})
-
 describe('sources and the link card', () => {
     const sources = [
         { name: 'https://shop.example', type: 'website', url: 'https://shop.example/returns', title: 'Returns policy', description: 'Free for 30 days.' },
@@ -188,29 +164,5 @@ describe('the handover card', () => {
         mountAnswer(answer({ attributes: { handover: { state: 'offline' } } }))
         expect(wrapper!.get('.cm-handover__title').text()).toBe('Our team will get back to you')
         expect(wrapper!.find('.cm-handover__pulse').exists()).toBe(false)
-    })
-})
-
-describe('the live work trace', () => {
-    it('replaces the typing dots while the agent works, and goes when the reply is in', async () => {
-        ctrl = fakeController()
-        ctrl.loading.value = true
-        wrapper = mountWithController(MessageList, ctrl)
-        expect(wrapper.find('.cm-typing').exists()).toBe(true)
-
-        ctrl.liveTrace.value = [
-            { step_id: 'a', kind: 'knowledge', label: 'Searched the help center', state: 'ok' },
-            { step_id: 'b', kind: 'order', label: 'Checking your order', state: 'running' },
-        ]
-        await nextTick()
-        expect(wrapper.find('.cm-typing').exists()).toBe(false)
-        const trace = wrapper.get('.cm-trace')
-        expect(trace.attributes('role')).toBe('status')
-        expect(trace.findAll('.cm-trace__step').map(s => s.text())).toEqual(['Searched the help center', 'Checking your order'])
-        expect(trace.find('.is-running .cm-trace__spinner').exists()).toBe(true)
-
-        ctrl.loading.value = false
-        await nextTick()
-        expect(wrapper.find('.cm-trace').exists()).toBe(false)
     })
 })

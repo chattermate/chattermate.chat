@@ -22,7 +22,6 @@ import { useCurrency } from './useCurrency'
 import { useWidgetSocket } from './useWidgetSocket'
 import { useHostPrompt } from './useHostPrompt'
 import { useTypewriter } from './useTypewriter'
-import { useAgentTrace } from './useAgentTrace'
 import { useAnswerFeedback } from './useAnswerFeedback'
 import { useProductOptions } from './useProductOptions'
 import { useEmailCheck } from './useEmailCheck'
@@ -88,8 +87,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
             byWord: () => true,
         })
 
-    // The live work trace and the visitor's thumbs on replies.
-    const { liveTrace } = useAgentTrace({ on: socket.on, loading })
+    // The visitor's thumbs on replies.
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
     // The product sheet's options, read from the shop when it opens.
     const { requestProductOptions } = useProductOptions({ on: socket.on, emit: socket.emit })
@@ -284,7 +282,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, pageSuggestions, ...rating, ...files, ...newChat,
+        isRevealing, skipReveal, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, pageSuggestions, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory, hostCapabilities,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }

@@ -30,14 +30,13 @@ import SourceChips from './answer/SourceChips.vue'
 import LinkCard from './answer/LinkCard.vue'
 import AnswerActions from './answer/AnswerActions.vue'
 import FollowUpChips from './answer/FollowUpChips.vue'
-import TraceReceipt from './answer/TraceReceipt.vue'
 import StatusCard from './StatusCard.vue'
 import EmailCheckCard from './EmailCheckCard.vue'
 import { agentFace } from '../agent-face'
 import { renderMarkdown } from '../../markdown'
 import { decorateAnswerLinks, type AnswerSource } from '../../answer-links'
 import { hostOrigin } from '../../host-bridge'
-import { cardsOf, feedbackOf, followUpsOf, traceOf } from '../answer-extras'
+import { cardsOf, feedbackOf, followUpsOf } from '../answer-extras'
 import { PANEL_COPY } from '../../copy'
 import type { WidgetMessage } from '../../../types/widget'
 
@@ -64,7 +63,6 @@ const answer = computed(() => {
     })
 })
 const files = computed(() => props.message.attachments ?? [])
-const trace = computed(() => traceOf(props.message))
 const cards = computed(() => (streaming.value ? [] : cardsOf(props.message)))
 // The email check shows once, on the latest reply that asked for it.
 const asksEmailCheck = computed(() => {
@@ -87,7 +85,6 @@ const answerText = () => body.value?.text() ?? ''
             <AgentMark size="sm" :face="face" :photo-url="photoUrl" :orb-style="orbStyle" />
             <span class="cm-answer__name">{{ PANEL_COPY.aiLabel(agentName) }}</span>
         </div>
-        <TraceReceipt v-if="trace" :trace="trace" />
         <AnswerBody ref="body" :html="answer.html" :busy="streaming" />
         <LinkCard v-if="answer.card && !streaming" :source="answer.card" class="cm-fade" />
         <StatusCard v-for="(card, i) in cards" :key="card.id" :card="card" class="cm-enter" :style="{ '--cm-i': i }" />

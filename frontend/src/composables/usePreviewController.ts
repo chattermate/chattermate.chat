@@ -180,7 +180,6 @@ export function usePreviewController(
         isStreaming: () => false,
         isRevealing: ref(false),
         skipReveal: noop,
-        liveTrace: ref([]),
         sendFeedback: noop,
         requestProductOptions: noop,
         emailCheck: ref({ stage: 'email' as const, busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
