@@ -254,6 +254,7 @@ onUnmounted(() => {
         :selected-source-id="ex.selectedSourceId.value"
         :query="ex.query.value"
         :status-of="ex.sourceStatus"
+        :pages-so-far-of="ex.pagesSoFar"
         :page-rows-of="ex.pageRows"
         :flag-unlinked="flagUnlinked"
         @update:query="ex.query.value = $event"

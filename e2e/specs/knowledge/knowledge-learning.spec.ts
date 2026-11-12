@@ -4,7 +4,7 @@ import { test, expect, FakeCrawl, KnowledgePage, unique, AI_REPLY, KNOWLEDGE_IND
 // it is stored, while the rest of the site is still read.
 
 test.describe('a website still being read', () => {
-  test('is listed once, marked as still crawling, and answered from already @knowledge', async ({ page, agent, widget, llm, adminApi, org }) => {
+  test('is listed once, marked as still crawling with its pages so far, and answered from already @knowledge', async ({ page, agent, widget, llm, adminApi, org }) => {
     const code = unique('MUG')
     const site = `https://${code.toLowerCase()}.example`
     const crawl = FakeCrawl.start(adminApi, { orgId: org.orgId, agentId: agent.id, site })
@@ -14,6 +14,7 @@ test.describe('a website still being read', () => {
     await knowledge.gotoAgent(agent.id)
     await expect(knowledge.source(site)).toHaveCount(1)
     await expect(knowledge.crawlingTag(site)).toBeVisible()
+    await expect(knowledge.sourceSummary(site)).toHaveText('Crawling · 4\u00a0pages')
 
     await llm.script(agent, (s) => s
       .when(/mug/i).callTool('search_knowledge_base', { query: 'mug care code' }).thenReply('Here is what I know.')
@@ -27,5 +28,6 @@ test.describe('a website still being read', () => {
     crawl.finish()
     await expect(knowledge.crawlingTag(site)).toHaveCount(0, KNOWLEDGE_INDEXED)
     await expect(knowledge.source(site)).toHaveCount(1)
+    await expect(knowledge.sourceSummary(site)).toHaveText(/sub-pages$/)
   })
 })

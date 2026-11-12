@@ -40,6 +40,11 @@ export class KnowledgePage {
     return this.source(name).getByTitle('Crawling')
   }
 
+  /** What a source says under its name: its page count, or how far a crawl has got. */
+  sourceSummary(name: string): Locator {
+    return this.source(name).getByText(/sub-pages|Crawling|Pending|Failed/)
+  }
+
   unlinkedTag(name: string): Locator {
     return this.source(name).getByText('No agent', { exact: true })
   }
