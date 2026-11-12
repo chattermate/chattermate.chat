@@ -18,23 +18,15 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from app.knowledge.knowledge_base import KnowledgeManager
 from app.models.knowledge import Knowledge, SourceType
-from app.models.knowledge_to_agent import KnowledgeToAgent
-from uuid import UUID, uuid4
+from uuid import uuid4
 import os
-from agno.vectordb.pgvector import PgVector, SearchType
+from agno.vectordb.pgvector import PgVector
 
 @pytest.fixture
 def mock_db():
     """Create a mock database session"""
     db = MagicMock()
     return db
-
-@pytest.fixture
-def mock_ai_config():
-    """Create a mock AI config"""
-    config = MagicMock()
-    config.encrypted_api_key = "encrypted_key"
-    return config
 
 @pytest.fixture
 def mock_knowledge():
@@ -59,20 +51,18 @@ def mock_vector_db():
     return vector_db
 
 @pytest.fixture
-def knowledge_manager(mock_db, mock_ai_config, mock_vector_db):
+def knowledge_manager(mock_db, mock_vector_db):
     """Create a KnowledgeManager instance with mocked dependencies"""
     org_id = uuid4()
     agent_id = uuid4()
     
     with patch('app.knowledge.knowledge_base.SessionLocal') as mock_session_local, \
-         patch('app.knowledge.knowledge_base.AIConfigRepository') as mock_ai_config_repo, \
          patch('app.knowledge.knowledge_base.OptimizedPgVector') as mock_pg_vector, \
          patch('app.knowledge.knowledge_base.KnowledgeRepository') as mock_knowledge_repo, \
          patch('app.knowledge.knowledge_base.KnowledgeToAgentRepository') as mock_link_repo:
         
         # Configure basic mocks
         mock_session_local.return_value.__enter__.return_value = mock_db
-        mock_ai_config_repo.return_value.get_active_config.return_value = mock_ai_config
         mock_pg_vector.return_value = mock_vector_db
         
         # Configure repository mocks
@@ -174,7 +164,7 @@ async def test_add_pdf_files_success(knowledge_manager, mock_knowledge):
     files = ["/path/to/test.pdf"]
 
     with patch('app.knowledge.knowledge_base.EnhancedPDFKnowledgeBase') as mock_pdf_kb, \
-         patch('app.knowledge.knowledge_base.PDFImageReader') as mock_pdf_reader, \
+         patch('app.knowledge.knowledge_base.PDFImageReader'), \
          patch('os.path.exists') as mock_exists, \
          patch('os.path.getsize') as mock_getsize, \
          patch('os.path.basename') as mock_basename, \

@@ -21,7 +21,6 @@ from app.models.knowledge_queue import QueueStatus
 from app.models.notification import NotificationType
 from uuid import uuid4
 import pytest_asyncio
-from datetime import datetime
 
 @pytest.fixture
 def mock_db():

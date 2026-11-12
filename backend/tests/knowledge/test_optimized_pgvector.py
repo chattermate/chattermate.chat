@@ -139,7 +139,7 @@ class TestOptimizedPgVector:
         # Mock the document's embed method
         with patch.object(Document, 'embed') as mock_embed:
             # Act
-            with patch('sqlalchemy.dialects.postgresql.insert') as mock_insert:
+            with patch('sqlalchemy.dialects.postgresql.insert'):
                 db.insert([pre_embedded_doc, unembedded_doc])
             
             # Assert

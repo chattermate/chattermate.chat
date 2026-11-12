@@ -15,7 +15,6 @@ limitations under the License.
 """
 
 import os
-import json
 from pydantic_settings import BaseSettings
 from typing import List, Literal, NamedTuple, Optional
 from dotenv import load_dotenv

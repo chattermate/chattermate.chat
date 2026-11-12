@@ -20,7 +20,7 @@ from hashlib import md5
 from agno.document import Document
 from agno.embedder import Embedder
 from agno.reranker.base import Reranker
-from agno.utils.log import log_debug, log_info, logger
+from agno.utils.log import logger
 from agno.vectordb.pgvector.pgvector import PgVector
 from agno.vectordb.distance import Distance
 from agno.vectordb.pgvector.index import HNSW, Ivfflat

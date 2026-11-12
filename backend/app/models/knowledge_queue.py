@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import Column, Integer, String, JSON, DateTime, Enum, ForeignKey, Float, Index
+from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Float, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base

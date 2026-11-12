@@ -15,8 +15,7 @@ limitations under the License.
 """
 
 import pytest
-import os
-from unittest.mock import MagicMock, patch, call, ANY
+from unittest.mock import MagicMock, patch, ANY
 from agno.document.base import Document
 from app.core.config import settings
 from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE

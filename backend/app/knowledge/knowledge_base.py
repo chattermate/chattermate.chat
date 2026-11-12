@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from agno.knowledge.pdf import PDFKnowledgeBase, PDFImageReader, PDFReader
-from agno.vectordb.pgvector import PgVector, SearchType
+from agno.knowledge.pdf import PDFImageReader, PDFReader
+from agno.vectordb.pgvector import SearchType
 from app.knowledge.optimized_pgvector import OptimizedPgVector
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -34,7 +34,6 @@ from app.knowledge.failure_advice import SourceUnreadable
 from app.models.knowledge import Knowledge, SourceType
 from app.models.knowledge_to_agent import KnowledgeToAgent
 from app.models.knowledge_queue import ProcessingStage, QueueStatus
-from app.repositories.ai_config import AIConfigRepository
 from app.database import SessionLocal
 from app.repositories.knowledge_to_agent import KnowledgeToAgentRepository
 from app.repositories.knowledge import KnowledgeRepository
@@ -50,7 +49,7 @@ from app.knowledge.embedder import get_embedder
 
 # Try to import enterprise modules
 try:
-    from app.enterprise.repositories.subscription import SubscriptionRepository
+    from app.enterprise.repositories.subscription import SubscriptionRepository  # noqa: F401  (only probes for the enterprise module)
     HAS_ENTERPRISE = True
 except ImportError:
     HAS_ENTERPRISE = False
@@ -84,15 +83,8 @@ class KnowledgeManager:
         self.org_id = org_id
         self.agent_id = agent_id
 
-        # Get API key from AI config using context manager
-        with SessionLocal() as db:
-            ai_config_repo = AIConfigRepository(db)
-            ai_config = ai_config_repo.get_active_config(org_id)
-        
-        # Default to SentenceTransformer embedder if no AI config is found
-        embedder = None
         table_name = f"d_{org_id}"
-        
+
         # One loaded model per process; agno's embedder reloads it per call.
         embedder = get_embedder()
         

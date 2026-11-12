@@ -31,9 +31,8 @@ from app.models.organization import Organization
 from uuid import UUID, uuid4
 from app.api import knowledge as knowledge_router
 from app.core.auth import get_current_user, require_permissions
-from app.main import app
 from app.core.config import settings
-from tests.conftest import engine, TestingSessionLocal, create_tables
+from tests.conftest import engine, TestingSessionLocal
 from datetime import datetime, timezone
 import io
 import os
@@ -938,7 +937,7 @@ def test_add_subpage_with_enterprise_limits_mocked():
             with pytest.raises(HTTPException) as exc_info:
                 # Call the endpoint function directly
                 import asyncio
-                result = asyncio.run(add_subpage(
+                asyncio.run(add_subpage(
                     knowledge_id=1,
                     subpage_name="test",
                     content="test content",

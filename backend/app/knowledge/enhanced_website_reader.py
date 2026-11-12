@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import random
 import re
 import socket
 import threading
@@ -22,7 +21,7 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Dict, List, Set, Tuple, Optional, Callable
+from typing import Dict, List, Tuple, Optional, Callable
 from urllib.parse import urljoin, urlparse, urldefrag, urlunparse
 from app.knowledge.crawler_identity import CRAWLER_USER_AGENT
 from app.knowledge.url_safety import BlockedHostError
@@ -47,7 +46,7 @@ from app.knowledge.crawl_scope import (
     url_scheme,
 )
 from app.knowledge.domains import registrable_domain
-from app.knowledge.failure_advice import FAILURE_ADVICE, FailureCause, SourceUnreadable
+from app.knowledge.failure_advice import FailureCause, SourceUnreadable
 from app.knowledge.login_wall import is_auth_path, looks_like_login_wall
 from app.knowledge.main_content import select_main_node
 

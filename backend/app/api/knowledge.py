@@ -47,10 +47,6 @@ from app.services.knowledge_source_agent import resolve_source_agent
 from sqlalchemy.orm import Session
 from app.core.s3 import upload_file_to_s3, get_s3_signed_url
 from app.core.file_validation import read_validated, safe_filename, PDF_MAGIC
-from app.repositories.user import UserRepository
-from app.models.notification import Notification, NotificationType
-from app.services.user import send_fcm_notification
-from app.workers.knowledge_processor import process_queue_item, run_processor
 
 # Try to import enterprise modules
 try:
@@ -1082,7 +1078,6 @@ async def get_queue_status(
 ):
     """Get status of a queued knowledge item"""
     try:
-        queue_repo = KnowledgeQueueRepository(db)
         item = db.query(KnowledgeQueue).filter(
             KnowledgeQueue.id == queue_id).first()
 

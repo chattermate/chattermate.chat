@@ -33,9 +33,8 @@ from app.knowledge.enhanced_website_reader import (
     EnhancedWebsiteReader,
     BotProtectionError,
     EmptyCrawlError,
-    FAILURE_ADVICE,
 )
-from app.knowledge.failure_advice import FailureCause
+from app.knowledge.failure_advice import FAILURE_ADVICE, FailureCause
 from app.knowledge.page_sink import PageSink, SourceLearningHooks, SourceRemoved
 
 # Initialize logger for this module
