@@ -227,7 +227,8 @@ async def test_widget_connect(db, test_widget, test_ai_config, test_customer, mo
     # Test connection
     sid = "test_sid"
     environ = {}
-    auth = {}
+    # The browser's languages: status cards come in the first one with a table
+    auth = {"languages": ["xx-YY", "fr-CA", "en"]}
     
     result = await widget_chat.widget_connect(sid, environ, auth)
     
@@ -237,6 +238,7 @@ async def test_widget_connect(db, test_widget, test_ai_config, test_customer, mo
     
     # Verify session data was saved
     session_data = mock_sio.save_session.call_args[0][1]
+    assert session_data["language"] == "fr"
     assert session_data["widget_id"] == str(test_widget.id)
     assert session_data["org_id"] == str(test_widget.organization_id)
     assert session_data["agent_id"] == str(test_widget.agent_id)

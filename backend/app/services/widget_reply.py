@@ -29,6 +29,7 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
+from app.cards.labels import labels_for
 from app.cards.turn_cards import TurnCards
 from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
@@ -44,6 +45,8 @@ WIDGET_NAMESPACE = '/widget'
 # follow-up chips.
 PANEL_SESSION_KEY = 'panel'
 FOLLOW_UPS_SESSION_KEY = 'follow_ups'
+# The card language picked from the visitor's browser languages (app/cards/labels.py)
+LANGUAGE_SESSION_KEY = 'language'
 # The earlier conversation's context for the agent (visitor_history.CONTINUED_KEY)
 CONTINUED_CONTEXT_KEY = 'continued_context'
 
@@ -87,7 +90,7 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
         ),
         host_action_functions=build_action_functions(actions) or None,
         choice_limits=follow_up_limits(session.get(FOLLOW_UPS_SESSION_KEY, False)),
-        turn_cards=TurnCards() if session.get(PANEL_SESSION_KEY) else None,
+        turn_cards=TurnCards(labels_for(session.get(LANGUAGE_SESSION_KEY))) if session.get(PANEL_SESSION_KEY) else None,
     )
 
 

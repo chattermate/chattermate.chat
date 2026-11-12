@@ -212,7 +212,7 @@ class TicketTools(Toolkit):
 
     def _show_ticket(self, number: str, status: str) -> None:
         if self.turn_cards is not None:
-            self.turn_cards.add(ticket_card(number, status))
+            self.turn_cards.add(ticket_card(number, status, self.turn_cards.labels))
 
     def get_ticket_status(self, ticket_number: Optional[str] = None) -> str:
         """

@@ -67,10 +67,12 @@ from app.services.host_action_runtime import (
 )
 from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
+from app.cards.labels import pick_language
 from app.services import email_check
 from app.services.widget_answers import offers_follow_ups
 from app.services.widget_reply import (
     FOLLOW_UPS_SESSION_KEY,
+    LANGUAGE_SESSION_KEY,
     PANEL_SESSION_KEY,
     create_widget_agent,
     deliver_ai_reply,
@@ -437,6 +439,7 @@ async def widget_connect(sid, environ, auth):
             'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
             # The widget panel's live steps and cards, and follow-up chips (widget_reply.py)
             PANEL_SESSION_KEY: (auth or {}).get('panel') is True,
+            LANGUAGE_SESSION_KEY: pick_language((auth or {}).get('languages')),
             FOLLOW_UPS_SESSION_KEY: offers_follow_ups(agent),
         }
 

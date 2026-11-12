@@ -73,6 +73,8 @@ class StatusCard(BaseModel):
     v: Literal[1] = 1
     id: str
     kind: Literal['order', 'ticket', 'generic'] = 'generic'
+    # The language its words are in (app/cards/labels.py), for the widget's lang attribute
+    lang: Optional[str] = None
     title: str
     subtitle: Optional[str] = None
     status: Optional[CardStatus] = None

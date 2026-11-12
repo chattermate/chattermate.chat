@@ -43,7 +43,13 @@ const act = (action: CardAction) => {
 </script>
 
 <template>
-    <section class="cm-status-card" :class="`cm-status-card--${card.kind}`" :aria-label="card.title">
+    <section
+        class="cm-status-card"
+        :class="`cm-status-card--${card.kind}`"
+        :lang="card.lang"
+        dir="auto"
+        :aria-label="card.title"
+    >
         <header class="cm-status-card__head">
             <span class="cm-status-card__titles">
                 <span class="cm-status-card__title">{{ card.title }}</span>

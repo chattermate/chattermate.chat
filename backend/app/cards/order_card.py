@@ -17,29 +17,32 @@ The order card: a Shopify order (ShopifyService.get_order) as the visitor sees
 it. Only for an order the visitor proved is theirs (get_order_status checks the
 number and the checkout email). Shortened before it is sent or stored: the
 ship-to is a city and the start of the postcode, tracking numbers are masked.
+Words come from the visitor's language table (labels.py).
 """
 
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
 
+from app.cards.labels import ENGLISH, CardLabels
 from app.models.schemas.cards import (
     CardAction, CardItem, CardRow, CardStatus, CardStep, CardTotal, Money, StatusCard,
 )
 
-STEP_LABELS = ('Ordered', 'Processing', 'Shipped', 'Delivered')
+STEP_KEYS = ('step_ordered', 'step_processing', 'step_shipped', 'step_delivered')
 MAX_ITEMS = 6
 
 # Carrier states (FulfillmentDisplayStatus) of a shipped order, least advanced
 # first: an order with several parcels reads as its least advanced one, so one
 # delivered parcel never makes the whole order "Delivered".
 _ARRIVED = {'DELIVERED', 'PICKED_UP'}
+# Carrier status → (label key, tone), most urgent first
 _CARRIER = [
-    ('FAILURE', 'Delivery problem', 'danger'),
-    ('NOT_DELIVERED', 'Delivery problem', 'danger'),
-    ('ATTEMPTED_DELIVERY', 'Delivery attempted', 'warning'),
-    ('IN_TRANSIT', 'In transit', 'info'),
-    ('OUT_FOR_DELIVERY', 'Out for delivery', 'info'),
-    ('READY_FOR_PICKUP', 'Ready for pickup', 'info'),
+    ('FAILURE', 'delivery_problem', 'danger'),
+    ('NOT_DELIVERED', 'delivery_problem', 'danger'),
+    ('ATTEMPTED_DELIVERY', 'delivery_attempted', 'warning'),
+    ('IN_TRANSIT', 'in_transit', 'info'),
+    ('OUT_FOR_DELIVERY', 'out_for_delivery', 'info'),
+    ('READY_FOR_PICKUP', 'ready_for_pickup', 'info'),
 ]
 _PROCESSING = {'UNFULFILLED', 'PENDING_FULFILLMENT', 'OPEN', 'SCHEDULED', 'IN_PROGRESS'}
 
@@ -48,8 +51,9 @@ def _upper(value: Any) -> str:
     return str(value or '').upper()
 
 
-def _title_case(value: str) -> str:
-    return value.replace('_', ' ').capitalize() if value else 'Unknown'
+def _title_case(value: str, labels: CardLabels) -> str:
+    """A status Shopify added after this table was written, as Shopify spells it."""
+    return value.replace('_', ' ').capitalize() if value else labels.text('unknown')
 
 
 def _carrier_statuses(order: dict) -> List[str]:
@@ -71,49 +75,50 @@ def _shipped_counts(order: dict) -> Tuple[int, int]:
     return min(shipped, ordered), ordered
 
 
-def order_status(order: dict) -> Tuple[CardStatus, int]:
+def order_status(order: dict, labels: CardLabels = ENGLISH) -> Tuple[CardStatus, int]:
     """The status pill and how far along the Ordered → Delivered steps it is (the
     current step's index, -1 when the order will not get there). First match wins."""
+    say = labels.text
     financial = _upper(order.get('financial_status'))
     fulfillment = _upper(order.get('fulfillment_status'))
     carriers = _carrier_statuses(order)
     if financial == 'REFUNDED':
-        return CardStatus(key='refunded', label='Refunded', tone='neutral'), -1
+        return CardStatus(key='refunded', label=say('refunded'), tone='neutral'), -1
     if order.get('cancelled_at'):
-        return CardStatus(key='cancelled', label='Cancelled', tone='danger'), -1
+        return CardStatus(key='cancelled', label=say('cancelled'), tone='danger'), -1
     if fulfillment == 'ON_HOLD':
-        return CardStatus(key='on_hold', label='On hold', tone='warning'), 1
+        return CardStatus(key='on_hold', label=say('on_hold'), tone='warning'), 1
     if fulfillment in _PROCESSING:
-        return CardStatus(key='processing', label='Processing', tone='progress'), 1
+        return CardStatus(key='processing', label=say('processing'), tone='progress'), 1
     if fulfillment == 'PARTIALLY_FULFILLED':
         shipped, ordered = _shipped_counts(order)
-        label = f'{shipped} of {ordered} shipped' if ordered and shipped else 'Partly shipped'
+        label = say('partial', shipped=shipped, ordered=ordered) if ordered and shipped else say('partly_shipped')
         return CardStatus(key='partial', label=label, tone='progress'), 2
     if fulfillment == 'DELIVERED' or (carriers and all(c in _ARRIVED for c in carriers)):
-        label = 'Picked up' if carriers and all(c == 'PICKED_UP' for c in carriers) else 'Delivered'
+        label = say('picked_up') if carriers and all(c == 'PICKED_UP' for c in carriers) else say('delivered')
         return CardStatus(key='delivered', label=label, tone='success'), 3
     if fulfillment == 'FULFILLED':
-        for carrier, label, tone in _CARRIER:
+        for carrier, key, tone in _CARRIER:
             if carrier in carriers:
-                return CardStatus(key=carrier.lower(), label=label, tone=tone), 2
-        return CardStatus(key='shipped', label='Shipped', tone='info'), 2
-    return CardStatus(key=fulfillment.lower() or 'unknown', label=_title_case(fulfillment), tone='neutral'), 0
+                return CardStatus(key=carrier.lower(), label=say(key), tone=tone), 2
+        return CardStatus(key='shipped', label=say('shipped'), tone='info'), 2
+    return CardStatus(key=fulfillment.lower() or 'unknown', label=_title_case(fulfillment, labels), tone='neutral'), 0
 
 
-def _steps(current: int) -> List[CardStep]:
+def _steps(current: int, labels: CardLabels) -> List[CardStep]:
     if current < 0:
         return []
-    return [CardStep(label=label, state='done' if i < current else 'current' if i == current else 'upcoming')
-            for i, label in enumerate(STEP_LABELS)]
+    return [CardStep(label=labels.text(key), state='done' if i < current else 'current' if i == current else 'upcoming')
+            for i, key in enumerate(STEP_KEYS)]
 
 
-def _date(value: Any) -> Optional[str]:
-    """"3 Nov" from an ISO timestamp."""
+def _date(value: Any, labels: CardLabels) -> Optional[str]:
+    """"3 Nov" (in the visitor's language) from an ISO timestamp."""
     try:
         parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
     except ValueError:
         return None
-    return f'{parsed.day} {parsed.strftime("%b")}'
+    return labels.date(parsed)
 
 
 def ship_to(address: Optional[dict]) -> Optional[str]:
@@ -149,24 +154,24 @@ def _tracking(order: dict) -> Tuple[Optional[str], Optional[str], Optional[str]]
     return None, None, None
 
 
-def _estimated_delivery(order: dict) -> Optional[str]:
+def _estimated_delivery(order: dict, labels: CardLabels) -> Optional[str]:
     """The latest active shipment's estimate."""
     for fulfillment in reversed(order.get('fulfillments') or []):
         if _upper(fulfillment.get('status')) == 'CANCELLED':
             continue
-        shown = _date(fulfillment.get('estimated_delivery_at')) if fulfillment.get('estimated_delivery_at') else None
+        shown = _date(fulfillment.get('estimated_delivery_at'), labels) if fulfillment.get('estimated_delivery_at') else None
         if shown:
             return shown
     return None
 
 
-def _items(order: dict) -> List[CardItem]:
+def _items(order: dict, labels: CardLabels) -> List[CardItem]:
     items = []
     for li in (order.get('line_items') or [])[:MAX_ITEMS]:
         variant = li.get('variant_title')
         image = li.get('image') or ''
         items.append(CardItem(
-            title=li.get('name') or 'Item',
+            title=li.get('name') or labels.text('item'),
             meta=variant if variant and variant != 'Default Title' else None,
             image=image if image.startswith('https://') else None,
             quantity=_quantity(li),
@@ -175,61 +180,66 @@ def _items(order: dict) -> List[CardItem]:
     return items
 
 
-def order_card(order: dict) -> StatusCard:
-    name = order.get('name') or 'Your order'
-    status, current = order_status(order)
+def order_card(order: dict, labels: CardLabels = ENGLISH) -> StatusCard:
+    say = labels.text
+    name = order.get('name') or ''
+    title = say('order_title', name=name) if name else say('your_order')
+    status, current = order_status(order, labels)
     count = sum(_quantity(li) for li in order.get('line_items') or [])
-    placed = _date(order.get('created_at'))
+    placed = _date(order.get('created_at'), labels)
     subtitle = ' · '.join(p for p in (
-        f'Placed {placed}' if placed else None,
-        f'{count} item{"" if count == 1 else "s"}' if count else None,
+        say('placed', date=placed) if placed else None,
+        labels.items(count) if count else None,
     ) if p) or None
 
     # A refunded or cancelled order has nothing to track; an arrived one no estimate.
     tracking, carrier, tracking_url = _tracking(order) if current >= 0 else (None, None, None)
-    rows = [CardRow(label=label, value=value) for label, value in (
-        ('Estimated delivery', _estimated_delivery(order) if current == 2 else None),
-        ('Ship to', ship_to(order.get('shipping_address'))),
-        ('Tracking', f'{carrier} {tracking}'.strip() if tracking and carrier else tracking),
+    rows = [CardRow(label=say(key), value=value) for key, value in (
+        ('estimated_delivery', _estimated_delivery(order, labels) if current == 2 else None),
+        ('ship_to', ship_to(order.get('shipping_address'))),
+        ('tracking', f'{carrier} {tracking}'.strip() if tracking and carrier else tracking),
     ) if value]
 
     actions = []
     if tracking_url:
-        actions.append(CardAction(id='track', label='Track with carrier', kind='link', value=tracking_url, style='primary'))
-    actions.append(CardAction(id='help', label='Get help with this order', kind='reply',
-                              value=f'I need help with order {name}'))
+        actions.append(CardAction(id='track', label=say('track'), kind='link', value=tracking_url, style='primary'))
+    actions.append(CardAction(id='help', label=say('get_help'), kind='reply',
+                              value=say('help_message', name=name or title)))
 
     total = None
     if order.get('total_price'):
-        total = CardTotal(label='Total', amount=Money(value=str(order['total_price']), currency=order.get('currency') or ''))
+        total = CardTotal(label=say('total'), amount=Money(value=str(order['total_price']), currency=order.get('currency') or ''))
 
     return StatusCard(
         id=f'order-{order.get("id") or name}',
         kind='order',
-        title=f'Order {name}',
+        lang=labels.language,
+        title=title,
         subtitle=subtitle,
         status=status,
-        steps=_steps(current),
+        steps=_steps(current, labels),
         rows=rows,
-        items=_items(order),
+        items=_items(order, labels),
         total=total,
         actions=actions,
-        fallback_text=f'Order {name}: {status.label}',
+        fallback_text=f'{title}: {status.label}',
     )
 
 
-def recent_orders_card(orders: List[dict]) -> StatusCard:
+def recent_orders_card(orders: List[dict], labels: CardLabels = ENGLISH) -> StatusCard:
     """A confirmed email's recent orders (list_my_orders): one tap asks about one."""
+    say = labels.text
     rows, actions = [], []
     for order in orders:
         name = order.get('order_number') or ''
         if not name:
             continue
         status, _ = order_status({'financial_status': order.get('financial_status'),
-                                  'fulfillment_status': order.get('fulfillment_status')})
-        placed = _date(order.get('created_at'))
+                                  'fulfillment_status': order.get('fulfillment_status')}, labels)
+        placed = _date(order.get('created_at'), labels)
         rows.append(CardRow(label=f'{name} · {placed}' if placed else name, value=status.label))
-        actions.append(CardAction(id=f'order-{name}', label=f'Order {name}', kind='reply',
-                                  value=f'Where is my order {name}?'))
-    return StatusCard(id='recent-orders', kind='order', title='Your recent orders', rows=rows,
-                      actions=actions, fallback_text='Your recent orders: ' + ', '.join(r.label for r in rows))
+        actions.append(CardAction(id=f'order-{name}', label=say('order_title', name=name), kind='reply',
+                                  value=say('recent_message', name=name)))
+    title = say('recent_title')
+    return StatusCard(id='recent-orders', kind='order', lang=labels.language, title=title, rows=rows,
+                      actions=actions, fallback_text=f'{title}: ' + ', '.join(r.label for r in rows))
