@@ -42,7 +42,8 @@ SQLITE_LOCK_RETRY_SECONDS = 1
 
 
 def _is_sqlite_locked(error: BaseException) -> bool:
-    return isinstance(error, sqlite3.OperationalError) and "locked" in str(error).lower()
+    # SQLITE_BUSY clears once the other crawler is done; "database table is locked" (SQLITE_LOCKED) does not
+    return isinstance(error, sqlite3.OperationalError) and "database is locked" in str(error).lower()
 
 
 class Crawl4AIFallback:
@@ -223,7 +224,6 @@ class Crawl4AIFallback:
                 logger.error(f"❌ Crawl4AI failed: {result.error_message}")
                 # Return whatever we got from Playwright
                 return html_content, None, screenshot_base64
-
 
         except Exception as e:
             logger.error(f"❌ Crawl4AI async fetch error: {str(e)}", exc_info=True)

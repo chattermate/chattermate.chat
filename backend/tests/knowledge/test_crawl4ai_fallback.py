@@ -166,6 +166,21 @@ class TestCrawl4AIFallback:
     @pytest.mark.asyncio
     @patch('app.knowledge.crawl4ai_fallback.SQLITE_LOCK_RETRY_SECONDS', 0)
     @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    async def test_async_fetch_does_not_retry_a_table_lock(self):
+        """A table lock inside one connection does not clear by waiting"""
+        crawler_class, instance = self._crawler_that(sqlite3.OperationalError("database table is locked"))
+
+        with patch('app.knowledge.crawl4ai_fallback.AsyncWebCrawler', crawler_class):
+            fallback = Crawl4AIFallback()
+            fallback._is_available = True
+            result = await fallback._async_fetch("https://example.com")
+
+        assert result == (None, None, None)
+        assert instance.arun.await_count == 1
+
+    @pytest.mark.asyncio
+    @patch('app.knowledge.crawl4ai_fallback.SQLITE_LOCK_RETRY_SECONDS', 0)
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
     async def test_async_fetch_does_not_retry_other_errors(self):
         """Only the lock is worth waiting out; a refused connection fails at once"""
         crawler_class, instance = self._crawler_that(Exception("net::ERR_CONNECTION_REFUSED"))

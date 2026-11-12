@@ -61,4 +61,22 @@ describe('useFailedSource', () => {
     await reloaded.refresh()
     expect(reloaded.failure.value).toBeNull()
   })
+
+  it('keeps every dismissal, so an older failure does not return when the newest is removed', async () => {
+    const older = { ...failed, id: 2, source: 'https://old.example' }
+    getOrgQueueItems.mockResolvedValue({ queue_items: [failed, older] })
+    const first = useFailedSource()
+    await first.refresh()
+    first.dismiss() // the newest (id 3)
+
+    getOrgQueueItems.mockResolvedValue({ queue_items: [older] }) // ...which is then removed
+    await first.refresh()
+    expect(first.failure.value?.id).toBe(2)
+    first.dismiss()
+
+    getOrgQueueItems.mockResolvedValue({ queue_items: [failed, older] })
+    const reloaded = useFailedSource()
+    await reloaded.refresh()
+    expect(reloaded.failure.value).toBeNull()
+  })
 })

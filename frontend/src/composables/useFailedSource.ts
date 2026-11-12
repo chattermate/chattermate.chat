@@ -20,17 +20,18 @@ import { userService } from '@/services/user'
 import { newestFailedWebsite } from '@/composables/useCrawlCheck'
 import type { QueueItem } from '@/types/knowledge'
 
-// Once indexed knowledge has been seen there is nothing left to report until a reload
-let learnedThisVisit = false
+// Organizations seen to have indexed knowledge: nothing left to report for them until a reload
+const learnedOrgs = new Set<string>()
 
-const DISMISSED_KEY = 'chattermate:failed-source-dismissed:v1'
+const DISMISSED_KEY = 'chattermate:failed-source-dismissed:v2'
+const DISMISSED_KEPT = 20
 
-const readDismissed = (): number | null => {
+const readDismissed = (): number[] => {
   try {
-    const raw = localStorage.getItem(DISMISSED_KEY)
-    return raw ? Number(raw) : null
+    const parsed = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((id): id is number => typeof id === 'number') : []
   } catch {
-    return null
+    return []
   }
 }
 
@@ -44,24 +45,23 @@ const readDismissed = (): number | null => {
  */
 export function useFailedSource() {
   const failure = ref<QueueItem | null>(null)
-  const dismissedId = ref<number | null>(readDismissed())
+  const dismissedIds = ref<number[]>(readDismissed())
 
-  const visible = computed(() => (failure.value && failure.value.id !== dismissedId.value ? failure.value : null))
+  const visible = computed(() => (failure.value && !dismissedIds.value.includes(failure.value.id) ? failure.value : null))
 
   // Newest call wins: a slow earlier answer must not overwrite a later one.
   let latest = 0
 
   const refresh = async () => {
-    // An organization that has learned something does not go back to knowing nothing.
-    if (learnedThisVisit) return
     const orgId = userService.getCurrentUser()?.organization_id
-    if (!orgId) return
+    // An organization that has learned something does not go back to knowing nothing.
+    if (!orgId || learnedOrgs.has(orgId)) return
     const call = ++latest
     try {
       const indexed = await knowledgeService.getKnowledgeByOrganization(orgId, 1, 1)
       if (call !== latest) return
       if ((indexed?.pagination?.total ?? indexed?.knowledge?.length ?? 0) > 0) {
-        learnedThisVisit = true
+        learnedOrgs.add(orgId)
         failure.value = null
         return
       }
@@ -79,9 +79,10 @@ export function useFailedSource() {
 
   const dismiss = () => {
     if (!failure.value) return
-    dismissedId.value = failure.value.id
+    // Several can be dismissed: removing the newest failure brings an older one back as the newest.
+    dismissedIds.value = [...dismissedIds.value, failure.value.id].slice(-DISMISSED_KEPT)
     try {
-      localStorage.setItem(DISMISSED_KEY, String(failure.value.id))
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissedIds.value))
     } catch {
       // Hidden for this visit; it may come back on the next one.
     }
