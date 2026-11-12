@@ -56,7 +56,9 @@ LOOKBACK = timedelta(days=2)
 BATCH = 10
 TRANSCRIPT_MESSAGES = 12
 TRANSCRIPT_CHARS = 4000
-MODEL_MAX_TOKENS = 40
+# Room for a reasoning model's thinking, which counts against the output limit;
+# the title itself is a few words
+MODEL_MAX_TOKENS = 600
 MODEL_TIMEOUT_SECONDS = 20
 CONTEXT_LABEL = 'CONVERSATION'
 _SPEAKER = {'user': 'Customer', 'bot': 'Assistant', 'assistant': 'Assistant', 'agent': 'Teammate'}
@@ -94,7 +96,8 @@ def claim(db: Session, now: datetime, limit: int = BATCH) -> List[UUID]:
     taken = db.execute(
         update(SessionToAgent)
         .where(SessionToAgent.session_id.in_(candidates.scalar_subquery()))
-        .values(titled_at=now)
+        # updated_at stays the closing time: analytics count closures by it
+        .values(titled_at=now, updated_at=SessionToAgent.updated_at)
         .returning(SessionToAgent.session_id)
         .execution_options(synchronize_session=False)
     ).scalars().all()
@@ -157,19 +160,25 @@ def clean_title(text: Optional[str]) -> Optional[str]:
     return line if len(line) <= TITLE_MAX else line[:TITLE_MAX - 1].rstrip() + '…'
 
 
-async def write_title(job: TitleJob) -> Optional[str]:
-    """One model call; None when it fails or says nothing usable."""
+def _agent(job: TitleJob):
+    """Blocking: building the model may resolve a custom endpoint's host."""
     from agno.agent import Agent
     from app.utils.agno_utils import create_model
 
-    agent = Agent(
+    return Agent(
         name='Conversation Titler',
         model=create_model(model_type=job.model_type, api_key=job.api_key, model_name=job.model_name,
                            max_tokens=MODEL_MAX_TOKENS, base_url=job.base_url),
         instructions=INSTRUCTIONS,
         markdown=False,
     )
+
+
+async def write_title(job: TitleJob) -> Optional[str]:
+    """One model call; None when it fails (a setup the model can't be built from
+    included) or says nothing usable."""
     try:
+        agent = await asyncio.to_thread(_agent, job)
         response = await asyncio.wait_for(agent.arun(visitor_data_block(CONTEXT_LABEL, job.transcript)),
                                           timeout=MODEL_TIMEOUT_SECONDS)
     except Exception as e:
@@ -179,10 +188,14 @@ async def write_title(job: TitleJob) -> Optional[str]:
 
 
 def save(db: Session, session_id: UUID, title: str) -> None:
-    conversation = db.get(SessionToAgent, session_id)
-    if conversation is not None and not conversation.title:
-        conversation.title = title
-        db.commit()
+    """Store the title (encrypted by the column type), leaving updated_at alone."""
+    db.execute(
+        update(SessionToAgent)
+        .where(SessionToAgent.session_id == session_id, SessionToAgent.title.is_(None))
+        .values(title=title, updated_at=SessionToAgent.updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
 
 
 async def title_recent_conversations(session_factory, now: Optional[datetime] = None) -> int:
@@ -209,9 +222,13 @@ async def title_recent_conversations(session_factory, now: Optional[datetime] = 
 
     titled = 0
     for job in await asyncio.to_thread(_claim_and_prepare):
-        title = await write_title(job)
-        if title:
-            await asyncio.to_thread(_save, job.session_id, title)
-            titled += 1
+        # One conversation's failure never costs the rest of the batch their title
+        try:
+            title = await write_title(job)
+            if title:
+                await asyncio.to_thread(_save, job.session_id, title)
+                titled += 1
+        except Exception as e:
+            logger.warning(f"Title for conversation {job.session_id} not saved: {e}")
     return titled
 

@@ -78,6 +78,16 @@ class TestWhichConversations:
                       channel="whatsapp" if change == "channel" else "web")
         assert titles.claim(db, NOW) == []
 
+    def test_taking_one_keeps_its_closing_time(self, db, test_widget, test_customer):
+        """Analytics count closures by updated_at."""
+        taken = _conversation(db, test_widget, test_customer)
+        before = db.get(SessionToAgent, taken).updated_at
+        titles.claim(db, NOW)
+        titles.save(db, taken, "Broken mug")
+        db.expire_all()
+        row = db.get(SessionToAgent, taken)
+        assert row.title == "Broken mug" and row.updated_at == before
+
     def test_a_batch_at_a_time(self, db, test_widget, test_customer):
         for _ in range(titles.BATCH + 2):
             _conversation(db, test_widget, test_customer)
@@ -177,6 +187,26 @@ class TestAPass:
         monkeypatch.setattr(titles, "write_title", fake_write)
         assert asyncio.run(titles.title_recent_conversations(_factory(db), NOW)) == 1
         assert db.get(SessionToAgent, session_id).title == "Broken mug return"
+
+    def test_one_broken_setup_does_not_cost_the_others_their_title(self, db, test_widget, test_customer,
+                                                                   test_ai_config, monkeypatch):
+        first = _conversation(db, test_widget, test_customer)
+        second = _conversation(db, test_widget, test_customer)
+        calls = []
+
+        def build(job):
+            calls.append(job.session_id)
+            if len(calls) == 1:
+                raise ValueError("base_url is required for OPENAI_COMPATIBLE")
+
+            class Fine:
+                async def arun(self, prompt):
+                    return SimpleNamespace(content="Broken mug")
+            return Fine()
+
+        monkeypatch.setattr(titles, "_agent", build)
+        assert asyncio.run(titles.title_recent_conversations(_factory(db), NOW)) == 1
+        assert {db.get(SessionToAgent, s).title for s in (first, second)} == {None, "Broken mug"}
 
     def test_a_failure_is_not_retried_forever(self, db, test_widget, test_customer, test_ai_config, monkeypatch):
         session_id = _conversation(db, test_widget, test_customer)
