@@ -20,10 +20,9 @@ import { useRoute } from 'vue-router'
 import { widgetService } from '@/services/widget'
 import { allowsHost, buildReturnUrl, parseConnectRequest } from '@/utils/wordpressConnect'
 
-/** GET /widgets answers with each widget's agent, which the Widget type leaves out. */
+/** GET /widgets answers with each widget's agent (and no name), unlike the Widget type. */
 interface WidgetWithAgent {
   id: string
-  name: string
   agent?: { name: string; display_name?: string | null } | null
 }
 
@@ -35,15 +34,21 @@ const selectedId = ref('')
 const loading = ref(true)
 const loadError = ref('')
 const allowedDomains = ref<string[] | null>(null)
-const addDomain = ref(true)
+// Off until the admin ticks it: a link anyone can craft must not widen where a widget runs.
+const addDomain = ref(false)
 const connecting = ref(false)
 const connectError = ref('')
 
-const siteHost = computed(() => request.value?.returnUrl.host ?? '')
+const siteHost = computed(() => request.value?.siteHost ?? '')
 const needsDomain = computed(() => allowedDomains.value !== null && !allowsHost(allowedDomains.value, siteHost.value))
 
 function agentName(widget: WidgetWithAgent): string {
-  return widget.agent?.display_name || widget.agent?.name || widget.name
+  return widget.agent?.display_name || widget.agent?.name || 'Unnamed agent'
+}
+
+/** Tells apart two widgets of the same agent, as the agent's Widget tab shows the ID. */
+function widgetLabel(widget: WidgetWithAgent): string {
+  return `Widget ${widget.id.slice(0, 8)}`
 }
 
 async function loadWidgets() {
@@ -63,7 +68,7 @@ async function loadWidgets() {
 // chat would be refused there after connecting.
 watch(selectedId, async (id) => {
   allowedDomains.value = null
-  addDomain.value = true
+  addDomain.value = false
   if (!id) return
   try {
     const domains = await widgetService.getAllowedDomains(id)
@@ -114,7 +119,8 @@ onMounted(() => {
       <template v-else>
         <h1 id="connect-title">Connect {{ request.siteName }}</h1>
         <p class="connect-lead">
-          Choose the AI agent that answers on <strong>{{ siteHost }}</strong>. We send its Widget ID back to your WordPress admin.
+          Choose the AI agent that answers on <strong>{{ siteHost }}</strong>. We send its Widget ID back to your WordPress
+          admin at <strong>{{ request.returnUrl.host }}</strong>.
         </p>
 
         <p v-if="loading" class="connect-muted" role="status">Loading your agents…</p>
@@ -132,7 +138,7 @@ onMounted(() => {
               <input v-model="selectedId" type="radio" name="widget" :value="widget.id" />
               <span>
                 <strong>{{ agentName(widget) }}</strong>
-                <span class="connect-muted">{{ widget.name }}</span>
+                <span class="connect-muted">{{ widgetLabel(widget) }}</span>
               </span>
             </label>
           </fieldset>
@@ -141,7 +147,7 @@ onMounted(() => {
             <input v-model="addDomain" type="checkbox" />
             <span>
               Also allow <strong>{{ siteHost }}</strong>. This widget only runs on the sites in its list, so without it the
-              chat won't load there.
+              chat won't load there. Tick this only if {{ siteHost }} is your site.
             </span>
           </label>
 

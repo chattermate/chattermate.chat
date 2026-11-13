@@ -284,10 +284,12 @@ def get_widget_status(widget_id: str, response: Response, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     customization = agent.customization
+    requires_token = bool(getattr(agent, 'require_token_auth', False))
     return WidgetStatusResponse(
         widget_id=widget.id,
-        agent_name=agent.display_name or agent.name,
-        requires_token=bool(getattr(agent, 'require_token_auth', False)),
+        # GET /widgets/{id} names no agent to callers without a site token: neither do we.
+        agent_name="" if requires_token else (agent.display_name or agent.name),
+        requires_token=requires_token,
         collects_email=bool(customization and getattr(customization, 'collect_email', False)),
     )
 

@@ -30,6 +30,8 @@ export interface ConnectRequest {
   returnUrl: URL
   state: string
   siteName: string
+  /** The public site's host (home_url), where the chat runs; may differ from wp-admin's. */
+  siteHost: string
 }
 
 /**
@@ -56,12 +58,25 @@ export function parseReturnUrl(raw: unknown): URL | null {
 export function parseConnectRequest(query: Record<string, unknown>): ConnectRequest | null {
   const returnUrl = parseReturnUrl(firstValue(query.return_url))
   const state = firstValue(query.state)
-  if (!returnUrl || typeof state !== 'string' || !/^[A-Za-z0-9]{1,64}$/.test(state)) return null
+  if (!returnUrl || typeof state !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(state)) return null
   const siteName = firstValue(query.site_name)
+  const siteHost = publicHost(firstValue(query.site_url)) ?? returnUrl.host
   return {
     returnUrl,
     state,
-    siteName: typeof siteName === 'string' && siteName.trim() ? siteName.trim().slice(0, 120) : returnUrl.host,
+    siteName: typeof siteName === 'string' && siteName.trim() ? siteName.trim().slice(0, 120) : siteHost,
+    siteHost,
+  }
+}
+
+/** The host of the site's public address, or null when it isn't an http(s) URL. */
+function publicHost(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw) return null
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.host : null
+  } catch {
+    return null
   }
 }
 

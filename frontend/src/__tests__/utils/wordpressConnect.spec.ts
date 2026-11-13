@@ -46,23 +46,30 @@ describe('parseConnectRequest', () => {
   })
 
   it('names the site by its host when no name is given', () => {
-    expect(parseConnectRequest({ return_url: RETURN, state: 'abc' })?.siteName).toBe('shop.example.com')
+    expect(parseConnectRequest({ return_url: RETURN, state: 'abc12345' })?.siteName).toBe('shop.example.com')
+  })
+
+  it('takes the public host from site_url, which can differ from the admin host', () => {
+    const request = parseConnectRequest({ return_url: RETURN, state: 'abc12345', site_url: 'https://www.larkfield.example/' })
+    expect(request?.siteHost).toBe('www.larkfield.example')
+    expect(parseConnectRequest({ return_url: RETURN, state: 'abc12345', site_url: 'javascript:x' })?.siteHost).toBe('shop.example.com')
   })
 
   it('refuses a request without a WordPress nonce', () => {
     expect(parseConnectRequest({ return_url: RETURN })).toBeNull()
     expect(parseConnectRequest({ return_url: RETURN, state: '"><script>' })).toBeNull()
+    expect(parseConnectRequest({ return_url: RETURN, state: 'short' })).toBeNull()
   })
 })
 
 describe('buildReturnUrl', () => {
-  const request = parseConnectRequest({ return_url: RETURN, state: 'abc123' })!
+  const request = parseConnectRequest({ return_url: RETURN, state: 'abc123xyz' })!
 
   it('sends the widget ID and the nonce back, keeping the action', () => {
     const url = new URL(buildReturnUrl(request, { widgetId: 'w-1' }))
     expect(url.searchParams.get('action')).toBe('chattermate_connect')
     expect(url.searchParams.get('widget_id')).toBe('w-1')
-    expect(url.searchParams.get('state')).toBe('abc123')
+    expect(url.searchParams.get('state')).toBe('abc123xyz')
   })
 
   it('says so when the admin cancels', () => {

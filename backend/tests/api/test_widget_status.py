@@ -70,7 +70,9 @@ def test_status_reports_a_widget_that_only_takes_signed_in_visitors(
     test_agent.require_token_auth = True
     db.commit()
 
-    assert _status(client, test_widget.id).json()["requires_token"] is True
+    status = _status(client, test_widget.id).json()
+    assert status["requires_token"] is True
+    assert status["agent_name"] == ""  # as GET /widgets/{id} names no agent without a token
 
 
 def test_checking_status_adds_no_customer(client: TestClient, db, test_widget: Widget):

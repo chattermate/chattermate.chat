@@ -35,8 +35,8 @@ import ConnectWordPressView from '@/views/ConnectWordPressView.vue'
 
 const RETURN = 'https://shop.example.com/wp-admin/admin-post.php?action=chattermate_connect'
 const WIDGETS = [
-  { id: 'w-sales', name: 'Sales Widget', agent: { name: 'Sales', display_name: 'Mia' } },
-  { id: 'w-support', name: 'Support Widget', agent: { name: 'Support', display_name: null } },
+  { id: 'w-sales-0001', agent: { name: 'Sales', display_name: 'Mia' } },
+  { id: 'w-support-0002', agent: { name: 'Support', display_name: null } },
 ]
 
 const assign = vi.fn()
@@ -51,7 +51,7 @@ function returned(): URL {
 
 beforeEach(() => {
   Object.keys(query).forEach((key) => delete query[key])
-  Object.assign(query, { return_url: RETURN, state: 'nonce123', site_name: 'Larkfield Goods' })
+  Object.assign(query, { return_url: RETURN, state: 'nonce12345', site_name: 'Larkfield Goods' })
   getWidgets.mockResolvedValue(WIDGETS)
   getAllowedDomains.mockResolvedValue([])
   setAllowedDomains.mockResolvedValue([])
@@ -64,6 +64,19 @@ afterEach(() => {
 })
 
 describe('ConnectWordPressView', () => {
+  it('allows the public host from site_url, not the admin host', async () => {
+    query.site_url = 'https://www.larkfield.example/'
+    getAllowedDomains.mockResolvedValue(['www.example.org'])
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('.connect-domain input').setValue(true)
+    await wrapper.find('.connect-actions button').trigger('click')
+    await flushPromises()
+
+    expect(setAllowedDomains).toHaveBeenCalledWith('w-sales-0001', ['www.example.org', 'www.larkfield.example'])
+  })
+
   it('names the site and lists each agent by its visitor-facing name', async () => {
     const wrapper = mountView()
     await flushPromises()
@@ -72,6 +85,7 @@ describe('ConnectWordPressView', () => {
     expect(wrapper.text()).toContain('shop.example.com')
     const agents = wrapper.findAll('.connect-agent strong').map((node) => node.text())
     expect(agents).toEqual(['Mia', 'Support'])
+    expect(wrapper.findAll('.connect-agent .connect-muted')[0].text()).toBe('Widget w-sales-')
   })
 
   it('sends the chosen widget back to WordPress with the nonce', async () => {
@@ -83,31 +97,32 @@ describe('ConnectWordPressView', () => {
     await wrapper.find('.connect-actions button').trigger('click')
     await flushPromises()
 
-    expect(returned().searchParams.get('widget_id')).toBe('w-support')
-    expect(returned().searchParams.get('state')).toBe('nonce123')
+    expect(returned().searchParams.get('widget_id')).toBe('w-support-0002')
+    expect(returned().searchParams.get('state')).toBe('nonce12345')
     expect(returned().searchParams.get('action')).toBe('chattermate_connect')
     expect(setAllowedDomains).not.toHaveBeenCalled()
   })
 
-  it('adds the site to a widget limited to other sites before connecting', async () => {
+  it('adds the site to a widget limited to other sites when the admin ticks it', async () => {
     getAllowedDomains.mockResolvedValue(['www.example.org'])
     const wrapper = mountView()
     await flushPromises()
 
     expect(wrapper.find('.connect-domain').exists()).toBe(true)
+    await wrapper.find('.connect-domain input').setValue(true)
     await wrapper.find('.connect-actions button').trigger('click')
     await flushPromises()
 
-    expect(setAllowedDomains).toHaveBeenCalledWith('w-sales', ['www.example.org', 'shop.example.com'])
-    expect(returned().searchParams.get('widget_id')).toBe('w-sales')
+    expect(setAllowedDomains).toHaveBeenCalledWith('w-sales-0001', ['www.example.org', 'shop.example.com'])
+    expect(returned().searchParams.get('widget_id')).toBe('w-sales-0001')
   })
 
-  it('leaves the list alone when the admin unticks adding the site', async () => {
+  it('never widens the list unless asked: the box starts unticked', async () => {
     getAllowedDomains.mockResolvedValue(['www.example.org'])
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.find('.connect-domain input').setValue(false)
+    expect((wrapper.find('.connect-domain input').element as HTMLInputElement).checked).toBe(false)
     await wrapper.find('.connect-actions button').trigger('click')
     await flushPromises()
 
@@ -121,6 +136,7 @@ describe('ConnectWordPressView', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    await wrapper.find('.connect-domain input').setValue(true)
     await wrapper.find('.connect-actions button').trigger('click')
     await flushPromises()
 
