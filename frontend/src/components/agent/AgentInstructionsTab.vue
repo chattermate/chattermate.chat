@@ -391,13 +391,13 @@ const handleSave = () => {
               <input type="checkbox"
                 v-model="localChannelQuickReplies"
                 :disabled="!isEditing"
-                aria-label="Reply buttons on messaging channels"
+                aria-label="Reply buttons"
               >
               <span class="slider"></span>
             </label>
           </div>
           <p class="helper-text">
-            Offer choices as tappable buttons on WhatsApp, Messenger, Instagram and Telegram. Not the web widget.
+            Offer choices as tappable buttons in the website chat, WhatsApp, Messenger, Instagram and Telegram.
           </p>
         </div>
 

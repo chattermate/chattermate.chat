@@ -23,12 +23,12 @@ from unittest.mock import patch
 import pytest
 
 from app.agents.choice_prompt import choice_instructions
-from app.channels.interactive_limits import TELEGRAM_LIMITS, WIDGET_FOLLOW_UP_LIMITS
+from app.channels.interactive_limits import TELEGRAM_LIMITS, WEB_LIMITS, WIDGET_FOLLOW_UP_LIMITS
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse
 from app.services.handover_payload import handover_payload
 from app.services.widget_answers import follow_up_limits, offers_follow_ups, serves_redesign_to_visitors
 from app.services.widget_reply import (
-    FOLLOW_UPS_SESSION_KEY, REDESIGN_SESSION_KEY, reply_payload, widget_agent_kwargs,
+    FOLLOW_UPS_SESSION_KEY, REDESIGN_SESSION_KEY, choice_limits_for, reply_payload, widget_agent_kwargs,
 )
 
 
@@ -56,10 +56,27 @@ class TestReplyPayload:
         """The queued-chat replies are not stored with a card: live must match a reload."""
         assert reply_payload(_reply(transfer_to_human=True), "s-1")["handover"] is None
 
-    def test_choices_are_clamped_for_chips(self):
+    def test_follow_ups_are_clamped_for_chips(self):
         reply = ChannelChatResponse(message="Hi", transfer_to_human=False, end_chat=False, request_rating=False,
                                     create_ticket=False, quick_replies=["A", "x" * 41, "B", "C", "D"])
-        assert reply_payload(reply, "s-1")["quick_replies"] == ["A", "B", "C"]
+        assert reply_payload(reply, "s-1", limits=WIDGET_FOLLOW_UP_LIMITS)["quick_replies"] == ["A", "B", "C"]
+
+    def test_the_agents_choices_are_cut_to_a_button(self):
+        """Choices (channel_quick_replies) keep a long one, cut; four fit."""
+        reply = ChannelChatResponse(message="Which?", transfer_to_human=False, end_chat=False, request_rating=False,
+                                    create_ticket=False, quick_replies=["A", "x" * 41, "B", "C", "D"])
+        assert reply_payload(reply, "s-1", limits=WEB_LIMITS)["quick_replies"] == ["A", "x" * 40, "B", "C"]
+
+    @pytest.mark.parametrize("session, expected", [
+        ({"offer_choices": True, "follow_ups": True}, "choices"),
+        ({"offer_choices": True}, "choices"),
+        ({"follow_ups": True}, "follow_ups"),
+        ({}, None),
+    ])
+    def test_the_agents_choices_come_before_follow_ups(self, session, expected):
+        limits = choice_limits_for(session)
+        kind = None if limits is None else ("follow_ups" if limits.follow_ups else "choices")
+        assert kind == expected
 
     def test_an_old_style_reply_has_empty_extras(self):
         payload = reply_payload(_reply(), "s-1")

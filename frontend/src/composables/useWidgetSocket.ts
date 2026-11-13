@@ -353,7 +353,7 @@ export function useWidgetSocket() {
                         end_chat_reason: data.end_chat_reason,
                         end_chat_description: data.end_chat_description,
                         request_rating: data.request_rating,
-                        // Follow-ups, the handover card and the steps' receipt (redesign)
+                        // The agent's choices or follow-ups, the handover card and the steps' receipt
                         ...replyExtras(data),
                     }
                 })

@@ -627,14 +627,26 @@ async def refresh_token(
         )
 
 
+class LogoutRequest(BaseModel):
+    # This browser's push token. Sent with the logout itself rather than as a
+    # DELETE beforehand: that call needs the session this one ends, so the
+    # dashboard had to wait on Firebase before it could sign out.
+    fcm_token: Optional[str] = None
+
+
 @router.post("/logout")
 async def logout(
     response: Response,
     request: Request,
+    body: Optional[LogoutRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Logout user, end the session and clear cookies"""
+    # Only this device's token: the user's other devices keep their push.
+    if body and body.fcm_token:
+        FCMTokenRepository(db).remove(current_user.id, body.fcm_token)
+
     # End the session server-side, so a copy of either token stops working
     revoke_presented_sessions(db, request)
 
@@ -688,7 +700,8 @@ async def unregister_fcm_token(
     current_user: User = Depends(get_current_user),
     db=Depends(get_db)
 ):
-    """Drop this browser's token on logout.
+    """Drop one of this user's device tokens. The dashboard no longer calls
+    this — its logout sends the token with POST /logout — but API clients may.
 
     The token is required: clearing every token for the account (what this used
     to do) meant signing out on a laptop silently killed push on the user's

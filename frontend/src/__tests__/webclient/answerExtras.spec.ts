@@ -38,8 +38,8 @@ describe('reading an answer\'s extras', () => {
         expect(traceOf(reply({}))).toBeNull()
     })
 
-    it('keeps at most three distinct follow-ups', () => {
-        expect(followUpsOf(reply({ quick_replies: ['A', ' a ', 'B', '', 7, 'C', 'D'] }))).toEqual(['A', 'B', 'C'])
+    it('keeps at most four distinct choices (three follow-ups or four of the agent\'s choices)', () => {
+        expect(followUpsOf(reply({ quick_replies: ['A', ' a ', 'B', '', 7, 'C', 'D', 'E'] }))).toEqual(['A', 'B', 'C', 'D'])
         expect(followUpsOf(reply({ quick_replies: 'A' }))).toEqual([])
     })
 

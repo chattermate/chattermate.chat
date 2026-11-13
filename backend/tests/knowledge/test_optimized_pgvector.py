@@ -21,6 +21,7 @@ import numpy as np
 from agno.document import Document
 from agno.vectordb.pgvector.pgvector import PgVector
 from app.knowledge.optimized_pgvector import OptimizedPgVector
+from sqlalchemy.dialects import postgresql
 
 
 class TestOptimizedPgVector:
@@ -138,7 +139,7 @@ class TestOptimizedPgVector:
         # Mock the document's embed method
         with patch.object(Document, 'embed') as mock_embed:
             # Act
-            with patch('sqlalchemy.dialects.postgresql.insert') as mock_insert:
+            with patch('sqlalchemy.dialects.postgresql.insert'):
                 db.insert([pre_embedded_doc, unembedded_doc])
             
             # Assert
@@ -203,3 +204,65 @@ class TestConcurrentTableCreate:
             db.table_name = "d_org"
             db.schema = "ai"
             db.create()
+
+
+class TestUpsertPage:
+    """A page is stored in one transaction, and a page that shrank since it
+    was last read loses its old tail."""
+
+    @pytest.fixture
+    def store(self):
+        mock_embedder = MagicMock(dimensions=3)
+        with patch('sqlalchemy.engine.create_engine'):
+            db = OptimizedPgVector(
+                table_name="d_org",
+                db_url="postgresql+psycopg://user:pass@localhost/testdb",
+                embedder=mock_embedder,
+            )
+        session = MagicMock()
+        db.Session = MagicMock(return_value=session)
+        session.__enter__.return_value = session
+        db._clean_content = lambda x: x
+        return db, session
+
+    @staticmethod
+    def chunk(n):
+        doc = Document(id=f"https://shop.example/a::{n}", name="https://shop.example", content=f"part {n}")
+        doc.embedding = [0.1, 0.2, 0.3]
+        return doc
+
+    @staticmethod
+    def sql(statement):
+        compiled = statement.compile(dialect=postgresql.dialect())
+        return str(compiled), compiled.params
+
+    def test_it_writes_the_page_and_drops_its_stale_chunks_together(self, store):
+        db, session = store
+
+        db.upsert_page([self.chunk(1), self.chunk(2)], {"name": "https://shop.example"})
+
+        session.begin.assert_called_once()
+        upsert, stale = [c.args[0] for c in session.execute.call_args_list]
+        upsert_sql, upsert_params = self.sql(upsert)
+        assert "ON CONFLICT (id) DO UPDATE" in upsert_sql
+        assert {upsert_params[k] for k in upsert_params if k.startswith("id_")} == {
+            "https://shop.example/a::1", "https://shop.example/a::2"}
+        stale_sql, stale_params = self.sql(stale)
+        assert stale_sql.startswith("DELETE FROM")
+        values = {v for v in stale_params.values() if isinstance(v, str)}
+        assert ["https://shop.example/a::1", "https://shop.example/a::2"] in stale_params.values()
+        # Only this source's rows of this page: the bare page id or its ::n chunks
+        assert {"https://shop.example", "https://shop.example/a", "https://shop.example/a::"} <= values
+        assert "NOT IN" in stale_sql
+
+    def test_a_failed_write_raises(self, store):
+        db, session = store
+        session.execute.side_effect = RuntimeError("connection reset")
+
+        with pytest.raises(RuntimeError):
+            db.upsert_page([self.chunk(1)], {})
+
+    def test_nothing_to_write_touches_nothing(self, store):
+        db, session = store
+        db.upsert_page([], {})
+        db.Session.assert_not_called()

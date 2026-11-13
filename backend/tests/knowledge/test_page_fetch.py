@@ -23,7 +23,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from app.knowledge.page_fetch import MAX_PAGE_BYTES, NotAPage, fetch_page_text
+from app.knowledge.page_fetch import MAX_PAGE_BYTES, NotAPage, fetch_page
 
 URL = "https://ian-vpn.site/downloads/linux/amd64/installer/ian-vpn.tar.gz"
 
@@ -58,7 +58,7 @@ class Counted(httpx.SyncByteStream):
 
 def fetch(response: httpx.Response, **kwargs) -> str:
     with httpx.Client(transport=httpx.MockTransport(lambda request: response)) as client:
-        return fetch_page_text(client, URL, **kwargs)
+        return fetch_page(client, URL, **kwargs).text
 
 
 def test_a_page_is_read():
@@ -135,3 +135,15 @@ def test_only_a_download_is_called_one():
     with pytest.raises(NotAPage) as too_big:
         fetch(big)
     assert (download.value.download, too_big.value.download) == (True, False)
+
+
+def test_it_says_where_the_page_was_served_from():
+    """A directory redirects to its slash form; links on it resolve from there."""
+    def site(request):
+        if request.url.path == "/docs":
+            return httpx.Response(301, headers={"location": "/docs/"})
+        return httpx.Response(200, html="<p>Docs</p>")
+
+    with httpx.Client(transport=httpx.MockTransport(site)) as client:
+        page = fetch_page(client, "https://example.com/docs")
+    assert (page.url, page.text) == ("https://example.com/docs/", "<p>Docs</p>")

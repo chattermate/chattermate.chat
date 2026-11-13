@@ -70,13 +70,6 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const socket = useWidgetSocket()
     const { messages, loading, errorMessage, showError, loadingHistory, hasStartedChat, connectionStatus, humanAgent } = socket
 
-    // Page messages, in-app actions and journeys. A tapped text reply goes through
-    // the composer, which is set up further down.
-    const hostPrompt = useHostPrompt({
-        messages, loading, on: socket.on, emit: socket.emit,
-        sendQuickAction: (text) => composer.sendQuickAction(text),
-    })
-
     // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
     // to the bottom as text grows.
     const { displayText, isStreaming, isRevealing, skipReveal } =
@@ -87,6 +80,14 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     // The redesign's live work trace and the visitor's thumbs on replies.
     const { liveTrace } = useAgentTrace({ on: socket.on, loading })
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
+
+    // Page messages, in-app actions and journeys. A tapped text reply goes through
+    // the composer, which is set up further down; reply buttons wait for a reply to type out.
+    const hostPrompt = useHostPrompt({
+        messages, loading, revealing: isRevealing, on: socket.on, emit: socket.emit,
+        answersShowChoices: () => widgetUiVersion(customization.value) === 2,
+        sendQuickAction: (text) => composer.sendQuickAction(text),
+    })
 
     // Report unread agent messages (received while minimized) to the embedder badge.
     // The redesign also shows the reply itself in the loader's peek.

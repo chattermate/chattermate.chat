@@ -65,6 +65,13 @@ export const getMessagingIfSupported = async (): Promise<Messaging | null> => {
   return getMessaging(initializeFirebase() ?? undefined)
 }
 
+// Set by registerFCMToken, read and cleared by logout (see thisDeviceFCMToken)
+let deviceToken: string | null = null
+let pendingDrop: Promise<void> | null = null
+let pendingRegister: Promise<boolean> | null = null
+// Bumped by each logout, so a registration that straddles one can tell
+let signOuts = 0
+
 // The token for this browser install, or null if push can't run here (no
 // support, no service worker, permission not granted).
 const getCurrentToken = async (): Promise<string | null> => {
@@ -93,12 +100,25 @@ const getCurrentToken = async (): Promise<string | null> => {
 // tokens get pruned server-side). A stale cache meant the device believed it
 // was registered while the server had nothing, and push stayed dead until site
 // data was cleared. One small POST per app load is the cheaper failure mode.
-const registerFCMToken = async (): Promise<boolean> => {
-  const token = await getCurrentToken()
-  if (!token) return false
+const registerFCMToken = (): Promise<boolean> => {
+  const run = async (): Promise<boolean> => {
+    // A logout's deleteToken() still in flight would void the token minted here
+    await pendingDrop
+    const startedIn = signOuts
+    const token = await getCurrentToken()
+    if (!token) return false
 
-  await userService.updateFCMToken(token)
-  return true
+    await userService.updateFCMToken(token)
+    // Signed out meanwhile: the token belongs to no one now, and the next
+    // account must not name it on its own logout.
+    if (startedIn === signOuts) deviceToken = token
+    return true
+  }
+  const registering = run().finally(() => {
+    if (pendingRegister === registering) pendingRegister = null
+  })
+  pendingRegister = registering
+  return registering
 }
 
 /**
@@ -141,45 +161,42 @@ export const refreshFCMToken = async (): Promise<void> => {
 }
 
 /**
- * Drop this browser's token on logout — server-side and at FCM.
+ * This browser's token as last registered, for the logout request to name.
  *
- * Only this device is unregistered; other devices the user is signed in on
- * keep working. The two steps are independent on purpose: if the token can't
- * be read (service worker not ready), the server row can't be named, but
- * deleteToken() must still run — otherwise a shared computer keeps rendering
- * the signed-out account's notifications. Killing the subscription at FCM
- * makes the next send fail as Unregistered, which prunes the row server-side.
- *
- * Bounded by UNREGISTER_TIMEOUT_MS so signing out is never held up by it: it
- * waits on getSWRegistration(), which only settles after an 8s timeout when no
- * worker is ready. Giving up early is safe — a browser with no ready worker
- * cannot display a push anyway, and the row is pruned on its next failed send.
+ * Logout must not mint it afresh: getToken() waits on the service worker and
+ * can call out to FCM, and signing out used to sit behind that for seconds.
+ * Every app load registers (refreshFCMToken), so this is already in hand. If it
+ * isn't, the server row can't be named — dropFCMSubscription() still kills the
+ * subscription, so the next send fails as Unregistered and prunes the row.
  */
-const UNREGISTER_TIMEOUT_MS = 3000
+export const thisDeviceFCMToken = (): string | null => deviceToken
 
-const unregisterThisDevice = async (): Promise<void> => {
-  try {
-    const token = await getCurrentToken()
-    if (token) await userService.clearFCMToken(token)
-  } catch (err) {
-    console.error('Failed to clear FCM token server-side:', err)
-  }
-
-  try {
-    const messaging = await getMessagingIfSupported()
-    if (!messaging) return
-    const { deleteToken } = await import('firebase/messaging')
-    await deleteToken(messaging)
-  } catch (err) {
-    console.error('Failed to delete FCM token:', err)
-  }
-}
-
-export const unregisterFCMToken = async (): Promise<void> => {
+/**
+ * Kill this browser's subscription at FCM on logout, without holding it up.
+ *
+ * Needed even though the server row goes with the logout request: otherwise a
+ * shared computer keeps rendering the signed-out account's notifications. It
+ * needs no session, so it runs after sign-out in the background; a sign-in
+ * that follows quickly waits for it (registerFCMToken) instead of racing it.
+ */
+export const dropFCMSubscription = (): void => {
+  deviceToken = null
+  signOuts++
   if (!('Notification' in window) || Notification.permission !== 'granted') return
 
-  await Promise.race([
-    unregisterThisDevice(),
-    new Promise<void>((resolve) => setTimeout(resolve, UNREGISTER_TIMEOUT_MS)),
-  ])
+  const registering = pendingRegister
+  pendingDrop = (async () => {
+    // Deleting while getToken() runs can leave the new subscription alive
+    await registering?.catch(() => false)
+    try {
+      const messaging = await getMessagingIfSupported()
+      if (!messaging) return
+      const { deleteToken } = await import('firebase/messaging')
+      await deleteToken(messaging)
+    } catch (err) {
+      console.error('Failed to delete FCM token:', err)
+    }
+  })().finally(() => {
+    pendingDrop = null
+  })
 }

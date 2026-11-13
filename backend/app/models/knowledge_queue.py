@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from sqlalchemy import Column, Integer, String, JSON, DateTime, Enum, ForeignKey, Float, Index
+from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Float, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -26,6 +26,10 @@ class QueueStatus(str, enum.Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+# queue_metadata key: the run hit its time limit and kept the pages it had read.
+STOPPED_AT_TIME_LIMIT = "stopped_at_time_limit"
+
 
 class ProcessingStage(str, enum.Enum):
     NOT_STARTED = "not_started"
@@ -61,6 +65,12 @@ class KnowledgeQueue(Base):
     total_items = Column(Integer, default=0)
     processed_items = Column(Integer, default=0)
     crawled_urls = Column(JSON, default=lambda: [])
+    # Pages of a website stored so far. Each is searchable as soon as it is
+    # stored, so this is what "learned N pages so far" shows mid-crawl.
+    pages_learned = Column(Integer, nullable=False, default=0, server_default="0")
+    # The source this run writes into, set when its first page is stored.
+    # Cleared if the source is deleted, which tells the crawl to stop.
+    knowledge_id = Column(Integer, ForeignKey("knowledge.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

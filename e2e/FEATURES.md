@@ -45,6 +45,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Widget chat | A visitor whose token runs out (`@slow`) or is revoked (`@redis`) while the page is open gets the chat back when the connection drops: the refused reconnect authorizes again, once, for a live token instead of retrying the dead one | `specs/widget/token-lapse.spec.ts` | P1 | ✅ |
 | Widget chat | Email-first agent (gate → chat, person recorded), Ask anything panel, lead capture with no email asked — each also with the first authorization lost | `specs/widget/chat-styles.spec.ts` | P1 | ✅ |
 | Widget chat | Agent wraps up → customer rates the chat → rating stored against the agent | `specs/widget/rating.spec.ts` | P1 | ✅ |
+| Widget chat | Reply buttons on: AI offers buttons, a tap answers and they go at once; off: no buttons | `specs/widget/reply-buttons.spec.ts` | P2 | ✅ |
 | Widget chat | A second browser that types a customer's email gets its own empty conversation (the owner keeps theirs), can't rename them or make them a lead, and an address claimed before its owner signs in yields none of their chats | `specs/widget/conversation-ownership.spec.ts` | P1 | ✅ |
 | Widget chat | Scoping keeps a visitor's own conversation: a second tab joins it; a visitor the site signed in finds it in another browser, and after `ChatterMate.identify()` | `specs/widget/conversation-ownership.spec.ts` | P1 | ✅ |
 | Widget chat | Provider error, provider timeout and malformed reply each end in an apology; the next message works | `specs/widget/ai-failures.spec.ts` | P1 | ✅ |
@@ -58,6 +59,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Knowledge | Add text → answer is grounded in it (real search) | `specs/knowledge/knowledge-answer.spec.ts` | P1 | ✅ |
 | Knowledge | Deleted knowledge stops reaching the model; one agent's never reaches another's | `specs/knowledge/knowledge-lifecycle.spec.ts` | P1 | ✅ |
 | Knowledge | An uploaded PDF is indexed by the knowledge worker and answered from | `specs/knowledge/knowledge-pdf.spec.ts` | P2 | ✅ |
+| Knowledge | A website still being read is listed once, marked as crawling, and answered from its first pages | `specs/knowledge/knowledge-learning.spec.ts` | P1 | ✅ |
 | Knowledge | An agent with no knowledge warns and links an org source from the warning; the Knowledge page asks which agent a source is for, and tags one added for none | `specs/knowledge/knowledge-agent-linking.spec.ts` | P1 | ✅ |
 | AI config | Rejected key is reported (exact message) and agents keep working; the saved key is the one used | `specs/settings/ai-config.org.spec.ts` | P1 | ✅ |
 | Tickets | AI opens a ticket → listed → agent changes status | `specs/tickets/ai-ticket.spec.ts` | P1 | ✅ |

@@ -21,7 +21,7 @@ limitations under the License.
 // scrolling, the hidden file input and the legacy native input listeners.
 // A plain setup() rather than <script setup>: the template reads the controller
 // through the instance proxy instead of unref'ing ~130 injected bindings one by one.
-import { defineComponent, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineComponent, inject, onMounted, onUnmounted, ref } from 'vue'
 import { isValidEmail, type WidgetMessage } from '../types/widget'
 import { renderMarkdown } from './markdown'
 import AskAiSurface from './AskAiSurface.vue'
@@ -41,6 +41,7 @@ import { AI_DISCLAIMER_TEXT } from '../utils/aiDisclaimer'
 import { NEW_CHAT_LABEL } from './new-chat'
 import { WIDGET_CTX } from './panel/controller'
 import { useChatScroll } from '../composables/useChatScroll'
+import { useStickToBottom } from '../composables/useStickToBottom'
 import { useLegacyInputListeners } from '../composables/useLegacyInputListeners'
 // After the child components and before this view's own styles, as it always was.
 import './widget-surface.css'
@@ -54,10 +55,14 @@ export default defineComponent({
     setup() {
         const ctrl = inject(WIDGET_CTX)!
 
-        // Follow the newest message, and whatever sits after the messages.
+        // Follow the newest message, and whatever sits after the messages. Reply buttons
+        // come once a reply has typed out, after its last scroll; they're followed by
+        // label, as a step re-sync rebuilds the same ones.
+        const replyChipLabels = computed(() => ctrl.replyChips.value.map(chip => chip.label).join('\n'))
         const { messagesContainer, scrollToBottom } = useChatScroll(ctrl.messages, [
-            ctrl.pendingConfirm, ctrl.shownPrompt, ctrl.receiptCount, ctrl.loading,
+            ctrl.pendingConfirm, ctrl.shownPrompt, ctrl.receiptCount, ctrl.loading, replyChipLabels,
         ])
+        useStickToBottom(messagesContainer, scrollToBottom)
         const legacy = useLegacyInputListeners({
             newMessage: ctrl.newMessage, sendMessage: ctrl.sendMessage,
             connectionStatus: ctrl.connectionStatus, messages: ctrl.messages,
@@ -2169,6 +2174,8 @@ export default defineComponent({
 }
 .cm-welcome-avatar { object-fit: cover; }
 .cm-welcome-bubble { max-width: 84%; }
+/* A page message's paragraphs (a journey step's "\n\n") stay apart */
+.cm-host-prompt .cm-welcome-bubble { white-space: pre-line; }
 /* Quick-action pills sit in a bar just above the input (comp layout). */
 .cm-quick-actions-bar {
     display: flex;
