@@ -79,7 +79,7 @@ export function useHostMessages(handlers: HostMessageHandlers) {
         }
         if (event.data.type === 'HOST_PAGE') {
             // The embedding page navigated (SPA route change): leads record where they came from.
-            setHostPageUrl(event.data.url)
+            setHostPageUrl(event.data.url, event.data.title)
         }
         if (event.data.type === 'END_CHAT' && hostSharesIdentity()) {
             void handlers.endChatForHost(event.data.sessionId)

@@ -27,6 +27,7 @@ limitations under the License.
  * embeds); none of this runs for them.
  */
 
+import { ref } from 'vue'
 import { sanitizeToken, localTokenStore, memoryTokenStore, TOKEN_STORAGE_KEY, type TokenStore } from '../composables/useConversationToken'
 import { postToHost, setHostOrigin } from './host-bridge'
 import { widgetEnv } from './widget-env'
@@ -39,6 +40,7 @@ interface HostInit {
   origin: string
   token: string | null
   pageUrl: string | null
+  pageTitle: string | null
 }
 
 // @ts-ignore - set by the /frame page before this bundle loads
@@ -68,8 +70,14 @@ export const hostSharesIdentity = (): boolean => !boot || (hosted && !opaqueHost
 /** The embedding page's own URL, as its loader reported it. */
 export const reportedPageUrl = (): string | null => hostPageUrl
 
-export const setHostPageUrl = (url: unknown): void => {
-  if (typeof url === 'string' && url) hostPageUrl = url
+/** The host page as the loader last reported it, for what reacts to page changes. */
+export const hostPage = ref<{ url: string | null; title: string | null }>({ url: null, title: null })
+
+export const setHostPageUrl = (url: unknown, title?: unknown): void => {
+  if (typeof url === 'string' && url) {
+    hostPageUrl = url
+    hostPage.value = { url, title: typeof title === 'string' ? title : hostPage.value.title }
+  }
 }
 
 /** Where the widget keeps its token in this mode. */
@@ -93,6 +101,7 @@ const waitForHostInit = (): Promise<HostInit> =>
         // answered safely: such a frame runs as an anonymous visitor.
         token: opaque ? null : sanitizeToken(event.data.token),
         pageUrl: typeof event.data.pageUrl === 'string' ? event.data.pageUrl : null,
+        pageTitle: typeof event.data.pageTitle === 'string' ? event.data.pageTitle : null,
       })
     }
     window.addEventListener('message', onMessage)
@@ -139,7 +148,7 @@ export async function startFramedWidget(): Promise<boolean> {
       opaqueHost = true
       setHostOrigin('*')
     }
-    setHostPageUrl(init.pageUrl)
+    setHostPageUrl(init.pageUrl, init.pageTitle)
     token = init.token
   } else {
     token = tokenStoreFor(boot.widgetId).read()

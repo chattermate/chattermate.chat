@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
-from typing import Literal, Optional, Dict, List
+from typing import Literal, Optional, Dict, List, Union
 from typing_extensions import Annotated
 from uuid import UUID
 import enum
@@ -196,11 +196,25 @@ class CustomizationBase(BaseModel):
     welcome_subtitle: Optional[str] = None
     welcome_message: Optional[str] = None
     chat_initiation_messages: Optional[List[str]] = None
-    quick_actions: Optional[List[str]] = None
+    quick_actions: Optional[List['QuickAction']] = None
     show_citations: Optional[bool] = False
     collect_email: Optional[bool] = False
     show_ai_disclaimer: Optional[bool] = True
     allow_new_chat: Optional[bool] = False
+
+
+QuickActionIcon = Literal['order', 'shipping', 'returns', 'product', 'billing', 'account', 'person', 'article', 'question']
+
+
+class QuickActionRule(BaseModel):
+    """A quick action shown only on some pages (`match`, a URL path pattern such as
+    "/products/*"), with an optional icon. A plain string is shown on every page."""
+    label: str = Field(min_length=1, max_length=200)
+    match: Optional[str] = Field(default=None, max_length=200, pattern=r'^/[^\s]*$')
+    icon: Optional[QuickActionIcon] = None
+
+
+QuickAction = Union[str, QuickActionRule]
 
 
 class CustomizationCreate(CustomizationBase):
@@ -263,3 +277,7 @@ class CustomizationResponse(CustomizationBase):
 
     class Config:
         from_attributes = True
+
+
+CustomizationBase.model_rebuild()
+CustomizationCreate.model_rebuild()

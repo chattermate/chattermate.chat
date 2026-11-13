@@ -103,3 +103,23 @@
         transform: none;
     }
 }
+
+/* "Suggested for this page" (plan 6.3): its heading and the page's title pill */
+.chat-container.cm-surface.cm-ui-2 .cm-suggestions__heading {
+    color: var(--cm-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-suggestions__pill {
+    max-width: 100%;
+    padding: 2px 9px;
+    border: 1px solid var(--cm-line);
+    border-radius: 999px;
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 11.5px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

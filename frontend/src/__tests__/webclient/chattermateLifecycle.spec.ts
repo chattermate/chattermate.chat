@@ -67,7 +67,7 @@ describe('ChatterMate frame and lifecycle API', () => {
       const init = handshake()
 
       expect(init?.targetOrigin).toBe(FRAME_ORIGIN)
-      expect(init?.message).toEqual({ type: 'HOST_INIT', token: 'tok-stored', pageUrl: window.location.href })
+      expect(init?.message).toEqual({ type: 'HOST_INIT', token: 'tok-stored', pageUrl: window.location.href, pageTitle: document.title })
     })
 
     it('loads anonymously when no token is stored', async () => {
@@ -185,7 +185,7 @@ describe('ChatterMate frame and lifecycle API', () => {
 
       const pages = post.mock.calls.filter(([m]) => (m as any).type === 'HOST_PAGE')
       expect(pages).toHaveLength(3)
-      expect(pages[0]).toEqual([{ type: 'HOST_PAGE', url: window.location.href }, FRAME_ORIGIN])
+      expect(pages[0]).toEqual([{ type: 'HOST_PAGE', url: window.location.href, title: document.title }, FRAME_ORIGIN])
     })
 
     it('tells the frame when a single-page app routes with pushState or replaceState, until destroyed', async () => {

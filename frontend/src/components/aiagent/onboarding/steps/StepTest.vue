@@ -15,6 +15,7 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
+import { everyPageLabels } from '@/webclient/quick-actions'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
@@ -89,7 +90,7 @@ const avatarUrl = computed(() => {
 
 // Their own quick actions when they've set some, as the widget would show them
 const starters = computed(() => {
-  const own = [...new Set((props.customization?.quick_actions ?? []).map(a => a?.trim()).filter(Boolean))]
+  const own = [...new Set(everyPageLabels(props.customization?.quick_actions))]
   return own.length ? own : STARTER_QUESTIONS
 })
 

@@ -122,6 +122,30 @@ describe('createPanelHost', () => {
         expect(host.handleMessage({ type: 'NAVIGATE' })).toBe(true)
     })
 
+    it('holds the page still under the panel on a phone, and gives its scroll back', () => {
+        document.body.style.overflow = 'auto'
+        const phone = { value: true }
+        const { host, state } = setUp({ isPhone: () => phone.value })
+        state.open = true
+        host.toggled(true)
+        expect(document.documentElement.style.overflow).toBe('hidden')
+        expect(document.body.style.overflow).toBe('hidden')
+        host.toggled(false)
+        expect(document.body.style.overflow).toBe('auto')
+        expect(document.documentElement.style.overflow).toBe('')
+
+        phone.value = false
+        host.toggled(true)
+        expect(document.body.style.overflow).toBe('auto')
+        phone.value = true
+        host.toggled(true)
+        // A frame swapped while the panel is open keeps the page still
+        host.reset()
+        expect(document.body.style.overflow).toBe('hidden')
+        host.destroy()
+        expect(document.body.style.overflow).toBe('auto')
+    })
+
     it('says nothing to, and handles nothing from, a classic frame', () => {
         const { host, state, post } = setUp()
         state.v2 = false

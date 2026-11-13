@@ -22,7 +22,7 @@ import { createPeek } from './peekNudge.js'
 // is a no-op unless `isV2()`, so the classic widget never sees any of it.
 //
 // `host` = { doc, config, button, container, isV2, isOpen, open, post, canAnnounce,
-// canExpand }: the loader's own elements and state, read at call time.
+// canExpand, isPhone? }: the loader's own elements and state, read at call time.
 export function createPanelHost(host) {
   const { doc, config, button, container } = host
   let gone = false
@@ -117,9 +117,32 @@ export function createPanelHost(host) {
     return false
   }
 
+  // The page's own scroll styles while the panel covers a phone screen (lockPage).
+  let lockedStyles = null
+
+  /** Hold the page still under the full-screen panel: the visitor's swipes scroll the chat. */
+  function lockPage() {
+    if (lockedStyles || !host.isPhone || !host.isPhone()) return
+    const html = doc.documentElement
+    const body = doc.body
+    lockedStyles = { html: html.style.overflow, body: body ? body.style.overflow : '' }
+    html.style.overflow = 'hidden'
+    if (body) body.style.overflow = 'hidden'
+  }
+
+  /** Give the page its own scroll styles back. */
+  function unlockPage() {
+    if (!lockedStyles) return
+    doc.documentElement.style.overflow = lockedStyles.html
+    if (doc.body) doc.body.style.overflow = lockedStyles.body
+    lockedStyles = null
+  }
+
   /** The panel opened or closed. */
   function toggled(open) {
     if (open) peek.hide()
+    if (open && host.isV2()) lockPage()
+    else unlockPage()
   }
 
   /** Esc on the page closes the panel only while focus is the widget's, or nobody's. */
@@ -132,6 +155,8 @@ export function createPanelHost(host) {
 
   /** The frame is being replaced (reload, identify, logout): nothing of it carries over. */
   function reset() {
+    // A frame swapped under an open panel keeps the page held still
+    if (!host.isOpen()) unlockPage()
     peek.hide()
     button.classList.remove('cm-busy')
     config.panelExpanded = false
@@ -140,6 +165,7 @@ export function createPanelHost(host) {
   }
 
   function destroy() {
+    unlockPage()
     gone = true
     peek.destroy()
   }

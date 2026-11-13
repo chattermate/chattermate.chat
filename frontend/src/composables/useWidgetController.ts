@@ -27,6 +27,7 @@ import { useAnswerFeedback } from './useAnswerFeedback'
 import { useProductOptions } from './useProductOptions'
 import { useEmailCheck } from './useEmailCheck'
 import { useConversationHistory } from './useConversationHistory'
+import { usePageSuggestions } from './usePageSuggestions'
 import { PANEL_COPY } from '../webclient/copy'
 import { useUnreadBadge } from './useUnreadBadge'
 import { useEmailGate } from './useEmailGate'
@@ -94,6 +95,12 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
             await newChat.handleStartNewChat()
             return !newChat.newChatError.value
         },
+    })
+    // "Suggested for this page", asked while the redesign's start state can show.
+    const { pageSuggestions } = usePageSuggestions({
+        on: socket.on, emit: socket.emit,
+        active: computed(() => widgetUiVersion(customization.value) === 2
+            && connectionStatus.value === 'connected' && messages.value.length === 0),
     })
     // The email check: once confirmed, the visitor tells the agent so it can look up their orders.
     const emailChecks = useEmailCheck({
@@ -282,7 +289,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, ...rating, ...files, ...newChat,
+        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, pageSuggestions, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory, hostCapabilities,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }

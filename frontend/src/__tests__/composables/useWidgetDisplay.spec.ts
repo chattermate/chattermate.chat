@@ -54,6 +54,24 @@ describe('useWidgetDisplay', () => {
         expect(postToHost).toHaveBeenCalledWith({ type: 'WIDGET_SURFACE', palette: true })
     })
 
+    it.each([
+        ['a status card', { cards: [{ id: 'order-1' }] }],
+        ['the handover card', { handover: { state: 'connecting' } }],
+        ['the email check', { email_check: true }],
+    ])('hands the palette over to the chat panel for %s', async (_what, attributes) => {
+        const display = setup('ASK_ANYTHING')
+        display.messages.value = [{ message_type: 'bot', attributes } as DisplayMessage]
+        await nextTick()
+        expect(display.useAskAiPanel.value).toBe(false)
+    })
+
+    it('keeps the palette for an answer with empty extras', async () => {
+        const display = setup('ASK_ANYTHING')
+        display.messages.value = [{ message_type: 'bot', attributes: { cards: [], email_check: false } } as DisplayMessage]
+        await nextTick()
+        expect(display.useAskAiPanel.value).toBe(true)
+    })
+
     it('tells the host at once that the classic chat panel is on screen', () => {
         const display = setup('CHATBOT')
         expect(display.useAskAiPanel.value).toBe(false)

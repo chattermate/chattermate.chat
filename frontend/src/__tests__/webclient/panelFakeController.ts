@@ -41,6 +41,7 @@ import type { PresenceLine } from '@/utils/widgetPresence'
 import type { LiveStep } from '@/composables/useAgentTrace'
 import type { EmailCheckState } from '@/composables/useEmailCheck'
 import { emptyHistory, type HistoryState } from '@/composables/useConversationHistory'
+import type { PageSuggestions } from '@/composables/usePageSuggestions'
 import type { VisitorFeedback } from '@/webclient/panel/answer-extras'
 
 /** The controller with its read-only refs made writable, for tests. */
@@ -100,6 +101,7 @@ const baseController = () => ({
     verifyEmailCode: vi.fn((_code: string) => {}),
     restartEmailCheck: vi.fn(),
     history: ref<HistoryState>(emptyHistory()),
+    pageSuggestions: ref<PageSuggestions>({ loaded: false, heading: 'popular', pill: null, items: [] }),
     openHistory: vi.fn(),
     closeHistory: vi.fn(),
     refreshConversations: vi.fn(),

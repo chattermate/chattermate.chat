@@ -60,6 +60,8 @@ export const PANEL_COPY = {
     welcomeSubtitle: 'How can we help?',
     /** The suggestion rows' accessible name (quick_actions). */
     suggestions: 'Suggestions',
+    suggestedForPage: 'Suggested for this page',
+    popularQuestions: 'Popular questions',
     /** Why the suggestions rest while a typed message waits for the email. */
     suggestionsHeld: 'Your typed message is waiting for your email. Send it first or clear it to pick a suggestion.',
     /** The inline email card. Placeholder and button text as classic (the e2e page object uses them). */

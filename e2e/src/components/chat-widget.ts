@@ -632,6 +632,13 @@ export class ChatWidget {
     })
   }
 
+  /** The redesign's start state suggestions: their heading and rows. */
+  get suggestions(): { heading: Locator; rows: Locator } {
+    // The heading has no role of its own; it names the list (aria-labelledby)
+    const list = this.frame.getByRole('list', { name: /Suggested for this page|Popular questions|Suggestions/ })
+    return { heading: this.frame.getByText(/Suggested for this page|Popular questions/), rows: list.getByRole('button') }
+  }
+
   /** The redesign's "Your conversations" screen. */
   get conversations(): Locator {
     return this.frame.getByRole('region', { name: 'Your conversations' })

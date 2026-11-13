@@ -56,6 +56,17 @@ export const CLASSIC_DISPLAY = { mode: 'floating', width: 400, height: 560 }
 // than silently dropping them, the whole conversation falls back to the chat panel.
 export const CHAT_ONLY_MESSAGE_TYPES = ['form', 'user_input', 'rating', 'product', 'shopify_output']
 
+// Reply extras the palette doesn't draw either (plan 6.1): status cards, the handover
+// card and the email check all need the panel's interactive UI.
+export const CHAT_ONLY_ATTRIBUTES = ['cards', 'handover', 'email_check']
+
+const needsChatPanel = (attributes: unknown): boolean =>
+    !!attributes && typeof attributes === 'object'
+    && CHAT_ONLY_ATTRIBUTES.some(key => {
+        const value = (attributes as Record<string, unknown>)[key]
+        return Array.isArray(value) ? value.length > 0 : !!value
+    })
+
 /** Whether the host container has geometry beyond the classic floating window. */
 export const isCustomDisplay = (display: WidgetDisplay | null): boolean => {
     if (!display) return false
@@ -135,6 +146,7 @@ export function useWidgetDisplay({
         messages.value.some(m =>
             CHAT_ONLY_MESSAGE_TYPES.includes(m.message_type as string)
             || (Array.isArray(m.attachments) && m.attachments.length > 0)
+            || needsChatPanel(m.attributes)
         )
     )
 

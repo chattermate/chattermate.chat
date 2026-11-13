@@ -37,6 +37,7 @@ from app.api import widget_feedback  # noqa: F401 - registers the answer-feedbac
 from app.api import widget_products  # noqa: F401 - registers the product-sheet socket handler
 from app.api import widget_email_check  # noqa: F401 - registers the email-check socket handlers
 from app.api import widget_history  # noqa: F401 - registers the conversation-history socket handlers
+from app.api import widget_suggestions  # noqa: F401 - registers the page-suggestions socket handler
 from fastapi import FastAPI, BackgroundTasks
 from app.core.config import settings, verify_secret_configuration
 from app.core.encryption import verify_encryption_key

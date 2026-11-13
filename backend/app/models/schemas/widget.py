@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from pydantic import BaseModel, Field, StringConstraints, field_serializer
+from pydantic import BaseModel, Field, StringConstraints, field_serializer, field_validator
 from typing import Annotated, List, Optional
 from uuid import UUID
 
@@ -45,7 +45,15 @@ class AgentCustomizationResponse(BaseModel):
     welcome_subtitle: Optional[str] = None
     welcome_message: Optional[str] = None
     chat_initiation_messages: Optional[List[str]] = None
+    # Every-page quick actions as plain strings (page rules stay on the server)
     quick_actions: Optional[List[str]] = None
+
+    @field_validator('quick_actions', mode='before')
+    @classmethod
+    def every_page_quick_actions(cls, value):
+        """Stored quick actions may be page rules; visitors get the every-page labels."""
+        from app.services.page_suggestions import every_page_labels
+        return None if value is None else every_page_labels(value)
     show_citations: Optional[bool] = None
     collect_email: Optional[bool] = None
     show_ai_disclaimer: Optional[bool] = None

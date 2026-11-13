@@ -16,6 +16,8 @@ limitations under the License.
 
 import type { UserGroup } from "./user"
 
+import type { QuickAction } from '../webclient/quick-actions'
+
 export interface Agent {
   id: string // UUID
   name: string
@@ -123,7 +125,7 @@ export interface AgentCustomization {
   welcome_subtitle?: string
   welcome_message?: string
   chat_initiation_messages?: string[]
-  quick_actions?: string[]
+  quick_actions?: QuickAction[]
   show_citations?: boolean
   collect_email?: boolean
   show_ai_disclaimer?: boolean

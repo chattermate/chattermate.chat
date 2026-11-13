@@ -32,6 +32,7 @@ import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
 import WidgetDesignChoice from './WidgetDesignChoice.vue'
 import { followUpsOn, withFollowUpsSetting } from '@/webclient/widget-answers'
+import { actionLabel, actionMatch, toQuickAction } from '@/webclient/quick-actions'
 import { createdOnRedesign, widgetUiVersion } from '@/webclient/widget-ui'
 
 const props = withDefaults(defineProps<{
@@ -624,16 +625,20 @@ const loadDefaultInitiations = () => {
 
 // Quick actions management (mirrors chat initiation messages)
 const newQuickAction = ref('')
+// "Show on pages": a URL path pattern for the new design's "Suggested for this page"
+const newQuickActionMatch = ref('')
 const editingQuickActionIndex = ref<number | null>(null)
 const editingQuickAction = ref('')
+const editingQuickActionMatch = ref('')
 
 const addQuickAction = () => {
     if (!newQuickAction.value.trim()) return
     if (!customization.value.quick_actions) {
         customization.value.quick_actions = []
     }
-    customization.value.quick_actions.push(newQuickAction.value.trim())
+    customization.value.quick_actions.push(toQuickAction(newQuickAction.value, widgetDesign.value === 2 ? newQuickActionMatch.value : ''))
     newQuickAction.value = ''
+    newQuickActionMatch.value = ''
 }
 
 const removeQuickAction = (index: number) => {
@@ -644,12 +649,16 @@ const removeQuickAction = (index: number) => {
 
 const startEditQuickAction = (index: number) => {
     editingQuickActionIndex.value = index
-    editingQuickAction.value = customization.value.quick_actions?.[index] || ''
+    editingQuickAction.value = actionLabel(customization.value.quick_actions?.[index])
+    editingQuickActionMatch.value = actionMatch(customization.value.quick_actions?.[index])
 }
 
 const saveEditQuickAction = () => {
     if (editingQuickActionIndex.value !== null && customization.value.quick_actions && editingQuickAction.value.trim()) {
-        customization.value.quick_actions[editingQuickActionIndex.value] = editingQuickAction.value.trim()
+        const index = editingQuickActionIndex.value
+        customization.value.quick_actions[index] = toQuickAction(
+            editingQuickAction.value, widgetDesign.value === 2 ? editingQuickActionMatch.value : actionMatch(customization.value.quick_actions[index]),
+            customization.value.quick_actions[index])
         editingQuickActionIndex.value = null
         editingQuickAction.value = ''
     }
@@ -954,6 +963,16 @@ const hideInitiationPreview = () => {
                             maxlength="60"
                             @keyup.enter="addQuickAction"
                         >
+                        <input
+                            v-if="widgetDesign === 2"
+                            type="text"
+                            v-model="newQuickActionMatch"
+                            placeholder="Every page, or e.g. /products/*"
+                            aria-label="Show on pages"
+                            class="init-input init-input--match"
+                            maxlength="200"
+                            @keyup.enter="addQuickAction"
+                        >
                         <button
                             type="button"
                             class="init-add-btn"
@@ -978,6 +997,17 @@ const hideInitiationPreview = () => {
                                     @keyup.enter="saveEditQuickAction"
                                     @keyup.esc="cancelEditQuickAction"
                                 >
+                                <input
+                                    v-if="widgetDesign === 2"
+                                    type="text"
+                                    v-model="editingQuickActionMatch"
+                                    class="init-edit-input init-input--match"
+                                    placeholder="Every page"
+                                    aria-label="Show on pages"
+                                    maxlength="200"
+                                    @keyup.enter="saveEditQuickAction"
+                                    @keyup.esc="cancelEditQuickAction"
+                                >
                                 <button type="button" class="init-icon-btn save" @click="saveEditQuickAction" title="Save">
                                     <font-awesome-icon icon="fa-solid fa-check" />
                                 </button>
@@ -987,7 +1017,8 @@ const hideInitiationPreview = () => {
                             </div>
                             <template v-else>
                                 <span class="init-handle">☰</span>
-                                <span class="init-text">{{ action }}</span>
+                                <span class="init-text">{{ actionLabel(action) }}</span>
+                                <span v-if="actionMatch(action)" class="init-match" :title="`Shown on ${actionMatch(action)}`">{{ actionMatch(action) }}</span>
                                 <button type="button" class="init-icon-btn edit" @click="startEditQuickAction(index)" title="Edit">
                                     <font-awesome-icon icon="fa-solid fa-pen" />
                                 </button>
@@ -2179,5 +2210,17 @@ const hideInitiationPreview = () => {
 .init-empty-icon {
     font-size: 14px;
     opacity: 0.8;
+}
+.init-input--match {
+    max-width: 40%;
+}
+.init-match {
+    flex: none;
+    padding: 1px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: var(--font-mono, monospace);
 }
 </style>
