@@ -31,6 +31,7 @@ import { widgetService } from '@/services/widget'
 import { toast } from 'vue-sonner'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { buildWidgetEmbed } from '@/utils/widgetEmbed'
+import { AGENT_CHANGED_EVENT } from '@/utils/setupEvents'
 import { useOnboardingState } from '@/composables/useOnboardingState'
 import { userService } from '@/services/user'
 
@@ -204,7 +205,24 @@ onMounted(async () => {
 
 onUnmounted(() => {
     window.removeEventListener('click', closeMenu)
+    window.removeEventListener(AGENT_CHANGED_EVENT, reloadChangedAgent)
 })
+
+// Changed from outside this page (the assistant in the help drawer): the open
+// agent is read again and its page rebuilt from it, so a later save here
+// doesn't put the old values back.
+const detailKey = ref(0)
+async function reloadChangedAgent(event: Event) {
+    const agentId = (event as CustomEvent<{ agentId?: string }>).detail?.agentId
+    if (!agentId || selectedAgent.value?.id !== agentId) return
+    try {
+        selectedAgent.value = await agentService.getAgentById(agentId)
+        detailKey.value += 1
+    } catch (error) {
+        console.error('Failed to reload the changed agent:', error)
+    }
+}
+window.addEventListener(AGENT_CHANGED_EVENT, reloadChangedAgent)
 
 // Keep the open agent in the URL so a browser refresh restores the detail view
 const setAgentParam = (id: string | null) => {
@@ -475,6 +493,7 @@ const getOrbStyle = (agent: Agent): Record<string, string> => {
 
         <AgentDetail
             v-else-if="selectedAgent"
+            :key="`${selectedAgent.id}-${detailKey}`"
             :agent="selectedAgent"
             @close="handleAgentClose"
             @toggle-fullscreen="handleFullscreenToggle"

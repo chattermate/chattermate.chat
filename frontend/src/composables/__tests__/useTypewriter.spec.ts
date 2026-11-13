@@ -87,4 +87,25 @@ describe('useTypewriter', () => {
     expect(text(0)).toBe('New chat')
     expect(api.isStreaming(0)).toBe(false)
   })
+
+  it('says a reply is still typing until it is shown in full', async () => {
+    const { messages, api } = setup([{ message: 'History is not typed' }])
+    await nextTick()
+    expect(api.typing.value).toBe(false)
+    messages.value.push({ message: 'All set up', stream: true })
+    await nextTick()
+    expect(api.typing.value).toBe(true)
+    await finishTyping()
+    expect(api.typing.value).toBe(false)
+  })
+
+  it('stops saying it is typing when the typing reply leaves', async () => {
+    const { messages, api } = setup()
+    messages.value.push({ message: 'Going away', stream: true })
+    await nextTick()
+    expect(api.typing.value).toBe(true)
+    messages.value = []
+    await nextTick()
+    expect(api.typing.value).toBe(false)
+  })
 })

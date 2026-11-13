@@ -31,6 +31,7 @@ import SuggestedReplies from './SuggestedReplies.vue'
 import ProductCartButton from './ProductCartButton.vue'
 import { canAddToCart, handleCartMessage } from './shopify-cart'
 import { useActionReceipts } from '../composables/useActionReceipts'
+import { useStickToBottom } from '../composables/useStickToBottom'
 import { looksSecret, SECRET_WARNING } from '../utils/secretGuard'
 import { resolveOrbStyle } from '../utils/orb'
 import { isEndChatMessage } from '../utils/endChat'
@@ -119,13 +120,32 @@ const {
 // a message it asked us to show (ChatterMate.prompt). The prompt lives outside
 // `messages` so loading history can't wipe it; it joins the chat once answered.
 const hostPrompt = ref<HostPrompt | null>(null)
+// A tap hides the reply buttons until what it started is over (see below).
+const tapped = ref(false)
+// The last message when a new step came: choices it offered are retired.
+const retiredChoices = ref<unknown>(null)
+const promptKey = (prompt: HostPrompt | null) => JSON.stringify([prompt?.message, prompt?.chips.map(c => c.label)])
+/** Shows a page message. A sync re-sends the same step: only a different one counts. */
+const showHostPrompt = (prompt: HostPrompt | null) => {
+    // An identical re-send keeps the shown one, so nothing watching it scrolls a reader back down
+    if (JSON.stringify(prompt) === JSON.stringify(hostPrompt.value)) return
+    if (promptKey(prompt) !== promptKey(hostPrompt.value)) {
+        tapped.value = false
+        retiredChoices.value = messages.value[messages.value.length - 1] ?? null
+    }
+    hostPrompt.value = prompt
+}
 // Each action leaves a line in the chat saying what it did.
 const { receipts, addReceipt, receiptsAfter } = useActionReceipts(messages)
 const { pendingConfirm, approveAction, declineAction, runLocalAction } = useHostActions(
     { on: onSocketEvent, emit: emitSocketEvent },
-    (prompt) => { hostPrompt.value = prompt },
+    showHostPrompt,
     addReceipt,
 )
+
+// Client-side typewriter reveal for live agent/bot replies; keep the view pinned
+// to the bottom as text grows.
+const { displayText, isStreaming, typing } = useTypewriter(messages, () => nextTick(() => scrollToBottom()))
 
 // Journeys the agent runs on this site: a step's message and chips share the
 // page-message slot above; notices (a step's "then", the finish) join the chat.
@@ -133,7 +153,7 @@ const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivi
     on: onSocketEvent,
     emit: emitSocketEvent,
     currentPrompt: () => hostPrompt.value,
-    showPrompt: (prompt) => { hostPrompt.value = prompt },
+    showPrompt: showHostPrompt,
     addNotice: (text) => {
         messages.value.push({
             message: text,
@@ -150,19 +170,50 @@ const { journeyProgress, chipBusy, runChip, skipStep, dismissJourney, noteActivi
 // normal send; an action one runs straight away, so the step's message and the
 // reply join the chat here, and its receipt follows when the page is done.
 const onPageChip = (chip: PageChip) => {
+    tapped.value = true
     if (chip.kind === 'action' && !chipBusy.value && !pendingConfirm.value) {
         if (visiblePrompt.value) addPromptToChat(visiblePrompt.value)
         messages.value.push({ message: chip.label, message_type: 'user', created_at: new Date().toISOString(), session_id: '', attributes: { source: 'journey' } } as any)
     }
-    runChip(chip, sendQuickAction)
+    // A done action moves the step on (new replies arrive with it); one declined
+    // or failed brings these back to try again.
+    runChip(chip, sendQuickAction, (status) => { if (status !== 'ok') tapped.value = false })
 }
+
+// The agent is still answering: on its way, or typing out on screen.
+const replying = computed(() => loading.value || typing.value)
+
+// A tap answers at once: the replies go that moment, and stay gone until what
+// it started (the reply, or the page's action) has finished.
+const TAP_SETTLE_MS = 10_000
+let tapFallback: ReturnType<typeof setTimeout> | undefined
+// Nothing more coming (a refused send, or an action done that left the step
+// as it was): the replies come back rather than stay gone
+const settleTapLater = () => {
+    clearTimeout(tapFallback)
+    tapFallback = setTimeout(() => { if (!replying.value && !chipBusy.value) tapped.value = false }, TAP_SETTLE_MS)
+}
+watch(tapped, (isTapped) => { if (isTapped) settleTapLater(); else clearTimeout(tapFallback) })
+watch(chipBusy, (busy) => { if (!busy && tapped.value) settleTapLater() })
+// What the tap started is over: its reply has typed out (a new step resets it in showHostPrompt).
+watch(replying, (isReplying, was) => { if (was && !isReplying) tapped.value = false })
+onUnmounted(() => clearTimeout(tapFallback))
+
+// Choices the agent offered with its last reply: they stand in for the step's
+// replies until answered, and a later message of either side retires them.
+const offeredChips = computed<PageChip[]>(() => {
+    const last = messages.value[messages.value.length - 1]
+    if (!last || last === retiredChoices.value) return []
+    const options = last.message_type === 'bot' ? last.attributes?.quick_replies : undefined
+    return Array.isArray(options) ? options.map((label: string) => ({ label, kind: 'text' as const, value: label })) : []
+})
 
 // A step's replies stay offered until the step moves on, so a declined or failed
 // action can be tried again; they make way while anything else is under way.
 const replyChips = computed(() => {
-    const prompt = hostPrompt.value
-    if (!prompt?.chips.length || pendingConfirm.value || loading.value) return []
-    return prompt.chips
+    if (pendingConfirm.value || replying.value || tapped.value) return []
+    if (offeredChips.value.length) return offeredChips.value
+    return hostPrompt.value?.chips ?? []
 })
 
 // The server sends a step's message on every sync until the step is done, and a
@@ -175,9 +226,9 @@ const visiblePrompt = computed(() => {
     return inChat ? null : prompt
 })
 
-// A reply still being written comes first: a step that moves on mid-reply waits
-// for it, then keeps its place in the chat as anything newer arrives.
-const shownPrompt = computed(() => (loading.value ? null : visiblePrompt.value))
+// A reply still being written, or still typing out, comes first: a step that
+// moves on mid-reply waits for it, then keeps its place as anything newer arrives.
+const shownPrompt = computed(() => (replying.value ? null : visiblePrompt.value))
 const promptPlace = usePromptPlace(messages, shownPrompt)
 
 const addPromptToChat = (prompt: HostPrompt) => {
@@ -189,10 +240,6 @@ const addPromptToChat = (prompt: HostPrompt) => {
         attributes: { source: prompt.source },
     } as any)
 }
-
-// Client-side typewriter reveal for live agent/bot replies; keep the view pinned
-// to the bottom as text grows.
-const { displayText, isStreaming } = useTypewriter(messages, () => nextTick(() => scrollToBottom()))
 
 // Report unread agent messages (received while minimized) to the embedder badge.
 useUnreadBadge(messages)
@@ -574,7 +621,8 @@ const sendMessage = async () => {
 
     noteActivity()
     // A page message being answered is stored with the reply (it never was before).
-    const answeredPrompt = visiblePrompt.value
+    // Only one on screen: a step still waiting for a reply to type out wasn't seen.
+    const answeredPrompt = shownPrompt.value
     if (answeredPrompt) addPromptToChat(answeredPrompt)
     // A journey step's replies stay until the step moves on; the server won't resend them after a plain answer.
     if (hostPrompt.value?.source !== 'journey') hostPrompt.value = null
@@ -806,6 +854,7 @@ const scrollToBottom = () => {
         messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
 }
+useStickToBottom(messagesContainer, scrollToBottom)
 
 // Add watch effect for messages
 watch(() => messages.value, (newMessages) => {
@@ -815,10 +864,13 @@ watch(() => messages.value, (newMessages) => {
     })
 }, { deep: true })
 
-// The confirm card, a page or journey message and the typing bubble can sit after
-// the messages, so a new one is below the fold unless the list follows it.
-watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading], ([confirm, prompt, receiptCount, typing]) => {
-    if (confirm || prompt || receiptCount || typing) nextTick(() => scrollToBottom())
+// The confirm card, a page or journey message, the reply buttons and the typing
+// bubble can sit after the messages, so a new one is below the fold unless the
+// list follows it. Reply buttons come once a reply has typed out, after its last
+// scroll; they're watched by label, as a step re-sync rebuilds the same ones.
+const replyChipLabels = computed(() => replyChips.value.map(chip => chip.label).join('\n'))
+watch([pendingConfirm, shownPrompt, () => receipts.value.length, loading, replyChipLabels], ([confirm, prompt, receiptCount, typing, chipLabels]) => {
+    if (confirm || prompt || receiptCount || typing || chipLabels) nextTick(() => scrollToBottom())
 })
 
 // Watch for connection status changes to set up event listeners when needed
@@ -4346,6 +4398,8 @@ const askAiHotkey = computed(() => parentDisplay.value?.hotkey !== false)
 }
 .cm-welcome-avatar { object-fit: cover; }
 .cm-welcome-bubble { max-width: 84%; }
+/* A page message's paragraphs (a journey step's "\n\n") stay apart */
+.cm-host-prompt .cm-welcome-bubble { white-space: pre-line; }
 /* Quick-action pills sit in a bar just above the input (comp layout). */
 .cm-quick-actions-bar {
     display: flex;

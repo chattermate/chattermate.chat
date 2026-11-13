@@ -77,6 +77,12 @@ export class SetupWizard {
     })
   }
 
+  async finish(): Promise<void> {
+    await step('Finish setup', async () => {
+      await this.page.getByRole('button', { name: /^Finish & go to dashboard/ }).click()
+    })
+  }
+
   async back(): Promise<void> {
     await step('Go back a step', async () => {
       await this.page.getByRole('button', { name: 'Back' }).click()

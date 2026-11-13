@@ -344,7 +344,9 @@ export function useWidgetSocket() {
                         end_chat: data.end_chat,
                         end_chat_reason: data.end_chat_reason,
                         end_chat_description: data.end_chat_description,
-                        request_rating: data.request_rating
+                        request_rating: data.request_rating,
+                        // Choices the agent offered: reply buttons until answered
+                        quick_replies: Array.isArray(data.quick_replies) && data.quick_replies.length ? data.quick_replies : undefined
                     }
                 })
             }

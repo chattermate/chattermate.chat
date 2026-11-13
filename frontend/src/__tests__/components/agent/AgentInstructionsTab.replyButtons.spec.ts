@@ -34,13 +34,13 @@ const mountTab = async (props: Record<string, unknown> = {}) => {
   return wrapper
 }
 
-const buttonsSwitch = (wrapper: any) => wrapper.find('input[aria-label="Reply buttons on messaging channels"]')
+const buttonsSwitch = (wrapper: any) => wrapper.find('input[aria-label="Reply buttons"]')
 
 describe('AgentInstructionsTab reply buttons', () => {
   it('is off by default and named for the channels it covers', async () => {
     const wrapper = await mountTab()
     expect((buttonsSwitch(wrapper).element as HTMLInputElement).checked).toBe(false)
-    expect(wrapper.text()).toContain('WhatsApp, Messenger, Instagram and Telegram. Not the web widget.')
+    expect(wrapper.text()).toContain('in the website chat, WhatsApp, Messenger, Instagram and Telegram.')
   })
 
   it('is hidden when the AI does not answer', async () => {

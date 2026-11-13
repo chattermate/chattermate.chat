@@ -16,7 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AI_BUILDERS, buildAiInstallPrompt, buildWidgetEmbed } from '@/utils/widgetEmbed'
+import { AI_BUILDERS, buildAiInstallPrompt, buildWidgetEmbed, developerEmailHref } from '@/utils/widgetEmbed'
 import { WIDGET_INSTALL_GUIDE_URL } from '@/config/docs'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { useCopyFeedback } from '@/composables/useCopyFeedback'
@@ -42,22 +42,8 @@ const aiInstallPrompt = computed(() => buildAiInstallPrompt(widgetSnippet.value)
 const { enterpriseComponent, moduleImports, hasEnterpriseModule } = useEnterpriseFeatures()
 const WidgetInstallStatus = enterpriseComponent(moduleImports.widgetInstallStatus)
 
-// Built in the browser and handed to the user's own mail app: nothing is sent
-// from our servers, so it can't be used to mail arbitrary addresses.
-const developerMailto = computed(() => {
-  if (!widgetSnippet.value) return ''
-  const body = [
-    'Hi,',
-    '',
-    'Could you add our ChatterMate chat to the website? Paste this just before </body> on every page:',
-    '',
-    widgetSnippet.value,
-    '',
-    `Guide: ${WIDGET_INSTALL_GUIDE_URL}`,
-  ].join('\n')
-  const params = new URLSearchParams({ subject: 'Add our ChatterMate chat to the website', body })
-  return `mailto:?${params.toString().replace(/\+/g, '%20')}`
-})
+// Opens their own mail app: nothing is sent from our servers
+const developerMailto = computed(() => (widgetSnippet.value ? developerEmailHref(widgetSnippet.value) : ''))
 
 // The button itself says it worked, for a moment; a failure gets a toast.
 const { copied, copy } = useCopyFeedback()
