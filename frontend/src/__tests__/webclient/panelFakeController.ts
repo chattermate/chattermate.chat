@@ -149,6 +149,7 @@ const baseController = () => ({
     journeyProgress: ref<JourneyProgress | null>(null),
     replyChips: ref<PageChip[]>([]),
     chipBusy: ref(false),
+    onPageChip: vi.fn((_chip: PageChip) => {}),
     shownPrompt: ref<HostPrompt | null>(null),
     promptPlace: { isBefore: (_message: WidgetMessage): boolean => false, isLast: (): boolean => false },
     // screens

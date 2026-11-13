@@ -18,23 +18,15 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from app.knowledge.knowledge_base import KnowledgeManager
 from app.models.knowledge import Knowledge, SourceType
-from app.models.knowledge_to_agent import KnowledgeToAgent
-from uuid import UUID, uuid4
+from uuid import uuid4
 import os
-from agno.vectordb.pgvector import PgVector, SearchType
+from agno.vectordb.pgvector import PgVector
 
 @pytest.fixture
 def mock_db():
     """Create a mock database session"""
     db = MagicMock()
     return db
-
-@pytest.fixture
-def mock_ai_config():
-    """Create a mock AI config"""
-    config = MagicMock()
-    config.encrypted_api_key = "encrypted_key"
-    return config
 
 @pytest.fixture
 def mock_knowledge():
@@ -59,20 +51,18 @@ def mock_vector_db():
     return vector_db
 
 @pytest.fixture
-def knowledge_manager(mock_db, mock_ai_config, mock_vector_db):
+def knowledge_manager(mock_db, mock_vector_db):
     """Create a KnowledgeManager instance with mocked dependencies"""
     org_id = uuid4()
     agent_id = uuid4()
     
     with patch('app.knowledge.knowledge_base.SessionLocal') as mock_session_local, \
-         patch('app.knowledge.knowledge_base.AIConfigRepository') as mock_ai_config_repo, \
          patch('app.knowledge.knowledge_base.OptimizedPgVector') as mock_pg_vector, \
          patch('app.knowledge.knowledge_base.KnowledgeRepository') as mock_knowledge_repo, \
          patch('app.knowledge.knowledge_base.KnowledgeToAgentRepository') as mock_link_repo:
         
         # Configure basic mocks
         mock_session_local.return_value.__enter__.return_value = mock_db
-        mock_ai_config_repo.return_value.get_active_config.return_value = mock_ai_config
         mock_pg_vector.return_value = mock_vector_db
         
         # Configure repository mocks
@@ -174,7 +164,7 @@ async def test_add_pdf_files_success(knowledge_manager, mock_knowledge):
     files = ["/path/to/test.pdf"]
 
     with patch('app.knowledge.knowledge_base.EnhancedPDFKnowledgeBase') as mock_pdf_kb, \
-         patch('app.knowledge.knowledge_base.PDFImageReader') as mock_pdf_reader, \
+         patch('app.knowledge.knowledge_base.PDFImageReader'), \
          patch('os.path.exists') as mock_exists, \
          patch('os.path.getsize') as mock_getsize, \
          patch('os.path.basename') as mock_basename, \
@@ -338,3 +328,94 @@ async def test_a_pdf_that_fails_is_never_marked_completed_first(knowledge_manage
         await knowledge_manager.process_knowledge(queue_item)
 
     queue_repo.return_value.update_status.assert_not_called()
+
+
+# ---- Websites: learned page by page ----
+
+from types import SimpleNamespace  # noqa: E402
+
+from app.knowledge.page_sink import SourceRemoved  # noqa: E402
+
+SITE = "https://shop.example"
+
+
+@pytest.fixture
+def site_run(knowledge_manager):
+    """A queued website and the pieces _learn_site drives, stubbed."""
+    queue_item = MagicMock(id=42, source=SITE, organization_id=knowledge_manager.org_id)
+    queue_repo = MagicMock()
+    queue_repo.last_run_left_partial.return_value = False
+    kb = MagicMock(stopped_at_time_limit=False)
+    learning = MagicMock()
+    with patch('app.knowledge.knowledge_base.EnhancedWebsiteKnowledgeBase', return_value=kb), \
+         patch('app.knowledge.knowledge_base.SourceLearning', return_value=learning) as made:
+        yield queue_item, queue_repo, kb, learning, made
+
+
+@pytest.mark.asyncio
+async def test_a_site_is_read_with_its_pages_made_searchable_as_they_land(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, learning, made = site_run
+
+    await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    made.assert_called_once_with(
+        42, knowledge_manager.org_id, knowledge_manager.agent_id, SITE, "test_table", "test_schema"
+    )
+    assert kb.learning is learning
+    kb.load.assert_called_once()
+    assert kb.load.call_args.kwargs["skip_existing"] is True
+    assert kb.load.call_args.kwargs["filters"]["agent_id"] == [str(knowledge_manager.agent_id)]
+    # Also covers a site skipped as already learned: it is still linked
+    learning.ensure_source.assert_called_once()
+    queue_repo.note_stopped_at_time_limit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_site_whose_last_run_stopped_partway_is_read_again(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, learning, _ = site_run
+    queue_repo.last_run_left_partial.return_value = True
+
+    await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    queue_repo.last_run_left_partial.assert_called_once_with(knowledge_manager.org_id, SITE, 42)
+    assert kb.load.call_args.kwargs["skip_existing"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_site_that_hit_the_time_limit_is_noted(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, _, _ = site_run
+    kb.stopped_at_time_limit = True
+
+    await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    queue_repo.note_stopped_at_time_limit.assert_called_once_with(42)
+
+
+@pytest.mark.asyncio
+async def test_a_site_removed_mid_crawl_is_cleaned_up(knowledge_manager, site_run):
+    queue_item, queue_repo, kb, learning, _ = site_run
+    kb.load.side_effect = SourceRemoved("removed")
+
+    with pytest.raises(SourceRemoved):
+        await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
+
+    learning.discard.assert_called_once()
+    learning.ensure_source.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reader,fails", [
+    (SimpleNamespace(), False),  # already learned: not read again, no count
+    (SimpleNamespace(_sitemap_page_count=0), True),  # read, and it listed nothing
+    (SimpleNamespace(_sitemap_page_count=4), False),
+])
+async def test_only_a_sitemap_that_was_read_and_listed_nothing_fails(knowledge_manager, reader, fails):
+    queue_item = MagicMock(id=7, source_type='sitemap', source=f"{SITE}/sitemap.xml", queue_metadata={})
+    with patch('app.knowledge.knowledge_base.SitemapReader', return_value=reader), \
+         patch('app.knowledge.knowledge_base.KnowledgeQueueRepository'), \
+         patch.object(knowledge_manager, '_learn_site', AsyncMock()):
+        if fails:
+            with pytest.raises(ValueError, match="No pages found"):
+                await knowledge_manager.process_knowledge(queue_item)
+        else:
+            assert await knowledge_manager.process_knowledge(queue_item) is True

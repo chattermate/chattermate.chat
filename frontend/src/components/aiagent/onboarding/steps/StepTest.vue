@@ -27,7 +27,7 @@ import { widgetService } from '@/services/widget'
 import { knowledgeService } from '@/services/knowledge'
 import { useOnboardingTestChat } from '@/composables/useOnboardingTestChat'
 import { newestPerSource } from '@/composables/useCrawlCheck'
-import { isBeingRead } from '@/composables/useLearningWatch'
+import { isBeingRead, learnedSoFar, pagesLearnedSoFar } from '@/composables/useLearningWatch'
 import type { QueueItem } from '@/types/knowledge'
 import type { AgentCustomization } from '@/types/agent'
 
@@ -120,13 +120,17 @@ const noKnowledge = ref(false)
 // The newest source that failed, to say why when nothing was learned. A crawl
 // often fails long after Teach moved on: this is where the user finds out.
 const failure = ref<QueueItem | null>(null)
+// Pages already searchable from the sites still being read
+const pagesSoFar = ref(0)
 let knowledgePoll: ReturnType<typeof setInterval> | null = null
 
 const checkKnowledgeStatus = async () => {
   try {
     const data = await knowledgeService.getAgentQueueItems(props.agentId)
     const items = (data?.queue_items ?? []) as QueueItem[]
-    const pending = items.filter(isBeingRead).length
+    const learning = items.filter(isBeingRead)
+    const pending = learning.length
+    pagesSoFar.value = pagesLearnedSoFar(learning)
     failure.value = newestPerSource(items).find(i => i.status === 'failed') ?? null
     const wasProcessing = knowledgeProcessing.value
     knowledgeProcessing.value = pending > 0
@@ -221,8 +225,8 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
     <div v-if="knowledgeProcessing" class="kb-note processing">
       <span class="kb-spinner" aria-hidden="true"></span>
       <span>
-        Still reading your knowledge. <strong>Ask a question now</strong> — answers get more
-        specific as each page is added.
+        Still reading your knowledge<template v-if="pagesSoFar">, {{ learnedSoFar({ pages_learned: pagesSoFar }) }}</template>.
+        <strong>Ask a question now</strong> — answers get more specific as each page is added.
       </span>
     </div>
     <div v-else-if="knowledgeJustFinished" class="kb-note done">

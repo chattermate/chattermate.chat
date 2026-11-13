@@ -73,13 +73,6 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const socket = useWidgetSocket({ panel: true })
     const { messages, loading, errorMessage, showError, loadingHistory, hasStartedChat, connectionStatus, humanAgent } = socket
 
-    // Page messages, in-app actions and journeys. A tapped text reply goes through
-    // the composer, which is set up further down.
-    const hostPrompt = useHostPrompt({
-        messages, loading, on: socket.on, emit: socket.emit,
-        sendQuickAction: (text) => composer.sendQuickAction(text),
-    })
-
     // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
     // to the bottom as text grows.
     const { displayText, isStreaming, isRevealing, skipReveal } =
@@ -109,6 +102,13 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const emailChecks = useEmailCheck({
         on: socket.on, emit: socket.emit,
         announce: () => composer.sendQuickAction(PANEL_COPY.emailConfirmedMessage),
+    })
+
+    // Page messages, in-app actions and journeys. A tapped text reply goes through
+    // the composer, which is set up further down; reply buttons wait for a reply to type out.
+    const hostPrompt = useHostPrompt({
+        messages, loading, revealing: isRevealing, on: socket.on, emit: socket.emit,
+        sendQuickAction: (text) => composer.sendQuickAction(text),
     })
 
     // Report unread agent messages (received while minimized) to the embedder badge.

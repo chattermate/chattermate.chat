@@ -14,19 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import os
 import socket
 import unittest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch
 from bs4 import BeautifulSoup
 import httpx
 
 from app.knowledge.crawl_scope import DEFAULT_CRAWL_SCOPE, CrawlScope
 from app.knowledge.enhanced_website_reader import (
     EnhancedWebsiteReader,
-    FAILURE_ADVICE,
     FailureCause,
 )
+from app.knowledge.failure_advice import FAILURE_ADVICE
 
 
 _RealClient = httpx.Client
@@ -187,6 +186,33 @@ class TestEnhancedWebsiteReader(unittest.TestCase):
         """
         content = self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'))
         self.assertIn("Refund Policy", content)
+
+    def test_the_page_title_and_description_are_kept_for_link_cards(self):
+        body = "Refund terms and conditions apply to all orders. " * 20
+        html = f"""
+        <html><head><title>Refunds</title>
+        <meta name="description" content="  How refunds   work. "></head>
+        <body><div class="c"><h1>Refund Policy</h1><p>{body}</p></div></body></html>
+        """
+        url = "https://shop.example/refunds"
+        self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'), base_url=url, page_url=url)
+        document = self.reader._create_document_from_content(url, body, url, 1)
+        self.assertEqual(document.meta_data["title"], "Refund Policy")
+        self.assertEqual(document.meta_data["description"], "How refunds work.")
+        self.assertNotIn(url, self.reader._page_meta)
+
+    def test_the_open_graph_description_is_the_fallback(self):
+        html = '<html><head><meta property="og:description" content="Shipping times"></head><body></body></html>'
+        self.assertEqual(self.reader._page_description(BeautifulSoup(html, 'html.parser')), "Shipping times")
+
+    def test_a_page_without_a_description_stores_none(self):
+        body = "Refund terms and conditions apply to all orders. " * 20
+        html = f'<html><body><div class="c"><p>{body}</p></div></body></html>'
+        url = "https://shop.example/plain"
+        self.reader._extract_main_content(BeautifulSoup(html, 'html.parser'), base_url=url, page_url=url)
+        document = self.reader._create_document_from_content(url, body, url, 1)
+        self.assertNotIn("description", document.meta_data)
+        self.assertNotIn("title", document.meta_data)
 
     def test_the_title_is_not_duplicated_when_already_in_the_content(self):
         """The usual case: the <h1> is inside the content container already."""
@@ -778,6 +804,113 @@ class TestDownloadsAreNotPages(unittest.TestCase):
         self.assertEqual({d.meta_data['url'] for d in documents},
                          {"https://ian-vpn.site", "https://ian-vpn.site/faqs"})
         self.assertLess(len(documents), 10)
+
+
+PAGE_TEXT = "Everything you need to know about the product, in one place. " * 3
+
+
+def docs_site(request):
+    """A site whose docs live in directories, linked relatively, the way
+    docs.python.org/3 is. A directory asked for without its slash redirects
+    to it, as web servers do: /3 to /3/."""
+    pages = {
+        "/3/": '<a href="tutorial/index.html">Tutorial</a> <a href="library/">Library</a>',
+        "/3/tutorial/index.html": '<a href="../library/">Library</a>',
+        "/3/library/": "",
+    }
+    path = request.url.path
+    if f"{path}/" in pages:
+        return httpx.Response(301, headers={"location": f"{path}/"})
+    if path in pages:
+        return httpx.Response(200, html=f"<main><h1>Docs</h1><p>{PAGE_TEXT}</p>{pages[path]}</main>")
+    return httpx.Response(404)
+
+
+class TestRelativeLinksResolveFromWhereThePageIs(unittest.TestCase):
+    """Seen locally on docs.python.org/3: its links were read from /3, not /3/,
+    so every one pointed at a missing page and was asked for three times."""
+
+    def setUp(self):
+        dns_patcher = patch('app.knowledge.url_safety.socket.getaddrinfo',
+                            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))])
+        self.addCleanup(dns_patcher.stop)
+        dns_patcher.start()
+
+    def crawl(self, site, seed):
+        requested = []
+
+        def recording(request):
+            requested.append(request.url.path)
+            return site(request)
+
+        reader = EnhancedWebsiteReader(max_depth=3, max_links=10, min_content_length=50)
+        with serving(recording), patch('app.knowledge.enhanced_website_reader.get_crawl4ai_fallback'):
+            return reader.crawl(seed), requested
+
+    def test_a_directory_given_without_its_slash(self):
+        result, requested = self.crawl(docs_site, "https://docs.example.com/3")
+
+        self.assertEqual(sorted(result), [
+            "https://docs.example.com/3",
+            "https://docs.example.com/3/library",
+            "https://docs.example.com/3/tutorial/index.html",
+        ])
+        self.assertNotIn("/tutorial/index.html", requested)
+        self.assertNotIn("/library", requested)
+
+    def test_a_page_with_a_base_address(self):
+        def site(request):
+            if request.url.path == "/":
+                return httpx.Response(200, html=(
+                    f'<head><base href="/v2/"></head><main><p>{PAGE_TEXT}</p>'
+                    '<a href="intro.html">Intro</a></main>'))
+            if request.url.path == "/v2/intro.html":
+                return httpx.Response(200, html=f"<main><p>{PAGE_TEXT}</p></main>")
+            return httpx.Response(404)
+
+        result, _ = self.crawl(site, "https://example.com")
+        self.assertIn("https://example.com/v2/intro.html", result)
+
+    def test_a_base_that_is_not_a_web_address_is_ignored(self):
+        soup = BeautifulSoup('<base href="javascript:void(0)">', 'html.parser')
+        scope = CrawlScope.for_seed("https://example.com/docs")
+        self.assertEqual(
+            EnhancedWebsiteReader._link_base("https://example.com/docs/", soup, scope, "https://example.com/docs"),
+            "https://example.com/docs/")
+
+    def test_a_base_on_another_host_is_not_used(self):
+        """A <base> naming a CDN would put every link outside the crawl."""
+        soup = BeautifulSoup('<base href="https://cdn.example.net/assets/">', 'html.parser')
+        scope = CrawlScope.for_seed("https://example.com/docs")
+        self.assertEqual(
+            EnhancedWebsiteReader._link_base("https://example.com/docs/", soup, scope, "https://example.com/docs"),
+            "https://example.com/docs")
+
+    def test_a_site_that_redirects_to_another_host(self):
+        """help.example.com serves from example.com/help/. Its links resolve
+        on the host the crawl was given, as before, so they stay in scope and
+        are followed; each one redirects the same way."""
+        def site(request):
+            path = request.url.path
+            if request.url.host == "help.example.com":
+                target = "/help/" if path == "/" else f"/help{path}"
+                return httpx.Response(301, headers={"location": f"https://example.com{target}"})
+            pages = {"/help/": '<a href="a.html">A</a>', "/help/a.html": ""}
+            if path in pages:
+                return httpx.Response(200, html=f"<main><p>{PAGE_TEXT}</p>{pages[path]}</main>")
+            return httpx.Response(404)
+
+        result, _ = self.crawl(site, "https://help.example.com")
+        self.assertEqual(sorted(result), ["https://help.example.com", "https://help.example.com/a.html"])
+
+    def test_links_in_the_stored_text_point_at_the_real_pages(self):
+        documents = []
+        reader = EnhancedWebsiteReader(max_depth=1, max_links=10, min_content_length=50)
+        with serving(docs_site), patch('app.knowledge.enhanced_website_reader.get_crawl4ai_fallback'):
+            reader.crawl("https://docs.example.com/3",
+                         on_document_callback=lambda url, content: documents.append(content))
+
+        self.assertIn("https://docs.example.com/3/tutorial/index.html", documents[0])
 
 
 class FakeDeadline:

@@ -66,6 +66,21 @@ describe('StepTest - what the agent knows', () => {
     expect(wrapper.text()).not.toContain('notify')
   })
 
+  it('while a site is read, says how many pages it can already answer from', async () => {
+    const reading = (pages: number) => ({
+      queue_items: [{ id: 1, source: SITE, source_type: 'website', status: 'processing', created_at: '', pages_learned: pages }]
+    })
+    getAgentQueueItems.mockResolvedValueOnce(reading(0)).mockResolvedValue(reading(12))
+    getKnowledgeByAgent.mockResolvedValue(knowledgePage(1))
+    const wrapper = await mountStep()
+    expect(wrapper.text()).toContain('Still reading your knowledge.')
+
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Still reading your knowledge, 12 pages so far.')
+  })
+
   it('a crawl that finishes says it is indexed', async () => {
     getAgentQueueItems.mockResolvedValueOnce(queue('pending')).mockResolvedValue(queue('completed'))
     getKnowledgeByAgent.mockResolvedValue(knowledgePage(1))

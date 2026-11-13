@@ -69,6 +69,20 @@ export class SetupWizard {
     })
   }
 
+  /** Takes a staged source (e.g. the signup domain) off the Teach step before it is sent. */
+  async unstage(url: string): Promise<void> {
+    await step(`Remove "${url}" before sending it`, async () => {
+      await this.page.getByRole('button', { name: `Remove ${url}` }).click()
+      await expect(this.stagedSource(url)).toHaveCount(0)
+    })
+  }
+
+  async finish(): Promise<void> {
+    await step('Finish setup', async () => {
+      await this.page.getByRole('button', { name: /^Finish & go to dashboard/ }).click()
+    })
+  }
+
   async back(): Promise<void> {
     await step('Go back a step', async () => {
       await this.page.getByRole('button', { name: 'Back' }).click()
@@ -96,6 +110,16 @@ export class SetupWizard {
   /** A sent source on the Teach step, while it is being read. */
   learningSource(name: string): Locator {
     return this.page.getByRole('list', { name: 'Learning' }).getByText(name)
+  }
+
+  /** A sent source's row on the Teach step, with how far it has got ("12 pages so far"). */
+  learningRow(name: string): Locator {
+    return this.page.getByRole('list', { name: 'Learning' }).getByRole('listitem').filter({ hasText: name })
+  }
+
+  /** The Test step's note while sources are still being read. */
+  get stillReadingNotice(): Locator {
+    return this.page.getByText(/Still reading your knowledge/)
   }
 
   /** A source on the Teach step that has been read. */

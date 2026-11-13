@@ -58,6 +58,10 @@ MESSENGER_LIMITS = InteractiveLimits(max_buttons=13, button_title_max=20, body_m
 INSTAGRAM_LIMITS = InteractiveLimits(max_buttons=13, button_title_max=20, body_max=1000, id_max_bytes=1000,
                                      options_in_text=True)
 
+# The website chat: the widget shows the choices as reply buttons on the
+# visitor's side, where four still fit on a phone
+WEB_LIMITS = InteractiveLimits(max_buttons=4, button_title_max=40, body_max=4000, id_max_bytes=200)
+
 # Inline keyboard: https://core.telegram.org/bots/api#inlinekeyboardbutton
 TELEGRAM_LIMITS = InteractiveLimits(max_buttons=MAX_CHOICE_OPTIONS, button_title_max=64, body_max=4096,
                                     id_max_bytes=64)

@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from app.models.agent import Agent, AgentCustomization
 from app.models.organization import Organization
 from app.agents.guardrail_policy import DEFAULT_GUARDRAIL_PROMPT
-from app.models.schemas.agent_customization import CustomizationCreate, CustomizationResponse
+from app.models.schemas.agent_customization import CustomizationCreate, CustomizationResponse, customization_schema
 import aiofiles
 from uuid import uuid4
 from PIL import Image
@@ -417,6 +417,21 @@ async def get_guardrail_default(
     ).first()
     label = (org.name or "").strip() if org else ""
     return {"prompt": DEFAULT_GUARDRAIL_PROMPT.replace("{org}", label or "this business")}
+
+
+@router.get("/customization-schema")
+async def get_customization_schema(
+    auth_info: dict = Depends(
+        require_any_unified_permission("view_agents", "manage_agents")),
+):
+    """Every setting of an agent's chat look, with its allowed values. Tools
+    that build their own forms or actions read it (the setup assistant's
+    actions are generated from it), so a new setting reaches them without
+    code.
+
+    Declared before /{agent_id} so the literal path wins the route match.
+    """
+    return customization_schema()
 
 
 @router.get("/list/shopify", response_model=List[AgentWithCustomizationResponse])

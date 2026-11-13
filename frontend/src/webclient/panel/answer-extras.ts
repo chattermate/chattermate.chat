@@ -28,7 +28,9 @@ export type { VisitorFeedback }
 export type HandoverState = 'connecting' | 'offline'
 
 /** At most this many follow-up chips, as the server's limit. */
-export const MAX_FOLLOW_UPS = 3
+// The server sends at most three follow-ups or four of the agent's choices
+// (widget_reply.choice_limits_for); the chips never show more than that.
+export const MAX_ANSWER_CHOICES = 4
 const HANDOVER_STATES = new Set<HandoverState>(['connecting', 'offline'])
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -46,7 +48,7 @@ export function followUpsOf(message: WidgetMessage): string[] {
         .filter((c): c is string => typeof c === 'string' && !!c.trim())
         .map(c => c.trim())
         .filter(c => (seen.has(c.toLowerCase()) ? false : (seen.add(c.toLowerCase()), true)))
-        .slice(0, MAX_FOLLOW_UPS)
+        .slice(0, MAX_ANSWER_CHOICES)
 }
 
 /** The handover card this reply is, or null for an ordinary answer. */

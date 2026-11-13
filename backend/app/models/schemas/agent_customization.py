@@ -232,6 +232,17 @@ class CustomizationCreate(CustomizationBase):
         return v
 
 
+def customization_schema() -> Dict:
+    """What an agent's look can be set to, as JSON Schema: the fields a
+    customization write takes, and the structured customization_metadata keys
+    (launcher, placement), which the OpenAPI document can't show because the
+    column itself is free-form."""
+    return {
+        "customization": CustomizationCreate.model_json_schema(),
+        "metadata": {key: model.model_json_schema() for key, model in STRUCTURED_METADATA.items()},
+    }
+
+
 class CustomizationResponse(CustomizationBase):
     id: int
     agent_id: UUID

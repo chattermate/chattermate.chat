@@ -72,6 +72,9 @@ const asksEmailCheck = computed(() => {
 })
 const isLatest = computed(() => inConversation.value && props.index === messages.value.length - 1)
 const followUps = computed(() => (isLatest.value && !streaming.value ? followUpsOf(props.message) : []))
+// A tapped choice is a tap like a step's reply buttons: it sends, and every button
+// waits until its reply has typed out (useHostPrompt)
+const pickChoice = (text: string) => ctrl.onPageChip({ label: text, kind: 'text', value: text })
 const showActions = computed(() => inConversation.value && !streaming.value && !!props.message.message)
 const canRate = computed(() => typeof props.message.id === 'number')
 
@@ -102,7 +105,7 @@ const answerText = () => body.value?.text() ?? ''
             v-if="followUps.length"
             :choices="followUps"
             :disabled="loading || !isMessageInputEnabled"
-            @pick="ctrl.sendQuickAction"
+            @pick="pickChoice"
         />
     </div>
 </template>

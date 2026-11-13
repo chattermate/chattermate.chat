@@ -141,7 +141,9 @@ def render(template: str, signals: Signals, fallbacks: Dict[str, str]) -> str:
         if value is None or value == "":
             return fallbacks.get(f"{source}.{name}", fallbacks.get(name, ""))
         return str(value)
-    return re.sub(r"\s{2,}", " ", TEMPLATE_VARIABLE.sub(fill, template)).strip()
+    # An empty value leaves a double space to tidy; a paragraph break stays.
+    filled = re.sub(r"[ \t]{2,}", " ", TEMPLATE_VARIABLE.sub(fill, template))
+    return re.sub(r"[ \t]*\n[ \t]*", "\n", filled).strip()
 
 
 def step_index(definition: JourneyDefinition, step_id: Optional[str]) -> Optional[int]:

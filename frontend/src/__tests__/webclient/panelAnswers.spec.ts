@@ -95,7 +95,8 @@ describe('follow-up questions', () => {
         const chips = wrapper!.findAll('.cm-follow-ups__chip')
         expect(chips.map(c => c.text())).toEqual(['How long does a refund take?', 'Can I exchange?'])
         await chips[0].trigger('click')
-        expect(ctrl.sendQuickAction).toHaveBeenCalledWith('How long does a refund take?')
+        // A tap like a step's reply buttons: it sends the text, and the buttons wait for the reply
+        expect(ctrl.onPageChip).toHaveBeenCalledWith({ label: 'How long does a refund take?', kind: 'text', value: 'How long does a refund take?' })
     })
 
     it('are gone once the conversation moved on', () => {

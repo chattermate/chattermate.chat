@@ -10,7 +10,7 @@ a partial index keeps that from reading the whole table. Built CONCURRENTLY so
 the table keeps taking writes (see org_lookup_indexes_001).
 
 Revision ID: conversation_titles_001
-Revises: org_lookup_indexes_001
+Revises: kq_pages_learned_001
 Create Date: 2026-11-12
 """
 from typing import Sequence, Union
@@ -20,7 +20,7 @@ from alembic import op
 
 # Keep revision ids under 32 characters: alembic_version.version_num is varchar(32).
 revision: str = 'conversation_titles_001'
-down_revision: Union[str, None] = 'org_lookup_indexes_001'
+down_revision: Union[str, None] = 'kq_pages_learned_001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

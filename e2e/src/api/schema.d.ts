@@ -1704,7 +1704,8 @@ export interface paths {
         post: operations["register_fcm_token_api_v1_users_token_fcm_token_post"];
         /**
          * Unregister Fcm Token
-         * @description Drop this browser's token on logout.
+         * @description Drop one of this user's device tokens. The dashboard no longer calls
+         *     this — its logout sends the token with POST /logout — but API clients may.
          *
          *     The token is required: clearing every token for the account (what this used
          *     to do) meant signing out on a laptop silently killed push on the user's
@@ -2776,6 +2777,31 @@ export interface paths {
          *     Declared before /{agent_id} so the literal path wins the route match.
          */
         get: operations["get_guardrail_default_api_v1_agent_guardrail_default_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/customization-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Customization Schema
+         * @description Every setting of an agent's chat look, with its allowed values. Tools
+         *     that build their own forms or actions read it (the setup assistant's
+         *     actions are generated from it), so a new setting reaches them without
+         *     code.
+         *
+         *     Declared before /{agent_id} so the literal path wins the route match.
+         */
+        get: operations["get_customization_schema_api_v1_agent_customization_schema_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7643,6 +7669,11 @@ export interface components {
             channel_secret: string;
             /** Channel Access Token */
             channel_access_token: string;
+        };
+        /** LogoutRequest */
+        LogoutRequest: {
+            /** Fcm Token */
+            fcm_token?: string | null;
         };
         /** MCPToolCreate */
         MCPToolCreate: {
@@ -13288,7 +13319,11 @@ export interface operations {
                 access_token?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LogoutRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -15496,6 +15531,26 @@ export interface operations {
         };
     };
     get_guardrail_default_api_v1_agent_guardrail_default_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_customization_schema_api_v1_agent_customization_schema_get: {
         parameters: {
             query?: never;
             header?: never;

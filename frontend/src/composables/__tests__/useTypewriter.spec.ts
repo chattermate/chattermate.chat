@@ -118,4 +118,25 @@ describe('useTypewriter', () => {
     await finishTyping()
     expect(text(1)).toBe('Second')
   })
+
+  it('says a reply is still revealing until it is shown in full', async () => {
+    const { messages, api } = setup([{ message: 'History is not typed' }])
+    await nextTick()
+    expect(api.isRevealing.value).toBe(false)
+    messages.value.push({ message: 'All set up', stream: true })
+    await nextTick()
+    expect(api.isRevealing.value).toBe(true)
+    await finishTyping()
+    expect(api.isRevealing.value).toBe(false)
+  })
+
+  it('stops saying it is revealing when the revealing reply leaves', async () => {
+    const { messages, api } = setup()
+    messages.value.push({ message: 'Going away', stream: true })
+    await nextTick()
+    expect(api.isRevealing.value).toBe(true)
+    messages.value = []
+    await nextTick()
+    expect(api.isRevealing.value).toBe(false)
+  })
 })

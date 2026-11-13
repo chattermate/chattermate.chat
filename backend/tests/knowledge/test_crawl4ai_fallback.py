@@ -19,6 +19,7 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from bs4 import BeautifulSoup
 import asyncio
+import sqlite3
 
 from app.knowledge.crawl4ai_fallback import (
     Crawl4AIFallback,
@@ -120,6 +121,78 @@ class TestCrawl4AIFallback:
         assert markdown is None
         assert screenshot is None
     
+    @staticmethod
+    def _crawler_that(*outcomes):
+        """A crawler class whose successive runs raise or return `outcomes`."""
+        instance = AsyncMock()
+        instance.arun.side_effect = list(outcomes)
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        return MagicMock(return_value=instance), instance
+
+    @pytest.mark.asyncio
+    @patch('app.knowledge.crawl4ai_fallback.SQLITE_LOCK_RETRY_SECONDS', 0)
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    async def test_async_fetch_retries_when_database_is_locked(self):
+        """Two pages falling back together: the one refused by the lock still gets rendered"""
+        result = MagicMock(success=True, html="<html>ok</html>", error_message=None)
+        result.markdown.raw_markdown = "# ok"
+        crawler_class, instance = self._crawler_that(sqlite3.OperationalError("database is locked"), result)
+
+        with patch('app.knowledge.crawl4ai_fallback.AsyncWebCrawler', crawler_class):
+            fallback = Crawl4AIFallback()
+            fallback._is_available = True
+            html, markdown, _ = await fallback._async_fetch("https://example.com")
+
+        assert (html, markdown) == ("<html>ok</html>", "# ok")
+        assert instance.arun.await_count == 2
+
+    @pytest.mark.asyncio
+    @patch('app.knowledge.crawl4ai_fallback.SQLITE_LOCK_RETRY_SECONDS', 0)
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    async def test_async_fetch_gives_up_when_database_stays_locked(self):
+        """A lock that never clears ends the same way as any other crawler error"""
+        locked = sqlite3.OperationalError("database is locked")
+        crawler_class, instance = self._crawler_that(locked, locked, locked)
+
+        with patch('app.knowledge.crawl4ai_fallback.AsyncWebCrawler', crawler_class):
+            fallback = Crawl4AIFallback()
+            fallback._is_available = True
+            result = await fallback._async_fetch("https://example.com")
+
+        assert result == (None, None, None)
+        assert instance.arun.await_count == 3
+
+    @pytest.mark.asyncio
+    @patch('app.knowledge.crawl4ai_fallback.SQLITE_LOCK_RETRY_SECONDS', 0)
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    async def test_async_fetch_does_not_retry_a_table_lock(self):
+        """A table lock inside one connection does not clear by waiting"""
+        crawler_class, instance = self._crawler_that(sqlite3.OperationalError("database table is locked"))
+
+        with patch('app.knowledge.crawl4ai_fallback.AsyncWebCrawler', crawler_class):
+            fallback = Crawl4AIFallback()
+            fallback._is_available = True
+            result = await fallback._async_fetch("https://example.com")
+
+        assert result == (None, None, None)
+        assert instance.arun.await_count == 1
+
+    @pytest.mark.asyncio
+    @patch('app.knowledge.crawl4ai_fallback.SQLITE_LOCK_RETRY_SECONDS', 0)
+    @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
+    async def test_async_fetch_does_not_retry_other_errors(self):
+        """Only the lock is worth waiting out; a refused connection fails at once"""
+        crawler_class, instance = self._crawler_that(Exception("net::ERR_CONNECTION_REFUSED"))
+
+        with patch('app.knowledge.crawl4ai_fallback.AsyncWebCrawler', crawler_class):
+            fallback = Crawl4AIFallback()
+            fallback._is_available = True
+            result = await fallback._async_fetch("https://example.com")
+
+        assert result == (None, None, None)
+        assert instance.arun.await_count == 1
+
     @pytest.mark.asyncio
     @patch('app.knowledge.crawl4ai_fallback.CRAWL4AI_AVAILABLE', True)
     @patch('playwright.async_api.async_playwright')

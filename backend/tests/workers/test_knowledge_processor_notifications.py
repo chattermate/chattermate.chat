@@ -26,7 +26,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from app.models.knowledge_queue import KnowledgeQueue, QueueStatus
+from app.knowledge.failure_advice import FAILURE_ADVICE, FailureCause
+from app.knowledge.page_sink import SourceRemoved
+from app.models.knowledge_queue import KnowledgeQueue, QueueStatus, STOPPED_AT_TIME_LIMIT
 from app.models.notification import Notification, NotificationType
 from app.workers import knowledge_processor
 
@@ -136,6 +138,79 @@ async def test_a_notification_that_cannot_be_saved_does_not_fail_the_source(work
 
     status, error, notifications = state(sessions, item_id)
     assert (status, error, notifications) == (QueueStatus.COMPLETED, None, [])
+    push.assert_not_called()
+
+
+def _stores_pages(sessions, item_id, pages, metadata=None):
+    """What a run that stored pages leaves on its queue row."""
+    def run(queue_item):
+        with sessions() as db:
+            item = db.get(KnowledgeQueue, item_id)
+            item.pages_learned = pages
+            if metadata:
+                item.queue_metadata = metadata
+            db.commit()
+    return run
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_broke_after_storing_pages_says_it_stopped_partway(worker, sessions, queue_item, test_user):
+    """Its pages stay searchable; the advice is to add it again, not that
+    the site is broken."""
+    manager, push = worker
+    item_id = queue_item(user_id=test_user.id)
+    store = _stores_pages(sessions, item_id, 12)
+
+    async def breaks(queue_item):
+        store(queue_item)
+        raise RuntimeError("connection reset")
+    manager.process_knowledge.side_effect = breaks
+
+    with pytest.raises(RuntimeError):
+        await knowledge_processor.process_queue_item(item_id)
+
+    status, error, notifications = state(sessions, item_id)
+    assert status == QueueStatus.FAILED
+    assert error == FAILURE_ADVICE[FailureCause.INTERRUPTED].format(url="https://shop.example")
+    assert [n.type for n in notifications] == [NotificationType.KNOWLEDGE_FAILED]
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_hit_the_time_limit_says_how_much_it_learned(worker, sessions, queue_item, test_user):
+    manager, push = worker
+    item_id = queue_item(user_id=test_user.id)
+    manager.process_knowledge.side_effect = _stores_pages(
+        sessions, item_id, 140, {STOPPED_AT_TIME_LIMIT: True}
+    )
+
+    await knowledge_processor.process_queue_item(item_id)
+
+    status, _, notifications = state(sessions, item_id)
+    assert status == QueueStatus.COMPLETED
+    assert [n.message for n in notifications] == [
+        "Learned 140 pages from shop.example before the time limit"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_source_removed_while_it_was_read_is_dropped_quietly(worker, sessions, queue_item, test_user):
+    """The run deleted its own queue row; nobody hears about a source they
+    just removed."""
+    manager, push = worker
+    item_id = queue_item(user_id=test_user.id)
+
+    async def removed(queue_item):
+        with sessions() as db:
+            db.delete(db.get(KnowledgeQueue, item_id))
+            db.commit()
+        raise SourceRemoved("removed")
+    manager.process_knowledge.side_effect = removed
+
+    await knowledge_processor.process_queue_item(item_id)
+
+    with sessions() as db:
+        assert db.get(KnowledgeQueue, item_id) is None
+        assert db.query(Notification).count() == 0
     push.assert_not_called()
 
 

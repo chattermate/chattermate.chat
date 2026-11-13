@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import random
 import re
 import socket
 import threading
@@ -22,13 +21,12 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Dict, List, Set, Tuple, Optional, Callable
+from typing import Dict, List, Tuple, Optional, Callable
 from urllib.parse import urljoin, urlparse, urldefrag, urlunparse
 from app.knowledge.crawler_identity import CRAWLER_USER_AGENT
 from app.knowledge.url_safety import BlockedHostError
 from app.knowledge.deadline import Deadline
-from app.knowledge.page_fetch import NotAPage, fetch_page_text
-import concurrent.futures
+from app.knowledge.page_fetch import NotAPage, fetch_page
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bs4 import BeautifulSoup, Tag
@@ -47,7 +45,7 @@ from app.knowledge.crawl_scope import (
     url_scheme,
 )
 from app.knowledge.domains import registrable_domain
-from app.knowledge.failure_advice import FAILURE_ADVICE, FailureCause, SourceUnreadable
+from app.knowledge.failure_advice import FailureCause, SourceUnreadable
 from app.knowledge.login_wall import is_auth_path, looks_like_login_wall
 from app.knowledge.main_content import select_main_node
 
@@ -135,7 +133,9 @@ class EnhancedWebsiteReader(WebsiteReader):
     # Pages are crawled on up to max_workers threads, and "read, add one, write
     # back" loses increments when two of them fail at once.
     _failure_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    _current_url: str = None  # Track current URL being processed for link resolution
+    # Each page's title and description, read before cleaning strips <head>,
+    # for the widget's link cards. Keyed by URL: pages are read on many threads.
+    _page_meta: Dict[str, Dict[str, str]] = field(default_factory=dict, repr=False)
     # Set by the knowledge base for the source being read: no new pages are
     # fetched once it passes (see app/knowledge/deadline.py).
     deadline: Optional[Deadline] = None
@@ -306,6 +306,32 @@ class EnhancedWebsiteReader(WebsiteReader):
         "please stand by, while we are checking",
     )
 
+    @staticmethod
+    def _link_base(
+        page_url: str,
+        soup: Optional[BeautifulSoup],
+        scope: CrawlScope,
+        requested_url: str,
+    ) -> str:
+        """What a page's relative links resolve against, as a browser does it:
+        its ``<base href>`` if it has one, else ``page_url``.
+
+        ``page_url`` must be where the page was served from, not the canonical
+        id: a directory's trailing slash matters here. On /docs/ the link
+        "guide.html" is /docs/guide.html; on /docs it would be /guide.html.
+
+        A base outside the crawl's scope (the page redirected to another host,
+        or ``<base>`` names a CDN) would put every link out of scope, so the
+        links resolve against ``requested_url`` instead, as they always did.
+        """
+        base = page_url
+        tag = soup.find("base", href=True) if soup is not None else None
+        if isinstance(tag, Tag):
+            resolved = urljoin(page_url, str(tag["href"]).strip())
+            if urlparse(resolved).scheme in ("http", "https"):
+                base = resolved
+        return base if scope.allows(base) else requested_url
+
     def _looks_like_bot_challenge(self, text: str) -> bool:
         """True if the extracted text is a bot-check/interstitial, not real content.
 
@@ -366,7 +392,25 @@ class EnhancedWebsiteReader(WebsiteReader):
             return f"{title}\n\n{content}"
         return content
 
-    def _extract_main_content(self, soup: BeautifulSoup) -> str:
+    @staticmethod
+    def _page_description(soup: BeautifulSoup) -> str:
+        """The page's own summary: <meta name=description>, else og:description."""
+        for attrs in ({'name': 'description'}, {'property': 'og:description'}):
+            tag = soup.find('meta', attrs=attrs)
+            content = tag.get('content') if tag else None
+            if isinstance(content, str) and content.strip():
+                return " ".join(content.split())
+        return ""
+
+    def _remember_page_meta(self, page_url: Optional[str], title: str, soup: BeautifulSoup) -> None:
+        if not page_url:
+            return
+        meta = {k: v for k, v in (('title', title), ('description', self._page_description(soup))) if v}
+        if meta:
+            self._page_meta[page_url] = meta
+
+    def _extract_main_content(self, soup: BeautifulSoup, base_url: Optional[str] = None,
+                              page_url: Optional[str] = None) -> str:
         """
         Extracts the main content from a BeautifulSoup object.
 
@@ -377,10 +421,15 @@ class EnhancedWebsiteReader(WebsiteReader):
         also what routes such a page to the browser fallback in _process_url.
 
         :param soup: The BeautifulSoup object to extract the main content from.
+        :param base_url: What the page's relative links resolve against. Passed
+            in, not kept on the reader: pages are read on several threads.
+        :param page_url: The page read, whose title and description are kept for
+            the widget's link cards.
         :return: The main content as a string.
         """
         # Read the title before cleaning: _clean_soup strips <head>.
         page_title = self._page_title(soup)
+        self._remember_page_meta(page_url, page_title, soup)
 
         # Remove undesirable elements first
         self._clean_soup(soup)
@@ -395,7 +444,7 @@ class EnhancedWebsiteReader(WebsiteReader):
             logger.warning("No readable content on the page (navigation chrome only)")
             return ""
 
-        content = self._get_clean_text(main_node, include_links=True, base_url=self._current_url)
+        content = self._get_clean_text(main_node, include_links=True, base_url=base_url)
         if len(content) >= self.min_content_length:
             content = self._prepend_title(page_title, content)
             logger.info(f"✓ Content extracted from <{main_node.name}> ({len(content)} chars)")
@@ -404,7 +453,7 @@ class EnhancedWebsiteReader(WebsiteReader):
 
         # Fallback 1: Density-based content extraction
         logger.debug(f"Trying fallback: text density")
-        density_content = self._extract_by_text_density(soup)
+        density_content = self._extract_by_text_density(soup, base_url)
         if density_content and len(density_content) >= self.min_content_length:
             logger.info(f"✓ Content extracted using density strategy ({len(density_content)} chars)")
             return density_content
@@ -422,7 +471,7 @@ class EnhancedWebsiteReader(WebsiteReader):
         logger.debug(f"Trying fallback: body")
         body = soup.find('body')
         if body:
-            content = self._get_clean_text(body, include_links=True, base_url=self._current_url)
+            content = self._get_clean_text(body, include_links=True, base_url=base_url)
             if content:
                 logger.info(f"✓ Content extracted using body fallback strategy (length: {len(content)})")
                 return content
@@ -624,11 +673,12 @@ class EnhancedWebsiteReader(WebsiteReader):
         
         return full_content.strip()
     
-    def _extract_by_text_density(self, soup: BeautifulSoup) -> str:
+    def _extract_by_text_density(self, soup: BeautifulSoup, base_url: Optional[str] = None) -> str:
         """
         Extracts content based on text density (paragraphs with substantial text).
         
         :param soup: The BeautifulSoup object to extract content from.
+        :param base_url: What the page's relative links resolve against.
         :return: The extracted content.
         """
         paragraphs = soup.find_all('p')
@@ -656,10 +706,10 @@ class EnhancedWebsiteReader(WebsiteReader):
         # Get the parent with the most children
         if parent_counts:
             best_parent = max(parent_counts.items(), key=lambda x: x[1])[0]
-            return self._get_clean_text(best_parent, include_links=True, base_url=self._current_url)
+            return self._get_clean_text(best_parent, include_links=True, base_url=base_url)
             
         # If no good parent found, just concatenate the good paragraphs
-        return " ".join([self._get_clean_text(p, include_links=True, base_url=self._current_url) for p in good_paragraphs])
+        return " ".join([self._get_clean_text(p, include_links=True, base_url=base_url) for p in good_paragraphs])
 
     def _process_url(self, url_info: Tuple[str, int], scope: CrawlScope) -> Optional[Tuple[str, str, List[str]]]:
         """
@@ -712,6 +762,9 @@ class EnhancedWebsiteReader(WebsiteReader):
         browser_can_help = True
         is_javascript_heavy = False
         soup = None
+        # What this page's relative links resolve against: where it was really
+        # served from, once that is known
+        link_base = current_url
         
         while retry_count < self.max_retries and content is None:
             try:
@@ -731,11 +784,13 @@ class EnhancedWebsiteReader(WebsiteReader):
                     logger.debug(f"Making HTTP GET request to {current_url}")
                     # Follows redirects manually, re-validating each hop's host
                     # (SSRF), and reads the body only if it is a page.
-                    html = fetch_page_text(client, current_url)
+                    page = fetch_page(client, current_url)
+                html = page.text
 
                 # Parse HTML with BeautifulSoup
                 soup = BeautifulSoup(html, 'html.parser')
                 served_soup = soup
+                link_base = self._link_base(page.url, soup, scope, current_url)
 
                 logger.info(f"HTML length: {len(html)} characters")
                 
@@ -785,9 +840,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                         detection_reason.append(f"high script density ({script_density:.1f} per 10KB)")
                     logger.warning(f"⚠️  JavaScript-heavy website detected: {', '.join(detection_reason)}")
                 
-                # Set current URL for link resolution
-                self._current_url = current_url
-                content = self._extract_main_content(soup)
+                content = self._extract_main_content(soup, link_base, current_url)
 
                 # Log extracted content length for debugging
                 logger.info(f"Extracted content length: {len(content) if content else 0} characters from {current_url}")
@@ -816,8 +869,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                             soup = crawl4ai_soup if crawl4ai_soup else soup
                         elif crawl4ai_soup:
                             # Try to extract from crawl4ai soup
-                            self._current_url = current_url
-                            crawl4ai_extracted = self._extract_main_content(crawl4ai_soup)
+                            crawl4ai_extracted = self._extract_main_content(crawl4ai_soup, link_base, current_url)
                             if crawl4ai_extracted and len(crawl4ai_extracted) >= self.min_content_length:
                                 logger.info(f"✓ Extracted {len(crawl4ai_extracted)} chars from Crawl4AI HTML")
                                 content = crawl4ai_extracted
@@ -886,8 +938,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                                 soup = crawl4ai_soup if crawl4ai_soup else soup
                             elif crawl4ai_soup:
                                 # Try to extract from crawl4ai soup
-                                self._current_url = current_url
-                                content = self._extract_main_content(crawl4ai_soup)
+                                content = self._extract_main_content(crawl4ai_soup, link_base, current_url)
                                 if content and len(content) >= self.min_content_length:
                                     logger.info(f"✓ Extracted {len(content)} chars from Crawl4AI HTML")
                                     soup = crawl4ai_soup
@@ -913,7 +964,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                 
                 # Extract new links if not at max depth
                 if current_depth < self.max_depth:
-                    links = self._extract_links(soup, current_url, scope)
+                    links = self._extract_links(soup, link_base, scope)
                     
                     next_depth = current_depth + 1
                     new_links = [(link, next_depth) for link in links 
@@ -1002,6 +1053,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                     # Note: fetch_with_browser returns (content, soup, screenshot)
                     # We don't need screenshot for backend crawling, so ignore it
                     crawl4ai_content, crawl4ai_soup, _ = crawl4ai.fetch_with_browser(current_url, take_screenshot=False)
+                    link_base = self._link_base(current_url, crawl4ai_soup, scope, current_url)
                     
                     if crawl4ai_content and len(crawl4ai_content) >= self.min_content_length:
                         logger.info(f"✓ Crawl4AI successfully bypassed error and extracted {len(crawl4ai_content)} chars")
@@ -1010,7 +1062,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                         
                         # Extract links if we got content
                         if current_depth < self.max_depth and soup:
-                            links = self._extract_links(soup, current_url, scope)
+                            links = self._extract_links(soup, link_base, scope)
                             next_depth = current_depth + 1
                             new_links = [(link, next_depth) for link in links 
                                         if link not in self._visited]
@@ -1022,15 +1074,14 @@ class EnhancedWebsiteReader(WebsiteReader):
                         return (current_url, content, new_links)
                     elif crawl4ai_soup:
                         # Try to extract from crawl4ai soup
-                        self._current_url = current_url
-                        content = self._extract_main_content(crawl4ai_soup)
+                        content = self._extract_main_content(crawl4ai_soup, link_base, current_url)
                         if content and len(content) >= self.min_content_length:
                             logger.info(f"✓ Extracted {len(content)} chars from Crawl4AI HTML")
                             soup = crawl4ai_soup
                             
                             # Extract links
                             if current_depth < self.max_depth:
-                                links = self._extract_links(soup, current_url, scope)
+                                links = self._extract_links(soup, link_base, scope)
                                 next_depth = current_depth + 1
                                 new_links = [(link, next_depth) for link in links 
                                             if link not in self._visited]
@@ -1286,7 +1337,8 @@ class EnhancedWebsiteReader(WebsiteReader):
             "url": page_url,
             "chunk": index,
             "chunk_size": len(content),
-            "original_size": original_length
+            "original_size": original_length,
+            **self._page_meta.pop(page_url, {}),
         }
 
         # Create document with content and metadata
@@ -1304,14 +1356,22 @@ class EnhancedWebsiteReader(WebsiteReader):
 
         return document
 
-    def read(self, url: str, vector_db_callback: Optional[Callable[[Document], None]] = None, url_crawled_callback: Optional[Callable[[str], None]] = None) -> List[Document]:
+    def read(
+        self,
+        url: str,
+        vector_db_callback: Optional[Callable[[Document], None]] = None,
+        url_crawled_callback: Optional[Callable[[str], None]] = None,
+        page_callback: Optional[Callable[[List[Document]], None]] = None,
+    ) -> List[Document]:
         """
         Read content from a URL, crawl related pages, and convert the content into Documents.
-        Optionally sends documents to vector DB as they are created.
-        
+
         :param url: The URL to read from.
-        :param vector_db_callback: Optional callback to send documents to vector DB as they're created
+        :param vector_db_callback: Optional callback given each document as it is created
         :param url_crawled_callback: Optional callback called when each URL is successfully crawled
+        :param page_callback: Optional callback given each page's documents (its
+            chunks) as the page is read. They are handed over, not kept: with
+            it, read() returns an empty list and holds one page at a time.
         :return: A list of Document objects.
         """
         # Normalize URL to ensure it has a protocol
@@ -1322,14 +1382,19 @@ class EnhancedWebsiteReader(WebsiteReader):
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting to read from {url} with parallel processing")
         
         documents = []
-        
-        # Create a callback for immediate document processing. A page becomes
-        # one document per chunk (see app.knowledge.chunking); each is queued
-        # for embedding on its own so the whole page is searchable.
+        created = 0
+
+        # A page becomes one document per chunk (see app.knowledge.chunking);
+        # each is embedded on its own so the whole page is searchable.
         def on_document_created(page_url: str, content: str):
-            index = len(documents) + 1
-            page = self._create_document_from_content(page_url, content, url, index)
-            for document in chunk_page(page):
+            nonlocal created
+            page = self._create_document_from_content(page_url, content, url, created + 1)
+            chunks = chunk_page(page)
+            created += len(chunks)
+            if page_callback:
+                page_callback(chunks)
+                return
+            for document in chunks:
                 documents.append(document)
 
                 # Call vector DB callback if provided
@@ -1345,6 +1410,6 @@ class EnhancedWebsiteReader(WebsiteReader):
         
         end_time = time.time()
         duration = end_time - start_time
-        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed reading from {url} - Created {len(documents)} documents (Total time: {duration:.2f}s)")
+        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed reading from {url} - Created {created} documents (Total time: {duration:.2f}s)")
         
         return documents 
