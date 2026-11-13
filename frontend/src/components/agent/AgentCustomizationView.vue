@@ -362,8 +362,9 @@ const sectionSummaries = computed<Record<SectionId, string>>(() => {
         launcher: widgetDisplay.value.launcher === false ? 'Hidden' : launcherSummary(launcher.allowed.value),
         placement: [mode, widgetDisplay.value.side === 'left' ? 'Left' : 'Right',
             isSidebarMode.value ? null : `${windowLabel} window`].filter(Boolean).join(' · '),
-        messages: [countOf(c.chat_initiation_messages?.length ?? 0, 'greeting'),
-            countOf(c.quick_actions?.length ?? 0, 'quick action')].join(' · '),
+        // What visitors get: saved ones the plan leaves out don't count
+        messages: [countOf(isChatInitiationsLocked.value ? 0 : c.chat_initiation_messages?.length ?? 0, 'greeting'),
+            countOf(isQuickActionsLocked.value ? 0 : c.quick_actions?.length ?? 0, 'quick action')].join(' · '),
         behaviour: switchedOn.length ? switchedOn.join(' · ') : 'All off',
     }
 })
@@ -928,107 +929,118 @@ const loadDefaultQuickActions = () => {
                     <div class="section-head-row">
                         <h4 class="subsection-heading">Quick actions</h4>
                         <button v-if="!isQuickActionsLocked" type="button" class="load-defaults-link" @click="loadDefaultQuickActions">Load defaults</button>
-                    </div>
-
-                    <div v-if="isQuickActionsLocked" class="page-rules-locked" data-testid="quick-actions-locked">
-                        <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
-                        <span>Upgrade to show quick actions in the chat.</span>
-                        <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to show quick actions" @click="handleUpgrade">Upgrade</button>
-                    </div>
-                    <div v-else class="init-add-row">
-                        <input
-                            type="text"
-                            v-model="newQuickAction"
-                            placeholder="Track my order"
-                            class="init-input"
-                            maxlength="60"
-                            @keyup.enter="addQuickAction"
-                        >
-                        <input
-                            v-if="!isPageRulesLocked"
-                            type="text"
-                            v-model="newQuickActionMatch"
-                            placeholder="Every page, or e.g. /products/*"
-                            aria-label="Show on pages"
-                            class="init-input init-input--match"
-                            maxlength="200"
-                            @keyup.enter="addQuickAction"
-                        >
-                        <button
-                            type="button"
-                            class="init-add-btn"
-                            @click="addQuickAction"
-                            :disabled="!newQuickAction.trim()"
-                            title="Add quick action"
-                        >+</button>
-                    </div>
-                    <div v-if="isPageRulesLocked && !isQuickActionsLocked" class="page-rules-locked" data-testid="page-rules-locked">
-                        <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
-                        <span>Upgrade to show a quick action only on some pages, like your product pages.</span>
-                        <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to show quick actions on some pages" @click="handleUpgrade">Upgrade</button>
-                    </div>
-
-                    <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list"
-                        :class="{ 'init-list--off': isQuickActionsLocked }">
-                        <div
-                            v-for="(action, index) in customization.quick_actions"
-                            :key="index"
-                            class="init-item"
-                        >
-                            <div v-if="editingQuickActionIndex === index" class="init-edit-inline">
-                                <input
-                                    type="text"
-                                    v-model="editingQuickAction"
-                                    class="init-edit-input"
-                                    maxlength="60"
-                                    @keyup.enter="saveEditQuickAction"
-                                    @keyup.esc="cancelEditQuickAction"
-                                >
-                                <input
-                                    v-if="!isPageRulesLocked"
-                                    type="text"
-                                    v-model="editingQuickActionMatch"
-                                    class="init-edit-input init-input--match"
-                                    placeholder="Every page"
-                                    aria-label="Show on pages"
-                                    maxlength="200"
-                                    @keyup.enter="saveEditQuickAction"
-                                    @keyup.esc="cancelEditQuickAction"
-                                >
-                                <button
-                                    v-else-if="editingQuickActionMatch"
-                                    type="button"
-                                    class="page-rules-locked__upgrade"
-                                    data-testid="quick-action-every-page"
-                                    @click="editingQuickActionMatch = ''"
-                                >Show on every page</button>
-                                <button type="button" class="init-icon-btn save" @click="saveEditQuickAction" title="Save">
-                                    <font-awesome-icon icon="fa-solid fa-check" />
-                                </button>
-                                <button type="button" class="init-icon-btn cancel" @click="cancelEditQuickAction" title="Cancel">
-                                    <font-awesome-icon icon="fa-solid fa-times" />
-                                </button>
-                            </div>
-                            <template v-else>
-                                <span class="init-handle">☰</span>
-                                <span class="init-text">{{ actionLabel(action) }}<span v-if="isQuickActionsLocked" class="sr-only"> (not shown on your plan)</span></span>
-                                <span
-                                    v-if="actionMatch(action)"
-                                    class="init-match"
-                                    :class="{ 'init-match--off': isPageRulesLocked }"
-                                    :title="isPageRulesLocked ? 'Not shown on your plan' : `Shown on ${actionMatch(action)}`"
-                                ><font-awesome-icon v-if="isPageRulesLocked" icon="fa-solid fa-lock" aria-hidden="true" /> {{ actionMatch(action) }}<span v-if="isPageRulesLocked" class="sr-only"> (not shown on your plan)</span></span>
-                                <button type="button" class="init-icon-btn edit" @click="startEditQuickAction(index)" title="Edit">
-                                    <font-awesome-icon icon="fa-solid fa-pen" />
-                                </button>
-                                <button type="button" class="init-remove" @click="removeQuickAction(index)" title="Remove">✕</button>
-                            </template>
+                        <div v-else class="premium-badge-small">
+                            <font-awesome-icon icon="fa-solid fa-crown" />
+                            <span>Premium</span>
                         </div>
                     </div>
-                    <div v-else-if="!isQuickActionsLocked" class="init-empty">
-                        <span class="init-empty-icon">ⓘ</span>
-                        <span>No quick actions yet. Add one above.</span>
+
+                    <!-- Locked like the greeting messages below; saved ones stay saved and come back on upgrade -->
+                    <div v-if="isQuickActionsLocked" class="locked-overlay-compact" data-testid="quick-actions-locked">
+                        <div class="locked-content-compact">
+                            <font-awesome-icon icon="fa-solid fa-lock" class="lock-icon-small" />
+                            <p class="locked-text">Show one-tap questions when a visitor opens the chat.</p>
+                            <button type="button" class="upgrade-btn-compact" aria-label="Upgrade to show quick actions" @click="handleUpgrade">
+                                <font-awesome-icon icon="fa-solid fa-crown" />
+                                <span>Upgrade</span>
+                            </button>
+                        </div>
                     </div>
+                    <template v-else>
+                        <div class="init-add-row">
+                            <input
+                                type="text"
+                                v-model="newQuickAction"
+                                placeholder="Track my order"
+                                class="init-input"
+                                maxlength="60"
+                                @keyup.enter="addQuickAction"
+                            >
+                            <input
+                                v-if="!isPageRulesLocked"
+                                type="text"
+                                v-model="newQuickActionMatch"
+                                placeholder="Every page, or e.g. /products/*"
+                                aria-label="Show on pages"
+                                class="init-input init-input--match"
+                                maxlength="200"
+                                @keyup.enter="addQuickAction"
+                            >
+                            <button
+                                type="button"
+                                class="init-add-btn"
+                                @click="addQuickAction"
+                                :disabled="!newQuickAction.trim()"
+                                title="Add quick action"
+                            >+</button>
+                        </div>
+                        <div v-if="isPageRulesLocked" class="page-rules-locked" data-testid="page-rules-locked">
+                            <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
+                            <span>Upgrade to show a quick action only on some pages, like your product pages.</span>
+                            <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to show quick actions on some pages" @click="handleUpgrade">Upgrade</button>
+                        </div>
+
+                        <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list">
+                            <div
+                                v-for="(action, index) in customization.quick_actions"
+                                :key="index"
+                                class="init-item"
+                            >
+                                <div v-if="editingQuickActionIndex === index" class="init-edit-inline">
+                                    <input
+                                        type="text"
+                                        v-model="editingQuickAction"
+                                        class="init-edit-input"
+                                        maxlength="60"
+                                        @keyup.enter="saveEditQuickAction"
+                                        @keyup.esc="cancelEditQuickAction"
+                                    >
+                                    <input
+                                        v-if="!isPageRulesLocked"
+                                        type="text"
+                                        v-model="editingQuickActionMatch"
+                                        class="init-edit-input init-input--match"
+                                        placeholder="Every page"
+                                        aria-label="Show on pages"
+                                        maxlength="200"
+                                        @keyup.enter="saveEditQuickAction"
+                                        @keyup.esc="cancelEditQuickAction"
+                                    >
+                                    <button
+                                        v-else-if="editingQuickActionMatch"
+                                        type="button"
+                                        class="page-rules-locked__upgrade"
+                                        data-testid="quick-action-every-page"
+                                        @click="editingQuickActionMatch = ''"
+                                    >Show on every page</button>
+                                    <button type="button" class="init-icon-btn save" @click="saveEditQuickAction" title="Save">
+                                        <font-awesome-icon icon="fa-solid fa-check" />
+                                    </button>
+                                    <button type="button" class="init-icon-btn cancel" @click="cancelEditQuickAction" title="Cancel">
+                                        <font-awesome-icon icon="fa-solid fa-times" />
+                                    </button>
+                                </div>
+                                <template v-else>
+                                    <span class="init-handle">☰</span>
+                                    <span class="init-text">{{ actionLabel(action) }}</span>
+                                    <span
+                                        v-if="actionMatch(action)"
+                                        class="init-match"
+                                        :class="{ 'init-match--off': isPageRulesLocked }"
+                                        :title="isPageRulesLocked ? 'Not shown on your plan' : `Shown on ${actionMatch(action)}`"
+                                    ><font-awesome-icon v-if="isPageRulesLocked" icon="fa-solid fa-lock" aria-hidden="true" /> {{ actionMatch(action) }}<span v-if="isPageRulesLocked" class="sr-only"> (not shown on your plan)</span></span>
+                                    <button type="button" class="init-icon-btn edit" @click="startEditQuickAction(index)" title="Edit">
+                                        <font-awesome-icon icon="fa-solid fa-pen" />
+                                    </button>
+                                    <button type="button" class="init-remove" @click="removeQuickAction(index)" title="Remove">✕</button>
+                                </template>
+                            </div>
+                        </div>
+                        <div v-else class="init-empty">
+                            <span class="init-empty-icon">ⓘ</span>
+                            <span>No quick actions yet. Add one above.</span>
+                        </div>
+                    </template>
                 </div>
 
                 <!-- Greeting messages Section -->
@@ -2220,11 +2232,6 @@ const loadDefaultQuickActions = () => {
     font-family: var(--font-mono, monospace);
 }
 .init-match--off {
-    text-decoration: line-through;
-    opacity: 0.7;
-}
-/* Saved on a plan that doesn't show them: kept, editable, visibly off */
-.init-list--off .init-text {
     text-decoration: line-through;
     opacity: 0.7;
 }
