@@ -2073,9 +2073,10 @@ const loadDefaultQuickActions = () => {
     filter: brightness(1.05);
 }
 
+/* The crown in the button's own text colour: gold on the accent was barely visible */
 :deep(.upgrade-btn-compact svg) {
-    font-size: 10px;
-    color: #ffd700;
+    font-size: 12px;
+    color: currentColor;
 }
 
 /* Greeting input row */
