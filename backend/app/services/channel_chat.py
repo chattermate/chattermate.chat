@@ -123,6 +123,11 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
         choice_limits = (adapter.choice_limits_for(conversation)
                          if adapter is not None and agent is not None and agent.channel_quick_replies else None)
 
+        # Everything from here waits on outside services (the app, the
+        # platform, the model). Give back the request connection slot taken
+        # above: what's left reads and writes briefly as it goes.
+        release_connection(db)
+
         # An installed extension (an external app) may answer first. Its reply
         # can land while we wait, so the customer's message keeps the time it
         # arrived and still sorts before it.
@@ -339,6 +344,7 @@ async def _enrich_customer_name(db: Session, adapter, account: ChannelAccount,
     customer = CustomerRepository(db).get_by_id(uuid.UUID(customer_id))
     if customer is None or not is_placeholder_name(customer.full_name, account.channel_type):
         return
+    release_connection(db)  # not held through the platform's reply
     try:
         enrichment = await adapter.fetch_profile(account, inbound.external_user_id)
     except Exception as e:

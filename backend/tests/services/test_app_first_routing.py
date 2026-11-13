@@ -38,7 +38,8 @@ from app.services import agent_rooms, app_first_routing, channel_chat
 from app.services.channel_chat import process_channel_message
 from app.services.chat_notifications import notify_new_channel_chat_once
 from app.services.message_delivery import DeliveryResult
-from tests.socket_db import serve_session_off_loop
+from app import database
+from tests.session_db import serve_session_off_loop, session_slots_taken
 
 
 def _inbound(text="present", wamid="wamid.IN1"):
@@ -117,6 +118,42 @@ async def test_a_message_the_app_handles_never_reaches_the_ai(
     assert stored.message == "present"
     assert [(e.kind, e.handled_by) for e in events] == [(EventKind.INBOUND, HandledBy.APP)]
     assert events[0].event_id == f"{account.id}:wamid.IN1"
+
+
+@pytest.mark.asyncio
+async def test_the_app_thinks_without_the_message_holding_a_session_slot(
+        db, account, quiet_channel, monkeypatch):
+    """Waiting on the app (up to its timeout) must not keep a slot requests need."""
+    monkeypatch.setattr(channel_chat, "_enrich_customer_name", AsyncMock())  # a known customer
+    slot_free_while_app_thinks = []
+
+    async with session_slots_taken(database.OFF_LOOP_SESSIONS - 1) as slots:
+        async def handler(context):
+            slot_free_while_app_thinks.append(not slots.locked())
+            return True
+        register_inbound_handler(handler)
+
+        await process_channel_message(account.id, _inbound())
+
+    assert slot_free_while_app_thinks == [True]
+    assert db.query(ChatHistory).filter_by(message_type="user").one().message == "present"
+
+
+@pytest.mark.asyncio
+async def test_a_new_customers_profile_is_fetched_without_holding_a_session_slot(
+        db, account, quiet_channel, monkeypatch):
+    slot_free_while_fetching = []
+
+    async with session_slots_taken(database.OFF_LOOP_SESSIONS - 1) as slots:
+        async def fetch_profile(account, user_id):
+            slot_free_while_fetching.append(not slots.locked())
+            return {"name": "Priya"}
+        monkeypatch.setattr(quiet_channel.adapter, "fetch_profile", fetch_profile)
+        register_inbound_handler(AsyncMock(return_value=True))
+
+        await process_channel_message(account.id, _inbound())
+
+    assert slot_free_while_fetching == [True]
 
 
 @pytest.mark.asyncio

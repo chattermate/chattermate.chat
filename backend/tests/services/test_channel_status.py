@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -31,7 +32,8 @@ from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import agent_rooms, channel_status
 from app.services.channel_status import process_status_event, record_sent, replaceable_by
-from tests.socket_db import serve_session_off_loop
+from app import database
+from tests.session_db import serve_session_off_loop, session_slots_taken
 
 
 class _FakePipeline:
@@ -333,3 +335,37 @@ async def test_every_receipt_is_announced_even_for_unknown_messages(
     assert event.kind == EventKind.STATUS
     assert event.status.external_message_id == "wamid.ELSEWHERE"
     assert event.event_id == f"{account.id}:wamid.ELSEWHERE:delivered"
+
+
+@pytest.mark.asyncio
+async def test_a_receipt_waits_for_a_free_session_slot_rather_than_failing(
+        db, account, test_organization, mock_sio, redis):
+    message = _message(db, test_organization.id, "wamid.1")
+
+    async with session_slots_taken(database.OFF_LOOP_SESSIONS) as slots:
+        receipt = asyncio.create_task(process_status_event(account.id, _event(DeliveryState.READ)))
+        await asyncio.sleep(0.05)
+        assert not receipt.done()  # queued behind the requests, not refused
+
+        slots.release()  # a request finishes
+        await asyncio.wait_for(receipt, 5)
+        await slots.acquire()  # rebalance for the context manager
+
+    db.refresh(message)
+    assert message.channel_status == "read"
+
+
+@pytest.mark.asyncio
+async def test_extensions_hear_a_receipt_without_it_holding_a_session_slot(
+        db, account, test_organization, mock_sio, redis):
+    _message(db, test_organization.id, "wamid.1")
+    slot_free_while_listening = []
+
+    async with session_slots_taken(database.OFF_LOOP_SESSIONS - 1) as slots:
+        async def listen(event):
+            slot_free_while_listening.append(not slots.locked())
+        register_event_listener(listen)
+
+        await process_status_event(account.id, _event(DeliveryState.READ))
+
+    assert slot_free_while_listening == [True]

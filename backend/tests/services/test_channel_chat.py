@@ -41,7 +41,7 @@ from app.services.business_message import remember_business_message
 from app.services.channel_chat import process_channel_message
 from app.services.customer_erasure import erase_customers, erase_sessions
 from app.services.message_delivery import DeliveryResult
-from tests.socket_db import serve_session_off_loop
+from tests.session_db import serve_session_off_loop
 
 
 def make_inbound(text="hello"):

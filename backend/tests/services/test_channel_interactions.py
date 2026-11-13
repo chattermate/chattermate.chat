@@ -30,7 +30,7 @@ from app.repositories.rating import RatingRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import channel_chat
 from app.services.channel_chat import process_channel_interaction, process_channel_message
-from tests.socket_db import serve_session_off_loop
+from tests.session_db import serve_session_off_loop
 
 
 @pytest.fixture

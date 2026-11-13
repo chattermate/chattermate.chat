@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.channels.base import InboundMessage
 from app.core.logger import get_logger
-from app.database import SessionLocal
+from app.database import close_session, session_off_loop
 from app.models.ticket import Ticket
 from app.repositories.ticket import TicketRepository
 from app.services.ticket_email import (
@@ -83,7 +83,7 @@ async def record_ticket_email_reply(
 ) -> None:
     """Append an inbound email to its ticket. Runs from a BackgroundTask with
     its own DB session, mirroring process_channel_message."""
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         ticket = TicketRepository(db).get_by_id(ticket_id, organization_id)
         if ticket is None:
@@ -111,4 +111,4 @@ async def record_ticket_email_reply(
         db.rollback()
         logger.error(f"Failed to record email reply on ticket {ticket_id}: {e}")
     finally:
-        db.close()
+        close_session(db)

@@ -34,6 +34,7 @@ from app.services.ticket_email import (
     ticket_root_message_id,
 )
 from app.services.ticket_email_reply import find_ticket_for_reply, record_ticket_email_reply
+from tests.session_db import serve_session_off_loop
 
 
 @pytest.fixture(autouse=True)
@@ -301,17 +302,7 @@ class TestRecordingReplies:
     ):
         ticket = make_ticket(service, db, test_organization)
 
-        class _NonClosing:
-            def __init__(self, inner):
-                self._inner = inner
-
-            def __getattr__(self, name):
-                return getattr(self._inner, name)
-
-            def close(self):
-                pass
-
-        monkeypatch.setattr(ticket_email_reply, "SessionLocal", lambda: _NonClosing(db))
+        serve_session_off_loop(monkeypatch, ticket_email_reply, db)
         with patch("app.services.ticket_events.emit_ticket_update", AsyncMock()) as emit:
             await record_ticket_email_reply(
                 test_organization.id, ticket.id, inbound_reply(ticket.id))
@@ -326,5 +317,5 @@ class TestRecordingReplies:
     async def test_background_task_survives_an_unknown_ticket(
         self, db, test_organization, monkeypatch
     ):
-        monkeypatch.setattr(ticket_email_reply, "SessionLocal", lambda: db)
+        serve_session_off_loop(monkeypatch, ticket_email_reply, db)
         await record_ticket_email_reply(test_organization.id, uuid4(), inbound_reply())

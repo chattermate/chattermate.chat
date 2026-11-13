@@ -27,7 +27,7 @@ from app.repositories.agent_action import AgentActionRepository
 from app.repositories.agent_action_call import AgentActionCallRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import host_action_runtime, widget_journeys, widget_reply
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 
 @pytest.fixture

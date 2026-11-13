@@ -25,7 +25,7 @@ from app.api import widget_chat
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import reply_limits
 from tests.services.test_reply_limits import FakeRedis
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 
 class ModelCalled(Exception):

@@ -14,8 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
+from app import database
 from app.api import widget_chat
 
 
@@ -27,3 +29,17 @@ def serve_session_off_loop(monkeypatch, module, db) -> None:
 def serve_socket_db(monkeypatch, db) -> None:
     """Give widget_chat's socket handlers the test's session."""
     serve_session_off_loop(monkeypatch, widget_chat, db)
+
+
+@asynccontextmanager
+async def session_slots_taken(count: int):
+    """Take count of the slots session_off_loop shares between requests, as
+    in-flight requests would, and give them back on exit. Yields the slots."""
+    slots = database._slots()
+    for _ in range(count):
+        await slots.acquire()
+    try:
+        yield slots
+    finally:
+        for _ in range(count):
+            slots.release()

@@ -33,7 +33,7 @@ from app.models.schemas.widget import WidgetCreate
 from app.core.security import encrypt_api_key
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 
 @pytest.fixture

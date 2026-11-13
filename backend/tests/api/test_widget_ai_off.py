@@ -26,7 +26,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import ai_access, host_action_runtime, message_delivery, widget_reply
 from app.services.ai_access import AI_OFF_ATTRIBUTE, AI_OFF_NOTICE, FORM_RECEIVED_NOTICE
-from tests.socket_db import serve_socket_db
+from tests.session_db import serve_socket_db
 
 
 @pytest.fixture
