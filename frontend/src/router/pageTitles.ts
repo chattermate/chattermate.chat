@@ -40,6 +40,7 @@ export const PAGE_TITLES = {
   '/settings/subscription': 'Subscription',
   '/settings/subscription/setup/:planId': 'Subscription',
   '/settings/ticketing': 'Ticketing',
+  '/settings/saved-replies': 'Saved replies',
   '/settings/integrations': 'Integrations',
   '/settings/app-integrations': 'App Integrations',
   '/settings/widget-apps': 'Widget Apps',

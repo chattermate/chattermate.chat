@@ -26,6 +26,9 @@ import { computed, nextTick, ref, watch } from 'vue'
 import ActionMenu from '@/components/common/ActionMenu.vue'
 import { navIconSvg } from '@/components/layout/navIcons'
 import { matchMentionables, mentionQuery, mentionedIds, type Mentionable } from './mentions'
+import SavedReplyPicker from './SavedReplyPicker.vue'
+import { fillReply, type ReplyContext } from './savedReplyText'
+import type { SavedReply } from '@/services/savedReplies'
 
 export type ComposerMode = 'reply' | 'note'
 
@@ -42,6 +45,12 @@ const props = defineProps<{
   /** WhatsApp's 24h window closed: only a template reopens it */
   showTemplateNotice: boolean
   teammates: Mentionable[]
+  savedReplies: SavedReply[]
+  savedRepliesLoaded: boolean
+  /** Fills a saved reply's {{variables}} */
+  replyContext: ReplyContext
+  /** May add saved replies (the picker's "Add one", Save as saved reply) */
+  canManageReplies: boolean
 }>()
 
 const emit = defineEmits<{
@@ -51,6 +60,9 @@ const emit = defineEmits<{
   (e: 'take-over'): void
   (e: 'paste', event: ClipboardEvent): void
   (e: 'send-template'): void
+  /** The picker opened: load the saved replies if they aren't yet */
+  (e: 'open-saved-replies'): void
+  (e: 'save-reply', body: string): void
 }>()
 
 const input = ref<HTMLTextAreaElement | null>(null)
@@ -94,6 +106,43 @@ async function pick(person: Mentionable) {
   el.setSelectionRange(start + insert.length, start + insert.length)
 }
 
+// ---- Saved replies (⚡, or "/" in an empty reply) ----
+const picker = ref<InstanceType<typeof SavedReplyPicker> | null>(null)
+const pickerOpen = ref(false)
+const slashQuery = computed(() =>
+  !isNote.value && /^\/[^\n]{0,40}$/.test(message.value) ? message.value.slice(1) : null
+)
+const showPicker = computed(() => !isNote.value && (pickerOpen.value || slashQuery.value !== null))
+watch(showPicker, (open) => { if (open) emit('open-saved-replies') }, { immediate: true })
+
+function togglePicker() {
+  pickerOpen.value = !pickerOpen.value
+}
+
+function closePicker() {
+  pickerOpen.value = false
+  if (slashQuery.value !== null) message.value = ''
+  input.value?.focus()
+}
+
+async function pickReply(reply: SavedReply) {
+  const text = fillReply(reply.body, props.replyContext)
+  const el = input.value
+  let caretAfter = text.length
+  if (slashQuery.value !== null || !message.value.trim()) {
+    message.value = text
+  } else {
+    // Into what is already written, at the caret
+    const caret = el?.selectionStart ?? message.value.length
+    message.value = message.value.slice(0, caret) + text + message.value.slice(caret)
+    caretAfter = caret + text.length
+  }
+  pickerOpen.value = false
+  await nextTick()
+  el?.focus()
+  el?.setSelectionRange(caretAfter, caretAfter)
+}
+
 // The note was sent (the parent cleared it): forget the mentions picked for it.
 // An empty box in Reply mode is the other draft, not a sent note.
 watch(message, (text) => { if (!text && isNote.value) picked.value = [] })
@@ -106,6 +155,25 @@ function submit() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+  // Typing "/…" in an empty reply drives the picker from the box itself
+  if (slashQuery.value !== null && picker.value) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      picker.value.move(event.key === 'ArrowDown' ? 1 : -1)
+      return
+    }
+    if ((event.key === 'Enter' || event.key === 'Tab') && picker.value.hasMatches) {
+      event.preventDefault()
+      picker.value.choose()
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      closePicker()
+      return
+    }
+  }
   if (suggestions.value.length) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
@@ -160,6 +228,16 @@ defineExpose({ focus: () => input.value?.focus() })
       </div>
 
       <div class="field">
+        <SavedReplyPicker
+          v-if="showPicker"
+          ref="picker"
+          :replies="savedReplies"
+          :query="slashQuery"
+          :loaded="savedRepliesLoaded"
+          :can-manage="canManageReplies"
+          @pick="pickReply"
+          @close="closePicker"
+        />
         <textarea
           ref="input"
           v-model="message"
@@ -191,7 +269,30 @@ defineExpose({ focus: () => input.value?.focus() })
 
       <div class="bar">
         <div class="tools">
-          <slot v-if="!isNote" name="attach" />
+          <template v-if="!isNote">
+            <button
+              type="button"
+              class="tool"
+              aria-label="Saved replies"
+              aria-keyshortcuts="/"
+              :aria-expanded="showPicker"
+              title="Saved replies (type / in an empty reply)"
+              @click="togglePicker"
+            >
+              <span aria-hidden="true" v-html="navIconSvg('bolt', 16)"></span>
+            </button>
+            <slot name="attach" />
+            <button
+              v-if="canManageReplies && hasText && slashQuery === null"
+              type="button"
+              class="tool"
+              aria-label="Save as saved reply"
+              title="Save as saved reply"
+              @click="emit('save-reply', message.trim())"
+            >
+              <span aria-hidden="true" v-html="navIconSvg('bookmark', 16)"></span>
+            </button>
+          </template>
         </div>
         <div class="send-group">
           <kbd aria-hidden="true">↵</kbd>
@@ -366,6 +467,31 @@ defineExpose({ focus: () => input.value?.focus() })
 .mention-option:hover {
   background: var(--o08);
   color: var(--text);
+}
+
+.tool {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tool:hover,
+.tool[aria-expanded='true'] {
+  background: var(--o06);
+  color: var(--text);
+}
+
+.tool:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
 }
 
 .bar {

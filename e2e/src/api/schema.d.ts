@@ -4334,6 +4334,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/saved-replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Saved Replies */
+        get: operations["list_saved_replies_api_v1_saved_replies_get"];
+        put?: never;
+        /** Create Saved Reply */
+        post: operations["create_saved_reply_api_v1_saved_replies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saved-replies/{reply_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Saved Reply */
+        put: operations["update_saved_reply_api_v1_saved_replies__reply_id__put"];
+        post?: never;
+        /** Delete Saved Reply */
+        delete: operations["delete_saved_reply_api_v1_saved_replies__reply_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/agent-performance": {
         parameters: {
             query?: never;
@@ -9047,6 +9083,33 @@ export interface components {
          * @enum {string}
          */
         SSLStatus: "none" | "pending" | "active" | "failed";
+        /** SavedReplyIn */
+        SavedReplyIn: {
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Shortcut */
+            shortcut?: string | null;
+        };
+        /** SavedReplyOut */
+        SavedReplyOut: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Shortcut */
+            shortcut?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * SessionStatus
          * @enum {string}
@@ -19298,6 +19361,140 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChatDetailResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_saved_replies_api_v1_saved_replies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedReplyOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_saved_reply_api_v1_saved_replies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedReplyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedReplyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_saved_reply_api_v1_saved_replies__reply_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reply_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedReplyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedReplyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_saved_reply_api_v1_saved_replies__reply_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reply_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

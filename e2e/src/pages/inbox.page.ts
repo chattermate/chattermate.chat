@@ -144,6 +144,27 @@ export class InboxPage {
     })
   }
 
+  /** Types /shortcut in the reply box and picks the saved reply it matches */
+  async insertSavedReply(shortcut: string): Promise<void> {
+    await step(`Agent inserts the saved reply /${shortcut}`, async () => {
+      await this.messageInput.fill(`/${shortcut}`)
+      await this.page.getByRole('listbox', { name: 'Saved replies' }).getByRole('option', { name: new RegExp(`/${shortcut}`) }).click()
+      await expect(this.messageInput).not.toHaveValue(`/${shortcut}`)
+    })
+  }
+
+  /** Saves what is in the reply box as a saved reply, from the composer */
+  async saveReplyAs(title: string, shortcut: string): Promise<void> {
+    await step(`Agent saves the reply as "${title}"`, async () => {
+      await this.page.getByRole('button', { name: 'Save as saved reply' }).click()
+      const dialog = this.page.getByRole('dialog', { name: 'Save as saved reply' })
+      await dialog.getByLabel('Title').fill(title)
+      await dialog.getByLabel('Shortcut').fill(shortcut)
+      await dialog.getByRole('button', { name: 'Save reply' }).click()
+      await expect(dialog).toBeHidden()
+    })
+  }
+
   /** The handover summary the AI left for the team */
   get handoverSummary(): Locator {
     return this.page.getByRole('region', { name: /Handover summary/ })
@@ -162,6 +183,14 @@ export class InboxPage {
       await this.messageInput.fill(text)
       await this.page.getByRole('button', { name: 'Send', exact: true }).click()
       await expect(this.page.locator('.message.agent .message-bubble').last()).toContainText(text)
+    })
+  }
+
+  /** Sends whatever is already in the reply box */
+  async sendTyped(): Promise<void> {
+    await step('Agent sends the reply', async () => {
+      await this.page.getByRole('button', { name: 'Send', exact: true }).click()
+      await expect(this.messageInput).toHaveValue('')
     })
   }
 

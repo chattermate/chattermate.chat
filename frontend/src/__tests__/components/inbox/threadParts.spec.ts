@@ -310,7 +310,8 @@ describe('ThreadComposer', () => {
     mount(ThreadComposer, {
       props: {
         modelValue: '', mode: 'reply', canReply: true, canTakeOver: false, canSend: true, hasFiles: false,
-        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }], ...props,
+        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }],
+        savedReplies: [], savedRepliesLoaded: true, replyContext: {}, canManageReplies: true, ...props,
       },
       attachTo: document.body,
     })
@@ -346,7 +347,8 @@ describe('ThreadComposer notes', () => {
     mount(ThreadComposer, {
       props: {
         modelValue: '', mode: 'note', canReply: false, canTakeOver: true, canSend: false, hasFiles: false,
-        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }], ...props,
+        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }],
+        savedReplies: [], savedRepliesLoaded: true, replyContext: {}, canManageReplies: true, ...props,
       },
       attachTo: document.body,
     })

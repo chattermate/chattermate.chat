@@ -46,6 +46,9 @@ import ThreadBanner from './ThreadBanner.vue'
 import ThreadMessage from './ThreadMessage.vue'
 import ThreadComposer, { type ComposerMode } from './ThreadComposer.vue'
 import ThreadNote from './ThreadNote.vue'
+import SavedReplyForm from '@/components/savedReplies/SavedReplyForm.vue'
+import { useSavedReplies } from '@/composables/useSavedReplies'
+import type { SavedReplyInput } from '@/services/savedReplies'
 import HandoverSummaryCard from './HandoverSummaryCard.vue'
 import { useComposerDrafts } from './composerDrafts'
 import { customerName } from './inboxPresentation'
@@ -201,6 +204,22 @@ async function addNote(body: string, mentions: string[]) {
   } catch (err: any) {
     toast.error(err?.response?.data?.detail || 'The note could not be added. Try again.')
   }
+}
+
+// ---- Saved replies ----
+const savedReplies = useSavedReplies()
+const replyContext = computed(() => ({
+  customerName: props.chat.customer.full_name,
+  customerEmail: props.chat.customer.email,
+  agentName: userService.getUserName(),
+}))
+const loadSavedReplies = () => savedReplies.load().catch(() => toast.error('Saved replies could not be loaded.'))
+/** The text "Save as saved reply" starts from; null when the dialog is closed */
+const savingReply = ref<string | null>(null)
+async function saveReply(input: SavedReplyInput) {
+  await savedReplies.create(input)
+  savingReply.value = null
+  toast.success(`Saved as "${input.title}"`)
 }
 
 // ---- Snooze ----
@@ -431,6 +450,12 @@ defineExpose({ requestClose })
       :has-files="uploadedFiles.length > 0"
       :show-template-notice="templateCanReopen && canUseTemplates"
       :teammates="mentionables"
+      :saved-replies="savedReplies.replies.value"
+      :saved-replies-loaded="savedReplies.loaded.value"
+      :reply-context="replyContext"
+      :can-manage-replies="canManage"
+      @open-saved-replies="loadSavedReplies"
+      @save-reply="savingReply = $event"
       @send="handleSendMessageWithAttachments"
       @send-and-close="sendAndClose"
       @send-note="addNote"
@@ -462,6 +487,15 @@ defineExpose({ requestClose })
         <button type="button" class="modal-btn" @click="confirmingTakeover = false">Cancel</button>
         <button type="button" class="modal-btn primary" @click="confirmTakeover">Take over chat</button>
       </template>
+    </BaseModal>
+
+    <BaseModal v-if="savingReply !== null" title="Save as saved reply" width="560px" @close="savingReply = null">
+      <SavedReplyForm
+        :initial="{ title: '', body: savingReply, shortcut: '' }"
+        submit-label="Save reply"
+        :save="saveReply"
+        @cancel="savingReply = null"
+      />
     </BaseModal>
 
     <JiraTicketModal

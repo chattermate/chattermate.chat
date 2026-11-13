@@ -68,6 +68,7 @@ except ImportError:
     print("Enterprise models not available")
 from app.api import session_to_agent
 from app.api import session_notes
+from app.api import saved_replies
 from app.api import agent_logo
 from app.workers.chat_auto_closer import run_auto_closer_loop
 from app.workers.journey_data_purge import run_purge_loop
@@ -330,6 +331,11 @@ app.include_router(
     session_notes.router,
     prefix=f"{settings.API_V1_STR}/sessions",
     tags=["session_to_agent"]
+)
+app.include_router(
+    saved_replies.router,
+    prefix=f"{settings.API_V1_STR}/saved-replies",
+    tags=["saved_replies"]
 )
 
 app.include_router(

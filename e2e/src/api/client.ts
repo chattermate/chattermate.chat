@@ -53,7 +53,18 @@ export class ApiClient {
     return response
   }
 
-  private send(method: string, path: string, options: CallOptions): Promise<APIResponse> {
+  private async send(method: string, path: string, options: CallOptions): Promise<APIResponse> {
+    try {
+      return await this.fetch(method, path, options)
+    } catch (error) {
+      // The server may close an idle keep-alive connection just as it is reused.
+      // Only a read is safe to send twice.
+      if (method !== 'GET' || !String(error).includes('ECONNRESET')) throw error
+      return this.fetch(method, path, options)
+    }
+  }
+
+  private fetch(method: string, path: string, options: CallOptions): Promise<APIResponse> {
     return this.request.fetch(`${env.apiUrl}${path}`, {
       method,
       data: options.data,

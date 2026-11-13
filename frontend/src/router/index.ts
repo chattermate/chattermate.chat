@@ -110,6 +110,15 @@ const baseRoutes = [
     },
   },
   {
+    path: '/settings/saved-replies',
+    name: 'saved-replies-settings',
+    component: () => import('@/views/settings/SavedRepliesSettings.vue'),
+    meta: {
+      requiresAuth: true,
+      layout: 'dashboard',
+    },
+  },
+  {
     path: '/settings/ticketing',
     name: 'ticketing-settings',
     component: () => import('@/views/settings/TicketingSettings.vue'),

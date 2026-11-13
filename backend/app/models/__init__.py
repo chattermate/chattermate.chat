@@ -30,6 +30,7 @@ from .knowledge import Knowledge
 from .chat_history import ChatHistory
 from .session_to_agent import SessionToAgent, SessionStatus
 from .conversation_note import ConversationNote, ConversationNoteMention
+from .saved_reply import SavedReply
 from .rating import Rating
 from app.models.jira import JiraToken
 from app.models.shopify import ShopifyShop
@@ -98,6 +99,7 @@ __all__ = [
     "SessionToAgent",
     "ConversationNote",
     "ConversationNoteMention",
+    "SavedReply",
     "SessionStatus",
     "Rating",
     "JiraToken",

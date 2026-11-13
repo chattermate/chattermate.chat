@@ -1,15 +1,4 @@
-import { test, expect, AI_REPLY, type ChatWidget, type FakeLlm, type TestAgent } from '@e2e'
-
-/** A named customer (the contact form follows a handover) waiting for the team */
-async function askForAPerson(agent: TestAgent, widget: ChatWidget, llm: FakeLlm): Promise<void> {
-  await llm.script(agent, (s) => s
-    .when(/human|person/i).handOver('Connecting you with a teammate.')
-    .otherwise().reply('Happy to help!'))
-  await widget.embed()
-  await widget.open()
-  await widget.send('I want to talk to a person')
-  await widget.shareContactDetails()
-}
+import { test, expect, askForAPerson, AI_REPLY } from '@e2e'
 
 test.describe('inbox', () => {
   test.use({ agentSettings: { transferToHuman: true } })

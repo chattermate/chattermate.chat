@@ -59,6 +59,8 @@ export const NAV_ICONS: Record<string, string> = {
     pause: '<rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/>',
     handover: '<path d="M7 17l-4-4 4-4M3 13h12a6 6 0 0 0 0-12"/>',
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+    bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+    bookmark: '<path d="M6 4h12v16l-6-4-6 4z"/>',
     filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
     keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
 }
