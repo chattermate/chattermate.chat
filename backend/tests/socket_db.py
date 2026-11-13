@@ -19,6 +19,11 @@ from unittest.mock import AsyncMock
 from app.api import widget_chat
 
 
+def serve_session_off_loop(monkeypatch, module, db) -> None:
+    """Give the code in module that opens its own session_off_loop() the test's session."""
+    monkeypatch.setattr(module, "session_off_loop", AsyncMock(return_value=db))
+
+
 def serve_socket_db(monkeypatch, db) -> None:
     """Give widget_chat's socket handlers the test's session."""
-    monkeypatch.setattr(widget_chat, "session_off_loop", AsyncMock(return_value=db))
+    serve_session_off_loop(monkeypatch, widget_chat, db)

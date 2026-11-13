@@ -29,7 +29,7 @@ from app.channels.interactive import from_options
 from app.channels.interactive_limits import InteractiveLimits
 from app.core.security import decrypt_api_key
 from app.core.logger import get_logger
-from app.database import SessionLocal, release_connection
+from app.database import close_session, release_connection, session_off_loop
 from app.models.channels import ChannelAccount
 from app.models.session_to_agent import SessionStatus
 from app.repositories.agent import AgentRepository
@@ -72,7 +72,7 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
     to the handling human), and delivers the reply through the channel's
     adapter. Runs from a BackgroundTask with its own DB session.
     """
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account_repo = ChannelAccountRepository(db)
         account = account_repo.get_by_id(account_id)
@@ -224,7 +224,7 @@ async def process_channel_message(account_id, inbound: InboundMessage) -> None:
     except Exception as e:
         logger.error(f"Error processing channel message: {e}", exc_info=True)
     finally:
-        db.close()
+        close_session(db)
 
 
 async def _send_channel_prompts(db, adapter, account, conversation, response) -> None:
@@ -245,7 +245,7 @@ async def _send_channel_prompts(db, adapter, account, conversation, response) ->
 async def process_channel_interaction(account_id, interaction: ChannelInteraction) -> None:
     """Handle a non-message interaction (a shared phone number) from a channel.
     Runs from a BackgroundTask with its own DB session."""
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
@@ -260,7 +260,7 @@ async def process_channel_interaction(account_id, interaction: ChannelInteractio
     except Exception as e:
         logger.error(f"Error processing channel interaction: {e}", exc_info=True)
     finally:
-        db.close()
+        close_session(db)
 
 
 def _handle_contact(db, conversation, interaction: ChannelInteraction) -> None:

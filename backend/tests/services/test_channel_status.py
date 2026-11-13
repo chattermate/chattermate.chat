@@ -31,6 +31,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services import agent_rooms, channel_status
 from app.services.channel_status import process_status_event, record_sent, replaceable_by
+from tests.socket_db import serve_session_off_loop
 
 
 class _FakePipeline:
@@ -79,16 +80,7 @@ def mock_sio(monkeypatch):
 
 @pytest.fixture
 def use_test_db(db, monkeypatch):
-    class _NonClosing:
-        def __init__(self, inner):
-            self._inner = inner
-
-        def __getattr__(self, name):
-            return getattr(self._inner, name)
-
-        def close(self):
-            pass
-    monkeypatch.setattr(channel_status, "SessionLocal", lambda: _NonClosing(db))
+    serve_session_off_loop(monkeypatch, channel_status, db)
     return db
 
 

@@ -368,7 +368,7 @@ class TestAppSurfaceDispatch:
 class TestHomeWelcomeDelivery:
     def _patch_common(self, monkeypatch):
         db = MagicMock()
-        monkeypatch.setattr(slack_events, "SessionLocal", lambda: db)
+        monkeypatch.setattr(slack_events, "session_off_loop", AsyncMock(return_value=db))
         account = MagicMock(); account.is_active = True
         repo = MagicMock(); repo.get_by_id.return_value = account
         monkeypatch.setattr(slack_events, "ChannelAccountRepository", lambda d: repo)

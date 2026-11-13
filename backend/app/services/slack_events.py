@@ -41,7 +41,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.redis import get_redis
 from app.core.s3 import get_s3_signed_url
-from app.database import SessionLocal
+from app.database import close_session, session_off_loop
 from app.repositories.agent import AgentRepository
 from app.repositories.channels import ChannelAccountRepository
 from app.repositories.channels.agent_config import AgentChannelConfigRepository
@@ -91,7 +91,7 @@ async def deliver_home_welcome(account_id: UUID, user_id: str, channel: str) -> 
         return
     if _already_welcomed(account_id, user_id):
         return
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
@@ -102,14 +102,14 @@ async def deliver_home_welcome(account_id: UUID, user_id: str, channel: str) -> 
     except Exception as e:
         logger.error(f"Slack Messages-tab welcome failed: {e}")
     finally:
-        db.close()
+        close_session(db)
 
 
 async def handle_assistant_thread_started(account_id: UUID, channel_id: str, thread_ts: str) -> None:
     """On assistant-sidebar open: show a status, offer starter prompts, welcome."""
     if not channel_id or not thread_ts:
         return
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
@@ -123,7 +123,7 @@ async def handle_assistant_thread_started(account_id: UUID, channel_id: str, thr
     except Exception as e:
         logger.error(f"Slack assistant welcome failed: {e}")
     finally:
-        db.close()
+        close_session(db)
 
 
 async def _agent_card(agent) -> dict:
@@ -155,7 +155,7 @@ async def publish_agent_home(account_id: UUID, user_id: str) -> None:
     workspace, how to use it, and a link to the dashboard."""
     if not user_id:
         return
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None or not account.is_active:
@@ -167,4 +167,4 @@ async def publish_agent_home(account_id: UUID, user_id: str) -> None:
     except Exception as e:
         logger.error(f"Slack Home tab publish failed: {e}")
     finally:
-        db.close()
+        close_session(db)

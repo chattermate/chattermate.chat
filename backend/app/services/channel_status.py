@@ -28,7 +28,7 @@ from app.channels.app_hooks import ChannelEvent, EventKind, emit_channel_event, 
 from app.channels.base import DeliveryState, StatusEvent
 from app.core.logger import get_logger
 from app.core.redis import get_redis
-from app.database import SessionLocal
+from app.database import close_session, session_off_loop
 from app.models.chat_history import ChatHistory
 from app.repositories.channels import ChannelAccountRepository
 from app.repositories.chat import ChatRepository
@@ -62,7 +62,7 @@ def replaceable_by(new: DeliveryState) -> Set[str]:
 async def process_status_event(account_id: UUID, event: StatusEvent) -> None:
     """Apply one receipt from a channel webhook. Runs from a BackgroundTask
     with its own DB session."""
-    db = SessionLocal()
+    db = await session_off_loop()
     try:
         account = ChannelAccountRepository(db).get_by_id(account_id)
         if account is None:
@@ -96,7 +96,7 @@ async def process_status_event(account_id: UUID, event: StatusEvent) -> None:
     except Exception as e:
         logger.error(f"Error processing channel status event: {e}", exc_info=True)
     finally:
-        db.close()
+        close_session(db)
 
 
 async def record_sent(db: Session, message_id: int, account_id: UUID,
