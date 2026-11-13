@@ -184,7 +184,34 @@ def product_from_node(node: dict) -> dict:
         "created_at": node.get("createdAt"),
         "updated_at": node.get("updatedAt"),
         "cart_variant_id": cart_variant_id(node),
+        # For the widget's carousel ("Only 3 left") and its product sheet, which
+        # fetches the options itself when opened (shopify_product_options.py)
+        "published": bool(node.get("publishedAt")),
+        "tracks_inventory": node.get("tracksInventory"),
+        "has_choices": node.get("hasOnlyDefaultVariant") is False,
     }
+
+
+def shop_for_agent(agent_id: Any, org_id: Any) -> Optional[ShopifyShop]:
+    """The installed Shopify shop the agent uses, when it belongs to the agent's
+    organization and the agent has Shopify on; otherwise None."""
+    try:
+        with SessionLocal() as db:
+            shopify_config = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
+            if not shopify_config or not shopify_config.enabled or not shopify_config.shop_id:
+                logger.warning("Shopify integration is not enabled for this agent")
+                return None
+            shop = ShopifyShopRepository(db).get_shop(shopify_config.shop_id)
+            if not shop or not shop.is_installed:
+                logger.warning("Shopify shop not found or not installed")
+                return None
+            if str(shop.organization_id) != str(UUID(str(org_id))):
+                logger.warning(f"Shop {shop.id} does not belong to organization {org_id}")
+                return None
+            return shop
+    except Exception as e:
+        logger.error(f"Error getting shop for agent: {str(e)}")
+        return None
 
 
 class ShopifyTools(Toolkit):
@@ -219,44 +246,9 @@ class ShopifyTools(Toolkit):
 
 
     def _get_shop_for_agent(self) -> Optional[ShopifyShop]:
-        """
-        Helper method to get the Shopify shop associated with the agent.
-        
-        Returns:
-            ShopifyShop: The shop associated with the agent, or None if not found or not enabled.
-        """
-        try:
-            logger.debug(f"Getting shop for agent {self.agent_id}")
-            
-            with SessionLocal() as db:
-                # Get the agent's Shopify configuration
-                agent_shopify_config_repo = AgentShopifyConfigRepository(db)
-                shopify_config = agent_shopify_config_repo.get_agent_shopify_config(str(self.agent_id))
-                
-                if not shopify_config or not shopify_config.enabled or not shopify_config.shop_id:
-                    logger.warning("Shopify integration is not enabled for this agent")
-                    return None
-                    
-                # Get the shop
-                shopify_repo = ShopifyShopRepository(db)
-                shop = shopify_repo.get_shop(shopify_config.shop_id)
-                
-                if not shop or not shop.is_installed:
-                    logger.warning("Shopify shop not found or not installed")
-                    return None
-                    
-                # Verify the shop belongs to the current organization
-                org_uuid = UUID(str(self.org_id))
-                if str(shop.organization_id) != str(org_uuid):
-                    logger.warning(f"Shop {shop.id} does not belong to organization {self.org_id}")
-                    return None
-                    
-                return shop
-            
-        except Exception as e:
-            logger.error(f"Error getting shop for agent: {str(e)}")
-            return None
-    
+        """The installed shop this agent uses, in its organization, or None."""
+        return shop_for_agent(self.agent_id, self.org_id)
+
     def list_products(self, limit: int = 10) -> str:
         """
         List products from the Shopify store.
@@ -443,7 +435,7 @@ class ShopifyTools(Toolkit):
                     vendor
                     totalInventory
                     publishedAt
-                    variants(first: 2) { edges { node { id availableForSale } } }
+                    tracksInventory hasOnlyDefaultVariant variants(first: 2) { edges { node { id availableForSale } } }
                     priceRangeV2 {
                       minVariantPrice {
                         amount
@@ -982,7 +974,7 @@ class ShopifyTools(Toolkit):
                         vendor
                         totalInventory
                         publishedAt
-                        variants(first: 2) {{ edges {{ node {{ id availableForSale }} }} }}
+                        tracksInventory hasOnlyDefaultVariant variants(first: 2) {{ edges {{ node {{ id availableForSale }} }} }}
                         priceRangeV2 {{
                           minVariantPrice {{
                             amount
@@ -1046,7 +1038,7 @@ class ShopifyTools(Toolkit):
                         vendor
                         totalInventory
                         publishedAt
-                        variants(first: 2) { edges { node { id availableForSale } } }
+                        tracksInventory hasOnlyDefaultVariant variants(first: 2) { edges { node { id availableForSale } } }
                         priceRangeV2 {
                           minVariantPrice {
                             amount

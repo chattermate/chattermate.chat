@@ -91,6 +91,10 @@ class ShopifyProduct(BaseModel):
     variant_title: Optional[str] = Field(default=None)
     # Set only when one click can add this product (see cart_variant_id)
     cart_variant_id: Optional[str] = Field(default=None)
+    # The widget's carousel and product sheet (shopify_toolkit.product_from_node)
+    published: Optional[bool] = Field(default=None)
+    tracks_inventory: Optional[bool] = Field(default=None)
+    has_choices: Optional[bool] = Field(default=None)
 
     class Config:
         json_encoders = {

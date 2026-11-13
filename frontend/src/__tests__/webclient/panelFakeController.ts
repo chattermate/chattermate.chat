@@ -91,6 +91,7 @@ const baseController = () => ({
     skipReveal: vi.fn(),
     liveTrace: ref<LiveStep[]>([]),
     sendFeedback: vi.fn((_message: WidgetMessage, _value: VisitorFeedback | null) => {}),
+    requestProductOptions: vi.fn((_productId: string) => {}),
     hoverRating: ref(0),
     isSubmittingRating: ref(false),
     handleStarHover: vi.fn((_rating: number) => {}),

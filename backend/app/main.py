@@ -34,6 +34,7 @@ from app.api import widget_chat  # noqa: F401 - imported for side effects (socke
 from app.api import widget_actions  # noqa: F401 - registers the host-action socket handlers
 from app.api import widget_journeys  # noqa: F401 - registers the journey socket handlers
 from app.api import widget_feedback  # noqa: F401 - registers the answer-feedback socket handler
+from app.api import widget_products  # noqa: F401 - registers the product-sheet socket handler
 from fastapi import FastAPI, BackgroundTasks
 from app.core.config import settings, verify_secret_configuration
 from app.core.encryption import verify_encryption_key

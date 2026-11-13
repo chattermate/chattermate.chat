@@ -143,6 +143,8 @@ export interface WidgetConversation {
     liveTrace: Shown<LiveStep[]>
     /** Thumb an AI reply up or down, or take the thumb back (null). */
     sendFeedback: (message: WidgetMessage, value: VisitorFeedback | null) => void
+    /** Ask the shop for a product's options, for the product sheet (product-sheet.ts). */
+    requestProductOptions: (productId: string) => void
     hoverRating: Shown<number>
     isSubmittingRating: Shown<boolean>
     handleStarHover: (rating: number) => void

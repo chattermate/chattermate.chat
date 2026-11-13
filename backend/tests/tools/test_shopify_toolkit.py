@@ -776,6 +776,16 @@ def test_product_from_node_flattens_a_full_node():
     assert product["cart_variant_id"] == "111"
 
 
+def test_a_product_with_sizes_says_it_has_choices():
+    product = product_from_node({"id": "gid://shopify/Product/5", "publishedAt": PUBLISHED,
+                                 "tracksInventory": True, "hasOnlyDefaultVariant": False,
+                                 "variants": {"edges": [_variant("1"), _variant("2")]}})
+    assert product["published"] is True and product["tracks_inventory"] is True
+    assert product["has_choices"] is True and product["cart_variant_id"] is None
+    assert product_from_node({"id": "gid://shopify/Product/6", "hasOnlyDefaultVariant": True})["has_choices"] is False
+    assert product_from_node({"id": "gid://shopify/Product/7"})["has_choices"] is False
+
+
 @pytest.mark.parametrize("call", [
     lambda tools: tools.search_products("board"),
     lambda tools: tools.recommend_products(product_type="board"),
@@ -794,7 +804,10 @@ def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools
         call(shopify_tools)
 
     query = mock_post.call_args.kwargs["json"]["query"]
-    assert "variants(first: 2)" in query
+    # Cheap on purpose: Shopify charges a search for every variant it asks for,
+    # so the sheet reads options itself (shopify_product_options.py).
+    assert "variants(first: 2)" in query and "selectedOptions" not in query
+    assert "hasOnlyDefaultVariant" in query and "tracksInventory" in query
     assert "publishedAt" in query
     cached = json.loads(get_redis.return_value.setex.call_args.args[2])
     assert cached["products"][0]["cart_variant_id"] == "111"

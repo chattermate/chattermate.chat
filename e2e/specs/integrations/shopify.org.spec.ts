@@ -1,4 +1,4 @@
-import { test, expect, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
+import { test, expect, env, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
 
 // Linking a shop changes which sites may call the API, so this runs in the serial
 // `org` project and uninstalls afterwards.
@@ -110,9 +110,32 @@ test.describe('Shopify', () => {
 
       await expect(widget.productCard('E2E Mug').getByRole('button', { name: 'Add to cart' })).toBeVisible(AI_REPLY)
       for (const title of ['E2E Shirt', 'E2E Poster', 'E2E Draft']) {
-        await expect(widget.productCard(title).getByRole('button', { name: /View product/ })).toBeVisible()
+        await expect(widget.viewProduct(title)).toBeVisible()
         await expect(widget.productCard(title).getByRole('button', { name: 'Add to cart' })).toHaveCount(0)
       }
+    })
+
+    test('a customer picks a size in the product sheet and sees it in the cart bar @integrations @redis', async ({ agent, widget, llm }) => {
+      // eslint-disable-next-line playwright/no-skipped-test -- the classic widget has no sheet or cart bar
+      test.skip(env.widgetUi !== 2, 'The product sheet and cart bar are the redesigned widget\'s')
+      await llm.script(agent, offerProducts)
+      await widget.embed({ shopifyStore: shop })
+      await widget.open()
+      await widget.send('Any gift ideas?')
+
+      await widget.chooseOptions('E2E Shirt', ['M'])
+      const sheet = widget.productSheet('E2E Shirt')
+      // S is sold out in the store: it says so, and M is the one picked.
+      await expect(sheet.getByRole('button', { name: 'S (sold out)' })).toBeVisible()
+      await expect(sheet.getByRole('button', { name: 'M', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await sheet.getByRole('button', { name: 'Add to cart' }).click()
+      await expect(sheet.getByRole('status')).toHaveText('Added to your cart', AI_REPLY)
+      await sheet.getByRole('button', { name: 'Close' }).click()
+      await expect(sheet).toHaveCount(0)
+
+      await expect(widget.cartBar).toContainText('1 item', AI_REPLY)
+      await widget.cartBar.getByRole('button', { name: 'View cart' }).click()
+      await expect(widget.itemsInCart).toHaveText('1')
     })
 
     test.describe('elsewhere', () => {
@@ -126,7 +149,7 @@ test.describe('Shopify', () => {
           await widget.open()
           await widget.send('Any gift ideas?')
 
-          await expect(widget.productCard('E2E Mug').getByRole('button', { name: /View product/ })).toBeVisible(AI_REPLY)
+          await expect(widget.viewProduct('E2E Mug')).toBeVisible(AI_REPLY)
           await expect(widget.productCard('E2E Mug').getByRole('button', { name: 'Add to cart' })).toHaveCount(0)
         })
       }

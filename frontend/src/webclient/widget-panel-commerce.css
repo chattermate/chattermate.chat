@@ -1,0 +1,136 @@
+/**
+ * The redesigned widget's commerce (ui 2, plan phase 3): the product carousel's
+ * extras, the product sheet and the cart bar. Product cards themselves are in
+ * widget-panel-cards.css. Rules: see widget-panel.css.
+ */
+
+.chat-container.cm-surface.cm-ui-2 .cm-product__stock {
+    color: var(--cm-text);
+    font-size: 12px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-product__choose {
+    min-height: 32px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-carousel__btn:disabled {
+    opacity: .35;
+    cursor: default;
+}
+
+/* ===== The product sheet ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-backdrop {
+    background: var(--cm-line);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet {
+    border-top: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card) var(--cm-radius-card) 0 0;
+    background: var(--cm-card);
+    color: var(--cm-text);
+    box-shadow: 0 -12px 32px -18px var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet__image {
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet__title {
+    font-size: 15px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet__price {
+    color: var(--cm-muted);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet__legend {
+    color: var(--cm-muted);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet__note {
+    color: var(--cm-muted);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-variant-chip {
+    min-width: 44px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-variant-chip[aria-pressed='true'] {
+    border-color: var(--cm-text);
+    box-shadow: inset 0 0 0 1px var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-variant-chip.is-unavailable {
+    color: var(--cm-muted);
+    text-decoration: line-through;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-enter-active,
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-leave-active {
+    transition: opacity calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-out);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-enter-active .cm-sheet,
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-leave-active .cm-sheet {
+    transition: transform calc(var(--cm-dur-3) * var(--cm-dur-scale)) var(--cm-ease-enter);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-enter-from,
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-leave-to {
+    opacity: 0;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-enter-from .cm-sheet,
+.chat-container.cm-surface.cm-ui-2 .cm-sheet-leave-to .cm-sheet {
+    transform: translateY(100%);
+}
+
+/* ===== The cart bar ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-cart-bar {
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cart-bar__thumbs img {
+    border: 2px solid var(--cm-tint);
+    border-radius: 50%;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cart-bar__summary {
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cart-bar__view,
+.chat-container.cm-surface.cm-ui-2 .cm-cart-bar__checkout {
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: var(--cm-radius-control);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cart-bar__view {
+    border: 1px solid var(--cm-control-line);
+    background: none;
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cart-bar__checkout {
+    border: 0;
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-sheet-enter-active,
+    .chat-container.cm-surface.cm-ui-2 .cm-sheet-leave-active,
+    .chat-container.cm-surface.cm-ui-2 .cm-sheet-enter-active .cm-sheet,
+    .chat-container.cm-surface.cm-ui-2 .cm-sheet-leave-active .cm-sheet {
+        transition: opacity 150ms linear;
+    }
+    .chat-container.cm-surface.cm-ui-2 .cm-sheet-enter-from .cm-sheet,
+    .chat-container.cm-surface.cm-ui-2 .cm-sheet-leave-to .cm-sheet {
+        transform: none;
+    }
+}

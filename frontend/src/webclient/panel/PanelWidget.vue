@@ -37,12 +37,15 @@ import EmailCard from './EmailCard.vue'
 import FrontScreen from './screens/FrontScreen.vue'
 import ConversationEnded from './ConversationEnded.vue'
 import PreviewModal from './PreviewModal.vue'
+import ProductSheet from './ProductSheet.vue'
+import CartBar from './CartBar.vue'
 import { usePanelVisibility } from '../../composables/usePanelVisibility'
 import { usePanelActivity, usePanelCascade, usePanelExpand } from '../../composables/usePanelHostMotion'
 import { postToHost } from '../host-bridge'
 import '../widget-panel.css'
 import '../widget-panel-messages.css'
 import '../widget-panel-answers.css'
+import '../widget-panel-commerce.css'
 import '../widget-panel-composer.css'
 import '../widget-panel-start.css'
 import '../widget-panel-cards.css'
@@ -164,11 +167,13 @@ const rootStyle = computed(() => ({
                 </div>
                 <div class="cm-panel__bottom">
                     <ConversationEnded v-if="shouldShowNewConversationOption" />
+                    <CartBar v-if="showComposer" />
                     <Composer v-if="showComposer" ref="composer" />
                     <PanelFooter />
                 </div>
             </template>
             <PreviewModal />
+            <ProductSheet />
         </div>
     </div>
 </template>

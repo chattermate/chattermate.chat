@@ -416,7 +416,10 @@ function shopifyOrderNode(order: ShopifyOrder) {
   }
 }
 
-function shopifyProduct(id: number, title: string, variants: { id: number; onSale: boolean }[], onOnlineStore = true) {
+type FakeVariant = { id: number; onSale: boolean; size?: string }
+
+function shopifyProduct(id: number, title: string, variants: FakeVariant[], onOnlineStore = true) {
+  const sizes = variants.map((v) => v.size).filter((size): size is string => !!size)
   const handle = title.toLowerCase().replaceAll(' ', '-')
   return {
     id: `gid://shopify/Product/${id}`,
@@ -430,7 +433,13 @@ function shopifyProduct(id: number, title: string, variants: { id: number; onSal
     tags: [],
     priceRangeV2: { minVariantPrice: { amount: '40.00', currencyCode: 'USD' }, maxVariantPrice: { amount: '40.00', currencyCode: 'USD' } },
     images: { edges: [] },
-    variants: { edges: variants.map((v) => ({ node: { id: `gid://shopify/ProductVariant/${v.id}`, availableForSale: v.onSale } })) },
+    tracksInventory: true,
+    hasOnlyDefaultVariant: variants.length === 1,
+    options: sizes.length ? [{ name: 'Size', values: sizes }] : [{ name: 'Title', values: ['Default Title'] }],
+    variants: { edges: variants.map((v) => ({ node: {
+      id: `gid://shopify/ProductVariant/${v.id}`, availableForSale: v.onSale, title: v.size ?? 'Default Title', price: '40.00',
+      selectedOptions: [v.size ? { name: 'Size', value: v.size } : { name: 'Title', value: 'Default Title' }], image: null,
+    } })) },
   }
 }
 
@@ -439,7 +448,7 @@ function shopifyProduct(id: number, title: string, variants: { id: number; onSal
 const shopifyProducts = [
   shopifyProduct(1, 'E2E Mug', [{ id: 111, onSale: true }]),
   shopifyProduct(2, 'E2E Cap', [{ id: 222, onSale: true }]),
-  shopifyProduct(3, 'E2E Shirt', [{ id: 331, onSale: true }, { id: 332, onSale: true }]),
+  shopifyProduct(3, 'E2E Shirt', [{ id: 331, onSale: false, size: 'S' }, { id: 332, onSale: true, size: 'M' }]),
   shopifyProduct(4, 'E2E Poster', [{ id: 444, onSale: false }]),
   shopifyProduct(5, 'E2E Draft', [{ id: 555, onSale: true }], false),
 ]
@@ -463,6 +472,12 @@ function shopify({ action, body }: Call): Answer {
     const order = { id: String(parseInt(digest(`${email}#${number}`).slice(0, 8), 16)), number, email }
     remember(shopifyOrders, order.id, order)
     return ok({ data: { orders: { edges: email ? [{ node: shopifyOrderNode(order) }] : [], pageInfo: { hasNextPage: false, endCursor: null } } } })
+  }
+  if (query.includes('query ProductOptions')) {
+    // The widget's product sheet, reading one product's options when it opens
+    const product = shopifyProducts.find((p) => p.id === variables.id) ?? null
+    const node = product && { ...product, variants: { ...product.variants, pageInfo: { hasNextPage: false } } }
+    return ok({ data: { product: node } })
   }
   if (query.includes('query SearchProducts')) {
     return ok({ data: { products: { edges: shopifyProducts.map((node) => ({ node })), pageInfo: { hasNextPage: false, endCursor: null } } } })

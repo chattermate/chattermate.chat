@@ -24,6 +24,7 @@ import { useHostPrompt } from './useHostPrompt'
 import { useTypewriter } from './useTypewriter'
 import { useAgentTrace } from './useAgentTrace'
 import { useAnswerFeedback } from './useAnswerFeedback'
+import { useProductOptions } from './useProductOptions'
 import { useUnreadBadge } from './useUnreadBadge'
 import { useEmailGate } from './useEmailGate'
 import { useWidgetAuth } from './useWidgetAuth'
@@ -80,6 +81,8 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     // The redesign's live work trace and the visitor's thumbs on replies.
     const { liveTrace } = useAgentTrace({ on: socket.on, loading })
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
+    // The product sheet's options, read from the shop when it opens.
+    const { requestProductOptions } = useProductOptions({ on: socket.on, emit: socket.emit })
 
     // Page messages, in-app actions and journeys. A tapped text reply goes through
     // the composer, which is set up further down; reply buttons wait for a reply to type out.
@@ -262,7 +265,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, liveTrace, sendFeedback, ...rating, ...files, ...newChat,
+        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory, hostCapabilities,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }

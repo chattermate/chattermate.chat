@@ -182,6 +182,7 @@ export function usePreviewController(
         skipReveal: noop,
         liveTrace: ref([]),
         sendFeedback: noop,
+        requestProductOptions: noop,
         hoverRating: ref(0),
         isSubmittingRating: ref(false),
         handleStarHover: noop,
