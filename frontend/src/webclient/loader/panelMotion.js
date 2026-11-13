@@ -208,6 +208,19 @@ function peekCss(n, layout, frame) {
         font-weight: 600;
         opacity: .72;
       }
+      /* An emoji a host script still turns into an <img> stays the size of the text,
+         whatever the page's own image rules say. */
+      ${n} .cm-peek-body img {
+        display: inline !important;
+        width: 1em !important;
+        height: 1em !important;
+        max-width: none !important;
+        margin: 0 .05em !important;
+        padding: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        vertical-align: -0.1em !important;
+      }
       ${n} .cm-peek-close {
         position: absolute;
         top: 8px;

@@ -37,7 +37,9 @@ export function createPeek(doc, { id, onOpen }) {
   function build() {
     el = doc.createElement('div')
     el.id = id
-    el.className = 'cm-v2'
+    // wp-exclude-emoji: WordPress's emoji script would swap the text's emoji for
+    // <img> pictures, which the host page's own image styles then blow up.
+    el.className = 'cm-v2 wp-exclude-emoji'
     const body = doc.createElement('button')
     body.type = 'button'
     body.className = 'cm-peek-body'
