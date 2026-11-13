@@ -194,6 +194,15 @@ describe('the peek nudge', () => {
         expect(el.classList.contains('show')).toBe(false)
     })
 
+    it('keeps a host page\'s emoji pictures at the size of the text', async () => {
+        await upWith(V2)
+        fromFrame({ type: 'UNREAD_PREVIEW', text: 'Need support? \u{1F468}\u200D\u{1F4BC}', agentName: '' })
+        // WordPress skips this class; another host's swap is held to 1em.
+        expect(peek()!.classList.contains('wp-exclude-emoji')).toBe(true)
+        const css = [...document.querySelectorAll('style')].map(style => style.textContent).join('\n')
+        expect(css).toMatch(/#chattermate-peek\.cm-v2 \.cm-peek-body img \{[^}]*width: 1em !important;[^}]*height: 1em !important;/)
+    })
+
     it('cuts a long preview to 120 characters', async () => {
         await upWith(V2)
         fromFrame({ type: 'UNREAD_PREVIEW', text: 'x'.repeat(400), agentName: '' })
