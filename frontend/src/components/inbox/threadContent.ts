@@ -38,3 +38,29 @@ export function questionBefore(messages: Pick<Message, 'message' | 'message_type
   }
   return null
 }
+
+/** "Today", "Yesterday", or the date: the thread's day separators. */
+export function dayLabel(at: string | Date, now: Date = new Date()): string {
+  const day = new Date(at)
+  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const days = Math.round((startOf(now) - startOf(day)) / 86_400_000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return day.toLocaleDateString(undefined, {
+    weekday: days < 7 ? 'long' : undefined,
+    day: 'numeric',
+    month: 'short',
+    year: day.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  })
+}
+
+/** For each message, the separator to draw above it: the first of each day gets one. */
+export function daySeparators(messages: Pick<Message, 'created_at'>[], now: Date = new Date()): Array<string | null> {
+  let previous = ''
+  return messages.map((m) => {
+    const label = dayLabel(m.created_at, now)
+    if (label === previous) return null
+    previous = label
+    return label
+  })
+}

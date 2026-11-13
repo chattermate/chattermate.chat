@@ -22,6 +22,7 @@ import HandoverSummaryCard from '@/components/inbox/HandoverSummaryCard.vue'
 import ThreadMessage from '@/components/inbox/ThreadMessage.vue'
 import ActionMenu from '@/components/common/ActionMenu.vue'
 import DetailsPanel from '@/components/inbox/DetailsPanel.vue'
+import ThreadComposer from '@/components/inbox/ThreadComposer.vue'
 import type { ChatDetail, Message } from '@/types/chat'
 
 const people = vi.hoisted(() => ({ getPerson: vi.fn() }))
@@ -298,5 +299,38 @@ describe('DetailsPanel', () => {
     const drawer = mountPanel({}, { overlay: true })
     await drawer.find('[aria-label="Close details"]').trigger('click')
     expect(drawer.emitted('close')).toHaveLength(1)
+  })
+})
+
+describe('ThreadComposer', () => {
+  const mountComposer = (props: Record<string, unknown> = {}) =>
+    mount(ThreadComposer, {
+      props: { modelValue: '', canSend: true, hasFiles: false, showTemplateNotice: false, ...props },
+      attachTo: document.body,
+    })
+
+  it('sends on Enter, breaks the line with Shift+Enter', async () => {
+    const wrapper = mountComposer({ modelValue: 'Hi' })
+    await wrapper.find('textarea').trigger('keydown', { key: 'Enter' })
+    await wrapper.find('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+    expect(wrapper.emitted('send')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('offers Send and close once there is something to send', async () => {
+    expect(mountComposer().find('[aria-label="More send options"]').exists()).toBe(false)
+    const wrapper = mountComposer({ modelValue: 'Done, refund sent.' })
+    await wrapper.find('[aria-label="More send options"]').trigger('click')
+    await wrapper.find('[role="menuitem"]').trigger('click')
+    expect(wrapper.emitted('send-and-close')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('keeps Send off when it may not send, and says when only a template reopens the chat', async () => {
+    const wrapper = mountComposer({ modelValue: 'Hi', canSend: false, showTemplateNotice: true })
+    expect(wrapper.find('.send').attributes('disabled')).toBeDefined()
+    await wrapper.find('.window-closed .btn').trigger('click')
+    expect(wrapper.emitted('send-template')).toHaveLength(1)
+    wrapper.unmount()
   })
 })

@@ -47,7 +47,7 @@ import ThreadMessage from './ThreadMessage.vue'
 import ThreadComposer from './ThreadComposer.vue'
 import HandoverSummaryCard from './HandoverSummaryCard.vue'
 import { customerName } from './inboxPresentation'
-import { handoverIndex, questionBefore } from './threadContent'
+import { daySeparators, handoverIndex, questionBefore } from './threadContent'
 
 const props = defineProps<{
   chat: ChatDetail
@@ -160,7 +160,14 @@ const assign = (userId: string) => {
 const releaseToAi = () =>
   run(() => chatService.releaseToAi(props.chat.session_id), `Handed back to ${agentName.value}`)
 
-const takeOver = () => run(() => handleTakeover())
+// Taking a chat over silences the AI and tells the customer a person joined:
+// asked first, so a stray click on a busy inbox can't do it
+const confirmingTakeover = ref(false)
+const takeOver = () => { confirmingTakeover.value = true }
+const confirmTakeover = () => {
+  confirmingTakeover.value = false
+  void run(() => handleTakeover())
+}
 const routeToTeam = () => run(() => handleRouteToHuman())
 
 // ---- Closing ----
@@ -168,6 +175,11 @@ const canClose = computed(() => holdsIt.value)
 const confirmingClose = ref(false)
 const requestClose = () => {
   if (canClose.value) confirmingClose.value = true
+}
+// The reply goes now; closing still asks, as Close does
+const sendAndClose = async () => {
+  await handleSendMessageWithAttachments()
+  requestClose()
 }
 const confirmClose = async () => {
   confirmingClose.value = false
@@ -235,6 +247,8 @@ function faqLink(question: string | null): string | null {
   return `/faq?question=${encodeURIComponent(question)}`
 }
 const knowledgeLink = computed(() => faqLink(questionBefore(formattedMessages.value, handoverAt.value)))
+const separators = computed(() => daySeparators(formattedMessages.value, props.now))
+
 // One pass: each AI answer links to the question just before it
 const correctionLinks = computed(() => {
   let question: string | null = null
@@ -261,6 +275,7 @@ onMounted(async () => {
 })
 watch(() => props.chat.session_id, () => {
   confirmingClose.value = false
+  confirmingTakeover.value = false
   void refreshLinkedTicket()
 })
 
@@ -297,6 +312,9 @@ defineExpose({ requestClose })
 
     <div ref="messagesContainer" class="messages" tabindex="0" aria-label="Messages">
       <template v-for="(message, index) in formattedMessages" :key="message.id ?? message.client_id ?? index">
+        <div v-if="separators[index]" class="day" role="separator" :aria-label="separators[index]!">
+          <span aria-hidden="true">{{ separators[index] }}</span>
+        </div>
         <HandoverSummaryCard
           v-if="showsHandover && index === handoverAt"
           :agent-name="agentName"
@@ -334,6 +352,7 @@ defineExpose({ requestClose })
       :has-files="uploadedFiles.length > 0"
       :show-template-notice="templateCanReopen && canUseTemplates"
       @send="handleSendMessageWithAttachments"
+      @send-and-close="sendAndClose"
       @paste="handleChatPaste"
       @send-template="showTemplatePicker = true"
     >
@@ -361,6 +380,17 @@ defineExpose({ requestClose })
       <template #actions>
         <button type="button" class="modal-btn" @click="confirmingClose = false">Cancel</button>
         <button type="button" class="modal-btn primary" @click="confirmClose">Close conversation</button>
+      </template>
+    </BaseModal>
+
+    <BaseModal v-if="confirmingTakeover" title="Take over this chat?" width="420px" @close="confirmingTakeover = false">
+      <p class="confirm-text">
+        {{ aiCapable && handler.kind === 'ai' ? `${agentName} stops answering and you reply to ${name} instead.` : `You reply to ${name}.` }}
+        {{ aiCapable ? 'You can hand it back to the AI at any time.' : '' }}
+      </p>
+      <template #actions>
+        <button type="button" class="modal-btn" @click="confirmingTakeover = false">Cancel</button>
+        <button type="button" class="modal-btn primary" @click="confirmTakeover">Take over chat</button>
       </template>
     </BaseModal>
 
@@ -405,6 +435,22 @@ defineExpose({ requestClose })
   flex-direction: column;
   gap: 12px;
   padding: 16px 24px;
+}
+
+.day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.day::before,
+.day::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--o07);
 }
 
 .messages:focus-visible {

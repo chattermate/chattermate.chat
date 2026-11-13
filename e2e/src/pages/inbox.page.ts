@@ -70,7 +70,8 @@ export class InboxPage {
 
   async takeOver(): Promise<void> {
     await step('Agent takes over the chat', async () => {
-      await this.page.getByRole('button', { name: 'Take over chat', exact: true }).click()
+      await this.banner.getByRole('button', { name: 'Take over chat', exact: true }).click()
+      await this.page.getByRole('dialog', { name: 'Take over this chat?' }).getByRole('button', { name: 'Take over chat' }).click()
       await expect(this.messageInput).toBeEditable()
     })
   }

@@ -119,7 +119,7 @@ async def get_recent_chats(
     date_to: Optional[datetime] = Query(None, description="Filter conversations to this date"),
     view: Optional[InboxView] = Query(None, description="An inbox view: mine, waiting, open, ai, resolved_by_ai, closed or negative"),
     channel: Optional[str] = Query(None, max_length=32, description="Only this channel ('web', 'whatsapp', ...)"),
-    q: Optional[str] = Query(None, max_length=100, description="Customer name, email or phone containing this"),
+    q: Optional[str] = Query(None, max_length=100, description="Customer name, email, phone or custom data (an order number) containing this"),
     sort: Optional[InboxSort] = Query(None, description="newest, or waiting_longest; by default waiting chats come first"),
     today_start: Optional[datetime] = Query(None, description=TODAY_START_HELP),
     auth_info: dict = Depends(get_unified_chat_auth),

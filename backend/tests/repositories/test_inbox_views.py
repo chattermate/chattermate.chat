@@ -234,7 +234,8 @@ class TestSearch:
             return chat
 
         return {
-            "priya": person(email="priya@shop.example", full_name="Priya Raman", phone="+44 7700 900123"),
+            "priya": person(email="priya@shop.example", full_name="Priya Raman", phone="+44 7700 900123",
+                            meta_data={"order_id": "10432"}),
             "sam": person(email="sam_100%@example.com", full_name="Sam Lee"),
         }
 
@@ -243,8 +244,9 @@ class TestSearch:
         ("PRIYA@SHOP", "priya"),
         ("900123", "priya"),
         ("sam_100%", "sam"),
+        ("10432", "priya"),
     ])
-    def test_finds_a_customer_by_name_email_or_phone(self, db, test_organization_id, people, term, who):
+    def test_finds_a_customer_by_name_email_phone_or_order(self, db, test_organization_id, people, term, who):
         rows = ChatRepository(db).get_recent_chats(organization_id=test_organization_id, search=term)
 
         assert _ids(rows) == {str(people[who].session_id)}

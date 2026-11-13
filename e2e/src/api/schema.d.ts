@@ -10582,7 +10582,7 @@ export interface operations {
                 view?: components["schemas"]["InboxView"] | null;
                 /** @description Only this channel ('web', 'whatsapp', ...) */
                 channel?: string | null;
-                /** @description Customer name, email or phone containing this */
+                /** @description Customer name, email, phone or custom data (an order number) containing this */
                 q?: string | null;
                 /** @description newest, or waiting_longest; by default waiting chats come first */
                 sort?: components["schemas"]["InboxSort"] | null;
@@ -10637,7 +10637,7 @@ export interface operations {
                 view?: components["schemas"]["InboxView"] | null;
                 /** @description Only this channel ('web', 'whatsapp', ...) */
                 channel?: string | null;
-                /** @description Customer name, email or phone containing this */
+                /** @description Customer name, email, phone or custom data (an order number) containing this */
                 q?: string | null;
                 /** @description newest, or waiting_longest; by default waiting chats come first */
                 sort?: components["schemas"]["InboxSort"] | null;

@@ -19,7 +19,7 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import and_, false, or_
+from sqlalchemy import String, and_, cast, false, or_
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.agent import Agent
@@ -123,14 +123,16 @@ def _like_pattern(term: str) -> str:
 
 
 def search_clause(term: str) -> ColumnElement:
-    """Customer name, email or phone containing `term`.
+    """Customer name, email, phone, or a value the site passed about them
+    (custom_data: an order number, an account id) containing `term`.
 
     Messages and titles are encrypted at rest, so SQL cannot search them; the
-    customer's contact fields are stored plain.
+    customer's contact fields and custom data are stored plain.
     """
     pattern = _like_pattern(term)
     return or_(
         Customer.full_name.ilike(pattern, escape='\\'),
         Customer.email.ilike(pattern, escape='\\'),
         Customer.phone.ilike(pattern, escape='\\'),
+        cast(Customer.meta_data, String).ilike(pattern, escape='\\'),
     )

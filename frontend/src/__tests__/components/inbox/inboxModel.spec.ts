@@ -25,7 +25,7 @@ import {
 } from '@/components/inbox/inboxViews'
 import { avatarTone, customerName, rowChips, transferReasonLabel } from '@/components/inbox/inboxPresentation'
 import { elapsedLabel, minutesSince, waitDuration, WAITING_LATE_MINUTES } from '@/components/inbox/inboxTime'
-import { handoverIndex, questionBefore } from '@/components/inbox/threadContent'
+import { dayLabel, daySeparators, handoverIndex, questionBefore } from '@/components/inbox/threadContent'
 import { channelGlyph, channelLabel } from '@/utils/channelGlyphs'
 import type { InboxCounts } from '@/types/chat'
 
@@ -201,5 +201,23 @@ describe('channel glyphs', () => {
     expect(channelLabel('whatsapp')).toBe('WhatsApp')
     expect(channelLabel(null)).toBe('Web chat')
     expect(channelGlyph('carrier-pigeon')).toMatchObject({ label: 'carrier-pigeon', color: 'var(--channel-web)' })
+  })
+})
+
+describe('day separators', () => {
+  const local = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).toISOString()
+  const today = new Date(2026, 10, 13, 15)
+
+  it('names the day the way the thread shows it', () => {
+    expect(dayLabel(local(2026, 11, 13, 9), today)).toBe('Today')
+    expect(dayLabel(local(2026, 11, 12, 23), today)).toBe('Yesterday')
+    expect(dayLabel(local(2026, 11, 10), today)).toMatch(/10/)
+    expect(dayLabel(local(2025, 3, 2), today)).toMatch(/2025/)
+  })
+
+  it('puts one above the first message of each day', () => {
+    const thread = [local(2026, 11, 12, 9), local(2026, 11, 12, 10), local(2026, 11, 13, 8), local(2026, 11, 13, 9)]
+      .map((created_at) => ({ created_at }))
+    expect(daySeparators(thread, today)).toEqual(['Yesterday', null, 'Today', null])
   })
 })

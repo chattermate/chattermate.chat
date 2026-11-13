@@ -318,6 +318,8 @@ useInboxShortcuts({
 <style scoped>
 .inbox {
   position: relative;
+  /* The rest of the page's column, below any bar above it */
+  flex: 1 1 auto;
   height: 100%;
   min-height: 0;
   display: grid;

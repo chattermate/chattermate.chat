@@ -318,6 +318,11 @@ const openNotificationsFromSheet = () => {
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
+    /* A column, so a bar above the page (the setup progress bar) takes its
+       share of the screen instead of pushing the page's foot (the inbox's
+       reply box) below the fold */
+    display: flex;
+    flex-direction: column;
 }
 
 /* 13 inch laptops */

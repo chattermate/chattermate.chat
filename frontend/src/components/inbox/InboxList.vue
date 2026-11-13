@@ -109,12 +109,6 @@ defineExpose({ focusSearch })
           {{ view.title }}
           <span v-if="view.count !== null && !narrowed" class="title-count">{{ view.count }}</span>
         </h2>
-        <InboxFilters
-          v-if="filterAgents.length > 1 || filterTeammates.length > 1"
-          v-model="filters"
-          :agents="filterAgents"
-          :teammates="filterTeammates"
-        />
         <label class="sort">
           <span class="visually-hidden">Sort</span>
           <select v-model="sort" class="sort-select">
@@ -158,18 +152,26 @@ defineExpose({ focusSearch })
         <span aria-hidden="true" v-html="navIconSvg('plus', 14)"></span>
       </button>
       </div>
+      <div class="search-row">
       <label class="search">
         <span class="search-icon" aria-hidden="true" v-html="navIconSvg('search', 14)"></span>
         <input
           ref="searchInput"
           v-model="search"
           type="search"
-          placeholder="Search name, email or phone"
+          placeholder="Search name, email, phone or order"
           aria-label="Search conversations"
           aria-keyshortcuts="/"
         />
         <kbd aria-hidden="true">/</kbd>
       </label>
+      <InboxFilters
+        v-if="filterAgents.length > 1 || filterTeammates.length > 1"
+        v-model="filters"
+        :agents="filterAgents"
+        :teammates="filterTeammates"
+      />
+      </div>
     </div>
 
     <div class="rows" aria-live="polite" :aria-busy="loading">
@@ -325,7 +327,20 @@ select optgroup {
   color: var(--muted2);
 }
 
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-row :deep(.filter-btn) {
+  width: 32px;
+  height: 32px;
+}
+
 .search {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;

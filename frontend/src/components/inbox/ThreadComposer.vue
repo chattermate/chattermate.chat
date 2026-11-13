@@ -21,6 +21,8 @@ limitations under the License.
  * upload state it sends with the message.
  */
 import { ref } from 'vue'
+import ActionMenu from '@/components/common/ActionMenu.vue'
+import { navIconSvg } from '@/components/layout/navIcons'
 
 const message = defineModel<string>({ required: true })
 
@@ -33,6 +35,7 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'send'): void
+  (e: 'send-and-close'): void
   (e: 'paste', event: ClipboardEvent): void
   (e: 'send-template'): void
 }>()
@@ -72,15 +75,26 @@ defineExpose({ focus: () => input.value?.focus() })
         </div>
         <div class="send-group">
           <kbd aria-hidden="true">↵</kbd>
-          <button
-            type="button"
-            class="send"
-            aria-label="Send"
-            :disabled="!canSend || (!message.trim() && !hasFiles)"
-            @click="emit('send')"
-          >
-            Send
-          </button>
+          <div class="split">
+            <button
+              type="button"
+              class="send"
+              aria-label="Send"
+              :disabled="!canSend || (!message.trim() && !hasFiles)"
+              @click="emit('send')"
+            >
+              Send
+            </button>
+            <ActionMenu
+              v-if="canSend && (message.trim() || hasFiles)"
+              label="More send options"
+              :items="[{ id: 'send-and-close', label: 'Send and close' }]"
+              trigger-class="send-more"
+              @select="emit('send-and-close')"
+            >
+              <span aria-hidden="true" v-html="navIconSvg('chevronDown', 12)"></span>
+            </ActionMenu>
+          </div>
         </div>
       </div>
     </div>
@@ -190,6 +204,38 @@ kbd {
   border: 0;
   background: var(--accent-solid);
   color: var(--on-accent-solid);
+}
+
+.split {
+  display: flex;
+}
+
+.split :deep(.action-menu) {
+  display: flex;
+}
+
+.split .send:not(:only-child) {
+  border-radius: 8px 0 0 8px;
+}
+
+.split :deep(.send-more) {
+  width: 28px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--on-accent-solid) 20%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: var(--accent-solid);
+  color: var(--on-accent-solid);
+  cursor: pointer;
+}
+
+.split :deep(.menu) {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .send:disabled {

@@ -116,6 +116,8 @@ const countLabel = (item: InboxViewItem) => (item.count ? formatBadgeCount(item.
 .views {
   height: 100%;
   box-sizing: border-box;
+  /* A thin bar on a short screen, so it doesn't eat the labels' room */
+  scrollbar-width: thin;
   display: flex;
   flex-direction: column;
   gap: 12px;
