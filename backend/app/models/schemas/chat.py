@@ -30,6 +30,9 @@ class CustomerInfo(BaseModel):
     # Integrator-supplied fields (e.g. student_name, center_name) set via
     # POST /generate-token's `custom_data`, shown to agents in the chat inbox.
     meta_data: Optional[Dict[str, Any]] = None
+    phone: Optional[str] = None
+
+
 class AgentInfo(BaseModel):
     id: UUID
     name: str
@@ -156,6 +159,8 @@ class Message(BaseModel):
     end_chat_reason: Optional[EndChatReasonType] = None
     end_chat_description: Optional[str] = None
     agent_name: Optional[str] = None
+    # Who on the team wrote it (agent messages): the inbox labels yours "You"
+    user_id: Optional[UUID] = None
     user_name: Optional[str] = None
     attachments: Optional[list] = None  # List of file attachments with signed URLs
     
@@ -190,14 +195,25 @@ class ChatOverviewResponse(BaseModel):
     # the AI still has it — the inbox needs this to label the row.
     user_id: Optional[UUID] = None
     user_name: Optional[str] = None
+    # When it last moved to the team's queue: the inbox's waiting time
+    handed_over_at: Optional[datetime] = None
+    # A short AI-written title, once the chat has closed
+    title: Optional[str] = None
+    sentiment_label: Optional[str] = None
     session_id: UUID
 
 
 class InboxCountsResponse(BaseModel):
-    """Open conversations in the caller's inbox scope, for the navigation badges."""
+    """Each inbox view's size in the caller's scope (see inbox_views): the
+    navigation badges and the inbox's view list."""
     open: int
     waiting_for_human: int
     assigned_to_me: int
+    ai_handling: int = 0
+    negative: int = 0
+    resolved_by_ai_today: int = 0
+    # Open conversations per channel ('web', 'whatsapp', ...)
+    channels: Dict[str, int] = {}
 
 
 class ChatDetailResponse(BaseModel):
@@ -212,6 +228,12 @@ class ChatDetailResponse(BaseModel):
     session_id: UUID
     user_id: Optional[UUID]
     user_name: Optional[str]
+    # The handover: when, why, and the AI's summary for whoever picks it up
+    handed_over_at: Optional[datetime] = None
+    transfer_reason: Optional[str] = None
+    transfer_description: Optional[str] = None
+    sentiment_label: Optional[str] = None
+    title: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -21,94 +21,11 @@ appears in the list and 404s when opened is the bug this pins down.
 """
 
 import pytest
-from uuid import UUID, uuid4
-
-from sqlalchemy.orm import Session
+from uuid import uuid4
 
 from app.models.chat_history import ChatHistory
-from app.models.customer import Customer
 from app.models.session_to_agent import SessionStatus, SessionToAgent
-from app.models.user import User, UserGroup
 from app.repositories.chat import ChatRepository
-
-
-@pytest.fixture
-def customer(db: Session, test_organization_id: UUID) -> Customer:
-    customer = Customer(
-        id=uuid4(),
-        email="visibility@example.com",
-        full_name="Visibility Customer",
-        organization_id=test_organization_id,
-    )
-    db.add(customer)
-    db.commit()
-    return customer
-
-
-@pytest.fixture
-def group(db: Session, test_organization_id: UUID) -> UserGroup:
-    group = UserGroup(id=uuid4(), name="Support", organization_id=test_organization_id)
-    db.add(group)
-    db.commit()
-    return group
-
-
-@pytest.fixture
-def agent_user(db: Session, test_organization_id: UUID, group: UserGroup) -> User:
-    user = User(
-        id=uuid4(),
-        email="agent@example.com",
-        hashed_password="x",
-        full_name="Agent",
-        organization_id=test_organization_id,
-        is_active=True,
-    )
-    user.groups.append(group)
-    db.add(user)
-    db.commit()
-    return user
-
-
-def _session(db, org_id, agent_id, customer_id, *, user_id=None, group_id=None):
-    """A session plus one message, so it shows up in the grouped overview."""
-    session = SessionToAgent(
-        session_id=uuid4(),
-        organization_id=org_id,
-        agent_id=agent_id,
-        customer_id=customer_id,
-        user_id=user_id,
-        group_id=group_id,
-    )
-    db.add(session)
-    db.commit()
-    db.add(ChatHistory(
-        message="hello",
-        message_type="user",
-        session_id=session.session_id,
-        organization_id=org_id,
-        agent_id=agent_id,
-        customer_id=customer_id,
-    ))
-    db.commit()
-    return session
-
-
-@pytest.fixture
-def sessions(db, test_organization_id, test_agent, customer, agent_user, group):
-    """One session of each ownership kind."""
-    other_user = User(
-        id=uuid4(), email="other@example.com", hashed_password="x",
-        full_name="Other", organization_id=test_organization_id, is_active=True,
-    )
-    db.add(other_user)
-    db.commit()
-
-    return {
-        "mine": _session(db, test_organization_id, test_agent.id, customer.id, user_id=agent_user.id),
-        "my_group": _session(db, test_organization_id, test_agent.id, customer.id, group_id=group.id),
-        "unassigned": _session(db, test_organization_id, test_agent.id, customer.id),
-        "other_agents": _session(db, test_organization_id, test_agent.id, customer.id, user_id=other_user.id),
-    }
 
 
 def _ids(rows):
@@ -201,6 +118,11 @@ async def test_no_user_id_never_matches_an_unassigned_session(db, sessions):
         sessions["unassigned"].session_id, None, [], include_unassigned=True) is True
 
 
+def _badges(counts):
+    """The counts the navigation badges read."""
+    return {key: counts[key] for key in ("open", "waiting_for_human", "assigned_to_me")}
+
+
 def _open_ids(rows):
     return {str(r["session_id"]) for r in rows if r["status"] != SessionStatus.CLOSED}
 
@@ -231,10 +153,10 @@ def test_inbox_counts_cover_exactly_the_listed_chats(
 
 
 def test_inbox_counts_split_waiting_and_mine(
-    db, test_organization_id, test_agent, customer, agent_user, group, sessions
+    db, test_organization_id, agent_user, sessions, make_session
 ):
     """Waiting means nobody holds it and no AI reply is coming."""
-    handed_over = _session(db, test_organization_id, test_agent.id, customer.id)
+    handed_over = make_session()
     handed_over.status = SessionStatus.TRANSFERRED
     db.commit()
 
@@ -281,7 +203,7 @@ def test_inbox_counts_skip_closed_and_empty_sessions(
         organization_id=test_organization_id, current_user_id=agent_user.id
     )
 
-    assert counts == {"open": 3, "waiting_for_human": 1, "assigned_to_me": 0}
+    assert _badges(counts) == {"open": 3, "waiting_for_human": 1, "assigned_to_me": 0}
 
 
 def test_inbox_counts_stay_inside_the_organization(
@@ -292,7 +214,7 @@ def test_inbox_counts_stay_inside_the_organization(
         organization_id=uuid4(), current_user_id=agent_user.id
     )
 
-    assert counts == {"open": 0, "waiting_for_human": 0, "assigned_to_me": 0}
+    assert _badges(counts) == {"open": 0, "waiting_for_human": 0, "assigned_to_me": 0}
 
 
 def test_inbox_counts_skip_chats_the_list_cannot_show(

@@ -20,10 +20,11 @@ from app.models.channels import ChannelConversation
 from app.models.chat_history import ChatHistory
 from app.models.customer import Customer
 from uuid import UUID
-from sqlalchemy import func, or_, select, text, and_, false
+from sqlalchemy import func, or_, select, text, and_
 from sqlalchemy.sql import case
 from app.models.agent import Agent
-from app.models.session_to_agent import SessionStatus, SessionToAgent
+from app.models.session_to_agent import SessionToAgent
+from app.repositories import inbox_views
 from app.repositories.channels import ChannelConversationRepository
 from app.core.logger import get_logger
 from app.channels.constants import UNMETERED_SOURCES, is_widget_channel
@@ -32,12 +33,17 @@ from app.models.user import User
 from app.repositories.customer import CustomerRepository
 from sqlalchemy.orm import aliased, joinedload
 from sqlalchemy.orm.attributes import set_committed_value
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 from app.services.file_storage import resolve_public_url
 from app.services.sentiment import analyze_sentiment, compute_session_sentiment
 
 logger = get_logger(__name__)
+
+def _utc_midnight() -> datetime:
+    """The start of today in UTC: "today" when the caller sends no day start."""
+    return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
 
 def _readable_attributes(attributes: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """A message's attributes for the inbox: the encrypted record of the
@@ -430,46 +436,16 @@ class ChatRepository:
             visibility.append(SessionToAgent.user_id.is_(None))
         return or_(*visibility) if visibility else None
 
-    def get_inbox_counts(
-        self,
-        organization_id: str | UUID,
-        current_user_id: Optional[str | UUID] = None,
-        user_id: Optional[str | UUID] = None,
-        user_groups: Optional[List[str]] = None,
-        include_unassigned: bool = False,
-    ) -> Dict[str, int]:
-        """Open conversations for the navigation badges, in the caller's scope.
-
-        - open: every conversation not closed
-        - waiting_for_human: open, nobody holds it, and no AI reply is coming
-          (handed over, queued for a group, or the agent never answers with AI).
-          Mirrors chatHandler() in the frontend's utils/chatState.ts.
-        - assigned_to_me: open and held by the caller
-
-        Only sessions the list can show count: at least one message whose
-        agent and customer still exist (the list joins both). The widget opens
-        a session on page load, long before anyone writes, and a deleted
-        agent's chats drop out of the list; counting either would leave a
-        badge nobody can clear.
-        """
-        organization_id = UUID(str(organization_id))
-        current_user_id = UUID(str(current_user_id)) if current_user_id else None
-        user_id = UUID(str(user_id)) if user_id else None
-        user_groups = [UUID(str(g)) for g in user_groups] if user_groups else None
-
-        waiting = and_(
-            SessionToAgent.user_id.is_(None),
-            or_(
-                SessionToAgent.status == SessionStatus.TRANSFERRED,
-                SessionToAgent.group_id.isnot(None),
-                Agent.ai_replies_enabled.is_(False),
-            ),
-        )
-        mine = SessionToAgent.user_id == current_user_id if current_user_id else false()
+    @staticmethod
+    def _has_listed_messages():
+        """At least one message whose agent and customer still exist, the rows
+        the list joins. The widget opens a session on page load, long before
+        anyone writes, and a deleted agent's chats drop out of the list;
+        counting either would leave a badge nobody can clear."""
         # Its own Agent alias: the outer query's Agent would otherwise be
         # correlated into the subquery
         message_agent = aliased(Agent)
-        has_listed_messages = (
+        return (
             select(ChatHistory.id)
             .join(message_agent, ChatHistory.agent_id == message_agent.id)
             .join(Customer, ChatHistory.customer_id == Customer.id)
@@ -477,29 +453,94 @@ class ChatRepository:
             .exists()
         )
 
-        query = (
-            self.db.query(
-                func.count(SessionToAgent.session_id).label('open'),
-                func.count(SessionToAgent.session_id).filter(waiting).label('waiting_for_human'),
-                func.count(SessionToAgent.session_id).filter(mine).label('assigned_to_me'),
-            )
-            .outerjoin(Agent, SessionToAgent.agent_id == Agent.id)
-            .filter(
-                SessionToAgent.organization_id == organization_id,
-                SessionToAgent.status != SessionStatus.CLOSED,
-                has_listed_messages,
-            )
-        )
-        visibility = self._visibility_clause(user_id, user_groups, include_unassigned)
-        if visibility is not None:
-            query = query.filter(visibility)
+    def get_inbox_counts(
+        self,
+        organization_id: str | UUID,
+        current_user_id: Optional[str | UUID] = None,
+        user_id: Optional[str | UUID] = None,
+        user_groups: Optional[List[str]] = None,
+        include_unassigned: bool = False,
+        today_start: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """Each inbox view's size, in the caller's scope.
 
-        row = query.one()
+        - open: every conversation not closed
+        - waiting_for_human / assigned_to_me / ai_handling / negative: open ones
+          in that view (see inbox_views)
+        - resolved_by_ai_today: closed since `today_start` by the AI alone
+        - channels: open conversations per channel
+
+        Only sessions the list can show count (_has_listed_messages).
+        """
+        organization_id = UUID(str(organization_id))
+        current_user_id = UUID(str(current_user_id)) if current_user_id else None
+        user_id = UUID(str(user_id)) if user_id else None
+        user_groups = [UUID(str(g)) for g in user_groups] if user_groups else None
+        today_start = today_start or _utc_midnight()
+
+        def scoped(query, *conditions):
+            query = (
+                query.outerjoin(Agent, SessionToAgent.agent_id == Agent.id)
+                .filter(
+                    SessionToAgent.organization_id == organization_id,
+                    self._has_listed_messages(),
+                    *conditions,
+                )
+            )
+            visibility = self._visibility_clause(user_id, user_groups, include_unassigned)
+            return query.filter(visibility) if visibility is not None else query
+
+        session_count = func.count(SessionToAgent.session_id)
+        resolved = inbox_views.resolved_by_ai(today_start)
+        open_ = inbox_views.not_closed()
+        row = scoped(
+            self.db.query(
+                session_count.filter(open_).label('open'),
+                session_count.filter(open_, inbox_views.waiting_for_human()).label('waiting_for_human'),
+                session_count.filter(open_, inbox_views.mine(current_user_id)).label('assigned_to_me'),
+                session_count.filter(open_, inbox_views.ai_handling()).label('ai_handling'),
+                session_count.filter(open_, inbox_views.negative_sentiment()).label('negative'),
+                session_count.filter(resolved).label('resolved_by_ai_today'),
+            ),
+            # Only the rows some count can use: open ones, and today's closes
+            or_(open_, resolved),
+        ).one()
+        channels = scoped(
+            self.db.query(SessionToAgent.channel, session_count),
+            open_,
+        ).group_by(SessionToAgent.channel).all()
+
         return {
             'open': row.open,
             'waiting_for_human': row.waiting_for_human,
             'assigned_to_me': row.assigned_to_me,
+            'ai_handling': row.ai_handling,
+            'negative': row.negative,
+            'resolved_by_ai_today': row.resolved_by_ai_today,
+            'channels': {channel: count for channel, count in channels},
         }
+
+    @staticmethod
+    def _inbox_order(sort: Optional[inbox_views.InboxSort]):
+        """ORDER BY for the list. Without a sort, the original order: waiting
+        conversations first, then the latest activity."""
+        last_activity = func.max(ChatHistory.created_at)
+        if sort == inbox_views.InboxSort.NEWEST:
+            return (last_activity.desc(),)
+        if sort == inbox_views.InboxSort.WAITING_LONGEST:
+            # A chat that waited from the start (an agent with AI replies off,
+            # or one handed over before handed_over_at existed) waits from its
+            # first message.
+            return (
+                func.coalesce(SessionToAgent.handed_over_at, func.min(ChatHistory.created_at)).asc(),
+                last_activity.desc(),
+            )
+        return (
+            text("CASE WHEN session_to_agents.status = 'TRANSFERRED' THEN 0 "
+                 "WHEN session_to_agents.status = 'OPEN' THEN 1 "
+                 "ELSE 2 END"),
+            last_activity.desc(),
+        )
 
     def get_recent_chats(
         self,
@@ -515,7 +556,13 @@ class ChatRepository:
         filter_user_id: Optional[str | UUID] = None,
         customer_email: Optional[str] = None,
         date_from: Optional[datetime] = None,
-        date_to: Optional[datetime] = None
+        date_to: Optional[datetime] = None,
+        view: Optional[inbox_views.InboxView] = None,
+        channel: Optional[str] = None,
+        search: Optional[str] = None,
+        sort: Optional[inbox_views.InboxSort] = None,
+        current_user_id: Optional[str | UUID] = None,
+        today_start: Optional[datetime] = None,
     ) -> List[dict]:
         """Get recent chat overviews grouped by conversation"""
         # Convert string IDs to UUID if needed
@@ -527,11 +574,13 @@ class ChatRepository:
             organization_id = UUID(organization_id)
         if user_groups:
             user_groups = [UUID(g) if isinstance(g, str) else g for g in user_groups]
+        current_user_id = UUID(str(current_user_id)) if current_user_id else None
 
         query = self.db.query(
             Customer.id.label('customer_id'),
             Customer.email.label('customer_email'),
             Customer.full_name.label('customer_full_name'),
+            Customer.phone.label('customer_phone'),
             Agent.id.label('agent_id'),
             Agent.name.label('agent_name'),
             Agent.display_name.label('agent_display_name'),
@@ -544,6 +593,11 @@ class ChatRepository:
             # detail view has always known, the overview never did.
             SessionToAgent.user_id.label('user_id'),
             User.full_name.label('user_name'),
+            # Not grouped: session_id (the primary key) is, and Postgres lets
+            # the rest of that row's columns follow it.
+            SessionToAgent.handed_over_at.label('handed_over_at'),
+            SessionToAgent.title.label('title'),
+            SessionToAgent.sentiment_label.label('sentiment_label'),
             func.max(ChatHistory.created_at).label('updated_at'),
             func.count(ChatHistory.id).label('message_count'),
             SessionToAgent.session_id.label('session_id')
@@ -569,6 +623,13 @@ class ChatRepository:
                 query = query.filter(SessionToAgent.status.in_(status_values))
             else:
                 query = query.filter(SessionToAgent.status == status)
+
+        if view:
+            query = query.filter(inbox_views.view_clause(view, current_user_id, today_start or _utc_midnight()))
+        if channel:
+            query = query.filter(SessionToAgent.channel == channel)
+        if search:
+            query = query.filter(inbox_views.search_clause(search))
         
         # Filter by organization
         if organization_id:
@@ -613,15 +674,7 @@ class ChatRepository:
             SessionToAgent.user_id,
             User.full_name,
             SessionToAgent.session_id
-        ).order_by(
-            # Create a custom ordering to prioritize transferred conversations
-            # Using direct SQL expression for the CASE statement with uppercase status values
-            text("CASE WHEN session_to_agents.status = 'TRANSFERRED' THEN 0 "
-                 "WHEN session_to_agents.status = 'OPEN' THEN 1 "
-                 "ELSE 2 END"),
-            # Then order by most recent activity
-            func.max(ChatHistory.created_at).desc()
-        ).offset(skip).limit(limit)
+        ).order_by(*self._inbox_order(sort)).offset(skip).limit(limit)
 
         results = query.all()
         # Previews are fetched for the returned page only. Inlining them as a
@@ -633,7 +686,8 @@ class ChatRepository:
             'customer': {
                 'id': r.customer_id,
                 'email': CustomerRepository.display_email(r.customer_email),
-                'full_name': r.customer_full_name
+                'full_name': r.customer_full_name,
+                'phone': r.customer_phone,
             },
             'agent': {
                 'id': r.agent_id,
@@ -649,6 +703,9 @@ class ChatRepository:
             'group_id': str(r.group_id) if r.group_id else None,
             'user_id': r.user_id,
             'user_name': r.user_name,
+            'handed_over_at': r.handed_over_at,
+            'title': r.title,
+            'sentiment_label': r.sentiment_label,
             'session_id': r.session_id
         } for r in results]
 
@@ -708,6 +765,7 @@ class ChatRepository:
                 Customer.email.label('customer_email'),
                 Customer.full_name.label('customer_full_name'),
                 Customer.meta_data.label('customer_meta_data'),
+                Customer.phone.label('customer_phone'),
                 Agent.id.label('agent_id'),
                 Agent.name.label('agent_name'),
                 Agent.display_name.label('agent_display_name'),
@@ -718,6 +776,13 @@ class ChatRepository:
                 SessionToAgent.session_id.label('session_id'),
                 SessionToAgent.user_id.label('user_id'),
                 User.full_name.label('user_name'),
+                # Ungrouped, like meta_data below: they follow the grouped
+                # primary key (session_id).
+                SessionToAgent.handed_over_at.label('handed_over_at'),
+                SessionToAgent.transfer_reason.label('transfer_reason'),
+                SessionToAgent.transfer_description.label('transfer_description'),
+                SessionToAgent.sentiment_label.label('sentiment_label'),
+                SessionToAgent.title.label('title'),
                 func.min(ChatHistory.created_at).label('created_at'),
                 func.max(ChatHistory.created_at).label('updated_at')
             )
@@ -758,6 +823,12 @@ class ChatRepository:
         # Get messages for the session
         messages = await self.get_session_history(session_id)
         
+        # Who on the team wrote each reply: one query for the whole thread
+        writer_ids = {msg.user_id for msg in messages if msg.user_id}
+        writer_names = dict(
+            self.db.query(User.id, User.full_name).filter(User.id.in_(writer_ids)).all()
+        ) if writer_ids else {}
+
         # Build messages list with attachments
         messages_list = []
         for msg in messages:
@@ -766,6 +837,8 @@ class ChatRepository:
                 'message': msg.message,
                 'message_type': msg.message_type,
                 'created_at': msg.created_at,
+                'user_id': msg.user_id,
+                'user_name': writer_names.get(msg.user_id),
                 'attributes': _readable_attributes(msg.attributes),
                 # Live delivery receipts are matched to the message by either
                 'external_message_id': msg.external_message_id,
@@ -794,7 +867,8 @@ class ChatRepository:
                 'id': result.customer_id,
                 'email': CustomerRepository.display_email(result.customer_email),
                 'full_name': result.customer_full_name,
-                'meta_data': result.customer_meta_data
+                'meta_data': result.customer_meta_data,
+                'phone': result.customer_phone,
             },
             'agent': {
                 'id': result.agent_id,
@@ -809,6 +883,11 @@ class ChatRepository:
             'session_id': result.session_id,
             'user_id': result.user_id,
             'user_name': result.user_name,
+            'handed_over_at': result.handed_over_at,
+            'transfer_reason': result.transfer_reason,
+            'transfer_description': result.transfer_description,
+            'sentiment_label': result.sentiment_label,
+            'title': result.title,
             'created_at': result.created_at,
             'updated_at': result.updated_at,
             'messages': messages_list

@@ -168,4 +168,22 @@ describe('useNavCounts', () => {
     await flushPromises()
     expect(chatService.getInboxCounts).toHaveBeenCalledTimes(2)
   })
+
+  it("takes the counts the inbox just fetched, and skips its own poll while they're fresh", async () => {
+    const { api } = mountCounts()
+    await flushPromises()
+    vi.mocked(chatService.getInboxCounts).mockClear()
+
+    vi.advanceTimersByTime(NAV_COUNTS_POLL_MS - 1000)
+    emitter.emit('inbox-counts', { open: 9, waiting_for_human: 7, assigned_to_me: 0, ai_handling: 0, negative: 0, resolved_by_ai_today: 0, channels: {} })
+    expect(api.waitingForHuman.value).toBe(7)
+
+    vi.advanceTimersByTime(1000)
+    await flushPromises()
+    expect(chatService.getInboxCounts).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(NAV_COUNTS_POLL_MS)
+    await flushPromises()
+    expect(chatService.getInboxCounts).toHaveBeenCalledTimes(1)
+  })
 })

@@ -39,6 +39,7 @@ router = APIRouter()
 # Shown to the customer when a human takes over an external-channel chat. The
 # widget surfaces the handover in its own UI, so only channels need a message.
 HANDOVER_NOTICE = "You're now connected with a member of our team."
+BACK_TO_AI_NOTICE = "You're chatting with our AI assistant again."
 
 
 def _is_uuid(value: str) -> bool:
@@ -210,6 +211,60 @@ async def route_chat_to_human(
         )
 
 
+@router.post("/{session_id}/release", response_model=ChatDetailResponse)
+async def release_chat_to_ai(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Hand the chat back to the AI, from a person or the team's queue.
+
+    The person who took it over (or anyone who may manage it) is done, and the
+    AI answers the customer's next message. The customer is told in the thread,
+    on every channel including the widget.
+    """
+    try:
+        session = await _load_manageable_session(db, session_id, current_user)
+
+        if session.status == SessionStatus.CLOSED:
+            raise HTTPException(status_code=400, detail="This chat is closed")
+        if session.agent is not None and session.agent.ai_replies_enabled is False:
+            raise HTTPException(
+                status_code=400, detail="This agent doesn't answer with AI")
+        if (session.user_id is None and session.group_id is None
+                and session.status == SessionStatus.OPEN):
+            raise HTTPException(
+                status_code=400, detail="The AI is already handling this chat")
+
+        previous_user_id = session.user_id
+        if not SessionToAgentRepository(db).release_to_ai(session_id):
+            raise HTTPException(status_code=400, detail="Failed to hand the chat back to the AI")
+
+        await notify_customer(db, session, BACK_TO_AI_NOTICE, channels_only=False)
+
+        if previous_user_id and previous_user_id != current_user.id:
+            # Their inbox drops it without waiting for the next refresh
+            await sio.emit('room_event', {
+                'type': 'released_to_ai',
+                'session_id': session_id,
+            }, room=f"user_{previous_user_id}")
+
+        chat = await ChatRepository(db).get_chat_detail(
+            session_id=session_id,
+            org_id=current_user.organization_id
+        )
+        if not chat:
+            raise HTTPException(
+                status_code=500, detail="Failed to get chat details after handing back")
+        return ChatDetailResponse(**chat)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error handing chat back to AI: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to hand the chat back to the AI")
+
+
 @router.post("/{session_id}/reassign", response_model=ChatDetailResponse)
 async def reassign_chat(
     session_id: str,
@@ -219,25 +274,11 @@ async def reassign_chat(
 ):
     """Reassign a chat session to a different user"""
     try:
-        # Same grants as claiming a chat — and has_any_permission honours the
-        # super_admin bypass the previous hand-rolled set check ignored. It
-        # also checked "manage_chats", which is not a real permission and so
-        # never matched.
-        if not has_any_permission(current_user, CHAT_MANAGE_PERMISSIONS):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
-            )
-
+        # The same permission, organization and visibility checks as taking a
+        # chat over: assigning reaches unclaimed chats too, so it must not reach
+        # past what the caller's inbox shows.
+        session = await _load_manageable_session(db, session_id, current_user)
         session_repo = SessionToAgentRepository(db)
-        session = session_repo.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Chat session not found")
-
-        # A session id is guessable and was never scoped here: without this a
-        # user could hand off a conversation belonging to another organization.
-        if session.organization_id != current_user.organization_id:
-            raise HTTPException(status_code=404, detail="Chat session not found")
 
         # The new owner must be a real, active member of the same org —
         # otherwise a chat (and its assignment notification) could be pushed
@@ -249,11 +290,10 @@ async def reassign_chat(
                 or target_user.organization_id != current_user.organization_id):
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Only allow reassignment for open sessions handled by a user (not AI)
-        if str(session.status.name).lower() != 'open':
-            raise HTTPException(status_code=400, detail="Only open sessions can be reassigned")
-        if session.user_id is None:
-            raise HTTPException(status_code=400, detail="Chat must be handled by a user to reassign")
+        # Any conversation still going can be given to someone: one a teammate
+        # holds, one waiting in the queue, or one the AI is answering.
+        if session.status == SessionStatus.CLOSED:
+            raise HTTPException(status_code=400, detail="This chat is closed")
 
         # Capture the previous assignee BEFORE reassigning. reassign_session
         # re-fetches this same row, so within one DB session the identity map
@@ -276,12 +316,22 @@ async def reassign_chat(
         if not chat:
             raise HTTPException(status_code=500, detail="Failed to get chat details after reassignment")
 
-        # Notify widget room (customer)
-        await sio.emit('room_event', {
-            'type': 'reassigned',
-            'session_id': session_id,
-            'message': 'Your conversation has been reassigned to another agent.'
-        }, room=session_id, namespace='/widget')
+        if previous_user_id:
+            # Notify widget room (customer)
+            await sio.emit('room_event', {
+                'type': 'reassigned',
+                'session_id': session_id,
+                'message': 'Your conversation has been reassigned to another agent.'
+            }, room=session_id, namespace='/widget')
+        else:
+            # Nobody had it: to the customer this is a person joining, as a
+            # takeover is (the widget's note, and a channel's message)
+            await sio.emit('handle_taken_over', {
+                'session_id': session_id,
+                'user_name': target_user.full_name,
+                'profile_picture': '',
+            }, room=session_id, namespace='/widget')
+            await _notify_customer_of_handover(db, session, target_user)
 
         # Notify agent rooms (convention: user_{id})
         await sio.emit('room_event', {

@@ -17,6 +17,7 @@ limitations under the License.
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
+import { useRoute, useRouter } from 'vue-router'
 import type { FaqImportMode, FaqItem, FaqStatus } from '@/types/faq'
 import { useFaqWorkspace } from '@/composables/useFaqWorkspace'
 import { useHelpCenterSettings } from '@/composables/useHelpCenterSettings'
@@ -29,6 +30,9 @@ import FaqImportModal from './FaqImportModal.vue'
 import FaqSourcePicker from './FaqSourcePicker.vue'
 import HelpCenterAppearance from './HelpCenterAppearance.vue'
 import HelpCenterPublic from './HelpCenterPublic.vue'
+
+/** Longer customer messages are cut: a question, not a transcript */
+const QUESTION_PREFILL_MAX = 300
 
 const props = defineProps<{ organizationId?: string }>()
 
@@ -279,9 +283,22 @@ const newFaqStub = computed<FaqItem>(() => ({
   source_label: 'Added manually',
 }))
 
+// The inbox's "Add the answer to knowledge" lands here with the customer's
+// question (?question=): a new FAQ already holding it, so only the answer is left
+const route = useRoute()
+const router = useRouter()
+function startFromQuestion(): void {
+  const question = route.query.question
+  if (typeof question !== 'string' || !question.trim()) return
+  startAdd()
+  draftQuestion.value = question.trim().slice(0, QUESTION_PREFILL_MAX)
+  void router.replace({ query: { ...route.query, question: undefined } })
+}
+
 onMounted(() => {
   refresh()
   startPolling()
+  startFromQuestion()
 })
 
 onUnmounted(stopPolling)

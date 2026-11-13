@@ -15,7 +15,7 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed, provide } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useTheme } from '@/composables/useTheme'
@@ -24,6 +24,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import BottomNav from '@/components/layout/BottomNav.vue'
 import MoreSheet from '@/components/layout/MoreSheet.vue'
 import { useNavItems } from '@/components/layout/navItems'
+import { OPEN_NAV_KEY } from '@/components/layout/navDrawer'
 import NotificationList from '@/components/notifications/NotificationList.vue'
 import EnablePushPrompt from '@/components/notifications/EnablePushPrompt.vue'
 import FailedSourceNotice from '@/components/knowledge/FailedSourceNotice.vue'
@@ -32,7 +33,7 @@ import type { User } from '@/types/user'
 import { useNotifications } from '@/composables/useNotifications'
 import { notificationService } from '@/services/notification'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
-import { useAgentStatus } from '@/composables/useAgentStatus'
+import { AGENT_STATUS_KEY, useAgentStatus } from '@/composables/useAgentStatus'
 import { useNavCounts } from '@/composables/useNavCounts'
 import { useDocumentTitle } from '@/composables/useDocumentTitle'
 import { routePageTitle } from '@/router/pageTitles'
@@ -57,7 +58,9 @@ const userRole = userService.getUserRole()
 const unreadCount = ref(0)
 const { logout } = useAuth()
 const { mode: themeMode, toggle: toggleTheme } = useTheme()
-const { isOnline, statusUpdating, toggleOnline } = useAgentStatus(currentUser)
+const agentStatus = useAgentStatus(currentUser)
+const { isOnline, statusUpdating, toggleOnline } = agentStatus
+provide(AGENT_STATUS_KEY, agentStatus)
 const { waitingForHuman, openTickets } = useNavCounts()
 const { sectionFor } = useNavItems()
 // Attaches push listeners when permission is already granted; the permission
@@ -143,6 +146,7 @@ onMounted(() => {
 const toggleSidebar = () => {
     isSidebarOpen.value = !isSidebarOpen.value
 }
+provide(OPEN_NAV_KEY, () => { isSidebarOpen.value = true })
 
 const closeSidebar = () => {
     // On mobile, close the sidebar when clicking backdrop
