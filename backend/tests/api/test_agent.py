@@ -1942,3 +1942,84 @@ def test_update_agent_refuses_a_sibling_agents_workflow(client, db, test_user, t
     workflow = _workflow(db, test_user.organization_id, sibling.id, test_user.id)
     response = client.put(f"/api/agents/{test_agent.id}", json={"active_workflow_id": str(workflow.id)})
     assert response.status_code == 404
+
+
+# New agents start on the redesigned widget for good (services/widget_ui.py).
+
+NEW_AGENT_DESIGN = {"version": 2, "created_on_ui": 2}
+
+
+def _create(client, name="Fresh Agent"):
+    response = client.post("/api/agents", json={"name": name, "agent_type": "customer_support", "instructions": ["Hi"]})
+    assert response.status_code == 201
+    return response.json()
+
+
+def _customization_rows(db, agent_id):
+    db.expire_all()
+    return db.query(AgentCustomization).filter(AgentCustomization.agent_id == UUID(str(agent_id))).all()
+
+
+def test_a_new_agent_starts_on_the_redesign_with_the_medium_launcher(client, db, test_user):
+    created = _create(client)
+    assert created["customization"]["customization_metadata"] == {
+        "launcher": {"size": "md"}, "widget_ui": NEW_AGENT_DESIGN}
+    rows = _customization_rows(db, created["id"])
+    assert len(rows) == 1
+    assert rows[0].customization_metadata["widget_ui"] == NEW_AGENT_DESIGN
+
+
+def test_a_new_agent_cannot_be_moved_back_to_the_classic_widget(client, db, test_user):
+    created = _create(client)
+    url = f"/api/agents/{created['id']}/customization"
+    for widget_ui in ({"version": 1}, None, {}):
+        response = client.post(url, json={"customization_metadata": {"widget_ui": widget_ui}})
+        assert response.status_code == 400, widget_ui
+        assert response.json()["detail"] == "This agent was created on the new widget design and stays on it."
+    # Saves that leave the design out, or keep the redesign, keep the server's mark.
+    assert client.post(url, json={"customization_metadata": {"avatar_style": "orb"}}).status_code == 200
+    assert client.post(url, json={"customization_metadata": {"widget_ui": {"version": 2}}}).status_code == 200
+    assert client.post(url, json={"accent_color": "#123456"}).status_code == 200
+    assert _customization_rows(db, created["id"])[0].customization_metadata["widget_ui"] == NEW_AGENT_DESIGN
+
+
+def test_an_existing_agent_stays_classic_and_switches_freely(client, db, test_agent):
+    url = f"/api/agents/{test_agent.id}/customization"
+    # Its first save makes its first row: no mark, whatever the client sends.
+    response = client.post(url, json={"customization_metadata": {"widget_ui": {"version": 2, "created_on_ui": 2}}})
+    assert response.status_code == 200
+    assert _customization_rows(db, test_agent.id)[0].customization_metadata["widget_ui"] == {"version": 2}
+    assert client.post(url, json={"customization_metadata": {"widget_ui": {"version": 1}}}).status_code == 200
+    assert _customization_rows(db, test_agent.id)[0].customization_metadata["widget_ui"] == {"version": 1}
+
+
+def test_a_new_agent_is_saved_with_its_row_or_not_at_all(client, db, test_user):
+    with patch("app.api.agent.launcher.first_save_metadata", side_effect=RuntimeError("boom")):
+        response = client.post("/api/agents", json={"name": "Half Agent", "agent_type": "customer_support", "instructions": ["Hi"]})
+    assert response.status_code == 500
+    db.expire_all()
+    assert db.query(Agent).filter(Agent.name == "Half Agent").count() == 0
+
+
+@pytest.mark.parametrize("metadata", [None, {}])
+def test_a_null_or_empty_metadata_keeps_a_new_agents_mark(client, db, test_user, metadata):
+    created = _create(client, name=f"Kept {metadata!r}")
+    response = client.post(f"/api/agents/{created['id']}/customization", json={"customization_metadata": metadata})
+    assert response.status_code == 200
+    assert _customization_rows(db, created["id"])[0].customization_metadata["widget_ui"] == NEW_AGENT_DESIGN
+
+
+def test_an_api_clients_first_save_keeps_the_new_agents_medium_launcher(client, db, test_user):
+    created = _create(client, name="Api Agent")
+    response = client.post(f"/api/agents/{created['id']}/customization",
+                           json={"customization_metadata": {"avatar_style": "orb"}})
+    assert response.status_code == 200
+    assert _customization_rows(db, created["id"])[0].customization_metadata == {
+        "avatar_style": "orb", "launcher": {"size": "md"}, "widget_ui": NEW_AGENT_DESIGN}
+
+
+def test_a_legacy_agents_saved_row_drops_a_client_sent_mark(client, db, test_agent, test_customization):
+    url = f"/api/agents/{test_agent.id}/customization"
+    assert client.post(url, json={"customization_metadata": {"widget_ui": {"version": 2, "created_on_ui": 2}}}).status_code == 200
+    assert _customization_rows(db, test_agent.id)[0].customization_metadata["widget_ui"] == {"version": 2}
+    assert client.post(url, json={"customization_metadata": {"widget_ui": {"version": 1}}}).status_code == 200

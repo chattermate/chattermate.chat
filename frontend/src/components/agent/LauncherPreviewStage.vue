@@ -21,13 +21,13 @@ import {
   LAUNCHER_ICON_SCALE,
   LAUNCHER_ICON_SVG,
   LAUNCHER_LOGO_SCALE,
-  inkOn,
   launcherAccent,
   launcherDotColors,
   launcherFill,
   launcherMotionCss,
   type LauncherLook,
 } from '@/webclient/launcher-style'
+import { readableInkOn } from '@/utils/color'
 
 const WINDOW_SCALE = 0.75
 const EDGE = 20
@@ -55,7 +55,7 @@ const fill = computed(() => launcherFill(props.look, props.brand))
 const accent = computed(() => launcherAccent(props.brand))
 // The default launcher is the ChatterMate mark: lime and coral dots on the ink tile.
 const dotColors = computed(() => (props.look.icon === 'dots' ? launcherDotColors(props.brand) : null))
-const onBrand = computed(() => inkOn(props.brand))
+const onBrand = computed(() => readableInkOn(props.brand))
 const aboveLauncher = computed(() => EDGE + props.look.px + GAP)
 
 // Inline because the motion comes from the loader's own CSS, built per look.

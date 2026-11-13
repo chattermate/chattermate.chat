@@ -386,6 +386,9 @@ export class ChatWidget {
     await step(`Customer gives ${this.customer.email}`, async () => {
       await this.emailGate.fill(this.customer.email)
       await this.frame.getByRole('button', { name: 'Continue to chat' }).click()
+      // The redesigned widget keeps its message box usable beside the email card, so
+      // "ready" is the email taken (the card gone), not just an editable box.
+      await expect(this.emailGate).toBeHidden()
       await this.expectReady()
     })
   }
@@ -443,8 +446,7 @@ export class ChatWidget {
   /** Rates the finished chat; `stars` is 1–5. */
   async rate(stars: number, feedback?: string): Promise<void> {
     await step(`Customer rates the chat ${stars}/5`, async () => {
-      // The star buttons are plain "★" glyphs with no accessible name.
-      await this.frame.locator('.star-button').nth(stars - 1).click()
+      await this.frame.getByRole('button', { name: `${stars} out of 5`, exact: true }).click()
       if (feedback) await this.frame.getByPlaceholder('Please share your feedback (optional)').fill(feedback)
       await this.frame.getByRole('button', { name: 'Submit Rating' }).click()
     })
@@ -523,6 +525,15 @@ export class ChatWidget {
     return this.page.locator('#chattermate-container')
   }
 
+  /**
+   * Which design the site was served: the loader frames the redesigned widget's
+   * panel differently. CSS: the loader marks that container with .cm-v2, nothing
+   * a visitor can name.
+   */
+  async design(): Promise<1 | 2> {
+    return (await this.panel.getAttribute('class'))?.split(/\s+/).includes('cm-v2') ? 2 : 1
+  }
+
   /** Shown by the loader instead of a chat when the widget refuses to load (e.g. no token). */
   get unavailableNotice(): Locator {
     return this.page.getByText('Chat Unavailable')
@@ -559,7 +570,7 @@ export class ChatWidget {
 
   /** The bubble shown while the agent writes its reply. */
   get typingBubble(): Locator {
-    return this.frame.locator('.typing-indicator') // no accessible name of its own
+    return this.frame.getByRole('status', { name: 'Agent is replying' })
   }
 
   /** Whether the message list has picked up a sideways scrollbar. */

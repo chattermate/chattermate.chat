@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 from app.channels.interactive_limits import WEB_LIMITS
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse
-from app.services.widget_reply import _response_payload, widget_agent_kwargs
+from app.services.widget_reply import reply_payload, widget_agent_kwargs
 
 
 def _session(**extra):
@@ -40,21 +40,21 @@ def test_choices_offered_only_when_the_agent_turns_them_on(_decrypt):
 
 def test_offered_choices_reach_the_widget():
     response = ChannelChatResponse(message='Which colour?', quick_replies=['Blue', 'Green'])
-    assert _response_payload(response, 's')['quick_replies'] == ['Blue', 'Green']
+    assert reply_payload(response, 's')['quick_replies'] == ['Blue', 'Green']
 
 
 def test_choices_are_held_to_what_fits_on_a_phone():
     long = 'x' * 60
     response = ChannelChatResponse(message='Pick one', quick_replies=['A', 'B', 'C', 'D', 'E', long])
-    shown = _response_payload(response, 's')['quick_replies']
+    shown = reply_payload(response, 's')['quick_replies']
     assert shown == ['A', 'B', 'C', 'D']
-    one = _response_payload(ChannelChatResponse(message='Pick', quick_replies=[long]), 's')['quick_replies']
+    one = reply_payload(ChannelChatResponse(message='Pick', quick_replies=[long]), 's')['quick_replies']
     assert one == ['x' * WEB_LIMITS.button_title_max]
 
 
 def test_a_plain_reply_carries_no_choices():
-    assert _response_payload(ChatResponse(message='Hi'), 's')['quick_replies'] is None
-    assert _response_payload(ChannelChatResponse(message='Hi', quick_replies=[]), 's')['quick_replies'] is None
+    assert reply_payload(ChatResponse(message='Hi'), 's')['quick_replies'] is None
+    assert reply_payload(ChannelChatResponse(message='Hi', quick_replies=[]), 's')['quick_replies'] is None
 
 
 def test_web_buttons_fit_four_on_a_phone():

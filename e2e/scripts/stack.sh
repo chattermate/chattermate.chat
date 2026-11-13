@@ -83,6 +83,8 @@ db_url() { local base="${PG_URL#postgres://}"; base="${base#postgresql://}"; ech
 backend_env() {
   export ENV_FILE="$E2E_DIR/.env.e2e"
   export WIDGET_FRAME_URL="${E2E_WIDGET_FRAME_URL-http://localhost:$BACKEND_PORT}"
+  # The redesigned widget is off by default; E2E_WIDGET_UI=2 runs need it served.
+  export WIDGET_UI_V2_ENABLED="${WIDGET_UI_V2_ENABLED:-$([[ "${E2E_WIDGET_UI:-}" == 2 ]] && echo true || echo false)}"
   export DATABASE_URL; DATABASE_URL="$(db_url "$1")"
   if [[ "$EDITION" == oss ]]; then
     export NO_ENTERPRISE=1
@@ -201,14 +203,12 @@ build_widget() {
 }
 
 # The embed loader (chattermate.min.js), built from source into the dashboard copy's
-# public/ so vite ships it in the build — what build-webclient-*.ts does.
+# public/ so vite ships it in the build — the same bundle build-webclient-*.ts make
+# (scripts/loader-build.ts, which also compacts the loader's template-literal CSS).
 build_loader() {
   local src="$1"
-  (cd "$src" && node_modules/.bin/esbuild src/webclient/chattermate.js --bundle --minify --format=iife \
-    --target=es2015 --loader:.svg=text --log-level=warning \
-    --define:process.env.NODE_ENV='"production"' \
-    --define:__CHATTERMATE_API_URL__="\"http://127.0.0.1:$BACKEND_PORT/api/v1\"" \
-    --outfile=public/webclient/chattermate.min.js) >&2
+  (cd "$src" && node_modules/.bin/tsx scripts/loader-build.ts public/webclient/chattermate.min.js \
+    "http://127.0.0.1:$BACKEND_PORT/api/v1") >&2
 }
 
 # One copy of frontend/ feeds all three builds: loader, widget, dashboard.

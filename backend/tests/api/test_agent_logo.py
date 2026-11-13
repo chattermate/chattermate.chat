@@ -26,6 +26,7 @@ from PIL import Image
 from app.api import agent as agent_router
 from app.api import agent_logo
 from app.core.auth import get_unified_auth
+from app.core.config import settings
 from app.database import get_db
 from app.models.agent import Agent, AgentCustomization, AgentType
 from app.models.permission import Permission, role_permissions
@@ -215,6 +216,23 @@ class TestRemove:
         assert client.delete(f"/api/agent/{agent.id}/customization/logo").status_code == 404
 
 
+class TestNewAgentsMark:
+    """The logo routes rewrite the launcher; a new agent stays on the redesign."""
+
+    def test_logo_upload_and_removal_keep_it(self, client, db, user):
+        from app.repositories.agent import AgentRepository
+        agent = AgentRepository(db).create_agent(
+            name="N", display_name="N", description="d", agent_type=AgentType.CUSTOMER_SUPPORT,
+            instructions=["i"], is_active=True, organization_id=user.organization_id)
+        db.add(AgentCustomization(agent_id=agent.id, customization_metadata={"launcher": {"size": "md"}}))
+        db.commit()
+        mark = {"version": 2, "created_on_ui": 2}
+        assert client.post(f"/api/agent/{agent.id}/customization/logo", files=_files(_png())).status_code == 200
+        assert _row(db, agent).customization_metadata["widget_ui"] == mark
+        assert client.delete(f"/api/agent/{agent.id}/customization/logo").status_code == 200
+        assert _row(db, agent).customization_metadata["widget_ui"] == mark
+
+
 class TestCustomizationWrite:
     def _save(self, client, agent, **body):
         return client.post(f"/api/agent/{agent.id}/customization", json=body)
@@ -274,3 +292,24 @@ class TestCustomizationWrite:
         db.commit()
         self._save(client, agent, customization_metadata={"avatar_style": "orb"})
         assert _row(db, agent).customization_metadata == {"avatar_style": "orb"}
+
+    def test_a_partial_save_keeps_the_chosen_widget_design(self, client, db, agent):
+        db.add(AgentCustomization(agent_id=agent.id, customization_metadata={"widget_ui": {"version": 2}}))
+        db.commit()
+        self._save(client, agent, customization_metadata={"widget_display": {"mode": "launcher"}})
+        assert _row(db, agent).customization_metadata["widget_ui"] == {"version": 2}
+
+    def test_a_bad_widget_design_is_refused(self, client, db, agent):
+        response = self._save(client, agent, customization_metadata={"widget_ui": {"version": True}})
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_the_dashboard_learns_whether_the_server_serves_the_redesign(self, client, db, agent, enabled):
+        # Before any customization is saved, and after a choice the switch overrides.
+        with patch.object(settings, "WIDGET_UI_V2_ENABLED", enabled):
+            assert client.get(f"/api/agent/{agent.id}").json()["widget_ui_v2_enabled"] is enabled
+            assert self._save(client, agent, customization_metadata={"widget_ui": {"version": 2}}).status_code == 200
+            body = client.get(f"/api/agent/{agent.id}").json()
+        assert body["widget_ui_v2_enabled"] is enabled
+        # The stored choice is the agent's, whatever the switch says.
+        assert body["customization"]["customization_metadata"]["widget_ui"] == {"version": 2}

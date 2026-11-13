@@ -44,7 +44,7 @@ from PIL import Image
 from uuid import UUID
 from app.core.s3 import upload_file_to_s3
 from app.core.config import settings
-from app.services import launcher, telegram_webhooks
+from app.services import launcher, telegram_webhooks, widget_ui
 from app.services.file_storage import local_upload_path
 from pydantic import BaseModel
 from agno.agent import Agent as AgnoAgent
@@ -201,8 +201,17 @@ async def create_agent(
                 agent_dict["ask_for_rating"] = False
         
         # Create the agent
-        agent = agent_repo.create_agent(**agent_dict)
-        
+        # One transaction: the agent and its look's first row (the medium launcher,
+        # and the redesigned widget for good, stamped on insert by
+        # services/widget_ui.py). An agent without the row would read as legacy.
+        agent = agent_repo.create_agent(commit=False, **agent_dict)
+        customization = AgentCustomization(
+            agent_id=agent.id, customization_metadata=launcher.first_save_metadata(None))
+        db.add(customization)
+        db.commit()
+        db.refresh(agent)
+        db.refresh(customization)
+
         # Prepare response with empty knowledge list
         response = AgentWithCustomizationResponse(
             id=agent.id,
@@ -213,7 +222,7 @@ async def create_agent(
             instructions=agent.instructions,
             is_active=agent.is_active,
             organization_id=agent.organization_id,
-            customization=None,
+            customization=CustomizationResponse.model_validate(customization),
             transfer_to_human=agent.transfer_to_human or False,
             ai_replies_enabled=agent.ai_replies_enabled,
             channel_quick_replies=agent.channel_quick_replies,
@@ -521,12 +530,15 @@ async def create_agent_customization(
         ).first()
 
         if 'customization_metadata' in customization_data.model_fields_set:
+            stored_metadata = db_customization.customization_metadata if db_customization else None
             customization_data.customization_metadata = launcher.check_metadata_write(
                 db,
                 auth_info["organization_id"],
-                db_customization.customization_metadata if db_customization else None,
+                stored_metadata,
                 customization_data.customization_metadata,
             )
+            customization_data.customization_metadata = widget_ui.keep_stored_choice(
+                stored_metadata, customization_data.customization_metadata)
 
         if db_customization:
             # Update existing customization

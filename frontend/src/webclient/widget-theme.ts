@@ -23,10 +23,15 @@ limitations under the License.
  * widget (`WidgetBuilder.vue`) and the admin preview (`AgentChatPreviewPanel.vue`)
  * apply on `.chat-container`, and the shared `widget-surface.css` consumes. A user's
  * explicit `accent_color` / `chat_background_color` / `font_family` overrides the
- * theme default; otherwise the comp values win.
+ * theme default; otherwise the comp values win. The redesign (`{ ui: 2 }`) adds
+ * the panel, tint and motion properties from `panel/panel-theme.ts`.
  */
 
 import { isColorDark, adjustColorBrightness } from '../types/widget'
+import { toHex6 } from '../utils/color'
+import type { WidgetUiVersion } from '../types/agent'
+import type { MotionPersonality } from './panel/motion-tokens'
+import { DARK_TEXT, LIGHT_TEXT, panelCssVars, panelLook, type PanelColours, type PanelLook } from './panel/panel-theme'
 
 export interface ThemeTokens {
     /** Light surface (affects overlay/contrast + hairline choices). */
@@ -51,6 +56,16 @@ export interface ThemeTokens {
     agentBg: string
     /** Default accent (user `accent_color` overrides). */
     accent: string
+    /** Solid colour standing in for `card` when deriving colours (`card` may be a gradient). */
+    surface: string
+    /** Redesign (ui 2): card corner radius, px. */
+    radiusCard: number
+    /** Redesign (ui 2): control (button, field, chip) corner radius, px. */
+    radiusControl: number
+    /** Redesign (ui 2): how things move. */
+    motion: MotionPersonality
+    /** Redesign (ui 2): frosted panel (the loader adds the backdrop blur). */
+    glass: boolean
 }
 
 // Token sets from the design comp (Glass / Aurora / Terminal / Calm Mint /
@@ -61,36 +76,42 @@ const GLASS: ThemeTokens = {
     glow: 'rgba(157,140,255,.26)', border: 'rgba(157,140,255,.32)',
     card: 'linear-gradient(180deg,rgba(28,26,40,.94),rgba(15,14,22,.97))',
     text: '#ECEAFA', muted: '#9C97BE', agentBg: 'rgba(255,255,255,.06)', accent: '#9D8CFF',
+    surface: '#1A1826', radiusCard: 16, radiusControl: 12, motion: 'blur', glass: true,
 }
 const AURORA: ThemeTokens = {
     light: false, mono: false, radius: 26, bubble: 18,
     glow: 'rgba(157,140,255,.32)', border: 'rgba(157,140,255,.40)',
     card: 'linear-gradient(180deg,#16131F,#0A0910)',
     text: '#F2F3F8', muted: '#A7A0CC', agentBg: 'rgba(255,255,255,.05)', accent: '#9D8CFF',
+    surface: '#100E17', radiusCard: 18, radiusControl: 12, motion: 'base', glass: false,
 }
 const TERMINAL: ThemeTokens = {
     light: false, mono: true, radius: 8, bubble: 4,
     glow: 'rgba(201,242,78,.20)', border: 'rgba(201,242,78,.30)',
     card: '#070907',
     text: '#D7F7C8', muted: '#7F9B57', agentBg: 'rgba(201,242,78,.045)', accent: '#C9F24E',
+    surface: '#070907', radiusCard: 6, radiusControl: 6, motion: 'stepped', glass: false,
 }
 const CALM_MINT: ThemeTokens = {
     light: false, mono: false, radius: 18, bubble: 14,
     glow: 'rgba(95,227,214,.22)', border: 'rgba(95,227,214,.30)',
     card: 'linear-gradient(180deg,#0E1A1A,#0A1414)',
     text: '#DDF7F3', muted: '#6FAFA8', agentBg: 'rgba(255,255,255,.05)', accent: '#5FE3D6',
+    surface: '#0C1717', radiusCard: 14, radiusControl: 12, motion: 'gentle', glass: false,
 }
 const PLAYFUL: ThemeTokens = {
     light: true, mono: false, radius: 28, bubble: 20,
     glow: 'rgba(255,138,115,.30)', border: 'rgba(0,0,0,.07)',
     card: '#FFFFFF',
     text: '#2A2730', muted: '#736C7C', agentBg: '#F4F1F6', accent: '#FF8A73',
+    surface: '#FFFFFF', radiusCard: 20, radiusControl: 16, motion: 'spring', glass: false,
 }
 const SUNRISE: ThemeTokens = {
     light: true, mono: false, radius: 24, bubble: 16,
     glow: 'rgba(255,138,115,.22)', border: 'rgba(0,0,0,.08)',
     card: '#FFFFFF',
     text: '#2A2A33', muted: '#6E6E7B', agentBg: '#F3F3F6', accent: '#FF8A73',
+    surface: '#FFFFFF', radiusCard: 16, radiusControl: 12, motion: 'base', glass: false,
 }
 
 // chat_style → token-set mapping. CHATBOT (legacy) and ASK_ANYTHING reuse Sunrise.
@@ -144,28 +165,52 @@ export interface ThemeOverrides {
 // agents fall back to the per-theme text colour instead of near-black on dark themes.
 const LEGACY_TEXT_DEFAULT = '#212529'
 
+const HEX6 = /^#[0-9a-fA-F]{6}$/
+
+const isLegacyTextDefault = (hex: string | null) => !!hex && hex.toLowerCase() === LEGACY_TEXT_DEFAULT
+
+/**
+ * The redesign's view of the agent's own colours: any 3- or 6-digit hex counts
+ * (the classic widget keeps its stricter 6-digit check, unchanged); anything else
+ * (rgb(), a name) is ignored rather than half-applied.
+ */
+function panelColours(t: ThemeTokens, overrides?: ThemeOverrides): PanelColours {
+    const text = toHex6(overrides?.chat_text_color)
+    return {
+        customBackground: toHex6(overrides?.chat_background_color),
+        customText: isLegacyTextDefault(text) ? null : text,
+        accent: overrides?.accent_color || t.accent,
+    }
+}
+
 /**
  * Flatten tokens (merged with any user overrides) into the `--cm-*` custom
  * properties consumed by `widget-surface.css`. This is the ONLY place per-theme
  * values are turned into CSS — both widget and preview call it.
  */
-export function themeCssVars(chatStyle?: string | null, overrides?: ThemeOverrides): Record<string, string> {
+export function themeCssVars(
+    chatStyle?: string | null,
+    overrides?: ThemeOverrides,
+    // hostBackdrop: the embed loader frosts the page behind the panel (HOST_CAPABILITIES),
+    // so Glass may be see-through (ui 2 only).
+    options: { ui?: WidgetUiVersion; hostBackdrop?: boolean } = {},
+): Record<string, string> {
     const t = getThemeTokens(chatStyle)
 
     // A user-set background is a hex colour from the picker; when present we derive
     // text/muted/agent-bubble from it (so custom colours stay legible), otherwise we
     // use the comp's exact per-theme colours.
     const customBg = overrides?.chat_background_color || ''
-    const hasCustomBg = /^#[0-9a-fA-F]{6}$/.test(customBg)
+    const hasCustomBg = HEX6.test(customBg)
     const card = customBg || t.card
 
     // Text colour precedence: explicit user text colour > derived from a custom
     // background > the theme's design default.
     const customText = overrides?.chat_text_color || ''
-    const hasCustomText = /^#[0-9a-fA-F]{6}$/.test(customText) && customText.toLowerCase() !== LEGACY_TEXT_DEFAULT
+    const hasCustomText = HEX6.test(customText) && !isLegacyTextDefault(customText)
     const text = hasCustomText
         ? customText
-        : (hasCustomBg ? (isColorDark(customBg) ? '#FFFFFF' : '#111111') : t.text)
+        : (hasCustomBg ? (isColorDark(customBg) ? LIGHT_TEXT : DARK_TEXT) : t.text)
     const muted = hasCustomBg ? (isColorDark(customBg) ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.62)') : t.muted
     const agentBg = hasCustomBg ? adjustColorBrightness(customBg, 20) : t.agentBg
 
@@ -185,7 +230,7 @@ export function themeCssVars(chatStyle?: string | null, overrides?: ThemeOverrid
         ? MONO_FONT
         : (overrides?.font_family ? `${overrides.font_family}, ${BODY_FONT}` : BODY_FONT)
 
-    return {
+    const classic: Record<string, string> = {
         '--cm-card': card,
         '--cm-text': text,
         '--cm-muted': muted,
@@ -203,4 +248,12 @@ export function themeCssVars(chatStyle?: string | null, overrides?: ThemeOverrid
         '--cm-hairline': t.light ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)',
         '--cm-body-font': bodyFont,
     }
+    if (options.ui !== 2) return classic
+    return { ...classic, ...panelCssVars(t, panelColours(t, overrides), { hostBackdrop: options.hostBackdrop }) }
+}
+
+/** How the loader should frame the redesigned panel for this style and these colours. */
+export function panelLookFor(chatStyle?: string | null, overrides?: ThemeOverrides): PanelLook {
+    const t = getThemeTokens(chatStyle)
+    return panelLook(t, panelColours(t, overrides))
 }

@@ -21,6 +21,7 @@ import json
 from sqlalchemy.orm import joinedload
 from uuid import UUID
 from app.core.logger import get_logger
+from app.services import widget_ui
 
 logger = get_logger(__name__)
 
@@ -28,8 +29,9 @@ class AgentRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_agent(self, **kwargs) -> Agent:
-        """Create a new agent"""
+    def create_agent(self, commit: bool = True, **kwargs) -> Agent:
+        """Create a new agent. commit=False only flushes it, for a caller that adds
+        the agent's customization row and commits both together."""
         # Handle instructions
         # We don't need to do any conversion here, as the Agent model will handle it
         # through its property setter
@@ -46,8 +48,14 @@ class AgentRepository:
         # Create new agent
         agent = Agent(**kwargs)
         self.db.add(agent)
-        self.db.commit()
-        self.db.refresh(agent)
+        if commit:
+            self.db.commit()
+            self.db.refresh(agent)
+        else:
+            self.db.flush()
+        # New agents start on the redesigned widget, stamped on their first
+        # customization row (services/widget_ui.py).
+        widget_ui.mark_new_agent(self.db, agent.id)
         return agent
 
     def get_by_name(self, name: str, organization_id: UUID) -> Optional[Agent]:

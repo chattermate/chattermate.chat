@@ -31,6 +31,7 @@ import { renderMarkdown } from './markdown'
 import { postToHost } from './host-bridge'
 import NewChatConfirm from './NewChatConfirm.vue'
 import { NEW_CHAT_LABEL } from './new-chat'
+import { citationLabel, citationTooltip } from './citations'
 import type { Message } from '../types/chat'
 
 const props = defineProps<{
@@ -55,13 +56,13 @@ const props = defineProps<{
     active: boolean
     /** False when the site disabled the ⌘K chord. */
     hotkey: boolean
-    citationLabel: (source: any) => string
-    citationTooltip: (source: any) => string
     /** Typewriter reveal, keyed by index into `messages` (see useTypewriter). */
     displayText: (index: number, fullText: string) => string
     isStreaming: (index: number) => boolean
     /** Opt-in "New chat" control (customization.allow_new_chat). */
     canStartNewChat: boolean
+    /** The dashboard preview: no embedding page to size or take keys from. */
+    preview?: boolean
     startingNewChat: boolean
     /** Armed = the confirmation is showing (ending a chat can't be undone). */
     newChatArmed: boolean
@@ -157,7 +158,7 @@ const reportHeight = () => {
     // Ignore sub-pixel churn, which would otherwise ping-pong with the resize.
     if (Math.abs(height - lastReportedHeight) < 3) return
     lastReportedHeight = height
-    postToHost({ type: 'WIDGET_RESIZE', height })
+    if (!props.preview) postToHost({ type: 'WIDGET_RESIZE', height })
 }
 
 let contentObserver: ResizeObserver | null = null
@@ -188,7 +189,8 @@ watch(() => props.active, (visible) => {
 
 onMounted(() => {
     if (props.active) focusInput()
-    window.addEventListener('keydown', onKeydown)
+    // Not in the dashboard preview, where Esc and the chord belong to the dashboard.
+    if (!props.preview) window.addEventListener('keydown', onKeydown)
     if (contentEl.value && typeof ResizeObserver !== 'undefined') {
         contentObserver = new ResizeObserver(() => reportHeight())
         contentObserver.observe(contentEl.value)

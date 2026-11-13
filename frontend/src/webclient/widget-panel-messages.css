@@ -1,0 +1,140 @@
+/**
+ * The redesigned widget's conversation (ui 2). Rules and the other parts: see widget-panel.css.
+ */
+
+/* ===== Messages =====
+   Each message's own layout is set here, not in its component: widget-surface.css
+   lays out every .message (flex-start, 9px gap) and outranks a scoped rule. */
+.chat-container.cm-surface.cm-ui-2 .message {
+    display: flex;
+    max-width: 100%;
+    margin: 0;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-user {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-answer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-human {
+    align-items: flex-end;
+    gap: 8px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-joined {
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-fallback {
+    flex-direction: column;
+}
+.chat-container.cm-surface.cm-ui-2 .message-bubble {
+    font-size: 14.5px;
+    overflow-wrap: anywhere;
+}
+.chat-container.cm-surface.cm-ui-2 .user-message .message-bubble {
+    max-width: 78%;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: var(--cm-bubble) var(--cm-bubble) var(--cm-bubble-tail) var(--cm-bubble);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    line-height: 21px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-answer .message-bubble {
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--cm-text);
+    line-height: 22px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-answer__name,
+.chat-container.cm-surface.cm-ui-2 .cm-human__name {
+    color: var(--cm-muted);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-human .message-bubble,
+.chat-container.cm-surface.cm-ui-2 .cm-typing {
+    max-width: none;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: var(--cm-bubble) var(--cm-bubble) var(--cm-bubble) var(--cm-bubble-tail);
+    background: var(--cm-agent-bg);
+    color: var(--cm-text);
+    line-height: 21px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-typing {
+    padding: 13px 14px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-typing-dot {
+    border-radius: 50%;
+    background: var(--cm-muted);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-sources__chip {
+    padding: 4px 10px;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-control);
+    color: var(--cm-text);
+    font-size: 12px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-attachments__link {
+    color: var(--cm-text);
+    font-size: 13px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-fallback .message-bubble {
+    max-width: none;
+    padding: 12px 14px;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-joined {
+    color: var(--cm-muted);
+    font-size: 12px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-joined__line {
+    background: var(--cm-line);
+    animation: cm-line-grow calc(var(--cm-dur-4) * var(--cm-dur-scale)) var(--cm-ease-out) both;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-joined__line--start {
+    transform-origin: 100% 50%;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-joined__line--end {
+    transform-origin: 0 50%;
+}
+
+@keyframes cm-line-grow {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
+/* "New messages": the accent pill over the end of the conversation. */
+.chat-container.cm-surface.cm-ui-2 .cm-new-messages {
+    border: 0;
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-accent);
+    color: var(--cm-on-accent);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    box-shadow: 0 6px 18px -8px var(--cm-text);
+    cursor: pointer;
+}
+
+/* Reduced motion: the divider lines are simply there. */
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-joined__line {
+        animation: none;
+    }
+}

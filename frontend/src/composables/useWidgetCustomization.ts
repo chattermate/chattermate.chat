@@ -15,10 +15,12 @@ limitations under the License.
 */
 
 import { ref } from 'vue'
-import type { AgentCustomization } from '../types/agent'
+import type { AgentCustomization, WidgetUiVersion } from '../types/agent'
 import { postToHost } from '../webclient/host-bridge'
 import { DEFAULT_LAUNCHER_COLOR } from '../webclient/launcher-style'
 import { chatFontStack, loadWidgetFonts } from '../webclient/widget-fonts'
+import { widgetUiVersion } from '../webclient/widget-ui'
+import { panelLookFor } from '../webclient/widget-theme'
 
 // Load the design fonts plus any custom body font, and apply the custom font to
 // the chat container once available.
@@ -30,6 +32,24 @@ const loadFonts = (customFontFamily?: string) => {
     })
 }
 
+/**
+ * What the embed loader is told about the panel: the classic widget only says so;
+ * the redesign adds its framing (panelLookFor), which the loader validates
+ * (panel-style.ts) before any of it reaches the page's CSS.
+ */
+export const panelFrameFor = (ui: WidgetUiVersion, customization: Partial<AgentCustomization>) =>
+    ui === 2
+        ? {
+            ui,
+            ...panelLookFor(customization.chat_style, {
+                chat_background_color: customization.chat_background_color,
+                chat_text_color: customization.chat_text_color,
+                accent_color: customization.accent_color,
+                font_family: customization.font_family,
+            }),
+        }
+        : { ui }
+
 export function useWidgetCustomization() {
     const customization = ref<Partial<AgentCustomization>>({})
     const agentName = ref('')
@@ -37,12 +57,12 @@ export function useWidgetCustomization() {
     const applyCustomization = (newCustomization: Partial<AgentCustomization>) => {
         customization.value = newCustomization
 
-
         if (newCustomization.photo_url) {
             customization.value.photo_url = newCustomization.photo_url
         }
 
-        // Always load the design fonts; layer the custom font_family on top.
+        // The design fonts (linked by the frame page) plus any custom font_family.
+        const ui = widgetUiVersion(newCustomization)
         loadFonts(newCustomization.font_family)
 
         // Send customization update to parent
@@ -56,7 +76,10 @@ export function useWidgetCustomization() {
                 // under any options the installing developer set.
                 widget_display: newCustomization.customization_metadata?.widget_display,
                 launcher: newCustomization.customization_metadata?.launcher,
-                launcher_logo_url: newCustomization.launcher_logo_url
+                launcher_logo_url: newCustomization.launcher_logo_url,
+                // Which widget design the loader frames (classic or the redesign), and
+                // for the redesign how: radius, shadow, glow, frosted backdrop.
+                panel: panelFrameFor(ui, newCustomization)
             }
         })
     }

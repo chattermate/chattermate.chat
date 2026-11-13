@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     # frame can never act as a signed-in dashboard user. Empty: the backend's own
     # public origin.
     WIDGET_FRAME_URL: str = os.getenv("WIDGET_FRAME_URL", "").rstrip("/")
+    # Operator kill switch for the redesigned widget: false serves every visitor the
+    # classic widget, whatever an agent chose, without a frontend deploy. On by
+    # default: the redesign renders every message kind, so it is only for incidents.
+    WIDGET_UI_V2_ENABLED: bool = os.getenv("WIDGET_UI_V2_ENABLED", "true").lower() == "true"
 
     # app.core.encryption owns the actual key loading (reads the env var directly and
     # refuses to start without it outside development). This mirror exists only so

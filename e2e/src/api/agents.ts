@@ -1,4 +1,6 @@
 import type { ApiClient } from './client'
+import { env } from '../env'
+import { sql, uuid } from '../support/db'
 
 export interface Agent {
   id: string
@@ -38,7 +40,18 @@ export async function createAgent(api: ApiClient, agent: NewAgent): Promise<Agen
   if (agent.groupIds?.length) {
     await api.put(`/agent/${created.id}/groups`, { data: agent.groupIds })
   }
+  // Every new agent starts on the new widget design. The classic run's specs are
+  // about the original widget, so there each agent is one made before it.
+  if (env.widgetUi === 1) makeLegacyAgent(String(created.id))
   return { id: String(created.id), name: created.name }
+}
+
+/**
+ * As an agent created before the new widget design: no customization row yet, so
+ * no server mark (created_on_ui) and both designs on offer. No API makes one.
+ */
+export function makeLegacyAgent(agentId: string): void {
+  sql(`DELETE FROM agent_customizations WHERE agent_id = '${uuid(agentId)}'`)
 }
 
 /** Turns lead capture on without the consent gate, so a scripted reply records the lead. */

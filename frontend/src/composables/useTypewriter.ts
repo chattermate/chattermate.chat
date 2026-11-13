@@ -112,12 +112,25 @@ export function useTypewriter(messages: Ref<any[]>, onReveal?: () => void) {
         return !!st && !st.done
     }
 
-    /** Some reply is still being revealed: what follows it waits until it's read. */
-    const typing = computed(() => [...state.values()].some(st => !st.done))
+    /** Whether any reply is still revealing. */
+    const isRevealing = computed(() => [...state.values()].some(st => !st.done))
+
+    /** Show every reply in full now (the visitor pressed stop). */
+    const skipReveal = () => {
+        if (timer) clearTimeout(timer)
+        timer = null
+        queue.length = 0
+        for (const [msg, st] of state.entries()) {
+            if (st.done) continue
+            st.shown = ((msg as any)?.message ?? '').length
+            st.done = true
+        }
+        onReveal?.()
+    }
 
     onUnmounted(() => {
         if (timer) clearTimeout(timer)
     })
 
-    return { displayText, isStreaming, typing }
+    return { displayText, isStreaming, isRevealing, skipReveal }
 }

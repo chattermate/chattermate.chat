@@ -15,6 +15,33 @@ limitations under the License.
 */
 
 import type { ChatStyle, WidgetPosition } from './agent'
+import type { Message, ShopifyProductImage } from './chat'
+
+/** A product card in a widget message, as the shop tools send it. */
+export interface WidgetProduct {
+  id: string
+  title: string
+  price: string
+  image?: ShopifyProductImage
+  handle?: string
+  variant_title?: string
+  currency?: string
+  price_formatted?: string
+  cart_variant_id?: string | null
+}
+
+/** A chat message plus the state the widget keeps on it (forms, ratings, questions). */
+export interface WidgetMessage extends Message {
+  shopify_output?: { products: WidgetProduct[]; shop_domain?: string }
+  isSubmitted?: boolean
+  selectedRating?: number
+  finalRating?: number
+  showFeedback?: boolean
+  feedback?: string
+  finalFeedback?: string | null
+  userInputValue?: string
+  submittedValue?: string | null
+}
 
 export interface Widget {
   id: string

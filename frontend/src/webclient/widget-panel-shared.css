@@ -1,0 +1,26 @@
+/**
+ * The redesigned widget's look for the components both designs share (ui 2):
+ * journey plan, action confirmation, new-chat confirmation, reply chips and the
+ * cart button keep their own styles and take the panel's radii and lines here.
+ * Rules and the other parts: see widget-panel.css.
+ */
+
+.chat-container.cm-surface.cm-ui-2 .cm-plan,
+.chat-container.cm-surface.cm-ui-2 .cm-action-confirm {
+    border-color: var(--cm-line);
+    border-radius: var(--cm-radius-card);
+}
+.chat-container.cm-surface.cm-ui-2 .new-chat-confirm {
+    border-bottom: 1px solid var(--cm-line);
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-reply {
+    border-color: var(--cm-control-line);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cart-button {
+    min-height: 32px;
+    border-radius: var(--cm-radius-control);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+}

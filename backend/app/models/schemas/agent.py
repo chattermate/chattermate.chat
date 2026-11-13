@@ -15,11 +15,12 @@ limitations under the License.
 """
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Annotated, List, Optional, Dict
 from enum import Enum
 from uuid import UUID
 from app.models.agent import AgentType
+from app.core.config import settings
 from app.agents.guardrail_policy import GUARDRAIL_PROMPT_MAX
 from app.services.reply_limits import MAX_PER_DAY, MAX_PER_MINUTE
 from app.models.schemas.agent_customization import CustomizationResponse
@@ -173,3 +174,11 @@ class AgentResponse(BaseModel):
 class AgentWithCustomizationResponse(AgentResponse):
     customization: Optional[CustomizationResponse] = None
     groups: List[UserGroupResponse] = []
+
+    @computed_field
+    @property
+    def widget_ui_v2_enabled(self) -> bool:
+        """Whether this server serves the redesigned widget at all (the operator's
+        WIDGET_UI_V2_ENABLED), on every agent the dashboard loads, customized or not.
+        Read-only: the design choice says so beside it, and saving it is still allowed."""
+        return settings.WIDGET_UI_V2_ENABLED

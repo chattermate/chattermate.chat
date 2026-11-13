@@ -150,25 +150,38 @@ function validateExtension(filename: string, mimeType: string): { valid: boolean
   return { valid: true }
 }
 
-export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTMLInputElement | null>) {
+/** Frees the in-memory preview URLs of a staged file. */
+export const revokeBlobUrls = (file: { url?: string; file_url?: string }) => {
+  if (file.url && file.url.startsWith('blob:')) URL.revokeObjectURL(file.url)
+  if (file.file_url && file.file_url.startsWith('blob:')) URL.revokeObjectURL(file.file_url)
+}
+
+/** A file staged for the next message, with its in-memory preview. */
+export interface UploadedFile {
+  content: string
+  filename: string
+  type: string
+  size: number
+  url: string
+  file_url: string
+}
+
+/** The file shown in the preview modal. */
+export interface PreviewFile {
+  url: string
+  filename: string
+  type: string
+  file_url?: string
+  size?: number
+}
+
+// The view owns the file input (and opening the picker); this is the files' state.
+export function useWidgetFiles(token: Ref<string | null>) {
   // File handling state
-  const uploadedAttachments = ref<Array<{
-    content: string
-    filename: string
-    type: string
-    size: number
-    url: string
-    file_url: string
-  }>>([])
+  const uploadedAttachments = ref<UploadedFile[]>([])
   
   const previewModal = ref(false)
-  const previewFile = ref<{
-    url: string
-    filename: string
-    type: string
-    file_url?: string
-    size?: number
-  } | null>(null)
+  const previewFile = ref<PreviewFile | null>(null)
 
   // Format file size for display
   const formatFileSize = (bytes: number): string => {
@@ -469,25 +482,13 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
       console.error('Error calling delete API:', error)
     }
     
-    // Revoke blob URLs to free memory
-    if (file.url && file.url.startsWith('blob:')) {
-      URL.revokeObjectURL(file.url)
-    }
-    if (file.file_url && file.file_url.startsWith('blob:')) {
-      URL.revokeObjectURL(file.file_url)
-    }
+    revokeBlobUrls(file)
     
     uploadedAttachments.value.splice(index, 1)
   }
 
   // Open file preview modal
-  const openPreview = (file: {
-    url: string
-    filename: string
-    type: string
-    file_url?: string
-    size?: number
-  }) => {
+  const openPreview = (file: PreviewFile) => {
     previewFile.value = file
     previewModal.value = true
   }
@@ -499,11 +500,6 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
     setTimeout(() => {
       previewFile.value = null
     }, 300)
-  }
-
-  // Open file picker
-  const openFilePicker = () => {
-    fileInputRef.value?.click()
   }
 
   // Check if file type is image (utility function)
@@ -528,7 +524,6 @@ export function useWidgetFiles(token: Ref<string | null>, fileInputRef: Ref<HTML
     removeAttachment,
     openPreview,
     closePreview,
-    openFilePicker,
     isImage
   }
 }

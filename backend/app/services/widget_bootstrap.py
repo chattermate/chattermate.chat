@@ -33,7 +33,8 @@ from app.core.security import create_conversation_token
 from app.models.agent import Agent
 from app.models.widget import Widget
 from app.repositories.widget import WidgetRepository
-from app.services import conversation_token, launcher
+from app.services import conversation_token, launcher, widget_ui
+from app.services.widget_help_center import help_center_url
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on, plan_hides_branding
 from app.utils.business_hours import is_within_business_hours
 
@@ -158,13 +159,16 @@ def open_session(db: Session, widget: Widget, token: Optional[str], source: Opti
 async def _customization(db: Session, agent: Agent) -> dict:
     customization = agent.customization
     if not customization:
-        return launcher.uncustomized_defaults()
+        defaults = launcher.uncustomized_defaults()
+        # Through the design switch too, so the kill switch covers every agent.
+        defaults['customization_metadata'] = widget_ui.served_metadata(defaults['customization_metadata'])
+        return defaults
 
     photo_url = customization.photo_url
     if settings.S3_FILE_STORAGE and photo_url:
         photo_url = await get_s3_signed_url(photo_url)
 
-    metadata, logo_url = launcher.for_visitors(db, agent)
+    metadata, logo_url = widget_ui.for_visitors(db, agent)
 
     return {
         "chat_background_color": customization.chat_background_color,
@@ -194,10 +198,11 @@ async def _customization(db: Session, agent: Agent) -> dict:
 async def initial_data(db: Session, session: WidgetSession) -> dict:
     """What the widget boots from (`window.__INITIAL_DATA__` in the HTML route)."""
     agent = session.agent
+    customization = await _customization(db, agent)
     return {
         "widgetId": session.widget.id,
         "agentName": agent.display_name or agent.name,
-        "customization": await _customization(db, agent),
+        "customization": customization,
         "customerId": session.customer_id or "",
         "initialToken": session.token or "",
         "customer": {},
@@ -205,4 +210,8 @@ async def initial_data(db: Session, session: WidgetSession) -> dict:
         "allowAttachments": bool(agent.allow_attachments),
         "presence": session.presence,
         "hideBranding": session.hide_branding,
+        # Only the redesign shows the help center row; skip the lookup for classic.
+        "helpCenterUrl": (
+            help_center_url(db, agent.organization_id) if widget_ui.serves_redesign(customization) else None
+        ),
     }
