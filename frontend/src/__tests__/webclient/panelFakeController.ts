@@ -74,6 +74,7 @@ const baseController = () => ({
     // connection
     isInitializing: ref(false),
     hasConversationToken: ref(true),
+    historyAvailable: ref(true),
     showAuthError: ref(false),
     isApiKeyAuthRequired: ref(false),
     authError: ref<string | null>(null),
@@ -93,7 +94,7 @@ const baseController = () => ({
     skipReveal: vi.fn(),
     sendFeedback: vi.fn((_message: WidgetMessage, _value: VisitorFeedback | null) => {}),
     requestProductOptions: vi.fn((_productId: string) => {}),
-    emailCheck: ref<EmailCheckState>({ stage: 'email', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
+    emailCheck: ref<EmailCheckState>({ stage: 'email', purpose: 'chat', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
     startEmailCheck: vi.fn((_email: string) => {}),
     verifyEmailCode: vi.fn((_code: string) => {}),
     restartEmailCheck: vi.fn(),

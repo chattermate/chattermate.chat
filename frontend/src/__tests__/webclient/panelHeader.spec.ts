@@ -135,8 +135,8 @@ describe('the panel header', () => {
         expect(ctrl.closeHistory).toHaveBeenCalled()
     })
 
-    it('has no history button without a conversation of the visitor\'s own', () => {
-        header({ hasConversationToken: ref(false) })
+    it('has no history button where past chats cannot be offered (no conversation of their own, or Free)', () => {
+        header({ historyAvailable: ref(false) })
         expect(wrapper!.find('button[aria-label="Your conversations"]').exists()).toBe(false)
     })
 

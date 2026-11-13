@@ -16,7 +16,7 @@ limitations under the License.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { type VueWrapper } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import HistoryScreen from '@/webclient/panel/history/HistoryScreen.vue'
 import PastConversation from '@/webclient/panel/history/PastConversation.vue'
 import RecentRow from '@/webclient/panel/history/RecentRow.vue'
@@ -92,6 +92,30 @@ describe('your conversations', () => {
         show({ items: [], total: 0 })
         expect(wrapper!.text()).toContain('No conversations yet.')
     })
+
+    it('offers to find chats from another device with the email check', async () => {
+        show({ items: [], total: 0, otherBrowsers: { email: null, offer: true } })
+        expect(wrapper!.find('.cm-email-check').exists()).toBe(false)
+        await wrapper!.get('.cm-history__others-link').trigger('click')
+        const card = wrapper!.get('section[aria-label="Find your other chats"]')
+        await card.get('input[type="email"]').setValue('jane@acme.com')
+        await card.get('form').trigger('submit')
+        expect(ctrl.startEmailCheck).toHaveBeenCalledWith('jane@acme.com', 'history')
+    })
+
+    it('says whose chats it includes once the email is confirmed', () => {
+        show({ items: [], total: 0, otherBrowsers: { email: 'j•••@acme.com', offer: false } })
+        expect(wrapper!.text()).toContain('Including chats confirmed with j•••@acme.com')
+        expect(wrapper!.find('.cm-history__others-link').exists()).toBe(false)
+    })
+
+    it('offers nothing where the check is not available, or while searching', () => {
+        show({ items: [], total: 0 })
+        expect(wrapper!.find('.cm-history__others-link').exists()).toBe(false)
+        wrapper!.unmount()
+        show({ total: 9, query: 'refund', results: [], otherBrowsers: { email: null, offer: true } })
+        expect(wrapper!.find('.cm-history__others-link').exists()).toBe(false)
+    })
 })
 
 describe('a past conversation', () => {
@@ -144,5 +168,14 @@ describe('the start state\'s Recent row', () => {
         await wrapper.get('.cm-conversation').trigger('click')
         expect(ctrl.openHistory).toHaveBeenCalled()
         expect(ctrl.openConversation).toHaveBeenCalledWith('a')
+    })
+
+    it('never asks and shows nothing where past chats cannot be offered (Free)', async () => {
+        ctrl = fakeController({ historyAvailable: ref(false) })
+        wrapper = mountWithController(RecentRow, ctrl)
+        expect(ctrl.refreshConversations).not.toHaveBeenCalled()
+        ctrl.history.value = { ...emptyHistory(), loaded: true, items: [item('a', '2026-11-10T10:00:00')] }
+        await nextTick()
+        expect(wrapper.find('.cm-recent').exists()).toBe(false)
     })
 })

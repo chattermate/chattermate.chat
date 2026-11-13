@@ -23,6 +23,7 @@ limitations under the License.
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { WIDGET_CTX } from '../controller'
 import ConversationRow from './ConversationRow.vue'
+import EmailCheckCard from '../messages/EmailCheckCard.vue'
 import { groupConversations } from '../history-groups'
 import { PANEL_COPY } from '../../copy'
 
@@ -33,6 +34,9 @@ const { history } = ctrl
 const SEARCH_FROM = 8
 
 const query = ref('')
+/** The email check that finds chats from the visitor's other browsers is open. */
+const findingOthers = ref(false)
+const offerOthers = computed(() => history.value.otherBrowsers.offer && !history.value.otherBrowsers.email && !searching.value)
 const sentinel = ref<HTMLElement | null>(null)
 const searching = computed(() => history.value.query.length >= 2)
 const rows = computed(() => (searching.value ? history.value.results ?? [] : history.value.items))
@@ -76,6 +80,11 @@ const askInNewChat = () => {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
             {{ PANEL_COPY.newChatFromHistory }}
         </button>
+        <p v-if="history.otherBrowsers.email" class="cm-history__note">{{ PANEL_COPY.otherDevicesShown(history.otherBrowsers.email) }}</p>
+        <template v-else-if="offerOthers">
+            <EmailCheckCard v-if="findingOthers" class="cm-history__others" purpose="history" />
+            <button v-else type="button" class="cm-history__others-link" @click="findingOthers = true">{{ PANEL_COPY.otherDevices }}</button>
+        </template>
         <label v-if="history.total > SEARCH_FROM" class="cm-history__search">
             <span class="cm-sr-only">{{ PANEL_COPY.searchConversations }}</span>
             <input v-model="query" type="search" :placeholder="PANEL_COPY.searchConversations" @input="onSearch">
@@ -117,4 +126,6 @@ const askInNewChat = () => {
 .cm-history__skeletons { display: flex; flex-direction: column; gap: 8px; }
 .cm-history__skeleton { display: block; height: 44px; }
 .cm-history__sentinel { height: 1px; }
+.cm-history__others-link { align-self: flex-start; padding: 0; }
+.cm-history__note { margin: 0; }
 </style>

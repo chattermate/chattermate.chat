@@ -21,7 +21,9 @@ limitations under the License.
  * text, and the suggestions (quick_actions) as rows. The composer stays below it.
  * The panel swaps it for the conversation on the first message, and it collapses
  * as it goes (see the cm-start transition in widget-panel-start.css).
- * The inline email card sits above it (PanelWidget), and the two scroll together.
+ * The inline email card sits above it (PanelWidget), and the two scroll together;
+ * while the card asks for an email, the greeting steps aside (two asks at once is
+ * one too many) and only the rows stay, a tap on one held until the email is in.
  */
 import { computed, inject } from 'vue'
 import { WIDGET_CTX } from './controller'
@@ -34,7 +36,7 @@ import { renderMarkdown } from '../markdown'
 import { PANEL_COPY } from '../copy'
 
 const ctrl = inject(WIDGET_CTX)!
-const { customization, welcomeMessageText, photoUrl, orbStyle } = ctrl
+const { customization, welcomeMessageText, photoUrl, orbStyle, awaitingEmail } = ctrl
 
 const face = computed(() => agentFace(customization.value, photoUrl.value))
 const greeting = computed(() => customization.value.welcome_title || PANEL_COPY.welcomeTitle)
@@ -45,13 +47,15 @@ const bodyHtml = computed(() => renderMarkdown(welcomeMessageText.value))
 
 <template>
     <div class="cm-start">
-        <AgentMark class="cm-enter" size="lg" :face="face" :photo-url="photoUrl" :orb-style="orbStyle" />
-        <p class="cm-start__greeting cm-enter" style="--cm-i: 1">{{ greeting }}</p>
-        <h2 class="cm-start__headline cm-enter" style="--cm-i: 2">{{ headline }}</h2>
-        <!-- .cm-welcome-block .message-bubble: the e2e page object's welcome hook. -->
-        <div v-if="welcomeMessageText" class="cm-welcome-block cm-enter" style="--cm-i: 3">
-            <div class="message-bubble cm-start__body" v-html="bodyHtml"></div>
-        </div>
+        <template v-if="!awaitingEmail">
+            <AgentMark class="cm-enter" size="lg" :face="face" :photo-url="photoUrl" :orb-style="orbStyle" />
+            <p class="cm-start__greeting cm-enter" style="--cm-i: 1">{{ greeting }}</p>
+            <h2 class="cm-start__headline cm-enter" style="--cm-i: 2">{{ headline }}</h2>
+            <!-- .cm-welcome-block .message-bubble: the e2e page object's welcome hook. -->
+            <div v-if="welcomeMessageText" class="cm-welcome-block cm-enter" style="--cm-i: 3">
+                <div class="message-bubble cm-start__body" v-html="bodyHtml"></div>
+            </div>
+        </template>
         <div class="cm-start__spacer"></div>
         <!-- The Recent row (past conversations) joins here with plan 5.x. -->
         <StartSuggestions class="cm-enter" style="--cm-i: 4" />

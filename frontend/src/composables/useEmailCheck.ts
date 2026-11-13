@@ -25,9 +25,12 @@ import { ref } from 'vue'
  */
 
 export type EmailCheckStage = 'email' | 'code' | 'verified'
+/** Who asked: the agent, in the chat, or the history screen, to find chats from other browsers. */
+export type EmailCheckPurpose = 'chat' | 'history'
 
 export interface EmailCheckState {
     stage: EmailCheckStage
+    purpose: EmailCheckPurpose
     busy: boolean
     /** The address the code went to, masked by the server ("j•••@acme.com"). */
     maskedEmail: string
@@ -37,14 +40,16 @@ export interface EmailCheckState {
     attemptsLeft: number
 }
 
-const fresh = (): EmailCheckState =>
-    ({ stage: 'email', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 })
+const fresh = (purpose: EmailCheckPurpose = 'chat'): EmailCheckState =>
+    ({ stage: 'email', purpose, busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 })
 
 export function useEmailCheck(options: {
     on: (event: string, listener: (...args: any[]) => void) => void
     emit: (event: string, data?: unknown) => void
-    /** Tell the agent, as the visitor, that the email is confirmed. */
+    /** Tell the agent, as the visitor, that the email is confirmed (a check the agent asked for). */
     announce: () => void
+    /** The email is confirmed, whoever asked. */
+    onVerified?: (purpose: EmailCheckPurpose) => void
 }) {
     const emailCheck = ref<EmailCheckState>(fresh())
     const update = (fields: Partial<EmailCheckState>) => { emailCheck.value = { ...emailCheck.value, ...fields } }
@@ -54,7 +59,8 @@ export function useEmailCheck(options: {
     })
     options.on('email_check_verified', (data: { email_masked?: string }) => {
         update({ stage: 'verified', busy: false, error: '', maskedEmail: data?.email_masked || emailCheck.value.maskedEmail })
-        options.announce()
+        if (emailCheck.value.purpose === 'chat') options.announce()
+        options.onVerified?.(emailCheck.value.purpose)
     })
     options.on('email_check_error', (data: { reason?: string; retry_in?: number; attempts_left?: number }) => {
         const reason = typeof data?.reason === 'string' ? data.reason : 'send_failed'
@@ -69,10 +75,10 @@ export function useEmailCheck(options: {
         })
     })
 
-    const startEmailCheck = (email: string) => {
+    const startEmailCheck = (email: string, purpose: EmailCheckPurpose = 'chat') => {
         if (emailCheck.value.busy || !email.trim()) return
-        update({ busy: true, error: '' })
-        options.emit('email_check_start', { email: email.trim() })
+        update({ busy: true, error: '', purpose })
+        options.emit('email_check_start', purpose === 'history' ? { email: email.trim(), purpose } : { email: email.trim() })
     }
     const verifyEmailCode = (code: string) => {
         if (emailCheck.value.busy || !/^[0-9]{6}$/.test(code)) return
@@ -80,7 +86,7 @@ export function useEmailCheck(options: {
         options.emit('email_check_verify', { code })
     }
     /** Another address: back to the first step. */
-    const restartEmailCheck = () => { emailCheck.value = fresh() }
+    const restartEmailCheck = () => { emailCheck.value = fresh(emailCheck.value.purpose) }
 
     return { emailCheck, startEmailCheck, verifyEmailCode, restartEmailCheck }
 }
