@@ -112,6 +112,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const hostPrompt = useHostPrompt({
         messages, loading, revealing: isRevealing, on: socket.on, emit: socket.emit,
         sendQuickAction: (text) => composer.sendQuickAction(text),
+        afterAnswer: () => view.afterSend(),
     })
 
     // Report unread agent messages (received while minimized) to the embedder badge.

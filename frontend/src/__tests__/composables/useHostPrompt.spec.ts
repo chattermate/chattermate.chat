@@ -35,15 +35,16 @@ const setup = (initial: Message[] = []) => {
     const loading = ref(false)
     const revealing = ref(false)
     const sendQuickAction = vi.fn()
+    const afterAnswer = vi.fn()
     let result!: ReturnType<typeof useHostPrompt>
     app = createApp({
         setup() {
-            result = useHostPrompt({ messages, loading, revealing, on: vi.fn(), emit: vi.fn(), sendQuickAction })
+            result = useHostPrompt({ messages, loading, revealing, on: vi.fn(), emit: vi.fn(), sendQuickAction, afterAnswer })
             return () => null
         },
     })
     app.mount(document.createElement('div'))
-    return { ...result, messages, loading, revealing, sendQuickAction }
+    return { ...result, messages, loading, revealing, sendQuickAction, afterAnswer }
 }
 
 const actionChip: PageChip = { label: 'Apply coupon', kind: 'action', value: 'apply_coupon' }
@@ -178,12 +179,20 @@ describe('useHostPrompt', () => {
             ])
         })
 
+        it('brings the chat to its end, as sending a message does', () => {
+            const host = setup()
+            host.hostPrompt.value = prompt('Want a discount?', 'journey', [actionChip])
+            host.onPageChip(actionChip)
+            expect(host.afterAnswer).toHaveBeenCalledOnce()
+        })
+
         it('stays out of the chat while another action is running', () => {
             const host = setup()
             host.hostPrompt.value = prompt('Want a discount?', 'journey', [actionChip])
             host.chipBusy.value = true
             host.onPageChip(actionChip)
             expect(host.messages.value).toEqual([])
+            expect(host.afterAnswer).not.toHaveBeenCalled()
         })
 
         it('stays out of the chat (and the replies are withdrawn) while an action awaits confirmation', () => {
