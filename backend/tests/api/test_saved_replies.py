@@ -145,3 +145,11 @@ def test_another_organizations_replies_stay_out_of_reach(db, client, agent):
 def test_without_inbox_access_even_the_list_is_refused(db, client, test_organization_id):
     _as(_user(db, test_organization_id, _role(db, test_organization_id)))
     assert client.get(URL).status_code == 403
+
+
+def test_a_plan_without_saved_replies_cannot_add_one(client):
+    from unittest.mock import patch
+    with patch('app.services.inbox_plan.plan_flag_on', return_value=False):
+        response = client.post("/api/v1/saved-replies", json={"title": "Refund", "body": "Refunds take 5 days."})
+    assert response.status_code == 403
+    assert "Starter" in response.json()["detail"]

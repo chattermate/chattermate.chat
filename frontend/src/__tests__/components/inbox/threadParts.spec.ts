@@ -144,7 +144,7 @@ describe('ThreadBanner', () => {
 describe('HandoverSummaryCard', () => {
   const mountCard = (props: Record<string, unknown> = {}) =>
     mount(HandoverSummaryCard, {
-      props: { agentName: 'Shop assistant', reason: 'KNOWLEDGE_GAP', summary: 'Wants a refund.', handedOverAt: ago(6), knowledgeLink: '/faq?question=Refund', ...props },
+      props: { agentName: 'Shop assistant', reason: 'KNOWLEDGE_GAP', summary: 'Wants a refund.', handedOverAt: ago(6), canAddKnowledge: true, ...props },
       global: { stubs: { RouterLink: RouterLinkStub } },
     })
 
@@ -160,9 +160,20 @@ describe('HandoverSummaryCard', () => {
     expect(wrapper.findAll('.points li').map((l) => l.text())).toEqual(['Wants a refund', 'Delivered to Berlin'])
   })
 
-  it('links to the knowledge editor only for someone who can edit it', () => {
-    expect(mountCard().findComponent(RouterLinkStub).props('to')).toBe('/faq?question=Refund')
-    expect(mountCard({ knowledgeLink: null }).findComponent(RouterLinkStub).exists()).toBe(false)
+  it('offers to add the answer to knowledge only when there is one and the viewer can edit it', async () => {
+    const wrapper = mountCard()
+    await wrapper.find('.add-knowledge').trigger('click')
+    expect(wrapper.emitted('add-knowledge')).toHaveLength(1)
+    expect(mountCard({ canAddKnowledge: false }).find('.add-knowledge').exists()).toBe(false)
+  })
+
+  it('shows a refreshed summary in place of the handover one, and says so', async () => {
+    const wrapper = mountCard({ canRefresh: true })
+    await wrapper.find('.refresh').trigger('click')
+    expect(wrapper.emitted('refresh')).toHaveLength(1)
+    await wrapper.setProps({ latestSummary: 'Refund approved, waiting on the bank.' })
+    expect(wrapper.find('.summary').text()).toBe('Refund approved, waiting on the bank.')
+    expect(wrapper.find('.card-title').text()).toContain('updated just now')
   })
 })
 

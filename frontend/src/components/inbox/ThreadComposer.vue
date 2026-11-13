@@ -27,6 +27,9 @@ import ActionMenu from '@/components/common/ActionMenu.vue'
 import { navIconSvg } from '@/components/layout/navIcons'
 import { matchMentionables, mentionQuery, mentionedIds, type Mentionable } from './mentions'
 import SavedReplyPicker from './SavedReplyPicker.vue'
+import ComposerImprove from './ComposerImprove.vue'
+import type { ImproveStyle } from '@/services/inboxAssist'
+import type { GateKey } from '@/components/agent/featureGates'
 import { fillReply, type ReplyContext } from './savedReplyText'
 import type { SavedReply } from '@/services/savedReplies'
 
@@ -51,6 +54,11 @@ const props = defineProps<{
   replyContext: ReplyContext
   /** May add saved replies (the picker's "Add one", Save as saved reply) */
   canManageReplies: boolean
+  /** Saved replies aren't on this plan: the button explains instead */
+  savedRepliesLocked?: boolean
+  /** The AI's rewrite of a draft; none hides Improve */
+  improve?: ((text: string, style: ImproveStyle) => Promise<string>) | null
+  aiLocked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -63,6 +71,8 @@ const emit = defineEmits<{
   /** The picker opened: load the saved replies if they aren't yet */
   (e: 'open-saved-replies'): void
   (e: 'save-reply', body: string): void
+  /** A tool the plan leaves out was asked for */
+  (e: 'locked', gate: GateKey): void
 }>()
 
 const input = ref<HTMLTextAreaElement | null>(null)
@@ -110,13 +120,14 @@ async function pick(person: Mentionable) {
 const picker = ref<InstanceType<typeof SavedReplyPicker> | null>(null)
 const pickerOpen = ref(false)
 const slashQuery = computed(() =>
-  !isNote.value && /^\/[^\n]{0,40}$/.test(message.value) ? message.value.slice(1) : null
+  !isNote.value && !props.savedRepliesLocked && /^\/[^\n]{0,40}$/.test(message.value) ? message.value.slice(1) : null
 )
 const showPicker = computed(() => !isNote.value && (pickerOpen.value || slashQuery.value !== null))
 watch(showPicker, (open) => { if (open) emit('open-saved-replies') }, { immediate: true })
 
 function togglePicker() {
-  pickerOpen.value = !pickerOpen.value
+  if (props.savedRepliesLocked) emit('locked', 'saved-replies')
+  else pickerOpen.value = !pickerOpen.value
 }
 
 function closePicker() {
@@ -282,8 +293,16 @@ defineExpose({ focus: () => input.value?.focus() })
               <span aria-hidden="true" v-html="navIconSvg('bolt', 16)"></span>
             </button>
             <slot name="attach" />
+            <ComposerImprove
+              v-if="improve && hasText && slashQuery === null"
+              :text="message"
+              :improve="improve"
+              :locked="!!aiLocked"
+              @rewrite="message = $event"
+              @locked="emit('locked', 'inbox-ai')"
+            />
             <button
-              v-if="canManageReplies && hasText && slashQuery === null"
+              v-if="canManageReplies && !savedRepliesLocked && hasText && slashQuery === null"
               type="button"
               class="tool"
               aria-label="Save as saved reply"
@@ -307,6 +326,7 @@ defineExpose({ focus: () => input.value?.focus() })
             <ActionMenu
               v-if="!isNote && canSend && (hasText || hasFiles)"
               label="More send options"
+              side="above"
               :items="[{ id: 'send-and-close', label: 'Send and close' }]"
               trigger-class="send-more"
               @select="emit('send-and-close')"
@@ -469,7 +489,8 @@ defineExpose({ focus: () => input.value?.focus() })
   color: var(--text);
 }
 
-.tool {
+/* :deep: ComposerImprove's buttons and ActionMenu's trigger use them too */
+.tools :deep(.tool) {
   width: 32px;
   height: 32px;
   display: flex;
@@ -483,13 +504,13 @@ defineExpose({ focus: () => input.value?.focus() })
   cursor: pointer;
 }
 
-.tool:hover,
-.tool[aria-expanded='true'] {
+.tools :deep(.tool:hover),
+.tools :deep(.tool[aria-expanded='true']) {
   background: var(--o06);
   color: var(--text);
 }
 
-.tool:focus-visible {
+.tools :deep(.tool:focus-visible) {
   outline: 2px solid var(--accent-border);
   outline-offset: 1px;
 }

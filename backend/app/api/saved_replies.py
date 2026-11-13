@@ -17,7 +17,9 @@ limitations under the License.
 """Saved replies: the team's shared library of replies for the inbox.
 
 Anyone who works the inbox can use them; anyone who may act on chats can add,
-edit or remove them (they speak for the whole team).
+edit or remove them (they speak for the whole team). Adding one needs a plan
+with saved replies (inbox_plan): a team that moved down keeps the ones it has
+listed, editable and removable.
 """
 
 from typing import List
@@ -30,6 +32,7 @@ from app.database import get_db
 from app.models.schemas.saved_reply import SavedReplyIn, SavedReplyOut
 from app.models.user import User
 from app.repositories.saved_replies import SavedReplyRepository, ShortcutTaken
+from app.services.inbox_plan import SAVED_REPLIES_FEATURE, require_inbox_feature
 
 router = APIRouter()
 
@@ -52,6 +55,7 @@ async def create_saved_reply(
     payload: SavedReplyIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     _require(current_user, CHAT_MANAGE_PERMISSIONS)
+    require_inbox_feature(db, current_user.organization_id, SAVED_REPLIES_FEATURE)
     try:
         return SavedReplyRepository(db).create(current_user.organization_id, current_user.id, **payload.model_dump())
     except ShortcutTaken:

@@ -51,6 +51,7 @@ import { useSavedReplies } from '@/composables/useSavedReplies'
 import type { SavedReplyInput } from '@/services/savedReplies'
 import HandoverSummaryCard from './HandoverSummaryCard.vue'
 import { useComposerDrafts } from './composerDrafts'
+import { faqEditorLink, useInboxAssist, type FaqDraft } from '@/composables/useInboxAssist'
 import { customerName } from './inboxPresentation'
 import { buildTimeline, handoverIndex, knowledgeDraft } from './threadContent'
 import { snoozeChoices } from './snooze'
@@ -189,6 +190,13 @@ const showComposer = computed(() => holdsIt.value || canNote.value)
 const composerMode = ref<ComposerMode>(holdsIt.value ? 'reply' : 'note')
 watch(holdsIt, (holds) => { composerMode.value = holds ? 'reply' : 'note' })
 const { text: composerText, note: noteDraft } = useComposerDrafts(composerMode, newMessage, () => props.chat.session_id)
+
+// ---- Paid tools: what the plan locks, and the AI's help ----
+const {
+  aiLocked, snoozeLocked, savedRepliesLocked, showUpgrade,
+  improve, summary: latestSummary, refreshingSummary, refreshSummary,
+  addingKnowledge, addToKnowledge,
+} = useInboxAssist(() => props.chat.session_id)
 const mentionables = computed(() =>
   props.teammates
     .filter((t) => t.id !== currentUserId)
@@ -280,6 +288,7 @@ const moreActions = computed<ActionMenuItem[]>(() => {
   // Not a chat waiting for a person: it would leave everyone's queue
   if (mayChangeHands.value && open && handler.value.kind !== 'waiting') {
     if (snoozedUntil.value) items.push({ id: 'unsnooze', label: 'Unsnooze', separated: true })
+    else if (snoozeLocked) items.push({ id: 'snooze-locked', label: 'Snooze…', separated: true })
     else snoozeChoices(props.now).forEach((choice, i) => items.push({ id: `snooze:${i}`, label: `Snooze · ${choice.label}`, separated: i === 0 }))
   }
   items.push({ id: 'refresh', label: 'Refresh conversation', separated: items.length > 0 })
@@ -294,6 +303,7 @@ function onAction(id: string) {
   else if (id === 'route-to-team') void routeToTeam()
   else if (id === 'release') void releaseToAi()
   else if (id === 'unsnooze') void unsnooze()
+  else if (id === 'snooze-locked') showUpgrade('inbox-snooze')
   else if (id.startsWith('snooze:')) {
     const choice = snoozeChoices(props.now)[Number(id.slice('snooze:'.length))]
     if (choice) void snooze(choice.until, choice.label)
@@ -318,15 +328,17 @@ const handoverAt = computed(() => handoverIndex(formattedMessages.value, props.c
 
 /** The help center editor with a question and its answer filled in, when the
  * conversation has both; nothing for someone who can't edit knowledge. */
-function faqLink(draft: { question: string; answer: string } | null): string | null {
-  if (!canEditKnowledge || !draft) return null
-  return `/faq?${new URLSearchParams({ question: draft.question, answer: draft.answer }).toString()}`
+function faqLink(draft: FaqDraft | null): string | null {
+  return canEditKnowledge && draft ? faqEditorLink(draft) : null
 }
 
-// The team answered what the AI couldn't: that answer, for the next customer
-const knowledgeLink = computed(() =>
-  faqLink(knowledgeDraft(formattedMessages.value, handoverAt.value, 'team'))
+// The team answered what the AI couldn't: that answer, for the next customer.
+// The AI checks it is worth keeping and drafts the article (useInboxAssist).
+const teamAnswer = computed<FaqDraft | null>(() =>
+  canEditKnowledge ? knowledgeDraft(formattedMessages.value, handoverAt.value, 'team') : null
 )
+const onAddKnowledge = () => { if (teamAnswer.value) void addToKnowledge(teamAnswer.value) }
+const onRefreshSummary = () => (aiLocked ? showUpgrade('inbox-ai') : void refreshSummary())
 
 // Each AI answer can be corrected: its question, and the answer to fix
 const correctionLinks = computed(() =>
@@ -410,7 +422,13 @@ defineExpose({ requestClose })
           :reason="chat.transfer_reason"
           :summary="chat.transfer_description"
           :handed-over-at="chat.handed_over_at"
-          :knowledge-link="knowledgeLink"
+          :latest-summary="latestSummary"
+          :can-refresh="canManage"
+          :refreshing="refreshingSummary"
+          :can-add-knowledge="!!teamAnswer"
+          :adding-knowledge="addingKnowledge"
+          @refresh="onRefreshSummary"
+          @add-knowledge="onAddKnowledge"
         />
         <ThreadNote v-else-if="entry.kind === 'note'" :note="entry.note" :current-user-id="currentUserId" />
         <ThreadMessage
@@ -454,6 +472,10 @@ defineExpose({ requestClose })
       :saved-replies-loaded="savedReplies.loaded.value"
       :reply-context="replyContext"
       :can-manage-replies="canManage"
+      :saved-replies-locked="savedRepliesLocked"
+      :improve="improve"
+      :ai-locked="aiLocked"
+      @locked="showUpgrade"
       @open-saved-replies="loadSavedReplies"
       @save-reply="savingReply = $event"
       @send="handleSendMessageWithAttachments"

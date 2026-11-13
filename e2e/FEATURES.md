@@ -22,6 +22,9 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Inbox | A chat you hold, snoozed, leaves Your inbox, shows under Snoozed, and comes back when the customer writes; a chat waiting for a person can't be snoozed | `specs/inbox/notes.spec.ts` | P2 | ✅ |
 | Inbox | A saved reply picked with /shortcut fills in the customer's first name and reaches the widget | `specs/inbox/saved-replies.spec.ts` | P2 | ✅ |
 | Inbox | A reply saved from the composer is offered by its shortcut on the next chat | `specs/inbox/saved-replies.spec.ts` | P3 | ✅ |
+| Inbox | Improve has the AI rewrite a draft reply and Undo restores it; Refresh brings the handover summary up to date | `specs/inbox/ai-assist.spec.ts` | P2 | ✅ |
+| Inbox | Add the answer to knowledge: the AI drafts a general FAQ from the team's answer and the help center editor opens with it | `specs/inbox/ai-assist.spec.ts` | P2 | ✅ |
+| Inbox | Add the answer to knowledge: an answer that only promises to check is not offered, and the agent is told why | `specs/inbox/ai-assist.spec.ts` | P2 | ✅ |
 | Setup and auth | Agent role is denied AI settings | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign-out, deactivation and a password change end sessions server-side; a refresh token is not an access token | `specs/auth/sessions.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |

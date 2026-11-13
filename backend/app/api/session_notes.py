@@ -38,6 +38,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.conversation_notes import ConversationNoteRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.agent_rooms import emit_to_org_inbox
+from app.services.inbox_plan import SNOOZE_FEATURE, require_inbox_feature
 from app.services.notifications import notify_user
 
 logger = get_logger(__name__)
@@ -122,6 +123,7 @@ async def snooze_chat(
     if session.status == SessionStatus.CLOSED:
         raise HTTPException(status_code=400, detail="This chat is closed")
     _require_may_change_hands(session, current_user)
+    require_inbox_feature(db, session.organization_id, SNOOZE_FEATURE)
     # Snoozing would take a waiting customer out of everyone's queue
     if session.status == SessionStatus.TRANSFERRED and session.user_id is None:
         raise HTTPException(status_code=400, detail="Someone is waiting for a person: assign the chat before snoozing it")

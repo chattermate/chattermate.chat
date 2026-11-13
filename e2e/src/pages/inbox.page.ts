@@ -68,6 +68,16 @@ export class InboxPage {
     await this.searchBox.fill(text)
   }
 
+  /**
+   * Opens `view` narrowed to one customer, so a check that their chat is (or
+   * isn't) in it holds however many chats the shared test org has piled up
+   * past the first page.
+   */
+  async openViewFor(label: string, customerName: string): Promise<void> {
+    await this.openView(label)
+    await this.search(customerName)
+  }
+
   async takeOver(): Promise<void> {
     await step('Agent takes over the chat', async () => {
       await this.banner.getByRole('button', { name: 'Take over chat', exact: true }).click()
@@ -106,7 +116,7 @@ export class InboxPage {
     return this.page.getByRole('textbox', { name: 'Note for your team' })
   }
 
-  /** Leaves a note; \`mention\` is picked from the @ list after the text. */
+  /** Leaves a note; `mention` is picked from the @ list after the text. */
   async addNote(text: string, mention?: string): Promise<void> {
     await step(`Agent adds a note "${text}"`, async () => {
       if (!(await this.noteBox.isVisible())) await this.page.getByRole('tab', { name: 'Note' }).click()
@@ -121,7 +131,7 @@ export class InboxPage {
     })
   }
 
-  /** A note in the thread that carries \`text\` */
+  /** A note in the thread that carries `text` */
   note(text: string): Locator {
     return this.page.getByRole('note').filter({ hasText: text })
   }
@@ -163,6 +173,43 @@ export class InboxPage {
       await dialog.getByRole('button', { name: 'Save reply' }).click()
       await expect(dialog).toBeHidden()
     })
+  }
+
+  /** Has the AI rewrite the reply in the box (`style` is the menu's wording) */
+  async improveReply(style: 'Make it clearer' | 'Make it friendlier' | 'Make it shorter' | 'Fix spelling and grammar'): Promise<void> {
+    await step(`Agent asks the AI to "${style}"`, async () => {
+      const before = await this.messageInput.inputValue()
+      await this.page.getByRole('button', { name: 'Improve with AI' }).click()
+      await this.page.getByRole('menuitem', { name: style }).click()
+      await expect(this.messageInput).not.toHaveValue(before)
+    })
+  }
+
+  async undoImprove(): Promise<void> {
+    await step('Agent undoes the rewrite', async () => {
+      await this.page.getByRole('button', { name: 'Undo', exact: true }).click()
+    })
+  }
+
+  async refreshSummary(): Promise<void> {
+    await step('Agent refreshes the summary', async () => {
+      await this.handoverSummary.getByRole('button', { name: 'Refresh' }).click()
+      await expect(this.handoverSummary).toContainText('updated just now')
+    })
+  }
+
+  /** "Add the answer to knowledge": the AI checks it, then the help center editor opens (or not) */
+  async addAnswerToKnowledge(): Promise<void> {
+    await step('Agent adds the answer to knowledge', async () => {
+      await this.handoverSummary.getByRole('button', { name: 'Add the answer to knowledge' }).click()
+    })
+  }
+
+  /** The app's toasts (vue-sonner renders each as a list item in its live region) */
+  /** The toast that says `text` */
+  toast(text: string): Locator {
+    // why CSS: sonner's toasts carry no role or name of their own
+    return this.page.locator('[data-sonner-toast]').filter({ hasText: text })
   }
 
   /** The handover summary the AI left for the team */

@@ -94,6 +94,31 @@ export const FEATURE_GATES = {
     description: 'Let the agent open and investigate tickets.',
     bullets: ['AI-written tickets', 'Investigations'],
   },
+  // The inbox's (inbox_plan.py on the server)
+  'inbox-snooze': {
+    feature: 'inbox_snooze',
+    newFlag: true,
+    name: 'Snooze',
+    title: 'Unlock Snooze',
+    description: 'Snooze is on the Starter plan and up: park a chat until later, and it comes back when the customer writes.',
+    bullets: ['Snooze for an hour, a day or a week', 'Back early when the customer writes'],
+  },
+  'saved-replies': {
+    feature: 'saved_replies',
+    newFlag: true,
+    name: 'Saved replies',
+    title: 'Unlock Saved Replies',
+    description: 'Saved replies are on the Starter plan and up: answer common questions in two keystrokes.',
+    bullets: ['Type / to insert a reply', "Fills in the customer's name"],
+  },
+  'inbox-ai': {
+    feature: 'inbox_ai',
+    newFlag: true,
+    name: 'AI in the inbox',
+    title: 'Unlock AI in the Inbox',
+    description: 'AI in the inbox is on the Growth plan and up: improve a reply, refresh the summary, and turn answers into help articles.',
+    bullets: ['Improve a reply', 'Refresh the summary', 'Draft help articles from conversations'],
+  },
 } as const
 
 export type GateKey = keyof typeof FEATURE_GATES

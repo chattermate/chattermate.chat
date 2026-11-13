@@ -22,11 +22,17 @@ import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import SavedReplyForm from '@/components/savedReplies/SavedReplyForm.vue'
 import { useSavedReplies } from '@/composables/useSavedReplies'
+import { useFeatureLock } from '@/composables/useFeatureLock'
+import UpgradeCard from '@/components/agent/UpgradeCard.vue'
+import { useRouter } from 'vue-router'
 import { permissionChecks } from '@/utils/permissions'
 import type { SavedReply, SavedReplyInput } from '@/services/savedReplies'
 
 const { replies, loaded, load, create, update, remove } = useSavedReplies()
 const canManage = permissionChecks.canTakeOverChats()
+// A plan without saved replies keeps the ones it has (edit, remove) but adds none
+const locked = useFeatureLock().isLocked('saved-replies')
+const router = useRouter()
 const failed = ref(false)
 const search = ref('')
 
@@ -89,8 +95,9 @@ onMounted(async () => {
             Replies your team writes once and sends many times. In a reply, press ⚡ or type / to use one.
           </p>
         </div>
-        <button v-if="canManage" type="button" class="btn primary" @click="editing = 'new'">New saved reply</button>
+        <button v-if="canManage && !locked" type="button" class="btn primary" @click="editing = 'new'">New saved reply</button>
       </div>
+      <UpgradeCard v-if="locked" gate="saved-replies" lock @upgrade="router.push('/settings/subscription')" />
 
       <p v-if="failed" class="state">Saved replies could not be loaded. Reload the page to try again.</p>
       <p v-else-if="!loaded" class="state">Loading…</p>
@@ -144,8 +151,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* Its own gutter, as the other settings pages have (the layout adds none) */
 .page {
   max-width: 880px;
+  margin: 0 auto;
+  padding: 28px 30px 70px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -293,6 +304,12 @@ onMounted(async () => {
   .item {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 20px 16px 80px;
   }
 }
 </style>

@@ -44,14 +44,14 @@ test.describe('inbox notes', () => {
     await inbox.takeOver()
     await inbox.snooze('3 hours')
 
-    await inbox.openView('Your inbox')
+    await inbox.openViewFor('Your inbox', widget.customer.name)
     await expect(inbox.conversation(widget.customer.name)).toBeHidden()
-    await inbox.openView('Snoozed')
+    await inbox.openViewFor('Snoozed', widget.customer.name)
     await expect(inbox.conversation(widget.customer.name)).toBeVisible()
 
     await widget.send('Hello? Still waiting')
     await expect(async () => {
-      await inbox.openView('Your inbox')
+      await inbox.openViewFor('Your inbox', widget.customer.name)
       await expect(inbox.conversation(widget.customer.name)).toBeVisible({ timeout: 2_000 })
     }).toPass({ timeout: 20_000 })
   })

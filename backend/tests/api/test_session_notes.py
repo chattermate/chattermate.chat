@@ -286,6 +286,12 @@ class TestSnooze:
         counts = repo.get_inbox_counts(held.organization_id, current_user_id=me.id)
         assert (counts["assigned_to_me"], counts["open"], counts["snoozed"]) == (0, 0, 1)
 
+    def test_a_plan_without_snooze_is_refused(self, client, held):
+        with patch('app.services.inbox_plan.plan_flag_on', return_value=False):
+            response = self._snooze(client, held, datetime.now(timezone.utc) + timedelta(hours=1))
+        assert response.status_code == 403
+        assert "Starter" in response.json()["detail"]
+
     def test_a_chat_waiting_for_a_person_cannot_be_snoozed(self, client, chat):
         response = self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(hours=1))
         assert response.status_code == 400

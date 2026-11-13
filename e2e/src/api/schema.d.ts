@@ -4334,6 +4334,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/assist/improve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Improve Reply */
+        post: operations["improve_reply_api_v1_sessions__session_id__assist_improve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/assist/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Summary */
+        post: operations["refresh_summary_api_v1_sessions__session_id__assist_summary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/assist/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Knowledge
+         * @description The team's answer as a help-center FAQ draft, for the FAQ editor to open
+         *     (nothing is saved here). Only for someone who may edit the help center.
+         */
+        post: operations["draft_knowledge_api_v1_sessions__session_id__assist_knowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/saved-replies": {
         parameters: {
             query?: never;
@@ -7561,6 +7616,21 @@ export interface components {
              */
             preserve_urls: boolean;
         };
+        /** ImproveRequest */
+        ImproveRequest: {
+            /** Text */
+            text: string;
+            /**
+             * Style
+             * @enum {string}
+             */
+            style: "clearer" | "friendlier" | "shorter" | "fix";
+        };
+        /** ImproveResponse */
+        ImproveResponse: {
+            /** Text */
+            text: string;
+        };
         /**
          * InboxCountsResponse
          * @description Each inbox view's size in the caller's scope (see inbox_views): the
@@ -7895,6 +7965,27 @@ export interface components {
             /** Template Key */
             template_key?: string | null;
             definition: components["schemas"]["JourneyDefinition"];
+        };
+        /**
+         * KnowledgeDraftResponse
+         * @description ready: the conversation holds a reusable answer, drafted below; when not,
+         *     reason says what's missing and question/answer are empty.
+         */
+        KnowledgeDraftResponse: {
+            /** Ready */
+            ready: boolean;
+            /** Reason */
+            reason: string;
+            /**
+             * Question
+             * @default
+             */
+            question: string;
+            /**
+             * Answer
+             * @default
+             */
+            answer: string;
         };
         /**
          * LeadAssignmentMode
@@ -9308,6 +9399,11 @@ export interface components {
             done_when: components["schemas"]["Condition"][];
             then?: components["schemas"]["Then"];
             nudge?: components["schemas"]["Nudge"] | null;
+        };
+        /** SummaryResponse */
+        SummaryResponse: {
+            /** Summary */
+            summary: string;
         };
         /** TeamAgentStats */
         TeamAgentStats: {
@@ -19360,6 +19456,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    improve_reply_api_v1_sessions__session_id__assist_improve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImproveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_summary_api_v1_sessions__session_id__assist_summary_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_knowledge_api_v1_sessions__session_id__assist_knowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDraftResponse"];
                 };
             };
             /** @description Validation Error */

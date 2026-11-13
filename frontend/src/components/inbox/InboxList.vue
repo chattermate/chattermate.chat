@@ -95,7 +95,8 @@ const rowsEl = ref<HTMLElement | null>(null)
 watch(() => props.selectedSessionId, async (id) => {
   if (!id) return
   await nextTick()
-  rowsEl.value?.querySelector(`[data-session-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' })
+  // Session ids are UUIDs: safe in the selector as they are
+  rowsEl.value?.querySelector(`[data-session-id="${id}"]`)?.scrollIntoView?.({ block: 'nearest' })
 })
 
 // Another view, sort, search or filter is a new list: start it at the top
