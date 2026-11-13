@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 <script setup lang="ts">
+import UpgradeCard from './UpgradeCard.vue'
+
 defineProps<{
   message: string
 }>()
@@ -24,15 +26,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="locked-overlay-compact launcher-upsell">
-    <div class="locked-content-compact">
-      <p class="locked-text">{{ message }}</p>
-      <button type="button" class="upgrade-btn-compact" @click="emit('upgrade')">
-        <font-awesome-icon icon="fa-solid fa-crown" />
-        <span>Upgrade</span>
-      </button>
-    </div>
-  </div>
+  <UpgradeCard class="launcher-upsell" :message="message" @upgrade="emit('upgrade')" />
 </template>
 
 <style scoped>

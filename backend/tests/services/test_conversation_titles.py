@@ -108,6 +108,12 @@ class TestPreparing:
     def test_no_ai_setup(self, db, test_widget, test_customer):
         assert titles.prepare(db, _conversation(db, test_widget, test_customer)) is None
 
+    def test_a_plan_without_ai_titles(self, db, test_widget, test_customer, test_ai_config, monkeypatch):
+        asked = []
+        monkeypatch.setattr(titles, "plan_flag_on", lambda db, org, feature, otherwise: asked.append(feature) or False)
+        assert titles.prepare(db, _conversation(db, test_widget, test_customer)) is None
+        assert asked == ["conversation_titles"]
+
     def test_the_plan_does_not_allow_ai(self, db, test_widget, test_customer, test_ai_config, monkeypatch):
         monkeypatch.setattr(titles, "plan_allows_ai", lambda *a, **k: False)
         assert titles.prepare(db, _conversation(db, test_widget, test_customer)) is None

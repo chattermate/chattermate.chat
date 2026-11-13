@@ -242,15 +242,6 @@ const copySnippet = () => copy(widgetSnippet.value)
   color: var(--muted);
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
 .step-actions {
   display: flex;
   justify-content: space-between;

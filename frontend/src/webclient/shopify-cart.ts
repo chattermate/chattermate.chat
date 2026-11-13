@@ -22,6 +22,7 @@ limitations under the License.
 
 import { computed, reactive, ref } from 'vue'
 import { postToHost } from './host-bridge'
+import { planAllows } from './plan-features'
 
 export type CartStatus = 'idle' | 'adding' | 'added' | 'failed'
 
@@ -141,7 +142,9 @@ function summaryFrom(data: Record<string, unknown>): CartSummary {
 /** A message from the loader. Returns true if it was for the cart. */
 export function handleCartMessage(data: Record<string, unknown>): boolean {
   if (data.type === 'CART_AVAILABLE') {
-    shop.value = typeof data.shop === 'string' && data.shop ? data.shop : null
+    // Shopping in the chat is a Growth plan's: without it the store's cart is never
+    // taken up, so no Add, Choose options or cart bar (product cards keep View)
+    shop.value = planAllows('shop_in_chat') && typeof data.shop === 'string' && data.shop ? data.shop : null
     return true
   }
   if (data.type === 'CART_STATE') {

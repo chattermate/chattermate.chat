@@ -41,12 +41,12 @@ const emit = defineEmits<{ (e: 'expand'): void }>()
 const ctrl = inject(WIDGET_CTX)!
 const {
     agentName, humanAgent, humanAgentPhotoUrl, photoUrl, orbStyle, presence, loading,
-    isHandedOverToHuman, canStartNewChat, startingNewChat, newChatArmed, history, hasConversationToken,
+    isHandedOverToHuman, canStartNewChat, startingNewChat, newChatArmed, history,
 } = ctrl
 
 // Past chats need a conversation of the visitor's own (none in the dashboard preview).
 const preview = inject(WIDGET_PREVIEW, false)
-const historyAvailable = computed(() => !preview && hasConversationToken.value)
+const historyAvailable = computed(() => !preview && ctrl.historyAvailable.value)
 
 const face = computed(() => agentFace(ctrl.customization.value, photoUrl.value))
 const personName = computed(() => humanAgent.value.human_agent_name || '')

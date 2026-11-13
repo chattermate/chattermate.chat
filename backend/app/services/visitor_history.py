@@ -38,7 +38,7 @@ from app.models.chat_history import ChatHistory
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.agents.guardrail_policy import visitor_data_block
-from app.services import email_check
+from app.services import email_check, widget_plan
 from app.services.conversation_token import is_account_key, session_key_for_scope
 from app.services.file_storage import public_url
 from app.services.visitor_payload import visitor_message
@@ -69,14 +69,19 @@ def _proven_email(socket_session: dict) -> Optional[str]:
     return email_check.verified_email(socket_session.get('session_id'), socket_session.get('customer_id'))
 
 
+def _knows_customers(socket_session: dict) -> bool:
+    """Chats from the visitor's other browsers are a Pro plan's (widget_plan.py)."""
+    return widget_plan.session_allows(socket_session, widget_plan.KNOWN_CUSTOMERS_FEATURE)
+
+
 def own_sessions(db: Session, socket_session: dict, other_browsers: bool = True) -> Optional[Query]:
     """The socket visitor's widget conversations with this agent, or None when the
     socket has no usable identity or scope (fail closed). The dashboard's own
     support chat (an account-key scope) has no history here.
 
     Once the visitor proved an email with a code, also the conversations where that
-    same email was proved, in any browser (`other_browsers`). An email a visitor
-    only typed never counts: anyone can type anyone's email."""
+    same email was proved, in any browser (`other_browsers`, on a Pro plan). An
+    email a visitor only typed never counts: anyone can type anyone's email."""
     scope = socket_session.get('conversation_scope')
     customer_id = _as_uuid(socket_session.get('customer_id'))
     agent_id = _as_uuid(socket_session.get('agent_id'))
@@ -86,7 +91,7 @@ def own_sessions(db: Session, socket_session: dict, other_browsers: bool = True)
     # A keyless row from before conversation keys existed may be a chat an
     # anonymous visitor started by typing this customer's email: not theirs.
     since = KEYS_INTRODUCED if session_key_for_scope(scope) is None else None
-    proven = _proven_email(socket_session) if other_browsers else None
+    proven = _proven_email(socket_session) if other_browsers and _knows_customers(socket_session) else None
     return SessionToAgentRepository(db).widget_sessions(
         customer_id, scope, agent_id, org_id, since=since,
         verified_email_key=email_check.email_key(proven, org_id) if proven else None)
@@ -111,6 +116,8 @@ def link_proven_email(db: Session, socket_session: dict, email: str) -> int:
 def other_browsers(socket_session: dict) -> dict:
     """For the history screen: the email whose chats from other browsers it shows,
     or whether it can offer the email check that finds them."""
+    if not _knows_customers(socket_session):
+        return {'email': None, 'offer': False}
     proven = _proven_email(socket_session)
     if proven:
         return {'email': email_check.mask(proven), 'offer': False}

@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 const state = vi.hoisted(() => ({
+  quickActionsLocked: false,
   hasEnterpriseModule: true,
   currentPlan: null as null | { plan: { features: Record<string, unknown> } },
 }))
@@ -33,6 +34,10 @@ vi.mock('@/composables/useEnterpriseFeatures', async () => {
   }
 })
 vi.mock('@/services/api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+// The editor's lock decides what the preview shows (its own spec covers the rule)
+vi.mock('@/composables/useFeatureLock', () => ({
+  useFeatureLock: () => ({ isLocked: (gate: string) => gate === 'quick-actions' && state.quickActionsLocked }),
+}))
 
 import AgentChatPreviewPanel from '@/components/agent/AgentChatPreviewPanel.vue'
 import { PREVIEW_SAMPLE_COPY } from '@/webclient/copy'
@@ -54,6 +59,7 @@ describe('AgentChatPreviewPanel', () => {
   beforeEach(() => {
     state.currentPlan = null
     state.hasEnterpriseModule = true
+    state.quickActionsLocked = false
   })
 
   it('previews the panel with the sample conversation', async () => {
@@ -109,6 +115,14 @@ describe('AgentChatPreviewPanel', () => {
     await wrapper.setProps({ customization: { ...LOOK, quick_actions: ['Track my order'] } as never })
     expect(wrapper.text()).toContain('Track my order')
     expect(wrapper.text()).not.toContain(PREVIEW_SAMPLE_COPY.question)
+    wrapper.unmount()
+  })
+
+  it('shows no quick actions on a plan without them (Free), like the live widget', async () => {
+    state.quickActionsLocked = true
+    const wrapper = render({ ...LOOK, quick_actions: ['Track my order'] })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Track my order')
     wrapper.unmount()
   })
 

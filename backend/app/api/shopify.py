@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import asyncio
 import traceback
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
@@ -23,7 +24,7 @@ from app.utils.domain_check import InvalidWebsite, website_update
 from app.repositories.organization import OrganizationRepository
 from app.core.config import settings
 from app.core.logger import get_logger
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.schemas.shopify import ShopifyShopCreate, ShopifyShop, ShopifyShopUpdate
 from app.models.schemas.shopify import AgentShopifyConfigBase, AgentShopifyConfig, AgentShopifyConfigCreate, AgentShopifyConfigUpdate
 from app.repositories.shopify_shop_repository import ShopifyShopRepository
@@ -41,7 +42,7 @@ from app.models.organization import Organization
 from app.services.shopify import ShopifyService
 from app.services.shopify_auth_service import ShopifyAuthService
 from app.services.shopify_helper_service import ShopifyHelperService
-from app.services import shopify_privacy
+from app.services import shopify_app_proxy, shopify_privacy
 from app.core.s3 import delete_file_from_s3
 from app.services.shopify_links import owned_by_another_org, refresh_allowed_storefronts, use_shop_domain_if_unset
 from app.services.shopify_session import require_shopify_session
@@ -979,3 +980,24 @@ async def shopify_shop_redact_webhook(request: Request, db: Session = Depends(ge
     """Sent 48 hours after uninstall: erase the store's visitor data.
     https://shopify.dev/docs/apps/build/privacy-law-compliance"""
     return await _handle_privacy_webhook(shopify_privacy.TOPIC_SHOP_REDACT, request, db)
+
+
+# ---- App Proxy: the storefront's signed-in customer (shopify_app_proxy.py) ----
+
+@router.get("/proxy/identity")
+async def storefront_identity(request: Request):
+    """Shopify forwards the storefront's /apps/chattermate/identity here, signed.
+    A conversation token for the signed-in customer, or none. Never cached: it
+    names one person."""
+    query = list(request.query_params.multi_items())
+
+    def _work():
+        with SessionLocal() as db:
+            return shopify_app_proxy.identity_token(db, query)
+
+    try:
+        result = await asyncio.to_thread(_work)
+    except Exception as e:
+        logger.error(f"Storefront identity failed: {e}")
+        result = None
+    return JSONResponse(result or {"token": None}, headers={"Cache-Control": "no-store, private"})

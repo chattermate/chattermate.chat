@@ -29,6 +29,7 @@ from app.repositories.agent import AgentRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 from app.services.page_suggestions import suggestions_for
 from app.services.public_rate_limit import allow_request
+from app.services.widget_plan import PAGE_SUGGESTIONS_FEATURE, QUICK_ACTIONS_FEATURE, features
 from app.services.widget_reply import WIDGET_NAMESPACE
 
 logger = get_logger(__name__)
@@ -43,9 +44,12 @@ def _suggestions(agent_id: str, org_id: str, url, title) -> dict:
         agent = AgentRepository(db).get_agent(agent_id)
         if agent is None or str(agent.organization_id) != str(org_id):
             return NONE
-        shopify = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
-        return suggestions_for(db, agent.organization_id, agent, url, title,
-                               store=bool(shopify and shopify.enabled))
+        plan = features(db, agent.organization_id, (QUICK_ACTIONS_FEATURE, PAGE_SUGGESTIONS_FEATURE))
+        for_page = plan[PAGE_SUGGESTIONS_FEATURE]
+        # The store's page types are page rows: asked only on a plan that shows them
+        shopify = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id)) if for_page else None
+        return suggestions_for(db, agent.organization_id, agent, url, title, store=bool(shopify and shopify.enabled),
+                               for_page=for_page, quick_actions=plan[QUICK_ACTIONS_FEATURE])
 
 
 # Asked at connect and on page changes: its own limit, never the agent's message
