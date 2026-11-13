@@ -1199,20 +1199,34 @@ const loadDefaultQuickActions = () => {
                         </span>
                     </label>
 
-                    <label class="citations-toggle" :class="{ 'citations-toggle--locked': isFollowUpsLocked }">
-                        <input type="checkbox" v-model="followUps" :disabled="isFollowUpsLocked"
-                            :aria-describedby="isFollowUpsLocked ? 'follow-ups-locked' : undefined">
+                    <!-- Locked like the greeting messages; the saved switch stays as it was -->
+                    <div v-if="isFollowUpsLocked" class="citations-toggle follow-ups-locked" data-testid="follow-ups-locked">
+                        <div class="follow-ups-locked__head">
+                            <span class="citations-toggle-title">Suggest follow-up questions</span>
+                            <div class="premium-badge-small">
+                                <font-awesome-icon icon="fa-solid fa-crown" />
+                                <span>Premium</span>
+                            </div>
+                        </div>
+                        <div class="locked-overlay-compact">
+                            <div class="locked-content-compact">
+                                <font-awesome-icon icon="fa-solid fa-lock" class="lock-icon-small" />
+                                <p class="locked-text">Show up to three questions to ask next under an answer.</p>
+                                <button type="button" class="upgrade-btn-compact" aria-label="Upgrade to suggest follow-up questions" @click="handleUpgrade">
+                                    <font-awesome-icon icon="fa-solid fa-crown" />
+                                    <span>Upgrade</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <label v-else class="citations-toggle">
+                        <input type="checkbox" v-model="followUps">
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Suggest follow-up questions</span>
                             <span class="citations-toggle-desc">Shows up to three questions to ask next under an answer.</span>
                         </span>
                     </label>
-                    <div v-if="isFollowUpsLocked" class="page-rules-locked" data-testid="follow-ups-locked">
-                        <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
-                        <span id="follow-ups-locked">Upgrade to suggest follow-up questions.</span>
-                        <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to suggest follow-up questions" @click="handleUpgrade">Upgrade</button>
-                    </div>
 
                     <label class="citations-toggle">
                         <input type="checkbox" v-model="customization.collect_email">
@@ -2235,9 +2249,16 @@ const loadDefaultQuickActions = () => {
     text-decoration: line-through;
     opacity: 0.7;
 }
-.citations-toggle--locked {
-    cursor: not-allowed;
-    opacity: 0.6;
+/* Follow-up questions on a plan without them: the greeting messages' locked card */
+.follow-ups-locked {
+    display: block;
+    cursor: default;
+}
+.follow-ups-locked__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .page-rules-locked {
