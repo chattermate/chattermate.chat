@@ -53,15 +53,31 @@ export function useStickyScroll(followers: WatchSource<unknown>[]) {
     const unseen = ref(false)
     let frame: number | null = null
     let remembered: number | null = null
+    // Where the list last was, by the visitor's scroll or our own.
+    let lastTop = 0
+
+    const scrollTo = (el: HTMLElement, top: number) => {
+        el.scrollTop = top
+        lastTop = el.scrollTop
+    }
 
     const pinNow = () => {
         const el = scroller.value
-        if (el) el.scrollTop = el.scrollHeight
+        if (el) scrollTo(el, el.scrollHeight)
     }
 
-    /** The visitor scrolled: are they at the bottom now? */
+    /**
+     * The list scrolled: back at the bottom pins it; moving up (the visitor reading
+     * back) unpins it. Nothing else does: the browser reports our own scroll a frame
+     * late, and content that landed in between (a confirm card after the visitor's
+     * answer) leaves that report short of the end without anyone having moved.
+     */
     const onScroll = () => {
-        if (scroller.value) pinned.value = isAtBottom(scroller.value)
+        const el = scroller.value
+        if (!el) return
+        if (isAtBottom(el)) pinned.value = true
+        else if (el.scrollTop < lastTop) pinned.value = false
+        lastTop = el.scrollTop
         if (pinned.value) unseen.value = false
     }
 
@@ -95,11 +111,13 @@ export function useStickyScroll(followers: WatchSource<unknown>[]) {
         const el = scroller.value
         if (!el || remembered === null) return
         if (pinned.value) pinNow()
-        else el.scrollTop = remembered
+        else scrollTo(el, remembered)
         remembered = null
     }
 
     watch(followers, () => nextTick(follow))
+    // A newly bound box starts from wherever it is.
+    watch(scroller, (el) => { lastTop = el?.scrollTop ?? 0 }, { flush: 'sync' })
 
     // Either box changing size may move the end out of view.
     let sizes: ResizeObserver | null = null

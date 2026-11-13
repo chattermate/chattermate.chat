@@ -83,6 +83,42 @@ describe('useStickyScroll', () => {
         expect(list.box.scrollTop).toBe(100)
     })
 
+    it('keeps following when content lands before its own scroll is reported', async () => {
+        const list = setup()
+        // As a browser does, the box clamps scrollTop to its end.
+        let top = 600
+        Object.defineProperty(list.box, 'scrollTop', {
+            get: () => top,
+            set: (value: number) => { top = Math.min(value, list.box.scrollHeight - list.box.clientHeight) },
+        })
+        list.scrollToBottom()
+        await nextTick()
+        // A confirm card renders, then the browser reports the scroll to the old end.
+        list.box.scrollHeight = 1300
+        list.onScroll()
+        expect(list.pinned.value).toBe(true)
+
+        list.count.value++
+        await settle()
+        expect(list.box.scrollTop).toBe(900)
+        expect(list.unseen.value).toBe(false)
+    })
+
+    it('stays where a visitor put it on the way back down, until they reach the end', async () => {
+        const list = setup()
+        list.box.scrollTop = 100
+        list.onScroll()
+        list.box.scrollTop = 300
+        list.onScroll()
+        expect(list.pinned.value).toBe(false)
+
+        list.box.scrollHeight = 1200
+        list.follow()
+        await settle()
+        expect(list.box.scrollTop).toBe(300)
+        expect(list.unseen.value).toBe(true)
+    })
+
     it('starts following again once the visitor is back at the bottom', async () => {
         const list = setup()
         list.box.scrollTop = 100

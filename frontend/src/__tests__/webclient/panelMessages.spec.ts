@@ -182,6 +182,9 @@ describe('the message list', () => {
         const log = wrapper!.get('[role="log"]').element as HTMLElement
         Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1000 })
         Object.defineProperty(log, 'clientHeight', { configurable: true, value: 400 })
+        // At the end, then up: the visitor reads back.
+        log.scrollTop = 600
+        log.dispatchEvent(new Event('scroll'))
         log.scrollTop = 100
         log.dispatchEvent(new Event('scroll'))
         expect(wrapper!.find('.cm-new-messages').exists()).toBe(false)

@@ -34,6 +34,8 @@ export interface HostPromptOptions {
     emit: WidgetSocket['emit']
     /** Sends a tapped text reply through the normal message box. */
     sendQuickAction: (text: string) => void
+    /** The visitor answered with an action reply: bring the chat to its end, as a send does. */
+    afterAnswer: () => void
 }
 
 // A tap hides the reply buttons until what it started is over; if nothing more
@@ -57,7 +59,7 @@ const chatLine = (message: string, source: string): Message => ({
  * the agent runs on the site. Call during setup: both clients listen to the page.
  */
 export function useHostPrompt({
-    messages, loading, revealing, on, emit, sendQuickAction,
+    messages, loading, revealing, on, emit, sendQuickAction, afterAnswer,
 }: HostPromptOptions) {
     // In-app actions the embedding page registered (ChatterMate.registerActions), and
     // a message it asked us to show (ChatterMate.prompt). The prompt lives outside
@@ -106,6 +108,9 @@ export function useHostPrompt({
         if (chip.kind === 'action' && !chipBusy.value && !pendingConfirm.value) {
             if (visiblePrompt.value) addPromptToChat(visiblePrompt.value)
             messages.value.push({ ...chatLine(chip.label, 'journey'), message_type: 'user' })
+            // What it starts (a confirm card, the receipt) shows below: the
+            // visitor follows it even if they had scrolled up a little.
+            afterAnswer()
         }
         // A done action moves the step on (new replies arrive with it); one declined
         // or failed brings these back to try again.
