@@ -112,3 +112,14 @@
         animation: none;
     }
 }
+/* "Chatted with us on another device?": opens the email check that finds those chats */
+.chat-container.cm-surface.cm-ui-2 .cm-history__others-link {
+    border: 0;
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 13px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}

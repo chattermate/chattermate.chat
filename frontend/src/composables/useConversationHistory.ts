@@ -41,6 +41,14 @@ export interface OpenConversation {
     before: string | null
 }
 
+/** Chats from the visitor's other browsers, found by an email they proved with a code. */
+export interface OtherBrowsers {
+    /** The proven email, masked, while the proof lasts. */
+    email: string | null
+    /** The email check can be offered to find them. */
+    offer: boolean
+}
+
 export interface HistoryState {
     /** The history screen is showing (instead of the conversation). */
     showing: boolean
@@ -58,6 +66,7 @@ export interface HistoryState {
     viewingLoading: boolean
     continuing: boolean
     error: string
+    otherBrowsers: OtherBrowsers
 }
 
 /** How long typing waits before a search goes out. */
@@ -69,6 +78,7 @@ export const emptyHistory = (): HistoryState => ({
     showing: false, items: [], total: 0, nextCursor: null, loading: false, loaded: false,
     query: '', results: null, capped: false, searching: false,
     viewing: null, viewingLoading: false, continuing: false, error: '',
+    otherBrowsers: { email: null, offer: false },
 })
 
 const isObject = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object'
@@ -126,6 +136,10 @@ export function useConversationHistory(options: {
             nextCursor: typeof data?.next_cursor === 'string' ? data.next_cursor : null,
             loading: false,
             loaded: true,
+            otherBrowsers: {
+                email: typeof data?.other_browsers?.email === 'string' ? data.other_browsers.email : null,
+                offer: data?.other_browsers?.offer === true,
+            },
         })
     })
     options.on('conversation_search', (data: Record<string, any>) => {

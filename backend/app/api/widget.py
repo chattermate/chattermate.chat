@@ -32,7 +32,7 @@ from app.database import get_db
 from app.repositories.widget import WidgetRepository
 from app.repositories.agent import AgentRepository
 from app.core.security import verify_conversation_token
-from app.services import conversation_token, widget_ui
+from app.services import conversation_token, widget_plan, widget_ui
 from app.repositories.customer import CustomerRepository
 from app.models.schemas.widget import AgentCustomizationResponse, WidgetCreate, WidgetResponse
 from app.core.logger import get_logger
@@ -192,7 +192,8 @@ def get_widget_html(data: dict, request: Optional[Request] = None) -> str:
                     allowAttachments: {str(data['allowAttachments']).lower()},
                     presence: {script_json(data['presence'])},
                     hideBranding: {str(data['hideBranding']).lower()},
-                    helpCenterUrl: {script_json(data.get('helpCenterUrl'))}
+                    helpCenterUrl: {script_json(data.get('helpCenterUrl'))},
+                    planFeatures: {script_json(data.get('planFeatures'))}
                 }};
             </script>
         </head>
@@ -240,7 +241,8 @@ def _visitor_customization(db: Session, agent: Agent) -> Optional[AgentCustomiza
         return None
     metadata, logo_url = widget_ui.for_visitors(db, agent)
     return AgentCustomizationResponse.model_validate(agent.customization).model_copy(
-        update={"customization_metadata": metadata, "launcher_logo_url": logo_url})
+        update={"customization_metadata": metadata, "launcher_logo_url": logo_url,
+                **widget_plan.visitor_rows(db, agent)})
 
 
 def _widget_data_response(db: Session, widget: Widget, agent: Agent, customer_id: Optional[str],

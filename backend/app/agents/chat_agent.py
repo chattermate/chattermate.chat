@@ -35,6 +35,8 @@ from app.agents.host_actions.turns import fill_results, paused_run_tools, paused
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.feature_gate import LEAD_CAPTURE_FEATURE, plan_feature_on
+from app.services import widget_plan
+from app.services.widget_plan import MY_ORDERS_FEATURE, SHOP_IN_CHAT_FEATURE
 from app.services.widget_identity import trusts_identity_in_session
 from app.models.session_to_agent import SessionStatus
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse, TransferReasonType, EndChatReasonType
@@ -421,6 +423,11 @@ class ChatAgent(ChatAgentMCPMixin):
             
             # Check if Shopify is enabled for this agent while we have the db session
             shopify_config = None
+            # "My orders" after an email check, and Add to cart on product cards, are a
+            # Growth plan's (widget_plan.py)
+            plan = widget_plan.features(db, org_id, (MY_ORDERS_FEATURE, SHOP_IN_CHAT_FEATURE)) if org_id else {}
+            self.offers_my_orders = plan.get(MY_ORDERS_FEATURE, False)
+            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False)
             if agent_id and org_id and session_id:
                 try:
                     shopify_config_repo = AgentShopifyConfigRepository(db)
@@ -573,7 +580,8 @@ class ChatAgent(ChatAgentMCPMixin):
         for toolkit in (getattr(self, 'ticket_tools', None), getattr(self, 'shopify_tools', None)):
             if toolkit is not None:
                 toolkit.turn_cards = self.turn_cards
-        if self.turn_cards is not None and getattr(self, 'shopify_tools', None) is not None:
+        if self.turn_cards is not None and getattr(self, 'shopify_tools', None) is not None \
+                and self.offers_my_orders:
             self.shopify_tools.offer_email_check()
 
         # Add MCP tools if provided
@@ -908,7 +916,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
                 DO NOT include any other fields (shop_domain, total_count, products, etc.) - backend will populate everything from cache
 
-                **Cart:** you cannot add anything to a customer's cart. Never say you did. Customers add products themselves, from the product card or the store.
+                **Cart:** you cannot add anything to a customer's cart. Never say you did. Customers add products themselves, from CART_PLACES.
 
                 **Order Tools:**
                 - Before looking up an order, ask for BOTH the order number and the email address used at checkout. Order details are only shared when both match
@@ -917,7 +925,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 - Use customer-friendly language: "Your order has been shipped" not "FULFILLED"
                 - Make tracking numbers clickable links
                 """
-                system_message += "\n\n" + shopify_instructions
+                cart_places = "the product card or the store" if self.cards_add_to_cart else "the store"
+                system_message += "\n\n" + shopify_instructions.replace("CART_PLACES", cart_places)
                 self.shopify_instructions_added = True
 
             # Add MCP tools instructions if MCP tools are available

@@ -14,11 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 import type { VueWrapper } from '@vue/test-utils'
 import Composer from '@/webclient/panel/Composer.vue'
-import { COMPOSER_MAX_HEIGHT_PX, growToFit, isSendKey } from '@/webclient/panel/composer-input'
+import { COMPOSER_MAX_HEIGHT_PX, growToFit, isSendKey, refitOnWidthChange } from '@/webclient/panel/composer-input'
 import { fakeController, mountWithController, stagedFile, type FakeController } from './panelFakeController'
 
 let wrapper: VueWrapper<any> | undefined
@@ -237,5 +237,71 @@ describe('the composer keys and sizing', () => {
         const tenLines = boxWithText(216)
         expect(tenLines.style.height).toBe('116px')
         expect(tenLines.style.overflowY).toBe('auto')
+    })
+})
+
+describe('the composer after the panel changes width', () => {
+    /** A ResizeObserver the test drives: notify() is a layout change. */
+    class FakeObserver {
+        static last: FakeObserver | null = null
+        disconnected = false
+        constructor(private readonly callback: () => void) { FakeObserver.last = this }
+        observe() {}
+        disconnect() { this.disconnected = true }
+        notify() { this.callback() }
+    }
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
+        FakeObserver.last = null
+    })
+
+    /** A box whose placeholder wraps over more lines the narrower it is. */
+    const boxAt = (start: number) => {
+        const box = document.createElement('textarea')
+        let width = start
+        Object.defineProperty(box, 'clientWidth', { get: () => width })
+        Object.defineProperty(box, 'scrollHeight', { get: () => (width < 100 ? COMPOSER_MAX_HEIGHT_PX : 36) })
+        return { box, resize: (to: number) => { width = to } }
+    }
+
+    it('fits again when the box gets wider, so a narrow first load does not stay tall', () => {
+        vi.stubGlobal('ResizeObserver', FakeObserver)
+        const { box, resize } = boxAt(14)
+        growToFit(box)
+        expect(box.style.height).toBe('116px')
+        refitOnWidthChange(box)
+        resize(360)
+        FakeObserver.last!.notify()
+        expect(box.style.height).toBe('36px')
+    })
+
+    it('leaves it alone when only its height changed', () => {
+        vi.stubGlobal('ResizeObserver', FakeObserver)
+        const { box } = boxAt(360)
+        refitOnWidthChange(box)
+        box.style.height = '76px'
+        FakeObserver.last!.notify()
+        expect(box.style.height).toBe('76px')
+    })
+
+    it('stops watching when asked, and does nothing without ResizeObserver', () => {
+        vi.stubGlobal('ResizeObserver', FakeObserver)
+        const stop = refitOnWidthChange(boxAt(360).box)
+        stop()
+        expect(FakeObserver.last!.disconnected).toBe(true)
+        vi.stubGlobal('ResizeObserver', undefined)
+        expect(() => refitOnWidthChange(boxAt(360).box)()).not.toThrow()
+        expect(() => refitOnWidthChange(null)()).not.toThrow()
+    })
+
+    it('stops watching when the composer goes away', () => {
+        vi.stubGlobal('ResizeObserver', FakeObserver)
+        composer()
+        const observer = FakeObserver.last!
+        expect(observer.disconnected).toBe(false)
+        wrapper!.unmount()
+        wrapper = undefined
+        expect(observer.disconnected).toBe(true)
     })
 })

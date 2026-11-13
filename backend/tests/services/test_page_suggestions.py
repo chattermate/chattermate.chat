@@ -104,6 +104,32 @@ class TestSuggestions:
     def test_no_quick_actions_and_nothing_for_the_page_shows_nothing(self, db, test_organization_id):
         assert suggestions_for(db, test_organization_id, _agent(None), "https://shop.example/x")["items"] == []
 
+    def test_without_page_suggestions_only_every_page_rows_show(self, db, test_organization_id):
+        page = "https://shop.example/products/tee"
+        _faq(db, test_organization_id, "Is the tee organic?", page)
+        agent = _agent([{"label": "Does it run small?", "match": "/products/*"}, "Track my order"])
+        result = suggestions_for(db, test_organization_id, agent, page, "Tee", store=True, for_page=False)
+        assert [i["label"] for i in result["items"]] == ["Track my order"]
+        assert result["heading"] == "popular" and result["pill"] is None
+
+    def test_without_quick_actions_none_of_the_agents_rows_show(self, db, test_organization_id):
+        """Free: no quick actions and no page rows. Saved rows stay saved."""
+        page = "https://shop.example/products/tee"
+        agent = _agent([{"label": "Does it run small?", "match": "/products/*"}, "Track my order"])
+        result = suggestions_for(db, test_organization_id, agent, page, "Tee", store=True, for_page=False,
+                                 quick_actions=False)
+        assert result == {"heading": "popular", "pill": None, "items": []}
+
+    def test_page_rows_that_are_not_the_agents_need_no_quick_actions(self, db, test_organization_id):
+        page = "https://shop.example/products/tee"
+        _faq(db, test_organization_id, "Is the tee organic?", page)
+        agent = _agent([{"label": "Does it run small?", "match": "/products/*"}, "Track my order"])
+        result = suggestions_for(db, test_organization_id, agent, page, "Tee", store=True, quick_actions=False)
+        labels = [i["label"] for i in result["items"]]
+        assert "Is the tee organic?" in labels
+        assert not {"Does it run small?", "Track my order"} & set(labels)
+        assert result["heading"] == "page"
+
 
 
 @pytest.mark.parametrize("pattern,path,hit", [

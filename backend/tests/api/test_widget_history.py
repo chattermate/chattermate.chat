@@ -23,18 +23,20 @@ import pytest
 
 from app.api import widget_history as handlers
 
-SESSION = {"agent_id": "a", "org_id": "o", "customer_id": "c", "session_id": "s", "conversation_scope": "k"}
+PLAN = {"conversation_history": True, "follow_ups": True, "shop_in_chat": True, "known_customers": True}
+SESSION = {"agent_id": "a", "org_id": "o", "customer_id": "c", "session_id": "s", "conversation_scope": "k",
+           "plan_features": PLAN}
 
 
-def _patches(**service):
-    return [patch.object(handlers, "authenticated_session", AsyncMock(return_value=dict(SESSION))),
+def _patches(session=SESSION, **service):
+    return [patch.object(handlers, "authenticated_session", AsyncMock(return_value=dict(session))),
             patch.object(handlers, "SessionLocal", MagicMock()),
             patch.object(handlers, "allow_request", return_value=True)] + \
         [patch.object(handlers.visitor_history, name, **spec) for name, spec in service.items()]
 
 
-async def _call(handler, data, **service):
-    patches = _patches(**service)
+async def _call(handler, data, session=SESSION, **service):
+    patches = _patches(session, **service)
     with patch.object(handlers, "sio") as sio:
         sio.emit, sio.save_session = AsyncMock(), AsyncMock()
         for p in patches:
@@ -85,3 +87,27 @@ async def test_too_many_requests_answer_nothing_but_an_empty_list():
             for p in patches:
                 p.stop()
     assert sio.emit.await_args.args[1]["items"] == []
+
+
+FREE = {**SESSION, "plan_features": {**PLAN, "conversation_history": False}}
+
+
+@pytest.mark.asyncio
+async def test_on_free_there_are_no_past_chats():
+    listed = MagicMock(return_value={"items": [{"id": "x"}], "next_cursor": None, "total": 1})
+    sio = await _call(handlers.handle_list_conversations, {}, session=FREE, list_conversations={"new": listed})
+    listed.assert_not_called()
+    assert sio.emit.await_args.args[:2] == ("conversations", {"items": [], "next_cursor": None, "total": 0})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("handler, service", [
+    (handlers.handle_get_conversation, "get_conversation"),
+    (handlers.handle_continue_conversation, "continue_conversation"),
+])
+async def test_on_free_a_past_chat_reads_as_not_found(handler, service):
+    served = MagicMock(return_value={"title": "Late order", "context": "ctx"})
+    sio = await _call(handler, {"id": "x"}, session=FREE, **{service: {"new": served}})
+    served.assert_not_called()
+    sio.save_session.assert_not_awaited()
+    assert sio.emit.await_args.args[:2] == ("error", handlers.NOT_FOUND)

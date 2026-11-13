@@ -5132,6 +5132,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shopify/proxy/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront Identity
+         * @description Shopify forwards the storefront's /apps/chattermate/identity here, signed.
+         *     A conversation token for the signed-in customer, or none. Never cached: it
+         *     names one person.
+         */
+        get: operations["storefront_identity_api_v1_shopify_proxy_identity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow": {
         parameters: {
             query?: never;
@@ -19957,6 +19979,26 @@ export interface operations {
         };
     };
     shopify_shop_redact_webhook_api_v1_shopify_webhooks_shop_redact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    storefront_identity_api_v1_shopify_proxy_identity_get: {
         parameters: {
             query?: never;
             header?: never;

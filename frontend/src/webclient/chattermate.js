@@ -2,6 +2,7 @@
 import { createHostActions } from './loader/hostActions.js'
 import { createPushLayout, sheetCss } from './loader/pushLayout.js'
 import { createShopifyCart } from './loader/shopifyCart.js'
+import { syncStorefrontIdentity } from './loader/shopifyIdentity.js'
 import { createLookCache } from './loader/lookCache.js'
 import { panelCss } from './loader/panelMotion.js'
 import { createPanelHost } from './loader/panelHost.js'
@@ -2187,6 +2188,14 @@ import {
     }
     pendingCalls.splice(0).forEach(function (fn) {
       try { fn() } catch (e) { /* keep the widget alive if a queued call throws */ }
+    })
+    // A customer signed in to a Shopify store chats as themselves. After the queued
+    // calls, so a token the page gave with identify() is seen and kept.
+    syncStorefrontIdentity(window, {
+      widgetId: window.chattermateId,
+      current: getStoredToken(),
+      identify: function (token) { if (!isDestroyed) setIdentity(token) },
+      signOut: function () { if (!isDestroyed) clearIdentity() },
     })
   }
 

@@ -408,3 +408,15 @@ def _auth_errors(mock_sio) -> list:
         call for call in mock_sio.emit.call_args_list
         if call[0][0] == 'error' and call[0][1].get('type') == 'auth_error'
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_connection_keeps_what_the_plan_allows(mock_sio, connected, monkeypatch):
+    """Read once at connect; follow-up chips need both the agent's switch and the plan."""
+    monkeypatch.setattr(widget_chat, "offers_follow_ups", lambda agent: True)
+    monkeypatch.setattr(widget_chat.widget_plan, "plan_flags", lambda db, org, keys, *a: {k: k != "follow_ups" for k in keys})
+    await widget_chat.widget_connect("sid-plan", {}, {})
+    session = mock_sio.save_session.call_args[0][1]
+    assert session[widget_chat.widget_plan.SESSION_KEY] == {
+        "conversation_history": True, "follow_ups": False, "shop_in_chat": True, "known_customers": True}
+    assert session[widget_chat.FOLLOW_UPS_SESSION_KEY] is False

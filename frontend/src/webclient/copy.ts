@@ -134,6 +134,11 @@ export const PANEL_COPY = {
     loadingConversation: 'Loading…',
     earlierMessages: 'Show earlier messages',
     continueFailed: "Couldn't continue that conversation. Please try again.",
+    /** Chats from the visitor's other browsers, after an email check from the history screen. */
+    otherDevices: 'Chatted with us on another device?',
+    otherDevicesTitle: 'Find your other chats',
+    otherDevicesText: "Confirm the email you use with us. Chats where you confirmed it before will show here.",
+    otherDevicesShown: (masked: string) => `Including chats confirmed with ${masked}`,
     /** The email check (plan 4.3). */
     emailCheckTitle: 'Confirm your email',
     emailCheckText: "We'll send a 6-digit code to show these orders are yours.",

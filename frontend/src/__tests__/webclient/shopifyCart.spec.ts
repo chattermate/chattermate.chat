@@ -19,7 +19,7 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import ProductCartButton from '@/webclient/ProductCartButton.vue'
 import {
-  CART_ERROR, addToCart, canAddToCart, cartState, handleCartMessage, resetShopifyCart, viewCart,
+  CART_ERROR, addToCart, canAddToCart, cartOnPage, cartState, handleCartMessage, resetShopifyCart, viewCart,
 } from '@/webclient/shopify-cart'
 import { resetHostOrigin } from '@/webclient/host-bridge'
 
@@ -55,6 +55,17 @@ describe('shopify cart in the widget', () => {
       onStore()
       expect(canAddToCart(product, SHOP)).toBe(true)
       expect(canAddToCart(product, 'DEMO.myshopify.com')).toBe(true)
+    })
+
+    it('stays off on a plan without shopping in the chat', () => {
+      window.__INITIAL_DATA__ = { planFeatures: { shop_in_chat: false } } as Window['__INITIAL_DATA__']
+      try {
+        onStore()
+        expect(canAddToCart(product, SHOP)).toBe(false)
+        expect(cartOnPage.value).toBe(false)
+      } finally {
+        delete window.__INITIAL_DATA__
+      }
     })
 
     it('is off on another store', () => {
