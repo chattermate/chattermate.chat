@@ -72,6 +72,14 @@ describe('buildReturnUrl', () => {
     expect(url.searchParams.get('state')).toBe('abc123xyz')
   })
 
+  it('drops values smuggled into the return address', () => {
+    const smuggled = parseConnectRequest({ return_url: RETURN + '&error=x&widget_id=evil&state=old12345', state: 'abc123xyz' })!
+    const url = new URL(buildReturnUrl(smuggled, { widgetId: 'w-1' }))
+    expect(url.searchParams.getAll('widget_id')).toEqual(['w-1'])
+    expect(url.searchParams.getAll('state')).toEqual(['abc123xyz'])
+    expect(url.searchParams.has('error')).toBe(false)
+  })
+
   it('says so when the admin cancels', () => {
     const url = new URL(buildReturnUrl(request, { error: 'cancelled' }))
     expect(url.searchParams.get('error')).toBe('cancelled')
@@ -93,5 +101,13 @@ describe('allowsHost', () => {
   it('does not stretch a domain to look-alikes', () => {
     expect(allowsHost(['example.com'], 'shop.example.com')).toBe(false)
     expect(allowsHost(['*.example.com'], 'badexample.com')).toBe(false)
+  })
+
+  it('agrees with the backend on www twins and ports', () => {
+    expect(allowsHost(['example.com'], 'www.example.com')).toBe(true)
+    expect(allowsHost(['www.example.com'], 'example.com')).toBe(true)
+    expect(allowsHost(['example.com'], 'example.com:8080')).toBe(false)
+    expect(allowsHost(['example.com:8080'], 'example.com:8080')).toBe(true)
+    expect(allowsHost(['localhost'], 'localhost:8080')).toBe(true)
   })
 })

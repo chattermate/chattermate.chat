@@ -18,9 +18,9 @@ limitations under the License.
  * One-click connect for the WordPress plugin.
  *
  * The plugin sends the admin to /connect/wordpress with where to come back
- * (its admin-post.php "chattermate_connect" action) and a WordPress nonce as
+ * (its admin-post.php "chattermate_connect" action) and a random, single-use
  * `state`. The admin picks an agent here and is sent back with its widget ID.
- * The plugin checks the nonce, so a forged return does nothing.
+ * The plugin checks the state, so a forged or replayed return does nothing.
  */
 
 /** The plugin's admin-post action, the only place a return may go. */
@@ -83,25 +83,42 @@ function publicHost(raw: unknown): string | null {
 /** Where to send the admin back to: with the chosen widget, or with why not. */
 export function buildReturnUrl(request: ConnectRequest, result: { widgetId: string } | { error: 'cancelled' }): string {
   const url = new URL(request.returnUrl.toString())
+  // Only what this page decided goes back, never values smuggled into return_url.
+  for (const key of ['state', 'widget_id', 'error']) url.searchParams.delete(key)
   url.searchParams.set('state', request.state)
   if ('widgetId' in result) url.searchParams.set('widget_id', result.widgetId)
   else url.searchParams.set('error', result.error)
   return url.toString()
 }
 
+/** Hosts the backend treats as local: listed without a port, they allow any port. */
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]']
+
 /**
- * Whether a widget's allowed domains already let it run on `host`. An empty list
- * allows every site; `*.example.com` covers subdomains of example.com.
+ * Whether a widget's allowed domains already let it run on `host` (host[:port]),
+ * the way the backend's frame-ancestors rule decides (widget_embed_policy): an
+ * empty list allows every site; a plain domain also covers its www. twin;
+ * `*.example.com` covers subdomains; a port must match, except that a local
+ * host listed without one allows any port.
  */
 export function allowsHost(allowedDomains: string[], host: string): boolean {
   if (!allowedDomains.length) return true
-  const name = host.toLowerCase()
-  const bare = name.split(':')[0]
-  return allowedDomains.some((entry) => {
-    const domain = entry.toLowerCase()
-    if (domain === name || domain === bare) return true
-    return domain.startsWith('*.') && bare.endsWith(domain.slice(1))
+  const [name, port = ''] = splitHost(host.toLowerCase())
+  return allowedDomains.some((raw) => {
+    const [entry, entryPort = ''] = splitHost(raw.toLowerCase())
+    const anyPort = !entryPort && LOCAL_HOSTS.includes(entry)
+    if (!anyPort && entryPort !== port) return false
+    if (entry.startsWith('*.')) return name.endsWith(entry.slice(1))
+    if (LOCAL_HOSTS.includes(entry)) return name === entry
+    const apex = entry.startsWith('www.') ? entry.slice(4) : entry
+    return name === apex || name === `www.${apex}`
   })
+}
+
+/** host[:port] as [host, port]; an IPv6 literal keeps its brackets. */
+function splitHost(value: string): [string, string?] {
+  const match = value.match(/^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/)
+  return match ? [match[1], match[2]] : [value]
 }
 
 function firstValue(value: unknown): unknown {
