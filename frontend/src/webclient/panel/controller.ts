@@ -26,6 +26,7 @@ import type { HostCapabilities } from '../../composables/useHostMessages'
 import type { PreviewFile, UploadedFile } from '../../composables/useWidgetFiles'
 import type { WorkflowForm, WorkflowMessage } from '../../composables/useWorkflowScreens'
 import type { LiveStep } from '../../composables/useAgentTrace'
+import type { EmailCheckState } from '../../composables/useEmailCheck'
 import type { VisitorFeedback } from './answer-extras'
 
 /** What the widget root is given (by widget.ts, or the dashboard preview). */
@@ -145,6 +146,11 @@ export interface WidgetConversation {
     sendFeedback: (message: WidgetMessage, value: VisitorFeedback | null) => void
     /** Ask the shop for a product's options, for the product sheet (product-sheet.ts). */
     requestProductOptions: (productId: string) => void
+    /** The email check: the visitor proves an email is theirs with a code (useEmailCheck). */
+    emailCheck: Shown<EmailCheckState>
+    startEmailCheck: (email: string) => void
+    verifyEmailCode: (code: string) => void
+    restartEmailCheck: () => void
     hoverRating: Shown<number>
     isSubmittingRating: Shown<boolean>
     handleStarHover: (rating: number) => void

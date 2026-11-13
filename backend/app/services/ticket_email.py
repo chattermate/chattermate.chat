@@ -134,16 +134,18 @@ def _org_email_account(db: Session, organization_id) -> Optional[ChannelAccount]
     return None
 
 
-def _resolve_smtp(db: Session, organization_id) -> dict:
+def resolve_org_smtp(db: Session, organization_id) -> dict:
+    """The org's own email inbox when it has one, else the platform's account."""
     account = _org_email_account(db, organization_id)
     if account is not None:
         return smtp_config(account)
     return platform_smtp_config(settings.FROM_EMAIL)
 
 
-def _smtp_send(cfg: dict, message: EmailMessage) -> None:
+def send_smtp(cfg: dict, message: EmailMessage, to_addrs: Optional[List[str]] = None) -> None:
+    """Send `message`; `to_addrs` names the only recipients (else its headers do)."""
     with open_smtp(cfg) as smtp:
-        smtp.send_message(message)
+        smtp.send_message(message, to_addrs=to_addrs)
 
 
 async def send_ticket_email(
@@ -161,7 +163,7 @@ async def send_ticket_email(
     With a ticket_id the mail carries ticket-scoped threading headers, so the
     customer's reply comes back identifiable as a reply to that ticket."""
     try:
-        cfg = _resolve_smtp(db, organization_id)
+        cfg = resolve_org_smtp(db, organization_id)
         message = EmailMessage()
         message["From"] = cfg["from_email"]
         message["To"] = to_email
@@ -174,7 +176,7 @@ async def send_ticket_email(
         else:
             message["Message-ID"] = make_msgid()
         message.set_content(body)
-        await asyncio.to_thread(_smtp_send, cfg, message)
+        await asyncio.to_thread(send_smtp, cfg, message)
         return True
     except Exception as e:
         logger.error(f"Ticket email to {to_email} failed: {e}")

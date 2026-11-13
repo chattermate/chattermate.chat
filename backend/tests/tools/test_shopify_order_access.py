@@ -106,3 +106,11 @@ def test_written_details_pass(email, number, messages):
 ])
 def test_details_not_written_are_asked_for(email, number, messages, problem):
     assert missing_from_chat(email, number, messages) == problem
+
+
+
+def test_a_proven_email_need_not_be_typed():
+    """An email proven with a code (email_check) counts as given; the number still must be."""
+    assert missing_from_chat("jane@acme.com", "1001", ["it's #1001"], verified_email="Jane@Acme.com") is None
+    assert missing_from_chat("jane@acme.com", "1001", ["hi"], verified_email="jane@acme.com") is not None
+    assert missing_from_chat("other@acme.com", "1001", ["#1001"], verified_email="jane@acme.com") is not None

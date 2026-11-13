@@ -45,6 +45,10 @@ VISITOR_ATTRIBUTE_KEYS = frozenset({
     'handover',
     'trace',
     'visitor_feedback',
+    # Status cards (order, ticket), shortened for the visitor before they are stored
+    'cards',
+    # The reply asks the visitor to prove their email (email_check.py)
+    'email_check',
 })
 
 GENERIC_ERROR = "Something went wrong. Please try again."

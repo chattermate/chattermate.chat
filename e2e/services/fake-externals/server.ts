@@ -411,7 +411,11 @@ function shopifyOrderNode(order: ShopifyOrder) {
     originalTotalPriceSet: money('45.00'),
     customer: { id: `gid://shopify/Customer/${order.id}`, firstName: 'E2E', lastName: 'Customer', email: order.email, phone: null },
     shippingAddress: { address1: '1 Test Street', address2: null, city: 'Testville', provinceCode: 'CA', zip: '94000', country: 'United States', phone: null, name: 'E2E Customer' },
-    fulfillments: [{ status: 'SUCCESS', trackingInfo: [{ company: 'UPS', number: `1ZE2E${order.id}`, url: `https://tracking.e2e.test/1ZE2E${order.id}` }] }],
+    fulfillments: [{
+      status: 'SUCCESS', displayStatus: 'IN_TRANSIT', estimatedDeliveryAt: '2026-11-20T00:00:00Z',
+      trackingInfo: [{ company: 'UPS', number: `1ZE2E${order.id}`, url: `https://tracking.e2e.test/1ZE2E${order.id}` }],
+      fulfillmentLineItems: { edges: [{ node: { quantity: 1 } }] },
+    }],
     lineItems: { edges: [{ node: { id: `gid://shopify/LineItem/${order.id}`, title: 'E2E Mug', name: 'E2E Mug', quantity: 1, originalUnitPriceSet: money('40.00'), variant: { id: 'gid://shopify/ProductVariant/1', title: 'Default', sku: 'E2E-MUG', image: null } } }] },
   }
 }

@@ -144,8 +144,8 @@ class TestOutboundThreading:
         def fake_send(cfg, message):
             captured["message"] = message
 
-        monkeypatch.setattr(ticket_email, "_smtp_send", fake_send)
-        monkeypatch.setattr(ticket_email, "_resolve_smtp", lambda db, org: {
+        monkeypatch.setattr(ticket_email, "send_smtp", fake_send)
+        monkeypatch.setattr(ticket_email, "resolve_org_smtp", lambda db, org: {
             "host": "smtp.test", "port": 587, "username": None, "password": None,
             "from_email": "support@acme.com", "use_ssl": False,
         })

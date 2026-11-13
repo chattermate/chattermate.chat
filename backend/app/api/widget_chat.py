@@ -67,6 +67,7 @@ from app.services.host_action_runtime import (
 )
 from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
+from app.services import email_check
 from app.services.widget_answers import offers_follow_ups, serves_redesign_to_visitors
 from app.services.widget_reply import (
     FOLLOW_UPS_SESSION_KEY,
@@ -1131,6 +1132,8 @@ async def handle_end_chat(sid, data):
                 return
 
             logger.info(f"Session {session_id} closed by client with reason: {reason}")
+            # A proven email ends with its conversation (email_check.py)
+            await asyncio.to_thread(email_check.forget, str(session_id))
 
             # Confirm to client that chat has ended
             await sio.emit('chat_ended', {

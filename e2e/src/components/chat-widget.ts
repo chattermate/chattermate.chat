@@ -617,6 +617,29 @@ export class ChatWidget {
     })
   }
 
+  /** A status card in the chat (the redesign), named by its title, e.g. "Order #1042". */
+  statusCard(title: string): Locator {
+    return this.frame.getByRole('region', { name: title })
+  }
+
+  /** The redesign's email check card: confirm an email with a code sent to it. */
+  get emailCheck(): Locator {
+    return this.frame.getByRole('region', { name: 'Confirm your email' })
+  }
+
+  async askForEmailCode(address: string): Promise<void> {
+    await step(`Customer asks for a code at ${address}`, async () => {
+      await this.emailCheck.getByLabel('Email').fill(address)
+      await this.emailCheck.getByRole('button', { name: 'Send code' }).click()
+    })
+  }
+
+  async enterEmailCode(code: string): Promise<void> {
+    await step(`Customer enters the code ${code}`, async () => {
+      await this.emailCheck.getByLabel('Code').fill(code)
+    })
+  }
+
   /** The redesign's cart bar above the message box. */
   get cartBar(): Locator {
     return this.frame.getByRole('region', { name: 'Your cart' })

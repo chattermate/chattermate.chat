@@ -30,6 +30,7 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
+from app.cards.turn_cards import TurnCards
 from app.services.agent_steps import StepReporter
 from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
@@ -83,6 +84,7 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
         host_action_functions=build_action_functions(actions) or None,
         choice_limits=choice_limits_for(session),
         step_reporter=StepReporter(session['session_id']) if session.get(REDESIGN_SESSION_KEY) else None,
+        turn_cards=TurnCards() if session.get(REDESIGN_SESSION_KEY) else None,
     )
 
 
@@ -143,6 +145,8 @@ def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[
         # The agent's choices or follow-ups (choice_limits_for), until answered
         'quick_replies': _shown_choices(response, limits),
         'handover': getattr(chat_agent, 'last_handover', None),
+        'cards': getattr(chat_agent, 'last_cards', None),
+        'email_check': bool(getattr(chat_agent, 'last_email_check', False)) or None,
         'message': response.message,
         'type': 'chat_response',
         'session_id': session_id,
