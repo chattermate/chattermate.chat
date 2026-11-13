@@ -26,6 +26,8 @@ const token = (claims: Record<string, unknown>) =>
   'h.' + btoa(JSON.stringify(claims)).replace(/=+$/, '') + '.s'
 const STORE_TOKEN = token({ sub: 'c-1', custom_data: { source: 'shopify_storefront', shopify_customer_id: '7' } })
 const PAGE_TOKEN = token({ sub: 'c-2', customer_email: 'x@acme.com' })
+// The token the widget mints for itself: a conversation key, no person
+const ANON_TOKEN = token({ sub: 'c-3', ckey: 'k-1' })
 
 function store({ customer = '7', answer = { token: 'new-token' } as any, ok = true, extra = {} } = {}) {
   const fetch = vi.fn(async () => ({ ok, json: async () => answer }))
@@ -87,6 +89,29 @@ describe('the storefront\'s signed-in customer', () => {
   it('never replaces a token the page itself gave', async () => {
     const s = store()
     await s.sync(PAGE_TOKEN)
+    expect(s.fetch).not.toHaveBeenCalled()
+    expect(s.signOut).not.toHaveBeenCalled()
+  })
+
+  it('swaps the widget\'s own anonymous token for the customer who signed in', async () => {
+    // Every visitor has one after their first page, so this is the usual case
+    const s = store()
+    await s.sync(ANON_TOKEN)
+    expect(s.fetch).toHaveBeenCalledTimes(1)
+    expect(s.signOut).not.toHaveBeenCalled()
+    expect(s.identify).toHaveBeenCalledWith('new-token')
+  })
+
+  it('keeps the anonymous chat when the store has no token for the customer', async () => {
+    const s = store({ answer: { token: null } })
+    await s.sync(ANON_TOKEN)
+    expect(s.signOut).not.toHaveBeenCalled()
+    expect(s.identify).not.toHaveBeenCalled()
+  })
+
+  it('keeps an anonymous chat going while no one is signed in', async () => {
+    const s = store({ customer: '' })
+    await s.sync(ANON_TOKEN)
     expect(s.fetch).not.toHaveBeenCalled()
     expect(s.signOut).not.toHaveBeenCalled()
   })
@@ -154,6 +179,22 @@ describe('through the loader', () => {
     await flush()
     const asked = fetchMock.mock.calls.map(([url]) => String(url))
     expect(asked).toContain('/apps/chattermate/identity?widget_id=' + WIDGET_ID)
+  })
+
+  it('asks for a customer who signed in after browsing, over the widget\'s anonymous token', async () => {
+    resetPage()
+    // What the widget saved on the visitor's first page (TOKEN_UPDATE)
+    localStorage.setItem('ctid', ANON_TOKEN)
+    ;(window as any).Shopify = { shop: 'demo.myshopify.com', routes: { root: '/' } }
+    ;(window as any).__st = { cid: 7 }
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ token: null }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    await loadLoader()
+    await flush()
+    const asked = fetchMock.mock.calls.map(([url]) => String(url))
+    expect(asked).toContain('/apps/chattermate/identity?widget_id=' + WIDGET_ID)
+    // No token for them: the anonymous chat carries on
+    expect(localStorage.getItem('ctid')).toBe(ANON_TOKEN)
   })
 
   it('asks nothing on a site that is not a Shopify store', async () => {

@@ -239,12 +239,31 @@ def verify(session_id: str, customer_id: str, code: str) -> Tuple[CheckResult, O
             return CheckResult(False, 'wrong_code' if left else 'locked', attempts_left=left), None
         for key in (_code_key(session_id), _tries_key(session_id), _offer_key(session_id)):
             client.delete(key)
-        proof = json.dumps({'email': record['email'], 'customer_id': str(customer_id)})
-        client.set(_verified_key(session_id), proof, ex=VERIFIED_TTL_SECONDS)
+        _keep_proof(client, session_id, customer_id, record['email'])
         return CheckResult(True, 'verified'), record['email']
     except Exception as e:
         logger.error(f"Email check could not verify: {e}")
         return UNAVAILABLE, None
+
+
+def _keep_proof(client, session_id: str, customer_id, email: str) -> None:
+    proof = json.dumps({'email': email, 'customer_id': str(customer_id)})
+    client.set(_verified_key(session_id), proof, ex=VERIFIED_TTL_SECONDS)
+
+
+def prove(session_id: str, customer_id, email: str) -> bool:
+    """Record `email` as proved for this conversation and customer by something
+    other than a code (a store that verified it: shopify_app_proxy). Whether it
+    was kept: without Redis, order lookups need the typed email as before."""
+    client = _client()
+    if client is None or not session_id or not valid_email(email or ''):
+        return False
+    try:
+        _keep_proof(client, str(session_id), customer_id, normalise(email))
+        return True
+    except Exception as e:
+        logger.error(f"Proven email not kept: {e}")
+        return False
 
 
 def verified_email(session_id: Optional[str], customer_id: Optional[str] = None) -> Optional[str]:

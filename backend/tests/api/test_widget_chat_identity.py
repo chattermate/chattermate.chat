@@ -111,6 +111,22 @@ async def test_a_new_conversation_is_reported_as_created_and_authenticated(mock_
 
 
 @pytest.mark.asyncio
+async def test_connecting_offers_the_token_to_the_store_sign_in(mock_sio, connected, monkeypatch):
+    accept = MagicMock(return_value=False)
+    monkeypatch.setattr(widget_chat, "accept_store_sign_in", accept)
+    assert await widget_chat.widget_connect("sid-store", {}, {}) is True
+    session, token_data = accept.call_args.args
+    assert session["session_id"] and token_data["customer_email"] == "signed.in@example.com"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_store_sign_in_still_connects(mock_sio, connected, monkeypatch):
+    monkeypatch.setattr(widget_chat, "accept_store_sign_in", MagicMock(side_effect=RuntimeError("redis down")))
+    assert await widget_chat.widget_connect("sid-store-2", {}, {}) is True
+    assert _session_initialized(mock_sio)
+
+
+@pytest.mark.asyncio
 async def test_resuming_a_conversation_is_not_reported_as_created(
     db, test_widget, identified_customer, mock_sio, connected
 ):

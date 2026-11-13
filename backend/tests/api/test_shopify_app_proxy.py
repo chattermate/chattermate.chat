@@ -135,6 +135,9 @@ class TestToken:
         assert claims["custom_data"] == {"source": "shopify_storefront", "shopify_customer_id": "77"}
         assert conversation_token.is_identified(claims)
         assert conversation_token.is_verified_scope(conversation_token.conversation_scope(claims))
+        # The store verified the email: it counts as proved, like a code
+        assert claims["source"] == "shopify_storefront"
+        assert proxy.store_verified_email(claims) == "jane@acme.com"
 
     def test_below_pro_the_customer_stays_anonymous(self, db, test_widget, store, signed_in, monkeypatch):
         asked = []
@@ -208,3 +211,20 @@ class TestRoute:
         monkeypatch.setattr(proxy, "identity_token", broken)
         response = TestClient(app).get("/api/v1/shopify/proxy/identity")
         assert response.json() == {"token": None}
+
+
+class TestStoreVerifiedEmail:
+    def test_only_a_token_this_proxy_minted_vouches_for_its_email(self):
+        assert proxy.store_verified_email({"source": "shopify_storefront", "customer_email": "jane@acme.com"}) == "jane@acme.com"
+
+    @pytest.mark.parametrize("claims", [
+        # What POST /generate-token can write: custom_data, never the top-level source
+        {"customer_email": "jane@acme.com", "custom_data": {"source": "shopify_storefront"}},
+        {"customer_email": "jane@acme.com"},
+        {"source": "shopify_storefront"},
+        {"source": "shopify_storefront", "customer_email": ""},
+        None,
+    ])
+    def test_anything_else_proves_nothing(self, claims):
+        assert proxy.store_verified_email(claims) is None
+
