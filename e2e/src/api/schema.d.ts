@@ -6444,7 +6444,7 @@ export interface components {
             /** Chat Initiation Messages */
             chat_initiation_messages?: string[] | null;
             /** Quick Actions */
-            quick_actions?: string[] | null;
+            quick_actions?: (string | components["schemas"]["QuickActionRule"])[] | null;
             /**
              * Show Citations
              * @default false
@@ -6522,7 +6522,7 @@ export interface components {
             /** Chat Initiation Messages */
             chat_initiation_messages?: string[] | null;
             /** Quick Actions */
-            quick_actions?: string[] | null;
+            quick_actions?: (string | components["schemas"]["QuickActionRule"])[] | null;
             /**
              * Show Citations
              * @default false
@@ -8556,6 +8556,19 @@ export interface components {
              */
             reinvestigate: boolean;
         };
+        /**
+         * QuickActionRule
+         * @description A quick action shown only on some pages (`match`, a URL path pattern such as
+         *     "/products/*"), with an optional icon. A plain string is shown on every page.
+         */
+        QuickActionRule: {
+            /** Label */
+            label: string;
+            /** Match */
+            match?: string | null;
+            /** Icon */
+            icon?: ("order" | "shipping" | "returns" | "product" | "billing" | "account" | "person" | "article" | "question") | null;
+        };
         /** RCADocumentOut */
         RCADocumentOut: {
             /**
@@ -8779,6 +8792,12 @@ export interface components {
             variant_title?: string | null;
             /** Cart Variant Id */
             cart_variant_id?: string | null;
+            /** Published */
+            published?: boolean | null;
+            /** Tracks Inventory */
+            tracks_inventory?: boolean | null;
+            /** Has Choices */
+            has_choices?: boolean | null;
         };
         /** ShopifyProductImage */
         ShopifyProductImage: {
