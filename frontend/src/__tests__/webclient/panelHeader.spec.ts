@@ -27,6 +27,7 @@ let wrapper: VueWrapper | undefined
 afterEach(() => {
     wrapper?.unmount()
     wrapper = undefined
+    delete window.__INITIAL_DATA__
 })
 
 const header = (overrides: Partial<FakeController> = {}) => {
@@ -137,6 +138,12 @@ describe('the panel header', () => {
 
     it('has no history button without a conversation of the visitor\'s own', () => {
         header({ hasConversationToken: ref(false) })
+        expect(wrapper!.find('button[aria-label="Your conversations"]').exists()).toBe(false)
+    })
+
+    it('has no history button on a plan without past chats (Free)', () => {
+        window.__INITIAL_DATA__ = { planFeatures: { conversation_history: false } } as Window['__INITIAL_DATA__']
+        header()
         expect(wrapper!.find('button[aria-label="Your conversations"]').exists()).toBe(false)
     })
 

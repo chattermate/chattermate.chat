@@ -34,7 +34,7 @@ from app.models.agent import Agent, AgentCustomization
 from app.models.customer import Customer
 from app.models.organization import Organization
 from app.models.widget import Widget
-from app.services import conversation_token, widget_bootstrap
+from app.services import conversation_token, widget_bootstrap, widget_plan
 
 
 @pytest.fixture
@@ -331,6 +331,32 @@ class TestBootstrap:
         # Escaped for a script block: the URL cannot close the tag.
         assert "https://help.acme.example/</script>" not in page
 
+    def test_free_serves_no_quick_actions_greeting_or_past_chats(self, client, db, test_widget, test_agent,
+                                                                  monkeypatch):
+        db.add(AgentCustomization(agent_id=test_agent.id, quick_actions=["Track my order"],
+                                  chat_initiation_messages=["Need a hand?"]))
+        db.commit()
+        monkeypatch.setattr(widget_plan, "plan_flag_on", lambda *a: False)
+        data = bootstrap(client, test_widget).json()
+        assert data["customization"]["quick_actions"] == []
+        assert data["customization"]["chat_initiation_messages"] == []
+        assert data["planFeatures"] == {"conversation_history": False, "shop_in_chat": False}
+        # The widget data route serves the same rows
+        assert data["widgetData"]["data"]["agent"]["customization"]["quick_actions"] == []
+        assert data["widgetData"]["data"]["agent"]["customization"]["chat_initiation_messages"] == []
+        # The HTML page bakes the flags in for the widget to read
+        assert 'planFeatures: {"conversation_history": false, "shop_in_chat": false}' in \
+            client.get(f"/api/v1/widgets/{test_widget.id}/data").text
+
+    def test_a_paid_plan_serves_what_the_agent_saved(self, client, db, test_widget, test_agent, monkeypatch):
+        db.add(AgentCustomization(agent_id=test_agent.id, quick_actions=["Track my order"],
+                                  chat_initiation_messages=["Need a hand?"]))
+        db.commit()
+        monkeypatch.setattr(widget_plan, "plan_flag_on", lambda *a: True)
+        customization = bootstrap(client, test_widget).json()["customization"]
+        assert customization["quick_actions"] == ["Track my order"]
+        assert customization["chat_initiation_messages"] == ["Need a hand?"]
+
     def test_no_help_center_by_default(self, client, test_widget):
         assert bootstrap(client, test_widget).json()["helpCenterUrl"] is None
 
@@ -350,8 +376,10 @@ class TestBootstrap:
         assert set(data) == {
             "widgetId", "agentName", "customization", "customerId", "initialToken",
             "customer", "workflow", "allowAttachments", "presence", "hideBranding",
-            "helpCenterUrl", "widgetData",
+            "helpCenterUrl", "planFeatures", "widgetData",
         }
+        # Community install: every widget feature is on
+        assert data["planFeatures"] == {"conversation_history": True, "shop_in_chat": True}
         assert data["widgetId"] == test_widget.id
         assert data["agentName"] == (test_agent.display_name or test_agent.name)
         assert data["customerId"] == ""

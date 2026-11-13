@@ -29,6 +29,7 @@ import PersonAvatar from './PersonAvatar.vue'
 import { agentFace } from './agent-face'
 import { PANEL_COPY } from '../copy'
 import { NEW_CHAT_LABEL } from '../new-chat'
+import { planAllows } from '../plan-features'
 import { useSwipeToClose } from '../../composables/useSwipeToClose'
 
 defineProps<{
@@ -46,7 +47,8 @@ const {
 
 // Past chats need a conversation of the visitor's own (none in the dashboard preview).
 const preview = inject(WIDGET_PREVIEW, false)
-const historyAvailable = computed(() => !preview && hasConversationToken.value)
+// Past chats are a paid plan's (plan-features.ts)
+const historyAvailable = computed(() => !preview && hasConversationToken.value && planAllows('conversation_history'))
 
 const face = computed(() => agentFace(ctrl.customization.value, photoUrl.value))
 const personName = computed(() => humanAgent.value.human_agent_name || '')

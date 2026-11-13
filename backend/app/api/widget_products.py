@@ -26,6 +26,7 @@ from app.api.widget_actions import authenticated_session
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.database import SessionLocal
+from app.services import widget_plan
 from app.services.shopify import ShopifyService
 from app.services.shopify_product_options import product_options, valid_product_id
 from app.services.socket_rate_limit import socket_rate_limit
@@ -54,7 +55,8 @@ async def handle_product_options(sid, data):
         return
     product_id = valid_product_id(data.get('product_id') if isinstance(data, dict) else None)
     choices = NO_CHOICES
-    if product_id:
+    # The product sheet is shopping in the chat: a Growth plan's (widget_plan.py)
+    if product_id and widget_plan.session_allows(session, widget_plan.SHOP_IN_CHAT_FEATURE):
         try:
             choices = await asyncio.to_thread(_read_options, session['agent_id'], session['org_id'], product_id)
         except Exception as e:

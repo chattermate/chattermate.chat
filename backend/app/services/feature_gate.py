@@ -40,9 +40,9 @@ except ImportError:
 # Apart from the rest: an enterprise module without it must still gate
 # everything above, not fall back to community mode.
 try:
-    from app.enterprise.services.entitlements import feature_on
+    from app.enterprise.services.entitlements import feature_on, snapshot as plan_snapshot
 except ImportError:
-    feature_on = None
+    feature_on = plan_snapshot = None
 
 logger = get_logger(__name__)
 
@@ -50,8 +50,6 @@ WORKFLOW_FEATURE = "workflow"
 MCP_TOOLS_FEATURE = "mcp_tools"
 LEAD_CAPTURE_FEATURE = "lead_capture"
 CUSTOM_BRANDING_FEATURE = "custom_branding"
-# The start screen's rows for the page the visitor is on; without it, every-page rows only
-PAGE_SUGGESTIONS_FEATURE = "page_suggestions"
 
 
 def feature_allowed(db: Session, organization_id: UUID, feature: str) -> bool:
@@ -87,6 +85,21 @@ def plan_feature_on(db: Session, organization_id: UUID | str, feature: str) -> b
     leaves the feature running: a blip must never change how a paying customer's
     agent behaves."""
     return _plan_says(db, organization_id, feature, otherwise=True)
+
+
+def plan_flag_on(db: Session, organization_id: UUID | str, feature: str, otherwise: bool = True) -> bool:
+    """For a flag newer than the plans' own rows: a plan that does not name it yet
+    (its enterprise migration has not run) counts as having it, so a deploy never
+    takes a paid feature away in between. An org with no plan has nothing.
+    Community installs always have it; a failed lookup gives `otherwise`."""
+    if plan_snapshot is None:
+        return True
+    try:
+        features = plan_snapshot(db, organization_id)["features"] or {}
+    except Exception as e:
+        logger.error(f"Plan check '{feature}' failed for org {organization_id} (using {otherwise}): {e}")
+        return otherwise
+    return features.get(feature, bool(features)) is True
 
 
 def plan_hides_branding(db: Session, organization_id: UUID | str) -> bool:

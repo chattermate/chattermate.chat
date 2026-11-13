@@ -169,4 +169,18 @@ describe('the start state\'s Recent row', () => {
         expect(ctrl.openHistory).toHaveBeenCalled()
         expect(ctrl.openConversation).toHaveBeenCalledWith('a')
     })
+
+    it('never asks and shows nothing on a plan without past chats (Free)', async () => {
+        window.__INITIAL_DATA__ = { planFeatures: { conversation_history: false } } as Window['__INITIAL_DATA__']
+        try {
+            ctrl = fakeController()
+            wrapper = mountWithController(RecentRow, ctrl)
+            expect(ctrl.refreshConversations).not.toHaveBeenCalled()
+            ctrl.history.value = { ...emptyHistory(), loaded: true, items: [item('a', '2026-11-10T10:00:00')] }
+            await nextTick()
+            expect(wrapper.find('.cm-recent').exists()).toBe(false)
+        } finally {
+            delete window.__INITIAL_DATA__
+        }
+    })
 })

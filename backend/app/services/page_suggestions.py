@@ -19,7 +19,8 @@ first sources first, without repeats, at most three:
 2. the page's type on a store (a product, the cart or checkout, the orders page);
 3. the org's published FAQs generated from this page (FAQ.source_url);
 4. the agent's quick actions for every page (today's behaviour).
-Sources 1-3 need the plan's page_suggestions flag (paid plans); without it only 4.
+Sources 1-3 need the plan's page_suggestions flag (Growth and up), and the agent's
+own rows (1 and 4) its quick_actions flag (Starter and up); see widget_plan.py.
 Nothing is generated per view. Each row's icon comes from where it came from, or
 a small keyword map for free-text quick actions.
 """
@@ -172,13 +173,14 @@ def _page_rows(db: Session, org_id: Any, rules: List[Dict[str, str]], page: Opti
 
 
 def suggestions_for(db: Session, org_id: Any, agent: Any, url: Any, title: Any = None,
-                    store: bool = False, for_page: bool = True) -> dict:
+                    store: bool = False, for_page: bool = True, quick_actions: bool = True) -> dict:
     """{heading: 'page' | 'popular', pill, items: [{label, icon, source}]} for this page.
 
-    `for_page` False (a plan without page suggestions): the every-page rows only,
-    so a page rule saved on a paid plan stays saved but is not shown."""
+    What the plan leaves out stays saved but is not shown: `for_page` False drops
+    the rows about this page (rules for some pages, store pages, page FAQs), and
+    `quick_actions` False drops the agent's own rows (every quick action)."""
     page = normalise_url(url)
-    rules = [r for r in (_rule(e) for e in _quick_actions(agent)) if r]
+    rules = [r for r in (_rule(e) for e in _quick_actions(agent)) if r] if quick_actions else []
     found = _page_rows(db, org_id, rules, page, store) if for_page else []
     for_this_page = bool(found)
     for rule in rules:

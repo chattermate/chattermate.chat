@@ -94,6 +94,9 @@ const isChatInitiationsLocked = computed(() => {
 // saved on Free, the widget just shows every-page actions there.
 const { isLocked } = useFeatureLock()
 const isPageRulesLocked = computed(() => isLocked('page-suggestions'))
+// Quick actions themselves and follow-up chips need a paid plan; saved ones stay saved
+const isQuickActionsLocked = computed(() => isLocked('quick-actions'))
+const isFollowUpsLocked = computed(() => isLocked('follow-ups'))
 
 // Upgrade handler
 const handleUpgrade = () => {
@@ -924,10 +927,15 @@ const loadDefaultQuickActions = () => {
 
                     <div class="section-head-row">
                         <h4 class="subsection-heading">Quick actions</h4>
-                        <button type="button" class="load-defaults-link" @click="loadDefaultQuickActions">Load defaults</button>
+                        <button v-if="!isQuickActionsLocked" type="button" class="load-defaults-link" @click="loadDefaultQuickActions">Load defaults</button>
                     </div>
 
-                    <div class="init-add-row">
+                    <div v-if="isQuickActionsLocked" class="page-rules-locked" data-testid="quick-actions-locked">
+                        <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
+                        <span>Upgrade to show quick actions in the chat.</span>
+                        <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to show quick actions" @click="handleUpgrade">Upgrade</button>
+                    </div>
+                    <div v-else class="init-add-row">
                         <input
                             type="text"
                             v-model="newQuickAction"
@@ -954,13 +962,14 @@ const loadDefaultQuickActions = () => {
                             title="Add quick action"
                         >+</button>
                     </div>
-                    <div v-if="isPageRulesLocked" class="page-rules-locked" data-testid="page-rules-locked">
+                    <div v-if="isPageRulesLocked && !isQuickActionsLocked" class="page-rules-locked" data-testid="page-rules-locked">
                         <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
-                        <span>Paid plans can show a quick action only on some pages, like your product pages.</span>
-                        <button type="button" class="page-rules-locked__upgrade" @click="handleUpgrade">Upgrade</button>
+                        <span>Upgrade to show a quick action only on some pages, like your product pages.</span>
+                        <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to show quick actions on some pages" @click="handleUpgrade">Upgrade</button>
                     </div>
 
-                    <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list">
+                    <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list"
+                        :class="{ 'init-list--off': isQuickActionsLocked }">
                         <div
                             v-for="(action, index) in customization.quick_actions"
                             :key="index"
@@ -1002,7 +1011,7 @@ const loadDefaultQuickActions = () => {
                             </div>
                             <template v-else>
                                 <span class="init-handle">☰</span>
-                                <span class="init-text">{{ actionLabel(action) }}</span>
+                                <span class="init-text">{{ actionLabel(action) }}<span v-if="isQuickActionsLocked" class="sr-only"> (not shown on your plan)</span></span>
                                 <span
                                     v-if="actionMatch(action)"
                                     class="init-match"
@@ -1016,7 +1025,7 @@ const loadDefaultQuickActions = () => {
                             </template>
                         </div>
                     </div>
-                    <div v-else class="init-empty">
+                    <div v-else-if="!isQuickActionsLocked" class="init-empty">
                         <span class="init-empty-icon">ⓘ</span>
                         <span>No quick actions yet. Add one above.</span>
                     </div>
@@ -1178,14 +1187,20 @@ const loadDefaultQuickActions = () => {
                         </span>
                     </label>
 
-                    <label class="citations-toggle">
-                        <input type="checkbox" v-model="followUps">
+                    <label class="citations-toggle" :class="{ 'citations-toggle--locked': isFollowUpsLocked }">
+                        <input type="checkbox" v-model="followUps" :disabled="isFollowUpsLocked"
+                            :aria-describedby="isFollowUpsLocked ? 'follow-ups-locked' : undefined">
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Suggest follow-up questions</span>
                             <span class="citations-toggle-desc">Shows up to three questions to ask next under an answer.</span>
                         </span>
                     </label>
+                    <div v-if="isFollowUpsLocked" class="page-rules-locked" data-testid="follow-ups-locked">
+                        <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
+                        <span id="follow-ups-locked">Upgrade to suggest follow-up questions.</span>
+                        <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to suggest follow-up questions" @click="handleUpgrade">Upgrade</button>
+                    </div>
 
                     <label class="citations-toggle">
                         <input type="checkbox" v-model="customization.collect_email">
@@ -2207,6 +2222,15 @@ const loadDefaultQuickActions = () => {
 .init-match--off {
     text-decoration: line-through;
     opacity: 0.7;
+}
+/* Saved on a plan that doesn't show them: kept, editable, visibly off */
+.init-list--off .init-text {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+.citations-toggle--locked {
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .page-rules-locked {

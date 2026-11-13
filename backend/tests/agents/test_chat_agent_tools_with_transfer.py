@@ -28,7 +28,8 @@ from app.models.schemas.chat import ChatResponse, ShopifyOutputData, ShopifyProd
 
 def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
                 mcp_tools=None, transfer_override=None, channel=None,
-                broken_tool=None, groups=("support",), host_actions=None) -> ChatAgent:
+                broken_tool=None, groups=("support",), host_actions=None, turn_cards=None,
+                plan=lambda feature: True) -> ChatAgent:
     """A ChatAgent with everything external stubbed, to read what it was given."""
     agent_data = Mock()
     agent_data.name = "Support"
@@ -53,6 +54,8 @@ def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
          patch('app.agents.chat_agent.EncryptedPostgresAgentStorage', return_value=storage), \
          patch('app.agents.chat_agent.settings.DATABASE_URL', "mock://test"), \
          patch.dict('os.environ', {}, clear=True), \
+         patch('app.agents.chat_agent.plan_feature_on', lambda db, org, feature: plan(feature)), \
+         patch('app.services.widget_plan.plan_flag_on', lambda db, org, feature: plan(feature)), \
          broken:
         mock_get_db.return_value = iter([MagicMock(spec=Session)])
         mock_jira_repo.return_value.get_agent_with_jira_config.return_value = agent_data
@@ -70,6 +73,7 @@ def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
             mcp_tools=mcp_tools,
             channel=channel,
             host_action_functions=host_actions,
+            turn_cards=turn_cards,
         )
 
 
@@ -333,3 +337,34 @@ class TestHandoverStillWorksWithToolsAttached:
         reply = finished_turn(agent, model_reply(transfer_to_human=True))
         agent._handle_transfer.assert_not_awaited()
         assert reply.transfer_to_human is False
+
+
+class TestMyOrders:
+    """The email check and the customer's own orders are a Growth plan's."""
+
+    def _functions(self, **plan):
+        from app.cards.turn_cards import TurnCards
+        with patch('app.tools.shopify_toolkit.email_check.available', return_value=True):
+            agent = build_agent(shopify=True, turn_cards=TurnCards(), **plan)
+        return set(agent.shopify_tools.functions)
+
+    def test_offered_on_a_plan_with_it(self):
+        assert {"confirm_email", "list_my_orders"} <= self._functions()
+
+    def test_not_offered_below_growth(self):
+        functions = self._functions(plan=lambda feature: feature != "my_orders")
+        assert not {"confirm_email", "list_my_orders"} & functions
+        # An order looked up by its number stays on every plan
+        assert "get_order_status" in functions
+
+
+class TestCartWording:
+    """The AI only points at an Add button the plan's product cards have."""
+
+    def test_a_plan_with_shopping_in_the_chat(self):
+        assert "from the product card or the store" in prompt_of(build_agent(shopify=True))
+
+    def test_a_plan_without_it_sends_them_to_the_store(self):
+        prompt = prompt_of(build_agent(shopify=True, plan=lambda feature: feature != "shop_in_chat"))
+        assert "Customers add products themselves, from the store." in prompt
+        assert "product card or" not in prompt

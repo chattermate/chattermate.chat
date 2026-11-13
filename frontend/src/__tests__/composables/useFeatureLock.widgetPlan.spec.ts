@@ -31,7 +31,15 @@ vi.mock('@/utils/storage', () => ({
 import { useFeatureLock } from '@/composables/useFeatureLock'
 import { FEATURE_GATES } from '@/components/agent/featureGates'
 
-describe('quick actions for some pages (page suggestions)', () => {
+// The dashboard's locks for the widget's plan features, and the flag each reads
+// (the server's widget_plan.py gates on the same names)
+const GATES = [
+  ['quick-actions', 'quick_actions'],
+  ['page-suggestions', 'page_suggestions'],
+  ['follow-ups', 'follow_ups'],
+] as const
+
+describe.each(GATES)('the %s lock', (gate, flag) => {
   beforeEach(() => {
     state.enterprise = true
     state.features = {}
@@ -39,27 +47,27 @@ describe('quick actions for some pages (page suggestions)', () => {
   })
 
   it('reads the plan flag the server gates on', () => {
-    expect(FEATURE_GATES['page-suggestions'].feature).toBe('page_suggestions')
+    expect(FEATURE_GATES[gate].feature).toBe(flag)
   })
 
-  it('is locked on a plan without the flag (Free)', () => {
-    state.features = { page_suggestions: false }
-    expect(useFeatureLock().isLocked('page-suggestions')).toBe(true)
+  it('is locked on a plan without the flag', () => {
+    state.features = { [flag]: false }
+    expect(useFeatureLock().isLocked(gate)).toBe(true)
   })
 
-  it('is open on a paid plan', () => {
-    state.features = { page_suggestions: true }
-    expect(useFeatureLock().isLocked('page-suggestions')).toBe(false)
+  it('is open on a plan with it', () => {
+    state.features = { [flag]: true }
+    expect(useFeatureLock().isLocked(gate)).toBe(false)
   })
 
   it('is locked when the subscription is not active', () => {
-    state.features = { page_suggestions: true }
+    state.features = { [flag]: true }
     state.active = false
-    expect(useFeatureLock().isLocked('page-suggestions')).toBe(true)
+    expect(useFeatureLock().isLocked(gate)).toBe(true)
   })
 
   it('is never locked self-hosted', () => {
     state.enterprise = false
-    expect(useFeatureLock().isLocked('page-suggestions')).toBe(false)
+    expect(useFeatureLock().isLocked(gate)).toBe(false)
   })
 })

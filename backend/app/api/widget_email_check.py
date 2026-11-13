@@ -15,7 +15,8 @@ limitations under the License.
 
 The widget's email check (app/services/email_check.py):
   email_check_start {email, purpose?}  -> email_check_sent {email_masked}
-    (purpose 'history': the history screen asks, to find chats from other browsers)
+    (purpose 'history': the history screen asks, to find chats from other browsers;
+     a Pro plan's, widget_plan.py)
   email_check_verify {code}  -> email_check_verified {email_masked}
 Either can answer email_check_error {reason, retry_in?, attempts_left?}.
 """
@@ -29,7 +30,7 @@ from app.api.widget_actions import authenticated_session
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.database import SessionLocal
-from app.services import email_check, visitor_history
+from app.services import email_check, visitor_history, widget_plan
 from app.services.socket_rate_limit import socket_rate_limit
 from app.services.ticket_email import resolve_org_smtp, send_smtp
 from app.services.widget_reply import PANEL_SESSION_KEY, WIDGET_NAMESPACE
@@ -94,7 +95,8 @@ async def handle_email_check_start(sid, data):
     # otherwise only the agent offers it (confirm_email).
     purpose = email_check.HISTORY_PURPOSE if _text(data, 'purpose') == email_check.HISTORY_PURPOSE else 'chat'
     if purpose == email_check.HISTORY_PURPOSE:
-        if not session.get(PANEL_SESSION_KEY):
+        if not session.get(PANEL_SESSION_KEY) \
+                or not widget_plan.session_allows(session, widget_plan.KNOWN_CUSTOMERS_FEATURE):
             await _error(sid, email_check.CheckResult(False, 'not_offered'))
             return
         await asyncio.to_thread(email_check.offer, str(session['session_id']))

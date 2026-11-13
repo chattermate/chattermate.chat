@@ -47,9 +47,12 @@ def _conversation(db, widget, customer, messages=("Where is my parcel?",), scope
     return session_id
 
 
-def _socket(widget, customer, current=None, scope=SCOPE):
+PRO = {"conversation_history": True, "follow_ups": True, "shop_in_chat": True, "known_customers": True}
+
+
+def _socket(widget, customer, current=None, scope=SCOPE, plan=PRO):
     return {"customer_id": str(customer.id), "agent_id": str(widget.agent_id), "org_id": str(widget.organization_id),
-            "conversation_scope": scope, "session_id": str(current) if current else None}
+            "conversation_scope": scope, "session_id": str(current) if current else None, "plan_features": plan}
 
 
 def _other_customer(db, widget):
@@ -229,6 +232,17 @@ class TestOtherBrowsers:
         if email:
             history.link_proven_email(db, _socket(widget, phone, current=session_id, scope="phone-key"), email)
         return session_id
+
+    def test_below_pro_a_proven_email_shows_only_this_browsers_chats(self, db, test_widget, test_customer,
+                                                                      monkeypatch):
+        mine = _conversation(db, test_widget, test_customer)
+        phone = self._phone(db, test_widget)
+        self._prove(monkeypatch)
+        growth = {**PRO, "known_customers": False}
+        page = history.list_conversations(db, _socket(test_widget, test_customer, plan=growth))
+        assert {i["id"] for i in page["items"]} == {str(mine)}
+        assert page["other_browsers"] == {"email": None, "offer": False}
+        assert history.get_conversation(db, _socket(test_widget, test_customer, plan=growth), str(phone)) is None
 
     def test_a_proven_email_shows_the_other_browsers_chats(self, db, test_widget, test_customer, monkeypatch):
         mine = _conversation(db, test_widget, test_customer)

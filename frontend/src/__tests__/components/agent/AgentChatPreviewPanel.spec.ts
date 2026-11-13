@@ -104,11 +104,29 @@ describe('AgentChatPreviewPanel', () => {
   })
 
   it('shows the edits as they are made: quick actions on the start state', async () => {
+    onPlan({ quick_actions: true })
     const wrapper = render()
     await flushPromises()
     await wrapper.setProps({ customization: { ...LOOK, quick_actions: ['Track my order'] } as never })
     expect(wrapper.text()).toContain('Track my order')
     expect(wrapper.text()).not.toContain(PREVIEW_SAMPLE_COPY.question)
+    wrapper.unmount()
+  })
+
+  it('shows no quick actions on a plan without them (Free), like the live widget', async () => {
+    onPlan({ quick_actions: false })
+    const wrapper = render({ ...LOOK, quick_actions: ['Track my order'] })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Track my order')
+    wrapper.unmount()
+  })
+
+  it('shows them in the open-source build', async () => {
+    state.hasEnterpriseModule = false
+    const wrapper = render()
+    await flushPromises()
+    await wrapper.setProps({ customization: { ...LOOK, quick_actions: ['Track my order'] } as never })
+    expect(wrapper.text()).toContain('Track my order')
     wrapper.unmount()
   })
 

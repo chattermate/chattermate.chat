@@ -48,6 +48,13 @@ const showBranding = computed(() =>
     !(hasEnterpriseModule && subscriptionStore.value.currentPlan?.plan?.features?.custom_branding === true))
 onMounted(() => { if (hasEnterpriseModule) initializeSubscriptionStore() })
 
+// Quick actions are a paid plan's: on Free the server serves none, so neither does
+// the preview (they stay saved in the form). Read from the store, like the branding.
+const quickActionsShown = computed(() =>
+    !hasEnterpriseModule || subscriptionStore.value.currentPlan?.plan?.features?.quick_actions === true)
+const shown = computed<AgentCustomization>(() =>
+    quickActionsShown.value ? props.customization : { ...props.customization, quick_actions: [] })
+
 // The agent's photo, or the orb seeded off orbSeed (the agent slug) so it matches
 // the detail header and the list. Absolute S3/CDN URLs pass through (the API signs
 // photo_url itself); local paths resolve against the runtime API origin.
@@ -59,7 +66,7 @@ const photoUrl = computed(() =>
 
 <template>
     <AgentPanelPreview
-        :customization="customization"
+        :customization="shown"
         :agent-id="agentId"
         :agent-name="agentName"
         :photo-url="photoUrl"
