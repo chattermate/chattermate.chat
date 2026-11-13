@@ -43,6 +43,25 @@ export function growToFit(field: HTMLTextAreaElement | null): void {
     field.style.overflowY = field.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden'
 }
 
+/**
+ * Sizes the box again whenever its width changes: the height it took while the
+ * panel was narrow (a first load, a resize or a phone turning before the chat
+ * opens) wraps the placeholder over several lines and would otherwise stay.
+ * Returns the function that stops watching; a no-op where ResizeObserver is missing.
+ */
+export function refitOnWidthChange(field: HTMLTextAreaElement | null): () => void {
+    if (!field || typeof ResizeObserver === 'undefined') return () => {}
+    let width = field.clientWidth
+    const observer = new ResizeObserver(() => {
+        // Its own height changes notify too: only a new width needs a new fit
+        if (field.clientWidth === width) return
+        width = field.clientWidth
+        growToFit(field)
+    })
+    observer.observe(field)
+    return () => observer.disconnect()
+}
+
 /** Whether a drag carries files (not text being moved). */
 export const carriesFiles = (event: DragEvent): boolean =>
     Array.from(event.dataTransfer?.types ?? []).includes('Files')

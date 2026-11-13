@@ -41,6 +41,8 @@ from app.models.widget import Widget
 from app.repositories.customer import CustomerRepository
 from app.repositories.shopify_shop_repository import ShopifyShopRepository
 from app.services import conversation_token
+from app.services.feature_gate import plan_flag_on
+from app.services.widget_plan import KNOWN_CUSTOMERS_FEATURE
 from app.services.shopify_tokens import admin_headers, call_admin_api
 from app.services.shopify_urls import shopify_admin_url
 
@@ -126,7 +128,9 @@ def identity_token(db: Session, query: Sequence[Tuple[str, str]]) -> Optional[di
     if not customer_id.isdigit():
         return None
     shop, widget = _store_widget(db, params.get('shop') or '', params.get('widget_id') or '')
-    if widget is None:
+    # Signed-in customers are a Pro plan's (widget_plan.py); a failed plan read
+    # leaves the visitor anonymous
+    if widget is None or not plan_flag_on(db, widget.organization_id, KNOWN_CUSTOMERS_FEATURE, otherwise=False):
         return None
     found = _customer(shop, customer_id) or {}
     email = found.get('email') or ''

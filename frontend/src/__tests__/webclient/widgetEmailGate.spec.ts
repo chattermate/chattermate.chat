@@ -121,11 +121,11 @@ describe('the email gate when the agent collects email', () => {
         expect(socketCalls.sendMessage).not.toHaveBeenCalled()
     })
 
-    it('keeps its own heading, with the welcome title greeting below it', async () => {
+    it('keeps its own heading, and the greeting steps aside until the email is in', async () => {
         await mountUnknownVisitor({ collect_email: true, welcome_title: 'Welcome back' })
 
         expect(card().text()).toContain('Before we start')
-        expect(wrapper.text()).toContain('Welcome back')
+        expect(wrapper.text()).not.toContain('Welcome back')
     })
 
     it('asks for an address when Continue is pressed with the field empty', async () => {

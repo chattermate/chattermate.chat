@@ -18,7 +18,8 @@ The visitor's own conversations (the redesigned widget's "Your conversations"):
   get_conversation {id, before?}       -> conversation {id, open, messages, before}
   search_conversations {q}             -> conversation_search {q, items, capped}
   continue_conversation {id}           -> conversation_continued {title}
-Every event answers only from the socket's own scope (visitor_history.py). A
+Every event answers only from the socket's own scope (visitor_history.py), and
+only on a plan with past chats (widget_plan.py): otherwise there are none. A
 conversation that is not the visitor's answers exactly like one that does not exist.
 """
 
@@ -28,7 +29,7 @@ from app.api.widget_actions import authenticated_session
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.database import SessionLocal
-from app.services import visitor_history
+from app.services import visitor_history, widget_plan
 from app.services.public_rate_limit import allow_request
 from app.services.socket_rate_limit import socket_rate_limit
 from app.services.widget_reply import WIDGET_NAMESPACE
@@ -54,11 +55,13 @@ def _in_thread(work, session: dict):
 
 async def _run(sid: str, work):
     """The authenticated socket session and the result of `work`, run off the
-    event loop (it loads and decrypts messages). (session, None) on failure or
-    when this conversation asked too often."""
+    event loop (it loads and decrypts messages). (session, None) on failure, when
+    this conversation asked too often, or on a plan without past chats."""
     session = await authenticated_session(sid)
     if session is None:
         return None, None
+    if not widget_plan.session_allows(session, widget_plan.CONVERSATION_HISTORY_FEATURE):
+        return session, None
     if not allow_request(f"history:{session.get('session_id')}", EVENTS_PER_MINUTE, 60):
         return session, None
     try:

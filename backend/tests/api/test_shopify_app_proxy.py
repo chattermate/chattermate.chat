@@ -136,6 +136,12 @@ class TestToken:
         assert conversation_token.is_identified(claims)
         assert conversation_token.is_verified_scope(conversation_token.conversation_scope(claims))
 
+    def test_below_pro_the_customer_stays_anonymous(self, db, test_widget, store, signed_in, monkeypatch):
+        asked = []
+        monkeypatch.setattr(proxy, "plan_flag_on", lambda db, org, feature, otherwise: asked.append(feature) or False)
+        assert proxy.identity_token(db, _query(test_widget)) is None
+        assert asked == ["known_customers"] and "asked" not in signed_in
+
     def test_a_visitor_not_signed_in_gets_none(self, db, test_widget, store, signed_in):
         query = [(k, v) for k, v in _signed(shop="demo.myshopify.com", widget_id=str(test_widget.id),
                                             logged_in_customer_id="")]

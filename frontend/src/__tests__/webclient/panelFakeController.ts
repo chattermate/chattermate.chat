@@ -74,6 +74,7 @@ const baseController = () => ({
     // connection
     isInitializing: ref(false),
     hasConversationToken: ref(true),
+    historyAvailable: ref(true),
     showAuthError: ref(false),
     isApiKeyAuthRequired: ref(false),
     authError: ref<string | null>(null),

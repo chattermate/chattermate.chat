@@ -56,6 +56,56 @@ async def test_too_many_asks_get_no_answer():
     sio.emit.assert_not_awaited()
 
 
+def _plan_check(page_suggestions: bool, quick_actions: bool = True):
+    """_suggestions for a Shopify agent with one page rule and one every-page row,
+    under a plan with or without page suggestions and quick actions."""
+    agent = SimpleNamespace(organization_id="o-1", customization=SimpleNamespace(
+        quick_actions=[{"label": "Does it run small?", "match": "/products/*"}, "Track my order"]))
+    plan = {handlers.PAGE_SUGGESTIONS_FEATURE: page_suggestions, handlers.QUICK_ACTIONS_FEATURE: quick_actions}
+    with patch.object(handlers, "SessionLocal", MagicMock()), \
+         patch.object(handlers, "AgentRepository") as repo, \
+         patch.object(handlers, "AgentShopifyConfigRepository") as shopify, \
+         patch.object(handlers, "features", return_value=plan) as gate:
+        repo.return_value.get_agent.return_value = agent
+        shopify.return_value.get_agent_shopify_config.return_value = SimpleNamespace(enabled=True)
+        result = handlers._suggestions("a-1", "o-1", "https://shop.example/products/tee", "Tee")
+    assert gate.call_args.args[1] == "o-1"
+    return [i["label"] for i in result["items"]]
+
+
+def test_growth_and_up_get_rows_for_the_page():
+    assert _plan_check(True)[0] == "Does it run small?"
+
+
+def test_starter_gets_every_page_rows_only():
+    assert _plan_check(False) == ["Track my order"]
+
+
+def test_free_gets_no_quick_actions_at_all():
+    assert _plan_check(False, quick_actions=False) == []
+
+
+def test_without_quick_actions_the_store_page_still_counts():
+    """Page rows that are not the agent's own (the store's product page) need only
+    page suggestions."""
+    rows = _plan_check(True, quick_actions=False)
+    assert rows and "Does it run small?" not in rows and "Track my order" not in rows
+
+
+def test_a_self_hosted_install_gets_rows_for_the_page():
+    """No enterprise module: the real gate leaves the feature on."""
+    agent = SimpleNamespace(organization_id="o-1", customization=SimpleNamespace(
+        quick_actions=[{"label": "Does it run small?", "match": "/products/*"}]))
+    with patch.object(handlers, "SessionLocal", MagicMock()), \
+         patch.object(handlers, "AgentRepository") as repo, \
+         patch.object(handlers, "AgentShopifyConfigRepository") as shopify, \
+         patch("app.services.feature_gate.plan_snapshot", None):
+        repo.return_value.get_agent.return_value = agent
+        shopify.return_value.get_agent_shopify_config.return_value = None
+        result = handlers._suggestions("a-1", "o-1", "https://shop.example/products/tee", "Tee")
+    assert [i["label"] for i in result["items"]] == ["Does it run small?"]
+
+
 def test_another_orgs_agent_suggests_nothing():
     agent = SimpleNamespace(organization_id="someone-else", customization=None)
     with patch.object(handlers, "SessionLocal", MagicMock()), \

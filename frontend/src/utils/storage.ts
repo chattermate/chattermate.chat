@@ -208,6 +208,14 @@ export const subscriptionStorage = {
     return typeof value === 'number' ? value : null
   },
 
+  /** A flag newer than some plan rows (the widget's): a plan that doesn't name it
+   * yet counts as having it, like the server's feature_gate.plan_flags. No plan: off. */
+  hasPlanFlag(flagName: string): boolean {
+    const features = this.getCurrentSubscription()?.plan?.features
+    if (!features || Object.keys(features).length === 0) return false
+    return flagName in features ? Boolean(features[flagName]) : true
+  },
+
   // Check multiple features at once
   hasFeatures(featureNames: string[]): { [key: string]: boolean } {
     const subscription = this.getCurrentSubscription()

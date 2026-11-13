@@ -21,9 +21,9 @@ A worker (app/workers/conversation_titler.py) titles widget conversations that
 closed recently, however they closed (end chat, the auto-closer, the AI, the
 team, a new chat). Each is claimed once with SKIP LOCKED, so several backend
 workers never title the same one. One short model call each, with the org's own
-AI setup, and only when its plan allows AI replies; a hosted-model org with no
-message credits left keeps the first question as the title. A title is not
-counted as a message.
+AI setup, and only on a plan with AI titles (Growth and up) that allows AI
+replies; a hosted-model org with no message credits left keeps the first
+question as the title. A title is not counted as a message.
 
 Anything that fails leaves the conversation untitled: the history then shows
 its first question, as before.
@@ -46,7 +46,9 @@ from app.models.chat_history import ChatHistory
 from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.repositories.ai_config import AIConfigRepository
 from app.services.ai_access import plan_allows_ai
+from app.services.feature_gate import plan_flag_on
 from app.services.usage_metering import model_is_hosted, remaining_message_credits
+from app.services.widget_plan import CONVERSATION_TITLES_FEATURE
 
 logger = get_logger(__name__)
 
@@ -118,6 +120,9 @@ def _transcript(db: Session, session_id: UUID) -> Optional[str]:
 
 
 def _may_use_ai(db: Session, organization_id: UUID, config) -> bool:
+    # A Growth plan's (widget_plan.py); a failed plan read writes no title
+    if not plan_flag_on(db, organization_id, CONVERSATION_TITLES_FEATURE, otherwise=False):
+        return False
     if not plan_allows_ai(db, organization_id, config.model_type):
         return False
     if model_is_hosted(config.model_type):
