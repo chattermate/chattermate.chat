@@ -130,60 +130,50 @@ const customization = ref<AgentCustomization>({
     show_ai_disclaimer: props.agent.customization?.show_ai_disclaimer ?? true,
 })
 
-// Chat style options grouped into Classic (existing looks) and New (premium presets)
+// The chat styles, the original looks first (all on every plan)
 const chatStyleOptions = [
     {
         value: 'CHATBOT' as ChatStyle,
         label: 'Classic',
         description: 'The original look: light, neutral and simple.',
-        group: 'legacy' as const,
     },
     {
         value: 'ASK_ANYTHING' as ChatStyle,
         label: 'Ask Anything',
         description: 'Modern AI assistant style for general queries.',
-        group: 'legacy' as const,
     },
     {
         value: 'GLASS' as ChatStyle,
         label: 'Glass',
         description: 'Frosted dark glass with soft glow and rounded bubbles.',
-        group: 'new' as const,
     },
     {
         value: 'TERMINAL' as ChatStyle,
         label: 'Terminal',
         description: 'Monospace developer style, square corners.',
-        group: 'new' as const,
     },
     {
         value: 'PLAYFUL' as ChatStyle,
         label: 'Playful',
         description: 'Light, friendly and very rounded with warm accents.',
-        group: 'new' as const,
     },
     {
         value: 'CALM_MINT' as ChatStyle,
         label: 'Calm Mint',
         description: 'Clean dark-teal with subtle borders.',
-        group: 'new' as const,
     },
     {
         value: 'AURORA' as ChatStyle,
         label: 'Aurora',
         description: 'The new ask-me-anything — dark, with a glowing aurora orb avatar.',
-        group: 'new' as const,
     },
     {
         value: 'SUNRISE' as ChatStyle,
         label: 'Sunrise',
         description: 'Bright, warm and airy — a light theme with a soft coral accent.',
-        group: 'new' as const,
     },
 ]
 
-const legacyStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'legacy'))
-const newStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'new'))
 
 // Default palette per design. Selecting a design seeds these color fields so the look
 // matches the marketing presets; the user can still recolor afterwards.
@@ -682,32 +672,9 @@ const loadDefaultQuickActions = () => {
                     <h4 class="subsection-heading">Style</h4>
                     <p class="section-subtext">Pick the look that fits your store.</p>
 
-                    <div class="chat-style-group-label">Classic</div>
                     <div class="chat-style-grid">
                         <button
-                            v-for="option in legacyStyleOptions"
-                            :key="option.value"
-                            type="button"
-                            class="chat-style-card"
-                            :class="{ 'active': customization.chat_style === option.value }"
-                            @click="selectChatStyle(option.value)"
-                        >
-                            <div class="chat-style-thumb" :style="{ background: themePreset(option.value).chat_background_color }">
-                                <span class="thumb-bubble agent"></span>
-                                <span class="thumb-bubble user" :style="{ background: themePreset(option.value).accent_color }"></span>
-                            </div>
-                            <div class="chat-style-title">
-                                <span>{{ option.label }}</span>
-                                <span v-if="customization.chat_style === option.value" class="chat-style-check" aria-hidden="true">✓</span>
-                            </div>
-                            <div class="chat-style-desc">{{ option.description }}</div>
-                        </button>
-                    </div>
-
-                    <div class="chat-style-group-label">New <span class="chat-style-group-badge">premium</span></div>
-                    <div class="chat-style-grid">
-                        <button
-                            v-for="option in newStyleOptions"
+                            v-for="option in chatStyleOptions"
                             :key="option.value"
                             type="button"
                             class="chat-style-card"
@@ -1514,29 +1481,6 @@ const loadDefaultQuickActions = () => {
     color: var(--accent-ink);
 }
 
-.chat-style-group-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted2);
-    margin: 18px 0 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.chat-style-group-label:first-of-type { margin-top: 4px; }
-.chat-style-group-badge {
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 10.5px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--accent-bg-08);
-    color: var(--accent-ink);
-    border: 1px solid var(--accent-border);
-}
 
 .citations-toggle {
     display: flex;
