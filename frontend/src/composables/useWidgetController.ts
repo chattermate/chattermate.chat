@@ -26,6 +26,7 @@ import { useAgentTrace } from './useAgentTrace'
 import { useAnswerFeedback } from './useAnswerFeedback'
 import { useProductOptions } from './useProductOptions'
 import { useEmailCheck } from './useEmailCheck'
+import { useConversationHistory } from './useConversationHistory'
 import { PANEL_COPY } from '../webclient/copy'
 import { useUnreadBadge } from './useUnreadBadge'
 import { useEmailGate } from './useEmailGate'
@@ -85,6 +86,15 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
     // The product sheet's options, read from the shop when it opens.
     const { requestProductOptions } = useProductOptions({ on: socket.on, emit: socket.emit })
+    // "Your conversations": the visitor's own past chats. Continuing one from a chat
+    // with messages starts a fresh chat first (newChat is set up below; only called later).
+    const conversationHistory = useConversationHistory({
+        on: socket.on, emit: socket.emit, messages,
+        startFreshChat: async () => {
+            await newChat.handleStartNewChat()
+            return !newChat.newChatError.value
+        },
+    })
     // The email check: once confirmed, the visitor tells the agent so it can look up their orders.
     const emailChecks = useEmailCheck({
         on: socket.on, emit: socket.emit,
@@ -272,7 +282,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...emailChecks, ...rating, ...files, ...newChat,
+        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory, hostCapabilities,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }

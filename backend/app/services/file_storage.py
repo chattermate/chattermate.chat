@@ -28,7 +28,7 @@ from app.core.local_file_urls import sign_local_key
 from app.core.s3 import (
     delete_file_from_s3,
     download_file_from_s3,
-    get_s3_signed_url,
+    sign_s3_url,
     upload_file_to_s3,
 )
 
@@ -115,10 +115,16 @@ async def delete_upload(stored: str) -> None:
         pass
 
 
-async def resolve_public_url(stored_url: str) -> str:
+def public_url(stored_url: str) -> str:
     """Client-facing URL for a stored upload: presigned for S3 objects, a
-    signed link for private local files, verbatim otherwise."""
+    signed link for private local files, verbatim otherwise. Signing is local
+    (no network), so this is safe from sync code."""
     if stored_url and settings.S3_FILE_STORAGE and stored_url.startswith("http"):
-        return await get_s3_signed_url(stored_url)
+        return sign_s3_url(stored_url)
     key = signed_upload_key(stored_url)
     return sign_local_key(key) if key else stored_url
+
+
+async def resolve_public_url(stored_url: str) -> str:
+    """public_url for the existing `await` call sites."""
+    return public_url(stored_url)

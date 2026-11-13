@@ -21,6 +21,7 @@ import type { WidgetController } from '../webclient/panel/controller'
 import type { PreviewConversation } from '../webclient/panel/preview-sample'
 import { NO_HOST_CAPABILITIES } from './useHostMessages'
 import { followUpsOn } from '../webclient/widget-answers'
+import { emptyHistory } from './useConversationHistory'
 import { useCurrency } from './useCurrency'
 import { useWidgetPresentation } from './useWidgetPresentation'
 import { useWidgetStyles } from './useWidgetStyles'
@@ -187,6 +188,16 @@ export function usePreviewController(
         startEmailCheck: noop,
         verifyEmailCode: noop,
         restartEmailCheck: noop,
+        history: ref(emptyHistory()),
+        openHistory: noop,
+        closeHistory: noop,
+        refreshConversations: noop,
+        loadMoreConversations: noop,
+        searchConversations: noop,
+        openConversation: noop,
+        closeConversation: noop,
+        loadOlderMessages: noop,
+        continueConversation: asyncNoop,
         hoverRating: ref(0),
         isSubmittingRating: ref(false),
         handleStarHover: noop,

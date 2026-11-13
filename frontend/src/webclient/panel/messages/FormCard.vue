@@ -35,7 +35,11 @@ const fields = ref<InstanceType<typeof FormFields> | null>(null)
 const idPrefix = `cm-form-${useId()}`
 const form = computed<WorkflowForm>(() => props.message.attributes?.form_data ?? { fields: [] })
 
+// Out of the conversation (a past chat, read-only): shown, never submitted.
+const readOnly = computed(() => props.index < 0)
+
 const submit = async () => {
+    if (readOnly.value) return
     await ctrl.handleFormSubmit(form.value)
     if (Object.keys(formErrors.value).length) nextTick(() => fields.value?.reportInvalid())
 }
@@ -45,8 +49,8 @@ const submit = async () => {
     <form class="message form-message cm-form-card" novalidate @submit.prevent="submit">
         <p v-if="form.title" class="cm-form-card__title">{{ form.title }}</p>
         <p v-if="form.description" class="cm-form-card__text">{{ form.description }}</p>
-        <FormFields ref="fields" :fields="form.fields ?? []" :id-prefix="idPrefix" :disabled="isSubmittingForm" />
-        <button type="submit" class="cm-primary cm-press" :disabled="isSubmittingForm">
+        <FormFields ref="fields" :fields="form.fields ?? []" :id-prefix="idPrefix" :disabled="isSubmittingForm || readOnly" />
+        <button v-if="!readOnly" type="submit" class="cm-primary cm-press" :disabled="isSubmittingForm">
             {{ isSubmittingForm ? PANEL_COPY.submitting : (form.submit_button_text || PANEL_COPY.submit) }}
         </button>
     </form>

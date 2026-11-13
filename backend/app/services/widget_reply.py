@@ -44,6 +44,8 @@ WIDGET_NAMESPACE = '/widget'
 # visitor gets the redesigned widget, and its agent offers follow-up chips.
 REDESIGN_SESSION_KEY = 'widget_ui_v2'
 FOLLOW_UPS_SESSION_KEY = 'follow_ups'
+# The earlier conversation's context for the agent (visitor_history.CONTINUED_KEY)
+CONTINUED_CONTEXT_KEY = 'continued_context'
 
 
 async def emit_bot_typing(session_id: str) -> None:
@@ -80,12 +82,21 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
             host_extra_context(session.get('host_context'), bool(actions)),
             journey_hint,
             host_prompt_context(session.get('host_prompt')),
+            # An earlier conversation the visitor chose to continue, for this one only
+            _continued_context(session),
         ),
         host_action_functions=build_action_functions(actions) or None,
         choice_limits=choice_limits_for(session),
         step_reporter=StepReporter(session['session_id']) if session.get(REDESIGN_SESSION_KEY) else None,
         turn_cards=TurnCards() if session.get(REDESIGN_SESSION_KEY) else None,
     )
+
+
+def _continued_context(session: dict) -> Optional[str]:
+    saved = session.get(CONTINUED_CONTEXT_KEY)
+    if isinstance(saved, dict) and saved.get('session_id') == str(session.get('session_id')):
+        return saved.get('context')
+    return None
 
 
 def _joined(*parts: Optional[str]) -> Optional[str]:

@@ -108,6 +108,21 @@ describe('widget socket reconnection', () => {
     expect(socket.disconnect).not.toHaveBeenCalled()
   })
 
+  it('starts a new connection after the chat was ended, so the next one is new', async () => {
+    const widget = await connectWidget()
+    widget.setToken(tokenFor('customer-1'))
+    socket.connected = true
+    fire('connect')
+
+    const ended = widget.endChat()
+    fire('chat_ended')
+    await expect(ended).resolves.toBe(true)
+    // Kept open, the old connection would reopen the closed conversation
+    void widget.connect()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(socket.disconnect).toHaveBeenCalled()
+  })
+
   it('reconnects when the visitor changes', async () => {
     const widget = await connectWidget()
     widget.setToken(tokenFor('customer-1'))
