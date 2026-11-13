@@ -154,14 +154,22 @@ export const knowledgeService = {
     return response.data
   },
 
+  // Chunk and page ids are usually URLs. They go in the query string, not the
+  // path: proxies such as nginx decode %2F and merge "//" in paths, so a URL id
+  // in the path reaches the backend mangled and matches nothing.
   async updateChunkContent(knowledgeId: number, chunkId: string, content: string) {
-    // Don't encode chunkId here - axios will handle it
-    const response = await api.put(`/knowledge/${knowledgeId}/chunk/${encodeURIComponent(chunkId)}`, { content })
+    const response = await api.put(
+      `/knowledge/${knowledgeId}/chunk`,
+      { content },
+      { params: { chunk_id: chunkId } },
+    )
     return response.data
   },
 
   async deleteChunk(knowledgeId: number, chunkId: string) {
-    const response = await api.delete(`/knowledge/${knowledgeId}/chunk/${chunkId}`)
+    const response = await api.delete(`/knowledge/${knowledgeId}/chunk`, {
+      params: { chunk_id: chunkId },
+    })
     return response.data
   },
 
@@ -183,20 +191,21 @@ export const knowledgeService = {
   },
 
   // Replace a whole sub-page's content and re-embed it. `pageId` is the page's
-  // base id (its URL/name) — encoded for the backend `:path` route param.
+  // base id (its URL/name), sent in the query string like a chunk id.
   async updatePage(knowledgeId: number, pageId: string, content: string, title?: string) {
     const response = await api.put(
-      `/knowledge/${knowledgeId}/page/${encodeURIComponent(pageId)}`,
+      `/knowledge/${knowledgeId}/page`,
       { content, title },
+      { params: { page_id: pageId } },
     )
     return response.data
   },
 
   // Delete an entire sub-page (all of its chunks) from a knowledge source.
   async deletePage(knowledgeId: number, pageId: string) {
-    const response = await api.delete(
-      `/knowledge/${knowledgeId}/page/${encodeURIComponent(pageId)}`,
-    )
+    const response = await api.delete(`/knowledge/${knowledgeId}/page`, {
+      params: { page_id: pageId },
+    })
     return response.data
   },
 

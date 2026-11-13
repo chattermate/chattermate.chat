@@ -2528,30 +2528,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/knowledge/{knowledge_id}/chunk/{chunk_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Update Chunk Content
-         * @description Update a single chunk's content in vector database
-         */
-        put: operations["update_chunk_content_api_v1_knowledge__knowledge_id__chunk__chunk_id__put"];
-        post?: never;
-        /**
-         * Delete Chunk
-         * @description Delete a single chunk from vector database
-         */
-        delete: operations["delete_chunk_api_v1_knowledge__knowledge_id__chunk__chunk_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/knowledge/{knowledge_id}/subpage": {
         parameters: {
             query?: never;
@@ -2572,6 +2548,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/{knowledge_id}/chunk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Chunk By Query
+         * @description Update a single chunk's content; the id travels in the query string.
+         */
+        put: operations["update_chunk_by_query_api_v1_knowledge__knowledge_id__chunk_put"];
+        post?: never;
+        /**
+         * Delete Chunk By Query
+         * @description Delete a single chunk; the id travels in the query string.
+         */
+        delete: operations["delete_chunk_by_query_api_v1_knowledge__knowledge_id__chunk_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/{knowledge_id}/chunk/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Chunk Content
+         * @description Update a single chunk's content (path form; ids without slashes only).
+         */
+        put: operations["update_chunk_content_api_v1_knowledge__knowledge_id__chunk__chunk_id__put"];
+        post?: never;
+        /**
+         * Delete Chunk
+         * @description Delete a single chunk (path form; ids without slashes only).
+         */
+        delete: operations["delete_chunk_api_v1_knowledge__knowledge_id__chunk__chunk_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/{knowledge_id}/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Page By Query
+         * @description Replace a sub-page's content; the id travels in the query string.
+         */
+        put: operations["update_page_by_query_api_v1_knowledge__knowledge_id__page_put"];
+        post?: never;
+        /**
+         * Delete Page By Query
+         * @description Delete a whole sub-page; the id travels in the query string.
+         */
+        delete: operations["delete_page_by_query_api_v1_knowledge__knowledge_id__page_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/{knowledge_id}/page/{page_id}": {
         parameters: {
             query?: never;
@@ -2582,16 +2630,13 @@ export interface paths {
         get?: never;
         /**
          * Update Page Content
-         * @description Replace a sub-page's content and re-embed it.
-         *
-         *     A page may span several ``_N`` chunks; this collapses it into one freshly
-         *     embedded chunk keyed by the page id, keeping the source's answers current.
+         * @description Replace a sub-page's content (path form; ids without slashes only).
          */
         put: operations["update_page_content_api_v1_knowledge__knowledge_id__page__page_id__put"];
         post?: never;
         /**
          * Delete Page
-         * @description Delete a whole sub-page (all of its chunks) from a knowledge source.
+         * @description Delete a whole sub-page (path form; ids without slashes only).
          */
         delete: operations["delete_page_api_v1_knowledge__knowledge_id__page__page_id__delete"];
         options?: never;
@@ -6097,10 +6142,22 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_update_chunk_by_query_api_v1_knowledge__knowledge_id__chunk_put */
+        Body_update_chunk_by_query_api_v1_knowledge__knowledge_id__chunk_put: {
+            /** Content */
+            content: string;
+        };
         /** Body_update_chunk_content_api_v1_knowledge__knowledge_id__chunk__chunk_id__put */
         Body_update_chunk_content_api_v1_knowledge__knowledge_id__chunk__chunk_id__put: {
             /** Content */
             content: string;
+        };
+        /** Body_update_page_by_query_api_v1_knowledge__knowledge_id__page_put */
+        Body_update_page_by_query_api_v1_knowledge__knowledge_id__page_put: {
+            /** Content */
+            content: string;
+            /** Title */
+            title?: string | null;
         };
         /** Body_update_page_content_api_v1_knowledge__knowledge_id__page__page_id__put */
         Body_update_page_content_api_v1_knowledge__knowledge_id__page__page_id__put: {
@@ -15060,6 +15117,119 @@ export interface operations {
             };
         };
     };
+    add_subpage_api_v1_knowledge__knowledge_id__subpage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_add_subpage_api_v1_knowledge__knowledge_id__subpage_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_chunk_by_query_api_v1_knowledge__knowledge_id__chunk_put: {
+        parameters: {
+            query: {
+                /** @description Chunk id, e.g. https://site.com/pricing::1 */
+                chunk_id: string;
+            };
+            header?: never;
+            path: {
+                knowledge_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_update_chunk_by_query_api_v1_knowledge__knowledge_id__chunk_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_chunk_by_query_api_v1_knowledge__knowledge_id__chunk_delete: {
+        parameters: {
+            query: {
+                /** @description Chunk id, e.g. https://site.com/pricing::1 */
+                chunk_id: string;
+            };
+            header?: never;
+            path: {
+                knowledge_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_chunk_content_api_v1_knowledge__knowledge_id__chunk__chunk_id__put: {
         parameters: {
             query?: never;
@@ -15132,9 +15302,12 @@ export interface operations {
             };
         };
     };
-    add_subpage_api_v1_knowledge__knowledge_id__subpage_post: {
+    update_page_by_query_api_v1_knowledge__knowledge_id__page_put: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Page id, e.g. https://site.com/pricing */
+                page_id: string;
+            };
             header?: never;
             path: {
                 knowledge_id: number;
@@ -15145,9 +15318,45 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_add_subpage_api_v1_knowledge__knowledge_id__subpage_post"];
+                "application/json": components["schemas"]["Body_update_page_by_query_api_v1_knowledge__knowledge_id__page_put"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_page_by_query_api_v1_knowledge__knowledge_id__page_delete: {
+        parameters: {
+            query: {
+                /** @description Page id, e.g. https://site.com/pricing */
+                page_id: string;
+            };
+            header?: never;
+            path: {
+                knowledge_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

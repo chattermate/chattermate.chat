@@ -226,13 +226,37 @@ def replace_page(
     return len(existing)
 
 
+def chunk_exists(db: Session, knowledge: Knowledge, chunk_id: str) -> bool:
+    """Whether a chunk belongs to this source (the vector table is shared
+    across the org's sources, so the lookup is scoped by source name)."""
+    query = text(
+        f'SELECT 1 FROM {knowledge.schema}."{knowledge.table_name}" '
+        "WHERE id = :chunk_id AND name = :source"
+    )
+    row = db.execute(
+        query, {"chunk_id": chunk_id, "source": knowledge.source}
+    ).fetchone()
+    return row is not None
+
+
+def delete_chunk(db: Session, knowledge: Knowledge, chunk_id: str) -> int:
+    """Delete one chunk of this source. Returns the rows removed. Caller commits."""
+    query = text(
+        f'DELETE FROM {knowledge.schema}."{knowledge.table_name}" '
+        "WHERE id = :chunk_id AND name = :source"
+    )
+    result = db.execute(query, {"chunk_id": chunk_id, "source": knowledge.source})
+    return result.rowcount
+
+
 def reembed_chunk(
     db: Session,
     knowledge: Knowledge,
     chunk_id: str,
     content: str,
-) -> None:
-    """Re-embed one chunk's content in place (scoped to its source). Caller commits."""
+) -> int:
+    """Re-embed one chunk's content in place (scoped to its source). Returns the
+    rows updated (0 if the chunk is gone). Caller commits."""
     manager = get_manager(knowledge.organization_id)
     doc = embed_document(manager, knowledge.source, chunk_id, content)
     update_query = text(
@@ -240,7 +264,7 @@ def reembed_chunk(
         "SET content = :content, embedding = :embedding "
         "WHERE id = :chunk_id AND name = :source"
     )
-    db.execute(
+    result = db.execute(
         update_query,
         {
             "content": content,
@@ -249,6 +273,7 @@ def reembed_chunk(
             "source": knowledge.source,
         },
     )
+    return result.rowcount
 
 
 def create_text_source(

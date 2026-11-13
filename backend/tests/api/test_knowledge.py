@@ -995,11 +995,12 @@ def test_delete_page_no_table_name(client: TestClient, test_knowledge):
 
 
 def test_page_endpoints_registered():
-    """The page update/delete endpoints are registered on the router."""
-    from app.api.knowledge import router
+    """The page update/delete endpoints are registered (served under the
+    knowledge router, which includes the edits router)."""
+    from app.api.knowledge_edits import router
     paths = [route.path for route in router.routes if hasattr(route, 'path')]
-    assert any('/{knowledge_id}/page/{page_id:path}' in p for p in paths), \
-        "page endpoints should be registered"
+    assert '/{knowledge_id}/page/{page_id:path}' in paths
+    assert '/{knowledge_id}/page' in paths
 
 
 def test_replace_page_upserts_before_deleting(monkeypatch):
