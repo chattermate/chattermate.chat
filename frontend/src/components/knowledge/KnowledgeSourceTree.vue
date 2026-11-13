@@ -29,6 +29,8 @@ const props = defineProps<{
   selectedSourceId: number | null
   query: string
   statusOf: (source: ExplorerSource) => SourceStatus
+  // Pages a source still being read has stored so far
+  pagesSoFarOf: (source: ExplorerSource) => number
   pageRowsOf: (source: ExplorerSource) => PageRow[]
   // Org page: mark sources no agent answers from
   flagUnlinked?: boolean
@@ -61,6 +63,19 @@ const statusLabel: Record<SourceStatus, string> = {
 function queuedLabel(source: ExplorerSource): string {
   const status = props.statusOf(source)
   return status === 'error' ? 'Failed' : statusLabel[status]
+}
+
+// Under the source's name: how far a crawl has got, what went wrong, or how
+// many pages it has.
+function countLabel(source: ExplorerSource): string {
+  if (props.statusOf(source) === 'crawling') {
+    const pages = props.pagesSoFarOf(source)
+    // Kept short for the narrow tree; on a phone it wraps after the dot, never
+    // inside the count (non-breaking space)
+    return pages ? `Crawling · ${pages}\u00a0${pages === 1 ? 'page' : 'pages'}` : 'Crawling'
+  }
+  if (source.queued) return queuedLabel(source)
+  return `${(source.pages ?? source.pageStubs).length} sub-pages`
 }
 
 function sourceGlyph(type: string): string {
@@ -115,7 +130,7 @@ const MAX_AVATARS = 3
             <span class="src__meta">
               <span class="src__name" :title="source.name">{{ source.name }}</span>
               <span class="src__count" :class="{ 'src__count--error': source.queued && statusOf(source) === 'error' }">
-                {{ source.queued ? queuedLabel(source) : (source.pages ?? source.pageStubs).length + ' sub-pages' }}
+                {{ countLabel(source) }}
               </span>
             </span>
           </button>

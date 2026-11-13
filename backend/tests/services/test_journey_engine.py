@@ -99,6 +99,11 @@ def test_render_with_fallbacks_and_tidy_spaces():
     assert render("Hi {{user.first_name}} there", Signals(), {}) == "Hi there"
 
 
+def test_render_keeps_paragraphs():
+    text = render("Hi {{user.first_name}} !  I'm here. \n\nFirst: what now?", Signals(), {})
+    assert text == "Hi ! I'm here.\n\nFirst: what now?"
+
+
 def _definition(**step):
     base = {"id": "s1", "title": "One", "done_when": [{"kind": "event", "value": "done"}]}
     return JourneyDefinition(steps=[{**base, **step}])

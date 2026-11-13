@@ -84,7 +84,8 @@ export function useJourneys(deps: Deps) {
   window.addEventListener('message', onMessage)
 
   /** A chip on a journey step: text is sent as the visitor's reply; an action runs. */
-  function runChip(chip: PageChip, sendText: (text: string) => void) {
+  /** `onSettled` hears how an action chip ended (a text chip's answer is the reply). */
+  function runChip(chip: PageChip, sendText: (text: string) => void, onSettled?: (status: ActionStatus) => void) {
     client.activity()
     if (chip.kind === 'text') {
       sendText(chip.value)
@@ -94,8 +95,10 @@ export function useJourneys(deps: Deps) {
     const started = deps.runLocalAction(chip, (status) => {
       chipBusy.value = false
       if (status === 'ok') client.sync({ action: chip.value })
+      onSettled?.(status)
     })
     if (started) chipBusy.value = true
+    else onSettled?.('error')
   }
 
   onBeforeUnmount(() => {

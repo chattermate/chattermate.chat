@@ -77,6 +77,10 @@ export interface QueueItem {
   updated_at?: string
   processing_stage?: string
   progress_percentage?: number
+  /** A website's pages stored so far: each is searchable straight away */
+  pages_learned?: number
+  /** The source those pages belong to, once the first one is stored */
+  knowledge_id?: number | null
 }
 
 export interface KnowledgeContentChunk {

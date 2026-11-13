@@ -279,15 +279,29 @@ export function useKnowledgeExplorer(
     return source.pages.find((p) => p.page_id === selectedPageId.value) ?? null
   })
 
+  // The queue row behind a source: a placeholder by its id (its display name
+  // may differ from the queue source), a real source by name.
+  const queueItemOf = (source: ExplorerSource): QueueItem | undefined =>
+    source.queued
+      ? queueItems.value.find((q) => q.id === -source.id)
+      : queueItems.value.find((q) => q.source === source.name)
+
   const sourceStatus = (source: ExplorerSource): SourceStatus => {
     // Placeholders carry their own status (their display name differs from the
     // queue source, so a name lookup wouldn't find the item).
     if (source.queued) return source.queuedStatus ?? 'queued'
-    const item = queueItems.value.find((q) => q.source === source.name)
+    const item = queueItemOf(source)
     if (item?.status === 'failed') return 'error'
     if (item?.status === 'processing') return 'crawling'
     if (item?.status === 'pending') return 'queued'
     return 'synced'
+  }
+
+  // Pages a source has stored so far while it is still being read; 0 otherwise.
+  // Read from the queue row, which the worker bumps after every stored page.
+  const pagesSoFar = (source: ExplorerSource): number => {
+    if (sourceStatus(source) !== 'crawling') return 0
+    return queueItemOf(source)?.pages_learned ?? 0
   }
 
   // Page rows for the tree: grouped pages once loaded, else lightweight stubs.
@@ -682,6 +696,7 @@ export function useKnowledgeExplorer(
     linkedSourceIds,
     // helpers for the view
     sourceStatus,
+    pagesSoFar,
     pageRows,
     // actions
     fetchSources,

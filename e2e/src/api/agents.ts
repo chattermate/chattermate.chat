@@ -18,7 +18,7 @@ export interface NewAgent {
   askForRating?: boolean
   /** The widget only loads with a conversation token from /generate-token. */
   requireTokenAuth?: boolean
-  /** Offer the AI's quick replies as tappable buttons on messaging channels. */
+  /** Offer the AI's quick replies as tappable buttons (website chat and messaging channels). */
   channelQuickReplies?: boolean
   /** Visitors may attach files (once a person has joined the chat). */
   allowAttachments?: boolean

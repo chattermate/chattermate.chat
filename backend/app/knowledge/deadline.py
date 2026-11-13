@@ -33,7 +33,13 @@ class Deadline:
     def __init__(self, seconds: float, clock: Callable[[], float] = time.monotonic):
         self._clock = clock
         self._at = clock() + seconds
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Stop the work now, as if the time had run out: the source it was
+        reading has gone."""
+        self._cancelled = True
 
     @property
     def expired(self) -> bool:
-        return self._clock() >= self._at
+        return self._cancelled or self._clock() >= self._at

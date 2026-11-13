@@ -37,6 +37,25 @@ function getLoaderOrigin(): string {
  * so the embedded widget (running on the customer's own site, where APP_CONFIG is
  * absent) talks to THIS install's backend instead of the vendor cloud.
  */
+/**
+ * An email to the person who edits the website, with the snippet and the
+ * guide, as a mailto: link for the user's own mail app. Nothing is sent from
+ * our servers, so it can't be used to mail arbitrary addresses.
+ */
+export function developerEmailHref(snippet: string): string {
+  const body = [
+    'Hi,',
+    '',
+    'Could you add our ChatterMate chat to the website? Paste this just before </body> on every page:',
+    '',
+    snippet,
+    '',
+    `Guide: ${WIDGET_INSTALL_GUIDE_URL}`,
+  ].join('\n')
+  const params = new URLSearchParams({ subject: 'Add our ChatterMate chat to the website', body })
+  return `mailto:?${params.toString().replace(/\+/g, '%20')}`
+}
+
 export function buildWidgetEmbed(widgetId: string, requireTokenAuth?: boolean): string {
   const loaderOrigin = getLoaderOrigin()
   const apiUrl = getApiUrl()

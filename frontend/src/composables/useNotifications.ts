@@ -25,6 +25,7 @@ import {
 } from '@/services/firebase'
 import { SW_MESSAGE, CONVERSATIONS_PATH, conversationSessionUrl } from '@/pwa/pushContract'
 import mitt from '@/utils/emitter'
+import { onSignedOut } from '@/utils/sessionEvents'
 
 // Match backend NotificationType enum
 enum NotificationType {
@@ -40,6 +41,9 @@ enum NotificationType {
 // would then toast once per navigation.
 let listenersAttached = false
 let tokenRefreshed = false
+// Logout deletes this browser's FCM subscription, and signing in again in the
+// same tab is a page change, not a reload: the next sign-in must mint anew.
+onSignedOut(() => { tokenRefreshed = false })
 
 export function useNotifications() {
   const hasPermission = ref(
@@ -145,10 +149,12 @@ export function useNotifications() {
   // (EnablePushPrompt → enableNotifications).
   const startListening = async () => {
     try {
-      if (!hasPermission.value || listenersAttached) return
-      listenersAttached = true
-      listenForBgNotification()
-      await setFcmMessagingListener()
+      if (!hasPermission.value) return
+      if (!listenersAttached) {
+        listenersAttached = true
+        listenForBgNotification()
+        await setFcmMessagingListener()
+      }
 
       // Already-granted users never see the enable prompt again, so this is
       // the only path that re-binds their FCM token to the current service

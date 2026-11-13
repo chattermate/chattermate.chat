@@ -15,7 +15,7 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useTheme } from '@/composables/useTheme'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
@@ -26,6 +26,7 @@ import userAvatar from '@/assets/user.svg'
 import notificationIcon from '@/assets/notification.svg'
 import NotificationList from '@/components/notifications/NotificationList.vue'
 import EnablePushPrompt from '@/components/notifications/EnablePushPrompt.vue'
+import FailedSourceNotice from '@/components/knowledge/FailedSourceNotice.vue'
 import { userService } from '@/services/user'
 import { permissionChecks } from '@/utils/permissions'
 import type { User } from '@/types/user'
@@ -34,7 +35,8 @@ import { notificationService } from '@/services/notification'
 import { useRoute, useRouter } from 'vue-router'
 import { updateUserStatus } from '@/services/users'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
-import { myAvatarUrl } from '@/config/api'
+import { useMyAvatar } from '@/composables/useMyAvatar'
+import emitter from '@/utils/emitter'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { planDisplayName, planShortName, trialLabel, TRIAL_ENDING_SOON_DAYS } from '@/utils/planDisplay'
 
@@ -110,13 +112,18 @@ const planBadgeTone = computed(() => {
     return type && type !== 'free' ? 'paid' : 'free'
 })
 
-const userAvatarSrc = computed(() => {
-  if (!currentUser.value?.profile_pic) return userAvatar
-  // Never the stored URL: the copy we hold was signed at login and expires an
-  // hour later. Ask the API, which signs on the spot. Cache-busted so a freshly
-  // uploaded picture replaces the one the browser already cached.
-  return myAvatarUrl(new Date().getTime())
-})
+// Never the stored URL: the copy we hold was signed at login and expires an
+// hour later. useMyAvatar asks the API, which signs on the spot.
+const myAvatar = useMyAvatar(() => currentUser.value?.profile_pic)
+const userAvatarSrc = computed(() =>
+  myAvatar.failed.value ? userAvatar : myAvatar.src.value ?? userAvatar)
+
+const syncProfilePic = () => {
+  const stored = userService.getCurrentUser()
+  if (stored) currentUser.value = { ...currentUser.value, profile_pic: stored.profile_pic }
+}
+emitter.on('profile-pic-updated', syncProfilePic)
+onBeforeUnmount(() => emitter.off('profile-pic-updated', syncProfilePic))
 
 const toggleOnlineStatus = async () => {
   if (statusUpdating.value) return
@@ -301,7 +308,7 @@ const openNotificationsFromSheet = () => {
                             <div class="user-profile">
                                 <div class="profile-trigger" @click="showUserMenu = !showUserMenu">
                                     <div class="avatar-wrapper">
-                                        <img :src="userAvatarSrc" alt="User" class="avatar" />
+                                        <img :src="userAvatarSrc" alt="User" class="avatar" @error="myAvatar.onError" />
                                         <span 
                                             class="status-indicator" 
                                             :class="{ 'online': currentUser?.is_online }"
@@ -343,6 +350,9 @@ const openNotificationsFromSheet = () => {
             <main class="content">
                 <!-- The agents page shows its own copy, beside the wizard and list -->
                 <SetupProgressBar v-if="route.name !== 'ai-agents'" />
+                <!-- Not on the knowledge page (it lists the failed source itself), nor on
+                     full-page layouts, whose .content is a fixed 100vh with no room for it -->
+                <FailedSourceNotice v-if="!props.hideHeader && route.name !== 'knowledge'" />
                 <slot></slot>
             </main>
 

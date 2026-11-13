@@ -33,16 +33,17 @@ let app: App | null = null
 const setup = (initial: Message[] = []) => {
     const messages = ref<Message[]>(initial)
     const loading = ref(false)
+    const revealing = ref(false)
     const sendQuickAction = vi.fn()
     let result!: ReturnType<typeof useHostPrompt>
     app = createApp({
         setup() {
-            result = useHostPrompt({ messages, loading, on: vi.fn(), emit: vi.fn(), sendQuickAction })
+            result = useHostPrompt({ messages, loading, revealing, on: vi.fn(), emit: vi.fn(), sendQuickAction })
             return () => null
         },
     })
     app.mount(document.createElement('div'))
-    return { ...result, messages, loading, sendQuickAction }
+    return { ...result, messages, loading, revealing, sendQuickAction }
 }
 
 const actionChip: PageChip = { label: 'Apply coupon', kind: 'action', value: 'apply_coupon' }
@@ -63,6 +64,66 @@ describe('useHostPrompt', () => {
         const host = setup([chatMessage('Pick a plan')])
         host.hostPrompt.value = prompt('Pick a plan', 'host')
         expect(host.shownPrompt.value?.message).toBe('Pick a plan')
+    })
+
+    it('hides the message while a reply is still typing out', () => {
+        const host = setup()
+        host.hostPrompt.value = prompt('Need help?', 'host')
+        host.revealing.value = true
+        expect(host.shownPrompt.value).toBeNull()
+    })
+
+    describe('reply buttons', () => {
+        const offered = (...choices: string[]): Message =>
+            ({ ...chatMessage('Which size?'), attributes: { quick_replies: choices } })
+
+        it('offers the choices the agent sent with its last reply, once it has typed out', async () => {
+            const host = setup([offered('Small', 'Large')])
+            host.revealing.value = true
+            expect(host.replyChips.value).toEqual([])
+            host.revealing.value = false
+            expect(host.replyChips.value.map(c => c.label)).toEqual(['Small', 'Large'])
+            expect(host.replyChips.value[0]).toEqual({ label: 'Small', kind: 'text', value: 'Small' })
+        })
+
+        it('retires them once anyone writes after them', () => {
+            const host = setup([offered('Small', 'Large')])
+            host.messages.value.push(chatMessage('Large', 'user'))
+            expect(host.replyChips.value).toEqual([])
+        })
+
+        it('puts the choices before a step\'s own replies', () => {
+            const host = setup([offered('Small')])
+            host.hostPrompt.value = prompt('Pick a plan', 'host', [{ label: 'Basic', kind: 'text', value: 'Basic' }])
+            expect(host.replyChips.value.map(c => c.label)).toEqual(['Small'])
+        })
+
+        it('hides them the moment one is tapped, until what it started has typed out', async () => {
+            const host = setup([offered('Small', 'Large')])
+            host.onPageChip(host.replyChips.value[0])
+            expect(host.sendQuickAction).toHaveBeenCalledWith('Small')
+            expect(host.replyChips.value).toEqual([])
+            host.revealing.value = true
+            await nextTick()
+            host.revealing.value = false
+            await nextTick()
+            // The reply typed out with no new choices: the old ones are still the last message's
+            expect(host.replyChips.value.map(c => c.label)).toEqual(['Small', 'Large'])
+        })
+
+        it('brings them back if nothing comes of a tap', async () => {
+            vi.useFakeTimers()
+            try {
+                const host = setup([offered('Small')])
+                host.onPageChip(host.replyChips.value[0])
+                await nextTick()
+                expect(host.replyChips.value).toEqual([])
+                await vi.advanceTimersByTimeAsync(10_000)
+                expect(host.replyChips.value.map(c => c.label)).toEqual(['Small'])
+            } finally {
+                vi.useRealTimers()
+            }
+        })
     })
 
     it('hides the message while a reply is being written', () => {

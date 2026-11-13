@@ -423,6 +423,9 @@ async def widget_connect(sid, environ, auth):
             # human-only check costs no query per message.
             'ai_replies_enabled': agent.ai_replies_enabled if agent else True,
             'use_workflow': agent.use_workflow if agent else False,
+            # The agent may offer its choices as buttons (the same switch as on
+            # the messaging channels)
+            'offer_choices': bool(agent.channel_quick_replies) if agent else False,
             'active_workflow_id': agent.active_workflow_id if agent else None,
             'source': source,
             # Whether the token came from the embedding app: told to the page
