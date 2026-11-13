@@ -20,6 +20,7 @@ import type { HumanAgent, WidgetMessage } from '../types/widget'
 import type { WidgetController } from '../webclient/panel/controller'
 import type { PreviewConversation } from '../webclient/panel/preview-sample'
 import { NO_HOST_CAPABILITIES } from './useHostMessages'
+import { followUpsOn } from '../webclient/widget-answers'
 import { useCurrency } from './useCurrency'
 import { useWidgetPresentation } from './useWidgetPresentation'
 import { useWidgetStyles } from './useWidgetStyles'
@@ -41,6 +42,14 @@ export interface PreviewContext {
 }
 
 const noop = () => {}
+
+/** The sample as shown: its follow-up chips dropped while follow-ups are off. */
+const withFollowUps = (messages: WidgetMessage[], on: boolean): WidgetMessage[] =>
+    on ? messages : messages.map((message) => {
+        if (!message.attributes?.quick_replies) return message
+        const { quick_replies: _dropped, ...attributes } = message.attributes
+        return { ...message, attributes }
+    })
 const asyncNoop = async () => {}
 // The fields whose edit only shows on the start state, so the preview goes there.
 // Unset, null, '' and [] are all "none": the form and the server fill them in
@@ -70,8 +79,11 @@ export function usePreviewController(
     const showingStart = ref(false)
     watch(() => startStateFields(customization.value), () => { showingStart.value = true })
     // The Ask AI designs open on their palette with nothing asked yet, as in the classic preview.
+    // Follow-up chips under the sample answer only when the agent turned them on.
     const messages = computed<WidgetMessage[]>(() =>
-        showingStart.value || isAskAnythingStyle.value ? [] : sampleConversation.messages)
+        showingStart.value || isAskAnythingStyle.value
+            ? []
+            : withFollowUps(sampleConversation.messages, followUpsOn(customization.value)))
     const receipts = computed(() => (messages.value.length ? sampleConversation.receipts : []))
 
     const humanAgent = ref<HumanAgent>({})
@@ -168,6 +180,8 @@ export function usePreviewController(
         isStreaming: () => false,
         isRevealing: ref(false),
         skipReveal: noop,
+        liveTrace: ref([]),
+        sendFeedback: noop,
         hoverRating: ref(0),
         isSubmittingRating: ref(false),
         handleStarHover: noop,

@@ -501,6 +501,7 @@ class TestGetWidgetChatHistory:
         
         # Create mock messages
         mock_message1 = MagicMock()
+        mock_message1.id = 11
         mock_message1.message = "Hello"
         mock_message1.message_type = "user"
         mock_message1.created_at = datetime.now(timezone.utc)
@@ -509,6 +510,7 @@ class TestGetWidgetChatHistory:
         mock_message1.agent = None
         
         mock_message2 = MagicMock()
+        mock_message2.id = 12
         mock_message2.message = "Hi there!"
         mock_message2.message_type = "bot"
         mock_message2.created_at = datetime.now(timezone.utc)
@@ -526,6 +528,7 @@ class TestGetWidgetChatHistory:
                     # Verify chat history was emitted with formatted messages
                     expected_messages = [
                         {
+                            'id': 11,
                             'message': 'Hello',
                             'message_type': 'user',
                             'timestamp': '2024-01-01T00:00:00Z',
@@ -535,6 +538,7 @@ class TestGetWidgetChatHistory:
                             'attachments': []
                         },
                         {
+                            'id': 12,
                             'message': 'Hi there!',
                             'message_type': 'bot',
                             'timestamp': '2024-01-01T00:00:00Z',

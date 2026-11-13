@@ -2,6 +2,8 @@
  * The redesigned widget's look (ui 2), split by area:
  * - widget-panel.css: the panel, header, buttons, agent mark, avatars and footer;
  * - widget-panel-messages.css: the conversation;
+ * - widget-panel-answers.css: an answer's links, sources, actions, follow-ups,
+ *   work trace and the handover card;
  * - widget-panel-composer.css: the message box;
  * - widget-panel-stopgaps.css: screens that later units replace (panel/stopgaps).
  * Shared by the widget and (from plan 1.7) the dashboard preview; components keep

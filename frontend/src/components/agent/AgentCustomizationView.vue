@@ -31,6 +31,7 @@ import LauncherSection from './LauncherSection.vue'
 import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
 import WidgetDesignChoice from './WidgetDesignChoice.vue'
+import { followUpsOn, withFollowUpsSetting } from '@/webclient/widget-answers'
 import { createdOnRedesign, widgetUiVersion } from '@/webclient/widget-ui'
 
 const props = withDefaults(defineProps<{
@@ -203,6 +204,15 @@ const widgetDesign = computed<WidgetUiVersion>({
         meta.widget_ui = { ...(meta.widget_ui ?? {}), version }
         customization.value.customization_metadata = meta
         emit('preview-mode', 'chat')
+    },
+})
+
+// Follow-up questions under answers (customization_metadata.answers): the new design only.
+const followUps = computed<boolean>({
+    get: () => followUpsOn(customization.value),
+    set: (on) => {
+        customization.value.customization_metadata =
+            withFollowUpsSetting(customization.value.customization_metadata as Record<string, any>, on)
     },
 })
 
@@ -1144,6 +1154,15 @@ const hideInitiationPreview = () => {
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Show citations</span>
                             <span class="citations-toggle-desc">Shows the sources behind each answer.</span>
+                        </span>
+                    </label>
+
+                    <label v-if="widgetDesign === 2" class="citations-toggle">
+                        <input type="checkbox" v-model="followUps">
+                        <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
+                        <span class="citations-toggle-text">
+                            <span class="citations-toggle-title">Suggest follow-up questions</span>
+                            <span class="citations-toggle-desc">Shows up to three questions to ask next under an answer.</span>
                         </span>
                     </label>
 

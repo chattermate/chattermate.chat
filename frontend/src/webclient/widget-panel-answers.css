@@ -1,0 +1,260 @@
+/**
+ * The redesigned widget's answers (ui 2, plan phase 2): links and link chips, the
+ * link card, numbered sources, copy and thumbs, follow-up chips, the live work
+ * trace and its receipt, and the handover card.
+ * Rules and the other parts: see widget-panel.css. Accent is never used for text:
+ * it is not checked against the panel for contrast, the text colour is.
+ */
+
+.chat-container.cm-surface.cm-ui-2 .cm-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ===== Links in an answer ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-answer__body a.cm-link {
+    color: var(--cm-text);
+    text-decoration: underline;
+    text-decoration-color: var(--cm-control-line);
+    text-underline-offset: 3px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-answer__body a.cm-link:hover {
+    text-decoration-color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-answer__body a.cm-link-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    margin: 2px 0;
+    padding: 2px 10px 2px 3px;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 13px;
+    line-height: 20px;
+    text-decoration: none;
+    vertical-align: middle;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-chip__tile,
+.chat-container.cm-surface.cm-ui-2 .cm-link-card__tile {
+    border-radius: calc(var(--cm-radius-control) - 2px);
+    background: var(--cm-card);
+    color: var(--cm-text);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-chip__tile {
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    flex: none;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-chip__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cite,
+.chat-container.cm-surface.cm-ui-2 .cm-sources__n {
+    display: inline-grid;
+    place-items: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--cm-line);
+    color: var(--cm-text);
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 16px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-cite {
+    margin-left: 3px;
+    vertical-align: 1px;
+}
+
+/* ===== The link card ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-link-card {
+    padding: 12px;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-card:hover {
+    border-color: var(--cm-control-line);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-card__tile {
+    font-size: 14px;
+    line-height: 32px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-card__title {
+    font-size: 14px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-card__domain {
+    color: var(--cm-muted);
+    font-size: 12px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-link-card__description {
+    color: var(--cm-muted);
+    font-size: 12.5px;
+    line-height: 18px;
+}
+
+/* ===== Sources (a web page is a link) ===== */
+.chat-container.cm-surface.cm-ui-2 a.cm-sources__chip {
+    text-decoration: none;
+}
+.chat-container.cm-surface.cm-ui-2 a.cm-sources__chip:hover {
+    border-color: var(--cm-control-line);
+}
+
+/* ===== Copy and thumbs ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-answer-actions {
+    margin-left: -7px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-answer-actions__btn {
+    border: 0;
+    border-radius: var(--cm-radius-control);
+    background: none;
+    color: var(--cm-muted);
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-answer-actions__btn:hover,
+.chat-container.cm-surface.cm-ui-2 .cm-answer-actions__btn[aria-pressed='true'] {
+    background: var(--cm-tint);
+    color: var(--cm-text);
+}
+
+/* ===== Follow-up questions ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-follow-ups__chip {
+    min-height: 32px;
+    padding: 6px 12px 6px 9px;
+    border: 1px solid var(--cm-control-line);
+    border-radius: var(--cm-radius-control);
+    background: none;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: 13px;
+    line-height: 18px;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-follow-ups__chip:hover:not(:disabled) {
+    background: var(--cm-tint);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-follow-ups__chip:disabled {
+    opacity: .5;
+    cursor: default;
+}
+
+/* ===== The live work trace and its receipt ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-trace {
+    align-self: stretch;
+    padding: 12px 14px;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+    font-size: 13px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace__step.is-running .cm-trace__label {
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace__step:not(.is-running) .cm-trace__label {
+    color: var(--cm-muted);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace__spinner {
+    border: 2px solid var(--cm-line);
+    border-top-color: var(--cm-text);
+    animation: cm-spin calc(.8s * var(--cm-dur-scale)) linear infinite;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace__mark {
+    color: var(--cm-text);
+    animation: cm-pop calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-enter) both;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__toggle {
+    border: 0;
+    background: none;
+    color: var(--cm-muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__toggle:hover {
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__chevron {
+    transition: transform var(--cm-dur-1) var(--cm-ease-out);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__chevron.is-open {
+    transform: rotate(180deg);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__steps {
+    color: var(--cm-muted);
+    font-size: 12px;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__step.is-error {
+    color: var(--cm-text);
+}
+
+/* ===== The handover card ===== */
+.chat-container.cm-surface.cm-ui-2 .cm-handover {
+    padding: 14px;
+    border: 1px solid var(--cm-line);
+    border-radius: var(--cm-radius-card);
+    background: var(--cm-tint);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-handover__icon {
+    border-radius: 50%;
+    background: var(--cm-card);
+    color: var(--cm-text);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-handover__title {
+    font-size: 14px;
+    font-weight: 600;
+}
+.chat-container.cm-surface.cm-ui-2 .cm-handover__pulse {
+    background: var(--cm-presence);
+}
+.chat-container.cm-surface.cm-ui-2 .cm-handover .message-bubble {
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--cm-text);
+    font-size: 14px;
+    line-height: 21px;
+}
+
+@keyframes cm-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes cm-pop {
+    from { opacity: 0; transform: scale(.4); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-container.cm-surface.cm-ui-2 .cm-trace__spinner {
+        animation: none;
+    }
+    .chat-container.cm-surface.cm-ui-2 .cm-trace__mark {
+        animation: cm-fade-in 150ms linear both;
+    }
+    .chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__chevron {
+        transition: none;
+    }
+}

@@ -38,6 +38,9 @@ class InteractiveLimits:
     # Also write the choices into the text: where some of the platform's
     # apps don't show the buttons (Instagram on desktop and the web)
     options_in_text: bool = False
+    # The choices are follow-up questions the customer may ask next (the
+    # redesigned widget), not options for a question the reply asks
+    follow_ups: bool = False
 
 
 # https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-reply-buttons-messages
@@ -62,3 +65,8 @@ WEB_LIMITS = InteractiveLimits(max_buttons=4, button_title_max=40, body_max=4000
 # Inline keyboard: https://core.telegram.org/bots/api#inlinekeyboardbutton
 TELEGRAM_LIMITS = InteractiveLimits(max_buttons=MAX_CHOICE_OPTIONS, button_title_max=64, body_max=4096,
                                     id_max_bytes=64)
+
+# The redesigned widget's follow-up chips (widget_answers.py): at most three,
+# short enough to sit on one line each
+WIDGET_FOLLOW_UP_LIMITS = InteractiveLimits(max_buttons=3, button_title_max=40, body_max=8000,
+                                            id_max_bytes=256, follow_ups=True)

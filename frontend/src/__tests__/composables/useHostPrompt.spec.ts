@@ -30,7 +30,7 @@ const prompt = (message: string, source: HostPrompt['source'], chips: PageChip[]
 let app: App | null = null
 
 // useHostActions registers an unmount hook, so the composable runs inside a component.
-const setup = (initial: Message[] = []) => {
+const setup = (initial: Message[] = [], answersShowChoices?: () => boolean) => {
     const messages = ref<Message[]>(initial)
     const loading = ref(false)
     const revealing = ref(false)
@@ -38,7 +38,7 @@ const setup = (initial: Message[] = []) => {
     let result!: ReturnType<typeof useHostPrompt>
     app = createApp({
         setup() {
-            result = useHostPrompt({ messages, loading, revealing, on: vi.fn(), emit: vi.fn(), sendQuickAction })
+            result = useHostPrompt({ messages, loading, revealing, answersShowChoices, on: vi.fn(), emit: vi.fn(), sendQuickAction })
             return () => null
         },
     })
@@ -84,6 +84,11 @@ describe('useHostPrompt', () => {
             host.revealing.value = false
             expect(host.replyChips.value.map(c => c.label)).toEqual(['Small', 'Large'])
             expect(host.replyChips.value[0]).toEqual({ label: 'Small', kind: 'text', value: 'Small' })
+        })
+
+        it('leaves them to the answer where the view shows its choices under it (the panel)', () => {
+            const host = setup([offered('Small', 'Large')], () => true)
+            expect(host.replyChips.value).toEqual([])
         })
 
         it('retires them once anyone writes after them', () => {

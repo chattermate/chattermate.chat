@@ -809,3 +809,28 @@ def test_real_search_knowledge_base_no_sources_real():
 
         # Should return no sources message
         assert "No knowledge sources available for this agent" in result
+
+
+class TestSourceLink:
+    """A citation's page link, for the widget's link chips and card."""
+
+    def _hit(self, meta):
+        from app.tools.knowledge_search_byagent import _Hit
+        return _Hit("id-1", "content", meta, "https://shop.example/refunds")
+
+    def test_a_crawled_page_carries_its_url_title_and_description(self):
+        from app.tools.knowledge_search_byagent import source_link
+        link = source_link(self._hit({"url": "https://shop.example/refunds", "title": " Refunds ",
+                                      "description": "How   refunds work"}))
+        assert link == {"url": "https://shop.example/refunds", "title": "Refunds",
+                        "description": "How refunds work"}
+
+    def test_a_long_description_is_capped(self):
+        from app.tools.knowledge_search_byagent import source_link
+        link = source_link(self._hit({"url": "https://shop.example/a", "description": "x" * 5000}))
+        assert len(link["description"]) == 300
+
+    def test_a_non_web_source_has_no_link(self):
+        from app.tools.knowledge_search_byagent import source_link
+        assert source_link(self._hit({"url": "javascript:alert(1)"})) == {}
+        assert source_link(self._hit({})) == {}

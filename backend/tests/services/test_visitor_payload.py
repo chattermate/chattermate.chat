@@ -97,3 +97,8 @@ def test_visitor_error_never_returns_the_real_error(caplog):
 def test_visitor_error_uses_the_given_fallback():
     assert visitor_error("ValueError: x", 'Form submission failed') == 'Form submission failed'
     assert visitor_error(None, 'Form submission failed') == 'Form submission failed'
+
+
+@pytest.mark.parametrize('key', ['quick_replies', 'handover', 'trace', 'visitor_feedback'])
+def test_the_redesigned_widget_restores_its_answer_extras(key):
+    assert visitor_attributes({key: 'x', 'transfer_description': 'internal'}) == {key: 'x'}

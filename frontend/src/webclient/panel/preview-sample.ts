@@ -43,6 +43,14 @@ export function previewSampleConversation(): PreviewConversation {
                 created_at: AT,
                 session_id: SESSION,
                 sources: PREVIEW_SAMPLE_COPY.sources.map(source => ({ ...source })),
+                attributes: {
+                    trace: {
+                        turn_id: 'preview',
+                        duration_ms: 1800,
+                        steps: [{ kind: 'knowledge', done_label: PREVIEW_SAMPLE_COPY.step, status: 'ok', duration_ms: 900 }],
+                    },
+                    quick_replies: [...PREVIEW_SAMPLE_COPY.followUps],
+                },
             },
         ],
         receipts: [{ after: 2, receipt: { text: PREVIEW_SAMPLE_COPY.receipt, tone: 'done' } }],

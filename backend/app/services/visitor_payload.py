@@ -39,6 +39,12 @@ VISITOR_ATTRIBUTE_KEYS = frozenset({
     'confirmation_message',
     'request_rating',
     'end_chat',
+    # The redesigned widget (plan phase 2): follow-up choices, the handover
+    # card's state, the receipt of the agent's steps and the visitor's thumbs.
+    'quick_replies',
+    'handover',
+    'trace',
+    'visitor_feedback',
 })
 
 GENERIC_ERROR = "Something went wrong. Please try again."

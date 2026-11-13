@@ -21,7 +21,7 @@ from typing import Iterable, Optional
 
 from app.agents.chat_agent import ChatAgent, ChatResponse
 from app.agents.host_actions.tools import build_action_functions, host_extra_context
-from app.channels.interactive_limits import WEB_LIMITS
+from app.channels.interactive_limits import WEB_LIMITS, InteractiveLimits
 from app.core.logger import get_logger
 from app.core.security import decrypt_api_key
 from app.core.socketio import sio
@@ -30,12 +30,19 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
+from app.services.agent_steps import StepReporter
+from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
 from app.services.lead_capture import record_lead_from_response
 
 logger = get_logger(__name__)
 
 WIDGET_NAMESPACE = '/widget'
+
+# Socket session keys, read once at connect (widget_chat.widget_connect): the
+# visitor gets the redesigned widget, and its agent offers follow-up chips.
+REDESIGN_SESSION_KEY = 'widget_ui_v2'
+FOLLOW_UPS_SESSION_KEY = 'follow_ups'
 
 
 async def emit_bot_typing(session_id: str) -> None:
@@ -74,7 +81,8 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
             host_prompt_context(session.get('host_prompt')),
         ),
         host_action_functions=build_action_functions(actions) or None,
-        choice_limits=WEB_LIMITS if session.get('offer_choices') else None,
+        choice_limits=choice_limits_for(session),
+        step_reporter=StepReporter(session['session_id']) if session.get(REDESIGN_SESSION_KEY) else None,
     )
 
 
@@ -94,6 +102,16 @@ async def build_widget_agent(session: dict, host_actions: Iterable[AgentAction] 
     return await create_widget_agent(widget_agent_kwargs(session, host_actions, journey_hint))
 
 
+def choice_limits_for(session: dict) -> Optional[InteractiveLimits]:
+    """What the agent may offer under a reply in this chat: its answer's choices as
+    buttons when the agent offers them (channel_quick_replies), else follow-up
+    questions when the panel's switch is on, else nothing. One field carries
+    either: the reply schema has one list of choices."""
+    if session.get('offer_choices'):
+        return WEB_LIMITS
+    return follow_up_limits(session.get(FOLLOW_UPS_SESSION_KEY, False))
+
+
 def _web_choices(response: ChatResponse) -> Optional[list]:
     """The agent's choices as the website chat shows them: as many as fit a
     phone, each cut to a button's length (the prompt only asks for that)."""
@@ -102,10 +120,29 @@ def _web_choices(response: ChatResponse) -> Optional[list]:
     return shown or None
 
 
-def reply_payload(response: ChatResponse, session_id: str) -> dict:
+def _shown_choices(response: ChatResponse, limits: Optional[InteractiveLimits]) -> Optional[list]:
+    """Follow-ups as chips (a long one dropped: its text is what a tap sends), or
+    the agent's choices cut to a button."""
+    if limits is not None and limits.follow_ups:
+        return widget_choices(response) or None
+    return _web_choices(response)
+
+
+def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[ChatAgent] = None,
+                  limits: Optional[InteractiveLimits] = None) -> dict:
     """The visitor's copy of an AI reply. Notes for the team (transfer reason and
-    description) stay on the stored message and are never sent."""
+    description) stay on the stored message and are never sent. From the agent
+    that wrote and stored it: the row id (the visitor's thumbs refer to it), the
+    receipt of its steps (agent_steps.py) and the handover card, exactly as
+    stored, so a reload shows the same thing."""
+    trace = getattr(chat_agent, 'last_trace', None)
     payload = {
+        'message_id': getattr(chat_agent, 'last_bot_message_id', None),
+        'turn_id': trace['turn_id'] if trace else None,
+        'trace': trace,
+        # The agent's choices or follow-ups (choice_limits_for), until answered
+        'quick_replies': _shown_choices(response, limits),
+        'handover': getattr(chat_agent, 'last_handover', None),
         'message': response.message,
         'type': 'chat_response',
         'session_id': session_id,
@@ -119,8 +156,6 @@ def reply_payload(response: ChatResponse, session_id: str) -> dict:
         # Knowledge-base citations (rendering is gated client-side by the agent's
         # show_citations customization setting).
         'sources': [s.model_dump() for s in response.sources] if getattr(response, 'sources', None) else None,
-        # Choices the agent offered, shown as reply buttons until answered
-        'quick_replies': _web_choices(response),
     }
     shopify_output = getattr(response, 'shopify_output', None)
     if shopify_output:
@@ -156,14 +191,17 @@ async def send_handoff_contact_form(session: dict, db) -> None:
         logger.error(f"Failed to emit handoff contact form: {contact_err}")
 
 
-async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatResponse], db) -> None:
+async def deliver_ai_reply(sid: str, session: dict, response: Optional[ChatResponse], db,
+                           chat_agent: Optional[ChatAgent] = None) -> None:
     """Send the AI's reply to the conversation, then act on what it asked for:
-    the hand-off contact form, a captured lead, or ending the chat."""
+    the hand-off contact form, a captured lead, or ending the chat. `chat_agent`
+    is the agent that wrote it, for the stored row's id and the step receipt."""
     if response is None or not response.message:
         return
     session_id = session['session_id']
     customer_id = session['customer_id']
-    await sio.emit('chat_response', reply_payload(response, session_id), room=session_id, namespace=WIDGET_NAMESPACE)
+    await sio.emit('chat_response', reply_payload(response, session_id, chat_agent, choice_limits_for(session)),
+                   room=session_id, namespace=WIDGET_NAMESPACE)
 
     # On human handoff, optionally collect the visitor's contact details (email/name)
     # so the human agent can follow up. Fires for both a live transfer and the

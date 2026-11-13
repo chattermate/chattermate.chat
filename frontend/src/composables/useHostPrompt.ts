@@ -29,6 +29,9 @@ export interface HostPromptOptions {
     loading: Ref<boolean>
     /** True while a reply that arrived is still typing out on screen (useTypewriter). */
     revealing: Readonly<Ref<boolean>>
+    /** The view shows an answer's own choices under it (the panel's follow-up chips),
+     * so they aren't offered again as reply buttons. */
+    answersShowChoices?: () => boolean
     /** The socket's events: page actions and journeys listen and answer on it. */
     on: WidgetSocket['on']
     emit: WidgetSocket['emit']
@@ -56,7 +59,9 @@ const chatLine = (message: string, source: string): Message => ({
  * receipts), a message it asked us to show (ChatterMate.prompt) and the journeys
  * the agent runs on the site. Call during setup: both clients listen to the page.
  */
-export function useHostPrompt({ messages, loading, revealing, on, emit, sendQuickAction }: HostPromptOptions) {
+export function useHostPrompt({
+    messages, loading, revealing, answersShowChoices = () => false, on, emit, sendQuickAction,
+}: HostPromptOptions) {
     // In-app actions the embedding page registered (ChatterMate.registerActions), and
     // a message it asked us to show (ChatterMate.prompt). The prompt lives outside
     // `messages` so loading history can't wipe it; it joins the chat once answered.
@@ -129,6 +134,7 @@ export function useHostPrompt({ messages, loading, revealing, on, emit, sendQuic
     // Choices the agent offered with its last reply: they stand in for the step's
     // replies until answered, and a later message of either side retires them.
     const offeredChips = computed<PageChip[]>(() => {
+        if (answersShowChoices()) return []
         const last = messages.value[messages.value.length - 1]
         if (!last || last === retiredChoices.value) return []
         const options = last.message_type === 'bot' ? last.attributes?.quick_replies : undefined

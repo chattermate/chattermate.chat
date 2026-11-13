@@ -28,13 +28,28 @@ import { computed, reactive, toRaw, watch, onUnmounted, type Ref } from 'vue'
 // Reveal cadence (ms) — slightly slower after spaces, matching the design comp.
 const CHAR_DELAY = 13
 const SPACE_DELAY = 24
+// The redesigned panel reveals a word at a time.
+const WORD_DELAY = 42
+
+/** Where the next word ends: past any spaces, then to the end of the word. */
+const nextWordEnd = (text: string, from: number): number => {
+    let at = from
+    while (at < text.length && /\s/.test(text[at])) at += 1
+    while (at < text.length && !/\s/.test(text[at])) at += 1
+    return Math.max(at, from + 1)
+}
+
+export interface TypewriterOptions {
+    /** Reveal a word at a time instead of a character (the redesigned panel). */
+    byWord?: () => boolean
+}
 
 interface StreamState {
     shown: number
     done: boolean
 }
 
-export function useTypewriter(messages: Ref<any[]>, onReveal?: () => void) {
+export function useTypewriter(messages: Ref<any[]>, onReveal?: () => void, options: TypewriterOptions = {}) {
     // Keyed by the message itself, not its place: history loaded above a reply,
     // or a journey step placed before it, moves it without typing it again.
     const state = reactive(new Map<object, StreamState>())
@@ -65,6 +80,12 @@ export function useTypewriter(messages: Ref<any[]>, onReveal?: () => void) {
             st.done = true
             queue.shift()
             scheduleNext(0)
+            return
+        }
+        if (options.byWord?.()) {
+            st.shown = Math.min(full.length, nextWordEnd(full, st.shown))
+            onReveal?.()
+            scheduleNext(WORD_DELAY)
             return
         }
         st.shown += 1

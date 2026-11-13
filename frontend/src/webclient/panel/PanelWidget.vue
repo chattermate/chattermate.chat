@@ -42,6 +42,7 @@ import { usePanelActivity, usePanelCascade, usePanelExpand } from '../../composa
 import { postToHost } from '../host-bridge'
 import '../widget-panel.css'
 import '../widget-panel-messages.css'
+import '../widget-panel-answers.css'
 import '../widget-panel-composer.css'
 import '../widget-panel-start.css'
 import '../widget-panel-cards.css'

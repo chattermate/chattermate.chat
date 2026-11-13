@@ -133,6 +133,9 @@ class EnhancedWebsiteReader(WebsiteReader):
     # Pages are crawled on up to max_workers threads, and "read, add one, write
     # back" loses increments when two of them fail at once.
     _failure_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    # Each page's title and description, read before cleaning strips <head>,
+    # for the widget's link cards. Keyed by URL: pages are read on many threads.
+    _page_meta: Dict[str, Dict[str, str]] = field(default_factory=dict, repr=False)
     # Set by the knowledge base for the source being read: no new pages are
     # fetched once it passes (see app/knowledge/deadline.py).
     deadline: Optional[Deadline] = None
@@ -389,7 +392,25 @@ class EnhancedWebsiteReader(WebsiteReader):
             return f"{title}\n\n{content}"
         return content
 
-    def _extract_main_content(self, soup: BeautifulSoup, base_url: Optional[str] = None) -> str:
+    @staticmethod
+    def _page_description(soup: BeautifulSoup) -> str:
+        """The page's own summary: <meta name=description>, else og:description."""
+        for attrs in ({'name': 'description'}, {'property': 'og:description'}):
+            tag = soup.find('meta', attrs=attrs)
+            content = tag.get('content') if tag else None
+            if isinstance(content, str) and content.strip():
+                return " ".join(content.split())
+        return ""
+
+    def _remember_page_meta(self, page_url: Optional[str], title: str, soup: BeautifulSoup) -> None:
+        if not page_url:
+            return
+        meta = {k: v for k, v in (('title', title), ('description', self._page_description(soup))) if v}
+        if meta:
+            self._page_meta[page_url] = meta
+
+    def _extract_main_content(self, soup: BeautifulSoup, base_url: Optional[str] = None,
+                              page_url: Optional[str] = None) -> str:
         """
         Extracts the main content from a BeautifulSoup object.
 
@@ -402,10 +423,13 @@ class EnhancedWebsiteReader(WebsiteReader):
         :param soup: The BeautifulSoup object to extract the main content from.
         :param base_url: What the page's relative links resolve against. Passed
             in, not kept on the reader: pages are read on several threads.
+        :param page_url: The page read, whose title and description are kept for
+            the widget's link cards.
         :return: The main content as a string.
         """
         # Read the title before cleaning: _clean_soup strips <head>.
         page_title = self._page_title(soup)
+        self._remember_page_meta(page_url, page_title, soup)
 
         # Remove undesirable elements first
         self._clean_soup(soup)
@@ -816,7 +840,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                         detection_reason.append(f"high script density ({script_density:.1f} per 10KB)")
                     logger.warning(f"⚠️  JavaScript-heavy website detected: {', '.join(detection_reason)}")
                 
-                content = self._extract_main_content(soup, link_base)
+                content = self._extract_main_content(soup, link_base, current_url)
 
                 # Log extracted content length for debugging
                 logger.info(f"Extracted content length: {len(content) if content else 0} characters from {current_url}")
@@ -845,7 +869,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                             soup = crawl4ai_soup if crawl4ai_soup else soup
                         elif crawl4ai_soup:
                             # Try to extract from crawl4ai soup
-                            crawl4ai_extracted = self._extract_main_content(crawl4ai_soup, link_base)
+                            crawl4ai_extracted = self._extract_main_content(crawl4ai_soup, link_base, current_url)
                             if crawl4ai_extracted and len(crawl4ai_extracted) >= self.min_content_length:
                                 logger.info(f"✓ Extracted {len(crawl4ai_extracted)} chars from Crawl4AI HTML")
                                 content = crawl4ai_extracted
@@ -914,7 +938,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                                 soup = crawl4ai_soup if crawl4ai_soup else soup
                             elif crawl4ai_soup:
                                 # Try to extract from crawl4ai soup
-                                content = self._extract_main_content(crawl4ai_soup, link_base)
+                                content = self._extract_main_content(crawl4ai_soup, link_base, current_url)
                                 if content and len(content) >= self.min_content_length:
                                     logger.info(f"✓ Extracted {len(content)} chars from Crawl4AI HTML")
                                     soup = crawl4ai_soup
@@ -1050,7 +1074,7 @@ class EnhancedWebsiteReader(WebsiteReader):
                         return (current_url, content, new_links)
                     elif crawl4ai_soup:
                         # Try to extract from crawl4ai soup
-                        content = self._extract_main_content(crawl4ai_soup, link_base)
+                        content = self._extract_main_content(crawl4ai_soup, link_base, current_url)
                         if content and len(content) >= self.min_content_length:
                             logger.info(f"✓ Extracted {len(content)} chars from Crawl4AI HTML")
                             soup = crawl4ai_soup
@@ -1313,7 +1337,8 @@ class EnhancedWebsiteReader(WebsiteReader):
             "url": page_url,
             "chunk": index,
             "chunk_size": len(content),
-            "original_size": original_length
+            "original_size": original_length,
+            **self._page_meta.pop(page_url, {}),
         }
 
         # Create document with content and metadata

@@ -25,14 +25,17 @@ export interface HostCapabilities {
     expand: boolean
     /** It frosts the page behind the panel, so Glass may be see-through. */
     backdrop: boolean
+    /** It opens a link to its own site in the page itself (NAVIGATE). */
+    navigate: boolean
 }
 
-export const NO_HOST_CAPABILITIES: HostCapabilities = { expand: false, backdrop: false }
+export const NO_HOST_CAPABILITIES: HostCapabilities = { expand: false, backdrop: false, navigate: false }
 
 /** Only booleans that are exactly true count. */
 const hostCapabilitiesFrom = (data: Record<string, unknown>): HostCapabilities => ({
     expand: data.expand === true,
     backdrop: data.backdrop === true,
+    navigate: data.navigate === true,
 })
 
 export interface HostMessageHandlers {

@@ -305,7 +305,8 @@ async def resume_reply(sid: str, session: dict, run_id: str, results: Dict[str, 
         # The model ignored the limit: close its calls and answer for it.
         logger.warning(f"Host action pause limit reached in session {session['session_id']}")
         response = _store_unfinished_reply(session, db)
-    await deliver_ai_reply(sid, session, response, db)
+        agent = None
+    await deliver_ai_reply(sid, session, response, db, chat_agent=agent)
 
 
 def _actions_for_resume(db: Session, session: dict, run_id: str) -> List[AgentAction]:

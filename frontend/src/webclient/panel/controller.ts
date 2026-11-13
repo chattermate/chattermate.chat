@@ -25,6 +25,8 @@ import type { ConnectionStatus } from '../../composables/useWidgetSocket'
 import type { HostCapabilities } from '../../composables/useHostMessages'
 import type { PreviewFile, UploadedFile } from '../../composables/useWidgetFiles'
 import type { WorkflowForm, WorkflowMessage } from '../../composables/useWorkflowScreens'
+import type { LiveStep } from '../../composables/useAgentTrace'
+import type { VisitorFeedback } from './answer-extras'
 
 /** What the widget root is given (by widget.ts, or the dashboard preview). */
 export interface WidgetControllerProps {
@@ -137,6 +139,10 @@ export interface WidgetConversation {
     isRevealing: Shown<boolean>
     /** Show every reply in full at once (the panel's stop button). */
     skipReveal: () => void
+    /** The steps the agent is taking for the reply on its way (the redesign's trace card). */
+    liveTrace: Shown<LiveStep[]>
+    /** Thumb an AI reply up or down, or take the thumb back (null). */
+    sendFeedback: (message: WidgetMessage, value: VisitorFeedback | null) => void
     hoverRating: Shown<number>
     isSubmittingRating: Shown<boolean>
     handleStarHover: (rating: number) => void
