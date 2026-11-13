@@ -81,6 +81,8 @@ export interface CardAction { id: string; label: string; kind: 'link' | 'reply';
 export interface StatusCard {
     id: string
     kind: string
+    /** The language its words are in (a BCP 47 tag), when the server says */
+    lang?: string
     title: string
     subtitle?: string
     status?: { key: string; label: string; tone: CardTone }
@@ -94,6 +96,7 @@ export interface StatusCard {
 const TONES = new Set<CardTone>(['neutral', 'info', 'progress', 'success', 'warning', 'danger'])
 const STEP_STATES = new Set<CardStepState>(['done', 'current', 'upcoming', 'failed'])
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
+const LANGUAGE_TAG = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/i
 const list = (value: unknown): Record<string, unknown>[] =>
     Array.isArray(value) ? value.filter(isObject) : []
 const money = (value: unknown): CardMoney | undefined =>
@@ -120,6 +123,7 @@ function cardFrom(value: Record<string, unknown>): StatusCard | null {
     return {
         id: str(value.id),
         kind: str(value.kind) || 'generic',
+        lang: LANGUAGE_TAG.test(str(value.lang)) ? str(value.lang) : undefined,
         title: str(value.title),
         subtitle: str(value.subtitle) || undefined,
         status,

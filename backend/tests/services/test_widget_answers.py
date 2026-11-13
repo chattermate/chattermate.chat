@@ -28,7 +28,7 @@ from app.models.schemas.chat import ChannelChatResponse, ChatResponse
 from app.services.handover_payload import handover_payload
 from app.services.widget_answers import follow_up_limits, offers_follow_ups
 from app.services.widget_reply import (
-    FOLLOW_UPS_SESSION_KEY, PANEL_SESSION_KEY, reply_payload, widget_agent_kwargs,
+    FOLLOW_UPS_SESSION_KEY, LANGUAGE_SESSION_KEY, PANEL_SESSION_KEY, reply_payload, widget_agent_kwargs,
 )
 
 
@@ -137,3 +137,13 @@ class TestAgentKwargs:
             kwargs = widget_agent_kwargs(self._session())
         assert kwargs["turn_cards"] is None
         assert kwargs["choice_limits"] is None
+
+    def test_the_panels_cards_are_written_in_the_visitors_language(self):
+        with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
+            kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True, LANGUAGE_SESSION_KEY: "de"}))
+        assert kwargs["turn_cards"].labels.language == "de"
+
+    def test_a_session_from_before_languages_were_sent_gets_english_cards(self):
+        with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
+            kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True}))
+        assert kwargs["turn_cards"].labels.language == "en"

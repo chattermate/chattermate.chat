@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 The status cards one turn's tools produced, in order. Given to the toolkits by
-the chat agent (widget channels on the redesign only) and read once the reply
+the chat agent (the widget panel only) and read once the reply
 is ready, as ShopifyTools.has_cached_products is.
 """
 
 from typing import List
 
+from app.cards.labels import ENGLISH, CardLabels
 from app.models.schemas.cards import StatusCard
 
 # More cards than this in one reply are not shown.
@@ -27,8 +28,10 @@ MAX_CARDS = 4
 
 
 class TurnCards:
-    def __init__(self) -> None:
+    def __init__(self, labels: CardLabels = ENGLISH) -> None:
         self._cards: List[StatusCard] = []
+        # The visitor's language: the toolkits build their cards in it
+        self.labels = labels
         # The reply asks the visitor to prove their email (the email check card)
         self.email_check = False
 

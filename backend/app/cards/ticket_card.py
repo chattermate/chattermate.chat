@@ -18,40 +18,43 @@ internal stages (triage, investigation, approval) read as one "Looking into it";
 the ticket's title is the team's and is not shown.
 """
 
+from app.cards.labels import ENGLISH, CardLabels
 from app.models.schemas.cards import CardRow, CardStatus, CardStep, StatusCard
 
-STEP_LABELS = ('Received', 'In progress', 'Resolved')
+STEP_KEYS = ('ticket_step_received', 'ticket_step_in_progress', 'ticket_step_resolved')
 
-# status -> (label, tone, current step index)
+# Ticket status → (label key, tone, current step)
 _STATUSES = {
-    'open': ('Received', 'info', 0),
-    'triaging': ('Looking into it', 'progress', 1),
-    'investigating': ('Looking into it', 'progress', 1),
-    'awaiting_approval': ('In progress', 'progress', 1),
-    'in_progress': ('In progress', 'progress', 1),
-    'resolved_pending_confirmation': ('Resolved, please confirm', 'success', 2),
-    'resolved': ('Resolved', 'success', 3),
-    'closed': ('Closed', 'neutral', 3),
-    'reopened': ('Reopened', 'warning', 1),
+    'open': ('ticket_received', 'info', 0),
+    'triaging': ('ticket_looking', 'progress', 1),
+    'investigating': ('ticket_looking', 'progress', 1),
+    'awaiting_approval': ('ticket_in_progress', 'progress', 1),
+    'in_progress': ('ticket_in_progress', 'progress', 1),
+    'resolved_pending_confirmation': ('ticket_resolved_confirm', 'success', 2),
+    'resolved': ('ticket_resolved', 'success', 3),
+    'closed': ('ticket_closed', 'neutral', 3),
+    'reopened': ('ticket_reopened', 'warning', 1),
 }
 
 
-def _steps(current: int):
-    return [CardStep(label=label, state='done' if i < current else 'current' if i == current else 'upcoming')
-            for i, label in enumerate(STEP_LABELS)]
+def _steps(current: int, labels: CardLabels):
+    return [CardStep(label=labels.text(key), state='done' if i < current else 'current' if i == current else 'upcoming')
+            for i, key in enumerate(STEP_KEYS)]
 
 
-def ticket_card(number: str, status: str) -> StatusCard:
-    label, tone, current = _STATUSES.get(str(status or '').lower(), ('Received', 'info', 0))
+def ticket_card(number: str, status: str, labels: CardLabels = ENGLISH) -> StatusCard:
+    key, tone, current = _STATUSES.get(str(status or '').lower(), ('ticket_received', 'info', 0))
+    label = labels.text(key)
     # The priority is the team's triage setting, not something to show the customer.
-    rows = [CardRow(label='Ticket', value=number)]
+    rows = [CardRow(label=labels.text('ticket'), value=number)]
     return StatusCard(
         id=f'ticket-{number}',
         kind='ticket',
-        title='Support ticket',
+        lang=labels.language,
+        title=labels.text('support_ticket'),
         subtitle=number,
         status=CardStatus(key=str(status or 'open').lower(), label=label, tone=tone),
-        steps=_steps(current),
+        steps=_steps(current, labels),
         rows=rows,
-        fallback_text=f'Ticket {number}: {label}',
+        fallback_text=f"{labels.text('ticket')} {number}: {label}",
     )
