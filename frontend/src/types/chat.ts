@@ -70,6 +70,13 @@ export interface ShopifyProductImage {
     alt?: string
 }
 
+/** Open conversations in the caller's inbox scope (GET /chats/counts). */
+export interface InboxCounts {
+  open: number
+  waiting_for_human: number
+  assigned_to_me: number
+}
+
 export interface Conversation {
   customer: CustomerInfo
   agent: {

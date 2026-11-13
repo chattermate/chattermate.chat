@@ -1009,9 +1009,17 @@ class TicketService:
         settings = settings or self.settings_repo.get_or_create(ticket.organization_id)
         return self._resolution_due(ticket.priority, ticket.created_at, settings)
 
+    @staticmethod
+    def _open_from(counts: dict) -> int:
+        return sum(counts.get(s, 0) for s in OPEN_TICKET_STATUSES)
+
+    def open_count(self, organization_id: UUID) -> int:
+        """Tickets in any open status — the navigation badge's number."""
+        return self._open_from(self.repo.count_by_status(organization_id))
+
     def stats(self, organization_id: UUID) -> dict:
         counts = self.repo.count_by_status(organization_id)
-        open_count = sum(counts.get(s, 0) for s in OPEN_TICKET_STATUSES)
+        open_count = self._open_from(counts)
         awaiting = counts.get(TicketStatus.AWAITING_APPROVAL.value, 0)
 
         settings = self.settings_repo.get_or_create(organization_id)

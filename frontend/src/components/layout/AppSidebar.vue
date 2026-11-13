@@ -17,118 +17,221 @@ limitations under the License.
 <script setup lang="ts" name="AppSidebar">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { useNavItems, navIconSvg } from './navItems'
-
+import { useNavItems, navIconSvg, navItemCovers, NAV_SECTIONS, type NavItem } from './navItems'
+import { useSettingsGroup } from './useSettingsGroup'
+import type { NavBadgeTone } from './SidebarNavLink.vue'
 import SidebarToggle from './SidebarToggle.vue'
+import SidebarNavLink from './SidebarNavLink.vue'
+import SidebarAccount from './SidebarAccount.vue'
 import BrandMark from '@/components/common/BrandMark.vue'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import type { User } from '@/types/user'
 
-defineProps<{
+const props = defineProps<{
     isCollapsed: boolean
+    user: User | null
+    role: string
+    isOnline: boolean
+    statusUpdating: boolean
+    /** Conversations waiting for a human: the Inbox badge. */
+    inboxCount?: number | null
+    /** Open tickets: the Tickets badge. */
+    ticketsCount?: number | null
 }>()
 
 const emit = defineEmits<{
     (e: 'toggle'): void
     (e: 'navigate'): void
+    (e: 'toggle-status'): void
+    (e: 'logout'): void
 }>()
 
 const route = useRoute()
+const { sidebarGroups, accountItems } = useNavItems()
+const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+// Plan / trial card with the upgrade button (enterprise only; empty in OSS)
+const SidebarPlanCard = enterpriseComponent(moduleImports.sidebarPlanCard)
 
-const { navItems } = useNavItems()
+const workspaceGroups = computed(() =>
+    sidebarGroups.value.filter((group) => group.section !== NAV_SECTIONS.settings)
+)
+const settingsItems = computed<NavItem[]>(
+    () => sidebarGroups.value.find((group) => group.section === NAV_SECTIONS.settings)?.items ?? []
+)
 
-const isActiveRoute = computed(() => (path?: string) => path ? route.path === path : false)
+const settingsGroup = useSettingsGroup(settingsItems)
+const settingsExpanded = computed(() => settingsGroup.isOpen.value && !props.isCollapsed)
 
-const handleNavigation = () => {
-    emit('navigate')
+// A link is current on its own page and the pages beneath it (/tickets/:id)
+const isActive = (item: NavItem) => navItemCovers(item, route.path)
+
+interface Badge {
+    count: number | null | undefined
+    tone: NavBadgeTone
+    hint: string
+}
+
+const badges = computed<Record<string, Badge>>(() => ({
+    '/conversations': { count: props.inboxCount, tone: 'accent', hint: 'waiting for a human' },
+    '/tickets': { count: props.ticketsCount, tone: 'neutral', hint: 'open' },
+}))
+
+// On the rail there is no room for the group: open the sidebar with it shown
+const onSettingsClick = () => {
+    if (props.isCollapsed) {
+        settingsGroup.setOpen(true)
+        emit('toggle')
+    } else {
+        settingsGroup.toggle()
+    }
 }
 </script>
 
 <template>
-    <aside class="sidebar" :class="{ 'collapsed': isCollapsed }">
-        <!-- Logo -->
+    <aside class="sidebar" :class="{ collapsed: isCollapsed }">
         <div class="sidebar-header">
             <div class="logo-container">
-                <BrandMark :size="32" />
+                <BrandMark :size="28" />
                 <span v-if="!isCollapsed" class="logo-text brand-wordmark">ChatterMate</span>
             </div>
             <SidebarToggle :isCollapsed="isCollapsed" @toggle="emit('toggle')" />
         </div>
 
-        <!-- Navigation -->
-        <nav class="sidebar-nav">
-            <div v-for="(item, index) in navItems" :key="index">
-                <!-- Section Header -->
-                <div v-if="item.section" class="nav-section nav-section-heading" :class="{ 'collapsed': isCollapsed }">
-                    <span v-if="!isCollapsed">{{ item.section }}</span>
-                </div>
+        <nav class="sidebar-nav" aria-label="Main navigation">
+            <section v-for="group in workspaceGroups" :key="group.section" class="nav-group">
+                <h2 v-if="!isCollapsed" class="nav-section nav-section-heading">{{ group.section }}</h2>
+                <SidebarNavLink
+                    v-for="item in group.items"
+                    :key="item.to"
+                    :item="item"
+                    :active="isActive(item)"
+                    :collapsed="isCollapsed"
+                    :badge="badges[item.to!]?.count"
+                    :badge-tone="badges[item.to!]?.tone"
+                    :badge-hint="badges[item.to!]?.hint"
+                    @navigate="emit('navigate')"
+                />
+            </section>
 
-                <!-- Nav Item -->
-                <router-link v-else-if="item.to" :to="item.to" class="nav-item"
-                    :class="{ 'active': isActiveRoute(item.to) }"
-                    :title="isCollapsed ? item.label : undefined"
-                    @click="handleNavigation">
-                    <span class="nav-bar" aria-hidden="true"></span>
-                    <span class="nav-icon" v-html="navIconSvg(item.icon)"></span>
-                    <span v-if="!isCollapsed" class="nav-label">{{ item.label }}</span>
-                </router-link>
-            </div>
+            <section v-if="settingsItems.length" class="nav-group settings-group">
+                <div v-if="isCollapsed" class="rail-divider" aria-hidden="true"></div>
+                <button
+                    type="button"
+                    class="settings-toggle"
+                    :class="{ collapsed: isCollapsed, current: settingsGroup.onSettingsPage.value }"
+                    :aria-expanded="settingsExpanded"
+                    :aria-controls="isCollapsed ? undefined : 'sidebar-settings-items'"
+                    :aria-label="isCollapsed ? NAV_SECTIONS.settings : undefined"
+                    :title="isCollapsed ? NAV_SECTIONS.settings : undefined"
+                    @click="onSettingsClick"
+                >
+                    <span class="nav-icon" aria-hidden="true" v-html="navIconSvg('settings', 18)"></span>
+                    <template v-if="!isCollapsed">
+                        <span class="nav-label">{{ NAV_SECTIONS.settings }}</span>
+                        <span
+                            class="chevron"
+                            :class="{ open: settingsExpanded }"
+                            aria-hidden="true"
+                            v-html="navIconSvg('chevronDown', 14)"
+                        ></span>
+                    </template>
+                </button>
+                <!-- Not on the rail at all; v-show keeps the open/close cheap otherwise -->
+                <div v-if="!isCollapsed" v-show="settingsExpanded" id="sidebar-settings-items" class="settings-items">
+                    <SidebarNavLink
+                        v-for="item in settingsItems"
+                        :key="item.to"
+                        :item="item"
+                        :active="isActive(item)"
+                        :collapsed="false"
+                        nested
+                        @navigate="emit('navigate')"
+                    />
+                </div>
+            </section>
         </nav>
+
+        <div class="sidebar-footer">
+            <SidebarPlanCard v-if="hasEnterpriseModule" :collapsed="isCollapsed" />
+            <SidebarAccount
+                :user="user"
+                :role="role"
+                :is-online="isOnline"
+                :status-updating="statusUpdating"
+                :collapsed="isCollapsed"
+                :items="accountItems"
+                @toggle-status="emit('toggle-status')"
+                @logout="emit('logout')"
+                @navigate="emit('navigate')"
+            />
+        </div>
     </aside>
 </template>
 
 <style scoped>
 .sidebar {
-    width: 252px;
+    --sidebar-width: 248px;
+    --rail-width: 64px;
+
+    width: var(--sidebar-width);
     background: var(--bg2);
     border-right: 1px solid var(--o07);
     display: flex;
     flex-direction: column;
-    transition: width .22s ease;
+    transition: width var(--transition-normal);
     overflow: hidden;
     position: relative;
     height: 100vh;
+    height: 100dvh;
     z-index: 100;
 }
 
 .sidebar.collapsed {
-    width: 76px;
+    width: var(--rail-width);
+    /* The account menu opens beside the rail */
+    overflow: visible;
 }
 
 .sidebar-header {
-    padding: 20px 14px;
+    min-height: 64px;
+    box-sizing: border-box;
+    padding: 0 12px 0 18px;
     border-bottom: 1px solid var(--o06);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    flex-shrink: 0;
 }
 
-/* Collapsed header: stack logo above the toggle, both centered */
+/* Collapsed header: logo above the toggle, both centered */
 .sidebar.collapsed .sidebar-header {
     flex-direction: column;
     justify-content: center;
-    gap: 14px;
-    padding: 18px 0;
+    gap: 12px;
+    padding: 14px 0;
 }
 
 .logo-container {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     min-width: 0;
 }
 
 .logo-text {
-    font-size: 18px;
+    font-size: 20px;
     color: var(--text);
     white-space: nowrap;
-    flex-shrink: 0;
 }
 
 .sidebar-nav {
     flex: 1;
-    padding: 18px 14px;
+    min-height: 0;
+    padding: 16px 12px;
     display: flex;
     flex-direction: column;
+    gap: 14px;
     overflow-y: auto;
     overflow-x: hidden;
     /* Hide the scrollbar so it doesn't squeeze the centered icons when collapsed */
@@ -140,115 +243,126 @@ const handleNavigation = () => {
     display: none;
 }
 
-/* Collapsed: tighten side padding so icons sit dead-centre in the 76px rail */
 .sidebar.collapsed .sidebar-nav {
-    padding: 18px 8px;
+    padding: 16px 8px;
+}
+
+.nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 /* Typography comes from the shared .nav-section-heading (components.css) */
 .nav-section {
-    padding: 0 13px;
-    margin: 4px 0 12px;
-}
-
-/* Collapsed: section label becomes an invisible spacer, no divider line */
-.nav-section.collapsed {
-    height: 16px;
     margin: 0;
-    padding: 0;
+    padding: 0 12px 8px;
 }
 
-.nav-item {
-    position: relative;
+.rail-divider {
+    height: 1px;
+    margin: 0 8px 12px;
+    background: var(--o08);
+}
+
+.settings-toggle {
     display: flex;
     align-items: center;
-    gap: 13px;
-    padding: 11px 13px;
-    margin-bottom: 4px;
+    gap: 12px;
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
     color: var(--muted);
     font-family: var(--font-sans);
-    font-size: 14.5px;
+    font-size: 14px;
     font-weight: var(--font-weight-medium);
-    text-decoration: none;
-    border-radius: var(--radius-btn);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
     transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
-/* Collapsed: center the icon, drop the gap */
-.sidebar.collapsed .nav-item {
-    padding: 11px;
-    gap: 0;
+.settings-toggle.collapsed {
     justify-content: center;
+    padding: 0;
+    gap: 0;
 }
 
-.nav-item:hover:not(.active) {
+/* On a settings page with the rail, the gear stands in for the active link */
+.settings-toggle.collapsed.current {
+    background: var(--accent-bg-12);
+    color: var(--accent-ink);
+}
+
+.settings-toggle:hover {
     background: var(--o04);
     color: var(--text2);
 }
 
-.nav-item:focus-visible {
+.settings-toggle:focus-visible {
     outline: none;
     box-shadow: var(--ring-focus);
 }
 
-.nav-item.active {
-    background: var(--accent-bg-12);
-    color: var(--accent-ink);
-    font-weight: var(--font-weight-semibold);
-}
-
-/* Lime accent bar on the active item */
-.nav-bar {
-    position: absolute;
-    left: 0;
-    top: 9px;
-    bottom: 9px;
-    width: 3px;
-    border-radius: 3px;
-    background: var(--accent-solid);
-    opacity: 0;
-}
-
-.nav-item.active .nav-bar {
-    opacity: 1;
-}
-
-/* Hide the active bar when collapsed */
-.sidebar.collapsed .nav-item.active .nav-bar {
-    opacity: 0;
-}
-
 .nav-icon {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    color: inherit;
 }
 
 .nav-icon :deep(svg) {
-    width: 19px;
-    height: 19px;
     display: block;
 }
 
 .nav-label {
-    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* Small laptops (1025px - 1280px) */
-@media (max-width: 1280px) and (min-width: 1025px) {
-    .sidebar {
-        width: 248px;
-        position: relative;
-    }
+.chevron {
+    display: flex;
+    flex-shrink: 0;
+    transition: transform var(--transition-fast);
+}
 
-    .sidebar.collapsed {
-        width: 76px;
+.chevron.open {
+    transform: rotate(180deg);
+}
+
+.settings-items {
+    margin: 2px 0 0 21px;
+    padding-left: 12px;
+    border-left: 1px solid var(--o10);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-footer {
+    flex-shrink: 0;
+    padding: 12px;
+    border-top: 1px solid var(--o06);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sidebar.collapsed .sidebar-footer {
+    padding: 12px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar,
+    .chevron {
+        transition: none;
     }
 }
 
@@ -259,44 +373,28 @@ const handleNavigation = () => {
         left: 0;
         top: 0;
         bottom: 0;
-        z-index: 1000;
-        box-shadow: 8px 0 32px rgba(0,0,0,.4);
+        z-index: var(--z-drawer);
+        box-shadow: 8px 0 32px rgba(0, 0, 0, 0.4);
         transform: translateX(0);
     }
 
     .sidebar.collapsed {
         transform: translateX(-100%);
-        width: 252px;
+        width: var(--sidebar-width);
+        overflow: hidden;
         /* An off-canvas panel must not keep painting its shadow over the page.
            Sliding it out moves the box, not the shadow's reach: with an 8px
            offset and 32px blur, roughly 24px of it still lands on the page's
-           left edge, above the content at z-index 1000. On the dark theme that
-           is black on near-black and invisible, which is why it went unnoticed;
-           on the light theme it reads as a grey band down the side. */
+           left edge, above the content. On the dark theme that is black on
+           near-black and invisible; on the light theme it reads as a grey band
+           down the side. */
         box-shadow: none;
-    }
-
-    /* In overlay mode the panel is full-width — restore expanded layout */
-    .sidebar.collapsed .sidebar-header {
-        flex-direction: row;
-        justify-content: space-between;
-        padding: 22px 20px;
-    }
-
-    .sidebar.collapsed .nav-item {
-        padding: 11px 13px;
-        gap: 13px;
-        justify-content: flex-start;
     }
 }
 
 /* Mobile */
 @media (max-width: 768px) {
-    .sidebar {
-        width: 280px;
-        max-width: 85vw;
-    }
-
+    .sidebar,
     .sidebar.collapsed {
         width: 280px;
         max-width: 85vw;
@@ -305,22 +403,10 @@ const handleNavigation = () => {
 
 /* Very small mobile */
 @media (max-width: 480px) {
-    .sidebar {
-        width: 100%;
-        max-width: 100vw;
-    }
-
+    .sidebar,
     .sidebar.collapsed {
         width: 100%;
         max-width: 100vw;
-    }
-
-    .nav-item {
-        padding: var(--space-md) var(--space-lg);
-    }
-
-    .nav-section {
-        padding: var(--space-md) var(--space-lg) var(--space-xs);
     }
 }
 </style>

@@ -46,6 +46,7 @@
   --c-neutral: #8A93A3;
   --c-online: #8FEDE3;    /* online label text */
   --c-pro: #C5BDFF;       /* PRO badge text */
+  --on-danger: #0B0C10;   /* text on a --c-danger fill (white on #FF6B6B is 2.8:1) */
 
   /* Theme-aware tints (derived from base palette, auto-adjust per theme) */
   --accent-bg-06: color-mix(in srgb, var(--accent-ink) 6%, transparent);
@@ -87,7 +88,8 @@
   --muted: #9CA3B0;
   /* Small text on every surface (down to #1A1C23) must reach WCAG AA 4.5:1. */
   --muted2: #868D9C;
-  --faint: #7F8696;
+  /* Smallest labels (11-12px) on the darkest tints: #7F8696 fell just short of 4.5:1. */
+  --faint: #868D9C;
   --code: #D7DBE3;
 
   /* White-opacity tokens — borders, dividers, overlays */
@@ -323,6 +325,7 @@
   --c-neutral: #606773;
   --c-online: #097171;
   --c-pro: #6454BF;
+  --on-danger: #FFFFFF;
 
   /* Generate gradient — darker end stop for light */
   --grad-generate: linear-gradient(135deg, var(--c-purple), #5B49C9);

@@ -21,6 +21,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chats/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inbox Counts
+         * @description Open, waiting-for-a-human and assigned-to-me conversation counts for
+         *     the navigation badges, in the same scope as /recent.
+         */
+        get: operations["get_inbox_counts_api_v1_chats_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chats/recent": {
         parameters: {
             query?: never;
@@ -710,6 +731,27 @@ export interface paths {
         put?: never;
         /** Create Ticket */
         post: operations["create_ticket_api_v1_tickets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tickets/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ticket Counts
+         * @description Open tickets, for the navigation badge: one grouped count, where
+         *     /stats also works out SLA breaches, resolution rates and CSAT.
+         */
+        get: operations["ticket_counts_api_v1_tickets_counts_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7358,6 +7400,18 @@ export interface components {
              */
             preserve_urls: boolean;
         };
+        /**
+         * InboxCountsResponse
+         * @description Open conversations in the caller's inbox scope, for the navigation badges.
+         */
+        InboxCountsResponse: {
+            /** Open */
+            open: number;
+            /** Waiting For Human */
+            waiting_for_human: number;
+            /** Assigned To Me */
+            assigned_to_me: number;
+        };
         /** InstagramConnectRequest */
         InstagramConnectRequest: {
             /** Ig Id */
@@ -9242,6 +9296,14 @@ export interface components {
              */
             is_internal: boolean;
         };
+        /**
+         * TicketCounts
+         * @description Open tickets for the navigation badge.
+         */
+        TicketCounts: {
+            /** Open */
+            open: number;
+        };
         /** TicketCreate */
         TicketCreate: {
             /** Title */
@@ -10382,6 +10444,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_inbox_counts_api_v1_chats_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxCountsResponse"];
                 };
             };
         };
@@ -11586,6 +11668,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TicketDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ticket_counts_api_v1_tickets_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCounts"];
                 };
             };
             /** @description Validation Error */

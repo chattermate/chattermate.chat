@@ -24,8 +24,11 @@ test.describe('as a human agent', () => {
     await page.goto('/people')
     const sidebar = new Sidebar(page)
     await expect(sidebar.link('Inbox')).toBeVisible()
-    for (const adminArea of ['AI Agents', 'Human Agents', 'Knowledge', 'AI Configuration', 'Organization']) {
+    for (const adminArea of ['AI Agents', 'Human Agents', 'Knowledge']) {
       await expect(sidebar.link(adminArea)).toBeHidden()
     }
+    // No organization settings at all, so no Settings group to open
+    // (their own User Settings lives in the account menu)
+    await expect(sidebar.settingsToggle).toBeHidden()
   })
 })

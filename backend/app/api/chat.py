@@ -15,10 +15,11 @@ limitations under the License.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
-from app.models.schemas.chat import ChatOverviewResponse, ChatDetailResponse
+from app.models.schemas.chat import ChatOverviewResponse, ChatDetailResponse, InboxCountsResponse
 from app.core.auth import get_current_user, require_permissions, get_unified_chat_auth
 from app.services.shopify_session import require_shopify_or_jwt_auth
 from app.models.user import User
@@ -57,6 +58,45 @@ def _checked_status_filter(value: Optional[str]) -> Optional[str]:
     return value
 
 
+def _inbox_scope(auth_info: dict) -> dict:
+    """The visibility arguments for a caller's inbox, shared by the list and
+    its counts so the two always cover the same conversations.
+
+    A Shopify session (no user permissions) and view_all_chats see the whole
+    organization. Everyone else sees their own sessions and their groups'
+    queue (view_assigned_chats) and/or the unclaimed AI queue
+    (view_unassigned_chats).
+    """
+    if auth_info['auth_type'] in ('shopify_session', 'shopify') or auth_info.get('can_view_all', False):
+        return {}
+    current_user = auth_info['current_user']
+    can_view_assigned = auth_info.get('can_view_assigned', False)
+    return {
+        'user_id': current_user.id if can_view_assigned else None,
+        'user_groups': [str(group.id) for group in current_user.groups] if can_view_assigned else None,
+        'include_unassigned': auth_info.get('can_view_unassigned', False),
+    }
+
+
+@router.get("/counts", response_model=InboxCountsResponse)
+async def get_inbox_counts(
+    auth_info: dict = Depends(get_unified_chat_auth),
+    db: Session = Depends(get_db)
+):
+    """Open, waiting-for-a-human and assigned-to-me conversation counts for
+    the navigation badges, in the same scope as /recent."""
+    try:
+        return await run_in_threadpool(
+            ChatRepository(db).get_inbox_counts,
+            organization_id=auth_info['organization_id'],
+            current_user_id=auth_info.get('user_id'),
+            **_inbox_scope(auth_info),
+        )
+    except Exception as e:
+        logger.error(f"Error counting inbox conversations: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to count conversations")
+
+
 @router.get("/recent/shopify", response_model=List[ChatOverviewResponse])
 @router.get("/recent", response_model=List[ChatOverviewResponse])
 async def get_recent_chats(
@@ -75,66 +115,18 @@ async def get_recent_chats(
     """Get recent chats - supports both JWT and Shopify session token auth"""
     status = _checked_status_filter(status)
     try:
-        chat_repo = ChatRepository(db)
-        organization_id = auth_info['organization_id']
-        
-        # For Shopify session token auth, we don't have user permissions, so show all chats for the organization
-        if auth_info['auth_type'] == 'shopify_session' or auth_info['auth_type'] == 'shopify':
-            return chat_repo.get_recent_chats(
-                skip=skip,
-                limit=limit,
-                agent_id=agent_id,
-                status=status,
-                organization_id=organization_id,
-                user_name=user_name,
-                filter_user_id=user_id,
-                customer_email=customer_email,
-                date_from=date_from,
-                date_to=date_to
-            )
-        
-        # For JWT auth, use permissions from auth_info
-        current_user = auth_info['current_user']
-        can_view_all = auth_info.get('can_view_all', False)
-        can_view_assigned = auth_info.get('can_view_assigned', False)
-        can_view_unassigned = auth_info.get('can_view_unassigned', False)
-
-        # Get user's group IDs
-        user_group_ids = [str(group.id) for group in current_user.groups]
-        logger.debug(f"User groups: {user_group_ids}")
-        logger.debug(f"current_user.user_id: {current_user.id}")
-
-        # Scoped inbox: own sessions + group queue (view_assigned_chats) and/or
-        # the unclaimed AI queue (view_unassigned_chats)
-        if not can_view_all:
-            return chat_repo.get_recent_chats(
-                skip=skip,
-                limit=limit,
-                agent_id=agent_id,
-                status=status,
-                user_id=current_user.id if can_view_assigned else None,
-                user_groups=user_group_ids if can_view_assigned else None,
-                include_unassigned=can_view_unassigned,
-                organization_id=organization_id,
-                user_name=user_name,
-                filter_user_id=user_id,  # New parameter for filtering by specific user
-                customer_email=customer_email,
-                date_from=date_from,
-                date_to=date_to
-            )
-
-        # For users with view_all_chats permission
-        return chat_repo.get_recent_chats(
+        return ChatRepository(db).get_recent_chats(
             skip=skip,
             limit=limit,
             agent_id=agent_id,
             status=status,
-            organization_id=organization_id,
+            organization_id=auth_info['organization_id'],
             user_name=user_name,
-            filter_user_id=user_id,  # New parameter for filtering by specific user
+            filter_user_id=user_id,
             customer_email=customer_email,
             date_from=date_from,
-            date_to=date_to
+            date_to=date_to,
+            **_inbox_scope(auth_info),
         )
     except ValueError as e:
         logger.error(f"Invalid UUID format: {str(e)}")

@@ -20,9 +20,12 @@ import { permissionChecks } from '@/utils/permissions'
 // appear for a page the guard will refuse (People used to do exactly that).
 import { canAccessPath } from '@/router/routePermissions'
 import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
+import { pageTitle, type PagePath } from '@/router/pageTitles'
 
 // Re-exported so nav consumers keep a single import site
 export { NAV_ICONS, navIconSvg } from './navIcons'
+// Shared badge text (bottom nav, More sheet, sidebar, header bell)
+export { formatBadgeCount } from '@/utils/badgeCount'
 
 export interface NavItem {
   to?: string
@@ -30,6 +33,8 @@ export interface NavItem {
   label?: string
   section?: string
   show?: boolean
+  /** 'account': a personal page, listed in the account menu, not the sidebar. */
+  placement?: 'nav' | 'account'
 }
 
 export interface NavGroup {
@@ -37,12 +42,28 @@ export interface NavGroup {
   items: NavItem[]
 }
 
-// Shared unread-badge cap (bottom nav, More sheet, header bell)
-export const formatBadgeCount = (count?: number) =>
-  count && count > 99 ? '99+' : String(count || '')
+/** Sidebar section names; also the first crumb of the header breadcrumb. */
+export const NAV_SECTIONS = {
+  workspace: 'Workspace',
+  settings: 'Settings',
+  account: 'Account',
+} as const
 
 // Bottom-nav primary slots, in display order (remaining links go to the More sheet)
 export const PRIMARY_NAV_PATHS = ['/conversations', '/people', '/ai-agents', '/analytics']
+
+/** A nav link whose label is the page's own title, so the two never drift. */
+const link = (to: PagePath, icon: string, show: boolean, placement: NavItem['placement'] = 'nav'): NavItem => ({
+  to,
+  icon,
+  label: pageTitle(to),
+  show,
+  placement,
+})
+
+/** Does a nav link cover this path? Its own page, or a page beneath it (/tickets/:id). */
+export const navItemCovers = (item: NavItem, path: string): boolean =>
+  !!item.to && (path === item.to || path.startsWith(`${item.to}/`))
 
 export function useNavItems() {
   const { hasEnterpriseModule } = useEnterpriseFeatures()
@@ -54,115 +75,30 @@ export function useNavItems() {
   const navGroups = computed<NavGroup[]>(() =>
     [
       {
-        section: 'Main Menu',
+        section: NAV_SECTIONS.workspace,
         items: [
-          {
-            to: '/ai-agents',
-            icon: 'agents',
-            label: 'AI Agents',
-            show: canAccessPath('/ai-agents'),
-          },
-          {
-            to: '/human-agents',
-            icon: 'humans',
-            label: 'Human Agents',
-            show: canAccessPath('/human-agents'),
-          },
-          {
-            to: '/conversations',
-            icon: 'inbox',
-            label: 'Inbox',
-            show: canAccessPath('/conversations'),
-          },
-          {
-            to: '/tickets',
-            icon: 'tickets',
-            label: 'Tickets',
-            show: canAccessPath('/tickets'),
-          },
-          {
-            to: '/people',
-            icon: 'people',
-            label: 'People',
-            show: canAccessPath('/people'),
-          },
-          {
-            to: '/knowledge',
-            icon: 'knowledge',
-            label: 'Knowledge',
-            show: canAccessPath('/knowledge'),
-          },
-          {
-            to: '/faq',
-            icon: 'faq',
-            label: 'Help center',
-            show: canAccessPath('/faq'),
-          },
-          {
-            to: '/analytics',
-            icon: 'analytics',
-            label: 'Analytics',
-            show: canAccessPath('/analytics'),
-          },
+          link('/ai-agents', 'agents', canAccessPath('/ai-agents')),
+          link('/human-agents', 'humans', canAccessPath('/human-agents')),
+          link('/conversations', 'inbox', canAccessPath('/conversations')),
+          link('/tickets', 'tickets', canAccessPath('/tickets')),
+          link('/people', 'people', canAccessPath('/people')),
+          link('/knowledge', 'knowledge', canAccessPath('/knowledge')),
+          link('/faq', 'helpcenter', canAccessPath('/faq')),
+          link('/analytics', 'analytics', canAccessPath('/analytics')),
         ],
       },
       {
-        section: 'Settings',
+        section: NAV_SECTIONS.settings,
         items: [
-          {
-            to: '/settings/organization',
-            icon: 'org',
-            label: 'Organization',
-            show: canAccessPath('/settings/organization'),
-          },
-          {
-            to: '/settings/subscription',
-            icon: 'subscription',
-            label: 'Subscription',
-            show: hasEnterpriseModule && permissionChecks.canViewSubscription(),
-          },
-          {
-            to: '/settings/ticketing',
-            icon: 'ticketing',
-            label: 'Ticketing',
-            show: canAccessPath('/settings/ticketing'),
-          },
-          {
-            to: '/settings/integrations',
-            icon: 'integrations',
-            label: 'Integrations',
-            show: canAccessPath('/settings/integrations'),
-          },
-          {
-            to: '/settings/app-integrations',
-            icon: 'integrations',
-            label: 'App Integrations',
-            show: hasEnterpriseModule && canAccessPath('/settings/app-integrations'),
-          },
-          {
-            to: '/settings/widget-apps',
-            icon: 'widgets',
-            label: 'Widget Apps',
-            show: canAccessPath('/settings/widget-apps'),
-          },
-          {
-            to: '/settings/ai-config',
-            icon: 'aiconfig',
-            label: 'AI Configuration',
-            show: canAccessPath('/settings/ai-config'),
-          },
-          {
-            to: '/settings/user',
-            icon: 'usersettings',
-            label: 'User Settings',
-            show: true,
-          },
-          {
-            to: '/settings/access-tokens',
-            icon: 'key',
-            label: 'CLI & API tokens',
-            show: hasEnterpriseModule,
-          },
+          link('/settings/organization', 'org', canAccessPath('/settings/organization')),
+          link('/settings/subscription', 'subscription', hasEnterpriseModule && permissionChecks.canViewSubscription()),
+          link('/settings/ticketing', 'ticketing', canAccessPath('/settings/ticketing')),
+          link('/settings/integrations', 'integrations', canAccessPath('/settings/integrations')),
+          link('/settings/app-integrations', 'integrations', hasEnterpriseModule && canAccessPath('/settings/app-integrations')),
+          link('/settings/widget-apps', 'widgets', canAccessPath('/settings/widget-apps')),
+          link('/settings/ai-config', 'aiconfig', canAccessPath('/settings/ai-config')),
+          link('/settings/user', 'usersettings', true, 'account'),
+          link('/settings/access-tokens', 'key', hasEnterpriseModule, 'account'),
         ],
       },
     ]
@@ -176,6 +112,24 @@ export function useNavItems() {
   const navItems = computed<NavItem[]>(() =>
     navGroups.value.flatMap((group) => [{ section: group.section }, ...group.items]),
   )
+
+  // The desktop sidebar's groups: personal pages live in the account menu instead
+  const sidebarGroups = computed<NavGroup[]>(() =>
+    navGroups.value
+      .map((group) => ({ ...group, items: group.items.filter((item) => item.placement !== 'account') }))
+      .filter((group) => group.items.length > 0),
+  )
+
+  // Personal pages for the sidebar's account menu
+  const accountItems = computed<NavItem[]>(() =>
+    navGroups.value.flatMap((group) => group.items.filter((item) => item.placement === 'account')),
+  )
+
+  // The breadcrumb's first crumb: the section whose link covers this path
+  const sectionFor = (path: string): string | undefined => {
+    if (accountItems.value.some((item) => navItemCovers(item, path))) return NAV_SECTIONS.account
+    return navGroups.value.find((group) => group.items.some((item) => navItemCovers(item, path)))?.section
+  }
 
   // Bottom-nav slots in design order
   const primaryNavItems = computed<NavItem[]>(() =>
@@ -199,5 +153,14 @@ export function useNavItems() {
     moreNavGroups.value.flatMap((group) => group.items),
   )
 
-  return { navGroups, navItems, primaryNavItems, moreNavItems, moreNavGroups }
+  return {
+    navGroups,
+    navItems,
+    sidebarGroups,
+    accountItems,
+    sectionFor,
+    primaryNavItems,
+    moreNavItems,
+    moreNavGroups,
+  }
 }

@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
+from fastapi.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,7 @@ from app.database import get_db
 from app.models.investigation import InvestigationRunType, InvestigationTrigger
 from app.models.schemas.pagination import Pagination
 from app.models.schemas.ticket import (
+    TicketCounts,
     HypothesisOut,
     InvestigateRequest,
     InvestigationDetailResponse,
@@ -182,6 +184,20 @@ async def list_tickets(
     return TicketListResponse(
         tickets=items, pagination=Pagination.build(total, page, page_size)
     )
+
+
+@router.get("/counts", response_model=TicketCounts)
+async def ticket_counts(
+    current_user: User = Depends(view_tickets),
+    db: Session = Depends(get_db),
+):
+    """Open tickets, for the navigation badge: one grouped count, where
+    /stats also works out SLA breaches, resolution rates and CSAT."""
+    def count() -> TicketCounts:
+        check_ticketing_access(db, current_user.organization_id)
+        return TicketCounts(open=_service(db).open_count(current_user.organization_id))
+
+    return await run_in_threadpool(count)
 
 
 @router.get("/stats", response_model=TicketStats)

@@ -20,17 +20,17 @@ from app.models.channels import ChannelConversation
 from app.models.chat_history import ChatHistory
 from app.models.customer import Customer
 from uuid import UUID
-from sqlalchemy import func, or_, select, text, and_
+from sqlalchemy import func, or_, select, text, and_, false
 from sqlalchemy.sql import case
 from app.models.agent import Agent
-from app.models.session_to_agent import SessionToAgent
+from app.models.session_to_agent import SessionStatus, SessionToAgent
 from app.repositories.channels import ChannelConversationRepository
 from app.core.logger import get_logger
 from app.channels.constants import UNMETERED_SOURCES, is_widget_channel
 from app.channels.sent_choices import SENT_CHOICES_ATTRIBUTE, decode_sent_choices
 from app.models.user import User
 from app.repositories.customer import CustomerRepository
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import aliased, joinedload
 from sqlalchemy.orm.attributes import set_committed_value
 from datetime import datetime
 from pydantic import BaseModel
@@ -405,6 +405,102 @@ class ChatRepository:
             ChatHistory.user_id == user_id
         ).order_by(ChatHistory.created_at.desc()).all()
 
+    @staticmethod
+    def _visibility_clause(
+        user_id: Optional[UUID],
+        user_groups: Optional[List[UUID]],
+        include_unassigned: bool,
+    ):
+        """What a scoped user may see, or None when nothing is scoped.
+
+        Their own sessions, their groups' queue and, with view_unassigned_chats,
+        the unclaimed AI queue. Callers who may see everything pass none of
+        these. The inbox list and its counts both use it, so a badge can never
+        count a chat the list would hide.
+        """
+        visibility = []
+        if user_id:
+            visibility.append(SessionToAgent.user_id == user_id)
+        if user_groups:
+            visibility.append(SessionToAgent.group_id.in_(user_groups))
+        if include_unassigned:
+            # Nobody has taken it yet — the AI is still handling it. group_id
+            # is irrelevant: a chat transferred to another group is still
+            # claimable, and it is exactly what "unassigned" means.
+            visibility.append(SessionToAgent.user_id.is_(None))
+        return or_(*visibility) if visibility else None
+
+    def get_inbox_counts(
+        self,
+        organization_id: str | UUID,
+        current_user_id: Optional[str | UUID] = None,
+        user_id: Optional[str | UUID] = None,
+        user_groups: Optional[List[str]] = None,
+        include_unassigned: bool = False,
+    ) -> Dict[str, int]:
+        """Open conversations for the navigation badges, in the caller's scope.
+
+        - open: every conversation not closed
+        - waiting_for_human: open, nobody holds it, and no AI reply is coming
+          (handed over, queued for a group, or the agent never answers with AI).
+          Mirrors chatHandler() in the frontend's utils/chatState.ts.
+        - assigned_to_me: open and held by the caller
+
+        Only sessions the list can show count: at least one message whose
+        agent and customer still exist (the list joins both). The widget opens
+        a session on page load, long before anyone writes, and a deleted
+        agent's chats drop out of the list; counting either would leave a
+        badge nobody can clear.
+        """
+        organization_id = UUID(str(organization_id))
+        current_user_id = UUID(str(current_user_id)) if current_user_id else None
+        user_id = UUID(str(user_id)) if user_id else None
+        user_groups = [UUID(str(g)) for g in user_groups] if user_groups else None
+
+        waiting = and_(
+            SessionToAgent.user_id.is_(None),
+            or_(
+                SessionToAgent.status == SessionStatus.TRANSFERRED,
+                SessionToAgent.group_id.isnot(None),
+                Agent.ai_replies_enabled.is_(False),
+            ),
+        )
+        mine = SessionToAgent.user_id == current_user_id if current_user_id else false()
+        # Its own Agent alias: the outer query's Agent would otherwise be
+        # correlated into the subquery
+        message_agent = aliased(Agent)
+        has_listed_messages = (
+            select(ChatHistory.id)
+            .join(message_agent, ChatHistory.agent_id == message_agent.id)
+            .join(Customer, ChatHistory.customer_id == Customer.id)
+            .where(ChatHistory.session_id == SessionToAgent.session_id)
+            .exists()
+        )
+
+        query = (
+            self.db.query(
+                func.count(SessionToAgent.session_id).label('open'),
+                func.count(SessionToAgent.session_id).filter(waiting).label('waiting_for_human'),
+                func.count(SessionToAgent.session_id).filter(mine).label('assigned_to_me'),
+            )
+            .outerjoin(Agent, SessionToAgent.agent_id == Agent.id)
+            .filter(
+                SessionToAgent.organization_id == organization_id,
+                SessionToAgent.status != SessionStatus.CLOSED,
+                has_listed_messages,
+            )
+        )
+        visibility = self._visibility_clause(user_id, user_groups, include_unassigned)
+        if visibility is not None:
+            query = query.filter(visibility)
+
+        row = query.one()
+        return {
+            'open': row.open,
+            'waiting_for_human': row.waiting_for_human,
+            'assigned_to_me': row.assigned_to_me,
+        }
+
     def get_recent_chats(
         self,
         skip: int = 0,
@@ -498,22 +594,9 @@ class ChatRepository:
         if date_to:
             query = query.filter(ChatHistory.created_at <= date_to)
         
-        # Scope to what this user may see: their own sessions, their groups'
-        # queue, and — with view_unassigned_chats — the unclaimed AI queue.
-        # Callers who may see everything pass none of these.
-        visibility = []
-        if user_id:
-            visibility.append(SessionToAgent.user_id == user_id)
-        if user_groups:
-            visibility.append(SessionToAgent.group_id.in_(user_groups))
-        if include_unassigned:
-            # Nobody has taken it yet — the AI is still handling it. group_id
-            # is irrelevant: a chat transferred to another group is still
-            # claimable, and it is exactly what "unassigned" means.
-            visibility.append(SessionToAgent.user_id.is_(None))
-
-        if visibility:
-            query = query.filter(or_(*visibility))
+        visibility = self._visibility_clause(user_id, user_groups, include_unassigned)
+        if visibility is not None:
+            query = query.filter(visibility)
 
         # Group by and order
         query = query.group_by(

@@ -11,6 +11,9 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Setup and auth | Admin signs in | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Wrong password shows an error | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign out | `specs/auth/login.spec.ts` | P1 | ✅ |
+| Dashboard shell | Each page names itself in the tab and the header breadcrumb; app icons are cache-busted | `specs/shell/shell.spec.ts` | P2 | ✅ |
+| Dashboard shell | Settings fold into a group that opens on its own pages and remembers its state; the inbox rail keeps named icons | `specs/shell/shell.spec.ts` | P2 | ✅ |
+| Dashboard shell | Theme switch, online/offline from the header and the account menu, Inbox badge after a handover | `specs/shell/shell.spec.ts` | P2 | ✅ |
 | Setup and auth | Agent role is denied AI settings | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign-out, deactivation and a password change end sessions server-side; a refresh token is not an access token | `specs/auth/sessions.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |

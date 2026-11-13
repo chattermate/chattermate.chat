@@ -31,7 +31,8 @@ vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({ hasEnterpriseModule: false }),
 }))
 
-import { useNavItems, PRIMARY_NAV_PATHS } from '@/components/layout/navItems'
+import { useNavItems, navItemCovers, PRIMARY_NAV_PATHS } from '@/components/layout/navItems'
+import { PAGE_TITLES } from '@/router/pageTitles'
 import { userWithPermissions, HUMAN_AGENT_PERMISSIONS } from '../../fixtures/permissions'
 
 const ALL_PERMISSIONS = [
@@ -145,15 +146,15 @@ describe('useNavItems', () => {
 
   it('keeps the sidebar section headings in the More sheet', () => {
     const { moreNavGroups } = useNavItems()
-    expect(moreNavGroups.value.map((g) => g.section)).toEqual(['Main Menu', 'Settings'])
+    expect(moreNavGroups.value.map((g) => g.section)).toEqual(['Workspace', 'Settings'])
     // No empty groups — a section fully covered by the bottom nav is dropped
     moreNavGroups.value.forEach((g) => expect(g.items.length).toBeGreaterThan(0))
   })
 
   // User Settings is always visible while the Settings heading used to be
-  // permission-gated separately, which orphaned the item into Main Menu.
+  // permission-gated separately, which orphaned the item into Workspace.
   it('keeps always-visible settings items under Settings for restricted users', () => {
-    // Knowledge, so Main Menu still has a non-primary item to group; no
+    // Knowledge, so Workspace still has a non-primary item to group; no
     // settings grants, so Settings holds only the always-visible entry.
     asUser(['manage_knowledge'])
 
@@ -161,7 +162,7 @@ describe('useNavItems', () => {
     const settings = moreNavGroups.value.find((g) => g.section === 'Settings')
 
     expect(settings?.items.map((i) => i.to)).toEqual(['/settings/user'])
-    expect(moreNavGroups.value.find((g) => g.section === 'Main Menu')?.items.map((i) => i.to))
+    expect(moreNavGroups.value.find((g) => g.section === 'Workspace')?.items.map((i) => i.to))
       .not.toContain('/settings/user')
   })
 
@@ -170,8 +171,52 @@ describe('useNavItems', () => {
 
     const { moreNavGroups, navItems } = useNavItems()
 
-    // Only User Settings survives, so Main Menu disappears entirely
+    // Only User Settings survives, so Workspace disappears entirely
     expect(moreNavGroups.value.map((g) => g.section)).toEqual(['Settings'])
     expect(navItems.value.filter((i) => i.section).map((i) => i.section)).toEqual(['Settings'])
+  })
+
+  // The desktop sidebar moves personal pages into its account menu; the More
+  // sheet keeps them, so phones lose nothing.
+  it('puts personal pages in the account menu instead of the sidebar', () => {
+    const { sidebarGroups, accountItems, moreNavItems } = useNavItems()
+
+    const sidebarPaths = sidebarGroups.value.flatMap((g) => g.items.map((i) => i.to))
+    expect(sidebarPaths).not.toContain('/settings/user')
+    expect(accountItems.value.map((i) => i.to)).toEqual(['/settings/user'])
+    expect(moreNavItems.value.map((i) => i.to)).toContain('/settings/user')
+  })
+
+  it('drops the Settings group from the sidebar when only personal pages are left', () => {
+    asUser(['manage_knowledge'])
+
+    const { sidebarGroups, accountItems } = useNavItems()
+
+    expect(sidebarGroups.value.map((g) => g.section)).toEqual(['Workspace'])
+    expect(accountItems.value.map((i) => i.to)).toEqual(['/settings/user'])
+  })
+
+  it('labels every link with its page title', () => {
+    const { navGroups } = useNavItems()
+    navGroups.value.flatMap((g) => g.items).forEach((item) => {
+      expect(item.label).toBe(PAGE_TITLES[item.to as keyof typeof PAGE_TITLES])
+    })
+  })
+
+  it('names the section a page belongs to, for the breadcrumb', () => {
+    const { sectionFor } = useNavItems()
+
+    expect(sectionFor('/analytics')).toBe('Workspace')
+    expect(sectionFor('/tickets/123')).toBe('Workspace')
+    expect(sectionFor('/settings/organization')).toBe('Settings')
+    expect(sectionFor('/settings/user')).toBe('Account')
+    expect(sectionFor('/nowhere')).toBeUndefined()
+  })
+
+  it('treats a page beneath a link as covered by it, but not a lookalike path', () => {
+    expect(navItemCovers({ to: '/tickets' }, '/tickets')).toBe(true)
+    expect(navItemCovers({ to: '/tickets' }, '/tickets/42')).toBe(true)
+    expect(navItemCovers({ to: '/tickets' }, '/ticketsx')).toBe(false)
+    expect(navItemCovers({}, '/tickets')).toBe(false)
   })
 })

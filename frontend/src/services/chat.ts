@@ -15,8 +15,9 @@ limitations under the License.
 */
 
 import api from './api'
-import type { Conversation, ChatDetail } from '@/types/chat'
+import type { Conversation, ChatDetail, InboxCounts } from '@/types/chat'
 import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
+import emitter from '@/utils/emitter'
 
 interface ChatParams {
   skip?: number
@@ -38,6 +39,12 @@ export const chatService = {
     return response.data as Conversation[]
   },
 
+  /** Open, waiting-for-a-human and assigned-to-me counts for the nav badges. */
+  async getInboxCounts(): Promise<InboxCounts> {
+    const response = await api.get<InboxCounts>('/chats/counts')
+    return response.data
+  },
+
   async getChatDetail(sessionId: string) {
     const embedded = isEmbeddedShopify()
     
@@ -48,17 +55,20 @@ export const chatService = {
 
   async takeoverChat(sessionId: string): Promise<void> {
     const response = await api.post(`/sessions/${sessionId}/takeover`)
+    emitter.emit('inbox-changed')
     return response.data
   },
 
   /** Stop the AI on this chat and queue it for the team, without claiming it. */
   async routeToHuman(sessionId: string): Promise<ChatDetail> {
     const response = await api.post(`/sessions/${sessionId}/route-to-human`)
+    emitter.emit('inbox-changed')
     return response.data as ChatDetail
   },
 
   async reassignChat(sessionId: string, toUserId: string) {
     const response = await api.post(`/sessions/${sessionId}/reassign`, null, { params: { to_user_id: toUserId } })
+    emitter.emit('inbox-changed')
     return response.data as ChatDetail
   }
 } 

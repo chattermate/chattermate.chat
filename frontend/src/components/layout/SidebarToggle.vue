@@ -15,6 +15,8 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
+import { navIconSvg } from './navIcons'
+
 defineProps<{
     isCollapsed: boolean
 }>()
@@ -25,19 +27,25 @@ defineEmits<{
 </script>
 
 <template>
-    <button class="toggle-btn" @click="$emit('toggle')">
-        <span class="toggle-icon">{{ isCollapsed ? '▶' : '◀' }}</span>
-    </button>
+    <button
+        type="button"
+        class="toggle-btn"
+        :aria-label="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        :aria-expanded="!isCollapsed"
+        @click="$emit('toggle')"
+        v-html="navIconSvg('panelLeft', 16)"
+    ></button>
 </template>
 
 <style scoped>
 .toggle-btn {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     flex-shrink: 0;
-    background: var(--o05);
-    border: 1px solid var(--o10);
-    border-radius: 7px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--o08);
+    border-radius: var(--radius-md);
     color: var(--muted);
     cursor: pointer;
     display: flex;
@@ -57,8 +65,7 @@ defineEmits<{
     box-shadow: var(--ring-focus);
 }
 
-.toggle-icon {
-    font-size: 12px;
-    line-height: 1;
+.toggle-btn :deep(svg) {
+    display: block;
 }
 </style>

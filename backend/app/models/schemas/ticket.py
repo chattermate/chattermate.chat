@@ -324,6 +324,11 @@ class TicketDetailResponse(BaseModel):
     can_notify_customer: bool = False
 
 
+class TicketCounts(BaseModel):
+    """Open tickets for the navigation badge."""
+    open: int
+
+
 class TicketStats(BaseModel):
     open: int
     awaiting_approval: int

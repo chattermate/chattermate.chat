@@ -311,6 +311,11 @@ export interface TicketListResponse {
   pagination: Pagination
 }
 
+/** Open tickets for the navigation badge (GET /tickets/counts). */
+export interface TicketCounts {
+  open: number
+}
+
 export interface TicketStats {
   open: number
   awaiting_approval: number

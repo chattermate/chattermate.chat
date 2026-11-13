@@ -192,6 +192,14 @@ class ChatOverviewResponse(BaseModel):
     user_name: Optional[str] = None
     session_id: UUID
 
+
+class InboxCountsResponse(BaseModel):
+    """Open conversations in the caller's inbox scope, for the navigation badges."""
+    open: int
+    waiting_for_human: int
+    assigned_to_me: int
+
+
 class ChatDetailResponse(BaseModel):
     customer: CustomerInfo
     agent: AgentInfo
