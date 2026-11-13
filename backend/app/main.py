@@ -70,6 +70,7 @@ from app.api import session_to_agent
 from app.api import agent_logo
 from app.workers.chat_auto_closer import run_auto_closer_loop
 from app.workers.journey_data_purge import run_purge_loop
+from app.workers.conversation_titler import run_titler_loop
 from app.workers.shopify_token_keepalive import run_keepalive_loop
 
 logger = get_logger(__name__)
@@ -128,6 +129,8 @@ async def startup_event(api: FastAPI):
     api.state.journey_purge_task = asyncio.create_task(run_purge_loop())
     # Shopify refresh tokens lapse after 90 days unused: renewed before then.
     api.state.shopify_token_keepalive_task = asyncio.create_task(run_keepalive_loop())
+    # Closed widget chats get a short title for the visitor's history.
+    api.state.conversation_titler_task = asyncio.create_task(run_titler_loop())
 
 # Include routers
 app.include_router(
