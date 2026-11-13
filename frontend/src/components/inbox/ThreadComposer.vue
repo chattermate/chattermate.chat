@@ -94,8 +94,9 @@ async function pick(person: Mentionable) {
   el.setSelectionRange(start + insert.length, start + insert.length)
 }
 
-// Sent (the parent cleared the box): forget the mentions picked for it
-watch(message, (text) => { if (!text) picked.value = [] })
+// The note was sent (the parent cleared it): forget the mentions picked for it.
+// An empty box in Reply mode is the other draft, not a sent note.
+watch(message, (text) => { if (!text && isNote.value) picked.value = [] })
 watch(mode, () => { mention.value = null })
 
 function submit() {

@@ -23,6 +23,7 @@ from sqlalchemy import String, and_, cast, false, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.agent import Agent
+from app.models.chat_history import ChatHistory
 from app.models.conversation_note import ConversationNote, ConversationNoteMention
 from app.models.customer import Customer
 from app.models.session_to_agent import SessionStatus, SessionToAgent
@@ -103,14 +104,20 @@ def ai_handling() -> ColumnElement:
 
 
 def resolved_by_ai(since: datetime) -> ColumnElement:
-    """Closed since `since` with no person ever involved: never handed over
-    and never held. Sessions closed before closed_at existed have none and
-    never match."""
+    """Closed since `since` with no person ever involved: never handed over,
+    not held at the end, and no teammate ever wrote to the customer (a chat
+    taken over, answered, then handed back is the team's work, not the AI's).
+    Sessions closed before closed_at existed have none and never match."""
+    team_replied = select(ChatHistory.id).where(
+        ChatHistory.session_id == SessionToAgent.session_id,
+        ChatHistory.message_type == 'agent',
+    ).correlate(SessionToAgent).exists()  # the list query also reads chat_history
     return and_(
         SessionToAgent.status == SessionStatus.CLOSED,
         SessionToAgent.closed_at >= since,
         SessionToAgent.user_id.is_(None),
         SessionToAgent.handed_over_at.is_(None),
+        ~team_replied,
     )
 
 

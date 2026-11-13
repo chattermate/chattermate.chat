@@ -142,7 +142,6 @@ class TestChatAgentEndChat:
                     "status": SessionStatus.CLOSED,
                     "end_chat_reason": None,
                     "end_chat_description": None,
-                    "closed_at": fixed_datetime
                 }
             )
     

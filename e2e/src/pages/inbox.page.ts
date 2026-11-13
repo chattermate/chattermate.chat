@@ -126,6 +126,16 @@ export class InboxPage {
     return this.page.getByRole('note').filter({ hasText: text })
   }
 
+  /** What the thread's More actions menu offers (opens it, reads it, closes it) */
+  async moreActions(): Promise<string[]> {
+    await this.page.getByRole('button', { name: 'More actions' }).click()
+    const items = this.page.getByRole('menuitem')
+    await expect(items.first()).toBeVisible()
+    const labels = (await items.allInnerTexts()).map((label) => label.trim())
+    await this.page.keyboard.press('Escape')
+    return labels
+  }
+
   async snooze(choice: '1 hour' | '3 hours' | 'tomorrow 9:00' | 'next Monday 9:00'): Promise<void> {
     await step(`Agent snoozes the chat for ${choice}`, async () => {
       await this.page.getByRole('button', { name: 'More actions' }).click()

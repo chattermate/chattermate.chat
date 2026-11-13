@@ -42,6 +42,9 @@ def _is_invalid(name: str) -> bool:
 
 
 def upgrade() -> None:
+    # session_to_agents is written on every message: give up rather than queue them
+    # all behind this ALTER if a long transaction holds the table (re-run the deploy)
+    op.execute("SET LOCAL lock_timeout = '5s'")
     op.add_column(TABLE, sa.Column('handed_over_at', sa.DateTime(timezone=True), nullable=True))
     op.add_column(TABLE, sa.Column('closed_at', sa.DateTime(timezone=True), nullable=True))
     with op.get_context().autocommit_block():

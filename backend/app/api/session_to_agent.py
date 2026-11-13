@@ -27,6 +27,7 @@ from app.models.user import User
 from app.models.session_to_agent import SessionStatus
 from app.core.auth import CHAT_MANAGE_PERMISSIONS, get_current_user, has_any_permission
 from app.database import get_db
+from app.services.chat_access import can_see_session, may_change_hands
 from app.services.chat_notifications import notify_chat_assigned
 from app.services.human_routing import notify_customer, route_session_to_human
 from app.models.schemas.chat import ChatDetailResponse, TransferReasonType
@@ -83,26 +84,18 @@ async def _load_manageable_session(db: Session, session_id: str, current_user: U
 
     # Acting is limited to what the caller may actually see, so widening the
     # inbox to the unclaimed queue can't be used to reach past it.
-    user_permissions = {p.name for p in current_user.role.permissions}
-    is_super_admin = "super_admin" in user_permissions
-    # manage_all_chats implies seeing them all — a role that may manage every
-    # chat should not need a separate view grant to act on one.
-    can_view_all = is_super_admin or bool(
-        {"view_all_chats", "manage_all_chats"} & user_permissions
-    )
-
-    if not can_view_all:
-        can_view_assigned = is_super_admin or "view_assigned_chats" in user_permissions
-        has_access = await ChatRepository(db).check_session_access(
-            session_id=session_id,
-            user_id=current_user.id if can_view_assigned else None,
-            user_groups=[str(group.id) for group in current_user.groups] if can_view_assigned else [],
-            include_unassigned=is_super_admin or "view_unassigned_chats" in user_permissions
-        )
-        if not has_access:
-            raise HTTPException(status_code=404, detail="Chat session not found")
+    if not can_see_session(current_user, session):
+        raise HTTPException(status_code=404, detail="Chat session not found")
 
     return session
+
+
+def _require_may_change_hands(session, current_user: User) -> None:
+    if not may_change_hands(current_user, session):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A teammate has this chat: only they, or someone who manages all chats, can do that",
+        )
 
 
 @router.post("/{session_id}/takeover", response_model=ChatDetailResponse)
@@ -225,6 +218,7 @@ async def release_chat_to_ai(
     """
     try:
         session = await _load_manageable_session(db, session_id, current_user)
+        _require_may_change_hands(session, current_user)
 
         if session.status == SessionStatus.CLOSED:
             raise HTTPException(status_code=400, detail="This chat is closed")
@@ -247,7 +241,7 @@ async def release_chat_to_ai(
             await sio.emit('room_event', {
                 'type': 'released_to_ai',
                 'session_id': session_id,
-            }, room=f"user_{previous_user_id}")
+            }, room=f"user_{previous_user_id}", namespace='/agent')
 
         chat = await ChatRepository(db).get_chat_detail(
             session_id=session_id,
@@ -278,6 +272,7 @@ async def reassign_chat(
         # chat over: assigning reaches unclaimed chats too, so it must not reach
         # past what the caller's inbox shows.
         session = await _load_manageable_session(db, session_id, current_user)
+        _require_may_change_hands(session, current_user)
         session_repo = SessionToAgentRepository(db)
 
         # The new owner must be a real, active member of the same org —
@@ -338,7 +333,7 @@ async def reassign_chat(
             'type': 'reassigned',
             'session_id': session_id,
             'assigned_to': to_user_id
-        }, room=f"user_{to_user_id}")
+        }, room=f"user_{to_user_id}", namespace='/agent')
 
         # Also notify the PREVIOUS assignee that the chat left their queue —
         # unless it was reassigned to themselves (a no-op).
@@ -346,7 +341,7 @@ async def reassign_chat(
             await sio.emit('room_event', {
                 'type': 'reassigned_from_you',
                 'session_id': session_id
-            }, room=f"user_{previous_user_id}")
+            }, room=f"user_{previous_user_id}", namespace='/agent')
 
         # Push to the new assignee — a socket event only reaches them if the
         # dashboard is already open.

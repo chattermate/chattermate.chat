@@ -65,6 +65,22 @@ def role(db, test_organization_id):
     return role
 
 
+def _role_with(db, org_id, name, *permission_names):
+    """A role holding exactly these permissions (reusing any that exist)."""
+    role = Role(name=name, description="", organization_id=org_id, is_default=False)
+    db.add(role)
+    db.commit()
+    for perm_name in permission_names:
+        perm = db.query(Permission).filter(Permission.name == perm_name).first()
+        if perm is None:
+            perm = Permission(name=perm_name, description=perm_name)
+            db.add(perm)
+            db.commit()
+        db.execute(role_permissions.insert().values(role_id=role.id, permission_id=perm.id))
+    db.commit()
+    return role
+
+
 def _user(db, org_id, role, name, active=True):
     user = User(id=uuid4(), email=f"{name.lower()}-{uuid4().hex[:6]}@example.com", hashed_password="x",
                 full_name=name, organization_id=org_id, role_id=role.id if role else None, is_active=active)
@@ -116,7 +132,7 @@ def _note(client, chat, body=SECRET_NOTE, mentions=()):
 class TestNotes:
     def test_a_note_is_kept_with_its_author_and_mentions(self, client, chat, me, teammate):
         with patch('app.api.session_notes.notify_user', new=AsyncMock()), \
-             patch('app.api.session_notes.emit_to_session_agents', new=AsyncMock()), \
+             patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \
              patch('app.api.session_notes.sio.emit', new=AsyncMock()):
             response = _note(client, chat, mentions=[teammate.id])
 
@@ -128,7 +144,7 @@ class TestNotes:
 
     def test_mentioned_teammates_are_notified_but_not_the_author(self, client, chat, me, teammate):
         with patch('app.api.session_notes.notify_user', new=AsyncMock()) as notify, \
-             patch('app.api.session_notes.emit_to_session_agents', new=AsyncMock()), \
+             patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \
              patch('app.api.session_notes.sio.emit', new=AsyncMock()) as emit:
             _note(client, chat, mentions=[teammate.id, me.id])
 
@@ -143,12 +159,34 @@ class TestNotes:
         stranger = _user(db, uuid4(), None, "Stranger")
         former = _user(db, chat.organization_id, role, "Former", active=False)
         with patch('app.api.session_notes.notify_user', new=AsyncMock()) as notify, \
-             patch('app.api.session_notes.emit_to_session_agents', new=AsyncMock()), \
+             patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \
              patch('app.api.session_notes.sio.emit', new=AsyncMock()):
             response = _note(client, chat, mentions=[stranger.id, former.id])
 
         assert response.json()["mentions"] == []
         assert not notify.called
+
+    def test_a_teammate_who_cannot_see_the_chat_is_not_mentioned(self, db, client, chat, test_organization_id):
+        """Scoped to their own chats: told about this one, they'd get a 404 opening it."""
+        scoped_role = _role_with(db, test_organization_id, "Scoped", "view_assigned_chats")
+        scoped = _user(db, test_organization_id, scoped_role, "Scoped")
+        with patch('app.api.session_notes.notify_user', new=AsyncMock()) as notify, \
+             patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \
+             patch('app.api.session_notes.sio.emit', new=AsyncMock()):
+            response = _note(client, chat, mentions=[scoped.id])
+
+        assert response.json()["mentions"] == []
+        assert not notify.called
+
+    def test_the_notification_never_carries_the_note(self, client, chat, teammate):
+        """Notes are encrypted at rest; notification rows and pushes are not."""
+        with patch('app.api.session_notes.notify_user', new=AsyncMock()) as notify, \
+             patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \
+             patch('app.api.session_notes.sio.emit', new=AsyncMock()):
+            _note(client, chat, mentions=[teammate.id])
+
+        assert SECRET_NOTE not in notify.call_args.kwargs["message"]
+        assert SECRET_NOTE not in notify.call_args.kwargs["title"]
 
     @pytest.mark.parametrize("payload", [{"body": ""}, {"body": "   "}, {"body": "x" * 4001}, {"body": "x", "mentions": [str(uuid4())] * 21}])
     def test_refuses_an_empty_or_oversized_note(self, client, chat, payload):
@@ -171,7 +209,7 @@ class TestNotesNeverReachTheCustomerOrTheModel:
     @pytest.fixture
     def noted(self, db, client, chat):
         with patch('app.api.session_notes.notify_user', new=AsyncMock()), \
-             patch('app.api.session_notes.emit_to_session_agents', new=AsyncMock()), \
+             patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \
              patch('app.api.session_notes.sio.emit', new=AsyncMock()):
             assert _note(client, chat).status_code == 201
         return chat
@@ -205,7 +243,7 @@ class TestNotesNeverReachTheCustomerOrTheModel:
 class TestMentionsView:
     def test_a_mention_puts_the_chat_in_the_mentioned_teammates_view(self, db, client, chat, teammate, me):
         with patch('app.api.session_notes.notify_user', new=AsyncMock()), \
-             patch('app.api.session_notes.emit_to_session_agents', new=AsyncMock()), \
+             patch('app.api.session_notes.emit_to_org_inbox', new=AsyncMock()), \
              patch('app.api.session_notes.sio.emit', new=AsyncMock()):
             _note(client, chat, mentions=[teammate.id])
         repo = ChatRepository(db)
@@ -219,24 +257,48 @@ class TestMentionsView:
 
 
 class TestSnooze:
+    """Snooze is for a chat you hold: one waiting in the queue would drop out of
+    everyone's Waiting view while the customer still waits."""
+
+    @pytest.fixture
+    def held(self, db, chat, me):
+        chat.user_id = me.id
+        db.commit()
+        return chat
+
     def _snooze(self, client, chat, until):
         return client.post(f"/api/v1/sessions/{chat.session_id}/snooze", json={"until": until.isoformat()})
 
-    def test_a_snoozed_chat_leaves_the_views_until_its_time(self, db, client, chat):
+    def test_a_snoozed_chat_leaves_the_views_until_its_time(self, db, client, held, me):
         until = datetime.now(timezone.utc) + timedelta(hours=3)
-        response = self._snooze(client, chat, until)
+        response = self._snooze(client, held, until)
         assert response.status_code == 200
         assert response.json()["snoozed_until"] is not None
         repo = ChatRepository(db)
 
         def listed(view):
-            return [str(r["session_id"]) for r in repo.get_recent_chats(organization_id=chat.organization_id, view=view)]
+            return [str(r["session_id"]) for r in repo.get_recent_chats(
+                organization_id=held.organization_id, view=view, current_user_id=me.id)]
 
-        assert listed(InboxView.WAITING) == []
+        assert listed(InboxView.MINE) == []
         assert listed(InboxView.OPEN) == []
-        assert listed(InboxView.SNOOZED) == [str(chat.session_id)]
-        counts = repo.get_inbox_counts(chat.organization_id)
-        assert (counts["waiting_for_human"], counts["open"], counts["snoozed"]) == (0, 0, 1)
+        assert listed(InboxView.SNOOZED) == [str(held.session_id)]
+        counts = repo.get_inbox_counts(held.organization_id, current_user_id=me.id)
+        assert (counts["assigned_to_me"], counts["open"], counts["snoozed"]) == (0, 0, 1)
+
+    def test_a_chat_waiting_for_a_person_cannot_be_snoozed(self, client, chat):
+        response = self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(hours=1))
+        assert response.status_code == 400
+        assert "assign the chat" in response.json()["detail"]
+
+    def test_a_chat_a_teammate_holds_is_theirs_to_snooze(self, db, client, chat, teammate, test_organization_id):
+        chat.user_id = teammate.id
+        db.commit()
+        scoped_role = _role_with(db, test_organization_id, "Sees all, manages own", "manage_assigned_chats", "view_all_chats")
+        colleague = _user(db, test_organization_id, scoped_role, "Colleague")
+        app.dependency_overrides[get_current_user] = lambda: colleague
+        response = self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(hours=1))
+        assert response.status_code == 403
 
     def test_it_comes_back_once_the_time_has_passed(self, db, chat):
         chat.snoozed_until = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -244,7 +306,8 @@ class TestSnooze:
         rows = ChatRepository(db).get_recent_chats(organization_id=chat.organization_id, view=InboxView.WAITING)
         assert [str(r["session_id"]) for r in rows] == [str(chat.session_id)]
 
-    def test_the_customer_writing_again_wakes_it(self, db, client, chat):
+    def test_the_customer_writing_again_wakes_it(self, db, client, held):
+        chat = held
         self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(days=1))
         ChatRepository(db).create_message({
             'message': 'Hello?', 'message_type': 'user', 'session_id': str(chat.session_id),
@@ -254,7 +317,8 @@ class TestSnooze:
         db.refresh(chat)
         assert chat.snoozed_until is None
 
-    def test_a_reply_from_the_team_does_not_wake_it(self, db, client, chat):
+    def test_a_reply_from_the_team_does_not_wake_it(self, db, client, held):
+        chat = held
         self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(days=1))
         ChatRepository(db).create_message({
             'message': 'We are on it', 'message_type': 'agent', 'session_id': str(chat.session_id),
@@ -264,7 +328,8 @@ class TestSnooze:
         db.refresh(chat)
         assert chat.snoozed_until is not None
 
-    def test_unsnoozing_brings_it_back_now(self, db, client, chat):
+    def test_unsnoozing_brings_it_back_now(self, db, client, held):
+        chat = held
         self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(days=1))
         response = client.delete(f"/api/v1/sessions/{chat.session_id}/snooze")
         assert response.status_code == 200
@@ -274,8 +339,8 @@ class TestSnooze:
         (timedelta(minutes=-5), "Snooze until a time in the future"),
         (timedelta(days=91), "Snooze for 90 days at most"),
     ])
-    def test_refuses_a_time_in_the_past_or_too_far_off(self, client, chat, offset, detail):
-        response = self._snooze(client, chat, datetime.now(timezone.utc) + offset)
+    def test_refuses_a_time_in_the_past_or_too_far_off(self, client, held, offset, detail):
+        response = self._snooze(client, held, datetime.now(timezone.utc) + offset)
         assert response.status_code == 422
         assert response.json()["detail"] == detail
 

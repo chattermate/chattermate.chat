@@ -511,35 +511,31 @@ class ChatRepository:
         session_count = func.count(SessionToAgent.session_id)
         resolved = inbox_views.resolved_by_ai(today_start)
         open_ = inbox_views.active(now)
-        row = scoped(
+        counted = {
+            'open': open_,
+            'waiting_for_human': and_(open_, inbox_views.waiting_for_human()),
+            'assigned_to_me': and_(open_, inbox_views.mine(current_user_id)),
+            'mentions': and_(open_, inbox_views.mentions(current_user_id)),
+            'ai_handling': and_(open_, inbox_views.ai_handling()),
+            'negative': and_(open_, inbox_views.negative_sentiment()),
+            'resolved_by_ai_today': resolved,
+            'snoozed': and_(inbox_views.not_closed(), inbox_views.snoozed(now)),
+        }
+        # One pass, per channel: the totals are the channels' sums, so the
+        # sessions are scanned once, not again for the channel split
+        rows = scoped(
             self.db.query(
-                session_count.filter(open_).label('open'),
-                session_count.filter(open_, inbox_views.waiting_for_human()).label('waiting_for_human'),
-                session_count.filter(open_, inbox_views.mine(current_user_id)).label('assigned_to_me'),
-                session_count.filter(open_, inbox_views.mentions(current_user_id)).label('mentions'),
-                session_count.filter(open_, inbox_views.ai_handling()).label('ai_handling'),
-                session_count.filter(open_, inbox_views.negative_sentiment()).label('negative'),
-                session_count.filter(resolved).label('resolved_by_ai_today'),
-                session_count.filter(inbox_views.not_closed(), inbox_views.snoozed(now)).label('snoozed'),
+                SessionToAgent.channel,
+                *(session_count.filter(condition).label(key) for key, condition in counted.items()),
             ),
             # Only the rows some count can use: open ones, and today's closes
             or_(inbox_views.not_closed(), resolved),
-        ).one()
-        channels = scoped(
-            self.db.query(SessionToAgent.channel, session_count),
-            open_,
         ).group_by(SessionToAgent.channel).all()
 
+        totals = {key: sum(getattr(row, key) for row in rows) for key in counted}
         return {
-            'open': row.open,
-            'waiting_for_human': row.waiting_for_human,
-            'assigned_to_me': row.assigned_to_me,
-            'ai_handling': row.ai_handling,
-            'negative': row.negative,
-            'resolved_by_ai_today': row.resolved_by_ai_today,
-            'mentions': row.mentions,
-            'snoozed': row.snoozed,
-            'channels': {channel: count for channel, count in channels},
+            **totals,
+            'channels': {row.channel: row.open for row in rows if row.open},
         }
 
     @staticmethod

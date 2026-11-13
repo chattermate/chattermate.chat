@@ -217,7 +217,10 @@ const assigneeLabel = computed(() =>
   cursor: pointer;
 }
 
+/* Nothing to change: a label, not a button */
 .assignee.static {
+  border-color: transparent;
+  background: transparent;
   cursor: default;
 }
 

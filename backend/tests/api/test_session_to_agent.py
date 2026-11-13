@@ -594,6 +594,9 @@ def test_reassign_notifies_previous_assignee_not_new_one(
     assert len(from_you) == 1, "expected exactly one reassigned_from_you emit"
     assert from_you[0].kwargs.get('room') == f"user_{previous.id}"
     assert from_you[0].kwargs.get('room') != f"user_{new.id}"
+    # The dashboard listens on /agent only: an event on / never reaches it
+    agent_events = [c for c in mock_emit.call_args_list if str(c.kwargs.get('room', '')).startswith('user_')]
+    assert agent_events and all(c.kwargs.get('namespace') == '/agent' for c in agent_events)
 
 
 def test_reassign_to_same_user_skips_from_you_event(

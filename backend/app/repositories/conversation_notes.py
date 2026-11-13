@@ -17,32 +17,36 @@ limitations under the License.
 from typing import Iterable, List
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.conversation_note import ConversationNote, ConversationNoteMention
+from app.models.role import Role
+from app.models.session_to_agent import SessionToAgent
 from app.models.user import User
+from app.services.chat_access import can_see_session
 
 # A note is a few lines for a teammate, not a document
-NOTE_MAX_LENGTH = 4000
-MENTIONS_MAX = 20
-
-
 class ConversationNoteRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def mentionable(self, organization_id: UUID, user_ids: Iterable[UUID]) -> List[User]:
-        """The ones among `user_ids` a note may mention: active members of the
-        organization. Anyone else is dropped, so a note can never notify a
-        stranger or an account that was switched off."""
+    def mentionable(self, session: SessionToAgent, user_ids: Iterable[UUID]) -> List[User]:
+        """The ones among `user_ids` a note on `session` may mention: active
+        members of its organization who can see the conversation. Anyone else is
+        dropped, so a note never notifies a stranger, a switched-off account, or
+        a teammate who would get a 404 opening it."""
         wanted = {UUID(str(u)) for u in user_ids}
         if not wanted:
             return []
-        return self.db.query(User).filter(
+        members = self.db.query(User).options(
+            selectinload(User.role).selectinload(Role.permissions),
+            selectinload(User.groups),
+        ).filter(
             User.id.in_(wanted),
-            User.organization_id == organization_id,
+            User.organization_id == session.organization_id,
             User.is_active.is_(True),
         ).all()
+        return [user for user in members if can_see_session(user, session)]
 
     def create(self, session, author_id: UUID, body: str, mentioned: List[User]) -> ConversationNote:
         note = ConversationNote(

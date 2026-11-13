@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.session_to_agent import _load_manageable_session
+from app.api.session_to_agent import _load_manageable_session, _require_may_change_hands
 from app.core.auth import get_current_user
 from app.core.logger import get_logger
 from app.core.socketio import sio
@@ -37,7 +37,7 @@ from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.repositories.conversation_notes import ConversationNoteRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
-from app.services.agent_rooms import emit_to_session_agents
+from app.services.agent_rooms import emit_to_org_inbox
 from app.services.notifications import notify_user
 
 logger = get_logger(__name__)
@@ -45,11 +45,6 @@ router = APIRouter()
 
 # A snooze is for "later today", "tomorrow", "next week", not for parking a chat
 SNOOZE_MAX = timedelta(days=90)
-MENTION_PREVIEW_LENGTH = 140
-
-
-def _preview(text: str) -> str:
-    return text if len(text) <= MENTION_PREVIEW_LENGTH else text[:MENTION_PREVIEW_LENGTH - 1] + '…'
 
 
 @router.post("/{session_id}/notes", response_model=ConversationNoteResponse, status_code=status.HTTP_201_CREATED)
@@ -63,7 +58,8 @@ async def add_note(
 
     It is stored apart from the messages, so the customer, their channel and
     the AI never see it. Each teammate it mentions (an active member of the
-    organization; anyone else is dropped) gets a notification.
+    organization who can see the conversation; anyone else is dropped) gets
+    a notification.
     """
     session = await _load_manageable_session(db, session_id, current_user)
     body = payload.body.strip()
@@ -71,7 +67,7 @@ async def add_note(
         raise HTTPException(status_code=422, detail="A note needs some text")
 
     repo = ConversationNoteRepository(db)
-    mentioned = repo.mentionable(session.organization_id, payload.mentions)
+    mentioned = repo.mentionable(session, payload.mentions)
     try:
         note = repo.create(session, current_user.id, body, mentioned)
     except Exception as e:
@@ -87,15 +83,18 @@ async def add_note(
             user_id=user.id,
             type_=NotificationType.CHAT,
             title=f"{author} mentioned you",
-            message=_preview(body),
+            # Notes are encrypted at rest; a notification row and a push are not,
+            # so they say where to look, never what the note says
+            message="Open the conversation to read the note",
             metadata={"session_id": str(session.session_id), "event": "mention", "note_id": note.id},
         )
 
-    # Whoever has the conversation open sees the note without a refresh, and a
-    # mentioned teammate's Mentions view updates
-    # The author's own inbox already shows it: author_id lets it skip a refetch
+    # The holder, every inbox that sees the whole queue (the org room) and each
+    # mentioned teammate refresh: the note shows on an open thread without a
+    # reload, and Mentions updates. The author's own inbox already shows it:
+    # author_id lets it skip a refetch.
     event = {'type': 'note_added', 'session_id': str(session.session_id), 'author_id': str(current_user.id)}
-    await emit_to_session_agents('room_event', event, session.session_id, session.user_id)
+    await emit_to_org_inbox('room_event', event, session.organization_id, session.user_id)
     for user in mentioned:
         if user.id != session.user_id:
             await sio.emit('room_event', event, room=f"user_{user.id}", namespace='/agent')
@@ -122,6 +121,10 @@ async def snooze_chat(
     session = await _load_manageable_session(db, session_id, current_user)
     if session.status == SessionStatus.CLOSED:
         raise HTTPException(status_code=400, detail="This chat is closed")
+    _require_may_change_hands(session, current_user)
+    # Snoozing would take a waiting customer out of everyone's queue
+    if session.status == SessionStatus.TRANSFERRED and session.user_id is None:
+        raise HTTPException(status_code=400, detail="Someone is waiting for a person: assign the chat before snoozing it")
 
     until = payload.until if payload.until.tzinfo else payload.until.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)

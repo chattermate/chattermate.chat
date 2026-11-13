@@ -33,17 +33,21 @@ import {
 export const INBOX_PAGE_SIZE = 25
 /** How long typing pauses before the list searches */
 export const SEARCH_DEBOUNCE_MS = 250
-/** How often an open inbox refreshes its counts (and first page) by itself */
+/** How often an open inbox refreshes its counts by itself */
 export const INBOX_POLL_MS = 30_000
+/** The first page is the costly query: re-read it on a poll only when the
+ * counts moved, and at least every this many polls (a row's latest message) */
+export const LIST_REFRESH_EVERY = 4
 
 /**
  * The inbox's list pane: which view is selected (kept in ?view= so a reload
  * or a shared link lands on it), its sort and search, the paged list, and
  * every view's count for the views pane.
  *
- * New conversations are not pushed over the socket, so the counts and the
- * first page refresh every INBOX_POLL_MS while the tab is visible, and at
- * once whenever this tab changes who holds a chat ('inbox-changed').
+ * New conversations are not pushed over the socket, so the counts refresh
+ * every INBOX_POLL_MS while the tab is visible, and the first page with them
+ * when they moved (or every LIST_REFRESH_EVERY polls). Both refresh at once
+ * whenever a chat changes hands or gets a note ('inbox-changed').
  */
 export function useInboxList() {
   const route = useRoute()
@@ -121,23 +125,46 @@ export function useInboxList() {
     }
   }
 
-  async function loadCounts(): Promise<void> {
+  /** Reads the counts; true when they differ from the ones on screen. */
+  async function loadCounts(): Promise<boolean> {
     try {
-      counts.value = await chatService.getInboxCounts()
+      const next = await chatService.getInboxCounts()
+      const moved = JSON.stringify(next) !== JSON.stringify(counts.value)
+      counts.value = next
+      return moved
     } catch (err) {
       // The views still work without numbers
       console.error('Failed to load inbox counts:', err)
+      return false
     }
   }
 
-  /** Counts and the first page, without a loading state: the background refresh. */
-  function refresh(): void {
-    void loadCounts()
-    // Past the first page a reload would drop what was scrolled into view
+  /** The first page without a loading state. Past the first page a reload
+   * would drop what was scrolled into view, so then it waits. */
+  function reloadQuietly(): void {
     if (conversations.value.length <= INBOX_PAGE_SIZE) void load({ quiet: true })
   }
 
+  /** Counts and the first page: something changed (a chat moved, a note, back to the tab). */
+  function refresh(): void {
+    void loadCounts()
+    reloadQuietly()
+  }
+
+  let pollsSinceList = 0
+  async function poll(): Promise<void> {
+    const moved = await loadCounts()
+    pollsSinceList += 1
+    if (moved || pollsSinceList >= LIST_REFRESH_EVERY) {
+      pollsSinceList = 0
+      reloadQuietly()
+    }
+  }
+
   function select(next: InboxSelection): void {
+    // A search left over from the last view would show "No conversations
+    // match" beside the new view's count
+    search.value = ''
     selection.value = next
     sort.value = defaultSort(next)
     const id = selectionId(next)
@@ -176,7 +203,7 @@ export function useInboxList() {
     emitter.on('inbox-changed', refresh)
     document.addEventListener('visibilitychange', onVisibility)
     pollTimer = setInterval(() => {
-      if (!document.hidden) refresh()
+      if (!document.hidden) void poll()
     }, INBOX_POLL_MS)
   })
 

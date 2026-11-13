@@ -65,14 +65,44 @@ export function messageFromReply(data: ChatReplyEvent): Message {
   return message
 }
 
+const isAgent = (m: Message) => m.message_type === 'agent'
+
+const textOf = (m: Message) => m.message ?? ''
+
+function countByText(messages: Message[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const m of messages) counts.set(textOf(m), (counts.get(textOf(m)) ?? 0) + 1)
+  return counts
+}
+
 /**
  * A refetched conversation, plus the replies still on their way to the server:
  * a refresh (a teammate's note, a reassign) must not make one vanish. One the
  * server already stored comes back in the detail and is not added twice.
+ *
+ * The server doesn't echo client ids, so copies are counted: a pending "Thanks!"
+ * was stored only if the detail holds more of them than were already confirmed
+ * (a second "Thanks!" in one chat is ordinary).
  */
-export function keepPending(detail: ChatDetail, pending: Message[]): ChatDetail {
-  const stored = new Set(detail.messages.filter((m) => m.message_type === 'agent').map((m) => m.message))
-  const missing = pending.filter((m) => !stored.has(m.message))
+export function keepPending(detail: ChatDetail, previous: Message[]): ChatDetail {
+  const pending = previous.filter((m) => m.client_id && !m.id)
+  if (!pending.length) return detail
+  const stored = countByText(detail.messages.filter(isAgent))
+  const confirmed = countByText(previous.filter((m) => isAgent(m) && m.id))
+  const missing = pending.filter((m) => {
+    const text = textOf(m)
+    if ((stored.get(text) ?? 0) <= (confirmed.get(text) ?? 0)) return true
+    confirmed.set(text, (confirmed.get(text) ?? 0) + 1)
+    return false
+  })
+  return missing.length ? { ...detail, messages: [...detail.messages, ...missing] } : detail
+}
+
+/** Live messages heard while the detail was loading, unless it already has them. */
+export function withEarlyReplies(detail: ChatDetail, early: Message[]): ChatDetail {
+  const at = (m: Message) => `${Date.parse(m.created_at)}|${textOf(m)}`
+  const known = new Set(detail.messages.map(at))
+  const missing = early.filter((m) => !known.has(at(m)))
   return missing.length ? { ...detail, messages: [...detail.messages, ...missing] } : detail
 }
 
@@ -88,6 +118,8 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
   const unread = reactive<Record<string, number>>({})
   // The same reply can arrive twice (the user room and the org room)
   const seen = new Set<string>()
+  // Live replies for the conversation being opened, heard before its detail arrived
+  let early: Message[] = []
 
   /** Open a conversation; `force` refetches the open one (the AI's latest turns aren't streamed). */
   async function open(sessionId: string, force = false): Promise<void> {
@@ -95,16 +127,16 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     selectedId.value = sessionId
     delete unread[sessionId]
     loadingChat.value = true
+    if (chat.value?.session_id !== sessionId) early = []
     try {
       const detail = await chatService.getChatDetail(sessionId)
       // Another conversation was opened while this one loaded
       if (selectedId.value !== sessionId) return
-      // Replies sent from here that the server had not confirmed (no id) by the
-      // time the detail came back: read now, so one sent while it loaded counts
-      const pending = chat.value?.session_id === sessionId
-        ? chat.value.messages.filter((m) => m.client_id && !m.id)
-        : []
-      chat.value = keepPending(detail, pending)
+      // Replies sent from here that the server had not confirmed by the time
+      // the detail came back: read now, so one sent while it loaded counts
+      const previous = chat.value?.session_id === sessionId ? chat.value.messages : []
+      chat.value = withEarlyReplies(keepPending(detail, previous), early)
+      early = []
     } catch (err) {
       console.error('Failed to load conversation:', err)
     } finally {
@@ -129,8 +161,11 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
 
     if (selectedId.value !== data.session_id) {
       unread[data.session_id] = (unread[data.session_id] ?? 0) + 1
-    } else if (chat.value) {
+    } else if (chat.value?.session_id === data.session_id) {
       chat.value = { ...chat.value, messages: [...chat.value.messages, messageFromReply(data)], updated_at: data.created_at }
+    } else {
+      // Selected but still loading: the thread on screen is another conversation's
+      early.push(messageFromReply(data))
     }
     onReply?.(data)
   }

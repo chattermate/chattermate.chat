@@ -23,8 +23,21 @@ down_revision: Union[str, None] = 'inbox_handover_times_001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+OPEN_INDEX = 'ix_session_to_agents_org_not_closed'
+
+
+def _is_invalid(name: str) -> bool:
+    """A concurrent build that failed leaves an invalid index behind (see org_lookup_indexes_001)."""
+    return bool(op.get_bind().execute(
+        sa.text("SELECT NOT indisvalid FROM pg_index WHERE indexrelid = to_regclass(:name)"),
+        {'name': name},
+    ).scalar())
+
 
 def upgrade() -> None:
+    # session_to_agents is written on every message: give up rather than queue them
+    # all behind this ALTER if a long transaction holds the table (re-run the deploy)
+    op.execute("SET LOCAL lock_timeout = '5s'")
     op.create_table(
         'conversation_notes',
         sa.Column('id', sa.Integer(), primary_key=True),
@@ -46,9 +59,19 @@ def upgrade() -> None:
     )
     op.create_index('ix_conversation_note_mentions_user_id', 'conversation_note_mentions', ['user_id'])
     op.add_column('session_to_agents', sa.Column('snoozed_until', sa.DateTime(timezone=True), nullable=True))
+    # The inbox counts (polled) read an org's not-closed sessions: widget page
+    # loads that never close pile up there, so find them without the closed ones
+    with op.get_context().autocommit_block():
+        if _is_invalid(OPEN_INDEX):
+            op.drop_index(OPEN_INDEX, table_name='session_to_agents', postgresql_concurrently=True, if_exists=True)
+        op.create_index(OPEN_INDEX, 'session_to_agents', ['organization_id'], unique=False,
+                        postgresql_concurrently=True, if_not_exists=True,
+                        postgresql_where=sa.text("status <> 'CLOSED'"))
 
 
 def downgrade() -> None:
+    with op.get_context().autocommit_block():
+        op.drop_index(OPEN_INDEX, table_name='session_to_agents', postgresql_concurrently=True, if_exists=True)
     op.drop_column('session_to_agents', 'snoozed_until')
     op.drop_index('ix_conversation_note_mentions_user_id', table_name='conversation_note_mentions')
     op.drop_table('conversation_note_mentions')

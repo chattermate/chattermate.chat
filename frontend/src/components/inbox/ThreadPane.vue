@@ -47,6 +47,7 @@ import ThreadMessage from './ThreadMessage.vue'
 import ThreadComposer, { type ComposerMode } from './ThreadComposer.vue'
 import ThreadNote from './ThreadNote.vue'
 import HandoverSummaryCard from './HandoverSummaryCard.vue'
+import { useComposerDrafts } from './composerDrafts'
 import { customerName } from './inboxPresentation'
 import { buildTimeline, handoverIndex, knowledgeDraft } from './threadContent'
 import { snoozeChoices } from './snooze'
@@ -69,6 +70,7 @@ const emit = defineEmits<{
 const router = useRouter()
 const currentUserId = userService.getUserId()
 const canManage = permissionChecks.canTakeOverChats()
+const canManageAll = permissionChecks.canManageAllChats()
 const canEditKnowledge = canAccessPath('/faq') && permissionChecks.canManageKnowledge()
 const canUseNativeTickets = permissionChecks.canManageTickets()
 
@@ -121,13 +123,17 @@ useVisualViewport(() => scrollToBottom())
 
 const handler = computed(() => chatHandler(props.chat, currentUserId))
 const holdsIt = computed(() => handler.value.kind === 'human' && props.chat.user_id === currentUserId)
+// A chat a teammate holds is theirs to give up, unless you manage every chat
+const mayChangeHands = computed(() =>
+  canManage && (!props.chat.user_id || props.chat.user_id === currentUserId || canManageAll)
+)
 const aiCapable = computed(() => props.chat.agent.ai_replies_enabled !== false)
 const agentName = computed(() => props.chat.agent.display_name || props.chat.agent.name || 'The AI')
 const name = computed(() => customerName(props.chat.customer))
 
 // ---- Assigning ----
 const assignees = computed<ActionMenuItem[] | null>(() => {
-  if (!canManage || handler.value.kind === 'closed') return null
+  if (!mayChangeHands.value || handler.value.kind === 'closed') return null
   return props.teammates.map((t) => ({
     id: t.id,
     label: t.id === currentUserId ? `${t.full_name || t.email} (you)` : (t.full_name || t.email),
@@ -179,6 +185,7 @@ const canNote = computed(() => canManage && handler.value.kind !== 'closed')
 const showComposer = computed(() => holdsIt.value || canNote.value)
 const composerMode = ref<ComposerMode>(holdsIt.value ? 'reply' : 'note')
 watch(holdsIt, (holds) => { composerMode.value = holds ? 'reply' : 'note' })
+const { text: composerText, note: noteDraft } = useComposerDrafts(composerMode, newMessage, () => props.chat.session_id)
 const mentionables = computed(() =>
   props.teammates
     .filter((t) => t.id !== currentUserId)
@@ -188,7 +195,7 @@ const mentionables = computed(() =>
 async function addNote(body: string, mentions: string[]) {
   try {
     const note: ConversationNote = await chatService.addNote(props.chat.session_id, body, mentions)
-    newMessage.value = ''
+    noteDraft.value = ''
     emit('chat-updated', { ...props.chat, notes: [...(props.chat.notes ?? []), note] })
     scrollToBottom()
   } catch (err: any) {
@@ -248,10 +255,11 @@ const moreActions = computed<ActionMenuItem[]>(() => {
   }
   if (canUseTemplates.value && open) items.push({ id: 'send-template', label: 'Send WhatsApp template' })
   if (canManage && handler.value.kind === 'ai') items.push({ id: 'route-to-team', label: 'Hand to my team' })
-  if (canManage && aiCapable.value && open && handler.value.kind !== 'ai') {
+  if (mayChangeHands.value && aiCapable.value && open && handler.value.kind !== 'ai') {
     items.push({ id: 'release', label: 'Hand back to AI' })
   }
-  if (canManage && open) {
+  // Not a chat waiting for a person: it would leave everyone's queue
+  if (mayChangeHands.value && open && handler.value.kind !== 'waiting') {
     if (snoozedUntil.value) items.push({ id: 'unsnooze', label: 'Unsnooze', separated: true })
     else snoozeChoices(props.now).forEach((choice, i) => items.push({ id: `snooze:${i}`, label: `Snooze · ${choice.label}`, separated: i === 0 }))
   }
@@ -369,7 +377,7 @@ defineExpose({ requestClose })
 
     <div v-if="snoozedUntil" class="snoozed" role="status">
       <span>Snoozed until {{ snoozedLabel }}. It comes back then, or when the customer writes.</span>
-      <button v-if="canManage" type="button" class="snoozed-btn" :disabled="busy" @click="unsnooze">Unsnooze</button>
+      <button v-if="mayChangeHands" type="button" class="snoozed-btn" :disabled="busy" @click="unsnooze">Unsnooze</button>
     </div>
 
     <div ref="messagesContainer" class="messages" tabindex="0" aria-label="Messages">
@@ -415,7 +423,7 @@ defineExpose({ requestClose })
     />
     <ThreadComposer
       v-if="showComposer"
-      v-model="newMessage"
+      v-model="composerText"
       v-model:mode="composerMode"
       :can-reply="holdsIt"
       :can-take-over="!holdsIt && canManage"

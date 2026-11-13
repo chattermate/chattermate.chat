@@ -16,6 +16,7 @@ limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
+import { nextTick, ref } from 'vue'
 import ThreadHeader from '@/components/inbox/ThreadHeader.vue'
 import ThreadBanner from '@/components/inbox/ThreadBanner.vue'
 import HandoverSummaryCard from '@/components/inbox/HandoverSummaryCard.vue'
@@ -24,6 +25,7 @@ import ActionMenu from '@/components/common/ActionMenu.vue'
 import DetailsPanel from '@/components/inbox/DetailsPanel.vue'
 import ThreadComposer from '@/components/inbox/ThreadComposer.vue'
 import ThreadNote from '@/components/inbox/ThreadNote.vue'
+import { useComposerDrafts } from '@/components/inbox/composerDrafts'
 import type { ChatDetail, Message } from '@/types/chat'
 
 const people = vi.hoisted(() => ({ getPerson: vi.fn() }))
@@ -403,5 +405,28 @@ describe('ThreadNote', () => {
     expect(wrapper.find('.mention').text()).toBe('@Tom')
     expect(wrapper.find('b').exists()).toBe(false)
     expect(wrapper.find('.body').text()).toContain('<b>here</b>')
+  })
+})
+
+describe('useComposerDrafts', () => {
+  it('keeps a note out of the reply when the mode flips under it', async () => {
+    const mode = ref<'reply' | 'note'>('note')
+    const reply = ref('')
+    const session = ref('a')
+    const { text, note } = useComposerDrafts(mode, reply, () => session.value)
+
+    text.value = 'Customer is abusive, deny the refund'
+    mode.value = 'reply' // taken over
+    expect(text.value).toBe('')
+    expect(reply.value).toBe('')
+
+    text.value = 'Hi! Looking into it.'
+    mode.value = 'note'
+    expect(text.value).toBe('Customer is abusive, deny the refund')
+    expect(reply.value).toBe('Hi! Looking into it.')
+
+    session.value = 'b'
+    await nextTick()
+    expect(note.value).toBe('')
   })
 })

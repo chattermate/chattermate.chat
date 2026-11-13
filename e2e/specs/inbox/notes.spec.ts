@@ -47,22 +47,33 @@ test.describe('inbox notes', () => {
     expect(counts.mentions).toBeGreaterThanOrEqual(1)
   })
 
-  test('a snoozed chat leaves Waiting until the customer writes again @inbox', async ({ agent, widget, inbox, llm }) => {
+  test('a snoozed chat leaves Your inbox until the customer writes again @inbox', async ({ agent, widget, inbox, llm }) => {
     await askForAPerson(agent, widget, llm)
 
     await inbox.goto('/conversations?view=waiting')
     await inbox.openConversationWith(widget.customer.name)
+    await inbox.takeOver()
     await inbox.snooze('3 hours')
 
-    await inbox.openView('Waiting for a human')
+    await inbox.openView('Your inbox')
     await expect(inbox.conversation(widget.customer.name)).toBeHidden()
     await inbox.openView('Snoozed')
     await expect(inbox.conversation(widget.customer.name)).toBeVisible()
 
     await widget.send('Hello? Still waiting')
     await expect(async () => {
-      await inbox.openView('Waiting for a human')
+      await inbox.openView('Your inbox')
       await expect(inbox.conversation(widget.customer.name)).toBeVisible({ timeout: 2_000 })
     }).toPass({ timeout: 20_000 })
+  })
+
+  test('a chat waiting for a person cannot be snoozed out of the queue @inbox', async ({ agent, widget, inbox, llm }) => {
+    await askForAPerson(agent, widget, llm)
+
+    await inbox.goto('/conversations?view=waiting')
+    await inbox.openConversationWith(widget.customer.name)
+    const actions = await inbox.moreActions()
+    expect(actions).toContain('Refresh conversation')
+    expect(actions.filter((label) => label.startsWith('Snooze'))).toEqual([])
   })
 })

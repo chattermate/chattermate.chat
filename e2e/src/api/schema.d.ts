@@ -4299,7 +4299,8 @@ export interface paths {
          *
          *     It is stored apart from the messages, so the customer, their channel and
          *     the AI never see it. Each teammate it mentions (an active member of the
-         *     organization; anyone else is dropped) gets a notification.
+         *     organization who can see the conversation; anyone else is dropped) gets
+         *     a notification.
          */
         post: operations["add_note_api_v1_sessions__session_id__notes_post"];
         delete?: never;

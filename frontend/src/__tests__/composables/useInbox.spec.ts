@@ -41,7 +41,7 @@ const socket = vi.hoisted(() => {
 vi.mock('@/services/socket', () => ({ socketService: socket }))
 vi.mock('@/services/user', () => ({ userService: { getUserId: () => 'me' } }))
 
-import { INBOX_PAGE_SIZE, INBOX_POLL_MS, SEARCH_DEBOUNCE_MS, useInboxList } from '@/composables/useInboxList'
+import { INBOX_PAGE_SIZE, INBOX_POLL_MS, LIST_REFRESH_EVERY, SEARCH_DEBOUNCE_MS, useInboxList } from '@/composables/useInboxList'
 import { keepPending, useInboxThread } from '@/composables/useInboxThread'
 import { useInboxShortcuts } from '@/composables/useInboxShortcuts'
 
@@ -183,17 +183,39 @@ describe('useInboxList', () => {
     emitter.emit('inbox-changed')
     await flushPromises()
     expect(chat.getInboxCounts).toHaveBeenCalledTimes(1)
+    expect(chat.getRecentChats).toHaveBeenCalledTimes(1)
     expect(result().loading.value).toBe(false)
-
-    vi.advanceTimersByTime(INBOX_POLL_MS)
-    await flushPromises()
-    expect(chat.getInboxCounts).toHaveBeenCalledTimes(2)
-    expect(chat.getRecentChats).toHaveBeenCalledTimes(2)
 
     wrapper.unmount()
     emitter.emit('inbox-changed')
     vi.advanceTimersByTime(INBOX_POLL_MS)
-    expect(chat.getInboxCounts).toHaveBeenCalledTimes(2)
+    expect(chat.getInboxCounts).toHaveBeenCalledTimes(1)
+  })
+
+  it('polls the counts, and the list only when they moved or every few polls', async () => {
+    vi.useFakeTimers()
+    const { wrapper } = host(useInboxList)
+    await flushPromises()
+    chat.getInboxCounts.mockClear()
+    chat.getRecentChats.mockClear()
+
+    vi.advanceTimersByTime(INBOX_POLL_MS)
+    await flushPromises()
+    expect(chat.getInboxCounts).toHaveBeenCalledTimes(1)
+    expect(chat.getRecentChats).not.toHaveBeenCalled()
+
+    chat.getInboxCounts.mockResolvedValueOnce({ open: 99 })
+    vi.advanceTimersByTime(INBOX_POLL_MS)
+    await flushPromises()
+    expect(chat.getRecentChats).toHaveBeenCalledTimes(1)
+
+    chat.getInboxCounts.mockResolvedValue({ open: 99 })
+    for (let i = 0; i < LIST_REFRESH_EVERY; i++) {
+      vi.advanceTimersByTime(INBOX_POLL_MS)
+      await flushPromises()
+    }
+    expect(chat.getRecentChats).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
   })
 
   it('narrows the view to an agent and a teammate, and says so', async () => {
@@ -279,13 +301,35 @@ describe('useInboxThread', () => {
   })
 
   it('keeps a reply still on its way to the server through a refresh, without doubling a stored one', () => {
-    const detail = { session_id: 's1', messages: [{ message: 'Stored', message_type: 'agent', created_at: '', session_id: 's1', id: 1 }] } as never
-    const pending = [
-      { message: 'Stored', message_type: 'agent', created_at: '', session_id: 's1', client_id: 'a' },
-      { message: 'On its way', message_type: 'agent', created_at: '', session_id: 's1', client_id: 'b' },
-    ]
-    expect(keepPending(detail, pending).messages.map((m) => m.message)).toEqual(['Stored', 'On its way'])
+    const msg = (message: string, extra: object) => ({ message, message_type: 'agent', created_at: '', session_id: 's1', ...extra })
+    const detail = { session_id: 's1', messages: [msg('Stored', { id: 1 })] } as never
+    const previous = [msg('Stored', { client_id: 'a' }), msg('On its way', { client_id: 'b' })]
+    expect(keepPending(detail, previous as never).messages.map((m) => m.message)).toEqual(['Stored', 'On its way'])
     expect(keepPending(detail, [])).toBe(detail)
+  })
+
+  it('keeps a second "Thanks!" that is still on its way, though an earlier one is stored', () => {
+    const msg = (extra: object) => ({ message: 'Thanks!', message_type: 'agent', created_at: '', session_id: 's1', ...extra })
+    const detail = { session_id: 's1', messages: [msg({ id: 1 })] } as never
+    const previous = [msg({ id: 1 }), msg({ client_id: 'b' })]
+    expect(keepPending(detail, previous as never).messages).toHaveLength(2)
+  })
+
+  it('holds a reply heard while the conversation loads, and never shows it in the old one', async () => {
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    let finish!: (value: unknown) => void
+    chat.getChatDetail.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const opening = result().open('s2')
+
+    socket.handlers.chat_reply({ message: 'Where is my order?', type: 'user', session_id: 's2', created_at: '2026-11-13T11:00:00Z' })
+    expect(result().chat.value?.session_id).toBe('s1')
+    expect(result().chat.value?.messages).toHaveLength(0)
+
+    finish({ session_id: 's2', messages: [] })
+    await opening
+    expect(result().chat.value?.messages.map((m) => m.message)).toEqual(['Where is my order?'])
+    wrapper.unmount()
   })
 
   it("ignores its own note, refreshes for a teammate's", async () => {
