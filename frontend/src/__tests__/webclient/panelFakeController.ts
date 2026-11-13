@@ -29,7 +29,7 @@ import { mount } from '@vue/test-utils'
 import { ref, type Component, type Ref } from 'vue'
 import { WIDGET_CTX, type LandingPage, type WidgetController } from '@/webclient/panel/controller'
 import { PANEL_PRESENCE_TEXT } from '@/webclient/copy'
-import type { AgentCustomization, WidgetUiVersion } from '@/types/agent'
+import type { AgentCustomization } from '@/types/agent'
 import type { HumanAgent, WidgetMessage } from '@/types/widget'
 import type { ConnectionStatus } from '@/composables/useWidgetSocket'
 import type { HostCapabilities } from '@/composables/useHostMessages'
@@ -38,7 +38,6 @@ import type { JourneyProgress } from '@/webclient/journeys/journeyClient'
 import type { PreviewFile, UploadedFile } from '@/composables/useWidgetFiles'
 import type { WorkflowForm } from '@/composables/useWorkflowScreens'
 import type { PresenceLine } from '@/utils/widgetPresence'
-import type { LiveStep } from '@/composables/useAgentTrace'
 import type { EmailCheckState } from '@/composables/useEmailCheck'
 import { emptyHistory, type HistoryState } from '@/composables/useConversationHistory'
 import type { PageSuggestions } from '@/composables/usePageSuggestions'
@@ -51,7 +50,6 @@ const baseController = () => ({
     // look
     widgetId: ref<string | null | undefined>('w-1'),
     customization: ref<Partial<AgentCustomization>>({}),
-    ui: ref<WidgetUiVersion>(2),
     agentName: ref('Ada'),
     photoUrl: ref(''),
     humanAgentPhotoUrl: ref(''),
@@ -65,7 +63,7 @@ const baseController = () => ({
     quickActions: ref<string[]>([]),
     welcomeMessageText: ref(''),
     hostVisible: ref(true),
-    hostCapabilities: ref<HostCapabilities>({ expand: false, backdrop: false, navigate: false }),
+    hostCapabilities: ref<HostCapabilities>({ expand: false, backdrop: false, navigate: false, swipe: false }),
     themeVars: ref<Record<string, string>>({}),
     containerStyles: ref<Record<string, string>>({}),
     useAskAiPanel: ref(false),
@@ -76,6 +74,7 @@ const baseController = () => ({
     // connection
     isInitializing: ref(false),
     hasConversationToken: ref(true),
+    historyAvailable: ref(true),
     showAuthError: ref(false),
     isApiKeyAuthRequired: ref(false),
     authError: ref<string | null>(null),
@@ -93,10 +92,9 @@ const baseController = () => ({
     isStreaming: vi.fn((_index: number) => false),
     isRevealing: ref(false),
     skipReveal: vi.fn(),
-    liveTrace: ref<LiveStep[]>([]),
     sendFeedback: vi.fn((_message: WidgetMessage, _value: VisitorFeedback | null) => {}),
     requestProductOptions: vi.fn((_productId: string) => {}),
-    emailCheck: ref<EmailCheckState>({ stage: 'email', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
+    emailCheck: ref<EmailCheckState>({ stage: 'email', purpose: 'chat', busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
     startEmailCheck: vi.fn((_email: string) => {}),
     verifyEmailCode: vi.fn((_code: string) => {}),
     restartEmailCheck: vi.fn(),
@@ -152,6 +150,7 @@ const baseController = () => ({
     journeyProgress: ref<JourneyProgress | null>(null),
     replyChips: ref<PageChip[]>([]),
     chipBusy: ref(false),
+    onPageChip: vi.fn((_chip: PageChip) => {}),
     shownPrompt: ref<HostPrompt | null>(null),
     promptPlace: { isBefore: (_message: WidgetMessage): boolean => false, isLast: (): boolean => false },
     // screens

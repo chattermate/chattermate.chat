@@ -67,11 +67,14 @@ from app.services.host_action_runtime import (
 )
 from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
+from app.cards.labels import pick_language
 from app.services import email_check
-from app.services.widget_answers import offers_follow_ups, serves_redesign_to_visitors
+from app.services.widget_answers import offers_follow_ups
+from app.services import widget_plan
 from app.services.widget_reply import (
     FOLLOW_UPS_SESSION_KEY,
-    REDESIGN_SESSION_KEY,
+    LANGUAGE_SESSION_KEY,
+    PANEL_SESSION_KEY,
     create_widget_agent,
     deliver_ai_reply,
     emit_bot_typing,
@@ -406,6 +409,9 @@ async def widget_connect(sid, environ, auth):
             settings=ai_config.settings,
         )
 
+        # What this plan lets the widget do, read once per connection (widget_plan.py)
+        plan = widget_plan.features(db, org_id, widget_plan.SOCKET_FEATURES)
+
         session_data = {
             'widget_id': widget_id,
             'org_id': org_id,
@@ -438,9 +444,11 @@ async def widget_connect(sid, environ, auth):
             # Host page that embeds the widget (sent by the webclient). Recorded on
             # lead capture as lead_source.page_url so you can see WHERE leads convert.
             'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
-            # The redesign's live steps and follow-up chips (widget_reply.py)
-            REDESIGN_SESSION_KEY: serves_redesign_to_visitors(agent),
-            FOLLOW_UPS_SESSION_KEY: offers_follow_ups(agent),
+            # The widget panel's live steps and cards, and follow-up chips (widget_reply.py)
+            PANEL_SESSION_KEY: (auth or {}).get('panel') is True,
+            LANGUAGE_SESSION_KEY: pick_language((auth or {}).get('languages')),
+            widget_plan.SESSION_KEY: plan,
+            FOLLOW_UPS_SESSION_KEY: offers_follow_ups(agent) and plan[widget_plan.FOLLOW_UPS_FEATURE],
         }
 
         # Log rate limiting settings

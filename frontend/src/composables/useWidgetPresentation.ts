@@ -21,10 +21,9 @@ import type { AgentCustomization } from '../types/agent'
 import type { HumanAgent } from '../types/widget'
 import { resolveOrbStyle } from '../utils/orb'
 import { shouldShowAiDisclaimer } from '../utils/aiDisclaimer'
-import { presenceLine, PRESENCE_TEXT } from '../utils/widgetPresence'
+import { presenceLine } from '../utils/widgetPresence'
 import { resolveWidgetUploadUrl } from '../webclient/widget-env'
 import { themeCssVars } from '../webclient/widget-theme'
-import { widgetUiVersion } from '../webclient/widget-ui'
 import { PANEL_PRESENCE_TEXT } from '../webclient/copy'
 
 export interface WidgetPresentationOptions {
@@ -90,21 +89,18 @@ export function useWidgetPresentation({
     // A human agent has claimed the conversation, so replies no longer come from the AI.
     const isHandedOverToHuman = computed(() => !!humanAgent.value?.human_agent_name)
 
-    // Which design renders: the classic widget (1) or the redesigned panel (2).
-    const ui = computed(() => widgetUiVersion(customization.value))
-
     // What the header may honestly say about how soon someone replies. Server-sent
     // at load; a takeover flips it to the human wording without a round trip.
     const presence = computed(() => presenceLine(
         window.__INITIAL_DATA__?.presence,
         isHandedOverToHuman.value,
-        ui.value === 2 ? PANEL_PRESENCE_TEXT : PRESENCE_TEXT,
+        PANEL_PRESENCE_TEXT,
     ))
 
     // The plan decides, so a page with no answer yet keeps the branding.
     const showBranding = computed(() => !window.__INITIAL_DATA__?.hideBranding)
 
-    // The org's live help center, offered on the redesign's start state.
+    // The org's live help center, offered on the start state.
     const helpCenterUrl = computed(() => helpCenterLink(window.__INITIAL_DATA__?.helpCenterUrl))
 
     // Attachments only allowed when:
@@ -135,7 +131,7 @@ export function useWidgetPresentation({
         chat_text_color: customization.value.chat_text_color,
         accent_color: customization.value.accent_color,
         font_family: customization.value.font_family,
-    }, { ui: ui.value, hostBackdrop: !!hostBackdrop?.value }))
+    }, { panel: true, hostBackdrop: !!hostBackdrop?.value }))
 
     // Welcome message + quick actions shown on open (no history yet); they clear once
     // the visitor sends their first message.
@@ -176,7 +172,6 @@ export function useWidgetPresentation({
     )
 
     return {
-        ui,
         humanAgentPhotoUrl,
         isUploading,
         maxFiles: MAX_FILES,

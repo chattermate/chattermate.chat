@@ -1,38 +1,39 @@
-import { test, expect, env, makeLegacyAgent } from '@e2e'
+import { test, expect, storeOriginalDesignChoice, unique } from '@e2e'
 
-// Agent → Chat Customization → Design: the Original / New widget design, offered to
-// agents created before the new design (new ones start on it, new-agent-design.spec).
-// The chat preview switches at once, and the choice is saved with the rest of the form.
-// The classic run's stack serves visitors the original widget only, which the
-// form says; the redesign run's serves both.
+// The original widget is gone: every agent's visitors get the new panel, new agents
+// and agents that once chose the original alike, and the Design section has no
+// choice to make. The dashboard preview is the panel too.
 
 const SAMPLE_QUESTION = 'Do you offer free returns?'
-// The "visitors see the original widget" note: only where the server has the redesign off.
-const OFF_NOTES = env.widgetUi === 2 ? 0 : 1
 
-test.describe('widget design', () => {
-  test('switching an existing agent to the new design previews it at once and keeps it after saving @agents', async ({ agent, customizationPage }) => {
-    makeLegacyAgent(agent.id)
-    await customizationPage.goto(agent.id)
-    await customizationPage.chooseWidgetDesign('Original')
-    await expect(customizationPage.panelPreview).toHaveCount(0)
-
-    await customizationPage.chooseWidgetDesign('New')
-    await expect(customizationPage.panelPreview).toBeVisible()
-    await expect(customizationPage.panelPreview.getByText(SAMPLE_QUESTION)).toBeVisible()
-    await expect(customizationPage.panelPreview.getByRole('textbox')).toBeEditable()
-    await customizationPage.save()
-    // Saving reloads the form from the server; the preview keeps the sample conversation.
-    await expect(customizationPage.panelPreview.getByText(SAMPLE_QUESTION)).toBeVisible()
-
+test.describe('the widget design', () => {
+  test('an agent that chose the original widget gets the new panel, in the preview and on the site @agents @widget', async ({ agent, customizationPage, makeWidget }) => {
+    storeOriginalDesignChoice(agent.id)
     await customizationPage.goto(agent.id)
     await customizationPage.openSection('Design')
-    await expect(customizationPage.widgetDesign('New')).toBeChecked()
-    await customizationPage.chooseWidgetDesign('New')
+    await expect(customizationPage.widgetDesignChoice).toHaveCount(0)
+    await customizationPage.showChatPreview()
     await expect(customizationPage.panelPreview.getByText(SAMPLE_QUESTION)).toBeVisible()
-    await expect(customizationPage.widgetDesignOffNote).toHaveCount(OFF_NOTES)
 
-    await customizationPage.chooseWidgetDesign('Original')
-    await expect(customizationPage.panelPreview).toHaveCount(0)
+    const widget = await makeWidget(agent.id)
+    await widget.embed()
+    await widget.open()
+    await expect.poll(() => widget.design()).toBe(2)
+  })
+
+  test('a new agent gets the new panel @agents @widget', async ({ makeAgent, agentsPage, customizationPage, makeWidget }) => {
+    // With at least one agent, /ai-agents shows the list rather than onboarding.
+    await makeAgent()
+    await agentsPage.goto()
+    const agentId = await agentsPage.createAgent(`New design ${unique('scn')}`)
+
+    await customizationPage.goto(agentId)
+    await customizationPage.showChatPreview()
+    await expect(customizationPage.panelPreview).toBeVisible()
+
+    const widget = await makeWidget(agentId)
+    await widget.embed()
+    await widget.open()
+    await expect.poll(() => widget.design()).toBe(2)
   })
 })

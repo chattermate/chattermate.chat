@@ -158,56 +158,6 @@
     cursor: default;
 }
 
-/* ===== The live work trace and its receipt ===== */
-.chat-container.cm-surface.cm-ui-2 .cm-trace {
-    align-self: stretch;
-    padding: 12px 14px;
-    border: 1px solid var(--cm-line);
-    border-radius: var(--cm-radius-card);
-    background: var(--cm-tint);
-    color: var(--cm-text);
-    font-size: 13px;
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace__step.is-running .cm-trace__label {
-    color: var(--cm-text);
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace__step:not(.is-running) .cm-trace__label {
-    color: var(--cm-muted);
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace__spinner {
-    border: 2px solid var(--cm-line);
-    border-top-color: var(--cm-text);
-    animation: cm-spin calc(.8s * var(--cm-dur-scale)) linear infinite;
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace__mark {
-    color: var(--cm-text);
-    animation: cm-pop calc(var(--cm-dur-2) * var(--cm-dur-scale)) var(--cm-ease-enter) both;
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__toggle {
-    border: 0;
-    background: none;
-    color: var(--cm-muted);
-    font: inherit;
-    font-size: 12px;
-    cursor: pointer;
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__toggle:hover {
-    color: var(--cm-text);
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__chevron {
-    transition: transform var(--cm-dur-1) var(--cm-ease-out);
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__chevron.is-open {
-    transform: rotate(180deg);
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__steps {
-    color: var(--cm-muted);
-    font-size: 12px;
-}
-.chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__step.is-error {
-    color: var(--cm-text);
-}
-
 /* ===== The handover card ===== */
 .chat-container.cm-surface.cm-ui-2 .cm-handover {
     padding: 14px;
@@ -238,23 +188,3 @@
     line-height: 21px;
 }
 
-@keyframes cm-spin {
-    to { transform: rotate(360deg); }
-}
-
-@keyframes cm-pop {
-    from { opacity: 0; transform: scale(.4); }
-    to { opacity: 1; transform: none; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .chat-container.cm-surface.cm-ui-2 .cm-trace__spinner {
-        animation: none;
-    }
-    .chat-container.cm-surface.cm-ui-2 .cm-trace__mark {
-        animation: cm-fade-in 150ms linear both;
-    }
-    .chat-container.cm-surface.cm-ui-2 .cm-trace-receipt__chevron {
-        transition: none;
-    }
-}

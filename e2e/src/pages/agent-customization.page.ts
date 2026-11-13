@@ -5,7 +5,6 @@ export type LauncherGroup = 'Size' | 'Shape' | 'Icon' | 'Background' | 'Animatio
 export type LogoFile = { name: string; mimeType: string; buffer: Buffer }
 
 export type CustomizationSection = 'Design' | 'Launcher' | 'Placement' | 'Messages' | 'Behaviour'
-export type WidgetDesign = 'Original' | 'New'
 
 /** Agent → Chat Customization: collapsible sections (one open at a time) and the preview beside them. */
 export class AgentCustomizationPage {
@@ -96,22 +95,9 @@ export class AgentCustomizationPage {
     })
   }
 
-  /** Design → Widget design: the original widget or the redesigned one. */
-  widgetDesign(name: WidgetDesign): Locator {
-    return this.section('Design').getByRole('group', { name: 'Widget design' }).getByRole('radio', { name, exact: true })
-  }
-
-  async chooseWidgetDesign(name: WidgetDesign): Promise<void> {
-    await step(`Choose the ${name} widget design`, async () => {
-      await this.openSection('Design')
-      await this.widgetDesign(name).click()
-      await expect(this.widgetDesign(name)).toBeChecked()
-    })
-  }
-
-  /** "Visitors see the original widget until …": this server has the redesign off. */
-  get widgetDesignOffNote(): Locator {
-    return this.section('Design').getByText('Visitors see the original widget until')
+  /** Design → the Original / New widget design choice, gone with the original widget. */
+  get widgetDesignChoice(): Locator {
+    return this.section('Design').getByRole('group', { name: 'Widget design' })
   }
 
   /** The chat preview, rather than the launcher on a page. */
@@ -123,7 +109,7 @@ export class AgentCustomizationPage {
     })
   }
 
-  /** The redesigned widget as the chat preview draws it (the classic preview has no such region). */
+  /** The widget as the chat preview draws it. */
   get panelPreview(): Locator {
     return this.page.getByRole('region', { name: 'Widget preview' })
   }

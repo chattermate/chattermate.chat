@@ -146,9 +146,9 @@ const steps = computed(() =>
 .cm-plan-steps li.now .cm-plan-title { font-weight: 600; }
 .cm-plan-steps li.todo .cm-plan-title { color: var(--cm-muted); }
 .cm-plan-icon { width: 17px; height: 17px; flex-shrink: 0; }
-.cm-plan-icon .fill { fill: var(--cm-accent); }
+.cm-plan-icon .fill { fill: var(--cm-accent-ink, var(--cm-accent)); }
 .cm-plan-icon .tick { fill: none; stroke: var(--cm-on-accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-.cm-plan-icon .ring { fill: none; stroke: var(--cm-accent); stroke-width: 2.2; }
+.cm-plan-icon .ring { fill: none; stroke: var(--cm-accent-ink, var(--cm-accent)); stroke-width: 2.2; }
 .cm-plan-icon .ring.todo { stroke: var(--cm-hairline); stroke-width: 2; }
 .cm-plan-actions { display: flex; gap: 14px; margin-top: 10px; }
 .cm-plan-actions button {
@@ -161,6 +161,6 @@ const steps = computed(() =>
   text-decoration: underline;
   cursor: pointer;
 }
-.cm-plan button:focus-visible { outline: 2px solid var(--cm-accent); outline-offset: 2px; border-radius: 4px; }
+.cm-plan button:focus-visible { outline: 2px solid var(--cm-accent-ink, var(--cm-accent)); outline-offset: 2px; border-radius: 4px; }
 .cm-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>

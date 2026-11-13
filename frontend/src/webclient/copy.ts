@@ -22,10 +22,11 @@ limitations under the License.
 
 import { PRESENCE_TEXT, type PresenceWording } from '../utils/widgetPresence'
 
-/** The header's status line, by who answers. Human and away keep the classic, honest wording. */
+/** The header's status line, by who answers. Human and away keep the classic, honest wording.
+ * The AI is not named here or on answers: the footer's disclaimer says it once. */
 export const PANEL_PRESENCE_TEXT: PresenceWording = {
     ...PRESENCE_TEXT,
-    ai: 'AI agent · replies instantly',
+    ai: 'Replies instantly',
 }
 
 export const PANEL_COPY = {
@@ -52,8 +53,8 @@ export const PANEL_COPY = {
     poweredBy: 'Powered by',
     brandName: 'ChatterMate',
     removeFile: (name: string) => `Remove ${name}`,
-    /** The label row above an AI answer. */
-    aiLabel: (agent: string) => (agent ? `${agent} AI` : 'AI'),
+    /** The label row above an answer: the agent's own name, as the merchant wrote it. */
+    answerLabel: (agent: string) => agent.trim() || 'Assistant',
     sources: 'Sources',
     /** The start state: greeting and headline when the agent set none (welcome_title / _subtitle). */
     welcomeTitle: 'Hi there',
@@ -133,6 +134,11 @@ export const PANEL_COPY = {
     loadingConversation: 'Loading…',
     earlierMessages: 'Show earlier messages',
     continueFailed: "Couldn't continue that conversation. Please try again.",
+    /** Chats from the visitor's other browsers, after an email check from the history screen. */
+    otherDevices: 'Chatted with us on another device?',
+    otherDevicesTitle: 'Find your other chats',
+    otherDevicesText: "Confirm the email you use with us. Chats where you confirmed it before will show here.",
+    otherDevicesShown: (masked: string) => `Including chats confirmed with ${masked}`,
     /** The email check (plan 4.3). */
     emailCheckTitle: 'Confirm your email',
     emailCheckText: "We'll send a 6-digit code to show these orders are yours.",
@@ -186,7 +192,7 @@ export const PANEL_COPY = {
     stagedFiles: 'Files to send',
     previewImage: (name: string) => `Preview ${name}`,
     opensInNewTab: '(opens in a new tab)',
-    /** Answers (plan phase 2): source numbers, actions, follow-ups, the steps and handover. */
+    /** Answers (plan phase 2): source numbers, actions, follow-ups and handover. */
     sourceNumber: (n: number) => `source ${n}`,
     sourceChip: (n: number, label: string) => `Source ${n}: ${label}`,
     answerActions: 'Answer actions',
@@ -195,10 +201,6 @@ export const PANEL_COPY = {
     helpful: 'Helpful',
     notHelpful: 'Not helpful',
     followUps: 'Ask next',
-    stepsTaken: 'Steps taken',
-    traceSummary: (label: string, steps: number, time: string) =>
-        steps === 1 ? `${label} · ${time}` : `${steps} steps · ${time}`,
-    stepFailed: "Couldn't finish",
     handoverConnecting: 'Connecting you to the team',
     handoverOffline: 'Our team will get back to you',
     /** The start-state row that opens the org's public help center. */
@@ -219,7 +221,6 @@ export const PREVIEW_SAMPLE_COPY = {
         { name: 'Shipping FAQ', type: 'file' },
     ],
     receipt: 'Opened your order page',
-    /** What the agent did for the answer, and what the visitor might ask next. */
-    step: 'Searched the help center',
+    /** What the visitor might ask next. */
     followUps: ['How long does a refund take?', 'Can I exchange instead?'],
 } as const

@@ -29,7 +29,6 @@ limitations under the License.
 
 import { isColorDark, adjustColorBrightness } from '../types/widget'
 import { toHex6 } from '../utils/color'
-import type { WidgetUiVersion } from '../types/agent'
 import type { MotionPersonality } from './panel/motion-tokens'
 import { DARK_TEXT, LIGHT_TEXT, panelCssVars, panelLook, type PanelColours, type PanelLook } from './panel/panel-theme'
 
@@ -191,9 +190,10 @@ function panelColours(t: ThemeTokens, overrides?: ThemeOverrides): PanelColours 
 export function themeCssVars(
     chatStyle?: string | null,
     overrides?: ThemeOverrides,
-    // hostBackdrop: the embed loader frosts the page behind the panel (HOST_CAPABILITIES),
-    // so Glass may be see-through (ui 2 only).
-    options: { ui?: WidgetUiVersion; hostBackdrop?: boolean } = {},
+    // panel: the widget's panel properties too (the onboarding test chat draws only
+    // the shared surface). hostBackdrop: the embed loader frosts the page behind the
+    // panel (HOST_CAPABILITIES), so Glass may be see-through.
+    options: { panel?: boolean; hostBackdrop?: boolean } = {},
 ): Record<string, string> {
     const t = getThemeTokens(chatStyle)
 
@@ -230,7 +230,7 @@ export function themeCssVars(
         ? MONO_FONT
         : (overrides?.font_family ? `${overrides.font_family}, ${BODY_FONT}` : BODY_FONT)
 
-    const classic: Record<string, string> = {
+    const surface: Record<string, string> = {
         '--cm-card': card,
         '--cm-text': text,
         '--cm-muted': muted,
@@ -248,8 +248,8 @@ export function themeCssVars(
         '--cm-hairline': t.light ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)',
         '--cm-body-font': bodyFont,
     }
-    if (options.ui !== 2) return classic
-    return { ...classic, ...panelCssVars(t, panelColours(t, overrides), { hostBackdrop: options.hostBackdrop }) }
+    if (!options.panel) return surface
+    return { ...surface, ...panelCssVars(t, panelColours(t, overrides), { hostBackdrop: options.hostBackdrop }) }
 }
 
 /** How the loader should frame the redesigned panel for this style and these colours. */

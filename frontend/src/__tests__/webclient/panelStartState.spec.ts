@@ -152,6 +152,18 @@ describe('the panel and its start state', () => {
         expect(wrapper!.find('textarea[aria-label="Message"]').exists()).toBe(true)
     })
 
+    it('drops the greeting while the card asks for the email, and brings it back after', async () => {
+        const awaitingEmail = ref(true)
+        mountPart(PanelWidget, { awaitingEmail, quickActions: ref(['Track my order']) })
+        const body = wrapper!.get('.cm-panel__body')
+        expect(body.find('.cm-start__headline').exists()).toBe(false)
+        expect(body.find('.cm-start__greeting').exists()).toBe(false)
+        expect(body.find('button.cm-suggestion').exists()).toBe(true)
+        awaitingEmail.value = false
+        await nextTick()
+        expect(wrapper!.find('.cm-start__headline').exists()).toBe(true)
+    })
+
     it('keeps the same card, and what is typed in it, when the thread starts', async () => {
         mountPart(PanelWidget, { awaitingEmail: ref(true) })
         const field = wrapper!.get('input[type="email"]').element as HTMLInputElement

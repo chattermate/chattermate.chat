@@ -62,10 +62,9 @@ export interface ComposerOptions {
      */
     isWorkflowAgent: () => boolean
     /**
-     * The redesigned panel keeps the box and the suggestions usable while it asks
-     * for the email: while this is true a send is held, not sent, and goes out by
-     * itself once it turns false (the email is in). Absent for the classic widget,
-     * which hides the box behind its email gate instead.
+     * The panel keeps the box and the suggestions usable while it asks for the
+     * email: while this is true a send is held, not sent, and goes out by itself
+     * once it turns false (the email is in).
      */
     holdForEmail?: Readonly<Ref<boolean>>
     /** A send was just held for the email: ask for it (submit what was typed). */

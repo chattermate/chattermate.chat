@@ -19,7 +19,8 @@ limitations under the License.
  * The panel's header: the agent's mark, its name and an honest status line, then
  * new chat, expand (when the loader can size the panel up) and minimize. After a
  * takeover the person's name and avatar lead. No team presence: a person only
- * appears once they joined. The history button comes with plan 5.x.
+ * appears once they joined. On a phone the header (with its grabber) can be
+ * swiped down to close the panel.
  */
 import { computed, inject } from 'vue'
 import { WIDGET_CTX, WIDGET_PREVIEW } from './controller'
@@ -28,6 +29,7 @@ import PersonAvatar from './PersonAvatar.vue'
 import { agentFace } from './agent-face'
 import { PANEL_COPY } from '../copy'
 import { NEW_CHAT_LABEL } from '../new-chat'
+import { useSwipeToClose } from '../../composables/useSwipeToClose'
 
 defineProps<{
     /** The loader can size the panel up (HOST_CAPABILITIES.expand). */
@@ -39,12 +41,12 @@ const emit = defineEmits<{ (e: 'expand'): void }>()
 const ctrl = inject(WIDGET_CTX)!
 const {
     agentName, humanAgent, humanAgentPhotoUrl, photoUrl, orbStyle, presence, loading,
-    isHandedOverToHuman, canStartNewChat, startingNewChat, newChatArmed, history, hasConversationToken,
+    isHandedOverToHuman, canStartNewChat, startingNewChat, newChatArmed, history,
 } = ctrl
 
 // Past chats need a conversation of the visitor's own (none in the dashboard preview).
 const preview = inject(WIDGET_PREVIEW, false)
-const historyAvailable = computed(() => !preview && hasConversationToken.value)
+const historyAvailable = computed(() => !preview && ctrl.historyAvailable.value)
 
 const face = computed(() => agentFace(ctrl.customization.value, photoUrl.value))
 const personName = computed(() => humanAgent.value.human_agent_name || '')
@@ -55,10 +57,15 @@ const working = computed(() => loading.value && !isHandedOverToHuman.value)
 
 // The status line: "Working on it…" while the AI works, otherwise who answers and how soon.
 const statusText = computed(() => (working.value ? PANEL_COPY.working : presence.value.text))
+
+// Swipe down to close, where the loader can move the panel (a phone screen).
+const swipe = computed(() => !preview && ctrl.hostCapabilities.value.swipe)
+const { onPointerDown } = useSwipeToClose(swipe)
 </script>
 
 <template>
-    <div class="cm-header">
+    <div class="cm-header" :class="{ 'is-swipeable': swipe }" @pointerdown="onPointerDown">
+        <span v-if="swipe" class="cm-grabber" aria-hidden="true"></span>
         <div class="cm-header__faces">
             <AgentMark
                 :face="face"
@@ -145,6 +152,23 @@ const statusText = computed(() => (working.value ? PANEL_COPY.working : presence
     align-items: center;
     gap: 10px;
     padding: 0 10px 0 14px;
+}
+/* On a phone the header is the handle for swiping the panel away: the browser
+   must not take the drag for scrolling or pull-to-refresh. */
+.cm-header.is-swipeable {
+    position: relative;
+    touch-action: none;
+}
+.cm-grabber {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    margin-left: -18px;
+    border-radius: 2px;
+    background: var(--cm-muted);
+    opacity: .45;
 }
 .cm-header__faces { display: flex; align-items: center; gap: 4px; }
 .cm-header__info { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0; }

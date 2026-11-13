@@ -39,10 +39,10 @@ const status = () => wrapper!.find('.cm-status').text()
 const dot = (which: 'ai' | 'human') => wrapper!.find(`[data-dot="${which}"]`)
 
 describe('the panel header', () => {
-    it('names the agent and says the AI replies instantly', () => {
+    it('names the agent and says it replies instantly (the AI is named once, in the footer)', () => {
         header()
         expect(wrapper!.find('.header-info h3').text()).toBe('Ada')
-        expect(status()).toBe('AI agent · replies instantly')
+        expect(status()).toBe('Replies instantly')
     })
 
     it('says "Working on it…" while a reply is being worked on, and pulses the AI dot', async () => {
@@ -135,8 +135,8 @@ describe('the panel header', () => {
         expect(ctrl.closeHistory).toHaveBeenCalled()
     })
 
-    it('has no history button without a conversation of the visitor\'s own', () => {
-        header({ hasConversationToken: ref(false) })
+    it('has no history button where past chats cannot be offered (no conversation of their own, or Free)', () => {
+        header({ historyAvailable: ref(false) })
         expect(wrapper!.find('button[aria-label="Your conversations"]').exists()).toBe(false)
     })
 

@@ -190,7 +190,6 @@ const statusLabel = (journey: Journey) => ({ live: 'Live', paused: 'Paused', dra
 .tools button:disabled { opacity: 0.3; }
 .link { background: none; border: none; color: var(--accent-ink); cursor: pointer; padding: 0; font-size: 13px; }
 .modal-text { margin: 0; font-size: 14px; color: var(--text3); }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 @media (max-width: 900px) {
   .trow { grid-template-columns: minmax(0, 1fr) auto; }
   .trow > :nth-child(3), .trow > :nth-child(4), .trow > :nth-child(5) { display: none; }

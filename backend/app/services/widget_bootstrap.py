@@ -26,7 +26,6 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.services.page_suggestions import every_page_labels
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.s3 import get_s3_signed_url
@@ -34,7 +33,7 @@ from app.core.security import create_conversation_token
 from app.models.agent import Agent
 from app.models.widget import Widget
 from app.repositories.widget import WidgetRepository
-from app.services import conversation_token, launcher, widget_ui
+from app.services import conversation_token, launcher, widget_plan, widget_ui
 from app.services.widget_help_center import help_center_url
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on, plan_hides_branding
 from app.utils.business_hours import is_within_business_hours
@@ -161,7 +160,6 @@ async def _customization(db: Session, agent: Agent) -> dict:
     customization = agent.customization
     if not customization:
         defaults = launcher.uncustomized_defaults()
-        # Through the design switch too, so the kill switch covers every agent.
         defaults['customization_metadata'] = widget_ui.served_metadata(defaults['customization_metadata'])
         return defaults
 
@@ -183,15 +181,14 @@ async def _customization(db: Session, agent: Agent) -> dict:
         "welcome_title": customization.welcome_title,
         "welcome_subtitle": customization.welcome_subtitle,
         "welcome_message": customization.welcome_message,
-        "chat_initiation_messages": customization.chat_initiation_messages or [],
-        # Every-page ones as plain strings: page rules are placed by the server
-        "quick_actions": every_page_labels(customization.quick_actions),
+        # As the plan serves them; every-page quick actions as plain strings (page
+        # rules are placed by the server)
+        **widget_plan.visitor_rows(db, agent),
         "show_citations": customization.show_citations,
         "collect_email": customization.collect_email,
         # A human-only agent never produces an AI reply, so disclosing one
         # would be untrue — same reason the widget hides it after takeover.
         "show_ai_disclaimer": customization.show_ai_disclaimer and agent.ai_replies_enabled,
-        "allow_new_chat": customization.allow_new_chat,
         "customization_metadata": metadata,
         "launcher_logo_url": logo_url,
     }
@@ -212,8 +209,7 @@ async def initial_data(db: Session, session: WidgetSession) -> dict:
         "allowAttachments": bool(agent.allow_attachments),
         "presence": session.presence,
         "hideBranding": session.hide_branding,
-        # Only the redesign shows the help center row; skip the lookup for classic.
-        "helpCenterUrl": (
-            help_center_url(db, agent.organization_id) if widget_ui.serves_redesign(customization) else None
-        ),
+        "helpCenterUrl": help_center_url(db, agent.organization_id),
+        # What the page hides on this plan (the server refuses it as well)
+        "planFeatures": widget_plan.features(db, agent.organization_id, widget_plan.PAGE_FEATURES),
     }

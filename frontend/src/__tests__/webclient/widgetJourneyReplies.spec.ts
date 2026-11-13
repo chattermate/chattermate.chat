@@ -24,7 +24,8 @@ import { nextTick, ref } from 'vue'
  * reply has arrived *and* finished typing out, then shows below it.
  *
  * Reply buttons go the moment one is tapped and stay gone until its reply has
- * typed out; buttons the agent offers with a reply stand in for the step's.
+ * typed out; choices the agent offers with a reply (chips under it) stand in for
+ * the step's buttons until answered.
  */
 
 const sendMessage = vi.fn()
@@ -161,9 +162,9 @@ describe('journey replies in the widget', () => {
         socket.messages.value.push({ message: REPLY, message_type: 'bot', created_at: '', session_id: '', stream: true })
         await nextTick()
 
-        const field = wrapper.find('input.welcome-message-field, .message-input input')
+        const field = wrapper.find('textarea.cm-composer__field')
         await field.setValue('quick question')
-        await field.trigger('keypress', { key: 'Enter' })
+        await field.trigger('keydown', { key: 'Enter' })
         await nextTick()
 
         expect(sendMessage).toHaveBeenCalledWith('quick question', expect.anything(), expect.anything(), {})
@@ -172,36 +173,38 @@ describe('journey replies in the widget', () => {
     })
 
     const buttons = (wrapper: any) => wrapper.findAll('.cm-reply').map((b: any) => b.text())
+    const choices = (wrapper: any) => wrapper.findAll('.cm-follow-ups__chip').map((b: any) => b.text())
     const typedOut = async () => {
         await vi.runAllTimersAsync()
         await nextTick()
     }
 
-    it('offers the agent\'s choices in place of the step\'s buttons until answered', async () => {
+    it('shows the agent\'s choices under its answer in place of the step\'s buttons until answered', async () => {
         const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
         handlers.get('journey_state')!(teachStep)
         socket.messages.value.push({ message: 'Which colour?', message_type: 'bot', created_at: '', session_id: '', attributes: { quick_replies: ['Blue', 'Green'] } })
         await nextTick()
-        expect(buttons(wrapper)).toEqual(['Blue', 'Green'])
+        expect(choices(wrapper)).toEqual(['Blue', 'Green'])
+        expect(buttons(wrapper)).toEqual([])
 
         // Any later message retires them: the step's own come back.
         socket.messages.value.push({ message: 'purple please', message_type: 'user', created_at: '', session_id: '' })
         socket.messages.value.push({ message: 'Done.', message_type: 'bot', created_at: '', session_id: '' })
         await nextTick()
+        expect(choices(wrapper)).toEqual([])
         expect(buttons(wrapper)).toEqual(['Paste some text'])
         wrapper.unmount()
     })
 
-    it('hides every button the moment one is tapped, until its reply has typed out', async () => {
+    it('sends a tapped choice, and the step\'s buttons wait for its reply to type out', async () => {
         const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
         handlers.get('journey_state')!(teachStep)
         socket.messages.value.push({ message: 'Which colour?', message_type: 'bot', created_at: '', session_id: '', attributes: { quick_replies: ['Blue', 'Green'] } })
         await nextTick()
 
-        await wrapper.findAll('.cm-reply')[0].trigger('click')
+        await wrapper.findAll('.cm-follow-ups__chip')[0].trigger('click')
         await nextTick()
         expect(sendMessage).toHaveBeenCalledWith('Blue', expect.anything(), expect.anything(), expect.anything())
-        // Before the server has said anything
         expect(buttons(wrapper)).toEqual([])
 
         socket.loading.value = true
@@ -209,45 +212,29 @@ describe('journey replies in the widget', () => {
         socket.loading.value = false
         socket.messages.value.push({ message: 'Blue', message_type: 'user', created_at: '', session_id: '' })
         socket.messages.value.push({ message: 'The chat is blue now.', message_type: 'bot', created_at: '', session_id: '', stream: true })
+        // Still typing out (the panel reveals a word at a time)
         await nextTick()
-        await vi.advanceTimersByTimeAsync(60)
         expect(buttons(wrapper)).toEqual([])
+        expect(choices(wrapper)).toEqual([])
 
         await typedOut()
         expect(buttons(wrapper)).toEqual(['Paste some text'])
         wrapper.unmount()
     })
 
-    it('scrolls the buttons into view once the reply that brings them has typed out', async () => {
-        const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
-        const log = wrapper.find('.chat-messages').element as HTMLElement
-        let scrolledTo = 0
-        // The buttons land after the reply's last character, making the list taller
-        Object.defineProperty(log, 'scrollHeight', { configurable: true, get: () => (log.querySelector('.cm-reply') ? 460 : 400) })
-        Object.defineProperty(log, 'scrollTop', { configurable: true, get: () => scrolledTo, set: (top: number) => { scrolledTo = top } })
-        socket.messages.value.push({ message: 'Which colour?', message_type: 'bot', created_at: '', session_id: '', stream: true, attributes: { quick_replies: ['Blue', 'Green'] } })
-        await typedOut()
-        await nextTick()
-        expect(buttons(wrapper)).toEqual(['Blue', 'Green'])
-        expect(scrolledTo).toBe(460)
-        wrapper.unmount()
-    })
-
-    it('leaves a reader where they are when the page re-sends the same step', async () => {
+    it('keeps the shown step when the page re-sends the same one', async () => {
         const wrapper = mount(WidgetBuilder, { props: { widgetId: 'w-1', token: 'tok-1' } })
         handlers.get('journey_state')!(teachStep)
         await typedOut()
-        const log = wrapper.find('.chat-messages').element as HTMLElement
-        let scrolledTo = 120
-        Object.defineProperty(log, 'scrollHeight', { configurable: true, get: () => 900 })
-        Object.defineProperty(log, 'scrollTop', { configurable: true, get: () => scrolledTo, set: (top: number) => { scrolledTo = top } })
+        const before = wrapper.findAll('.cm-reply').map((b: any) => b.element)
 
-        // A sync brings the same step (and its buttons) as a new object
+        // A sync brings the same step (and its buttons) as a new object: nothing re-renders
         handlers.get('journey_state')!(JSON.parse(JSON.stringify(teachStep)))
         await nextTick()
         await nextTick()
         expect(buttons(wrapper)).toEqual(['Paste some text'])
-        expect(scrolledTo).toBe(120)
+        expect(wrapper.findAll('.cm-reply').map((b: any) => b.element)).toEqual(before)
+        expect(bubbles(wrapper).filter((t: string) => t.includes(STEP))).toHaveLength(1)
         wrapper.unmount()
     })
 

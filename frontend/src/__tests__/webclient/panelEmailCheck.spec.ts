@@ -40,7 +40,7 @@ describe('the email check card', () => {
         const card = wrapper!.get('section[aria-label="Confirm your email"]')
         await card.get('input[type="email"]').setValue('jane@acme.com')
         await card.get('form').trigger('submit')
-        expect(ctrl.startEmailCheck).toHaveBeenCalledWith('jane@acme.com')
+        expect(ctrl.startEmailCheck).toHaveBeenCalledWith('jane@acme.com', 'chat')
     })
 
     it('takes the code, sending it once all six digits are in', async () => {

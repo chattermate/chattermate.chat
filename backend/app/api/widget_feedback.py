@@ -16,13 +16,15 @@ limitations under the License.
 The visitor's thumbs on an AI reply (the redesigned widget's answer actions):
   message_feedback {message_id, value: 'up' | 'down' | null}
 answered with message_feedback_saved {message_id, value}, or an error of type
-feedback_error so the widget can put the thumb back.
+feedback_error so the widget can put the thumb back. The organization's open
+inboxes hear message_feedback {session_id, message_id, value}.
 """
 
 from app.api.widget_actions import authenticated_session
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.database import close_session, session_off_loop
+from app.services.agent_rooms import emit_to_org_inbox
 from app.services.message_feedback import save_visitor_feedback, valid_feedback
 from app.services.socket_rate_limit import socket_rate_limit
 from app.services.widget_reply import WIDGET_NAMESPACE
@@ -54,5 +56,9 @@ async def handle_message_feedback(sid, data):
     if saved:
         await sio.emit('message_feedback_saved', {'message_id': message_id, 'value': value},
                        to=sid, namespace=WIDGET_NAMESPACE)
+        # The team's open inboxes mark the reply with the visitor's thumb
+        await emit_to_org_inbox('message_feedback', {
+            'session_id': str(session['session_id']), 'message_id': message_id, 'value': value,
+        }, session['org_id'])
     else:
         await sio.emit('error', {**FEEDBACK_ERROR, 'message_id': message_id}, to=sid, namespace=WIDGET_NAMESPACE)

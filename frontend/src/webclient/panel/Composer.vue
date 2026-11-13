@@ -22,11 +22,11 @@ limitations under the License.
  * it in full; stopping the agent itself comes with plan 2.5).
  * Plain v-model: the classic view's native-listener workaround is not used here.
  */
-import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { WIDGET_CTX } from './controller'
 import { PANEL_COPY } from '../copy'
 import { SECRET_WARNING } from '../../utils/secretGuard'
-import { carriesFiles, growToFit, isSendKey } from './composer-input'
+import { carriesFiles, growToFit, isSendKey, refitOnWidthChange } from './composer-input'
 import StagedFiles from './StagedFiles.vue'
 
 const ctrl = inject(WIDGET_CTX)!
@@ -58,9 +58,14 @@ const onSendOrStop = () => {
 }
 
 // The box follows its text, including text set from outside (prefill, cleared on send)
-// and a draft already there when it appears.
+// and a draft already there when it appears, and its width (the panel resized).
 watch(newMessage, () => nextTick(() => growToFit(field.value)))
-onMounted(() => growToFit(field.value))
+let stopRefitting = () => {}
+onMounted(() => {
+    growToFit(field.value)
+    stopRefitting = refitOnWidthChange(field.value)
+})
+onBeforeUnmount(() => stopRefitting())
 
 const openFilePicker = () => fileInput.value?.click()
 

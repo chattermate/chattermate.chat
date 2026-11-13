@@ -33,32 +33,32 @@ function* colours(seed: number, count: number) {
 
 const bestInkRatio = (fill: string) => Math.max(contrastRatio(fill, '#FFFFFF'), contrastRatio(fill, '#0B0C10'))
 
-describe('the classic widget', () => {
-    it.each(STYLES)('%s gets none of the redesign properties', (style) => {
+describe('the shared surface only (the onboarding test chat)', () => {
+    it.each(STYLES)('%s gets none of the panel properties', (style) => {
         const vars = themeCssVars(style, { accent_color: '#FF8A73' })
         expect(vars['--cm-tint']).toBeUndefined()
         expect(vars['--cm-ease-enter']).toBeUndefined()
-        expect(themeCssVars(style, { accent_color: '#FF8A73' }, { ui: 1 })).toEqual(vars)
+        expect(themeCssVars(style, { accent_color: '#FF8A73' }, {})).toEqual(vars)
     })
 })
 
 describe('text on the accent', () => {
     it.each(STYLES)('reads on the %s default accent', (style) => {
-        const vars = themeCssVars(style, {}, { ui: 2 })
+        const vars = themeCssVars(style, {}, { panel: true })
         const accent = vars['--cm-accent']
         expect(contrastRatio(vars['--cm-on-accent'], accent)).toBeGreaterThanOrEqual(Math.min(4.5, bestInkRatio(accent)))
     })
 
     it('reads on any accent an agent picks, or as well as either ink can', () => {
         for (const accent of colours(7, 400)) {
-            const ink = themeCssVars('SUNRISE', { accent_color: accent }, { ui: 2 })['--cm-on-accent']
+            const ink = themeCssVars('SUNRISE', { accent_color: accent }, { panel: true })['--cm-on-accent']
             const ratio = contrastRatio(ink, accent)
             expect(ratio, accent).toBeCloseTo(bestInkRatio(accent), 5)
         }
     })
 
     it.each(['#fff', '#FF8A73', '#0a0'])('handles a short or uppercase accent (%s)', (accent) => {
-        const ink = themeCssVars('SUNRISE', { accent_color: accent }, { ui: 2 })['--cm-on-accent']
+        const ink = themeCssVars('SUNRISE', { accent_color: accent }, { panel: true })['--cm-on-accent']
         expect(contrastRatio(ink, accent)).toBeCloseTo(bestInkRatio(accent), 5)
     })
 
@@ -66,7 +66,43 @@ describe('text on the accent', () => {
         // Mid green: the classic luminance rule picks white at about 2.3:1.
         const accent = '#22C55E'
         expect(themeCssVars('SUNRISE', { accent_color: accent })['--cm-on-accent']).toBe('#FFFFFF')
-        expect(themeCssVars('SUNRISE', { accent_color: accent }, { ui: 2 })['--cm-on-accent']).toBe('#0B0C10')
+        expect(themeCssVars('SUNRISE', { accent_color: accent }, { panel: true })['--cm-on-accent']).toBe('#0B0C10')
+    })
+})
+
+describe('the accent drawn on the panel (icons, links, focus rings)', () => {
+    const inkOf = (style: string, overrides: Record<string, string> = {}) => {
+        const vars = themeCssVars(style, overrides, { panel: true })
+        return { ink: vars['--cm-accent-ink'], tint: vars['--cm-tint'], text: vars['--cm-text'], accent: vars['--cm-accent'] }
+    }
+
+    it('darkens a lime accent on the white Ask AI bar until it reads', () => {
+        const { ink, tint, accent } = inkOf('ASK_ANYTHING', { accent_color: '#C9F24E' })
+        expect(accent).toBe('#C9F24E')
+        expect(ink).not.toBe('#C9F24E')
+        expect(contrastRatio(ink, tint)).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it('keeps an accent that already reads exactly as picked', () => {
+        expect(inkOf('SUNRISE', { accent_color: '#4338CA' }).ink).toBe('#4338CA')
+    })
+
+    it('lightens a dark accent on a dark panel', () => {
+        const { ink, tint } = inkOf('AURORA', { accent_color: '#1E1B4B' })
+        expect(ink).not.toBe('#1E1B4B')
+        expect(contrastRatio(ink, tint)).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it.each(STYLES)('reads on %s for any accent, as well as the text itself does', (style) => {
+        for (const accent of colours(11, 120)) {
+            const { ink, tint, text } = inkOf(style, { accent_color: accent })
+            expect(contrastRatio(ink, tint), accent).toBeGreaterThanOrEqual(Math.min(4.5, contrastRatio(text, tint)) - 1e-9)
+        }
+    })
+
+    it('reads on a custom panel background too', () => {
+        const { ink, tint } = inkOf('SUNRISE', { accent_color: '#FFE066', chat_background_color: '#FFF8E1' })
+        expect(contrastRatio(ink, tint)).toBeGreaterThanOrEqual(4.5)
     })
 })
 
@@ -76,7 +112,7 @@ describe('custom panel colours', () => {
         const levels = Array.from({ length: 16 }, (_, i) => (i * 17).toString(16).padStart(2, '0'))
         for (const r of levels) for (const g of levels) for (const b of levels) {
             const background = `#${r}${g}${b}`
-            const vars = themeCssVars('GLASS', { chat_background_color: background }, { ui: 2 })
+            const vars = themeCssVars('GLASS', { chat_background_color: background }, { panel: true })
             expect(contrastRatio(vars['--cm-text'], background), background).toBeGreaterThanOrEqual(4.5)
             expect(contrastRatio(vars['--cm-text'], vars['--cm-tint']), background).toBeGreaterThanOrEqual(4.5)
             expect(contrastRatio(vars['--cm-muted'], vars['--cm-tint']), background).toBeGreaterThanOrEqual(4.5)
@@ -84,20 +120,20 @@ describe('custom panel colours', () => {
     })
 
     it('prefer near-black text, and use black only where near-black falls short', () => {
-        expect(themeCssVars('SUNRISE', { chat_background_color: '#ffffff' }, { ui: 2 })['--cm-text']).toBe('#111111')
-        expect(themeCssVars('SUNRISE', { chat_background_color: '#777777' }, { ui: 2 })['--cm-text']).toBe('#000000')
+        expect(themeCssVars('SUNRISE', { chat_background_color: '#ffffff' }, { panel: true })['--cm-text']).toBe('#111111')
+        expect(themeCssVars('SUNRISE', { chat_background_color: '#777777' }, { panel: true })['--cm-text']).toBe('#000000')
     })
 
     it.each(['#FFF', '#fff', '#FFFFFF'])('accept a short or uppercase background (%s)', (background) => {
-        const vars = themeCssVars('GLASS', { chat_background_color: background }, { ui: 2 })
+        const vars = themeCssVars('GLASS', { chat_background_color: background }, { panel: true })
         expect(vars['--cm-card']).toBe('#ffffff')
         expect(vars['--cm-text']).toBe('#111111')
         expect(vars['--cm-glow']).toBe('transparent')
     })
 
     it.each(['rgb(255,255,255)', 'white', '#ffff'])('ignore a background that is not a hex colour (%s)', (background) => {
-        expect(themeCssVars('GLASS', { chat_background_color: background }, { ui: 2 }))
-            .toEqual(themeCssVars('GLASS', {}, { ui: 2 }))
+        expect(themeCssVars('GLASS', { chat_background_color: background }, { panel: true }))
+            .toEqual(themeCssVars('GLASS', {}, { panel: true }))
     })
 
     it('leave the classic widget parsing custom colours as before', () => {
@@ -109,17 +145,17 @@ describe('custom panel colours', () => {
 
     it('fall back to the theme text when a custom text colour would not read', () => {
         // Text picked for a light theme, then the agent switched to a dark one.
-        const vars = themeCssVars('GLASS', { chat_text_color: '#333333' }, { ui: 2 })
+        const vars = themeCssVars('GLASS', { chat_text_color: '#333333' }, { panel: true })
         const tokens = getThemeTokens('GLASS')
         expect(vars['--cm-text']).toBe(tokens.text)
         expect(vars['--cm-muted']).toBe(tokens.muted)
-        expect(themeCssVars('SUNRISE', { chat_text_color: '#333333' }, { ui: 2 })['--cm-text']).toBe('#333333')
+        expect(themeCssVars('SUNRISE', { chat_text_color: '#333333' }, { panel: true })['--cm-text']).toBe('#333333')
     })
 
     it('keep text, muted text and control borders readable on the tint surface', () => {
         // Suggestions, cards and the composer sit on the tint, not the panel.
         for (const background of colours(13, 400)) {
-            const vars = themeCssVars('SUNRISE', { chat_background_color: background }, { ui: 2 })
+            const vars = themeCssVars('SUNRISE', { chat_background_color: background }, { panel: true })
             const tint = vars['--cm-tint']
             const best = contrastRatio(vars['--cm-text'], tint)
             expect(contrastRatio(vars['--cm-muted'], tint), background).toBeGreaterThanOrEqual(Math.min(4.5, best) - 1e-9)
@@ -129,29 +165,29 @@ describe('custom panel colours', () => {
     })
 
     it.each(STYLES)('give %s control borders that reach 3:1 on its tint', (style) => {
-        const vars = themeCssVars(style, {}, { ui: 2 })
+        const vars = themeCssVars(style, {}, { panel: true })
         expect(contrastRatio(vars['--cm-control-line'], vars['--cm-tint'])).toBeGreaterThanOrEqual(3)
     })
 
     it('tint moves 4% toward the text colour', () => {
-        const vars = themeCssVars('SUNRISE', { chat_background_color: '#ffffff' }, { ui: 2 })
+        const vars = themeCssVars('SUNRISE', { chat_background_color: '#ffffff' }, { panel: true })
         expect(vars['--cm-tint']).toBe(mixHex('#ffffff', vars['--cm-text'], 0.04))
     })
 
     it('keep an explicit text colour', () => {
-        const vars = themeCssVars('SUNRISE', { chat_background_color: '#ffffff', chat_text_color: '#7a1f1f' }, { ui: 2 })
+        const vars = themeCssVars('SUNRISE', { chat_background_color: '#ffffff', chat_text_color: '#7a1f1f' }, { panel: true })
         expect(vars['--cm-text']).toBe('#7a1f1f')
     })
 
     it('drop the dark theme glow on a light background', () => {
-        expect(themeCssVars('GLASS', { chat_background_color: '#f7f7f7' }, { ui: 2 })['--cm-glow']).toBe('transparent')
-        expect(themeCssVars('GLASS', { chat_background_color: '#121212' }, { ui: 2 })['--cm-glow']).not.toBe('transparent')
-        expect(themeCssVars('PLAYFUL', { chat_background_color: '#ffffff' }, { ui: 2 })['--cm-glow']).not.toBe('transparent')
+        expect(themeCssVars('GLASS', { chat_background_color: '#f7f7f7' }, { panel: true })['--cm-glow']).toBe('transparent')
+        expect(themeCssVars('GLASS', { chat_background_color: '#121212' }, { panel: true })['--cm-glow']).not.toBe('transparent')
+        expect(themeCssVars('PLAYFUL', { chat_background_color: '#ffffff' }, { panel: true })['--cm-glow']).not.toBe('transparent')
     })
 
     it('judge a background light by the same rule that picks its text', () => {
         for (const background of colours(19, 600)) {
-            const vars = themeCssVars('GLASS', { chat_background_color: background }, { ui: 2 })
+            const vars = themeCssVars('GLASS', { chat_background_color: background }, { panel: true })
             const look = panelLookFor('GLASS', { chat_background_color: background })
             const darkText = vars['--cm-text'] !== '#FFFFFF'
             expect(look.elevation, background).toBe(darkText ? 'light' : 'dark')
@@ -162,7 +198,7 @@ describe('custom panel colours', () => {
 
     it('leave the theme text and muted colours alone without a custom background', () => {
         const tokens = getThemeTokens('AURORA')
-        const vars = themeCssVars('AURORA', {}, { ui: 2 })
+        const vars = themeCssVars('AURORA', {}, { panel: true })
         expect(vars['--cm-text']).toBe(tokens.text)
         expect(vars['--cm-muted']).toBe(tokens.muted)
     })
@@ -179,7 +215,7 @@ describe('shape and motion per style', () => {
         ['CHATBOT', '24px', '16px', '12px', '16px'],
         ['ASK_ANYTHING', '24px', '16px', '12px', '16px'],
     ])('%s radii are panel %s, card %s, control %s, bubble %s', (style, panel, card, control, bubble) => {
-        const vars = themeCssVars(style, {}, { ui: 2 })
+        const vars = themeCssVars(style, {}, { panel: true })
         expect([vars['--cm-radius'], vars['--cm-radius-card'], vars['--cm-radius-control'], vars['--cm-bubble']])
             .toEqual([panel, card, control, bubble])
     })
@@ -194,7 +230,7 @@ describe('shape and motion per style', () => {
         ['CHATBOT', 'var(--cm-ease-out)', '1', '8px', '1'],
         ['ASK_ANYTHING', 'var(--cm-ease-out)', '1', '8px', '1'],
     ])('%s moves with %s', (style, ease, scale, y, enterScale) => {
-        const vars = themeCssVars(style, {}, { ui: 2 })
+        const vars = themeCssVars(style, {}, { panel: true })
         expect([vars['--cm-ease-enter'], vars['--cm-dur-scale'], vars['--cm-enter-y'], vars['--cm-enter-scale']])
             .toEqual([ease, scale, y, enterScale])
         expect(vars['--cm-dur-3']).toBe('320ms')
@@ -204,21 +240,21 @@ describe('shape and motion per style', () => {
 
 describe('the panel fill', () => {
     it('is solid for Glass until the loader frosts what is behind it', () => {
-        expect(themeCssVars('GLASS', {}, { ui: 2 })['--cm-card']).toBe(getThemeTokens('GLASS').surface)
+        expect(themeCssVars('GLASS', {}, { panel: true })['--cm-card']).toBe(getThemeTokens('GLASS').surface)
         expect(themeCssVars('GLASS')['--cm-card']).toBe(getThemeTokens('GLASS').card)
     })
 
     it('goes see-through for Glass once the loader confirms it frosts the page (HOST_CAPABILITIES)', () => {
-        expect(themeCssVars('GLASS', {}, { ui: 2, hostBackdrop: true })['--cm-card']).toBe(getThemeTokens('GLASS').card)
+        expect(themeCssVars('GLASS', {}, { panel: true, hostBackdrop: true })['--cm-card']).toBe(getThemeTokens('GLASS').card)
         // Only Glass: every other style keeps its own card whatever the loader says.
-        expect(themeCssVars('SUNRISE', {}, { ui: 2, hostBackdrop: true })['--cm-card'])
-            .toBe(themeCssVars('SUNRISE', {}, { ui: 2 })['--cm-card'])
+        expect(themeCssVars('SUNRISE', {}, { panel: true, hostBackdrop: true })['--cm-card'])
+            .toBe(themeCssVars('SUNRISE', {}, { panel: true })['--cm-card'])
         // A custom background is the agent's choice, frosted or not.
-        expect(themeCssVars('GLASS', { chat_background_color: '#223344' }, { ui: 2, hostBackdrop: true })['--cm-card']).toBe('#223344')
+        expect(themeCssVars('GLASS', { chat_background_color: '#223344' }, { panel: true, hostBackdrop: true })['--cm-card']).toBe('#223344')
     })
 
     it.each(['SUNRISE', 'AURORA', 'TERMINAL'])('is the %s card otherwise', (style) => {
-        expect(themeCssVars(style, {}, { ui: 2 })['--cm-card']).toBe(getThemeTokens(style).card)
+        expect(themeCssVars(style, {}, { panel: true })['--cm-card']).toBe(getThemeTokens(style).card)
     })
 })
 

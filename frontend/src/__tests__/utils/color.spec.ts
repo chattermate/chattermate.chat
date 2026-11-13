@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import { describe, it, expect } from 'vitest'
-import { contrastInk, hexToRgb } from '../../utils/color'
+import { contrastInk, contrastRatio, hexToRgb, readableOn } from '../../utils/color'
 
 describe('contrastInk', () => {
   it('returns dark ink over light colors', () => {
@@ -49,5 +49,23 @@ describe('hexToRgb', () => {
   it('returns null for invalid input', () => {
     expect(hexToRgb('#12345')).toBeNull()
     expect(hexToRgb('zzzzzz')).toBeNull()
+  })
+})
+
+describe('readableOn', () => {
+  it('leaves a colour that already reads alone', () => {
+    expect(readableOn('#FFFFFF', '#4338CA', '#12131A', 4.5)).toBe('#4338CA')
+  })
+
+  it('moves a faint colour toward the ink only as far as it needs', () => {
+    const lime = readableOn('#FFFFFF', '#C9F24E', '#12131A', 4.5)
+    expect(contrastRatio(lime, '#FFFFFF')).toBeGreaterThanOrEqual(4.5)
+    expect(lime).not.toBe('#12131A')
+  })
+
+  it('returns the colour untouched when anything is not a hex', () => {
+    expect(readableOn('transparent', '#C9F24E', '#12131A', 4.5)).toBe('#C9F24E')
+    expect(readableOn('#FFFFFF', 'red', '#12131A', 4.5)).toBe('red')
+    expect(readableOn('#FFFFFF', '#C9F24E', '', 4.5)).toBe('#C9F24E')
   })
 })

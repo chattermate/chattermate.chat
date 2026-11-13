@@ -19,7 +19,7 @@ import { postToHost } from '../webclient/host-bridge'
 import { hostSharesIdentity, isFramed, setHostPageUrl } from '../webclient/frame-session'
 import type { WidgetDisplay } from './useWidgetDisplay'
 
-/** What the embed loader announced it can do (only a loader framing the redesign says). */
+/** What the embed loader announced it can do. */
 export interface HostCapabilities {
     /** It sizes the panel up when the header asks (WIDGET_EXPAND). */
     expand: boolean
@@ -27,15 +27,18 @@ export interface HostCapabilities {
     backdrop: boolean
     /** It opens a link to its own site in the page itself (NAVIGATE). */
     navigate: boolean
+    /** The panel covers a phone screen and follows a swipe down to close (WIDGET_DRAG). */
+    swipe: boolean
 }
 
-export const NO_HOST_CAPABILITIES: HostCapabilities = { expand: false, backdrop: false, navigate: false }
+export const NO_HOST_CAPABILITIES: HostCapabilities = { expand: false, backdrop: false, navigate: false, swipe: false }
 
 /** Only booleans that are exactly true count. */
 const hostCapabilitiesFrom = (data: Record<string, unknown>): HostCapabilities => ({
     expand: data.expand === true,
     backdrop: data.backdrop === true,
     navigate: data.navigate === true,
+    swipe: data.swipe === true,
 })
 
 export interface HostMessageHandlers {
@@ -49,7 +52,7 @@ export interface HostMessageHandlers {
      * asks the redesigned panel to play its open cascade.
      */
     setHostVisible: (open: boolean, cascade: boolean) => void
-    /** What the loader can do for the redesigned panel (HOST_CAPABILITIES). */
+    /** What the loader can do for the panel (HOST_CAPABILITIES). */
     setHostCapabilities: (capabilities: HostCapabilities) => void
     /** The loader's final display geometry (WIDGET_DISPLAY). */
     setParentDisplay: (display: WidgetDisplay) => void

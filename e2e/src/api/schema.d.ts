@@ -5132,6 +5132,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shopify/proxy/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront Identity
+         * @description Shopify forwards the storefront's /apps/chattermate/identity here, signed.
+         *     A conversation token for the signed-in customer, or none. Never cached: it
+         *     names one person.
+         */
+        get: operations["storefront_identity_api_v1_shopify_proxy_identity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow": {
         parameters: {
             query?: never;
@@ -6025,13 +6047,6 @@ export interface components {
              * @default []
              */
             groups: components["schemas"]["app__models__schemas__user_group__UserGroupResponse"][];
-            /**
-             * Widget Ui V2 Enabled
-             * @description Whether this server serves the redesigned widget at all (the operator's
-             *     WIDGET_UI_V2_ENABLED), on every agent the dashboard loads, customized or not.
-             *     Read-only: the design choice says so beside it, and saving it is still allowed.
-             */
-            readonly widget_ui_v2_enabled: boolean;
         };
         /** Audience */
         Audience: {
@@ -6451,7 +6466,7 @@ export interface components {
             /** Chat Initiation Messages */
             chat_initiation_messages?: string[] | null;
             /** Quick Actions */
-            quick_actions?: string[] | null;
+            quick_actions?: (string | components["schemas"]["QuickActionRule"])[] | null;
             /**
              * Show Citations
              * @default false
@@ -6529,7 +6544,7 @@ export interface components {
             /** Chat Initiation Messages */
             chat_initiation_messages?: string[] | null;
             /** Quick Actions */
-            quick_actions?: string[] | null;
+            quick_actions?: (string | components["schemas"]["QuickActionRule"])[] | null;
             /**
              * Show Citations
              * @default false
@@ -8563,6 +8578,19 @@ export interface components {
              */
             reinvestigate: boolean;
         };
+        /**
+         * QuickActionRule
+         * @description A quick action shown only on some pages (`match`, a URL path pattern such as
+         *     "/products/*"), with an optional icon. A plain string is shown on every page.
+         */
+        QuickActionRule: {
+            /** Label */
+            label: string;
+            /** Match */
+            match?: string | null;
+            /** Icon */
+            icon?: ("order" | "shipping" | "returns" | "product" | "billing" | "account" | "person" | "article" | "question") | null;
+        };
         /** RCADocumentOut */
         RCADocumentOut: {
             /**
@@ -8786,6 +8814,12 @@ export interface components {
             variant_title?: string | null;
             /** Cart Variant Id */
             cart_variant_id?: string | null;
+            /** Published */
+            published?: boolean | null;
+            /** Tracks Inventory */
+            tracks_inventory?: boolean | null;
+            /** Has Choices */
+            has_choices?: boolean | null;
         };
         /** ShopifyProductImage */
         ShopifyProductImage: {
@@ -19945,6 +19979,26 @@ export interface operations {
         };
     };
     shopify_shop_redact_webhook_api_v1_shopify_webhooks_shop_redact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    storefront_identity_api_v1_shopify_proxy_identity_get: {
         parameters: {
             query?: never;
             header?: never;

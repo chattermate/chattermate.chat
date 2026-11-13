@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import type { InjectionKey, Ref } from 'vue'
-import type { AgentCustomization, WidgetUiVersion } from '../../types/agent'
+import type { AgentCustomization } from '../../types/agent'
 import type { HumanAgent, WidgetMessage } from '../../types/widget'
 import type { PresenceLine } from '../../utils/widgetPresence'
 import type { HostPrompt, PageChip, PendingConfirm } from '../actions/hostActionsClient'
@@ -25,8 +25,7 @@ import type { ConnectionStatus } from '../../composables/useWidgetSocket'
 import type { HostCapabilities } from '../../composables/useHostMessages'
 import type { PreviewFile, UploadedFile } from '../../composables/useWidgetFiles'
 import type { WorkflowForm, WorkflowMessage } from '../../composables/useWorkflowScreens'
-import type { LiveStep } from '../../composables/useAgentTrace'
-import type { EmailCheckState } from '../../composables/useEmailCheck'
+import type { EmailCheckPurpose, EmailCheckState } from '../../composables/useEmailCheck'
 import type { HistoryState } from '../../composables/useConversationHistory'
 import type { PageSuggestions } from '../../composables/usePageSuggestions'
 import type { VisitorFeedback } from './answer-extras'
@@ -68,8 +67,6 @@ export interface WidgetViewHooks {
 export interface WidgetLook {
     widgetId: Shown<string | null | undefined>
     customization: Shown<Partial<AgentCustomization>>
-    /** Which view renders: the classic widget (1) or the redesigned panel (2). */
-    ui: Shown<WidgetUiVersion>
     agentName: Shown<string>
     isAuroraStyle: Shown<boolean>
     isAskAnythingStyle: Shown<boolean>
@@ -104,7 +101,7 @@ export interface WidgetLook {
     askAiSubtitle: Shown<string>
     /** Whether the embedding page shows the widget at all. */
     hostVisible: Shown<boolean>
-    /** What the embed loader can do for the redesigned panel (HOST_CAPABILITIES). */
+    /** What the embed loader can do for the panel (HOST_CAPABILITIES). */
     hostCapabilities: Shown<HostCapabilities>
     /** The Ask AI palette is on screen instead of the chat. */
     useAskAiPanel: Shown<boolean>
@@ -142,8 +139,6 @@ export interface WidgetConversation {
     isRevealing: Shown<boolean>
     /** Show every reply in full at once (the panel's stop button). */
     skipReveal: () => void
-    /** The steps the agent is taking for the reply on its way (the redesign's trace card). */
-    liveTrace: Shown<LiveStep[]>
     /** Thumb an AI reply up or down, or take the thumb back (null). */
     sendFeedback: (message: WidgetMessage, value: VisitorFeedback | null) => void
     /** Ask the shop for a product's options, for the product sheet (product-sheet.ts). */
@@ -152,6 +147,8 @@ export interface WidgetConversation {
     pageSuggestions: Shown<PageSuggestions>
     /** "Your conversations": the visitor's own past chats (useConversationHistory). */
     history: Shown<HistoryState>
+    /** Past chats can be offered: the visitor has a conversation of their own, on a plan with them. */
+    historyAvailable: Shown<boolean>
     openHistory: () => void
     closeHistory: () => void
     refreshConversations: () => void
@@ -163,7 +160,7 @@ export interface WidgetConversation {
     continueConversation: (id: string) => Promise<void>
     /** The email check: the visitor proves an email is theirs with a code (useEmailCheck). */
     emailCheck: Shown<EmailCheckState>
-    startEmailCheck: (email: string) => void
+    startEmailCheck: (email: string, purpose?: EmailCheckPurpose) => void
     verifyEmailCode: (code: string) => void
     restartEmailCheck: () => void
     hoverRating: Shown<number>

@@ -235,14 +235,14 @@ describe('ChatterMate frame and lifecycle API', () => {
       expect(api().isOpen()).toBe(false)
     })
 
-    it('leaves a floating chat open on Escape inside the frame', async () => {
+    it('closes a floating chat on Escape inside the frame', async () => {
       await loadLoader()
       bringUp()
       api().open()
 
       fromFrame({ type: 'WIDGET_ESCAPE' })
 
-      expect(api().isOpen()).toBe(true)
+      expect(api().isOpen()).toBe(false)
     })
 
     it('takes nothing but hello from the frame until it has said hello', async () => {

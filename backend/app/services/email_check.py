@@ -56,6 +56,10 @@ RESEND_COOLDOWN_SECONDS = 30
 SENDS_PER_HOUR_PER_CONVERSATION = 5
 SENDS_PER_HOUR_PER_EMAIL = 10
 SENDS_PER_HOUR_PER_ORG = 200
+# The history screen's own checks (finding chats from other browsers) have a
+# smaller budget of their own: however they are spent, order checks still get theirs
+SENDS_PER_HOUR_PER_ORG_HISTORY = 50
+HISTORY_PURPOSE = 'history'
 FAILURES_PER_DAY_PER_EMAIL = 10
 OFFER_TTL_SECONDS = 1800
 VERIFIED_TTL_SECONDS = 3600
@@ -128,6 +132,20 @@ def _verified_key(session_id: str) -> str:
     return f"email_check:verified:{session_id}"
 
 
+def email_key(email: str, org_id) -> str:
+    """A keyed hash of an email proved in one organization's widget, stored on the
+    conversation it was proved in (session_to_agents.verified_email_key):
+    matched, never readable, and never equal across organizations."""
+    key = hmac.new(settings.SECRET_KEY.encode(), b"verified-email", hashlib.sha256).digest()
+    return hmac.new(key, f"{org_id}:{normalise(email)}".encode(), hashlib.sha256).hexdigest()
+
+
+def _failures_key(org_id, email: str) -> str:
+    """Wrong codes for an email, counted per organization: a stranger failing in
+    one widget never locks the email in another."""
+    return f"email_check:fail:{org_id}:{_bucket(email)}"
+
+
 def _digest(session_id: str, code: str) -> str:
     key = hmac.new(settings.SECRET_KEY.encode(), b"email-check", hashlib.sha256).digest()
     return hmac.new(key, f"{session_id}:{code}".encode(), hashlib.sha256).hexdigest()
@@ -138,6 +156,12 @@ def _count(client, key: str, limit: int, window: int) -> bool:
     so the counter always carries its expiry."""
     client.set(key, 0, nx=True, ex=window)
     return int(client.incr(key)) <= limit
+
+
+def _org_budget(org_id, purpose: str) -> Tuple[str, int]:
+    if purpose == HISTORY_PURPOSE:
+        return f"email_check:send:oh:{org_id}", SENDS_PER_HOUR_PER_ORG_HISTORY
+    return f"email_check:send:o:{org_id}", SENDS_PER_HOUR_PER_ORG
 
 
 def new_code() -> str:
@@ -157,7 +181,7 @@ def offer(session_id: str) -> bool:
         return False
 
 
-def start(session_id: str, org_id: str, email: str) -> Tuple[CheckResult, Optional[str]]:
+def start(session_id: str, org_id: str, email: str, purpose: str = 'chat') -> Tuple[CheckResult, Optional[str]]:
     """Start (or restart) a check: (result, the code to email, or None when none
     is to be sent). The caller sends it; nothing here talks to SMTP."""
     client = _client()
@@ -175,15 +199,15 @@ def start(session_id: str, org_id: str, email: str) -> Tuple[CheckResult, Option
             if wait > 0:
                 return CheckResult(False, 'cooldown', retry_in=wait), None
         tries = int(client.get(_tries_key(session_id)) or 0)
-        failures = int(client.get(f"email_check:fail:{_bucket(email)}") or 0)
+        failures = int(client.get(_failures_key(org_id, email)) or 0)
         if tries >= MAX_ATTEMPTS or failures >= FAILURES_PER_DAY_PER_EMAIL:
             return CheckResult(False, 'locked'), None
         if not (_count(client, f"email_check:send:s:{session_id}", SENDS_PER_HOUR_PER_CONVERSATION, 3600)
                 and _count(client, f"email_check:send:e:{_bucket(email)}", SENDS_PER_HOUR_PER_EMAIL, 3600)
-                and _count(client, f"email_check:send:o:{org_id}", SENDS_PER_HOUR_PER_ORG, 3600)):
+                and _count(client, *_org_budget(org_id, purpose), 3600)):
             return CheckResult(False, 'too_many'), None
         code = new_code()
-        record = {'email': email, 'digest': _digest(session_id, code), 'sent_at': time.time()}
+        record = {'email': email, 'org_id': str(org_id), 'digest': _digest(session_id, code), 'sent_at': time.time()}
         client.set(_code_key(session_id), json.dumps(record), ex=CODE_TTL_SECONDS)
         # Wrong tries carry across resends: a new code is not a new budget.
         client.set(_tries_key(session_id), tries, ex=CODE_TTL_SECONDS)
@@ -210,7 +234,7 @@ def verify(session_id: str, customer_id: str, code: str) -> Tuple[CheckResult, O
         candidate = (code or '').strip()
         if not (candidate.isdigit() and len(candidate) == 6
                 and hmac.compare_digest(record['digest'], _digest(session_id, candidate))):
-            _count(client, f"email_check:fail:{_bucket(record['email'])}", FAILURES_PER_DAY_PER_EMAIL, 86400)
+            _count(client, _failures_key(record.get('org_id', ''), record['email']), FAILURES_PER_DAY_PER_EMAIL, 86400)
             left = MAX_ATTEMPTS - tries
             return CheckResult(False, 'wrong_code' if left else 'locked', attempts_left=left), None
         for key in (_code_key(session_id), _tries_key(session_id), _offer_key(session_id)):

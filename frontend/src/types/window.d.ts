@@ -29,6 +29,8 @@ interface Window {
         hideBranding?: boolean;
         /** The org's live public help center, when it has one. */
         helpCenterUrl?: string | null;
+        /** What the plan lets the widget show (plan-features.ts). */
+        planFeatures?: Partial<Record<import('../webclient/plan-features').WidgetPlanFeature, boolean>> | null;
         /** GET /widgets/{id}'s answer for initialToken, from /bootstrap (see prefetched-widget-data). */
         widgetData?: import('../webclient/prefetched-widget-data').PrefetchedWidgetData;
     };

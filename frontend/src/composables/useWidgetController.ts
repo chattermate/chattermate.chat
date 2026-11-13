@@ -22,7 +22,6 @@ import { useCurrency } from './useCurrency'
 import { useWidgetSocket } from './useWidgetSocket'
 import { useHostPrompt } from './useHostPrompt'
 import { useTypewriter } from './useTypewriter'
-import { useAgentTrace } from './useAgentTrace'
 import { useAnswerFeedback } from './useAnswerFeedback'
 import { useProductOptions } from './useProductOptions'
 import { useEmailCheck } from './useEmailCheck'
@@ -42,9 +41,9 @@ import { NO_HOST_CAPABILITIES, useHostMessages, type HostCapabilities } from './
 import { useNewChat } from './useNewChat'
 import { useWidgetPresentation } from './useWidgetPresentation'
 import { useWidgetDisplay } from './useWidgetDisplay'
-import { widgetUiVersion } from '../webclient/widget-ui'
 import { usePanelEmail } from './usePanelEmail'
 import { useHistoryArrival } from './useHistoryArrival'
+import { planAllows } from '../webclient/plan-features'
 import { useViewHooks, viewedParts } from './widgetControllerParts'
 
 export type { WidgetControllerProps }
@@ -55,7 +54,7 @@ export type { WidgetControllerProps }
  * display. Call once, in the widget root's setup; its lifecycle hooks belong there.
  * The composables are created in the order the widget always created them, since
  * several register window listeners and watchers at once. DOM work (scrolling,
- * focus, the classic view's input listeners) belongs to the view: see registerView.
+ * focus) belongs to the view: see registerView.
  */
 export function useWidgetController(props: WidgetControllerProps): WidgetController {
     // Get widget ID from props or initial data
@@ -72,18 +71,17 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const isAuroraStyle = computed(() => customization.value.chat_style === 'AURORA')
     const isAskAnythingStyle = computed(() => customization.value.chat_style === 'ASK_ANYTHING' || isAuroraStyle.value)
 
-    const socket = useWidgetSocket()
+    const socket = useWidgetSocket({ panel: true })
     const { messages, loading, errorMessage, showError, loadingHistory, hasStartedChat, connectionStatus, humanAgent } = socket
 
     // Client-side typewriter reveal for live agent/bot replies; keep the view pinned
     // to the bottom as text grows.
     const { displayText, isStreaming, isRevealing, skipReveal } =
         useTypewriter(messages, () => nextTick(() => view.scrollToBottom()), {
-            byWord: () => widgetUiVersion(customization.value) === 2,
+            byWord: () => true,
         })
 
-    // The redesign's live work trace and the visitor's thumbs on replies.
-    const { liveTrace } = useAgentTrace({ on: socket.on, loading })
+    // The visitor's thumbs on replies.
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
     // The product sheet's options, read from the shop when it opens.
     const { requestProductOptions } = useProductOptions({ on: socket.on, emit: socket.emit })
@@ -96,30 +94,29 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
             return !newChat.newChatError.value
         },
     })
-    // "Suggested for this page", asked while the redesign's start state can show.
+    // "Suggested for this page", asked while the start state can show.
     const { pageSuggestions } = usePageSuggestions({
         on: socket.on, emit: socket.emit,
-        active: computed(() => widgetUiVersion(customization.value) === 2
-            && connectionStatus.value === 'connected' && messages.value.length === 0),
+        active: computed(() => connectionStatus.value === 'connected' && messages.value.length === 0),
     })
-    // The email check: once confirmed, the visitor tells the agent so it can look up their orders.
+    // The email check: once confirmed, the visitor tells the agent so it can look up their
+    // orders; asked from the history screen, the list then shows their other browsers' chats.
     const emailChecks = useEmailCheck({
         on: socket.on, emit: socket.emit,
         announce: () => composer.sendQuickAction(PANEL_COPY.emailConfirmedMessage),
+        onVerified: (purpose) => { if (purpose === 'history') conversationHistory.refreshConversations() },
     })
 
     // Page messages, in-app actions and journeys. A tapped text reply goes through
     // the composer, which is set up further down; reply buttons wait for a reply to type out.
     const hostPrompt = useHostPrompt({
         messages, loading, revealing: isRevealing, on: socket.on, emit: socket.emit,
-        answersShowChoices: () => widgetUiVersion(customization.value) === 2,
         sendQuickAction: (text) => composer.sendQuickAction(text),
     })
 
     // Report unread agent messages (received while minimized) to the embedder badge.
-    // The redesign also shows the reply itself in the loader's peek.
+    // The loader's peek also shows the reply itself.
     useUnreadBadge(messages, {
-        enabled: () => widgetUiVersion(customization.value) === 2,
         agentName: () => agentName.value,
     })
 
@@ -156,16 +153,17 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
     const styles = useWidgetStyles(customization)
     const files = useWidgetFiles(auth.token)
 
-    // The redesigned panel asks for the email inline, beside a usable composer: until
-    // the server took the email and the conversation started, every send waits. A
-    // refused or failed submit keeps the card up, unlike the classic gate.
+    // The panel asks for the email inline, beside a usable composer: until the
+    // server took the email and the conversation started, every send waits. A
+    // refused or failed submit keeps the card up.
     const panelEmail = usePanelEmail({
-        isPanel: computed(() => widgetUiVersion(customization.value) === 2),
         shouldCollectEmail: emailGate.shouldCollectEmail,
         hasStartedChat,
         auth,
     })
     const { awaitingEmail } = panelEmail
+    // Past chats: the visitor's own, on a plan that has them (plan-features.ts)
+    const historyAvailable = computed(() => auth.hasConversationToken.value && planAllows('conversation_history'))
     // A returning visitor's history is on its way: the panel's start state waits for it.
     const { awaitingHistory } = useHistoryArrival(loadingHistory, messages)
 
@@ -228,7 +226,6 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
 
     // The "New chat" control and the workflow's "start a new conversation" button.
     const newChat = useNewChat({
-        customization,
         conversation: { messages, humanAgent, endChat: socket.endChat, getWorkflowState: socket.getWorkflowState },
         showEmailGate: emailGate.showEmailGate,
         initializeWidget: auth.initializeWidget,
@@ -289,8 +286,8 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, liveTrace, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, pageSuggestions, ...rating, ...files, ...newChat,
-        awaitingEmail, awaitingHistory, hostCapabilities,
+        isRevealing, skipReveal, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, pageSuggestions, ...rating, ...files, ...newChat,
+        awaitingEmail, awaitingHistory, hostCapabilities, historyAvailable,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }
 }

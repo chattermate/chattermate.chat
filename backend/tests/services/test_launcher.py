@@ -253,7 +253,10 @@ class TestBothVisitorRoutesAreGated:
     @pytest.mark.asyncio
     async def test_an_agent_with_no_customization(self):
         agent = SimpleNamespace(customization=None)
-        assert await widget_bootstrap._customization(MagicMock(), agent) == launcher.uncustomized_defaults()
+        defaults = launcher.uncustomized_defaults()
+        # Plus the design every visitor gets (services/widget_ui.py)
+        defaults['customization_metadata'] = {**defaults['customization_metadata'], 'widget_ui': {'version': 2}}
+        assert await widget_bootstrap._customization(MagicMock(), agent) == defaults
         assert _visitor_customization(MagicMock(), agent) is None
 
 

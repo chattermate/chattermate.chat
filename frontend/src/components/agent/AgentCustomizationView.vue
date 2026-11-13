@@ -16,7 +16,7 @@ limitations under the License.
 
 <script setup lang="ts">
 import { ref, watch, onMounted, computed, onUnmounted, nextTick } from 'vue'
-import type { AgentWithCustomization, AgentCustomization, ChatStyle, WidgetUiVersion } from '@/types/agent'
+import type { AgentWithCustomization, AgentCustomization, ChatStyle } from '@/types/agent'
 import { agentService } from '@/services/agent'
 import WebFont from 'webfontloader'
 import { useSubscriptionStorage } from '@/utils/storage'
@@ -30,10 +30,10 @@ import { WINDOW_PRESETS, WINDOW_STANDARD, useWindowSize } from '@/composables/us
 import LauncherSection from './LauncherSection.vue'
 import CustomizationSection from './CustomizationSection.vue'
 import ColorSwatchPicker from './ColorSwatchPicker.vue'
-import WidgetDesignChoice from './WidgetDesignChoice.vue'
 import { followUpsOn, withFollowUpsSetting } from '@/webclient/widget-answers'
 import { actionLabel, actionMatch, toQuickAction } from '@/webclient/quick-actions'
-import { createdOnRedesign, widgetUiVersion } from '@/webclient/widget-ui'
+import { useFeatureLock } from '@/composables/useFeatureLock'
+import UpgradeCard from './UpgradeCard.vue'
 
 const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
@@ -43,7 +43,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
     (e: 'cancel'): void
-    (e: 'preview', customization: AgentCustomization & { showBubblePreview?: boolean; showInitiationPreview?: boolean }): void
+    (e: 'preview', customization: AgentCustomization): void
     (e: 'chat-style-changed', oldStyle: ChatStyle, newStyle: ChatStyle): void
     (e: 'launcher-preview', preview: LauncherPreview): void
     (e: 'launcher-editing'): void
@@ -72,25 +72,15 @@ const { hasEnterpriseModule } = useEnterpriseFeatures()
 const currentSubscription = computed(() => subscriptionStorage.getCurrentSubscription())
 const isSubscriptionActive = computed(() => subscriptionStorage.isSubscriptionActive())
 
-// Check if chat initiations feature is locked (only if enterprise module exists)
-const isChatInitiationsLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    
-    if (!currentSubscription.value || !isSubscriptionActive.value) {
-        return true
-    }
-    
-    // Check if chat_initiation feature exists in subscription
-    const hasChatInitiationFeature = subscriptionStorage.hasFeature('chat_initiation')
-    if (!hasChatInitiationFeature) {
-        return true // Lock chat initiations if feature doesn't exist
-    }
-    
-    return false
-})
+
+// Quick actions for some pages only (a page path) are a paid feature; saved ones stay
+// saved on Free, the widget just shows every-page actions there.
+const { isLocked } = useFeatureLock()
+const isPageRulesLocked = computed(() => isLocked('page-suggestions'))
+// Quick actions themselves and follow-up chips need a paid plan; saved ones stay saved
+const isQuickActionsLocked = computed(() => isLocked('quick-actions'))
+const isChatInitiationsLocked = computed(() => isLocked('chat-initiation'))
+const isFollowUpsLocked = computed(() => isLocked('follow-ups'))
 
 // Upgrade handler
 const handleUpgrade = () => {
@@ -122,63 +112,52 @@ const customization = ref<AgentCustomization>({
     show_citations: props.agent.customization?.show_citations ?? false,
     collect_email: props.agent.customization?.collect_email ?? false,
     show_ai_disclaimer: props.agent.customization?.show_ai_disclaimer ?? true,
-    allow_new_chat: props.agent.customization?.allow_new_chat ?? false,
 })
 
-// Chat style options grouped into Classic (existing looks) and New (premium presets)
+// The chat styles, the original looks first (all on every plan)
 const chatStyleOptions = [
     {
         value: 'CHATBOT' as ChatStyle,
         label: 'Classic',
         description: 'The original look: light, neutral and simple.',
-        group: 'legacy' as const,
     },
     {
         value: 'ASK_ANYTHING' as ChatStyle,
         label: 'Ask Anything',
         description: 'Modern AI assistant style for general queries.',
-        group: 'legacy' as const,
     },
     {
         value: 'GLASS' as ChatStyle,
         label: 'Glass',
         description: 'Frosted dark glass with soft glow and rounded bubbles.',
-        group: 'new' as const,
     },
     {
         value: 'TERMINAL' as ChatStyle,
         label: 'Terminal',
         description: 'Monospace developer style, square corners.',
-        group: 'new' as const,
     },
     {
         value: 'PLAYFUL' as ChatStyle,
         label: 'Playful',
         description: 'Light, friendly and very rounded with warm accents.',
-        group: 'new' as const,
     },
     {
         value: 'CALM_MINT' as ChatStyle,
         label: 'Calm Mint',
         description: 'Clean dark-teal with subtle borders.',
-        group: 'new' as const,
     },
     {
         value: 'AURORA' as ChatStyle,
         label: 'Aurora',
         description: 'The new ask-me-anything — dark, with a glowing aurora orb avatar.',
-        group: 'new' as const,
     },
     {
         value: 'SUNRISE' as ChatStyle,
         label: 'Sunrise',
         description: 'Bright, warm and airy — a light theme with a soft coral accent.',
-        group: 'new' as const,
     },
 ]
 
-const legacyStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'legacy'))
-const newStyleOptions = computed(() => chatStyleOptions.filter(o => o.group === 'new'))
 
 
 // Select a design and seed its preset palette into the editable color fields
@@ -195,20 +174,7 @@ const selectChatStyle = (value: ChatStyle) => {
     emit('preview', { ...customization.value })
 }
 
-// ---- Widget design (customization_metadata.widget_ui): classic or the redesign ----
-// Saved with the rest of the form; the preview switches at once. Reassigned
-// wholesale, like the placement below, so the preview's watcher sees the change.
-const widgetDesign = computed<WidgetUiVersion>({
-    get: () => widgetUiVersion(customization.value),
-    set: (version) => {
-        const meta = { ...((customization.value.customization_metadata as Record<string, any>) ?? {}) }
-        meta.widget_ui = { ...(meta.widget_ui ?? {}), version }
-        customization.value.customization_metadata = meta
-        emit('preview-mode', 'chat')
-    },
-})
-
-// Follow-up questions under answers (customization_metadata.answers): the new design only.
+// Follow-up questions under answers (customization_metadata.answers).
 const followUps = computed<boolean>({
     get: () => followUpsOn(customization.value),
     set: (on) => {
@@ -216,15 +182,6 @@ const followUps = computed<boolean>({
             withFollowUpsSetting(customization.value.customization_metadata as Record<string, any>, on)
     },
 })
-
-// An agent created on the redesign keeps it (the server refuses the classic one),
-// so it gets no choice. Read from what is stored, not the unsaved form.
-const createdOnNewDesign = computed(() => createdOnRedesign(props.agent.customization))
-
-// Whether this server serves the redesign at all: read-only, on every agent the
-// dashboard loads (the agent's choice is still saved when it is off). An older
-// server says nothing: no note.
-const redesignServed = computed(() => props.agent.widget_ui_v2_enabled !== false)
 
 // ---- Widget placement (stored in customization_metadata.widget_display) ----
 // The embed loader reads these as site-wide defaults; options set in the install
@@ -348,7 +305,6 @@ const BEHAVIOUR_SWITCHES: { key: keyof AgentCustomization; label: string }[] = [
     { key: 'show_citations', label: 'Citations' },
     { key: 'collect_email', label: 'Email first' },
     { key: 'show_ai_disclaimer', label: 'AI disclaimer' },
-    { key: 'allow_new_chat', label: 'New chat' },
 ]
 
 const countOf = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
@@ -365,8 +321,9 @@ const sectionSummaries = computed<Record<SectionId, string>>(() => {
         launcher: widgetDisplay.value.launcher === false ? 'Hidden' : launcherSummary(launcher.allowed.value),
         placement: [mode, widgetDisplay.value.side === 'left' ? 'Left' : 'Right',
             isSidebarMode.value ? null : `${windowLabel} window`].filter(Boolean).join(' · '),
-        messages: [countOf(c.chat_initiation_messages?.length ?? 0, 'greeting'),
-            countOf(c.quick_actions?.length ?? 0, 'quick action')].join(' · '),
+        // What visitors get: saved ones the plan leaves out don't count
+        messages: [countOf(isChatInitiationsLocked.value ? 0 : c.chat_initiation_messages?.length ?? 0, 'greeting'),
+            countOf(isQuickActionsLocked.value ? 0 : c.quick_actions?.length ?? 0, 'quick action')].join(' · '),
         behaviour: switchedOn.length ? switchedOn.join(' · ') : 'All off',
     }
 })
@@ -471,7 +428,6 @@ watch(() => props.agent.customization, (newCustomization) => {
             show_citations: newCustomization.show_citations ?? false,
             collect_email: newCustomization.collect_email ?? false,
             show_ai_disclaimer: newCustomization.show_ai_disclaimer ?? true,
-            allow_new_chat: newCustomization.allow_new_chat ?? false,
         }
         nextTick(() => {
             isInternalUpdate.value = false
@@ -625,7 +581,7 @@ const loadDefaultInitiations = () => {
 
 // Quick actions management (mirrors chat initiation messages)
 const newQuickAction = ref('')
-// "Show on pages": a URL path pattern for the new design's "Suggested for this page"
+// "Show on pages": a URL path pattern for the widget's "Suggested for this page"
 const newQuickActionMatch = ref('')
 const editingQuickActionIndex = ref<number | null>(null)
 const editingQuickAction = ref('')
@@ -636,7 +592,7 @@ const addQuickAction = () => {
     if (!customization.value.quick_actions) {
         customization.value.quick_actions = []
     }
-    customization.value.quick_actions.push(toQuickAction(newQuickAction.value, widgetDesign.value === 2 ? newQuickActionMatch.value : ''))
+    customization.value.quick_actions.push(toQuickAction(newQuickAction.value, newQuickActionMatch.value))
     newQuickAction.value = ''
     newQuickActionMatch.value = ''
 }
@@ -657,7 +613,7 @@ const saveEditQuickAction = () => {
     if (editingQuickActionIndex.value !== null && customization.value.quick_actions && editingQuickAction.value.trim()) {
         const index = editingQuickActionIndex.value
         customization.value.quick_actions[index] = toQuickAction(
-            editingQuickAction.value, widgetDesign.value === 2 ? editingQuickActionMatch.value : actionMatch(customization.value.quick_actions[index]),
+            editingQuickAction.value, editingQuickActionMatch.value,
             customization.value.quick_actions[index])
         editingQuickActionIndex.value = null
         editingQuickAction.value = ''
@@ -673,25 +629,6 @@ const loadDefaultQuickActions = () => {
     customization.value.quick_actions = [...DEFAULT_QUICK_ACTIONS]
 }
 
-// Initiation message preview handlers
-const showInitiationPreview = () => {
-    emit('preview', { 
-        ...customization.value, 
-        showBubblePreview: false,
-        showInitiationPreview: true 
-    })
-}
-
-const hideInitiationPreview = () => {
-    emit('preview', { 
-        ...customization.value, 
-        showBubblePreview: false,
-        showInitiationPreview: false 
-    })
-}
-
-
-
 </script>
 
 <template>
@@ -701,36 +638,12 @@ const hideInitiationPreview = () => {
                 :open="openSection === 'design'" @toggle="toggleSection('design')">
                 <!-- Chat design Section -->
                 <div class="subsection">
-                    <WidgetDesignChoice v-model="widgetDesign" :served="redesignServed" :choosable="!createdOnNewDesign" />
                     <h4 class="subsection-heading">Style</h4>
                     <p class="section-subtext">Pick the look that fits your store.</p>
 
-                    <div class="chat-style-group-label">Classic</div>
                     <div class="chat-style-grid">
                         <button
-                            v-for="option in legacyStyleOptions"
-                            :key="option.value"
-                            type="button"
-                            class="chat-style-card"
-                            :class="{ 'active': customization.chat_style === option.value }"
-                            @click="selectChatStyle(option.value)"
-                        >
-                            <div class="chat-style-thumb" :style="{ background: themePreset(option.value).chat_background_color }">
-                                <span class="thumb-bubble agent"></span>
-                                <span class="thumb-bubble user" :style="{ background: themePreset(option.value).accent_color }"></span>
-                            </div>
-                            <div class="chat-style-title">
-                                <span>{{ option.label }}</span>
-                                <span v-if="customization.chat_style === option.value" class="chat-style-check" aria-hidden="true">✓</span>
-                            </div>
-                            <div class="chat-style-desc">{{ option.description }}</div>
-                        </button>
-                    </div>
-
-                    <div class="chat-style-group-label">New <span class="chat-style-group-badge">premium</span></div>
-                    <div class="chat-style-grid">
-                        <button
-                            v-for="option in newStyleOptions"
+                            v-for="option in chatStyleOptions"
                             :key="option.value"
                             type="button"
                             class="chat-style-card"
@@ -951,85 +864,110 @@ const hideInitiationPreview = () => {
 
                     <div class="section-head-row">
                         <h4 class="subsection-heading">Quick actions</h4>
-                        <button type="button" class="load-defaults-link" @click="loadDefaultQuickActions">Load defaults</button>
-                    </div>
-
-                    <div class="init-add-row">
-                        <input
-                            type="text"
-                            v-model="newQuickAction"
-                            placeholder="Track my order"
-                            class="init-input"
-                            maxlength="60"
-                            @keyup.enter="addQuickAction"
-                        >
-                        <input
-                            v-if="widgetDesign === 2"
-                            type="text"
-                            v-model="newQuickActionMatch"
-                            placeholder="Every page, or e.g. /products/*"
-                            aria-label="Show on pages"
-                            class="init-input init-input--match"
-                            maxlength="200"
-                            @keyup.enter="addQuickAction"
-                        >
-                        <button
-                            type="button"
-                            class="init-add-btn"
-                            @click="addQuickAction"
-                            :disabled="!newQuickAction.trim()"
-                            title="Add quick action"
-                        >+</button>
-                    </div>
-
-                    <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list">
-                        <div
-                            v-for="(action, index) in customization.quick_actions"
-                            :key="index"
-                            class="init-item"
-                        >
-                            <div v-if="editingQuickActionIndex === index" class="init-edit-inline">
-                                <input
-                                    type="text"
-                                    v-model="editingQuickAction"
-                                    class="init-edit-input"
-                                    maxlength="60"
-                                    @keyup.enter="saveEditQuickAction"
-                                    @keyup.esc="cancelEditQuickAction"
-                                >
-                                <input
-                                    v-if="widgetDesign === 2"
-                                    type="text"
-                                    v-model="editingQuickActionMatch"
-                                    class="init-edit-input init-input--match"
-                                    placeholder="Every page"
-                                    aria-label="Show on pages"
-                                    maxlength="200"
-                                    @keyup.enter="saveEditQuickAction"
-                                    @keyup.esc="cancelEditQuickAction"
-                                >
-                                <button type="button" class="init-icon-btn save" @click="saveEditQuickAction" title="Save">
-                                    <font-awesome-icon icon="fa-solid fa-check" />
-                                </button>
-                                <button type="button" class="init-icon-btn cancel" @click="cancelEditQuickAction" title="Cancel">
-                                    <font-awesome-icon icon="fa-solid fa-times" />
-                                </button>
-                            </div>
-                            <template v-else>
-                                <span class="init-handle">☰</span>
-                                <span class="init-text">{{ actionLabel(action) }}</span>
-                                <span v-if="actionMatch(action)" class="init-match" :title="`Shown on ${actionMatch(action)}`">{{ actionMatch(action) }}</span>
-                                <button type="button" class="init-icon-btn edit" @click="startEditQuickAction(index)" title="Edit">
-                                    <font-awesome-icon icon="fa-solid fa-pen" />
-                                </button>
-                                <button type="button" class="init-remove" @click="removeQuickAction(index)" title="Remove">✕</button>
-                            </template>
+                        <button v-if="!isQuickActionsLocked" type="button" class="load-defaults-link" @click="loadDefaultQuickActions">Load defaults</button>
+                        <div v-else class="premium-badge-small">
+                            <font-awesome-icon icon="fa-solid fa-crown" />
+                            <span>Premium</span>
                         </div>
                     </div>
-                    <div v-else class="init-empty">
-                        <span class="init-empty-icon">ⓘ</span>
-                        <span>No quick actions yet. Add one above.</span>
-                    </div>
+
+                    <!-- Locked like the greeting messages below; saved ones stay saved and come back on upgrade -->
+                    <UpgradeCard v-if="isQuickActionsLocked" gate="quick-actions" lock data-testid="quick-actions-locked" @upgrade="handleUpgrade" />
+                    <template v-else>
+                        <div class="init-add-row">
+                            <input
+                                type="text"
+                                v-model="newQuickAction"
+                                placeholder="Track my order"
+                                class="init-input"
+                                maxlength="60"
+                                @keyup.enter="addQuickAction"
+                            >
+                            <input
+                                v-if="!isPageRulesLocked"
+                                type="text"
+                                v-model="newQuickActionMatch"
+                                placeholder="Every page, or e.g. /products/*"
+                                aria-label="Show on pages"
+                                class="init-input init-input--match"
+                                maxlength="200"
+                                @keyup.enter="addQuickAction"
+                            >
+                            <button
+                                type="button"
+                                class="init-add-btn"
+                                @click="addQuickAction"
+                                :disabled="!newQuickAction.trim()"
+                                title="Add quick action"
+                            >+</button>
+                        </div>
+                        <div v-if="isPageRulesLocked" class="page-rules-locked" data-testid="page-rules-locked">
+                            <font-awesome-icon icon="fa-solid fa-lock" class="page-rules-locked__icon" />
+                            <span>Upgrade to show a quick action only on some pages, like your product pages.</span>
+                            <button type="button" class="page-rules-locked__upgrade" aria-label="Upgrade to show quick actions on some pages" @click="handleUpgrade">Upgrade</button>
+                        </div>
+
+                        <div v-if="customization.quick_actions && customization.quick_actions.length > 0" class="init-list">
+                            <div
+                                v-for="(action, index) in customization.quick_actions"
+                                :key="index"
+                                class="init-item"
+                            >
+                                <div v-if="editingQuickActionIndex === index" class="init-edit-inline">
+                                    <input
+                                        type="text"
+                                        v-model="editingQuickAction"
+                                        class="init-edit-input"
+                                        maxlength="60"
+                                        @keyup.enter="saveEditQuickAction"
+                                        @keyup.esc="cancelEditQuickAction"
+                                    >
+                                    <input
+                                        v-if="!isPageRulesLocked"
+                                        type="text"
+                                        v-model="editingQuickActionMatch"
+                                        class="init-edit-input init-input--match"
+                                        placeholder="Every page"
+                                        aria-label="Show on pages"
+                                        maxlength="200"
+                                        @keyup.enter="saveEditQuickAction"
+                                        @keyup.esc="cancelEditQuickAction"
+                                    >
+                                    <button
+                                        v-else-if="editingQuickActionMatch"
+                                        type="button"
+                                        class="page-rules-locked__upgrade"
+                                        data-testid="quick-action-every-page"
+                                        @click="editingQuickActionMatch = ''"
+                                    >Show on every page</button>
+                                    <button type="button" class="init-icon-btn save" @click="saveEditQuickAction" title="Save">
+                                        <font-awesome-icon icon="fa-solid fa-check" />
+                                    </button>
+                                    <button type="button" class="init-icon-btn cancel" @click="cancelEditQuickAction" title="Cancel">
+                                        <font-awesome-icon icon="fa-solid fa-times" />
+                                    </button>
+                                </div>
+                                <template v-else>
+                                    <span class="init-handle">☰</span>
+                                    <span class="init-text">{{ actionLabel(action) }}</span>
+                                    <span
+                                        v-if="actionMatch(action)"
+                                        class="init-match"
+                                        :class="{ 'init-match--off': isPageRulesLocked }"
+                                        :title="isPageRulesLocked ? 'Not shown on your plan' : `Shown on ${actionMatch(action)}`"
+                                    ><font-awesome-icon v-if="isPageRulesLocked" icon="fa-solid fa-lock" aria-hidden="true" /> {{ actionMatch(action) }}<span v-if="isPageRulesLocked" class="sr-only"> (not shown on your plan)</span></span>
+                                    <button type="button" class="init-icon-btn edit" @click="startEditQuickAction(index)" title="Edit">
+                                        <font-awesome-icon icon="fa-solid fa-pen" />
+                                    </button>
+                                    <button type="button" class="init-remove" @click="removeQuickAction(index)" title="Remove">✕</button>
+                                </template>
+                            </div>
+                        </div>
+                        <div v-else class="init-empty">
+                            <span class="init-empty-icon">ⓘ</span>
+                            <span>No quick actions yet. Add one above.</span>
+                        </div>
+                    </template>
                 </div>
 
                 <!-- Greeting messages Section -->
@@ -1052,17 +990,8 @@ const hideInitiationPreview = () => {
                     </p>
 
                     <!-- Locked State -->
-                    <div v-if="isChatInitiationsLocked" class="locked-overlay-compact">
-                        <div class="locked-content-compact">
-                            <font-awesome-icon icon="fa-solid fa-lock" class="lock-icon-small" />
-                            <p class="locked-text">Engage visitors with custom messages above the chat bubble.</p>
-                            <button class="upgrade-btn-compact" @click="handleUpgrade">
-                                <font-awesome-icon icon="fa-solid fa-crown" />
-                                <span>Upgrade</span>
-                            </button>
-                        </div>
-                    </div>
-                
+                    <UpgradeCard v-if="isChatInitiationsLocked" gate="chat-initiation" lock @upgrade="handleUpgrade" />
+
                     <!-- Unlocked State -->
                     <div v-else>
                         <!-- Add New Message -->
@@ -1188,7 +1117,18 @@ const hideInitiationPreview = () => {
                         </span>
                     </label>
 
-                    <label v-if="widgetDesign === 2" class="citations-toggle">
+                    <!-- Locked like the greeting messages; the saved switch stays as it was -->
+                    <div v-if="isFollowUpsLocked" class="citations-toggle follow-ups-locked" data-testid="follow-ups-locked">
+                        <div class="follow-ups-locked__head">
+                            <span class="citations-toggle-title">Suggest follow-up questions</span>
+                            <div class="premium-badge-small">
+                                <font-awesome-icon icon="fa-solid fa-crown" />
+                                <span>Premium</span>
+                            </div>
+                        </div>
+                        <UpgradeCard gate="follow-ups" lock @upgrade="handleUpgrade" />
+                    </div>
+                    <label v-else class="citations-toggle">
                         <input type="checkbox" v-model="followUps">
                         <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
                         <span class="citations-toggle-text">
@@ -1212,15 +1152,6 @@ const hideInitiationPreview = () => {
                         <span class="citations-toggle-text">
                             <span class="citations-toggle-title">Show AI disclaimer</span>
                             <span class="citations-toggle-desc">Shows “{{ AI_DISCLAIMER_TEXT }}” under the chat while the AI answers.</span>
-                        </span>
-                    </label>
-
-                    <label class="citations-toggle">
-                        <input type="checkbox" v-model="customization.allow_new_chat">
-                        <span class="citations-toggle-track"><span class="citations-toggle-thumb"></span></span>
-                        <span class="citations-toggle-text">
-                            <span class="citations-toggle-title">Let visitors start a new chat</span>
-                            <span class="citations-toggle-desc">Adds a “New chat” button that starts a fresh conversation.</span>
                         </span>
                     </label>
                 </div>
@@ -1492,29 +1423,6 @@ const hideInitiationPreview = () => {
     color: var(--accent-ink);
 }
 
-.chat-style-group-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted2);
-    margin: 18px 0 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.chat-style-group-label:first-of-type { margin-top: 4px; }
-.chat-style-group-badge {
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 10.5px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--accent-bg-08);
-    color: var(--accent-ink);
-    border: 1px solid var(--accent-border);
-}
 
 .citations-toggle {
     display: flex;
@@ -2002,60 +1910,6 @@ const hideInitiationPreview = () => {
     flex-wrap: wrap;
 }
 
-:deep(.locked-overlay-compact) {
-    background: var(--bg);
-    border: 1px dashed var(--o12);
-    border-radius: var(--radius-btn);
-    padding: 14px 16px;
-    margin-top: 6px;
-}
-
-:deep(.locked-content-compact) {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.lock-icon-small {
-    font-size: 1rem;
-    color: var(--muted);
-    opacity: 0.7;
-}
-
-:deep(.locked-text) {
-    flex: 1;
-    min-width: 200px;
-    font-size: 13.5px;
-    color: var(--muted);
-    margin: 0;
-}
-
-:deep(.upgrade-btn-compact) {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--accent-solid);
-    color: var(--on-accent-solid);
-    border: none;
-    border-radius: var(--radius-btn);
-    padding: 8px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-}
-
-:deep(.upgrade-btn-compact:hover) {
-    filter: brightness(1.05);
-}
-
-:deep(.upgrade-btn-compact svg) {
-    font-size: 10px;
-    color: #ffd700;
-}
-
 /* Greeting input row */
 .init-add-row {
     display: flex;
@@ -2222,5 +2076,43 @@ const hideInitiationPreview = () => {
     color: var(--text-muted);
     font-size: 11px;
     font-family: var(--font-mono, monospace);
+}
+.init-match--off {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+/* Follow-up questions on a plan without them: the greeting messages' locked card */
+.follow-ups-locked {
+    display: block;
+    cursor: default;
+}
+.follow-ups-locked__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.page-rules-locked {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+}
+.page-rules-locked__icon {
+    flex: none;
+    font-size: 11px;
+}
+.page-rules-locked__upgrade {
+    flex: none;
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent-ink);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
 }
 </style>

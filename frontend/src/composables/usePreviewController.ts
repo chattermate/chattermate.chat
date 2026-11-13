@@ -114,7 +114,6 @@ export function usePreviewController(
         // look
         widgetId: context.widgetId,
         customization,
-        ui: presentation.ui,
         agentName: context.agentName,
         isAuroraStyle,
         isAskAnythingStyle,
@@ -181,14 +180,15 @@ export function usePreviewController(
         isStreaming: () => false,
         isRevealing: ref(false),
         skipReveal: noop,
-        liveTrace: ref([]),
         sendFeedback: noop,
         requestProductOptions: noop,
-        emailCheck: ref({ stage: 'email' as const, busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
+        emailCheck: ref({ stage: 'email' as const, purpose: 'chat' as const, busy: false, maskedEmail: '', error: '', retryIn: 0, attemptsLeft: 0 }),
         startEmailCheck: noop,
         verifyEmailCode: noop,
         restartEmailCheck: noop,
         history: ref(emptyHistory()),
+        // The preview never asks for past chats
+        historyAvailable: ref(false),
         pageSuggestions: ref({ loaded: false, heading: 'popular' as const, pill: null, items: [] }),
         openHistory: noop,
         closeHistory: noop,
@@ -276,8 +276,8 @@ export function usePreviewController(
         handleFieldChange: noop,
         submitFullScreenForm: asyncNoop,
         handleUserInputSubmit: asyncNoop,
-        // "New chat" (when allowed) goes back to the start state; nothing is ended.
-        canStartNewChat: computed(() => customization.value.allow_new_chat === true && messages.value.length > 0),
+        // "New chat" goes back to the start state; nothing is ended.
+        canStartNewChat: computed(() => messages.value.length > 0),
         startingNewChat: ref(false),
         newChatError: ref(''),
         newChatArmed: ref(false),

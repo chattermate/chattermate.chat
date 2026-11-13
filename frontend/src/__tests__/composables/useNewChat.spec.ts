@@ -26,7 +26,6 @@ const setup = (endChat = vi.fn().mockResolvedValue(true)) => {
     const getWorkflowState = vi.fn().mockResolvedValue(undefined)
     const clearComposer = vi.fn()
     const newChat = useNewChat({
-        customization: ref({ allow_new_chat: true }),
         conversation: { messages, humanAgent, endChat, getWorkflowState },
         showEmailGate: ref(false),
         initializeWidget,

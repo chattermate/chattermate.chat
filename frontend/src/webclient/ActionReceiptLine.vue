@@ -45,7 +45,7 @@ defineProps<{ receipt: ActionReceipt }>()
 }
 .cm-receipt.skipped, .cm-receipt.failed { color: var(--cm-muted); }
 .cm-receipt-icon { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
-.cm-receipt-icon .fill { fill: var(--cm-accent); }
+.cm-receipt-icon .fill { fill: var(--cm-accent-ink, var(--cm-accent)); }
 .cm-receipt-icon .tick { fill: none; stroke: var(--cm-on-accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .cm-receipt-icon .ring { fill: none; stroke: currentColor; stroke-width: 2; }
 .cm-receipt-icon .mark { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }

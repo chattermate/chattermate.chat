@@ -10,7 +10,6 @@
     "test": "./scripts/stack.sh up && playwright test --project=chromium && playwright test --project=org --workers=1 --pass-with-no-tests",
     "test:smoke": "playwright test --project=chromium --grep @smoke",
     "test:org": "playwright test --project=org --workers=1 --pass-with-no-tests",
-    "test:widget-v2": "E2E_WIDGET_UI=2 playwright test --project=chromium --grep @widget",
     "test:enterprise": "E2E_EDITION=enterprise ./scripts/stack.sh up && E2E_EDITION=enterprise playwright test --project=enterprise --project=chromium && E2E_EDITION=enterprise playwright test --project=enterprise-org --project=org --workers=1 --pass-with-no-tests",
     "test:ui": "playwright test --ui",
     "report": "playwright show-report",

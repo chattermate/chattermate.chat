@@ -1,11 +1,9 @@
-import { test, expect, env, customizeAgent } from '@e2e'
+import { test, expect, customizeAgent } from '@e2e'
 
 // The redesigned widget's "Suggested for this page": a quick action set for this
 // page comes first, under the page's title; one for other pages stays away.
 
 test.describe('suggested for this page', () => {
-  // eslint-disable-next-line playwright/no-skipped-test -- page-aware suggestions are the redesigned widget's
-  test.skip(env.widgetUi !== 2, 'Page-aware suggestions are the redesigned widget\'s')
 
   test('a quick action set for this page shows first, one for other pages does not @widget', async ({ agent, widget, adminApi }) => {
     await customizeAgent(adminApi, agent.id, {

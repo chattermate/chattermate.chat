@@ -1,11 +1,9 @@
-import { test, expect, env, customizeAgent, AI_REPLY } from '@e2e'
+import { test, expect, customizeAgent, AI_REPLY } from '@e2e'
 
 // The redesigned widget's "Your conversations": a visitor finds their earlier
 // chats, reads one and carries it on; another browser sees none of them.
 
 test.describe('your conversations', () => {
-  // eslint-disable-next-line playwright/no-skipped-test -- history is the redesigned widget's
-  test.skip(env.widgetUi !== 2, 'Conversation history is the redesigned widget\'s')
 
   test('a visitor reopens an earlier chat and continues it; another browser sees nothing @widget', async ({ agent, widget, llm, adminApi, makeVisitor }) => {
     await customizeAgent(adminApi, agent.id, { allow_new_chat: true })

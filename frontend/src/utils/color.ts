@@ -114,3 +114,19 @@ export function mixToContrast(surface: string, ink: string, ratio: number): stri
   }
   return ink
 }
+
+/**
+ * `colour` itself when it reaches `ratio` against `surface`, else the least mix of
+ * it toward `ink` that does (a lime accent drawn on white becomes a darker olive),
+ * so a brand colour used for icons and links stays its hue and stays readable.
+ * `colour` unchanged when any of the three is not a hex.
+ */
+export function readableOn(surface: string, colour: string, ink: string, ratio: number): string {
+  if (!hexToRgb(surface || '') || !hexToRgb(colour || '') || !hexToRgb(ink || '')) return colour
+  if (contrastRatio(colour, surface) >= ratio) return colour
+  for (let step = 1; step <= 50; step++) {
+    const candidate = mixHex(colour, ink, step / 50)
+    if (contrastRatio(candidate, surface) >= ratio) return candidate
+  }
+  return ink
+}

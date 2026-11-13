@@ -17,9 +17,9 @@ limitations under the License.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The redesigned panel (widget_ui version 2) end to end through the real widget
- * controller, with the fake socket: which view renders, the header, sending, the
- * live reveal and stop, a takeover, the email step, and focus on open.
+ * The panel end to end through the real widget controller, with the fake socket:
+ * which view renders, the header, sending, the live reveal and stop, a takeover,
+ * the email step, and focus on open.
  */
 
 // As in widgetEmailGate.spec: a hook just before each authorize call, so a test can
@@ -48,12 +48,10 @@ vi.mock('@/composables/useConversationToken', async (importOriginal) => {
 
 import { jsonResponse, mountWidget, postFromParent, resetSocket, settle, socket, socketCalls } from './widgetHarness'
 
-const V2 = { customization_metadata: { widget_ui: { version: 2 } } }
-
 let wrapper: any
 
 const mountPanel = async (customization: Record<string, any> = {}, initialData: Record<string, any> = {}) => {
-    const mounted = await mountWidget({ customization: { ...V2, ...customization }, initialData })
+    const mounted = await mountWidget({ customization, initialData })
     wrapper = mounted.wrapper
     document.body.appendChild(wrapper.element)
     await settle(wrapper, 6)
@@ -76,21 +74,11 @@ afterEach(() => {
 })
 
 describe('which view renders', () => {
-    it('is the panel when the agent chose the redesign', async () => {
-        await mountPanel()
+    it('is always the panel', async () => {
+        await mountPanel({ chat_style: 'SUNRISE' })
         expect(panelRoot().exists()).toBe(true)
-        expect(wrapper.find('.chat-panel').exists()).toBe(false)
         // The redesign's own tokens are on the root.
         expect(panelRoot().attributes('style')).toContain('--cm-tint')
-    })
-
-    it('is the classic widget otherwise, without the redesign tokens', async () => {
-        const mounted = await mountWidget({ customization: { chat_style: 'SUNRISE' } })
-        wrapper = mounted.wrapper
-        await settle(wrapper, 6)
-        expect(wrapper.find('.cm-ui-2').exists()).toBe(false)
-        expect(wrapper.find('.chat-panel').exists()).toBe(true)
-        expect(wrapper.find('.chat-container').attributes('style')).not.toContain('--cm-tint')
     })
 })
 
@@ -107,9 +95,9 @@ describe('the panel', () => {
         expect(wrapper.find('button[aria-label="Send message"]').exists()).toBe(true)
     })
 
-    it('says the AI replies instantly, and "Working on it…" with a typing status while it works', async () => {
+    it('says it replies instantly, and "Working on it…" with a typing status while it works', async () => {
         await mountPanel()
-        expect(status()).toBe('AI agent · replies instantly')
+        expect(status()).toBe('Replies instantly')
         socket.loading.value = true
         await settle(wrapper)
         expect(status()).toBe('Working on it…')
@@ -146,7 +134,7 @@ describe('the panel', () => {
         await settle(wrapper)
         expect(wrapper.find('.message.user-message .message-bubble').text()).toBe('Hi')
         expect(wrapper.find('.message.agent-message .message-bubble').text()).toBe('Hello, how can I help?')
-        expect(wrapper.find('.cm-answer__name').text()).toBe('Ada AI')
+        expect(wrapper.find('.cm-answer__name').text()).toBe('Ada')
     })
 
     it('turns send into Stop while a live reply is revealing, and Stop shows it in full', async () => {
@@ -533,6 +521,16 @@ describe('with the embed loader (plan 1.5)', () => {
         expect(solid).not.toContain('gradient')
         await postFromParent(wrapper, { type: 'HOST_CAPABILITIES', v: 1, expand: true, backdrop: true })
         expect(card()).toContain('gradient')
+    })
+
+    it('shows the grabber and takes a swipe only once the loader says the panel is a phone sheet', async () => {
+        await mountPanel()
+        expect(wrapper.find('.cm-grabber').exists()).toBe(false)
+        await postFromParent(wrapper, { type: 'HOST_CAPABILITIES', v: 1, expand: false, backdrop: false, swipe: true })
+        expect(wrapper.find('.cm-grabber').exists()).toBe(true)
+        expect(wrapper.find('.cm-header').classes()).toContain('is-swipeable')
+        await postFromParent(wrapper, { type: 'HOST_CAPABILITIES', v: 1, expand: false, backdrop: false, swipe: 'yes' })
+        expect(wrapper.find('.cm-grabber').exists()).toBe(false)
     })
 
     it('ignores capabilities that are not exactly true', async () => {

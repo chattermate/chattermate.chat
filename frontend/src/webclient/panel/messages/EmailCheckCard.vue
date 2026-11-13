@@ -18,12 +18,16 @@ limitations under the License.
 /**
  * The email check card: the visitor's email, then the 6-digit code sent to it,
  * then a confirmation. The agent asked for it (confirm_email); once confirmed the
- * visitor's message says so and the agent can show their orders. Errors say what
- * to do next, and a spent or expired code goes back to the email step.
+ * visitor's message says so and the agent can show their orders. From the history
+ * screen (`purpose` history) it finds the visitor's chats from other browsers.
+ * Errors say what to do next, and a spent or expired code goes back to the email step.
  */
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { WIDGET_CTX } from '../controller'
 import { PANEL_COPY } from '../../copy'
+import type { EmailCheckPurpose } from '../../../composables/useEmailCheck'
+
+const props = withDefaults(defineProps<{ purpose?: EmailCheckPurpose }>(), { purpose: 'chat' })
 
 const ctrl = inject(WIDGET_CTX)!
 const { emailCheck } = ctrl
@@ -40,6 +44,9 @@ const error = computed(() => {
         ? `${text} ${PANEL_COPY.attemptsLeft(emailCheck.value.attemptsLeft)}` : text
 })
 const codeReady = computed(() => /^[0-9]{6}$/.test(code.value))
+const forHistory = computed(() => props.purpose === 'history')
+const title = computed(() => (forHistory.value ? PANEL_COPY.otherDevicesTitle : PANEL_COPY.emailCheckTitle))
+const start = () => ctrl.startEmailCheck(email.value, props.purpose)
 
 watch(() => emailCheck.value.stage, (stage) => {
     if (stage === 'code') {
@@ -55,15 +62,15 @@ const onCodeInput = () => {
 </script>
 
 <template>
-    <section class="cm-email-check" :aria-label="PANEL_COPY.emailCheckTitle">
+    <section class="cm-email-check" :aria-label="title">
         <p v-if="emailCheck.stage === 'verified'" class="cm-email-check__done" role="status">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
             {{ PANEL_COPY.emailCheckDone(emailCheck.maskedEmail) }}
         </p>
         <template v-else>
-            <p class="cm-email-check__title">{{ PANEL_COPY.emailCheckTitle }}</p>
-            <form v-if="emailCheck.stage === 'email'" class="cm-email-check__form" novalidate @submit.prevent="ctrl.startEmailCheck(email)">
-                <p class="cm-email-check__text">{{ PANEL_COPY.emailCheckText }}</p>
+            <p class="cm-email-check__title">{{ title }}</p>
+            <form v-if="emailCheck.stage === 'email'" class="cm-email-check__form" novalidate @submit.prevent="start">
+                <p class="cm-email-check__text">{{ forHistory ? PANEL_COPY.otherDevicesText : PANEL_COPY.emailCheckText }}</p>
                 <label class="cm-sr-only" for="cm-email-check-email">{{ PANEL_COPY.emailLabel }}</label>
                 <input id="cm-email-check-email" v-model="email" class="cm-email-check__input" type="email"
                        autocomplete="email" inputmode="email" :placeholder="PANEL_COPY.emailPlaceholder"
@@ -83,7 +90,7 @@ const onCodeInput = () => {
                 </button>
                 <span class="cm-email-check__links">
                     <button type="button" class="cm-email-check__link" :disabled="emailCheck.busy" @click="ctrl.restartEmailCheck">{{ PANEL_COPY.emailCheckOtherEmail }}</button>
-                    <button type="button" class="cm-email-check__link" :disabled="emailCheck.busy" @click="ctrl.startEmailCheck(email)">{{ PANEL_COPY.emailCheckResend }}</button>
+                    <button type="button" class="cm-email-check__link" :disabled="emailCheck.busy" @click="start">{{ PANEL_COPY.emailCheckResend }}</button>
                 </span>
             </form>
             <p v-if="error" id="cm-email-check-error" class="cm-email-check__error" role="alert">{{ error }}</p>

@@ -22,6 +22,7 @@ limitations under the License.
 
 import { computed, reactive, ref } from 'vue'
 import { postToHost } from './host-bridge'
+import { planAllows } from './plan-features'
 
 export type CartStatus = 'idle' | 'adding' | 'added' | 'failed'
 
@@ -110,8 +111,8 @@ export const cartSummary = ref<CartSummary | null>(null)
 /** Whether the loader announced a store cart on this page at all. */
 export const cartOnPage = computed(() => !!shop.value)
 
-/** Ask the loader for the cart (it answers with CART_STATE). Only the redesign's
- * cart bar asks, while the panel is open: the classic widget never reads it. */
+/** Ask the loader for the cart (it answers with CART_STATE). The cart bar asks,
+ * while the panel is open. */
 export function requestCart(): void {
   if (shop.value) postToHost({ type: 'GET_CART' })
 }
@@ -141,7 +142,9 @@ function summaryFrom(data: Record<string, unknown>): CartSummary {
 /** A message from the loader. Returns true if it was for the cart. */
 export function handleCartMessage(data: Record<string, unknown>): boolean {
   if (data.type === 'CART_AVAILABLE') {
-    shop.value = typeof data.shop === 'string' && data.shop ? data.shop : null
+    // Shopping in the chat is a Growth plan's: without it the store's cart is never
+    // taken up, so no Add, Choose options or cart bar (product cards keep View)
+    shop.value = planAllows('shop_in_chat') && typeof data.shop === 'string' && data.shop ? data.shop : null
     return true
   }
   if (data.type === 'CART_STATE') {

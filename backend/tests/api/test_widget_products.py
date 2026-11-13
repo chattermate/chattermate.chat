@@ -23,7 +23,8 @@ import pytest
 
 from app.api import widget_products
 
-SESSION = {"agent_id": "a-1", "org_id": "o-1", "session_id": "s-1"}
+PLAN = {"conversation_history": True, "follow_ups": True, "shop_in_chat": True, "known_customers": True}
+SESSION = {"agent_id": "a-1", "org_id": "o-1", "session_id": "s-1", "plan_features": PLAN}
 CHOICES = {"options": [{"name": "Size", "values": ["S"]}], "variants": [], "complete": True}
 
 
@@ -49,6 +50,18 @@ async def test_a_bad_request_asks_the_shop_nothing(data):
         await widget_products.handle_product_options("sid", data)
     read.assert_not_called()
     assert sio.emit.await_args.args[1]["complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_below_growth_the_shop_is_not_asked():
+    starter = {**SESSION, "plan_features": {**PLAN, "shop_in_chat": False}}
+    with patch.object(widget_products, "authenticated_session", AsyncMock(return_value=starter)), \
+         patch.object(widget_products, "_read_options") as read, \
+         patch.object(widget_products, "sio") as sio:
+        sio.emit = AsyncMock()
+        await widget_products.handle_product_options("sid", {"product_id": "42"})
+    read.assert_not_called()
+    assert sio.emit.await_args.args[1] == {"product_id": "42", **widget_products.NO_CHOICES}
 
 
 @pytest.mark.asyncio

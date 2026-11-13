@@ -32,10 +32,8 @@ export function previewText(message: string): string {
     return text.length > PREVIEW_MAX_CHARS ? `${text.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}…` : text
 }
 
-/** The redesigned panel also shows the reply itself in the loader's peek. */
+/** The reply itself, for the loader's peek. */
 export interface UnreadPreview {
-    /** Read when a reply arrives: whether to send it (the redesign is on). */
-    enabled: () => boolean
     /** Who the reply is from when the message does not say. */
     agentName: () => string
 }
@@ -71,7 +69,7 @@ export function useUnreadBadge(messages: Ref<any[]>, preview?: UnreadPreview) {
         if (m && (m.message_type === 'bot' || m.message_type === 'agent')) {
             unread += 1
             post()
-            if (preview?.enabled()) {
+            if (preview) {
                 const text = previewText(m.message)
                 if (text) postToHost({ type: 'UNREAD_PREVIEW', text, agentName: m.agent_name || preview.agentName() })
             }

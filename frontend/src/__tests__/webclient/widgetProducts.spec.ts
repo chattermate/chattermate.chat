@@ -100,11 +100,12 @@ describe('a product card', () => {
         expect(text).not.toContain('€')
     })
 
-    it('renders one card per product under a "Products" heading', async () => {
+    it('renders one card per product in a carousel named "Products"', async () => {
         await showProducts({ message: '', shopify_output: { shop_domain: SHOP, products: [mug, tee] } })
 
-        expect(wrapper.findAll('[role="group"]')).toHaveLength(2)
-        expect(wrapper.findAll('h3').map((h: any) => h.text())).toContain('Products')
+        const carousel = wrapper.find('[aria-roledescription="carousel"]')
+        expect(carousel.attributes('aria-label')).toBe('Products')
+        expect(carousel.findAll('[role="group"]')).toHaveLength(2)
     })
 })
 
@@ -215,36 +216,31 @@ describe('the Add to cart button', () => {
     })
 })
 
-describe('the View product button', () => {
+describe('the View product link', () => {
+    const viewLink = (title: string) =>
+        card(title).findAll('a').find((a: any) => a.text().trim().startsWith('View product'))
+
     it('opens the product page by handle in a new tab without an opener', async () => {
-        const open = vi.spyOn(window, 'open').mockImplementation(() => null)
         await showProducts({ message: '', shopify_output: { shop_domain: SHOP, products: [mug] } })
 
-        await buttonIn(card('Blue Mug'), 'View product').trigger('click')
-
-        expect(open).toHaveBeenCalledWith(`https://${SHOP}/products/blue-mug`, '_blank', 'noopener')
+        const link = viewLink('Blue Mug')
+        expect(link.attributes('href')).toBe(`https://${SHOP}/products/blue-mug`)
+        expect(link.attributes('target')).toBe('_blank')
+        expect(link.attributes('rel')).toContain('noopener')
+        expect(link.text()).toContain('(opens in a new tab)')
     })
 
     it('falls back to the product id when there is no handle', async () => {
-        const open = vi.spyOn(window, 'open').mockImplementation(() => null)
         await showProducts({ message: '', shopify_output: { shop_domain: SHOP, products: [tee] } })
 
-        await buttonIn(card('Plain Tee'), 'View product').trigger('click')
-
-        expect(open).toHaveBeenCalledWith(`https://${SHOP}/products/202`, '_blank', 'noopener')
+        expect(viewLink('Plain Tee').attributes('href')).toBe(`https://${SHOP}/products/202`)
     })
 
-    it('alerts instead of opening when the shop domain is missing', async () => {
-        // Pinned current behaviour (odd): a blocking window.alert inside the chat frame.
-        const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-        const alert = vi.fn()
-        vi.stubGlobal('alert', alert)
+    it('is left out when the shop domain is missing, instead of a dead link', async () => {
+        // Classic showed the button and raised a blocking alert on click.
         await showProducts({ message: '', shopify_output: { products: [mug] } })
 
-        await buttonIn(card('Blue Mug'), 'View product').trigger('click')
-
-        expect(open).not.toHaveBeenCalled()
-        expect(alert).toHaveBeenCalledWith('Unable to open product: Shop domain not available. Please contact support.')
+        expect(viewLink('Blue Mug')).toBeUndefined()
     })
 })
 

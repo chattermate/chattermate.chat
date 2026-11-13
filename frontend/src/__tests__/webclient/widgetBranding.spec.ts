@@ -14,11 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+import { readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { mountWidget, resetSocket } from './widgetHarness'
 import AskAiPanel from '@/webclient/AskAiPanel.vue'
-import widgetSource from '@/webclient/ClassicWidget.vue?raw'
+
+// Every panel component's source, read from disk.
+const PANEL_DIR = resolve(__dirname, '../../webclient/panel')
+const panelSources = Object.fromEntries(
+    (readdirSync(PANEL_DIR, { recursive: true }) as string[])
+        .filter(name => name.endsWith('.vue'))
+        .map(name => [name, readFileSync(resolve(PANEL_DIR, name), 'utf8')]),
+) as Record<string, string>
+const templateOf = (source: string) =>
+    source.slice(source.indexOf('<template>'), source.lastIndexOf('</template>'))
 
 /**
  * "Powered by ChatterMate" comes off only when the server says the plan removes
@@ -45,29 +56,38 @@ describe('the widget footer', () => {
         resetSocket()
     })
 
+    // The "Powered by ChatterMate" link, by where it goes and what it says.
+    const brandLink = () => wrapper.findAll('a[href="https://chattermate.chat"]')
+        .find((link: any) => link.text().replace(/\s+/g, ' ').includes('Powered by ChatterMate'))
+
     it('keeps the branding by default', async () => {
         await mountWith(undefined)
-        expect(wrapper.find('.cm-powered-link').exists()).toBe(true)
+        expect(brandLink()).toBeDefined()
     })
 
     it('keeps the branding when the plan does not remove it', async () => {
         await mountWith(false)
-        expect(wrapper.find('.cm-powered-link').exists()).toBe(true)
+        expect(brandLink()).toBeDefined()
     })
 
     it('drops the footer when the plan removes it', async () => {
         await mountWith(true)
-        expect(wrapper.find('.cm-powered-link').exists()).toBe(false)
+        expect(brandLink()).toBeUndefined()
     })
 
-    // Welcome, landing, form and chat are a v-else-if chain, so one mount only
-    // reaches one of them. Whatever screen is added next must take the check too.
+    // The chat, the workflow screens and the unavailable screen each draw the footer,
+    // and one mount only reaches one of them. The link lives in PanelFooter alone,
+    // behind the check, so whatever screen is added next gets the check with it.
     it('has no branded footer outside the check, on any screen', () => {
-        const template = widgetSource.slice(widgetSource.indexOf('<template>'), widgetSource.lastIndexOf('</template>'))
-        const links = template.match(/class="cm-powered-link"/g) ?? []
-        const guarded = template.match(/v-if="showBranding"/g) ?? []
+        const withLink = Object.entries(panelSources)
+            .filter(([, source]) => templateOf(source).includes('href="https://chattermate.chat"'))
+            .map(([name]) => name)
+        expect(withLink).toEqual(['PanelFooter.vue'])
+
+        const template = templateOf(panelSources['PanelFooter.vue'])
+        const links = template.match(/<a\b[^>]*href="https:\/\/chattermate\.chat"[^>]*>/g) ?? []
         expect(links.length).toBeGreaterThan(0)
-        expect(guarded.length).toBe(links.length)
+        links.forEach(link => expect(link).toContain('v-if="showBranding"'))
     })
 })
 

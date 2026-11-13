@@ -14,12 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// The redesigned panel's frame on the host page (widget_ui version 2): its size,
-// corners, long shadow and frosted backdrop, how it opens out of the launcher and
-// closes back into it, the launcher's dots turning into a chevron, the working dot
-// and the peek nudge. Appended after the classic rules only when the frame says
-// ui 2, and every rule is scoped to .cm-v2, so the classic widget never sees any of
-// it. Only CSS transitions move the panel and launcher: a toggle mid-flight
+// The panel's frame on the host page: its size, corners, long shadow and frosted
+// backdrop, how it opens out of the launcher and closes back into it, the
+// launcher's dots turning into a chevron, the working dot and the peek nudge.
+// Appended after the loader's base rules, every rule scoped to .cm-v2 (outranking
+// them). Only CSS transitions move the panel and launcher: a toggle mid-flight
 // reverses from where it is. `frame` has been through pickPanelLook (panel-style.ts).
 // The corners, long shadow, open motion and expand size are the floating window's
 // only: drawers stay square and flush, and the Ask AI palette keeps its own centring.
@@ -63,7 +62,7 @@ export function panelCss(ids, layout, frame) {
   const dots = `translate(-50%, -50%) scale(${layout.dotsScale})`
   const size = layout.sizeIsExplicit || {}
   return `
-      /* ===== Redesigned panel (widget_ui 2) ===== */
+      /* ===== Panel ===== */
       ${c} .chattermate-iframe {
         /* A mismatched color-scheme makes the browser paint the frame's canvas opaque. */
         color-scheme: normal;
@@ -91,7 +90,7 @@ ${peekCss(n, layout, frame)}
 /**
  * The floating window: its corners, long shadow, size and how it opens out of the
  * launcher. Reduced motion makes it a 150ms fade in place; the !important on that
- * fade outranks the classic sheet's own `transition: none !important` by being
+ * fade outranks the loader's base sheet rule `transition: none !important` by being
  * more specific (#id.cm-v2), so the panel fades rather than snaps.
  */
 function floatingCss(c, layout, frame, size) {

@@ -30,8 +30,8 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
+from app.cards.labels import labels_for
 from app.cards.turn_cards import TurnCards
-from app.services.agent_steps import StepReporter
 from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
 from app.services.lead_capture import record_lead_from_response
@@ -41,9 +41,13 @@ logger = get_logger(__name__)
 WIDGET_NAMESPACE = '/widget'
 
 # Socket session keys, read once at connect (widget_chat.widget_connect): the
-# visitor gets the redesigned widget, and its agent offers follow-up chips.
-REDESIGN_SESSION_KEY = 'widget_ui_v2'
+# client is the widget panel (it draws live steps, status cards and the email
+# check; the dashboard's onboarding test chat does not), and the agent offers
+# follow-up chips.
+PANEL_SESSION_KEY = 'panel'
 FOLLOW_UPS_SESSION_KEY = 'follow_ups'
+# The card language picked from the visitor's browser languages (app/cards/labels.py)
+LANGUAGE_SESSION_KEY = 'language'
 # The earlier conversation's context for the agent (visitor_history.CONTINUED_KEY)
 CONTINUED_CONTEXT_KEY = 'continued_context'
 
@@ -87,8 +91,7 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
         ),
         host_action_functions=build_action_functions(actions) or None,
         choice_limits=choice_limits_for(session),
-        step_reporter=StepReporter(session['session_id']) if session.get(REDESIGN_SESSION_KEY) else None,
-        turn_cards=TurnCards() if session.get(REDESIGN_SESSION_KEY) else None,
+        turn_cards=TurnCards(labels_for(session.get(LANGUAGE_SESSION_KEY))) if session.get(PANEL_SESSION_KEY) else None,
     )
 
 
@@ -146,13 +149,10 @@ def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[
     """The visitor's copy of an AI reply. Notes for the team (transfer reason and
     description) stay on the stored message and are never sent. From the agent
     that wrote and stored it: the row id (the visitor's thumbs refer to it), the
-    receipt of its steps (agent_steps.py) and the handover card, exactly as
-    stored, so a reload shows the same thing."""
-    trace = getattr(chat_agent, 'last_trace', None)
+    handover card and the status cards, exactly as stored, so a reload shows the
+    same thing."""
     payload = {
         'message_id': getattr(chat_agent, 'last_bot_message_id', None),
-        'turn_id': trace['turn_id'] if trace else None,
-        'trace': trace,
         # The agent's choices or follow-ups (choice_limits_for), until answered
         'quick_replies': _shown_choices(response, limits),
         'handover': getattr(chat_agent, 'last_handover', None),

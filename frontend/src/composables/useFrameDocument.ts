@@ -14,8 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { watch } from 'vue'
-
 /** Whether this page is the widget's own frame (not the dashboard preview). */
 export const isWidgetFrame = (win: Window = window): boolean => {
     try {
@@ -26,21 +24,14 @@ export const isWidgetFrame = (win: Window = window): boolean => {
 }
 
 /**
- * The frame page keeps the browser's default 8px body margin. The redesigned panel
+ * The frame page keeps the browser's default 8px body margin. The panel
  * fills the frame edge to edge (and, for Glass, the frame is transparent over the
  * loader's frosted backdrop), so the margin would show as a ring around the panel.
- * Only inside the frame: the dashboard preview owns its page.
+ * Only inside the frame: the dashboard preview owns its page. Called by the
+ * widget root only (never by PanelWidget, which the dashboard preview also mounts,
+ * and the dashboard can itself be framed, e.g. in the Shopify admin).
  */
 export function fitFrameDocument(doc: Document = document, win: Window = window): void {
     if (!isWidgetFrame(win) || !doc.body) return
     doc.body.style.margin = '0'
-}
-
-/**
- * Called by the widget root only (never by PanelWidget, which the dashboard
- * preview also mounts — and the dashboard can itself be framed, e.g. in the
- * Shopify admin). Applies once the agent's design turns out to be the redesign.
- */
-export function useFrameDocument(isRedesign: () => boolean): void {
-    watch(isRedesign, (redesign) => { if (redesign) fitFrameDocument() }, { immediate: true })
 }

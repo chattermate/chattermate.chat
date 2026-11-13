@@ -22,7 +22,7 @@ def test_the_schema_covers_fields_and_structured_metadata():
     schema = customization_schema()
     fields = schema["customization"]["properties"]
     assert {"accent_color", "chat_style", "welcome_subtitle", "show_citations"} <= fields.keys()
-    assert set(schema["metadata"]) == {"launcher", "widget_display", "widget_ui"}
+    assert set(schema["metadata"]) == {"launcher", "widget_display"}
 
 
 def test_allowed_values_come_from_the_models():

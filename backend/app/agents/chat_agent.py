@@ -21,7 +21,6 @@ from app.utils.agno_utils import create_model
 from app.core.logger import get_logger
 from app.core.model_catalog import DEFAULT_CHATTERMATE_MODEL
 from app.channels.constants import MessageSource, is_widget_channel
-from app.services.agent_steps import StepReporter
 from app.cards.turn_cards import TurnCards
 from app.services.handover_payload import handover_payload
 from app.services.widget_answers import widget_choices
@@ -36,6 +35,8 @@ from app.agents.host_actions.turns import fill_results, paused_run_tools, paused
 from app.repositories.chat import ChatRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.feature_gate import LEAD_CAPTURE_FEATURE, plan_feature_on
+from app.services import widget_plan
+from app.services.widget_plan import MY_ORDERS_FEATURE, SHOP_IN_CHAT_FEATURE
 from app.services.widget_identity import trusts_identity_in_session
 from app.models.session_to_agent import SessionStatus
 from app.models.schemas.chat import ChannelChatResponse, ChatResponse, TransferReasonType, EndChatReasonType
@@ -366,7 +367,7 @@ def enrich_shopify_response(response_content: ChatResponse, session_id: str, fal
     return response_content
 
 class ChatAgent(ChatAgentMCPMixin):
-    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, step_reporter: Optional[StepReporter] = None, turn_cards: Optional[TurnCards] = None):
+    def __init__(self, api_key: str, model_name: str = DEFAULT_CHATTERMATE_MODEL, model_type: str = "OPENAI", org_id: str = None, agent_id: str = None, customer_id: str = None, session_id: str = None, custom_system_prompt: str = None, transfer_to_human: bool | None = None, mcp_tools: list = None, source: str = None, channel: str = None, extra_context: str = None, base_url: str = None, choice_limits: Optional[InteractiveLimits] = None, host_action_functions: Optional[list] = None, turn_cards: Optional[TurnCards] = None):
         # NOTE: `source` is a knowledge-base document-name filter (see
         # KnowledgeSearchByAgent), NOT the messaging channel. `channel` is the
         # messaging channel tag ('web', 'telegram', ...) and must never be
@@ -374,10 +375,6 @@ class ChatAgent(ChatAgentMCPMixin):
         self.channel = channel or 'web'
         # Row id of the reply the last get_response stored (see get_response)
         self.last_bot_message_id = None
-        # Reports tool calls to the widget as they run (agent_steps.py); its
-        # receipt is stored on the reply and left on last_trace.
-        self.step_reporter = step_reporter
-        self.last_trace = None
         # The handover card state stored on this turn's reply (handover_payload.py)
         self.last_handover = None
         # Status cards the tools produce this turn (app/cards), and the reply's
@@ -426,6 +423,11 @@ class ChatAgent(ChatAgentMCPMixin):
             
             # Check if Shopify is enabled for this agent while we have the db session
             shopify_config = None
+            # "My orders" after an email check, and Add to cart on product cards, are a
+            # Growth plan's (widget_plan.py)
+            plan = widget_plan.features(db, org_id, (MY_ORDERS_FEATURE, SHOP_IN_CHAT_FEATURE)) if org_id else {}
+            self.offers_my_orders = plan.get(MY_ORDERS_FEATURE, False)
+            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False)
             if agent_id and org_id and session_id:
                 try:
                     shopify_config_repo = AgentShopifyConfigRepository(db)
@@ -578,7 +580,8 @@ class ChatAgent(ChatAgentMCPMixin):
         for toolkit in (getattr(self, 'ticket_tools', None), getattr(self, 'shopify_tools', None)):
             if toolkit is not None:
                 toolkit.turn_cards = self.turn_cards
-        if self.turn_cards is not None and getattr(self, 'shopify_tools', None) is not None:
+        if self.turn_cards is not None and getattr(self, 'shopify_tools', None) is not None \
+                and self.offers_my_orders:
             self.shopify_tools.offer_email_check()
 
         # Add MCP tools if provided
@@ -913,7 +916,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
                 DO NOT include any other fields (shop_domain, total_count, products, etc.) - backend will populate everything from cache
 
-                **Cart:** you cannot add anything to a customer's cart. Never say you did. Customers add products themselves, from the product card or the store.
+                **Cart:** you cannot add anything to a customer's cart. Never say you did. Customers add products themselves, from CART_PLACES.
 
                 **Order Tools:**
                 - Before looking up an order, ask for BOTH the order number and the email address used at checkout. Order details are only shared when both match
@@ -922,7 +925,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 - Use customer-friendly language: "Your order has been shipped" not "FULFILLED"
                 - Make tracking numbers clickable links
                 """
-                system_message += "\n\n" + shopify_instructions
+                cart_places = "the product card or the store" if self.cards_add_to_cart else "the store"
+                system_message += "\n\n" + shopify_instructions.replace("CART_PLACES", cart_places)
                 self.shopify_instructions_added = True
 
             # Add MCP tools instructions if MCP tools are available
@@ -1037,22 +1041,14 @@ Keep your responses concise and focused. Provide clear, actionable information i
            structured_outputs=structured_outputs,
            system_message_role="system",
            user_message_role="user",
-           show_tool_calls=settings.ENVIRONMENT == "development",
-           tool_hooks=self._tool_hooks(),
+           show_tool_calls=settings.ENVIRONMENT == "development"
           )
-
-    def _tool_hooks(self) -> Optional[list]:
-        if self.step_reporter is None:
-            return None
-        return [self.step_reporter.tool_hook]
 
     def _reset_turn(self) -> None:
         """Before a context-overflow retry: what the failed attempt searched must be
-        searchable again, and its steps are not this turn's receipt."""
+        searchable again, and its cards are not this turn's."""
         if getattr(self, "knowledge_tool", None) is not None:
             self.knowledge_tool.reset_turn()
-        if getattr(self, "step_reporter", None) is not None:
-            self.step_reporter.reset()
         if getattr(self, "turn_cards", None) is not None:
             self.turn_cards.reset()
 
@@ -1410,7 +1406,7 @@ Keep your responses concise and focused. Provide clear, actionable information i
 
     def _widget_extras(self, response_content: ChatResponse) -> dict:
         """What the redesigned widget restores from history: follow-up
-        choices, the handover card and the receipt of this turn's steps."""
+        choices, the handover card and this turn's status cards."""
         extras = {}
         choices = widget_choices(response_content) if is_widget_channel(self.channel) else []
         if choices:
@@ -1418,9 +1414,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_handover = handover_payload(response_content)
         if self.last_handover:
             extras["handover"] = self.last_handover
-        self.last_trace = self.step_reporter.summary() if self.step_reporter else None
-        if self.last_trace:
-            extras["trace"] = self.last_trace
         self.last_cards = (self.turn_cards.payload() or None) if self.turn_cards else None
         if self.last_cards:
             extras["cards"] = self.last_cards
@@ -1443,7 +1436,6 @@ Keep your responses concise and focused. Provide clear, actionable information i
         on `last_bot_message_id` so a caller can annotate that exact row.
         """
         self.last_bot_message_id = None
-        self.last_trace = None
         self.last_handover = None
         self.last_cards = None
         self.last_email_check = False

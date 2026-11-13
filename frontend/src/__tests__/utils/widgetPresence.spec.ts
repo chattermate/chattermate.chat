@@ -57,7 +57,7 @@ describe('presenceLine', () => {
 
   it('speaks the redesigned panel\'s words when given them, with the same honesty', () => {
     expect(presenceLine({ mode: 'ai' }, false, PANEL_PRESENCE_TEXT))
-      .toEqual({ text: 'AI agent · replies instantly', online: true })
+      .toEqual({ text: 'Replies instantly', online: true })
     expect(presenceLine({ mode: 'human', available: true }, false, PANEL_PRESENCE_TEXT).text)
       .toBe('Online · usually replies in a few minutes')
     expect(presenceLine({ mode: 'human', available: false }, false, PANEL_PRESENCE_TEXT))

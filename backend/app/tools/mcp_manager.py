@@ -492,7 +492,7 @@ class ChatAgentMCPMixin:
                           channel: str = None, extra_context: str = None, base_url: str = None,
                           choice_limits: Optional[InteractiveLimits] = None,
                           host_action_functions: Optional[list] = None,
-                          step_reporter=None, turn_cards=None):
+                          turn_cards=None):
         """
         Async factory method to create a ChatAgent with MCP tools initialized.
         """
@@ -526,7 +526,6 @@ class ChatAgentMCPMixin:
             base_url=base_url,
             choice_limits=choice_limits,
             host_action_functions=host_action_functions,
-            step_reporter=step_reporter,
             turn_cards=turn_cards,
         )
         

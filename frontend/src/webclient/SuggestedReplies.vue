@@ -65,5 +65,5 @@ const emit = defineEmits<{ (e: 'pick', chip: PageChip): void }>()
   background: color-mix(in srgb, var(--cm-accent) 12%, var(--cm-card));
 }
 .cm-reply:disabled { opacity: .5; cursor: default; }
-.cm-reply:focus-visible { outline: 2px solid var(--cm-accent); outline-offset: 2px; }
+.cm-reply:focus-visible { outline: 2px solid var(--cm-accent-ink, var(--cm-accent)); outline-offset: 2px; }
 </style>

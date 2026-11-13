@@ -17,34 +17,20 @@ limitations under the License.
 /**
  * What the redesigned panel reads from an AI reply besides its text, as the server
  * sends it on a live reply (chat_response) and stores it in a restored message's
- * attributes: follow-up choices, the handover card, the receipt of the agent's
- * steps and the visitor's thumb. Every reader validates: history rows are old.
+ * attributes: follow-up choices, the handover card, status cards and the
+ * visitor's thumb. Every reader validates: history rows are old.
  */
 
 import type { WidgetMessage } from '../../types/widget'
+import { visitorFeedbackIn, type VisitorFeedback } from '../../utils/visitorFeedback'
 
-export type VisitorFeedback = 'up' | 'down'
+export type { VisitorFeedback }
 export type HandoverState = 'connecting' | 'offline'
-export type StepStatus = 'ok' | 'error' | 'skipped'
-
-export interface TraceStep {
-    kind: string
-    done_label: string
-    status: StepStatus
-    duration_ms: number
-}
-
-export interface TraceReceipt {
-    turn_id: string
-    duration_ms: number
-    steps: TraceStep[]
-}
 
 /** At most this many follow-up chips, as the server's limit. */
 // The server sends at most three follow-ups or four of the agent's choices
 // (widget_reply.choice_limits_for); the chips never show more than that.
 export const MAX_ANSWER_CHOICES = 4
-const STEP_STATUSES = new Set<StepStatus>(['ok', 'error', 'skipped'])
 const HANDOVER_STATES = new Set<HandoverState>(['connecting', 'offline'])
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -52,30 +38,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const attributesOf = (message: WidgetMessage): Record<string, unknown> =>
     isObject(message.attributes) ? message.attributes : {}
-
-const stepFrom = (value: unknown): TraceStep | null => {
-    if (!isObject(value) || typeof value.done_label !== 'string') return null
-    const status = STEP_STATUSES.has(value.status as StepStatus) ? (value.status as StepStatus) : 'ok'
-    return {
-        kind: typeof value.kind === 'string' ? value.kind : 'other',
-        done_label: value.done_label,
-        status,
-        duration_ms: typeof value.duration_ms === 'number' ? value.duration_ms : 0,
-    }
-}
-
-/** The receipt of the agent's steps for this reply, or null. */
-export function traceOf(message: WidgetMessage): TraceReceipt | null {
-    const trace = attributesOf(message).trace
-    if (!isObject(trace) || !Array.isArray(trace.steps)) return null
-    const steps = trace.steps.map(stepFrom).filter((s): s is TraceStep => s !== null)
-    if (!steps.length) return null
-    return {
-        turn_id: typeof trace.turn_id === 'string' ? trace.turn_id : '',
-        duration_ms: typeof trace.duration_ms === 'number' ? trace.duration_ms : 0,
-        steps,
-    }
-}
 
 /** The follow-up choices under this reply (deduplicated, at most three). */
 export function followUpsOf(message: WidgetMessage): string[] {
@@ -98,24 +60,16 @@ export function handoverOf(message: WidgetMessage): HandoverState | null {
 
 /** The visitor's thumb on this reply, or null. */
 export function feedbackOf(message: WidgetMessage): VisitorFeedback | null {
-    const value = attributesOf(message).visitor_feedback
-    return value === 'up' || value === 'down' ? value : null
+    return visitorFeedbackIn(message.attributes)
 }
 
 /** The extras of a live reply (chat_response), to keep in its attributes like history does. */
 export function replyExtras(data: Record<string, unknown>): Record<string, unknown> {
     const extras: Record<string, unknown> = {}
-    for (const key of ['quick_replies', 'handover', 'trace', 'cards', 'email_check'] as const) {
+    for (const key of ['quick_replies', 'handover', 'cards', 'email_check'] as const) {
         if (data[key] !== null && data[key] !== undefined) extras[key] = data[key]
     }
     return extras
-}
-
-/** "2.4s", or "<1s" for a quick turn. */
-export function formatDuration(ms: number): string {
-    if (ms < 1000) return '<1s'
-    const seconds = ms / 1000
-    return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`
 }
 
 // ===== Status cards (plan 4.1; app/models/schemas/cards.py) =====
@@ -129,6 +83,8 @@ export interface CardAction { id: string; label: string; kind: 'link' | 'reply';
 export interface StatusCard {
     id: string
     kind: string
+    /** The language its words are in (a BCP 47 tag), when the server says */
+    lang?: string
     title: string
     subtitle?: string
     status?: { key: string; label: string; tone: CardTone }
@@ -142,6 +98,7 @@ export interface StatusCard {
 const TONES = new Set<CardTone>(['neutral', 'info', 'progress', 'success', 'warning', 'danger'])
 const STEP_STATES = new Set<CardStepState>(['done', 'current', 'upcoming', 'failed'])
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
+const LANGUAGE_TAG = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/i
 const list = (value: unknown): Record<string, unknown>[] =>
     Array.isArray(value) ? value.filter(isObject) : []
 const money = (value: unknown): CardMoney | undefined =>
@@ -168,6 +125,7 @@ function cardFrom(value: Record<string, unknown>): StatusCard | null {
     return {
         id: str(value.id),
         kind: str(value.kind) || 'generic',
+        lang: LANGUAGE_TAG.test(str(value.lang)) ? str(value.lang) : undefined,
         title: str(value.title),
         subtitle: str(value.subtitle) || undefined,
         status,

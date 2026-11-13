@@ -53,6 +53,18 @@ describe('useConversationHistory', () => {
         expect(h.emit).toHaveBeenCalledTimes(2)
     })
 
+    it('reads whether chats from other browsers are shown, or can be found', () => {
+        const h = setUp()
+        h.openHistory()
+        h.hear('conversations', { items: [], total: 0, other_browsers: { email: 'j•••@acme.com', offer: false } })
+        expect(h.history.value.otherBrowsers).toEqual({ email: 'j•••@acme.com', offer: false })
+        h.hear('conversations', { items: [], total: 0, other_browsers: { offer: true } })
+        expect(h.history.value.otherBrowsers).toEqual({ email: null, offer: true })
+        // An older server says nothing: nothing offered
+        h.hear('conversations', { items: [], total: 0 })
+        expect(h.history.value.otherBrowsers).toEqual({ email: null, offer: false })
+    })
+
     it('searches after typing settles, and ignores a stale answer', () => {
         const h = setUp()
         h.searchConversations('ship')

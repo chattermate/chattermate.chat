@@ -19,6 +19,7 @@ import { type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import MessageItem from '@/webclient/panel/MessageItem.vue'
 import { cardsOf } from '@/webclient/panel/answer-extras'
+import { browserLanguages } from '@/composables/useWidgetSocket'
 import { fakeController, mountWithController, type FakeController } from './panelFakeController'
 import type { WidgetMessage } from '@/types/widget'
 
@@ -112,5 +113,44 @@ describe('cardsOf', () => {
         expect(card.items[0].image).toBeUndefined()
         expect(card.actions.map(a => a.id)).toEqual(['c'])
         expect(cardsOf(reply('nope' as any))).toEqual([])
+    })
+})
+
+describe('a card in the visitor\'s language', () => {
+    const german = {
+        ...orderCard, lang: 'de', title: 'Bestellung #1042',
+        status: { key: 'in_transit', label: 'Unterwegs', tone: 'info' },
+    }
+
+    it('says its language, so screen readers read it in that voice', () => {
+        mountReply(reply([german]))
+        const card = wrapper!.get('section[aria-label="Bestellung #1042"]')
+        expect(card.attributes('lang')).toBe('de')
+        expect(card.get('.cm-status-card__pill').text()).toBe('Unterwegs')
+    })
+
+    it('follows the text direction of its words (Arabic reads right to left)', () => {
+        mountReply(reply([{ ...orderCard, lang: 'ar', title: 'الطلب #1042' }]))
+        expect(wrapper!.get('section.cm-status-card').attributes('dir')).toBe('auto')
+    })
+
+    it('keeps only a real language tag', () => {
+        expect(cardsOf(reply([german]))[0].lang).toBe('de')
+        expect(cardsOf(reply([{ ...orderCard, lang: 'zh-Hant' }]))[0].lang).toBe('zh-Hant')
+        expect(cardsOf(reply([{ ...orderCard, lang: 'de" onload="x' }]))[0].lang).toBeUndefined()
+        expect(cardsOf(reply([{ ...orderCard, lang: 42 }]))[0].lang).toBeUndefined()
+        expect(cardsOf(reply([orderCard]))[0].lang).toBeUndefined()
+    })
+})
+
+describe('browserLanguages', () => {
+    it('sends the browser\'s languages, most preferred first, at most five', () => {
+        expect(browserLanguages({ languages: ['de-DE', 'en-US'], language: 'de-DE' })).toEqual(['de-DE', 'en-US'])
+        expect(browserLanguages({ languages: ['a', 'b', 'c', 'd', 'e', 'f'], language: 'a' })).toHaveLength(5)
+    })
+
+    it('falls back to the one language an older browser gives', () => {
+        expect(browserLanguages({ languages: [], language: 'fr-FR' })).toEqual(['fr-FR'])
+        expect(browserLanguages({ languages: undefined as any, language: '' })).toEqual([])
     })
 })

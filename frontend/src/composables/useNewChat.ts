@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 import { computed, getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue'
-import type { AgentCustomization } from '../types/agent'
 import type { HumanAgent } from '../types/widget'
 import { NEW_CHAT_CONFIRM_TIMEOUT_MS, NEW_CHAT_FAILED_TEXT } from '../webclient/new-chat'
 
@@ -29,7 +28,6 @@ export interface NewChatConversation {
 }
 
 export interface NewChatOptions {
-    customization: Ref<Partial<AgentCustomization>>
     conversation: NewChatConversation
     showEmailGate: Readonly<Ref<boolean>>
     /** Authorizes and reconnects into a fresh conversation. */
@@ -39,13 +37,12 @@ export interface NewChatOptions {
 }
 
 /**
- * The opt-in "New chat" control (customization.allow_new_chat) and the workflow's
+ * The "New chat" control (every visitor's: their past chats stay in the history) and the workflow's
  * "start a new conversation" button. Ending a chat closes the session, and history
  * is scoped to the active session, so the control asks first, inside the widget; the
  * question withdraws itself if it is left unanswered.
  */
 export function useNewChat({
-    customization,
     conversation,
     showEmailGate,
     initializeWidget,
@@ -56,8 +53,7 @@ export function useNewChat({
     // Hidden until there is something to clear, and while a human agent is on the
     // conversation: closing the session would drop the visitor out of a live handover.
     const canStartNewChat = computed(() =>
-        customization.value.allow_new_chat === true
-        && messages.value.length > 0
+        messages.value.length > 0
         && !humanAgent.value?.human_agent_name
         && !showEmailGate.value
     )

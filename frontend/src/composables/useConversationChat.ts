@@ -26,6 +26,7 @@ import { canTakeOverChat, chatHandler } from '@/utils/chatState'
 import { routeChatToHuman } from '@/utils/chatActions'
 import { permissionChecks } from '@/utils/permissions'
 import { findMessage, newClientId } from '@/utils/messageMatch'
+import { withVisitorFeedback } from '@/utils/visitorFeedback'
 import { useOrgInboxRoom } from '@/composables/useOrgInboxRoom'
 
 // Define valid chat statuses
@@ -55,6 +56,13 @@ interface MessageStatusEvent {
   external_message_id?: string | null
   channel_status?: Message['channel_status']
   delivery_status?: string | null
+}
+
+/** message_feedback: the visitor's thumb on an AI reply (null: taken back). */
+interface MessageFeedbackEvent {
+  session_id?: string
+  message_id?: number
+  value?: string | null
 }
 
 export function useConversationChat(
@@ -380,16 +388,26 @@ export function useConversationChat(
     }
   }
 
+  // The visitor rated an AI reply (or took the rating back) while this chat is open
+  const handleMessageFeedback = (data: MessageFeedbackEvent) => {
+    if (data?.session_id !== chat.value.session_id) return
+    const message = findMessage(chat.value.messages, { messageId: data.message_id })
+    if (!message) return
+    message.attributes = withVisitorFeedback(message.attributes, data.value)
+  }
+
   const setupSocketListeners = () => {
     socketService.on('error', handleDeliveryError)
     socketService.on('agent_message_stored', handleAgentMessageStored)
     socketService.on('message_status', handleMessageStatus)
+    socketService.on('message_feedback', handleMessageFeedback)
   }
 
   const cleanupSocketListeners = () => {
     socketService.off('error', handleDeliveryError)
     socketService.off('agent_message_stored', handleAgentMessageStored)
     socketService.off('message_status', handleMessageStatus)
+    socketService.off('message_feedback', handleMessageFeedback)
   }
 
   const handleSocketReconnect = () => {

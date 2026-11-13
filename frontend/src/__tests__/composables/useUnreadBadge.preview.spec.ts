@@ -47,7 +47,7 @@ describe('the unread preview', () => {
     })
 
     it('sends a reply that lands while the panel is hidden, with who it is from', async () => {
-        const { messages, previews } = setup({ enabled: () => true, agentName: () => 'Ada' })
+        const { messages, previews } = setup({ agentName: () => 'Ada' })
         await nextTick()
         messages.value.push({ message_type: 'bot', message: 'Your order **shipped**' })
         await nextTick()
@@ -57,15 +57,8 @@ describe('the unread preview', () => {
         expect(previews().at(-1).agentName).toBe('Priya')
     })
 
-    it('sends nothing for the visitor\'s own messages, while shown, or for the classic widget', async () => {
-        const classic = setup({ enabled: () => false, agentName: () => 'Ada' })
-        classic.messages.value.push({ message_type: 'bot', message: 'Hi' })
-        await nextTick()
-        expect(classic.previews()).toEqual([])
-        wrapper.unmount()
-        vi.restoreAllMocks()
-
-        const panel = setup({ enabled: () => true, agentName: () => 'Ada' })
+    it('sends nothing for the visitor\'s own messages, or while shown', async () => {
+        const panel = setup({ agentName: () => 'Ada' })
         panel.messages.value.push({ message_type: 'user', message: 'Hi' })
         await nextTick()
         window.dispatchEvent(new MessageEvent('message', { data: { type: 'WIDGET_VISIBILITY', open: true } }))

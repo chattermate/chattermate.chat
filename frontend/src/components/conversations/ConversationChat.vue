@@ -32,6 +32,8 @@ import WhatsAppTemplatePicker from '@/components/conversations/WhatsAppTemplateP
 import MessageStatusTicks from '@/components/conversations/MessageStatusTicks.vue'
 import QuickReplyChips from '@/components/conversations/QuickReplyChips.vue'
 import MessageTag from '@/components/conversations/MessageTag.vue'
+import VisitorFeedbackMark from '@/components/conversations/VisitorFeedbackMark.vue'
+import { visitorFeedbackIn } from '@/utils/visitorFeedback'
 import { renderChatMarkdown } from '@/utils/chatMarkdown'
 
 const props = defineProps<{
@@ -392,6 +394,9 @@ watch(() => currentChat.value?.session_id, () => refreshLinkedTicket())
                 {{ message.timeAgo }}<MessageStatusTicks
                   :status="message.channel_status"
                   :on-accent="message.message_type === 'agent'"
+                /><VisitorFeedbackMark
+                  v-if="message.message_type === 'bot' && visitorFeedbackIn(message.attributes)"
+                  :value="visitorFeedbackIn(message.attributes)!"
                 />
               </span>
               <span v-if="message.attributes?.delivery_status" class="delivery-failed">

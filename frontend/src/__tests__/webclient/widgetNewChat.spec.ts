@@ -17,7 +17,7 @@ limitations under the License.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The opt-in "New chat" control (customization.allow_new_chat) in the chat header.
+ * The "New chat" control in the chat header (every visitor's).
  *
  * Starting a new chat closes the current session for good, so the control asks first,
  * withdraws the question if nobody answers, never shows mid-handover, and keeps the
@@ -42,7 +42,7 @@ const A_MESSAGE = { message: 'Hello', message_type: 'user', created_at: '2026-11
 // 'showEmailGate' before initialization"). An empty transcript short-circuits first.
 let wrapper: any
 
-const mountWithChat = async (customization: Record<string, any> = { allow_new_chat: true }) => {
+const mountWithChat = async (customization: Record<string, any> = {}) => {
     const mounted = await mountWidget({ customization })
     wrapper = mounted.wrapper
     await settle(wrapper, 6)
@@ -67,14 +67,14 @@ afterEach(() => {
 })
 
 describe('when the New chat control shows', () => {
-    it('is not offered unless the agent opts in', async () => {
+    it('is every visitor\'s: no setting turns it on (their past chats stay in the history)', async () => {
         await mountWithChat({})
 
-        expect(newChatButton(wrapper).exists()).toBe(false)
+        expect(newChatButton(wrapper).exists()).toBe(true)
     })
 
     it('is hidden while there is nothing to clear, and appears with the first message', async () => {
-        ;({ wrapper } = await mountWidget({ customization: { allow_new_chat: true } }))
+        ;({ wrapper } = await mountWidget({ customization: {} }))
         await settle(wrapper, 6)
 
         expect(newChatButton(wrapper).exists()).toBe(false)

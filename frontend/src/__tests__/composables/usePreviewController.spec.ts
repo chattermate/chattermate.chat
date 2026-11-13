@@ -28,10 +28,9 @@ import { fakeController } from '../webclient/panelFakeController'
  * the sample conversation, and inert: nothing is sent, stored or posted anywhere.
  */
 
-const V2 = { customization_metadata: { widget_ui: { version: 2 } } }
 
 function setUp(customization: Partial<AgentCustomization> = {}, context: Partial<PreviewContext> = {}) {
-    const look = ref<Partial<AgentCustomization>>({ chat_style: 'SUNRISE', ...V2, ...customization })
+    const look = ref<Partial<AgentCustomization>>({ chat_style: 'SUNRISE', ...customization })
     const scope = effectScope()
     const ctrl = scope.run(() => usePreviewController(look, previewSampleConversation(), {
         widgetId: ref('agent-1'),
@@ -64,7 +63,6 @@ describe('usePreviewController', () => {
         expect(members.length).toBeGreaterThan(100)
         for (const member of members) expect(ctrl, member).toHaveProperty(member)
         for (const [member, value] of Object.entries(ctrl)) expect(value, member).not.toBeUndefined()
-        expect(ctrl.ui.value).toBe(2)
         expect(ctrl.widgetId.value).toBe('agent-1')
     })
 
@@ -155,7 +153,6 @@ describe('usePreviewController', () => {
         const { ctrl, look } = setUp()
         const answer = () => ctrl.messages.value[1]
         expect(answer().attributes?.quick_replies).toBeUndefined()
-        expect(answer().attributes?.trace?.steps).toHaveLength(1)
         look.value = {
             ...look.value,
             customization_metadata: { ...look.value.customization_metadata, answers: { follow_ups: true } },
@@ -165,7 +162,7 @@ describe('usePreviewController', () => {
     })
 
     it('is inert: typing works, nothing is sent, stored or posted to a host', async () => {
-        const { ctrl } = setUp({ allow_new_chat: true })
+        const { ctrl } = setUp()
         ctrl.newMessage.value = 'Hello?'
         await ctrl.sendMessage()
         expect(ctrl.newMessage.value).toBe('Hello?')
@@ -186,9 +183,8 @@ describe('usePreviewController', () => {
         expect(fetchSpy).not.toHaveBeenCalled()
         expect(postSpy).not.toHaveBeenCalled()
         expect(ctrl.connectionStatus.value).toBe('connected')
-        expect(ctrl.hostCapabilities.value).toEqual({ expand: false, backdrop: false, navigate: false })
+        expect(ctrl.hostCapabilities.value).toEqual({ expand: false, backdrop: false, navigate: false, swipe: false })
         ctrl.sendFeedback(ctrl.messages.value[1], 'up')
-        expect(ctrl.liveTrace.value).toEqual([])
 
         // "New chat" goes back to the start state; nothing is ended.
         expect(ctrl.canStartNewChat.value).toBe(true)

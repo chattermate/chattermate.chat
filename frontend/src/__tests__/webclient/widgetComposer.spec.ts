@@ -38,8 +38,8 @@ describe('the composer while a reply is in flight', () => {
         vi.unstubAllGlobals()
     })
 
-    const composer = (wrapper: any) =>
-        wrapper.find('input.welcome-message-field, .message-input input')
+    const composer = (wrapper: any) => wrapper.find('textarea[aria-label="Message"]')
+    const sendButton = (wrapper: any) => wrapper.find('button[aria-label="Send message"]')
 
     it('keeps the field typable while the assistant is answering', async () => {
         ;({ wrapper } = await mountWidget())
@@ -70,7 +70,7 @@ describe('the composer while a reply is in flight', () => {
 
         const field = composer(wrapper)
         await field.setValue('and one more thing')
-        await field.trigger('keypress', { key: 'Enter' })
+        await field.trigger('keydown', { key: 'Enter' })
 
         // Sending now would start a second agent run on the same conversation.
         expect(socketCalls.sendMessage).not.toHaveBeenCalled()
@@ -93,7 +93,7 @@ describe('the composer while a reply is in flight', () => {
 
         const field = composer(wrapper)
         await field.setValue('meant for the chat I just closed')
-        await field.trigger('keypress', { key: 'Enter' })
+        await field.trigger('keydown', { key: 'Enter' })
 
         // Ending the chat clears the transcript and stops the typing indicator,
         // which lands on the same `loading` change the queue waits for.
@@ -106,14 +106,24 @@ describe('the composer while a reply is in flight', () => {
         expect(socketCalls.sendMessage).not.toHaveBeenCalled()
     })
 
-    it('does not accept a second message while one is being answered', async () => {
+    it('does not send a second message while one is being answered', async () => {
         ;({ wrapper } = await mountWidget())
 
         socket.loading.value = true
         await wrapper.vm.$nextTick()
 
-        // Typing carries on, but sending waits its turn.
-        const send = wrapper.find('.welcome-send-button, .send-button')
-        expect(send.attributes('disabled')).toBeDefined()
+        // Typing carries on, and the button takes it, but sending waits its turn.
+        await composer(wrapper).setValue('second question')
+        await sendButton(wrapper).trigger('click')
+        expect(socketCalls.sendMessage).not.toHaveBeenCalled()
+
+        socket.loading.value = false
+        await wrapper.vm.$nextTick()
+        await wrapper.vm.$nextTick()
+
+        expect(socketCalls.sendMessage).toHaveBeenCalledTimes(1)
+        expect(socketCalls.sendMessage).toHaveBeenCalledWith(
+            'second question', expect.anything(), expect.anything(), {}
+        )
     })
 })

@@ -704,7 +704,7 @@ class ShopifyTools(Toolkit):
         if orders is None:
             return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
         if self.turn_cards is not None and orders:
-            self.turn_cards.add(recent_orders_card(orders))
+            self.turn_cards.add(recent_orders_card(orders, self.turn_cards.labels))
         return json.dumps({"success": True, "orders": orders,
                            "message": "No orders for this email." if not orders else
                            "Ask which order they mean, or answer about the latest one."})
@@ -886,7 +886,7 @@ class ShopifyTools(Toolkit):
             if not order_belongs_to(order, customer_email):
                 return json.dumps({"success": False, "message": ORDER_NOT_FOUND})
             if self.turn_cards is not None:
-                self.turn_cards.add(order_card(order))
+                self.turn_cards.add(order_card(order, self.turn_cards.labels))
 
             # Filter out cancelled fulfillments - only include active ones
             active_fulfillments = [

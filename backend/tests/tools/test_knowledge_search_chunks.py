@@ -79,7 +79,7 @@ def test_hit_comes_with_page_head_and_neighbours_grouped_and_ordered(tool):
     ids = tool._db.execute.call_args.args[1]["ids"]
     assert sorted(ids) == [f"{PAGE}::1", f"{PAGE}::3", f"{PAGE}::5"]
     assert tool.seen_chunk_ids == {f"{PAGE}::1", f"{PAGE}::3", f"{PAGE}::4", f"{PAGE}::5"}
-    assert tool.collected_sources == [{"name": "https://x.com", "type": "website", "url": "https://x.com/pricing"}]
+    assert tool.collected_sources == [{"name": "https://x.com", "type": "website"}]
 
 
 def test_page_head_never_displaces_a_matched_page(tool, monkeypatch):

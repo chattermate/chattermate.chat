@@ -1,4 +1,4 @@
-import { test, expect, env, Mailbox, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
+import { test, expect, Mailbox, installShopify, openShopifyApp, orgDomain, uninstallShopify, useShopForAgent, ApiClient, FakeExternals, seedOrg, unique, AI_REPLY, type Script } from '@e2e'
 
 // Linking a shop changes which sites may call the API, so this runs in the serial
 // `org` project and uninstalls afterwards.
@@ -46,8 +46,6 @@ test.describe('Shopify', () => {
   })
 
   test('the order shows as a card with where it is, the tracking number masked @integrations', async ({ agent, widget, llm }) => {
-    // eslint-disable-next-line playwright/no-skipped-test -- status cards are the redesigned widget's
-    test.skip(env.widgetUi !== 2, 'Status cards are the redesigned widget\'s')
     const email = widget.customer.email
     await llm.script(agent, (s) => s
       .when(/1042/).callTool('get_order_status', { order_number: '#1042', customer_email: email })
@@ -65,8 +63,6 @@ test.describe('Shopify', () => {
   })
 
   test('a customer confirms their email with a code and opens one of their orders @integrations @redis', async ({ agent, widget, llm, request }) => {
-    // eslint-disable-next-line playwright/no-skipped-test -- the email check is the redesigned widget's
-    test.skip(env.widgetUi !== 2, 'The email check is the redesigned widget\'s')
     const email = widget.customer.email
     await llm.script(agent, (s) => s
       .when(/confirmed my email/).callTool('list_my_orders', {}).thenReply('Here are your recent orders.')
@@ -165,8 +161,6 @@ test.describe('Shopify', () => {
     })
 
     test('a customer picks a size in the product sheet and sees it in the cart bar @integrations @redis', async ({ agent, widget, llm }) => {
-      // eslint-disable-next-line playwright/no-skipped-test -- the classic widget has no sheet or cart bar
-      test.skip(env.widgetUi !== 2, 'The product sheet and cart bar are the redesigned widget\'s')
       await llm.script(agent, offerProducts)
       await widget.embed({ shopifyStore: shop })
       await widget.open()

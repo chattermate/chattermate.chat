@@ -20,7 +20,7 @@ from app.models.session_to_agent import ACTIVE_STATUSES, SessionToAgent, Session
 from uuid import UUID
 from datetime import datetime, timedelta
 from app.core.logger import get_logger
-from sqlalchemy import or_, func
+from sqlalchemy import and_, or_, func
 
 from app.models.user import User
 from app.models.chat_history import ChatHistory
@@ -231,16 +231,22 @@ class SessionToAgentRepository:
             return None
         return own
 
-    def widget_sessions(self, customer_id: UUID, scope: str, agent_id: UUID, organization_id: UUID):
+    def widget_sessions(self, customer_id: UUID, scope: str, agent_id: UUID, organization_id: UUID,
+                        since: Optional[datetime] = None, verified_email_key: Optional[str] = None):
         """Query for a widget visitor's own conversations: this customer, created
-        under this token scope, with this agent, on the widget channels (the
-        visitor's history, visitor_history.py). `scope` is required."""
+        under this token scope (from `since`, when given), with this agent, on the
+        widget channels (the visitor's history, visitor_history.py). `scope` is
+        required. With `verified_email_key`, also the conversations where the same
+        email was proved with a code, from any browser."""
+        own = and_(SessionToAgent.customer_id == customer_id, _in_scope(scope))
+        if since is not None:
+            own = and_(own, SessionToAgent.assigned_at >= since)
+        visible = or_(own, SessionToAgent.verified_email_key == verified_email_key) if verified_email_key else own
         return self.db.query(SessionToAgent).filter(
-            SessionToAgent.customer_id == customer_id,
             SessionToAgent.agent_id == agent_id,
             SessionToAgent.organization_id == organization_id,
             SessionToAgent.channel.in_(WIDGET_CHANNELS),
-            _in_scope(scope),
+            visible,
         )
 
     def customer_has_sessions_outside_scope(self, customer_id: UUID | str, scope: str) -> bool:

@@ -29,9 +29,6 @@ export interface HostPromptOptions {
     loading: Ref<boolean>
     /** True while a reply that arrived is still typing out on screen (useTypewriter). */
     revealing: Readonly<Ref<boolean>>
-    /** The view shows an answer's own choices under it (the panel's follow-up chips),
-     * so they aren't offered again as reply buttons. */
-    answersShowChoices?: () => boolean
     /** The socket's events: page actions and journeys listen and answer on it. */
     on: WidgetSocket['on']
     emit: WidgetSocket['emit']
@@ -60,7 +57,7 @@ const chatLine = (message: string, source: string): Message => ({
  * the agent runs on the site. Call during setup: both clients listen to the page.
  */
 export function useHostPrompt({
-    messages, loading, revealing, answersShowChoices = () => false, on, emit, sendQuickAction,
+    messages, loading, revealing, on, emit, sendQuickAction,
 }: HostPromptOptions) {
     // In-app actions the embedding page registered (ChatterMate.registerActions), and
     // a message it asked us to show (ChatterMate.prompt). The prompt lives outside
@@ -68,7 +65,7 @@ export function useHostPrompt({
     const hostPrompt = ref<HostPrompt | null>(null)
     // A tap hides the reply buttons until what it started is over (see below).
     const tapped = ref(false)
-    // The last message when a new step came: choices it offered are retired.
+    // The last message when a new step came: choices it offered no longer hold the step back.
     const retiredChoices = ref<unknown>(null)
     /** Shows a page message. A sync re-sends the same step: only a different one counts. */
     const showHostPrompt = (prompt: HostPrompt | null) => {
@@ -131,21 +128,19 @@ export function useHostPrompt({
     watch(replying, (isReplying, was) => { if (was && !isReplying) tapped.value = false })
     onUnmounted(() => clearTimeout(tapFallback))
 
-    // Choices the agent offered with its last reply: they stand in for the step's
-    // replies until answered, and a later message of either side retires them.
-    const offeredChips = computed<PageChip[]>(() => {
-        if (answersShowChoices()) return []
+    // The agent's own choices, under its latest answer as chips (AnswerMessage), stand
+    // in for the step's buttons until answered; a new step after them takes over.
+    const answerOffersChoices = computed(() => {
         const last = messages.value[messages.value.length - 1]
-        if (!last || last === retiredChoices.value) return []
-        const options = last.message_type === 'bot' ? last.attributes?.quick_replies : undefined
-        return Array.isArray(options) ? options.map((label: string) => ({ label, kind: 'text' as const, value: label })) : []
+        if (!last || last === retiredChoices.value || last.message_type !== 'bot') return false
+        const choices = last.attributes?.quick_replies
+        return Array.isArray(choices) && choices.length > 0
     })
 
     // A step's replies stay offered until the step moves on, so a declined or failed
     // action can be tried again; they make way while anything else is under way.
     const replyChips = computed<PageChip[]>(() => {
-        if (pendingConfirm.value || replying.value || tapped.value) return []
-        if (offeredChips.value.length) return offeredChips.value
+        if (pendingConfirm.value || replying.value || tapped.value || answerOffersChoices.value) return []
         return hostPrompt.value?.chips ?? []
     })
 
