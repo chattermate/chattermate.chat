@@ -187,6 +187,8 @@ export function usePreviewController(
         verifyEmailCode: noop,
         restartEmailCheck: noop,
         history: ref(emptyHistory()),
+        // The preview never asks for past chats
+        historyAvailable: ref(false),
         pageSuggestions: ref({ loaded: false, heading: 'popular' as const, pill: null, items: [] }),
         openHistory: noop,
         closeHistory: noop,

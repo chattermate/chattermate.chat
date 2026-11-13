@@ -27,7 +27,11 @@ export function useFeatureLock() {
   const { hasEnterpriseModule } = useEnterpriseFeatures()
   const isLocked = (key: GateKey): boolean => {
     if (!hasEnterpriseModule) return false
-    return !subscriptionStorage.hasFeature(FEATURE_GATES[key].feature) || !subscriptionStorage.isSubscriptionActive()
+    const gate = FEATURE_GATES[key]
+    const allowed = 'newFlag' in gate && gate.newFlag
+      ? subscriptionStorage.hasPlanFlag(gate.feature)
+      : subscriptionStorage.hasFeature(gate.feature)
+    return !allowed || !subscriptionStorage.isSubscriptionActive()
   }
   return { isLocked }
 }

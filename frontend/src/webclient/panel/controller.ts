@@ -147,6 +147,8 @@ export interface WidgetConversation {
     pageSuggestions: Shown<PageSuggestions>
     /** "Your conversations": the visitor's own past chats (useConversationHistory). */
     history: Shown<HistoryState>
+    /** Past chats can be offered: the visitor has a conversation of their own, on a plan with them. */
+    historyAvailable: Shown<boolean>
     openHistory: () => void
     closeHistory: () => void
     refreshConversations: () => void

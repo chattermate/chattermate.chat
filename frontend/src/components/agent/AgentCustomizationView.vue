@@ -32,6 +32,7 @@ import ColorSwatchPicker from './ColorSwatchPicker.vue'
 import { followUpsOn, withFollowUpsSetting } from '@/webclient/widget-answers'
 import { actionLabel, actionMatch, toQuickAction } from '@/webclient/quick-actions'
 import { useFeatureLock } from '@/composables/useFeatureLock'
+import UpgradeCard from './UpgradeCard.vue'
 
 const props = withDefaults(defineProps<{
     agent: AgentWithCustomization
@@ -70,25 +71,6 @@ const { hasEnterpriseModule } = useEnterpriseFeatures()
 const currentSubscription = computed(() => subscriptionStorage.getCurrentSubscription())
 const isSubscriptionActive = computed(() => subscriptionStorage.isSubscriptionActive())
 
-// Check if chat initiations feature is locked (only if enterprise module exists)
-const isChatInitiationsLocked = computed(() => {
-    // Only lock if enterprise module exists
-    if (!hasEnterpriseModule) {
-        return false
-    }
-    
-    if (!currentSubscription.value || !isSubscriptionActive.value) {
-        return true
-    }
-    
-    // Check if chat_initiation feature exists in subscription
-    const hasChatInitiationFeature = subscriptionStorage.hasFeature('chat_initiation')
-    if (!hasChatInitiationFeature) {
-        return true // Lock chat initiations if feature doesn't exist
-    }
-    
-    return false
-})
 
 // Quick actions for some pages only (a page path) are a paid feature; saved ones stay
 // saved on Free, the widget just shows every-page actions there.
@@ -96,6 +78,7 @@ const { isLocked } = useFeatureLock()
 const isPageRulesLocked = computed(() => isLocked('page-suggestions'))
 // Quick actions themselves and follow-up chips need a paid plan; saved ones stay saved
 const isQuickActionsLocked = computed(() => isLocked('quick-actions'))
+const isChatInitiationsLocked = computed(() => isLocked('chat-initiation'))
 const isFollowUpsLocked = computed(() => isLocked('follow-ups'))
 
 // Upgrade handler
@@ -903,16 +886,7 @@ const loadDefaultQuickActions = () => {
                     </div>
 
                     <!-- Locked like the greeting messages below; saved ones stay saved and come back on upgrade -->
-                    <div v-if="isQuickActionsLocked" class="locked-overlay-compact" data-testid="quick-actions-locked">
-                        <div class="locked-content-compact">
-                            <font-awesome-icon icon="fa-solid fa-lock" class="lock-icon-small" />
-                            <p class="locked-text">Show one-tap questions when a visitor opens the chat.</p>
-                            <button type="button" class="upgrade-btn-compact" aria-label="Upgrade to show quick actions" @click="handleUpgrade">
-                                <font-awesome-icon icon="fa-solid fa-crown" />
-                                <span>Upgrade</span>
-                            </button>
-                        </div>
-                    </div>
+                    <UpgradeCard v-if="isQuickActionsLocked" gate="quick-actions" lock data-testid="quick-actions-locked" @upgrade="handleUpgrade" />
                     <template v-else>
                         <div class="init-add-row">
                             <input
@@ -1030,17 +1004,8 @@ const loadDefaultQuickActions = () => {
                     </p>
 
                     <!-- Locked State -->
-                    <div v-if="isChatInitiationsLocked" class="locked-overlay-compact">
-                        <div class="locked-content-compact">
-                            <font-awesome-icon icon="fa-solid fa-lock" class="lock-icon-small" />
-                            <p class="locked-text">Engage visitors with custom messages above the chat bubble.</p>
-                            <button class="upgrade-btn-compact" @click="handleUpgrade">
-                                <font-awesome-icon icon="fa-solid fa-crown" />
-                                <span>Upgrade</span>
-                            </button>
-                        </div>
-                    </div>
-                
+                    <UpgradeCard v-if="isChatInitiationsLocked" gate="chat-initiation" lock @upgrade="handleUpgrade" />
+
                     <!-- Unlocked State -->
                     <div v-else>
                         <!-- Add New Message -->
@@ -1175,16 +1140,7 @@ const loadDefaultQuickActions = () => {
                                 <span>Premium</span>
                             </div>
                         </div>
-                        <div class="locked-overlay-compact">
-                            <div class="locked-content-compact">
-                                <font-awesome-icon icon="fa-solid fa-lock" class="lock-icon-small" />
-                                <p class="locked-text">Show up to three questions to ask next under an answer.</p>
-                                <button type="button" class="upgrade-btn-compact" aria-label="Upgrade to suggest follow-up questions" @click="handleUpgrade">
-                                    <font-awesome-icon icon="fa-solid fa-crown" />
-                                    <span>Upgrade</span>
-                                </button>
-                            </div>
-                        </div>
+                        <UpgradeCard gate="follow-ups" lock @upgrade="handleUpgrade" />
                     </div>
                     <label v-else class="citations-toggle">
                         <input type="checkbox" v-model="followUps">
@@ -1968,61 +1924,6 @@ const loadDefaultQuickActions = () => {
     flex-wrap: wrap;
 }
 
-:deep(.locked-overlay-compact) {
-    background: var(--bg);
-    border: 1px dashed var(--o12);
-    border-radius: var(--radius-btn);
-    padding: 14px 16px;
-    margin-top: 6px;
-}
-
-:deep(.locked-content-compact) {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.lock-icon-small {
-    font-size: 1rem;
-    color: var(--muted);
-    opacity: 0.7;
-}
-
-:deep(.locked-text) {
-    flex: 1;
-    min-width: 200px;
-    font-size: 13.5px;
-    color: var(--muted);
-    margin: 0;
-}
-
-:deep(.upgrade-btn-compact) {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--accent-solid);
-    color: var(--on-accent-solid);
-    border: none;
-    border-radius: var(--radius-btn);
-    padding: 8px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-}
-
-:deep(.upgrade-btn-compact:hover) {
-    filter: brightness(1.05);
-}
-
-/* The crown in the button's own text colour: gold on the accent was barely visible */
-:deep(.upgrade-btn-compact svg) {
-    font-size: 12px;
-    color: currentColor;
-}
-
 /* Greeting input row */
 .init-add-row {
     display: flex;
@@ -2205,7 +2106,6 @@ const loadDefaultQuickActions = () => {
     justify-content: space-between;
     gap: 8px;
 }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .page-rules-locked {
     display: flex;
     align-items: center;

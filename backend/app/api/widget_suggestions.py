@@ -45,13 +45,11 @@ def _suggestions(agent_id: str, org_id: str, url, title) -> dict:
         if agent is None or str(agent.organization_id) != str(org_id):
             return NONE
         plan = features(db, agent.organization_id, (QUICK_ACTIONS_FEATURE, PAGE_SUGGESTIONS_FEATURE))
-        quick_actions = plan[QUICK_ACTIONS_FEATURE]
-        if not plan[PAGE_SUGGESTIONS_FEATURE]:
-            return suggestions_for(db, agent.organization_id, agent, url, title, for_page=False,
-                                   quick_actions=quick_actions)
-        shopify = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id))
-        return suggestions_for(db, agent.organization_id, agent, url, title,
-                               store=bool(shopify and shopify.enabled), quick_actions=quick_actions)
+        for_page = plan[PAGE_SUGGESTIONS_FEATURE]
+        # The store's page types are page rows: asked only on a plan that shows them
+        shopify = AgentShopifyConfigRepository(db).get_agent_shopify_config(str(agent_id)) if for_page else None
+        return suggestions_for(db, agent.organization_id, agent, url, title, store=bool(shopify and shopify.enabled),
+                               for_page=for_page, quick_actions=plan[QUICK_ACTIONS_FEATURE])
 
 
 # Asked at connect and on page changes: its own limit, never the agent's message

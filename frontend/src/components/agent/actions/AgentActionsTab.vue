@@ -230,7 +230,6 @@ onMounted(load)
 .icon-btn:hover { color: var(--c-coral); }
 .link { background: none; border: none; color: var(--accent-ink); cursor: pointer; font-weight: 500; }
 .modal-text { margin: 0; font-size: 14px; color: var(--text3); line-height: 1.5; }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 /* Sized by the space the tab really has (the sidebar and the open editor
    both take width), not by the viewport. */
 .actions-tab { container: actions-tab / inline-size; }

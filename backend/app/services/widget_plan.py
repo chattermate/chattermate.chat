@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 What a visitor's widget may do on the org's plan. Each is a flag in the plan's
-features; community installs get them all (feature_gate.plan_feature_on).
+features; community installs get them all (feature_gate.plan_flags).
 
 - Starter and up: quick actions, the visitor's own past chats, follow-up chips,
   and the proactive greeting.
@@ -33,7 +33,7 @@ from typing import Any, Dict, Iterable
 
 from sqlalchemy.orm import Session
 
-from app.services.feature_gate import plan_flag_on
+from app.services.feature_gate import plan_flags
 from app.services.page_suggestions import every_page_labels
 
 QUICK_ACTIONS_FEATURE = "quick_actions"
@@ -57,7 +57,7 @@ PAGE_FEATURES = (CONVERSATION_HISTORY_FEATURE, SHOP_IN_CHAT_FEATURE)
 def features(db: Session, organization_id: Any, keys: Iterable[str]) -> Dict[str, bool]:
     """{feature: on} for `keys`, from one cached read of the plan. A failed read
     leaves them on: a blip must never change a paying customer's widget."""
-    return {key: plan_flag_on(db, organization_id, key) for key in keys}
+    return plan_flags(db, organization_id, keys)
 
 
 def session_allows(socket_session: dict, feature: str) -> bool:

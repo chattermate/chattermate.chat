@@ -14,7 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-/** Paid agent features: the plan flag each needs, and what its upgrade modal says. */
+/**
+ * Paid agent features: the plan flag each needs, and what its upgrade modal says.
+ * `newFlag`: a flag newer than some plan rows; a plan that doesn't name it yet
+ * counts as having it, as the server's feature_gate.plan_flags does.
+ */
 export const FEATURE_GATES = {
   workflow: {
     feature: 'workflow',
@@ -51,8 +55,17 @@ export const FEATURE_GATES = {
     description: 'Guide users through your app step by step, and see where they drop off.',
     bullets: ['Step-by-step guides', 'Do-it-for-me actions', 'Drop-off funnel'],
   },
+  'chat-initiation': {
+    feature: 'chat_initiation',
+    newFlag: true,
+    name: 'Greeting messages',
+    title: 'Unlock Greeting Messages',
+    description: 'Engage visitors with custom messages above the chat bubble.',
+    bullets: ['Messages above the launcher', 'Shown before the chat opens'],
+  },
   'quick-actions': {
     feature: 'quick_actions',
+    newFlag: true,
     name: 'Quick actions',
     title: 'Unlock Quick Actions',
     description: 'Show one-tap questions and actions when a visitor opens the chat.',
@@ -60,6 +73,7 @@ export const FEATURE_GATES = {
   },
   'page-suggestions': {
     feature: 'page_suggestions',
+    newFlag: true,
     name: 'Page suggestions',
     title: 'Unlock Page Suggestions',
     description: 'Show quick actions only on the pages they fit, such as your product or cart pages.',
@@ -67,6 +81,7 @@ export const FEATURE_GATES = {
   },
   'follow-ups': {
     feature: 'follow_ups',
+    newFlag: true,
     name: 'Follow-up questions',
     title: 'Unlock Follow-up Questions',
     description: 'Show up to three questions to ask next under an answer.',

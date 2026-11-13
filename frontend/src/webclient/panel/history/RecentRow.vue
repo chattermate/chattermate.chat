@@ -23,18 +23,16 @@ import { computed, inject, onMounted } from 'vue'
 import { WIDGET_CTX, WIDGET_PREVIEW } from '../controller'
 import ConversationRow from './ConversationRow.vue'
 import { PANEL_COPY } from '../../copy'
-import { planAllows } from '../../plan-features'
 
 const ctrl = inject(WIDGET_CTX)!
 const preview = inject(WIDGET_PREVIEW, false)
-const { history, hasConversationToken } = ctrl
+const { history, historyAvailable } = ctrl
 
-// Past chats are a paid plan's (plan-features.ts): on Free the row never asks
-const allowed = planAllows('conversation_history')
-const latest = computed(() => (allowed ? history.value.items.find(i => !i.current) ?? null : null))
+// Only where past chats can be offered (on Free the row never asks)
+const latest = computed(() => (historyAvailable.value ? history.value.items.find(i => !i.current) ?? null : null))
 
 onMounted(() => {
-    if (allowed && !preview && hasConversationToken.value && !history.value.loaded) ctrl.refreshConversations()
+    if (historyAvailable.value && !preview && !history.value.loaded) ctrl.refreshConversations()
 })
 
 const open = () => {

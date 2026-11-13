@@ -336,7 +336,7 @@ class TestBootstrap:
         db.add(AgentCustomization(agent_id=test_agent.id, quick_actions=["Track my order"],
                                   chat_initiation_messages=["Need a hand?"]))
         db.commit()
-        monkeypatch.setattr(widget_plan, "plan_flag_on", lambda *a: False)
+        monkeypatch.setattr(widget_plan, "plan_flags", lambda db, org, keys, *a: {k: False for k in keys})
         data = bootstrap(client, test_widget).json()
         assert data["customization"]["quick_actions"] == []
         assert data["customization"]["chat_initiation_messages"] == []
@@ -352,7 +352,7 @@ class TestBootstrap:
         db.add(AgentCustomization(agent_id=test_agent.id, quick_actions=["Track my order"],
                                   chat_initiation_messages=["Need a hand?"]))
         db.commit()
-        monkeypatch.setattr(widget_plan, "plan_flag_on", lambda *a: True)
+        monkeypatch.setattr(widget_plan, "plan_flags", lambda db, org, keys, *a: {k: True for k in keys})
         customization = bootstrap(client, test_widget).json()["customization"]
         assert customization["quick_actions"] == ["Track my order"]
         assert customization["chat_initiation_messages"] == ["Need a hand?"]

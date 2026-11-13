@@ -23,6 +23,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.agents.chat_agent import ChatAgent
+from app.cards.turn_cards import TurnCards
 from app.models.schemas.chat import ChatResponse, ShopifyOutputData, ShopifyProduct, TransferReasonType
 
 
@@ -55,7 +56,7 @@ def build_agent(*, transfer=True, shopify=False, jira=False, ticketing=False,
          patch('app.agents.chat_agent.settings.DATABASE_URL', "mock://test"), \
          patch.dict('os.environ', {}, clear=True), \
          patch('app.agents.chat_agent.plan_feature_on', lambda db, org, feature: plan(feature)), \
-         patch('app.services.widget_plan.plan_flag_on', lambda db, org, feature: plan(feature)), \
+         patch('app.services.widget_plan.plan_flags', lambda db, org, keys, *a: {k: plan(k) for k in keys}), \
          broken:
         mock_get_db.return_value = iter([MagicMock(spec=Session)])
         mock_jira_repo.return_value.get_agent_with_jira_config.return_value = agent_data
@@ -343,7 +344,6 @@ class TestMyOrders:
     """The email check and the customer's own orders are a Growth plan's."""
 
     def _functions(self, **plan):
-        from app.cards.turn_cards import TurnCards
         with patch('app.tools.shopify_toolkit.email_check.available', return_value=True):
             agent = build_agent(shopify=True, turn_cards=TurnCards(), **plan)
         return set(agent.shopify_tools.functions)

@@ -16,7 +16,7 @@ limitations under the License.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { type VueWrapper } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import HistoryScreen from '@/webclient/panel/history/HistoryScreen.vue'
 import PastConversation from '@/webclient/panel/history/PastConversation.vue'
 import RecentRow from '@/webclient/panel/history/RecentRow.vue'
@@ -170,17 +170,12 @@ describe('the start state\'s Recent row', () => {
         expect(ctrl.openConversation).toHaveBeenCalledWith('a')
     })
 
-    it('never asks and shows nothing on a plan without past chats (Free)', async () => {
-        window.__INITIAL_DATA__ = { planFeatures: { conversation_history: false } } as Window['__INITIAL_DATA__']
-        try {
-            ctrl = fakeController()
-            wrapper = mountWithController(RecentRow, ctrl)
-            expect(ctrl.refreshConversations).not.toHaveBeenCalled()
-            ctrl.history.value = { ...emptyHistory(), loaded: true, items: [item('a', '2026-11-10T10:00:00')] }
-            await nextTick()
-            expect(wrapper.find('.cm-recent').exists()).toBe(false)
-        } finally {
-            delete window.__INITIAL_DATA__
-        }
+    it('never asks and shows nothing where past chats cannot be offered (Free)', async () => {
+        ctrl = fakeController({ historyAvailable: ref(false) })
+        wrapper = mountWithController(RecentRow, ctrl)
+        expect(ctrl.refreshConversations).not.toHaveBeenCalled()
+        ctrl.history.value = { ...emptyHistory(), loaded: true, items: [item('a', '2026-11-10T10:00:00')] }
+        await nextTick()
+        expect(wrapper.find('.cm-recent').exists()).toBe(false)
     })
 })
