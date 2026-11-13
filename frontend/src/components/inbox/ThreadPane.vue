@@ -23,7 +23,7 @@ limitations under the License.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import type { ChatDetail } from '@/types/chat'
+import type { ChatDetail, ConversationNote } from '@/types/chat'
 import type { Teammate } from '@/services/users'
 import { chatService } from '@/services/chat'
 import { ticketService } from '@/services/tickets'
@@ -44,10 +44,12 @@ import WhatsAppTemplatePicker from '@/components/conversations/WhatsAppTemplateP
 import ThreadHeader from './ThreadHeader.vue'
 import ThreadBanner from './ThreadBanner.vue'
 import ThreadMessage from './ThreadMessage.vue'
-import ThreadComposer from './ThreadComposer.vue'
+import ThreadComposer, { type ComposerMode } from './ThreadComposer.vue'
+import ThreadNote from './ThreadNote.vue'
 import HandoverSummaryCard from './HandoverSummaryCard.vue'
 import { customerName } from './inboxPresentation'
-import { daySeparators, handoverIndex, questionBefore } from './threadContent'
+import { buildTimeline, handoverIndex, knowledgeDraft } from './threadContent'
+import { snoozeChoices } from './snooze'
 
 const props = defineProps<{
   chat: ChatDetail
@@ -170,6 +172,42 @@ const confirmTakeover = () => {
 }
 const routeToTeam = () => run(() => handleRouteToHuman())
 
+// ---- Notes ----
+// Anyone who may manage the chat can leave a note, holding it or not; replying
+// needs holding it, so the composer opens on Note until you do
+const canNote = computed(() => canManage && handler.value.kind !== 'closed')
+const showComposer = computed(() => holdsIt.value || canNote.value)
+const composerMode = ref<ComposerMode>(holdsIt.value ? 'reply' : 'note')
+watch(holdsIt, (holds) => { composerMode.value = holds ? 'reply' : 'note' })
+const mentionables = computed(() =>
+  props.teammates
+    .filter((t) => t.id !== currentUserId)
+    .map((t) => ({ id: t.id, name: t.full_name || t.email }))
+)
+
+async function addNote(body: string, mentions: string[]) {
+  try {
+    const note: ConversationNote = await chatService.addNote(props.chat.session_id, body, mentions)
+    newMessage.value = ''
+    emit('chat-updated', { ...props.chat, notes: [...(props.chat.notes ?? []), note] })
+    scrollToBottom()
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || 'The note could not be added. Try again.')
+  }
+}
+
+// ---- Snooze ----
+const snoozedUntil = computed(() => {
+  const until = props.chat.snoozed_until ? new Date(props.chat.snoozed_until) : null
+  return until && until > props.now ? until : null
+})
+const snoozedLabel = computed(() =>
+  snoozedUntil.value?.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) ?? ''
+)
+const snooze = (until: Date, label: string) =>
+  run(() => chatService.snooze(props.chat.session_id, until), `Snoozed until ${label}`)
+const unsnooze = () => run(() => chatService.unsnooze(props.chat.session_id), 'Back in the inbox')
+
 // ---- Closing ----
 const canClose = computed(() => holdsIt.value)
 const confirmingClose = ref(false)
@@ -213,6 +251,10 @@ const moreActions = computed<ActionMenuItem[]>(() => {
   if (canManage && aiCapable.value && open && handler.value.kind !== 'ai') {
     items.push({ id: 'release', label: 'Hand back to AI' })
   }
+  if (canManage && open) {
+    if (snoozedUntil.value) items.push({ id: 'unsnooze', label: 'Unsnooze', separated: true })
+    else snoozeChoices(props.now).forEach((choice, i) => items.push({ id: `snooze:${i}`, label: `Snooze · ${choice.label}`, separated: i === 0 }))
+  }
   items.push({ id: 'refresh', label: 'Refresh conversation', separated: items.length > 0 })
   return items
 })
@@ -224,6 +266,11 @@ function onAction(id: string) {
   else if (id === 'send-template') showTemplatePicker.value = true
   else if (id === 'route-to-team') void routeToTeam()
   else if (id === 'release') void releaseToAi()
+  else if (id === 'unsnooze') void unsnooze()
+  else if (id.startsWith('snooze:')) {
+    const choice = snoozeChoices(props.now)[Number(id.slice('snooze:'.length))]
+    if (choice) void snooze(choice.until, choice.label)
+  }
   else if (id === 'refresh') emit('refresh')
 }
 
@@ -242,22 +289,32 @@ const onJiraCreated = (ticketKey: string) => {
 const showsHandover = computed(() => !!(props.chat.transfer_reason || props.chat.transfer_description))
 const handoverAt = computed(() => handoverIndex(formattedMessages.value, props.chat.handed_over_at))
 
-function faqLink(question: string | null): string | null {
-  if (!canEditKnowledge || !question) return null
-  return `/faq?question=${encodeURIComponent(question)}`
+/** The help center editor with a question and its answer filled in, when the
+ * conversation has both; nothing for someone who can't edit knowledge. */
+function faqLink(draft: { question: string; answer: string } | null): string | null {
+  if (!canEditKnowledge || !draft) return null
+  return `/faq?${new URLSearchParams({ question: draft.question, answer: draft.answer }).toString()}`
 }
-const knowledgeLink = computed(() => faqLink(questionBefore(formattedMessages.value, handoverAt.value)))
-const separators = computed(() => daySeparators(formattedMessages.value, props.now))
 
-// One pass: each AI answer links to the question just before it
-const correctionLinks = computed(() => {
-  let question: string | null = null
-  return formattedMessages.value.map((m) => {
-    if (m.message_type === 'user' && m.message?.trim()) question = m.message.trim()
-    // A notice the system sent (handover, back to AI) is not an answer to correct
-    return m.message_type === 'bot' && m.attributes?.source !== 'system' ? faqLink(question) : null
-  })
-})
+// The team answered what the AI couldn't: that answer, for the next customer
+const knowledgeLink = computed(() =>
+  faqLink(knowledgeDraft(formattedMessages.value, handoverAt.value, 'team'))
+)
+
+// Each AI answer can be corrected: its question, and the answer to fix
+const correctionLinks = computed(() =>
+  formattedMessages.value.map((m, index) =>
+    m.message_type === 'bot' && m.attributes?.source !== 'system'
+      ? faqLink(knowledgeDraft(formattedMessages.value, index, 'this'))
+      : null
+  )
+)
+
+const timeline = computed(() => buildTimeline(formattedMessages.value, props.chat.notes ?? [], {
+  handoverAt: showsHandover.value ? handoverAt.value : null,
+  handedOverAt: props.chat.handed_over_at,
+  now: props.now,
+}))
 
 // Only someone holding the chat can open a Jira ticket from it: ask Jira then,
 // not for every conversation J/K passes through
@@ -310,58 +367,42 @@ defineExpose({ requestClose })
       @release="releaseToAi"
     />
 
+    <div v-if="snoozedUntil" class="snoozed" role="status">
+      <span>Snoozed until {{ snoozedLabel }}. It comes back then, or when the customer writes.</span>
+      <button v-if="canManage" type="button" class="snoozed-btn" :disabled="busy" @click="unsnooze">Unsnooze</button>
+    </div>
+
     <div ref="messagesContainer" class="messages" tabindex="0" aria-label="Messages">
-      <template v-for="(message, index) in formattedMessages" :key="message.id ?? message.client_id ?? index">
-        <div v-if="separators[index]" class="day" role="separator" :aria-label="separators[index]!">
-          <span aria-hidden="true">{{ separators[index] }}</span>
+      <template v-for="entry in timeline" :key="entry.key">
+        <div v-if="entry.kind === 'day'" class="day" role="separator" :aria-label="entry.label">
+          <span aria-hidden="true">{{ entry.label }}</span>
         </div>
         <HandoverSummaryCard
-          v-if="showsHandover && index === handoverAt"
+          v-else-if="entry.kind === 'handover'"
           :agent-name="agentName"
           :reason="chat.transfer_reason"
           :summary="chat.transfer_description"
           :handed-over-at="chat.handed_over_at"
           :knowledge-link="knowledgeLink"
         />
+        <ThreadNote v-else-if="entry.kind === 'note'" :note="entry.note" :current-user-id="currentUserId" />
         <ThreadMessage
-          :message="message"
+          v-else
+          :message="formattedMessages[entry.index]"
           :customer-name="name"
           :agent-name="agentName"
           :current-user-id="currentUserId"
-          :correction-link="correctionLinks[index]"
+          :correction-link="correctionLinks[entry.index]"
           :is-image="isImageAttachment"
           :image-url="getImageUrl"
           :download-url="getDownloadUrl"
           :file-size="formatFileSize"
         />
       </template>
-      <HandoverSummaryCard
-        v-if="showsHandover && handoverAt >= formattedMessages.length"
-        :agent-name="agentName"
-        :reason="chat.transfer_reason"
-        :summary="chat.transfer_description"
-        :handed-over-at="chat.handed_over_at"
-        :knowledge-link="knowledgeLink"
-      />
     </div>
 
-    <ThreadComposer
-      v-if="holdsIt"
-      v-model="newMessage"
-      :can-send="canSendMessage"
-      :has-files="uploadedFiles.length > 0"
-      :show-template-notice="templateCanReopen && canUseTemplates"
-      @send="handleSendMessageWithAttachments"
-      @send-and-close="sendAndClose"
-      @paste="handleChatPaste"
-      @send-template="showTemplatePicker = true"
-    >
-      <template #attach>
-        <FileUpload ref="fileUploadRef" :max-files="3" @files-uploaded="handleFilesUploaded" @error="handleFileUploadError" />
-      </template>
-    </ThreadComposer>
     <ThreadBanner
-      v-else
+      v-if="!holdsIt"
       :chat="chat"
       :current-user-id="currentUserId"
       :now="now"
@@ -372,6 +413,27 @@ defineExpose({ requestClose })
       @route-to-team="routeToTeam"
       @assign="assign"
     />
+    <ThreadComposer
+      v-if="showComposer"
+      v-model="newMessage"
+      v-model:mode="composerMode"
+      :can-reply="holdsIt"
+      :can-take-over="!holdsIt && canManage"
+      :can-send="canSendMessage"
+      :has-files="uploadedFiles.length > 0"
+      :show-template-notice="templateCanReopen && canUseTemplates"
+      :teammates="mentionables"
+      @send="handleSendMessageWithAttachments"
+      @send-and-close="sendAndClose"
+      @send-note="addNote"
+      @take-over="takeOver"
+      @paste="handleChatPaste"
+      @send-template="showTemplatePicker = true"
+    >
+      <template #attach>
+        <FileUpload ref="fileUploadRef" :max-files="3" @files-uploaded="handleFilesUploaded" @error="handleFileUploadError" />
+      </template>
+    </ThreadComposer>
 
     <BaseModal v-if="confirmingClose" title="Close this conversation?" width="420px" @close="confirmingClose = false">
       <p class="confirm-text">
@@ -435,6 +497,39 @@ defineExpose({ requestClose })
   flex-direction: column;
   gap: 12px;
   padding: 16px 24px;
+}
+
+.snoozed {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 16px 6px 20px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--o07);
+  background: var(--o04);
+  font-size: 13px;
+  color: var(--text3);
+}
+
+.snoozed span {
+  flex: 1;
+  min-width: 0;
+}
+
+.snoozed-btn {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--o10);
+  background: transparent;
+  color: var(--text2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .day {

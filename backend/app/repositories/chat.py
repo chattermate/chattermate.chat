@@ -31,6 +31,7 @@ from app.channels.constants import UNMETERED_SOURCES, is_widget_channel
 from app.channels.sent_choices import SENT_CHOICES_ATTRIBUTE, decode_sent_choices
 from app.models.user import User
 from app.repositories.customer import CustomerRepository
+from app.repositories.conversation_notes import ConversationNoteRepository
 from sqlalchemy.orm import aliased, joinedload
 from sqlalchemy.orm.attributes import set_committed_value
 from datetime import datetime, timezone
@@ -170,6 +171,7 @@ class ChatRepository:
                     self._update_session_sentiment(message_data['session_id'])
                 except Exception as e:
                     logger.error(f"Error updating session sentiment: {str(e)}")
+                self._wake_snoozed(message_data['session_id'])
 
             return message
         except Exception as e:
@@ -300,6 +302,20 @@ class ChatRepository:
             return None
         conversation = ChannelConversationRepository(self.db).get_by_session(session_id)
         return str(conversation.channel_account_id) if conversation else None
+
+    def _wake_snoozed(self, session_id) -> None:
+        """The customer wrote again: a snoozed conversation is back in the
+        inbox now, not when its snooze runs out."""
+        try:
+            woken = self.db.query(SessionToAgent).filter(
+                SessionToAgent.session_id == UUID(str(session_id)),
+                SessionToAgent.snoozed_until.isnot(None),
+            ).update({SessionToAgent.snoozed_until: None}, synchronize_session='fetch')
+            if woken:
+                self.db.commit()
+        except Exception as e:
+            logger.error(f"Error waking a snoozed session: {str(e)}")
+            self.db.rollback()
 
     def _update_session_sentiment(self, session_id) -> None:
         """Recompute and update the overall session sentiment from customer messages."""
@@ -464,9 +480,10 @@ class ChatRepository:
     ) -> Dict[str, Any]:
         """Each inbox view's size, in the caller's scope.
 
-        - open: every conversation not closed
-        - waiting_for_human / assigned_to_me / ai_handling / negative: open ones
-          in that view (see inbox_views)
+        - open: every conversation not closed and not snoozed
+        - waiting_for_human / assigned_to_me / mentions / ai_handling /
+          negative: open ones in that view (see inbox_views)
+        - snoozed: not closed, snoozed until later
         - resolved_by_ai_today: closed since `today_start` by the AI alone
         - channels: open conversations per channel
 
@@ -490,20 +507,23 @@ class ChatRepository:
             visibility = self._visibility_clause(user_id, user_groups, include_unassigned)
             return query.filter(visibility) if visibility is not None else query
 
+        now = datetime.now(timezone.utc)
         session_count = func.count(SessionToAgent.session_id)
         resolved = inbox_views.resolved_by_ai(today_start)
-        open_ = inbox_views.not_closed()
+        open_ = inbox_views.active(now)
         row = scoped(
             self.db.query(
                 session_count.filter(open_).label('open'),
                 session_count.filter(open_, inbox_views.waiting_for_human()).label('waiting_for_human'),
                 session_count.filter(open_, inbox_views.mine(current_user_id)).label('assigned_to_me'),
+                session_count.filter(open_, inbox_views.mentions(current_user_id)).label('mentions'),
                 session_count.filter(open_, inbox_views.ai_handling()).label('ai_handling'),
                 session_count.filter(open_, inbox_views.negative_sentiment()).label('negative'),
                 session_count.filter(resolved).label('resolved_by_ai_today'),
+                session_count.filter(inbox_views.not_closed(), inbox_views.snoozed(now)).label('snoozed'),
             ),
             # Only the rows some count can use: open ones, and today's closes
-            or_(open_, resolved),
+            or_(inbox_views.not_closed(), resolved),
         ).one()
         channels = scoped(
             self.db.query(SessionToAgent.channel, session_count),
@@ -517,6 +537,8 @@ class ChatRepository:
             'ai_handling': row.ai_handling,
             'negative': row.negative,
             'resolved_by_ai_today': row.resolved_by_ai_today,
+            'mentions': row.mentions,
+            'snoozed': row.snoozed,
             'channels': {channel: count for channel, count in channels},
         }
 
@@ -598,6 +620,7 @@ class ChatRepository:
             SessionToAgent.handed_over_at.label('handed_over_at'),
             SessionToAgent.title.label('title'),
             SessionToAgent.sentiment_label.label('sentiment_label'),
+            SessionToAgent.snoozed_until.label('snoozed_until'),
             func.max(ChatHistory.created_at).label('updated_at'),
             func.count(ChatHistory.id).label('message_count'),
             SessionToAgent.session_id.label('session_id')
@@ -625,7 +648,8 @@ class ChatRepository:
                 query = query.filter(SessionToAgent.status == status)
 
         if view:
-            query = query.filter(inbox_views.view_clause(view, current_user_id, today_start or _utc_midnight()))
+            query = query.filter(inbox_views.view_clause(
+                view, current_user_id, today_start or _utc_midnight(), datetime.now(timezone.utc)))
         if channel:
             query = query.filter(SessionToAgent.channel == channel)
         if search:
@@ -706,6 +730,7 @@ class ChatRepository:
             'handed_over_at': r.handed_over_at,
             'title': r.title,
             'sentiment_label': r.sentiment_label,
+            'snoozed_until': r.snoozed_until,
             'session_id': r.session_id
         } for r in results]
 
@@ -783,6 +808,7 @@ class ChatRepository:
                 SessionToAgent.transfer_description.label('transfer_description'),
                 SessionToAgent.sentiment_label.label('sentiment_label'),
                 SessionToAgent.title.label('title'),
+                SessionToAgent.snoozed_until.label('snoozed_until'),
                 func.min(ChatHistory.created_at).label('created_at'),
                 func.max(ChatHistory.created_at).label('updated_at')
             )
@@ -888,6 +914,9 @@ class ChatRepository:
             'transfer_description': result.transfer_description,
             'sentiment_label': result.sentiment_label,
             'title': result.title,
+            'snoozed_until': result.snoozed_until,
+            # The team's notes: never in `messages`, which is what the customer saw
+            'notes': ConversationNoteRepository(self.db).for_session(result.session_id),
             'created_at': result.created_at,
             'updated_at': result.updated_at,
             'messages': messages_list

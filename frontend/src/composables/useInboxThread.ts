@@ -36,10 +36,13 @@ export interface ChatReplyEvent {
 interface RoomEvent {
   type?: string
   session_id?: string
+  /** note_added: who wrote it */
+  author_id?: string
 }
 
-/** Room events that move a conversation into or out of someone's inbox */
-const OWNERSHIP_EVENTS = new Set(['reassigned', 'reassigned_from_you', 'released_to_ai'])
+/** Room events that change a conversation (who holds it, a teammate's note):
+ * the counts and rows refresh, and the open thread with them */
+const OWNERSHIP_EVENTS = new Set(['reassigned', 'reassigned_from_you', 'released_to_ai', 'note_added'])
 
 /** chat_reply's types, as stored messages spell them */
 const REPLY_TYPES: Record<string, string> = { user_message: 'user', agent_message: 'agent', bot_message: 'bot' }
@@ -60,6 +63,17 @@ export function messageFromReply(data: ChatReplyEvent): Message {
     message.shopify_output = data.attributes.shopify_output
   }
   return message
+}
+
+/**
+ * A refetched conversation, plus the replies still on their way to the server:
+ * a refresh (a teammate's note, a reassign) must not make one vanish. One the
+ * server already stored comes back in the detail and is not added twice.
+ */
+export function keepPending(detail: ChatDetail, pending: Message[]): ChatDetail {
+  const stored = new Set(detail.messages.filter((m) => m.message_type === 'agent').map((m) => m.message))
+  const missing = pending.filter((m) => !stored.has(m.message))
+  return missing.length ? { ...detail, messages: [...detail.messages, ...missing] } : detail
 }
 
 /**
@@ -84,7 +98,13 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     try {
       const detail = await chatService.getChatDetail(sessionId)
       // Another conversation was opened while this one loaded
-      if (selectedId.value === sessionId) chat.value = detail
+      if (selectedId.value !== sessionId) return
+      // Replies sent from here that the server had not confirmed (no id) by the
+      // time the detail came back: read now, so one sent while it loaded counts
+      const pending = chat.value?.session_id === sessionId
+        ? chat.value.messages.filter((m) => m.client_id && !m.id)
+        : []
+      chat.value = keepPending(detail, pending)
     } catch (err) {
       console.error('Failed to load conversation:', err)
     } finally {
@@ -119,6 +139,9 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
   // change, and the open thread may no longer be ours to answer.
   function handleRoomEvent(data: RoomEvent): void {
     if (!data?.type || !OWNERSHIP_EVENTS.has(data.type)) return
+    // Our own note is on screen already; refetching could drop a reply that
+    // is still on its way to the server
+    if (data.type === 'note_added' && data.author_id && data.author_id === userService.getUserId()) return
     emitter.emit('inbox-changed')
     if (data.session_id && data.session_id === selectedId.value) void open(data.session_id, true)
   }

@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import type { Conversation, ChatDetail, InboxCounts, InboxSort, InboxViewKey } from '@/types/chat'
+import type { Conversation, ChatDetail, ConversationNote, InboxCounts, InboxSort, InboxViewKey } from '@/types/chat'
 import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
 import emitter from '@/utils/emitter'
 
@@ -96,6 +96,25 @@ export const chatService = {
   /** Give the chat back to the AI: nobody holds it and it leaves the queue. */
   async releaseToAi(sessionId: string): Promise<ChatDetail> {
     const response = await api.post(`/sessions/${sessionId}/release`)
+    emitter.emit('inbox-changed')
+    return response.data as ChatDetail
+  },
+
+  /** A note for the team on this conversation; the teammates in `mentions` are notified. */
+  async addNote(sessionId: string, body: string, mentions: string[]): Promise<ConversationNote> {
+    const response = await api.post(`/sessions/${sessionId}/notes`, { body, mentions })
+    return response.data as ConversationNote
+  },
+
+  /** Out of the inbox's views until `until`, or until the customer writes again. */
+  async snooze(sessionId: string, until: Date): Promise<ChatDetail> {
+    const response = await api.post(`/sessions/${sessionId}/snooze`, { until: until.toISOString() })
+    emitter.emit('inbox-changed')
+    return response.data as ChatDetail
+  },
+
+  async unsnooze(sessionId: string): Promise<ChatDetail> {
+    const response = await api.delete(`/sessions/${sessionId}/snooze`)
     emitter.emit('inbox-changed')
     return response.data as ChatDetail
   },

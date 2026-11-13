@@ -23,6 +23,7 @@ import ThreadMessage from '@/components/inbox/ThreadMessage.vue'
 import ActionMenu from '@/components/common/ActionMenu.vue'
 import DetailsPanel from '@/components/inbox/DetailsPanel.vue'
 import ThreadComposer from '@/components/inbox/ThreadComposer.vue'
+import ThreadNote from '@/components/inbox/ThreadNote.vue'
 import type { ChatDetail, Message } from '@/types/chat'
 
 const people = vi.hoisted(() => ({ getPerson: vi.fn() }))
@@ -305,7 +306,10 @@ describe('DetailsPanel', () => {
 describe('ThreadComposer', () => {
   const mountComposer = (props: Record<string, unknown> = {}) =>
     mount(ThreadComposer, {
-      props: { modelValue: '', canSend: true, hasFiles: false, showTemplateNotice: false, ...props },
+      props: {
+        modelValue: '', mode: 'reply', canReply: true, canTakeOver: false, canSend: true, hasFiles: false,
+        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }], ...props,
+      },
       attachTo: document.body,
     })
 
@@ -332,5 +336,72 @@ describe('ThreadComposer', () => {
     await wrapper.find('.window-closed .btn').trigger('click')
     expect(wrapper.emitted('send-template')).toHaveLength(1)
     wrapper.unmount()
+  })
+})
+
+describe('ThreadComposer notes', () => {
+  const mountComposer = (props: Record<string, unknown> = {}) =>
+    mount(ThreadComposer, {
+      props: {
+        modelValue: '', mode: 'note', canReply: false, canTakeOver: true, canSend: false, hasFiles: false,
+        showTemplateNotice: false, teammates: [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }], ...props,
+      },
+      attachTo: document.body,
+    })
+
+  it('adds a note with the teammates still mentioned in it', async () => {
+    const wrapper = mountComposer({ modelValue: '' })
+    const box = wrapper.find('textarea')
+    await wrapper.setProps({ modelValue: 'Check this @As' })
+    ;(box.element as HTMLTextAreaElement).setSelectionRange(14, 14)
+    await box.trigger('input')
+    expect(wrapper.findAll('[role="option"]').map((o) => o.text())).toEqual(['Asha Rao'])
+
+    await box.trigger('keydown', { key: 'Enter' })
+    const picked = wrapper.emitted('update:modelValue')!.at(-1)![0] as string
+    expect(picked).toBe('Check this @Asha Rao ')
+
+    await wrapper.setProps({ modelValue: picked + 'please' })
+    await box.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('send-note')).toEqual([['Check this @Asha Rao please', ['a']]])
+    wrapper.unmount()
+  })
+
+  it("is amber and needs no takeover; Reply asks to take the chat over", async () => {
+    const wrapper = mountComposer({ modelValue: 'x' })
+    expect(wrapper.find('.composer').classes()).toContain('note')
+    expect(wrapper.find('.send').text()).toBe('Add note')
+    expect(wrapper.find('.send').attributes('disabled')).toBeUndefined()
+    await wrapper.find('[role="tab"]').trigger('click')
+    expect(wrapper.emitted('take-over')).toHaveLength(1)
+    expect(wrapper.emitted('update:mode')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('switches to Reply once the chat is yours, and Escape closes the mention list', async () => {
+    const wrapper = mountComposer({ canReply: true, modelValue: '@' })
+    const box = wrapper.find('textarea')
+    ;(box.element as HTMLTextAreaElement).setSelectionRange(1, 1)
+    await box.trigger('input')
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(2)
+    await box.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+
+    await wrapper.find('[role="tab"]').trigger('click')
+    expect(wrapper.emitted('update:mode')).toEqual([['reply']])
+    wrapper.unmount()
+  })
+})
+
+describe('ThreadNote', () => {
+  const note = { id: 1, body: '@Tom the EU list is missing <b>here</b>', user_id: 'me', user_name: 'Sam', mentions: [{ user_id: 't', name: 'Tom' }], created_at: '2026-11-13T10:00:00Z' }
+
+  it("is labelled private, says who wrote it, bolds mentions and never renders markup", () => {
+    const wrapper = mount(ThreadNote, { props: { note, currentUserId: 'me' } })
+    expect(wrapper.find('.label').text()).toBe('Note · only your team sees this')
+    expect(wrapper.find('.meta').text()).toMatch(/^You · /)
+    expect(wrapper.find('.mention').text()).toBe('@Tom')
+    expect(wrapper.find('b').exists()).toBe(false)
+    expect(wrapper.find('.body').text()).toContain('<b>here</b>')
   })
 })

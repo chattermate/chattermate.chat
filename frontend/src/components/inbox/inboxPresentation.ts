@@ -23,7 +23,7 @@ export function customerName(customer?: Partial<CustomerInfo> | null): string {
   return customer?.full_name || customer?.email || customer?.phone || 'Visitor'
 }
 
-export type RowChipKind = 'ai' | 'person' | 'waiting' | 'closed' | 'negative'
+export type RowChipKind = 'ai' | 'person' | 'waiting' | 'closed' | 'negative' | 'snoozed'
 
 export interface RowChip {
   kind: RowChipKind
@@ -37,6 +37,7 @@ export interface RowCandidate extends HandlerCandidate {
   handed_over_at?: string | null
   updated_at?: string
   sentiment_label?: string | null
+  snoozed_until?: string | null
 }
 
 /**
@@ -61,6 +62,14 @@ export function rowChips(conv: RowCandidate, currentUserId: string | null, now: 
     chips.push({ kind: 'closed', text: 'Closed' })
   }
   if (conv.sentiment_label === 'negative') chips.push({ kind: 'negative', text: 'Negative' })
+  if (conv.snoozed_until && new Date(conv.snoozed_until) > now) {
+    const until = new Date(conv.snoozed_until)
+    const sameDay = until.toDateString() === now.toDateString()
+    const when = until.toLocaleString(undefined, sameDay
+      ? { hour: '2-digit', minute: '2-digit' }
+      : { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+    chips.push({ kind: 'snoozed', text: `Snoozed · ${when}` })
+  }
   return chips
 }
 

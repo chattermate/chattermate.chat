@@ -17,6 +17,9 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Inbox | A handed-over chat waits in Waiting for a human with the AI's reason and summary; taking it over pauses the AI and moves it to Your inbox | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | Hand back to AI: the customer is told and the AI answers the next message; the chat moves through the views (yours, AI handling, waiting again via Hand to my team) | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | Below 1440px the details open over the thread and Escape closes them; search finds a customer by name or email | `specs/inbox/inbox.spec.ts` | P2 | ✅ |
+| Inbox | A note on a waiting chat needs no takeover and never reaches the customer's widget | `specs/inbox/notes.spec.ts` | P1 | ✅ |
+| Inbox | An @-mention notifies the teammate and lists the chat in their Mentions view | `specs/inbox/notes.spec.ts` | P2 | ✅ |
+| Inbox | A snoozed chat leaves Waiting, shows under Snoozed, and comes back when the customer writes | `specs/inbox/notes.spec.ts` | P2 | ✅ |
 | Setup and auth | Agent role is denied AI settings | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign-out, deactivation and a password change end sessions server-side; a refresh token is not an access token | `specs/auth/sessions.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |

@@ -200,6 +200,7 @@ class ChatOverviewResponse(BaseModel):
     # A short AI-written title, once the chat has closed
     title: Optional[str] = None
     sentiment_label: Optional[str] = None
+    snoozed_until: Optional[datetime] = None
     session_id: UUID
 
 
@@ -212,8 +213,36 @@ class InboxCountsResponse(BaseModel):
     ai_handling: int = 0
     negative: int = 0
     resolved_by_ai_today: int = 0
+    mentions: int = 0
+    snoozed: int = 0
     # Open conversations per channel ('web', 'whatsapp', ...)
     channels: Dict[str, int] = {}
+
+
+class NoteMention(BaseModel):
+    user_id: UUID
+    name: Optional[str] = None
+
+
+class ConversationNoteResponse(BaseModel):
+    """A note the team left on a conversation; the customer never sees it."""
+    id: int
+    body: str
+    user_id: Optional[UUID] = None
+    user_name: Optional[str] = None
+    mentions: List[NoteMention] = []
+    created_at: datetime
+
+
+class NoteCreate(BaseModel):
+    """A note for the team, and the teammates it @-mentions."""
+    body: str = Field(min_length=1, max_length=4000)
+    mentions: List[UUID] = Field(default_factory=list, max_length=20)
+
+
+class SnoozeRequest(BaseModel):
+    """Hide the conversation from the inbox's views until then."""
+    until: datetime
 
 
 class ChatDetailResponse(BaseModel):
@@ -234,6 +263,9 @@ class ChatDetailResponse(BaseModel):
     transfer_description: Optional[str] = None
     sentiment_label: Optional[str] = None
     title: Optional[str] = None
+    snoozed_until: Optional[datetime] = None
+    # The team's notes, kept apart from `messages` (what the customer saw)
+    notes: List[ConversationNoteResponse] = []
     created_at: datetime
     updated_at: datetime
 

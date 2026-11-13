@@ -33,6 +33,7 @@ import HelpCenterPublic from './HelpCenterPublic.vue'
 
 /** Longer customer messages are cut: a question, not a transcript */
 const QUESTION_PREFILL_MAX = 300
+const ANSWER_PREFILL_MAX = 2000
 
 const props = defineProps<{ organizationId?: string }>()
 
@@ -284,7 +285,7 @@ const newFaqStub = computed<FaqItem>(() => ({
 }))
 
 // The inbox's "Add the answer to knowledge" lands here with the customer's
-// question (?question=): a new FAQ already holding it, so only the answer is left
+// question and the answer given (?question=&answer=): a new FAQ holding both
 const route = useRoute()
 const router = useRouter()
 function startFromQuestion(): void {
@@ -292,7 +293,10 @@ function startFromQuestion(): void {
   if (typeof question !== 'string' || !question.trim()) return
   startAdd()
   draftQuestion.value = question.trim().slice(0, QUESTION_PREFILL_MAX)
-  void router.replace({ query: { ...route.query, question: undefined } })
+  // The team's reply (or the AI answer to correct): a draft to edit, not to publish as is
+  const answer = route.query.answer
+  if (typeof answer === 'string' && answer.trim()) draftAnswer.value = answer.trim().slice(0, ANSWER_PREFILL_MAX)
+  void router.replace({ query: { ...route.query, question: undefined, answer: undefined } })
 }
 
 onMounted(() => {

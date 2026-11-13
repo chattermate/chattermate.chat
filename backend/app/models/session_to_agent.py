@@ -70,6 +70,8 @@ class SessionToAgent(Base):
     # the inbox's waiting time and "resolved today" read them.
     handed_over_at = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    # Out of the inbox's views until then, or until the customer writes again
+    snoozed_until = Column(DateTime(timezone=True), nullable=True)
     transfer_reason = Column(String, nullable=True)
     # The free-text fields below are AI-written summaries of the conversation, so
     # they are encrypted at rest alongside the messages themselves.

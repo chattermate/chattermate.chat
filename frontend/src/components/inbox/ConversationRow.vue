@@ -48,7 +48,7 @@ const unreadHint = computed(() =>
   props.unread ? `, ${props.unread} unread` : ''
 )
 
-const CHIP_ICONS: Record<string, string> = { waiting: 'clock', negative: 'frown' }
+const CHIP_ICONS: Record<string, string> = { waiting: 'clock', negative: 'frown', snoozed: 'clock' }
 </script>
 
 <template>
@@ -272,7 +272,8 @@ const CHIP_ICONS: Record<string, string> = { waiting: 'clock', negative: 'frown'
   display: inline-flex;
 }
 
-.chip-closed {
+.chip-closed,
+.chip-snoozed {
   color: var(--muted);
 }
 

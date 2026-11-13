@@ -42,7 +42,7 @@ vi.mock('@/services/socket', () => ({ socketService: socket }))
 vi.mock('@/services/user', () => ({ userService: { getUserId: () => 'me' } }))
 
 import { INBOX_PAGE_SIZE, INBOX_POLL_MS, SEARCH_DEBOUNCE_MS, useInboxList } from '@/composables/useInboxList'
-import { useInboxThread } from '@/composables/useInboxThread'
+import { keepPending, useInboxThread } from '@/composables/useInboxThread'
 import { useInboxShortcuts } from '@/composables/useInboxShortcuts'
 
 const rows = (n: number, from = 0) => Array.from({ length: n }, (_, i) => ({ session_id: `s${from + i}` }))
@@ -274,6 +274,28 @@ describe('useInboxThread', () => {
 
     expect(changed).toHaveBeenCalledTimes(1)
     expect(chat.getChatDetail).toHaveBeenCalledTimes(1)
+    emitter.off('inbox-changed', changed)
+    wrapper.unmount()
+  })
+
+  it('keeps a reply still on its way to the server through a refresh, without doubling a stored one', () => {
+    const detail = { session_id: 's1', messages: [{ message: 'Stored', message_type: 'agent', created_at: '', session_id: 's1', id: 1 }] } as never
+    const pending = [
+      { message: 'Stored', message_type: 'agent', created_at: '', session_id: 's1', client_id: 'a' },
+      { message: 'On its way', message_type: 'agent', created_at: '', session_id: 's1', client_id: 'b' },
+    ]
+    expect(keepPending(detail, pending).messages.map((m) => m.message)).toEqual(['Stored', 'On its way'])
+    expect(keepPending(detail, [])).toBe(detail)
+  })
+
+  it("ignores its own note, refreshes for a teammate's", async () => {
+    const changed = vi.fn()
+    emitter.on('inbox-changed', changed)
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    socket.handlers.room_event({ type: 'note_added', session_id: 's1', author_id: 'me' })
+    socket.handlers.room_event({ type: 'note_added', session_id: 's1', author_id: 'asha' })
+    expect(changed).toHaveBeenCalledTimes(1)
     emitter.off('inbox-changed', changed)
     wrapper.unmount()
   })

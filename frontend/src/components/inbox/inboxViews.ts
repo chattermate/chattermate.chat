@@ -64,16 +64,18 @@ interface ViewDef {
 
 const VIEW_DEFS: Record<InboxViewKey, ViewDef> = {
   mine: { view: 'mine', label: 'Your inbox', countKey: 'assigned_to_me', tone: 'plain', empty: 'Nothing is assigned to you.' },
+  mentions: { view: 'mentions', label: 'Mentions', countKey: 'mentions', tone: 'plain', empty: 'Nobody has mentioned you in an open conversation.' },
   waiting: { view: 'waiting', label: 'Waiting for a human', countKey: 'waiting_for_human', tone: 'waiting', empty: 'Nobody is waiting for a person.' },
   open: { view: 'open', label: 'All open', countKey: 'open', tone: 'plain', empty: 'No open conversations.' },
   ai: { view: 'ai', label: 'AI handling now', countKey: 'ai_handling', tone: 'ai', empty: 'The AI has no live conversations.' },
   resolved_by_ai: { view: 'resolved_by_ai', label: 'Resolved by AI', title: 'Resolved by AI today', countKey: 'resolved_by_ai_today', tone: 'plain', empty: 'Nothing resolved by the AI yet today.' },
   closed: { view: 'closed', label: 'Closed', countKey: null, tone: 'plain', empty: 'No closed conversations.' },
   negative: { view: 'negative', label: 'Negative sentiment', countKey: 'negative', tone: 'plain', empty: 'No unhappy customers right now.' },
+  snoozed: { view: 'snoozed', label: 'Snoozed', countKey: 'snoozed', tone: 'plain', empty: 'Nothing is snoozed.' },
 }
 
 const GROUPS: Array<{ heading: string | null; views: InboxViewKey[] }> = [
-  { heading: null, views: ['mine', 'waiting', 'open'] },
+  { heading: null, views: ['mine', 'mentions', 'waiting', 'open', 'snoozed'] },
   { heading: 'AI agents', views: ['ai', 'resolved_by_ai', 'closed'] },
 ]
 const SAVED_VIEWS: InboxViewKey[] = ['negative']

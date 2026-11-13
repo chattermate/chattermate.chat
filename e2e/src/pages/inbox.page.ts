@@ -101,6 +101,39 @@ export class InboxPage {
     })
   }
 
+  /** The composer's note box (the Note tab) */
+  get noteBox(): Locator {
+    return this.page.getByRole('textbox', { name: 'Note for your team' })
+  }
+
+  /** Leaves a note; \`mention\` is picked from the @ list after the text. */
+  async addNote(text: string, mention?: string): Promise<void> {
+    await step(`Agent adds a note "${text}"`, async () => {
+      if (!(await this.noteBox.isVisible())) await this.page.getByRole('tab', { name: 'Note' }).click()
+      await this.noteBox.fill(text)
+      if (mention) {
+        // The whole name: the shared test org has many teammates with the same first name
+        await this.noteBox.pressSequentially(` @${mention}`)
+        await this.page.getByRole('option', { name: mention }).click()
+      }
+      await this.page.getByRole('button', { name: 'Add note', exact: true }).click()
+      await expect(this.note(text)).toBeVisible()
+    })
+  }
+
+  /** A note in the thread that carries \`text\` */
+  note(text: string): Locator {
+    return this.page.getByRole('note').filter({ hasText: text })
+  }
+
+  async snooze(choice: '1 hour' | '3 hours' | 'tomorrow 9:00' | 'next Monday 9:00'): Promise<void> {
+    await step(`Agent snoozes the chat for ${choice}`, async () => {
+      await this.page.getByRole('button', { name: 'More actions' }).click()
+      await this.page.getByRole('menuitem', { name: `Snooze · ${choice}` }).click()
+      await expect(this.page.getByRole('status').filter({ hasText: 'It comes back then' })).toBeVisible()
+    })
+  }
+
   /** The handover summary the AI left for the team */
   get handoverSummary(): Locator {
     return this.page.getByRole('region', { name: /Handover summary/ })

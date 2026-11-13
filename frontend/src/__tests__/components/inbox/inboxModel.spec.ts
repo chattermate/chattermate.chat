@@ -25,12 +25,14 @@ import {
 } from '@/components/inbox/inboxViews'
 import { avatarTone, customerName, rowChips, transferReasonLabel } from '@/components/inbox/inboxPresentation'
 import { elapsedLabel, minutesSince, waitDuration, WAITING_LATE_MINUTES } from '@/components/inbox/inboxTime'
-import { dayLabel, daySeparators, handoverIndex, questionBefore } from '@/components/inbox/threadContent'
+import { buildTimeline, dayLabel, handoverIndex, knowledgeDraft } from '@/components/inbox/threadContent'
+import { matchMentionables, mentionedIds, mentionParts, mentionQuery } from '@/components/inbox/mentions'
+import { snoozeChoices } from '@/components/inbox/snooze'
 import { channelGlyph, channelLabel } from '@/utils/channelGlyphs'
 import type { InboxCounts } from '@/types/chat'
 
 const counts: InboxCounts = {
-  open: 27, waiting_for_human: 3, assigned_to_me: 4, ai_handling: 18,
+  open: 27, waiting_for_human: 3, assigned_to_me: 4, ai_handling: 18, mentions: 1, snoozed: 2,
   negative: 2, resolved_by_ai_today: 46, channels: { web: 19, whatsapp: 5, messenger: 2 },
 }
 
@@ -62,7 +64,7 @@ describe('inbox views', () => {
 
     expect(groups.map((g) => g.heading)).toEqual([null, 'AI agents', 'Channels', 'Saved views'])
     expect(groups[0].items.map((i) => [i.label, i.count])).toEqual([
-      ['Your inbox', 4], ['Waiting for a human', 3], ['All open', 27],
+      ['Your inbox', 4], ['Mentions', 1], ['Waiting for a human', 3], ['All open', 27], ['Snoozed', 2],
     ])
     expect(groups[1].items.map((i) => [i.label, i.count])).toEqual([
       ['AI handling now', 18], ['Resolved by AI', 46], ['Closed', null],
@@ -188,12 +190,6 @@ describe('thread content', () => {
     expect(handoverIndex(thread.slice(0, 3), null)).toBe(3)
   })
 
-  it("finds the customer's question an answer was for", () => {
-    expect(questionBefore(thread, 2)).toBe('Can I get a refund?')
-    expect(questionBefore(thread, 3)).toBe('It was delivered to Berlin')
-    expect(questionBefore(thread, 0)).toBeNull()
-    expect(questionBefore(thread, 99)).toBe('It was delivered to Berlin')
-  })
 })
 
 describe('channel glyphs', () => {
@@ -215,9 +211,117 @@ describe('day separators', () => {
     expect(dayLabel(local(2025, 3, 2), today)).toMatch(/2025/)
   })
 
-  it('puts one above the first message of each day', () => {
-    const thread = [local(2026, 11, 12, 9), local(2026, 11, 12, 10), local(2026, 11, 13, 8), local(2026, 11, 13, 9)]
-      .map((created_at) => ({ created_at }))
-    expect(daySeparators(thread, today)).toEqual(['Yesterday', null, 'Today', null])
+})
+
+describe('the thread timeline', () => {
+  const at = (h: number, m = 0) => new Date(2026, 10, 13, h, m).toISOString()
+  const today = new Date(2026, 10, 13, 18)
+  const messages = [
+    { id: 1, created_at: at(9), message_type: 'user' },
+    { id: 2, created_at: at(10), message_type: 'bot' },
+    { id: 3, created_at: at(12), message_type: 'agent' },
+  ]
+  const note = (id: number, h: number) => ({ id, body: 'x', user_id: 'u', mentions: [], created_at: at(h) })
+
+  it('slots notes in by time, after a day separator, with the handover card in its place', () => {
+    const kinds = buildTimeline(messages, [note(7, 11), note(8, 13)], { handoverAt: 2, now: today })
+      .map((e) => (e.kind === 'message' ? `m${e.index}` : e.kind === 'note' ? `n${e.note.id}` : e.kind))
+    expect(kinds).toEqual(['day', 'm0', 'm1', 'n7', 'handover', 'm2', 'n8'])
+  })
+
+  it('puts a handover after every message before the notes written after it', () => {
+    const kinds = buildTimeline(messages, [note(7, 13), note(8, 15)], { handoverAt: 3, handedOverAt: at(14), now: today })
+      .map((e) => (e.kind === 'note' ? `n${e.note.id}` : e.kind))
+    expect(kinds.slice(-3)).toEqual(['n7', 'handover', 'n8'])
+  })
+
+  it('puts the handover card last when it came after every message, and none without one', () => {
+    const last = buildTimeline(messages, [], { handoverAt: 3, now: today }).map((e) => e.kind)
+    expect(last.at(-1)).toBe('handover')
+    expect(buildTimeline(messages, [], { handoverAt: null, now: today }).some((e) => e.kind === 'handover')).toBe(false)
+  })
+})
+
+describe('knowledge drafts', () => {
+  const thread = [
+    { message_type: 'user', message: 'Hi, can I return a jacket delivered to Berlin for a refund?' },
+    { message_type: 'bot', message: "I can't find our refund policy for the EU." },
+    { message_type: 'user', message: 'Berlin is in the EU though.' },
+    { message_type: 'agent', message: 'Yes: returns within the EU are free for 30 days.' },
+    { message_type: 'agent', message: 'I have emailed you a prepaid label.' },
+    { message_type: 'user', message: 'Thanks!' },
+  ]
+
+  it("takes the question the customer asked and every line of the team's answer", () => {
+    expect(knowledgeDraft(thread, 3, 'team')).toEqual({
+      question: 'Hi, can I return a jacket delivered to Berlin for a refund?',
+      answer: 'Yes: returns within the EU are free for 30 days.\n\nI have emailed you a prepaid label.',
+    })
+  })
+
+  it('offers nothing until the team has answered, or for a question too thin to publish', () => {
+    expect(knowledgeDraft(thread.slice(0, 3), 3, 'team')).toBeNull()
+    expect(knowledgeDraft([{ message_type: 'user', message: 'hi?' }, { message_type: 'agent', message: 'Hello, how can I help you today?' }], 1, 'team')).toBeNull()
+    expect(knowledgeDraft([{ message_type: 'user', message: 'Where is my parcel now?' }, { message_type: 'agent', message: 'Sure' }], 1, 'team')).toBeNull()
+  })
+
+  it("drafts a correction from an AI answer and the question it answered", () => {
+    expect(knowledgeDraft(thread, 1, 'this')).toEqual({
+      question: 'Hi, can I return a jacket delivered to Berlin for a refund?',
+      answer: "I can't find our refund policy for the EU.",
+    })
+  })
+
+  it("skips a team notice: it is not an answer", () => {
+    const withNotice = [thread[0], { message_type: 'agent', message: "You're now connected with a member of our team.", attributes: { source: 'system' } }]
+    expect(knowledgeDraft(withNotice, 1, 'team')).toBeNull()
+  })
+})
+
+describe('mentions', () => {
+  const people = [{ id: 'a', name: 'Asha Rao' }, { id: 't', name: 'Tom' }, { id: 'm', name: 'Maria Asha' }]
+
+  it('finds the @query being typed at the caret, not an email address', () => {
+    expect(mentionQuery('Hey @As', 7)).toEqual({ start: 4, query: 'As' })
+    expect(mentionQuery('@', 1)).toEqual({ start: 0, query: '' })
+    expect(mentionQuery('mail me@x.com', 13)).toBeNull()
+    expect(mentionQuery('Hi @Asha R', 10)).toEqual({ start: 3, query: 'Asha R' })
+    expect(mentionQuery('@Tom\nnext line', 14)).toBeNull()
+  })
+
+  it('suggests prefix matches first', () => {
+    expect(matchMentionables(people, 'asha').map((p) => p.id)).toEqual(['a', 'm'])
+    expect(matchMentionables(people, 'asha r').map((p) => p.id)).toEqual(['a'])
+    expect(matchMentionables(people, 'tom and')).toEqual([])
+    expect(matchMentionables(people, 'zzz')).toEqual([])
+  })
+
+  it('keeps only the mentions still in the text', () => {
+    expect(mentionedIds('@Asha Rao can you check?', people)).toEqual(['a'])
+    expect(mentionedIds('nobody now', people)).toEqual([])
+  })
+
+  it('splits a note into its text and mentions, longest name first', () => {
+    expect(mentionParts('@Maria Asha and @Tom, look', ['Tom', 'Maria Asha'])).toEqual([
+      { text: '@Maria Asha', mention: true }, { text: ' and ', mention: false },
+      { text: '@Tom', mention: true }, { text: ', look', mention: false },
+    ])
+    expect(mentionParts('a (b) [c]', ['(b)'])).toEqual([{ text: 'a (b) [c]', mention: false }])
+  })
+})
+
+describe('snooze choices', () => {
+  it('offers an hour, three hours, tomorrow and next Monday morning', () => {
+    const friday = new Date(2026, 10, 13, 16, 30)
+    const [hour, three, tomorrow, monday] = snoozeChoices(friday)
+    expect(hour.until.getTime() - friday.getTime()).toBe(3_600_000)
+    expect(three.until.getTime() - friday.getTime()).toBe(3 * 3_600_000)
+    expect([tomorrow.until.getDate(), tomorrow.until.getHours()]).toEqual([14, 9])
+    expect([monday.until.getDay(), monday.until.getDate(), monday.until.getHours()]).toEqual([1, 16, 9])
+  })
+
+  it('makes next Monday a week away on a Monday', () => {
+    const monday = new Date(2026, 10, 16, 8)
+    expect(snoozeChoices(monday)[3].until.getDate()).toBe(23)
   })
 })
