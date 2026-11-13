@@ -14,28 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, VueWrapper } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { flushPromises, mount, VueWrapper } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
+import { ref } from 'vue'
 import DashboardLayout from '../../layouts/DashboardLayout.vue'
 import { createPinia, setActivePinia } from 'pinia'
-import type { ComponentPublicInstance } from 'vue'
+import { updateUserStatus } from '@/services/users'
+import { toast } from 'vue-sonner'
 
-// Define interface for component instance
-interface DashboardLayoutInstance extends ComponentPublicInstance {
-  toggleSidebar: () => void
-  currentUser: {
-    is_online: boolean
-  }
-  showSettings: boolean
-  showUserMenu: boolean
-  showNotifications: boolean
-  userName: string
-  userRole: string
-  refreshUserInfo: () => void
-}
-
-// Mock the composables
 vi.mock('@/composables/useAuth', () => ({
   useAuth: () => ({
     logout: vi.fn()
@@ -49,39 +36,30 @@ vi.mock('@/composables/useNotifications', () => ({
   }))
 }))
 
-const enterprise = vi.hoisted(() => ({
-  hasEnterpriseModule: false,
-  store: {
-    currentPlan: null as null | { plan: { type: string; name: string } },
-    isLoadingPlan: false,
-    isInTrial: false,
-    trialDaysLeft: 0,
-  },
-}))
-
 vi.mock('@/composables/useEnterpriseFeatures', () => ({
   useEnterpriseFeatures: () => ({
-    hasEnterpriseModule: enterprise.hasEnterpriseModule,
-    subscriptionStore: {
-      value: {
-        ...enterprise.store,
-        fetchCurrentPlan: vi.fn().mockResolvedValue(undefined)
-      }
-    },
+    hasEnterpriseModule: false,
+    subscriptionStore: { value: { fetchCurrentPlan: vi.fn().mockResolvedValue(undefined) } },
     initializeSubscriptionStore: vi.fn().mockResolvedValue(undefined),
-    moduleImports: {
-      promoSurfaces: '/src/modules/enterprise/components/promo/PromoSurfaces.vue',
-      promoHeaderPill: '/src/modules/enterprise/components/promo/PromoHeaderPill.vue',
-    },
+    moduleImports: {},
     enterpriseComponent: () => ({ name: 'EnterpriseEmpty', render: () => null }),
   })
 }))
 
-// Mock the services
+const navCounts = vi.hoisted(() => ({ waiting: 3, tickets: 2 }))
+vi.mock('@/composables/useNavCounts', () => ({
+  useNavCounts: () => ({
+    waitingForHuman: ref(navCounts.waiting),
+    openTickets: ref(navCounts.tickets),
+    refresh: vi.fn(),
+  })
+}))
+
 vi.mock('@/services/user', () => ({
   userService: {
     getCurrentUser: () => ({
       id: '1',
+      full_name: 'Test User',
       profile_pic: null,
       is_online: true,
       last_seen: new Date().toISOString()
@@ -102,207 +80,173 @@ vi.mock('@/services/users', () => ({
   updateUserStatus: vi.fn()
 }))
 
-// Create router instance
-const router = createRouter({
-  history: createWebHistory(),
-  routes: [{ path: '/', component: { template: '<div>Home</div>' } }]
-})
+vi.mock('vue-sonner', () => ({
+  toast: { error: vi.fn() }
+}))
+
+const Page = { template: '<div>Page</div>' }
+const makeRouter = () =>
+  createRouter({
+    history: createWebHistory(),
+    routes: [
+      { path: '/', component: Page },
+      { path: '/analytics', component: Page },
+      { path: '/conversations', component: Page },
+      { path: '/knowledge', name: 'knowledge', component: Page },
+    ]
+  })
+
+const mountAt = async (path: string, props: Record<string, unknown> = {}) => {
+  const router = makeRouter()
+  await router.push(path)
+  await router.isReady()
+  const wrapper = mount(DashboardLayout, {
+    props,
+    global: {
+      plugins: [router],
+      stubs: { AppSidebar: true, NotificationList: true, FailedSourceNotice: true }
+    }
+  })
+  await flushPromises()
+  return { wrapper, router }
+}
 
 describe('DashboardLayout', () => {
   let wrapper: VueWrapper
 
-  beforeEach(() => {
-    // Mock window.innerWidth to simulate desktop for tests
-    Object.defineProperty(window, 'innerWidth', {
-      writable: true,
-      configurable: true,
-      value: 1920
-    })
-
-    // Mock addEventListener and removeEventListener
-    window.addEventListener = vi.fn()
-    window.removeEventListener = vi.fn()
-
-    // Create a fresh Pinia instance
+  beforeEach(async () => {
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1920 })
     setActivePinia(createPinia())
-
-    // Mount component with required props and plugins
-    wrapper = mount(DashboardLayout, {
-      global: {
-        plugins: [router],
-        stubs: {
-          'AppSidebar': true,
-          'NotificationList': true,
-          'UserSettings': true
-        }
-      }
-    })
+    vi.mocked(updateUserStatus).mockReset()
+    vi.mocked(toast.error).mockReset()
+    ;({ wrapper } = await mountAt('/analytics'))
   })
 
-  it('renders properly', () => {
-    expect(wrapper.exists()).toBe(true)
+  it('renders the shell without the old page footer', () => {
     expect(wrapper.find('.dashboard-layout').exists()).toBe(true)
+    expect(wrapper.find('footer').exists()).toBe(false)
   })
 
-  it('toggles sidebar correctly', async () => {
-    const vm = wrapper.vm as unknown as DashboardLayoutInstance
+  it('toggles the sidebar', async () => {
     expect(wrapper.classes()).not.toContain('sidebar-collapsed')
-    await vm.toggleSidebar()
+    await wrapper.findComponent({ name: 'AppSidebar' }).vm.$emit('toggle')
     expect(wrapper.classes()).toContain('sidebar-collapsed')
   })
 
-  it('displays user information correctly', async () => {
-    const vm = wrapper.vm as unknown as DashboardLayoutInstance
-    await wrapper.vm.$nextTick()
-    
-    expect(vm.userName).toBe('Test User')
-    expect(vm.userRole).toBe('Admin')
-    
-    // Find name element in the sidebar-open state
-    const userInfo = wrapper.find('.user-info')
-    if (userInfo.exists()) {
-      expect(userInfo.find('.name').text()).toBe('Test User')
-    } else {
-      // If user-info is not visible (responsive design), just verify the data
-      expect(vm.userName).toBe('Test User')
-    }
+  it('hands the sidebar its badge counts and the signed-in user', () => {
+    const sidebar = wrapper.findComponent({ name: 'AppSidebar' })
+    expect(sidebar.props('inboxCount')).toBe(3)
+    expect(sidebar.props('ticketsCount')).toBe(2)
+    expect(sidebar.props('user')).toMatchObject({ full_name: 'Test User' })
+    expect(sidebar.props('role')).toBe('Admin')
+    expect(sidebar.props('isOnline')).toBe(true)
   })
 
-  it('shows user menu when clicking profile', async () => {
-    const profileTrigger = wrapper.find('.profile-trigger')
-    expect(wrapper.find('.dropdown-menu').exists()).toBe(false)
-    
-    await profileTrigger.trigger('click')
-    expect(wrapper.find('.dropdown-menu').exists()).toBe(true)
+  it('names the current page in the header breadcrumb', () => {
+    expect(wrapper.find('.breadcrumb [aria-current="page"]').text()).toBe('Analytics')
   })
 
-  it('shows notification badge with correct count', async () => {
-    await wrapper.vm.$nextTick() // Wait for mounted hook
-    const badge = wrapper.find('.notification-badge')
-    expect(badge.exists()).toBe(true)
-    expect(badge.text()).toBe('5')
+  it('shows the unread notification count on the bell', () => {
+    expect(wrapper.find('.notification-badge').text()).toBe('5')
   })
 
-  it('toggles online status correctly', async () => {
-    const vm = wrapper.vm as unknown as DashboardLayoutInstance
-    const profileTrigger = wrapper.find('.profile-trigger')
-    await profileTrigger.trigger('click')
-    
-    const statusToggle = wrapper.find('.status-toggle')
-    expect(statusToggle.classes()).toContain('online')
-    
-    await statusToggle.trigger('click')
-    expect(vm.currentUser.is_online).toBe(false)
+  it('goes offline from the header pill once the server accepts it', async () => {
+    vi.mocked(updateUserStatus).mockResolvedValue(undefined)
+    const pill = wrapper.find('.status-pill')
+    expect(pill.text()).toBe('Online')
+
+    await pill.trigger('click')
+    await flushPromises()
+
+    expect(updateUserStatus).toHaveBeenCalledWith('1', false)
+    expect(wrapper.find('.status-pill').text()).toBe('Offline')
+    expect(wrapper.findComponent({ name: 'AppSidebar' }).props('isOnline')).toBe(false)
   })
 
-  it('opens settings panel', async () => {
-    // Skip this test since we don't want to modify the component
-    expect(true).toBe(true)
+  it('keeps the status and says so when the change fails', async () => {
+    vi.mocked(updateUserStatus).mockRejectedValue(new Error('offline'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await wrapper.find('.status-pill').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.status-pill').text()).toBe('Online')
+    expect(toast.error).toHaveBeenCalled()
   })
 
-  it('closes menus when route changes', async () => {
-    const vm = wrapper.vm as any
-    // Open menus first
-    vm.showUserMenu = true
-    vm.showNotifications = true
-    
-    // Trigger route change
-    await router.push('/new-route')
-    
-    expect(vm.showUserMenu).toBe(false)
-    expect(vm.showNotifications).toBe(false)
+  it('changes status from the sidebar account menu too', async () => {
+    vi.mocked(updateUserStatus).mockResolvedValue(undefined)
+    await wrapper.findComponent({ name: 'AppSidebar' }).vm.$emit('toggle-status')
+    await flushPromises()
+    expect(updateUserStatus).toHaveBeenCalledWith('1', false)
+  })
+})
+
+describe('DashboardLayout - tab title', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
   })
 
-  it('provides required methods', () => {
-    // Skip this test since we don't want to modify the component
-    expect(true).toBe(true)
+  it('names the page in the browser tab', async () => {
+    await mountAt('/analytics')
+    expect(document.title).toBe('Analytics · ChatterMate')
   })
 
-  it('refreshes user info correctly', async () => {
-    // Skip this test since we don't want to modify the component
-    expect(true).toBe(true)
+  it('prefixes the Inbox with the chats waiting for a human', async () => {
+    await mountAt('/conversations')
+    expect(document.title).toBe('(3) Inbox · ChatterMate')
   })
-}) 
+
+  it('follows navigation and resets when the dashboard closes', async () => {
+    const { wrapper, router } = await mountAt('/analytics')
+    await router.push('/conversations')
+    await flushPromises()
+    expect(document.title).toBe('(3) Inbox · ChatterMate')
+
+    wrapper.unmount()
+    expect(document.title).toBe('ChatterMate')
+  })
+
+  it('falls back to the app name on a page without a title', async () => {
+    await mountAt('/')
+    expect(document.title).toBe('ChatterMate')
+  })
+})
+
+describe('DashboardLayout - menus', () => {
+  it('closes the notification drawer when the route changes', async () => {
+    setActivePinia(createPinia())
+    const { wrapper, router } = await mountAt('/analytics')
+    await wrapper.find('.notification-button').trigger('click')
+    expect(wrapper.findComponent({ name: 'NotificationList' }).props('isOpen')).toBe(true)
+
+    await router.push('/conversations')
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'NotificationList' }).props('isOpen')).toBe(false)
+  })
+})
+
 describe('DashboardLayout - unreadable website notice', () => {
-  const mountAt = async (path: string, props: Record<string, unknown> = {}) => {
-    const pageRouter = createRouter({
-      history: createWebHistory(),
-      routes: [
-        { path: '/', component: { template: '<div>Home</div>' } },
-        { path: '/knowledge', name: 'knowledge', component: { template: '<div>Knowledge</div>' } }
-      ]
-    })
-    await pageRouter.push(path)
-    await pageRouter.isReady()
-    return mount(DashboardLayout, {
-      props,
-      global: {
-        plugins: [pageRouter],
-        stubs: { AppSidebar: true, NotificationList: true, UserSettings: true, FailedSourceNotice: true }
-      }
-    })
-  }
-
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
   it('shows on an ordinary page', async () => {
-    const page = await mountAt('/')
+    const { wrapper } = await mountAt('/')
 
-    expect(page.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(true)
   })
 
   it('is left off the knowledge page, which lists the failed source itself', async () => {
-    const page = await mountAt('/knowledge')
+    const { wrapper } = await mountAt('/knowledge')
 
-    expect(page.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(false)
   })
 
   it('is left off full-page layouts, whose content is a fixed viewport height', async () => {
-    const page = await mountAt('/', { hideHeader: true })
+    const { wrapper } = await mountAt('/', { hideHeader: true })
 
-    expect(page.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(false)
-  })
-})
-
-describe('DashboardLayout plan badges', () => {
-  const mountWith = (store: Partial<typeof enterprise.store>) => {
-    enterprise.hasEnterpriseModule = true
-    Object.assign(enterprise.store, { currentPlan: null, isLoadingPlan: false, isInTrial: false, trialDaysLeft: 0 }, store)
-    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1920 })
-    setActivePinia(createPinia())
-    return mount(DashboardLayout, {
-      global: { plugins: [router], stubs: { AppSidebar: true, NotificationList: true, UserSettings: true } },
-    })
-  }
-
-  afterEach(() => { enterprise.hasEnterpriseModule = false })
-
-  it('calls the hidden legacy Free plan Free', () => {
-    const wrapper = mountWith({ currentPlan: { plan: { type: 'free', name: 'Free (legacy)' } } })
-    const badge = wrapper.find('.plan-badge')
-    expect(badge.text()).toContain('Free')
-    expect(badge.text()).not.toContain('legacy')
-    expect(badge.classes()).toContain('free')
-  })
-
-  it('names the trial plan and the days left, and flags the last days', () => {
-    const wrapper = mountWith({
-      currentPlan: { plan: { type: 'growth', name: 'Growth' } }, isInTrial: true, trialDaysLeft: 1,
-    })
-    const badge = wrapper.find('.trial-badge')
-    expect(badge.text()).toBe('Growth trial · 1 day left')
-    expect(badge.classes()).toContain('ending-soon')
-    expect(wrapper.find('.plan-badge').classes()).toContain('paid')
-  })
-
-  it('keeps a long trial calm and drops "(yearly)" from the name', () => {
-    const wrapper = mountWith({
-      currentPlan: { plan: { type: 'growth', name: 'Growth (yearly)' } }, isInTrial: true, trialDaysLeft: 10,
-    })
-    const badge = wrapper.find('.trial-badge')
-    expect(badge.text()).toBe('Growth trial · 10 days left')
-    expect(badge.classes()).not.toContain('ending-soon')
+    expect(wrapper.findComponent({ name: 'FailedSourceNotice' }).exists()).toBe(false)
   })
 })

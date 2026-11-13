@@ -28,6 +28,7 @@ import { permissionChecks } from '@/utils/permissions'
 import { findMessage, newClientId } from '@/utils/messageMatch'
 import { withVisitorFeedback } from '@/utils/visitorFeedback'
 import { useOrgInboxRoom } from '@/composables/useOrgInboxRoom'
+import emitter from '@/utils/emitter'
 
 // Define valid chat statuses
 type ChatStatus = 'open' | 'closed' | 'transferred'
@@ -335,6 +336,8 @@ export function useConversationChat(
       // Emit refresh event to update chat status
       emit('refresh')
       emit('chatUpdated', chat.value)
+      // Navigation badges: one fewer open chat
+      emitter.emit('inbox-changed')
       
       scrollToBottom()
     } catch (err) {

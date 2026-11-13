@@ -458,6 +458,20 @@ class TestStats:
         assert stats["open"] == 2
         assert stats["awaiting_approval"] == 1
 
+    def test_open_count_matches_stats_and_skips_closed(self, service, db, test_organization):
+        make_ticket(service, db, test_organization)
+        waiting = make_ticket(service, db, test_organization)
+        service.transition_status(waiting, TicketStatus.AWAITING_APPROVAL)
+        done = make_ticket(service, db, test_organization)
+        service.transition_status(done, TicketStatus.CLOSED)
+        db.commit()
+
+        assert service.open_count(test_organization.id) == 2
+        assert service.open_count(test_organization.id) == service.stats(test_organization.id)["open"]
+
+    def test_open_count_of_an_org_without_tickets_is_zero(self, service, test_organization):
+        assert service.open_count(test_organization.id) == 0
+
 
 class TestTemplates:
     def test_placeholders_render(self):

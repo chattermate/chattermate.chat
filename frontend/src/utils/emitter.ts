@@ -21,6 +21,9 @@ type Events = {
   'knowledge-updated': void
   // The signed-in user's own picture changed (userService.uploadProfilePic)
   'profile-pic-updated': void
+  // A conversation changed hands or closed (takeover, handover, reassign, end):
+  // the navigation badges refetch instead of waiting for their next poll
+  'inbox-changed': void
   // Add other events here as needed
 }
 

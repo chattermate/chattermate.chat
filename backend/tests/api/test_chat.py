@@ -685,3 +685,60 @@ def test_get_chat_detail_shopify_endpoint(client, db, test_user, test_chat_sessi
     assert response.status_code == 200
     chat = response.json()
     assert chat["session_id"] == str(test_chat_session.session_id) 
+
+def test_inbox_counts_for_a_view_all_user(
+    client,
+    db,
+    test_user,
+    test_chat_session,
+    test_chat_messages
+):
+    """The caller's own open chat is open and assigned to them, not waiting."""
+    response = client.get("/api/chats/counts")
+    assert response.status_code == 200
+    assert response.json() == {"open": 1, "waiting_for_human": 0, "assigned_to_me": 1}
+
+
+def test_inbox_counts_a_handed_over_chat_as_waiting(
+    client,
+    db,
+    test_user,
+    test_chat_session,
+    test_chat_messages
+):
+    """Handed over by the AI and not yet claimed: somebody needs to pick it up."""
+    test_chat_session.user_id = None
+    test_chat_session.status = SessionStatus.TRANSFERRED
+    db.commit()
+
+    response = client.get("/api/chats/counts")
+    assert response.status_code == 200
+    assert response.json() == {"open": 1, "waiting_for_human": 1, "assigned_to_me": 0}
+
+
+def test_inbox_counts_leave_out_closed_chats(
+    client,
+    db,
+    test_user,
+    test_chat_session,
+    test_chat_messages
+):
+    test_chat_session.status = SessionStatus.CLOSED
+    db.commit()
+
+    response = client.get("/api/chats/counts")
+    assert response.status_code == 200
+    assert response.json() == {"open": 0, "waiting_for_human": 0, "assigned_to_me": 0}
+
+
+def test_inbox_counts_need_a_chat_permission(
+    client,
+    db,
+    test_user,
+    test_chat_session
+):
+    db.execute(role_permissions.delete())
+    db.commit()
+
+    response = client.get("/api/chats/counts")
+    assert response.status_code == 403

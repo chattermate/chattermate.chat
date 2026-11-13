@@ -32,6 +32,7 @@ import { initializeApp } from 'firebase/app'
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw'
 import { SW_MESSAGE, conversationSessionUrl } from './pwa/pushContract'
 import { NAVIGATION_DENYLIST } from './pwa/navigationDenylist'
+import { versionedIcon } from './config/appIcons'
 
 declare let self: ServiceWorkerGlobalScope
 
@@ -121,8 +122,8 @@ if (firebaseConfig.apiKey) {
       // alone: it throws the colours away and tints the silhouette. Pointing this
       // at the colour PWA icon is why it rendered as a grey blob — the whole
       // square is opaque, so the silhouette is a square.
-      icon: '/pwa-192x192.png',
-      badge: '/notification-badge-96.png',
+      icon: versionedIcon('/pwa-192x192.png'),
+      badge: versionedIcon('/notification-badge-96.png'),
       // One stacked notification per conversation (or per notification otherwise)
       tag: sessionId || payload.data?.notification_id || undefined,
       data: payload.data,

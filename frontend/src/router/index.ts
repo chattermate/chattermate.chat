@@ -71,7 +71,6 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      title: 'Analytics Dashboard',
     },
   },
   {
@@ -81,7 +80,6 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      title: 'Knowledge Base',
     },
   },
   {
@@ -91,7 +89,6 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      title: 'FAQ & Help Center',
     },
   },
   {
@@ -101,7 +98,6 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      title: 'Tickets',
     },
   },
   {
@@ -111,7 +107,6 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      title: 'Ticket',
     },
   },
   {
@@ -121,7 +116,6 @@ const baseRoutes = [
     meta: {
       requiresAuth: true,
       layout: 'dashboard',
-      title: 'Ticketing Settings',
     },
   },
   {
@@ -251,7 +245,6 @@ const allRoutes = hasEnterpriseModule
         meta: {
           requiresAuth: true,
           layout: 'dashboard',
-          title: 'Subscription Plans',
         },
       },
       {
@@ -261,7 +254,6 @@ const allRoutes = hasEnterpriseModule
         meta: {
           requiresAuth: true,
           layout: 'dashboard',
-          title: 'App Integrations',
         },
       },
       {
@@ -271,7 +263,6 @@ const allRoutes = hasEnterpriseModule
         meta: {
           requiresAuth: true,
           layout: 'dashboard',
-          title: 'CLI & API tokens',
         },
       },
       {

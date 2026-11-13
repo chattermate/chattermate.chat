@@ -9,6 +9,7 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import { VitePWA } from 'vite-plugin-pwa'
 import { THEME_COLORS } from './src/config/themeColors'
+import { ICON_VERSION, versionedIcon } from './src/config/appIcons'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -69,14 +70,16 @@ export default defineConfig(({ command, mode }) => {
     }),
     vueJsx(),
     vueDevTools(),
-    // Plugin to inject environment variables into HTML
+    // Plugin to inject environment variables and the icon version into HTML
     {
       name: 'html-transform',
       transformIndexHtml(html) {
-        return html.replace(
-          /<%= VITE_SHOPIFY_API_KEY %>/g,
-          process.env.VITE_SHOPIFY_API_KEY || env.VITE_SHOPIFY_API_KEY || ''
-        )
+        return html
+          .replace(
+            /<%= VITE_SHOPIFY_API_KEY %>/g,
+            process.env.VITE_SHOPIFY_API_KEY || env.VITE_SHOPIFY_API_KEY || ''
+          )
+          .replace(/__ICON_VERSION__/g, ICON_VERSION)
       }
     },
     VitePWA({
@@ -96,9 +99,9 @@ export default defineConfig(({ command, mode }) => {
         background_color: THEME_COLORS.dark,
         theme_color: THEME_COLORS.dark,
         icons: [
-          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: versionedIcon('/pwa-192x192.png'), sizes: '192x192', type: 'image/png' },
+          { src: versionedIcon('/pwa-512x512.png'), sizes: '512x512', type: 'image/png' },
+          { src: versionedIcon('/pwa-maskable-512x512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       injectManifest: {

@@ -29,6 +29,7 @@ import type {
   TicketListResponse,
   TicketProposal,
   TicketSettings,
+  TicketCounts,
   TicketStats,
   TicketUpdatePayload,
 } from '@/types/ticket'
@@ -55,6 +56,16 @@ export const ticketService = {
     } catch (error: any) {
       throw errorMessage(error, 'Failed to load tickets')
     }
+  },
+
+  /**
+   * Open tickets for the navigation badge. The HTTP error is passed through
+   * unwrapped: the caller tells "no ticketing on this plan" (403) apart from a
+   * passing failure by its status.
+   */
+  async getCounts(): Promise<TicketCounts> {
+    const response = await api.get<TicketCounts>('/tickets/counts')
+    return response.data
   },
 
   async getStats(): Promise<TicketStats> {
