@@ -69,6 +69,7 @@ from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_custom
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
 from app.cards.labels import pick_language
 from app.services import email_check
+from app.api.widget_email_check import accept_store_sign_in
 from app.services.widget_answers import offers_follow_ups
 from app.services import widget_plan
 from app.services.widget_reply import (
@@ -460,6 +461,12 @@ async def widget_connect(sid, environ, auth):
         logger.debug(f"Session data: {session_data['ai_config'].encrypted_api_key}")
         await sio.save_session(sid, session_data, namespace='/widget')
         logger.info(f"Widget client connected: {sid} joined room: {session_id}")
+
+        # A customer signed in to the Shopify store needs no email code
+        try:
+            await asyncio.to_thread(accept_store_sign_in, session_data, token_data)
+        except Exception as e:
+            logger.error(f"Store sign-in not accepted for {sid}: {e}")
         
         await _announce_conversation(sid, session_data, session_created)
 

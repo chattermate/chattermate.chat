@@ -23,7 +23,7 @@ limitations under the License.
 // this module set earlier is dropped when no one is signed in, or someone else
 // is - before asking, so another customer never chats as the previous one while
 // the answer is on its way, or if it never comes. A token the page itself gave
-// (ChatterMate.identify) is never replaced.
+// (ChatterMate.identify) is never replaced; the widget's own anonymous one is.
 
 // The App Proxy's path on the store (shopify.app.toml: prefix "apps", subpath "chattermate")
 export const IDENTITY_PATH = 'apps/chattermate/identity'
@@ -56,6 +56,14 @@ export function signedInCustomer(win) {
   return CUSTOMER_ID.test(value) ? value : null
 }
 
+// A token naming a person (the page's identify() or this module's), as the
+// backend reads it (conversation_token.is_identified); the widget's own anonymous
+// token names no one
+function namesSomeone(token) {
+  const claims = claimsOf(token)
+  return !!(claims && (claims.customer_email || claims.email))
+}
+
 function storefrontData(token) {
   const claims = claimsOf(token)
   const data = claims && claims.custom_data
@@ -75,13 +83,14 @@ export function isStorefrontToken(token) {
 export async function syncStorefrontIdentity(win, { widgetId, current, identify, signOut }) {
   const shopify = storefront(win)
   if (!shopify || !widgetId) return
-  const fromStore = !current || isStorefrontToken(current)
-  // A token the page gave is the page's business
-  if (!fromStore) return
-  const customer = signedInCustomer(win)
   const ours = current ? storefrontData(current) : null
+  // A token the page gave is the page's business. The widget's own anonymous
+  // token (every visitor has one after their first page) gives way to the store's.
+  if (current && !ours && namesSomeone(current)) return
+  const customer = signedInCustomer(win)
   if (!customer) {
-    if (current) signOut()
+    // Signed out: only this module's token goes; an anonymous chat carries on
+    if (ours) signOut()
     return
   }
   // Someone else signed in on this browser: the previous customer's chat goes first

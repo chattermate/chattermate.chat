@@ -165,3 +165,36 @@ def test_the_code_goes_to_that_one_address_and_a_refused_mailbox_reads_as_sent()
          patch.object(handlers, "send_smtp", side_effect=fake_send):
         handlers._send_code("o-1", "jane@acme.com", "123456")
     assert sent["to"] == ["jane@acme.com"]
+
+
+STORE_TOKEN = {"source": "shopify_storefront", "customer_email": "jane@acme.com"}
+STORE_SESSION = {**SESSION, "customer_id": "c-1"}
+
+
+def test_a_store_signed_in_customer_needs_no_code():
+    with patch.object(handlers.email_check, "prove", return_value=True) as prove, \
+         patch.object(handlers, "_link_history") as link:
+        assert handlers.accept_store_sign_in(STORE_SESSION, STORE_TOKEN)
+    prove.assert_called_once_with("s-1", "c-1", "jane@acme.com")
+    link.assert_called_once_with(STORE_SESSION, "jane@acme.com")
+
+
+@pytest.mark.parametrize("session,token", [
+    # Below Pro the store customer is not a known customer
+    ({**STORE_SESSION, "plan_features": {**PLAN, "known_customers": False}}, STORE_TOKEN),
+    # A site's own identify() token, even one copying the marker into custom_data
+    (STORE_SESSION, {"customer_email": "jane@acme.com", "custom_data": {"source": "shopify_storefront"}}),
+    # The widget's anonymous token
+    (STORE_SESSION, {"ckey": "k-1"}),
+])
+def test_nothing_else_skips_the_code(session, token):
+    with patch.object(handlers.email_check, "prove") as prove:
+        assert not handlers.accept_store_sign_in(session, token)
+    prove.assert_not_called()
+
+
+def test_the_proof_stands_when_linking_history_fails():
+    with patch.object(handlers.email_check, "prove", return_value=True), \
+         patch.object(handlers, "_link_history", side_effect=RuntimeError("db down")):
+        assert handlers.accept_store_sign_in(STORE_SESSION, STORE_TOKEN)
+

@@ -28,7 +28,7 @@ address, unconfirmed: that email names nobody.
 import hashlib
 import hmac
 import time
-from typing import Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import requests
 from sqlalchemy.orm import Session
@@ -141,6 +141,9 @@ def identity_token(db: Session, query: Sequence[Tuple[str, str]]) -> Optional[di
     # One revocable session per customer and widget, however many pages they open
     jti = get_existing_valid_token_jti(email, str(widget.id), str(customer.id))
     token, _, ttl = conversation_token.mint({
+        # Top-level, where POST /generate-token can't write: only this mint vouches
+        # that the store verified the email (store_verified_email)
+        'source': SOURCE,
         'sub': str(customer.id),
         'widget_id': str(widget.id),
         'customer_email': email,
@@ -150,3 +153,13 @@ def identity_token(db: Session, query: Sequence[Tuple[str, str]]) -> Optional[di
         'custom_data': {'source': SOURCE, 'shopify_customer_id': customer_id},
     }, ttl_seconds=TOKEN_TTL_SECONDS, jti=jti)
     return {'token': token, 'expires_in': ttl}
+
+
+def store_verified_email(token_data: Optional[Mapping[str, Any]]) -> Optional[str]:
+    """The email a signed-in store customer's conversation token carries, or None.
+    Only identity_token sets the top-level source, and only for an email the store
+    verified, so this email counts as proved like a code (email_check.prove)."""
+    if not isinstance(token_data, Mapping) or token_data.get('source') != SOURCE:
+        return None
+    email = token_data.get('customer_email')
+    return email if isinstance(email, str) and email else None

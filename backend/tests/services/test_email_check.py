@@ -246,3 +246,22 @@ class TestHistoryBudget:
         _offered(sid)
         assert email_check.start(sid, ORG, "order@acme.com")[0].ok
 
+
+def test_a_store_verified_email_is_kept_as_proof_for_its_customer(redis):
+    sid, customer = str(uuid4()), str(uuid4())
+    assert email_check.prove(sid, customer, " Jane@Acme.com ")
+    assert email_check.verified_email(sid, customer) == "jane@acme.com"
+    assert email_check.verified_email(sid, str(uuid4())) is None
+
+
+@pytest.mark.parametrize("email", ["", "not-an-email", None])
+def test_no_proof_for_an_unusable_email(redis, email):
+    sid = str(uuid4())
+    assert not email_check.prove(sid, "c-1", email)
+    assert email_check.verified_email(sid) is None
+
+
+def test_no_proof_without_redis():
+    with patch.object(email_check, "get_redis", return_value=None):
+        assert not email_check.prove(str(uuid4()), "c-1", "jane@acme.com")
+

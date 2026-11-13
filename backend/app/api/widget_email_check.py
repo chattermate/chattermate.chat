@@ -30,7 +30,7 @@ from app.api.widget_actions import authenticated_session
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.database import SessionLocal
-from app.services import email_check, visitor_history, widget_plan
+from app.services import email_check, shopify_app_proxy, visitor_history, widget_plan
 from app.services.socket_rate_limit import socket_rate_limit
 from app.services.ticket_email import resolve_org_smtp, send_smtp
 from app.services.widget_reply import PANEL_SESSION_KEY, WIDGET_NAMESPACE
@@ -70,6 +70,24 @@ def _send_code(org_id: str, to: str, code: str) -> None:
 def _link_history(session: dict, email: str) -> None:
     with SessionLocal() as db:
         visitor_history.link_proven_email(db, session, email)
+
+
+def accept_store_sign_in(session: dict, token_data: dict) -> bool:
+    """Blocking. A customer signed in to the Shopify store (their token came from
+    the App Proxy) has the email the store verified: proved for this conversation
+    like a code, so My orders and their other browsers' chats need no code. On a
+    plan with known customers only. Whether it was accepted."""
+    email = shopify_app_proxy.store_verified_email(token_data)
+    if not email or not widget_plan.session_allows(session, widget_plan.KNOWN_CUSTOMERS_FEATURE):
+        return False
+    if not email_check.prove(session.get('session_id'), session.get('customer_id'), email):
+        return False
+    try:
+        _link_history(session, email)
+    except Exception as e:
+        # The proof stands; only the other browsers won't see this one's chats
+        logger.error(f"Store-verified email not linked to the visitor's conversations: {e}")
+    return True
 
 
 async def _error(sid: str, result: email_check.CheckResult) -> None:
