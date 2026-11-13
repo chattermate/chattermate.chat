@@ -56,6 +56,8 @@ export const ROUTE_PERMISSIONS: Record<string, readonly string[]> = {
   '/settings/integrations': ['manage_organization'],
   '/settings/app-integrations': ['manage_organization'],
   '/settings/widget-apps': ['manage_organization'],
+  // Lists the org's widgets and may add the site to one's allowed domains
+  '/connect/wordpress': ['manage_agents'],
   // Everyone can reach their own profile, and 403 must never deny itself or
   // the guard has nowhere to send anyone.
   '/settings/user': [],

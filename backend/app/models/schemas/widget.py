@@ -106,6 +106,16 @@ class WidgetResponse(BaseModel):
         from_attributes = True
 
 
+class WidgetStatusResponse(BaseModel):
+    """Whether a widget can chat, for install checks such as the WordPress
+    plugin's "Connected" line. Public, like GET /widgets/{id}, and no more
+    revealing: the agent's visitor-facing name and how visitors get in."""
+    widget_id: str
+    agent_name: str
+    requires_token: bool
+    collects_email: bool
+
+
 class WidgetEmbedSettings(BaseModel):
     """Where a widget may be embedded. Org-only: never part of the public
     WidgetResponse, which any visitor's widget can read. Entries are checked
