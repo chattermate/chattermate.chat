@@ -54,7 +54,9 @@ from app.services.visitor_payload import visitor_attributes, visitor_message, vi
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionStatus
 from app.agents.transfer_agent import get_agent_availability_response
 from app.repositories.agent import AgentRepository
-from app.services.agent_rooms import USER_MESSAGE, is_org_inbox_room, may_join_org_inbox, relay_stored_message
+from app.services.agent_rooms import (
+    USER_MESSAGE, emit_to_org_inbox, is_org_inbox_room, may_join_org_inbox, relay_stored_message,
+)
 from app.services.chat_notifications import notify_new_chat
 from app.services.contact_capture import retain_unstored_email
 from app.services.human_routing import (
@@ -1297,6 +1299,10 @@ async def handle_agent_message(sid, data):
             logger.info(f"Agent ended chat session {session_id}")
             # Update session status to closed
             session_repo.update_session_status(session_id, "CLOSED")
+            # The inboxes refresh now it's stored: one that refetched sooner
+            # would get the chat back open (the close travels on this socket)
+            await emit_to_org_inbox('room_event', {'type': 'closed', 'session_id': session_id},
+                                    session_data.organization_id, session_data.user_id)
             
         
         # Emit to widget clients

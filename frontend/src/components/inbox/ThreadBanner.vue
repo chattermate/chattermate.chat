@@ -18,7 +18,7 @@ limitations under the License.
 /**
  * Who is answering, and the action that changes it. Yours: the AI is paused,
  * hand it back. Waiting: for how long, assign or take it over. The AI's: take
- * it over or hand it to the team. Someone else's, or closed: just which.
+ * it over or hand it to the team. Someone else's: just whose. Closed: reopen it.
  */
 import { computed } from 'vue'
 import type { ChatDetail } from '@/types/chat'
@@ -44,6 +44,7 @@ const emit = defineEmits<{
   (e: 'release'): void
   (e: 'route-to-team'): void
   (e: 'assign', userId: string): void
+  (e: 'reopen'): void
 }>()
 
 const handler = computed(() => chatHandler(props.chat, props.currentUserId))
@@ -111,6 +112,7 @@ const variant = computed(() => {
   <div v-else class="banner" role="status">
     <span class="icon" aria-hidden="true" v-html="navIconSvg('check', 14)"></span>
     <span class="text">This conversation is closed</span>
+    <button v-if="canManage" type="button" class="btn" :disabled="busy" @click="emit('reopen')">Reopen</button>
   </div>
 </template>
 

@@ -4264,6 +4264,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Chat
+         * @description Open a closed chat again, held by whoever reopens it: they reply next,
+         *     so the AI stays out. The customer isn't told; the next message is theirs.
+         */
+        post: operations["reopen_chat_api_v1_sessions__session_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/reassign": {
         parameters: {
             query?: never;
@@ -19100,6 +19121,39 @@ export interface operations {
         };
     };
     release_chat_to_ai_api_v1_sessions__session_id__release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_chat_api_v1_sessions__session_id__reopen_post: {
         parameters: {
             query?: never;
             header?: never;

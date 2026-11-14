@@ -74,7 +74,7 @@ const conversation = (id: string, name: string) => ({
 const ThreadPaneStub = {
   name: 'ThreadPane',
   props: ['chat', 'detailsOpen'],
-  emits: ['toggle-details', 'back'],
+  emits: ['toggle-details', 'back', 'closed'],
   setup: () => ({ requestClose: vi.fn() }),
   template: '<section class="thread-stub">{{ chat.session_id }} <button class="toggle" @click="$emit(\'toggle-details\')">details</button></section>',
 }
@@ -108,6 +108,22 @@ describe('InboxShell', () => {
     expect(wrapper.find('.thread-stub').text()).toContain('s1')
     expect(wrapper.find('.details-stub').attributes('data-overlay')).toBe('false')
     expect(wrapper.find('.views').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('moves on to the next conversation once you close one, or back to the list on a phone', async () => {
+    const wrapper = mountShell()
+    await flushPromises()
+    router.replace.mockClear()
+
+    wrapper.findComponent({ name: 'ThreadPane' }).vm.$emit('closed', 's1')
+    await flushPromises()
+    expect(router.replace).toHaveBeenLastCalledWith({ query: { session: 's2', info: undefined } })
+
+    // The last one in the list: the one above it
+    wrapper.findComponent({ name: 'ThreadPane' }).vm.$emit('closed', 's2')
+    await flushPromises()
+    expect(router.replace).toHaveBeenLastCalledWith({ query: { session: 's1', info: undefined } })
     wrapper.unmount()
   })
 

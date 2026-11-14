@@ -100,6 +100,13 @@ export const chatService = {
     return response.data as ChatDetail
   },
 
+  /** Open a closed chat again, held by you: you reply next. */
+  async reopenChat(sessionId: string): Promise<ChatDetail> {
+    const response = await api.post(`/sessions/${sessionId}/reopen`)
+    emitter.emit('inbox-changed')
+    return response.data as ChatDetail
+  },
+
   /** A note for the team on this conversation; the teammates in `mentions` are notified. */
   async addNote(sessionId: string, body: string, mentions: string[]): Promise<ConversationNote> {
     const response = await api.post(`/sessions/${sessionId}/notes`, { body, mentions })

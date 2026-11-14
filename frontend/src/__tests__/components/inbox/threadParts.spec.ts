@@ -126,6 +126,14 @@ describe('ThreadBanner', () => {
     expect(human.text()).toContain('Nobody has picked it up yet.')
   })
 
+  it('closed: whoever may manage chats can reopen it', async () => {
+    const wrapper = mountBanner({ status: 'closed' }, { canManage: true })
+    expect(wrapper.text()).toContain('This conversation is closed')
+    await wrapper.find('button').trigger('click')
+    expect(wrapper.find('button').text()).toBe('Reopen')
+    expect(wrapper.emitted('reopen')).toHaveLength(1)
+  })
+
   it("yours: the AI is paused, and can have it back", async () => {
     const wrapper = mountBanner({ status: 'open', user_id: 'me' })
     expect(wrapper.text()).toContain('Shop assistant is paused while you handle this chat')
@@ -142,7 +150,7 @@ describe('ThreadBanner', () => {
     expect(ai.emitted('take-over')).toHaveLength(1)
 
     expect(mountBanner({ status: 'open', user_id: 'asha', user_name: 'Asha' }).text()).toBe('Asha is handling this chat')
-    expect(mountBanner({ status: 'closed' }).find('button').exists()).toBe(false)
+    expect(mountBanner({ status: 'closed' }, { canManage: false }).find('button').exists()).toBe(false)
   })
 
   it('offers no actions to someone who may not take chats over', () => {

@@ -50,6 +50,25 @@ test.describe('handling a chat', () => {
     await expect(inbox.conversation(widget.customer.name)).toBeVisible()
   })
 
+  test('a closed chat can be reopened: it is yours, and you can reply @inbox', async ({ agent, widget, inbox, llm }) => {
+    await askForAPerson(agent, widget, llm)
+    await inbox.goto('/conversations?view=waiting')
+    await inbox.openConversationWith(widget.customer.name)
+    await inbox.takeOver()
+    await inbox.closeChat()
+    await expect(inbox.banner).toContainText('This conversation is closed')
+    // The close has reached the server (it goes over the socket)
+    await expect(widget.lastAgentMessage()).toContainText('Thank you for contacting us')
+
+    await inbox.reopen()
+    await expect(inbox.banner).toContainText('is paused while you handle this chat')
+    await inbox.openViewFor('Your inbox', widget.customer.name)
+    await expect(inbox.conversation(widget.customer.name)).toBeVisible()
+    await inbox.conversation(widget.customer.name).click()
+    await inbox.reply('We found your order after all.')
+    await expect(widget.messageLog).toContainText('We found your order after all.')
+  })
+
   test('Send and close sends the reply, then closes once confirmed @inbox', async ({ agent, widget, inbox, llm }) => {
     await askForAPerson(agent, widget, llm)
     await inbox.goto('/conversations?view=waiting')
@@ -112,6 +131,10 @@ test.describe('handling a chat', () => {
     await inbox.press('Enter')
     await expect(inbox.closeDialog).toBeHidden()
     await expect(second.lastAgentMessage()).toContainText('Thank you for contacting us')
+    // On to the other one, as the closed chat leaves Your inbox
+    await expect(inbox.conversation(second.customer.name)).toBeHidden()
+    await expect(inbox.conversation(widget.customer.name)).toHaveAttribute('aria-current', 'true')
+    await expect(inbox.threadTitle(widget.customer.name)).toBeVisible()
   })
 
   test("E on a chat that isn't yours to close says so @inbox", async ({ agent, widget, inbox, llm }) => {

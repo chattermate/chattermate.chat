@@ -188,6 +188,13 @@ export class InboxPage {
     })
   }
 
+  async reopen(): Promise<void> {
+    await step('Agent reopens the chat', async () => {
+      await this.banner.getByRole('button', { name: 'Reopen' }).click()
+      await expect(this.banner).not.toContainText('This conversation is closed')
+    })
+  }
+
   /** The open thread's heading: the customer's name */
   threadTitle(customerName: string): Locator {
     return this.page.getByRole('heading', { name: customerName })

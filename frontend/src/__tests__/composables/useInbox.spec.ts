@@ -408,6 +408,31 @@ describe('useInboxThread', () => {
     expect(keepPending(detail, [])).toBe(detail)
   })
 
+  it('keeps a closing line still on its way once, and never doubles a stored one', () => {
+    const closing = (extra: object) => ({ message: 'Thank you for contacting us.', message_type: 'system', created_at: '', session_id: 's1', ...extra })
+    const stored = { session_id: 's1', messages: [closing({ id: 9 })] } as never
+    expect(keepPending(stored, [closing({ client_id: 'c' })] as never).messages).toHaveLength(1)
+    const notYet = { session_id: 's1', messages: [] } as never
+    expect(keepPending(notYet, [closing({ client_id: 'c' })] as never).messages).toHaveLength(1)
+    // A reply with the same words is another message
+    const reply = { session_id: 's1', messages: [{ ...closing({ id: 3 }), message_type: 'agent' }] } as never
+    expect(keepPending(reply, [closing({ client_id: 'c' })] as never).messages).toHaveLength(2)
+  })
+
+  it('refetches the open chat once the server says it closed', async () => {
+    const changed = vi.fn()
+    emitter.on('inbox-changed', changed)
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    chat.getChatDetail.mockClear()
+    socket.handlers.room_event({ type: 'closed', session_id: 's1' })
+    await flushPromises()
+    expect(changed).toHaveBeenCalledTimes(1)
+    expect(chat.getChatDetail).toHaveBeenCalledWith('s1')
+    emitter.off('inbox-changed', changed)
+    wrapper.unmount()
+  })
+
   it('keeps a second "Thanks!" that is still on its way, though an earlier one is stored', () => {
     const msg = (extra: object) => ({ message: 'Thanks!', message_type: 'agent', created_at: '', session_id: 's1', ...extra })
     const detail = { session_id: 's1', messages: [msg({ id: 1 })] } as never

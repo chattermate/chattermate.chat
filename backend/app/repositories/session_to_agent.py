@@ -350,6 +350,25 @@ class SessionToAgentRepository:
             self.db.rollback()
             return False
 
+    def reopen_for(self, session_id: UUID | str, user_id: UUID | str) -> bool:
+        """Open a closed chat again, held by `user_id`: they reply next, so the
+        AI stays out of it. False when it isn't closed (or doesn't exist)."""
+        try:
+            session = self.get_session(session_id)
+            if not session or session.status != SessionStatus.CLOSED:
+                return False
+            session.status = SessionStatus.OPEN
+            session.user_id = as_uuid(user_id)
+            session.group_id = None
+            # Open again: no longer one of the day's closed chats
+            session.closed_at = None
+            self.db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error reopening session: {str(e)}")
+            self.db.rollback()
+            return False
+
     def takeover_session(self, session_id: str, user_id: str) -> bool:
         """Take over a chat session"""
         try:

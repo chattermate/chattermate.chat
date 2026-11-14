@@ -27,6 +27,7 @@ from app.models.user import User
 from app.models.session_to_agent import SessionStatus
 from app.core.auth import CHAT_MANAGE_PERMISSIONS, get_current_user, has_any_permission
 from app.database import get_db
+from app.services.agent_rooms import emit_to_org_inbox
 from app.services.chat_access import can_see_session, may_change_hands
 from app.services.chat_notifications import notify_chat_assigned
 from app.services.human_routing import notify_customer, route_session_to_human
@@ -257,6 +258,30 @@ async def release_chat_to_ai(
     except Exception as e:
         logger.error(f"Error handing chat back to AI: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to hand the chat back to the AI")
+
+
+@router.post("/{session_id}/reopen", response_model=ChatDetailResponse)
+async def reopen_chat(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Open a closed chat again, held by whoever reopens it: they reply next,
+    so the AI stays out. The customer isn't told; the next message is theirs."""
+    session = await _load_manageable_session(db, session_id, current_user)
+    if session.status != SessionStatus.CLOSED:
+        raise HTTPException(status_code=400, detail="This chat is already open")
+    if not SessionToAgentRepository(db).reopen_for(session_id, current_user.id):
+        raise HTTPException(status_code=500, detail="Failed to reopen the chat")
+
+    # The other inboxes' views and counts move with it
+    await emit_to_org_inbox('room_event', {'type': 'reopened', 'session_id': session_id},
+                            session.organization_id)
+
+    chat = await ChatRepository(db).get_chat_detail(session_id=session_id, org_id=current_user.organization_id)
+    if not chat:
+        raise HTTPException(status_code=500, detail="Failed to read the chat back")
+    return ChatDetailResponse(**chat)
 
 
 @router.post("/{session_id}/reassign", response_model=ChatDetailResponse)

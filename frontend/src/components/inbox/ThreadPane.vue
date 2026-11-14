@@ -62,6 +62,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'chat-updated', chat: ChatDetail): void
+  /** You closed it: the inbox moves on */
+  (e: 'closed', sessionId: string): void
   (e: 'refresh'): void
   (e: 'toggle-details'): void
   (e: 'back'): void
@@ -230,8 +232,11 @@ const sendAndClose = async () => {
 }
 const confirmClose = async () => {
   confirmingClose.value = false
-  await endChat()
+  const sessionId = props.chat.session_id
+  if (await endChat()) emit('closed', sessionId)
 }
+// Held by you again, so you can reply; the customer isn't told
+const reopen = () => run(() => chatService.reopenChat(props.chat.session_id), 'Chat reopened')
 
 // ---- Tickets and templates ----
 const { jiraConnected, checkJiraStatus } = useJiraTicket()
@@ -430,6 +435,7 @@ defineExpose({ requestClose })
       @take-over="takeOver"
       @route-to-team="routeToTeam"
       @assign="assign"
+      @reopen="reopen"
     />
     <ThreadComposer
       v-if="showComposer"

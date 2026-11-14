@@ -1008,3 +1008,76 @@ def test_assigning_stays_inside_what_the_callers_inbox_shows(
     assert response.status_code == status.HTTP_404_NOT_FOUND
     db.refresh(session)
     assert session.user_id == user_with_manage_chats_permission.id
+
+
+def _reopen(client, session):
+    return client.post(f"/api/v1/session-to-agent/{session.session_id}/reopen")
+
+
+def test_reopen_opens_a_closed_chat_held_by_whoever_reopened_it(
+    client_with_error_mock, db, user_with_manage_chats_permission, create_chat_session
+):
+    """They reply next, so the AI stays out; the other inboxes hear of it, the
+    customer isn't told."""
+    from unittest.mock import AsyncMock
+    session = create_chat_session()
+    session.group_id = None
+    session.status = SessionStatus.CLOSED
+    db.commit()
+    db.refresh(session)
+    assert session.closed_at is not None
+
+    with patch('app.api.session_to_agent.emit_to_org_inbox', new=AsyncMock()) as announce, \
+         patch('app.services.human_routing.deliver_to_customer', new=AsyncMock()) as deliver:
+        response = _reopen(client_with_error_mock, session)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["status"] == "open"
+    assert response.json()["user_id"] == str(user_with_manage_chats_permission.id)
+    db.refresh(session)
+    assert (session.status, session.user_id, session.closed_at) == (
+        SessionStatus.OPEN, user_with_manage_chats_permission.id, None)
+    announce.assert_awaited_once_with(
+        'room_event', {'type': 'reopened', 'session_id': str(session.session_id)}, session.organization_id)
+    deliver.assert_not_awaited()
+
+
+@pytest.mark.parametrize("chat_status", [SessionStatus.OPEN, SessionStatus.TRANSFERRED])
+def test_reopen_refuses_a_chat_that_is_not_closed(
+    client_with_error_mock, db, create_chat_session, chat_status
+):
+    session = create_chat_session()
+    session.status = chat_status
+    db.commit()
+    response = _reopen(client_with_error_mock, session)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "This chat is already open"
+
+
+def test_reopen_needs_the_permission_to_manage_chats(
+    client_with_error_mock, db, regular_user, create_chat_session
+):
+    session = create_chat_session()
+    session.status = SessionStatus.CLOSED
+    db.commit()
+
+    async def override_get_current_user():
+        return regular_user
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    response = _reopen(client_with_error_mock, session)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    db.refresh(session)
+    assert session.status == SessionStatus.CLOSED
+
+
+def test_reopen_another_organizations_chat_is_not_found(
+    client_with_error_mock, db, other_org_user, create_chat_session
+):
+    session = create_chat_session()
+    session.status = SessionStatus.CLOSED
+    db.commit()
+
+    async def override_get_current_user():
+        return other_org_user
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    assert _reopen(client_with_error_mock, session).status_code == status.HTTP_404_NOT_FOUND

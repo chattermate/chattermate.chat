@@ -42,7 +42,7 @@ interface RoomEvent {
 
 /** Room events that change a conversation (who holds it, a teammate's note):
  * the counts and rows refresh, and the open thread with them */
-const OWNERSHIP_EVENTS = new Set(['reassigned', 'reassigned_from_you', 'released_to_ai', 'note_added'])
+const OWNERSHIP_EVENTS = new Set(['reassigned', 'reassigned_from_you', 'released_to_ai', 'note_added', 'reopened', 'closed'])
 
 /** conversation_activity: a conversation got a message (any, from anyone). */
 interface ActivityEvent {
@@ -73,13 +73,14 @@ export function messageFromReply(data: ChatReplyEvent): Message {
   return message
 }
 
-const isAgent = (m: Message) => m.message_type === 'agent'
-
 const textOf = (m: Message) => m.message ?? ''
 
-function countByText(messages: Message[]): Map<string, number> {
+// A message the team sent, by its kind and words (a reply, or a system line such as the close)
+const keyOf = (m: Message) => `${m.message_type}|${m.message ?? ''}`
+
+function countByKey(messages: Message[]): Map<string, number> {
   const counts = new Map<string, number>()
-  for (const m of messages) counts.set(textOf(m), (counts.get(textOf(m)) ?? 0) + 1)
+  for (const m of messages) counts.set(keyOf(m), (counts.get(keyOf(m)) ?? 0) + 1)
   return counts
 }
 
@@ -95,12 +96,12 @@ function countByText(messages: Message[]): Map<string, number> {
 export function keepPending(detail: ChatDetail, previous: Message[]): ChatDetail {
   const pending = previous.filter((m) => m.client_id && !m.id)
   if (!pending.length) return detail
-  const stored = countByText(detail.messages.filter(isAgent))
-  const confirmed = countByText(previous.filter((m) => isAgent(m) && m.id))
+  const stored = countByKey(detail.messages)
+  const confirmed = countByKey(previous.filter((m) => m.id))
   const missing = pending.filter((m) => {
-    const text = textOf(m)
-    if ((stored.get(text) ?? 0) <= (confirmed.get(text) ?? 0)) return true
-    confirmed.set(text, (confirmed.get(text) ?? 0) + 1)
+    const key = keyOf(m)
+    if ((stored.get(key) ?? 0) <= (confirmed.get(key) ?? 0)) return true
+    confirmed.set(key, (confirmed.get(key) ?? 0) + 1)
     return false
   })
   return missing.length ? { ...detail, messages: [...detail.messages, ...missing] } : detail

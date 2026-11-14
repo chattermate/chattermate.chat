@@ -163,6 +163,18 @@ watch(() => list.conversations.value, (rows) => {
   if (!isMobile.value && !sessionInUrl.value && rows.length) openConversation(rows[0].session_id)
 })
 
+/**
+ * You closed the open chat: on to the next one in the list (the one above at
+ * the end), as the list drops it; a phone goes back to the list.
+ */
+function onClosed(sessionId: string) {
+  if (isMobile.value) return backToList()
+  const rows = list.conversations.value
+  const at = rows.findIndex((row) => row.session_id === sessionId)
+  const next = at === -1 ? undefined : rows[at + 1] ?? rows[at - 1]
+  if (next) openConversation(next.session_id)
+}
+
 function backToList() {
   const previous = window.history.state?.back
   if (typeof previous === 'string' && previous.startsWith('/conversations') && !previous.includes('session=')) {
@@ -324,6 +336,7 @@ useInboxShortcuts({
         :now="now"
         :show-back="isMobile"
         @chat-updated="onChatUpdated"
+        @closed="onClosed"
         @refresh="refreshThread"
         @toggle-details="toggleDetails"
         @back="backToList"
