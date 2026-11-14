@@ -38,8 +38,8 @@ export function handoverIndex(messages: Pick<Message, 'created_at' | 'message_ty
     const after = messages.findIndex((m) => new Date(m.created_at).getTime() > at)
     return after === -1 ? messages.length : after
   }
-  const firstTeamReply = messages.findIndex((m) => m.message_type === 'agent')
-  return firstTeamReply === -1 ? messages.length : firstTeamReply
+  const firstReply = messages.findIndex((m) => m.message_type === 'agent')
+  return firstReply === -1 ? messages.length : firstReply
 }
 
 /** "Today", "Yesterday", or the date: the thread's day separators. */
@@ -133,13 +133,24 @@ function questionAt(messages: Draftable[], index: number): string | null {
   let latest: string | null = null
   for (let i = Math.min(index, messages.length) - 1; i >= 0; i--) {
     const m = messages[i]
-    if (m.message_type === 'agent') break // an earlier exchange the team already answered
+    // An earlier exchange the team already answered (their notices, such as
+    // "you're now connected", answer nothing)
+    if (m.message_type === 'agent' && m.attributes?.source !== 'system') break
     if (m.message_type !== 'user' || !m.message?.trim()) continue
     const text = m.message.trim()
     if (text.includes('?')) return text
     latest ??= text
   }
   return latest
+}
+
+/** Where the team first replied from \`index\` on (the end when it hasn't). */
+function firstTeamReply(messages: Draftable[], index: number): number {
+  for (let i = index; i < messages.length; i++) {
+    const m = messages[i]
+    if (m.message_type === 'agent' && m.attributes?.source !== 'system' && m.message?.trim()) return i
+  }
+  return messages.length
 }
 
 /** The team's reply from \`index\` on: their messages until the customer writes again. */
@@ -159,12 +170,13 @@ function teamAnswerFrom(messages: Draftable[], index: number): string | null {
 /**
  * A help center draft from the conversation, or null when it doesn't hold
  * enough to be worth one:
- * - 'team': at the handover (\`index\` = handoverIndex), the question the AI
- *   couldn't answer and what the team replied. Nothing until the team has.
+ * - 'team': from the handover (`index` = handoverIndex), what the team replied
+ *   and the question it answers: the customer's last one before that reply,
+ *   asked before the handover or after it. Nothing until the team has replied.
  * - 'this': for the AI answer at \`index\`, its question and that answer, to correct.
  */
 export function knowledgeDraft(messages: Draftable[], index: number, source: 'team' | 'this'): FaqDraft | null {
-  const question = questionAt(messages, index)
+  const question = questionAt(messages, source === 'team' ? firstTeamReply(messages, index) : index)
   const answer = source === 'team' ? teamAnswerFrom(messages, index) : messages[index]?.message?.trim() ?? null
   if (!question || question.length < KNOWLEDGE_QUESTION_MIN) return null
   if (!answer || answer.length < KNOWLEDGE_ANSWER_MIN) return null

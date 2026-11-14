@@ -14,3 +14,8 @@ export type ChatMessage = Schemas['Message']
 export async function chatMessages(api: ApiClient, sessionId: string): Promise<ChatMessage[]> {
   return (await api.get<Schemas['ChatDetailResponse']>(`/chats/${sessionId}`)).messages
 }
+
+/** Gives a conversation to a teammate, as the header's assignee menu does. */
+export async function reassignChat(api: ApiClient, sessionId: string, toUserId: string): Promise<void> {
+  await api.post(`/sessions/${sessionId}/reassign`, { params: { to_user_id: toUserId } })
+}

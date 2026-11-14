@@ -19,6 +19,10 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Inbox | Below 1440px the details open over the thread and Escape closes them; search finds a customer by name or email | `specs/inbox/inbox.spec.ts` | P2 | ✅ |
 | Inbox | A note on a waiting chat needs no takeover and never reaches the customer's widget | `specs/inbox/notes.spec.ts` | P1 | ✅ |
 | Inbox | An @-mention notifies the teammate and lists the chat in their Mentions view | `specs/inbox/notes.spec.ts` | P2 | ✅ |
+| Inbox | Assigning a chat gives it to the teammate and takes it out of your inbox; one taken from you leaves your inbox live, without a reload | `specs/inbox/handling.spec.ts` | P1 | ✅ |
+| Inbox | Close asks first, tells the customer and files the chat under Closed; Send and close sends the reply, then closes once confirmed | `specs/inbox/handling.spec.ts` | P1 | ✅ |
+| Inbox | A half-written note never becomes the reply when the chat is taken over | `specs/inbox/handling.spec.ts` | P1 | ✅ |
+| Inbox | J/K move through the list, / finds, ? shows the shortcuts; on a phone the list and thread take turns | `specs/inbox/handling.spec.ts` | P2 | ✅ |
 | Setup and auth | Agent role is denied AI settings | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign-out, deactivation and a password change end sessions server-side; a refresh token is not an access token | `specs/auth/sessions.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |

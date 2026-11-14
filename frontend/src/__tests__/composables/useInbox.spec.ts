@@ -252,6 +252,21 @@ describe('useInboxThread', () => {
     wrapper.unmount()
   })
 
+  it('comes back to the conversation on screen while another one loads (J then K)', async () => {
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    let finishOther!: (value: unknown) => void
+    chat.getChatDetail.mockImplementationOnce(() => new Promise((resolve) => { finishOther = resolve }))
+    const other = result().open('s2')
+    await result().open('s1')
+    expect(result().selectedId.value).toBe('s1')
+    expect(result().loadingChat.value).toBe(false)
+    finishOther({ session_id: 's2', messages: [] })
+    await other
+    expect(result().chat.value?.session_id).toBe('s1')
+    wrapper.unmount()
+  })
+
   it('keeps the last one asked for when an older detail arrives late', async () => {
     const { result, wrapper } = host(() => useInboxThread())
     let finishSlow!: (value: unknown) => void

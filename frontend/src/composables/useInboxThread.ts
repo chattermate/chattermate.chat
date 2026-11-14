@@ -123,7 +123,13 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
 
   /** Open a conversation; `force` refetches the open one (the AI's latest turns aren't streamed). */
   async function open(sessionId: string, force = false): Promise<void> {
-    if (!force && chat.value?.session_id === sessionId) return
+    if (!force && chat.value?.session_id === sessionId) {
+      // Already on screen. Still select it: a quick J then K comes back to it
+      // while the other one loads, and that load is then dropped
+      selectedId.value = sessionId
+      loadingChat.value = false
+      return
+    }
     selectedId.value = sessionId
     delete unread[sessionId]
     loadingChat.value = true

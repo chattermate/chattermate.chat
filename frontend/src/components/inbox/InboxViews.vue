@@ -315,6 +315,11 @@ const countLabel = (item: InboxViewItem) => (item.count ? formatBadgeCount(item.
   color: var(--muted2);
 }
 
+/* On the selected view's tinted background muted2 falls under 4.5:1 */
+.view.active .count {
+  color: var(--text2);
+}
+
 .tone-waiting .count {
   background: var(--c-warn);
   color: var(--on-warn);

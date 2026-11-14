@@ -5,7 +5,7 @@ export { test, expect, type AgentSettings, type HandoverTeam, type Member, type 
 export { ApiClient } from './api/client'
 export { createGroup, createUser, roleId } from './api/team'
 export { orgDomain, setAlwaysClosed, setAlwaysOpen, setOrgDomain } from './api/organizations'
-export { chatMessages, chatsWithAgent, type ChatMessage, type ChatOverview } from './api/chats'
+export { chatMessages, chatsWithAgent, reassignChat, type ChatMessage, type ChatOverview } from './api/chats'
 export { notificationsFor, type AppNotification } from './api/notifications'
 export { findPerson, type Person } from './api/people'
 export { customizeAgent, uploadLauncherLogo } from './api/customization'

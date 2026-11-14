@@ -64,6 +64,14 @@ export class InboxPage {
     })
   }
 
+  /** Opens the view's first conversation (an org with one chat) */
+  async openFirstConversation(): Promise<void> {
+    await step('Agent opens the first conversation', async () => {
+      await this.page.getByRole('button', { name: /^Conversation with / }).first().click()
+      await expect(this.messageInput.or(this.noteBox)).toBeVisible()
+    })
+  }
+
   async search(text: string): Promise<void> {
     await this.searchBox.fill(text)
   }
@@ -151,6 +159,71 @@ export class InboxPage {
   toast(text: string): Locator {
     // why CSS: sonner's toasts carry no role or name of their own
     return this.page.locator('[data-sonner-toast]').filter({ hasText: text })
+  }
+
+  /** Gives the open chat to a teammate from the header's assignee menu */
+  async assignTo(name: string): Promise<void> {
+    await step(`Agent assigns the chat to ${name}`, async () => {
+      await this.page.getByRole('button', { name: /Change assignee/ }).click()
+      await this.page.getByRole('menuitemradio', { name: new RegExp(name) }).click()
+      await expect(this.toast(`Assigned to ${name}`)).toBeVisible()
+    })
+  }
+
+  /** Close, then the confirmation */
+  async closeChat(): Promise<void> {
+    await step('Agent closes the chat', async () => {
+      await this.page.getByRole('button', { name: 'Close conversation', exact: true }).click()
+      await this.confirmClose()
+    })
+  }
+
+  /** Writes a reply and uses Send and close, then confirms the close */
+  async sendAndClose(text: string): Promise<void> {
+    await step(`Agent replies "${text}" and closes the chat`, async () => {
+      await this.messageInput.fill(text)
+      await this.page.getByRole('button', { name: 'More send options' }).click()
+      await this.page.getByRole('menuitem', { name: 'Send and close' }).click()
+      await this.confirmClose()
+    })
+  }
+
+  private async confirmClose(): Promise<void> {
+    const dialog = this.page.getByRole('dialog', { name: 'Close this conversation?' })
+    await dialog.getByRole('button', { name: 'Close conversation' }).click()
+    await expect(dialog).toBeHidden()
+  }
+
+  get shortcutsSheet(): Locator {
+    return this.page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+  }
+
+  /** The list, by its heading (on a phone it gives way to the thread) */
+  get list(): Locator {
+    return this.page.getByRole('region', { name: this.listTitleName })
+  }
+
+  private get listTitleName(): RegExp {
+    return /Your inbox|Waiting for a human|All open|AI handling now|Mentions|Closed|Resolved by AI|Negative sentiment|Snoozed/
+  }
+
+  /** On a phone: back from the thread to the list */
+  async backToList(): Promise<void> {
+    await this.page.getByRole('button', { name: 'Back to conversations' }).click()
+  }
+
+  /** A key pressed on the inbox (its shortcuts: J, K, /, ?, Escape) */
+  async press(key: string): Promise<void> {
+    await this.page.keyboard.press(key)
+  }
+
+  async openNoteTab(): Promise<void> {
+    await this.page.getByRole('tab', { name: 'Note' }).click()
+  }
+
+  /** The dashboard at a phone's width */
+  async usePhoneWidth(): Promise<void> {
+    await this.page.setViewportSize({ width: 375, height: 812 })
   }
 
   /** The handover summary the AI left for the team */

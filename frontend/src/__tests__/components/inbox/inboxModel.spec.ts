@@ -264,6 +264,20 @@ describe('knowledge drafts', () => {
     expect(knowledgeDraft([{ message_type: 'user', message: 'Where is my parcel now?' }, { message_type: 'agent', message: 'Sure' }], 1, 'team')).toBeNull()
   })
 
+  it("pairs the team's reply with the question asked after the handover, past a system notice", () => {
+    const thread = [
+      { message_type: 'user', message: 'I want to talk to a person' },
+      { message_type: 'bot', message: 'Connecting you with a teammate.' },
+      { message_type: 'user', message: 'Do you ship to Norway?' },
+      { message_type: 'agent', message: "You're now connected with a member of our team.", attributes: { source: 'system' } },
+      { message_type: 'agent', message: 'Yes, we ship to Norway in 5 to 7 working days.' },
+    ]
+    expect(knowledgeDraft(thread, 1, 'team')).toEqual({
+      question: 'Do you ship to Norway?',
+      answer: 'Yes, we ship to Norway in 5 to 7 working days.',
+    })
+  })
+
   it("drafts a correction from an AI answer and the question it answered", () => {
     expect(knowledgeDraft(thread, 1, 'this')).toEqual({
       question: 'Hi, can I return a jacket delivered to Berlin for a refund?',
