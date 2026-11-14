@@ -18,7 +18,9 @@ A visitor's own past conversations: only theirs, under their token's scope,
 paged without duplicates, searched and continued.
 """
 
+import hashlib
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -27,6 +29,7 @@ from app.models.chat_history import ChatHistory
 from app.models.customer import Customer
 from app.models.session_to_agent import SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
+from app.services import email_proof
 from app.services import visitor_history as history
 
 SCOPE = "browser-key-1"
@@ -221,6 +224,18 @@ class TestOtherBrowsers:
     @pytest.fixture(autouse=True)
     def _keys_old_enough(self, monkeypatch):
         monkeypatch.setattr(history, "KEYS_INTRODUCED", START - timedelta(days=1))
+
+    @pytest.fixture(autouse=True)
+    def _a_proof_provider(self):
+        """The chat UI layer proves emails; this stands in for it."""
+        provider = MagicMock()
+        provider.available.return_value = True
+        provider.email_key.side_effect = lambda email, org_id: hashlib.sha256(
+            f"{org_id}:{email.strip().lower()}".encode()).hexdigest()
+        provider.mask.side_effect = lambda email: email[:1] + "•••@" + email.partition("@")[2]
+        email_proof.install(provider)
+        yield provider
+        email_proof.install(None)
 
     def _prove(self, monkeypatch, email=EMAIL):
         monkeypatch.setattr(history.email_proof, "verified_email", lambda session_id, customer_id=None: email)

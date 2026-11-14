@@ -817,7 +817,7 @@ def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools
 
     query = mock_post.call_args.kwargs["json"]["query"]
     # Cheap on purpose: Shopify charges a search for every variant it asks for,
-    # so the sheet reads options itself (shopify_product_options.py).
+    # so the sheet reads options itself (the chat UI layer).
     assert "variants(first: 2)" in query and "selectedOptions" not in query
     assert "hasOnlyDefaultVariant" in query and "tracksInventory" in query
     assert "publishedAt" in query
@@ -859,52 +859,8 @@ def test_product_tools_filter_only_on_what_the_customer_asked(shopify_tools, cal
 
 
 
-class TestEmailCheckTools:
-    """confirm_email and list_my_orders: the redesign's own-orders path."""
-
-    def test_offered_only_where_codes_can_be_kept(self, shopify_tools):
-        with patch("app.tools.shopify_toolkit.email_proof.available", return_value=False):
-            shopify_tools.offer_email_check()
-        assert "confirm_email" not in shopify_tools.functions
-        with patch("app.tools.shopify_toolkit.email_proof.available", return_value=True):
-            shopify_tools.offer_email_check()
-        assert {"confirm_email", "list_my_orders"} <= set(shopify_tools.functions)
-
-    def test_confirm_email_asks_for_the_check(self, shopify_tools):
-        from app.services.reply_ui import EMAIL_CHECK_EVENT, TurnEvents
-        shopify_tools.turn_events = TurnEvents()
-        with patch("app.tools.shopify_toolkit.email_proof.verified_email", return_value=None), \
-             patch("app.tools.shopify_toolkit.email_proof.offer", return_value=True) as offer:
-            result = json.loads(shopify_tools.confirm_email())
-        assert result["confirmed"] is False and shopify_tools.turn_events.of(EMAIL_CHECK_EVENT) == [{}]
-        offer.assert_called_once_with("test_session_id")
-
-    def test_confirm_email_falls_back_when_the_check_cannot_be_offered(self, shopify_tools):
-        from app.services.reply_ui import TurnEvents
-        shopify_tools.turn_events = TurnEvents()
-        with patch("app.tools.shopify_toolkit.email_proof.verified_email", return_value=None), \
-             patch("app.tools.shopify_toolkit.email_proof.offer", return_value=False):
-            result = json.loads(shopify_tools.confirm_email())
-        assert "order number and email" in result["message"] and shopify_tools.turn_events.all() == []
-
-    def test_list_my_orders_needs_a_proven_email(self, shopify_tools):
-        with patch("app.tools.shopify_toolkit.email_proof.verified_email", return_value=None), \
-             patch("requests.post") as post:
-            result = json.loads(shopify_tools.list_my_orders())
-        assert result["success"] is False
-        post.assert_not_called()
-
-    def test_list_my_orders_lists_only_that_emails_orders(self, shopify_tools, mock_shopify_service):
-        from app.services.reply_ui import RECENT_ORDERS_EVENT, TurnEvents
-        shopify_tools.turn_events = TurnEvents()
-        response = _orders_response(_order_node("#1001"), _order_node("#1002", email="someone.else@example.com"))
-        with patch("app.tools.shopify_toolkit.email_proof.verified_email", return_value=OWNER_EMAIL), \
-             patch("requests.post", return_value=response) as post:
-            result = json.loads(shopify_tools.list_my_orders())
-        assert [o["order_number"] for o in result["orders"]] == ["#1001"]
-        assert _sent_search(post) == f"email:{OWNER_EMAIL}"
-        [event] = shopify_tools.turn_events.of(RECENT_ORDERS_EVENT)
-        assert event["orders"] == result["orders"]
+class TestProvenEmail:
+    """An email the conversation proved (email_proof.py) stands in for a typed one."""
 
     def test_a_proven_email_looks_up_an_order_without_being_typed(self, shopify_tools, mock_shopify_service):
         shopify_tools._customer_messages = lambda: ["Where is my order #1001?"]

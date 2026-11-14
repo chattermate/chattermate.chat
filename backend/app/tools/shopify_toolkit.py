@@ -47,7 +47,7 @@ from app.tools.shopify_order_access import (
 )
 
 from app.services import email_proof
-from app.services.reply_ui import EMAIL_CHECK_EVENT, ORDER_EVENT, RECENT_ORDERS_EVENT, TurnEvents
+from app.services.reply_ui import ORDER_EVENT, TurnEvents
 logger = get_logger(__name__)
 
 # A slow store must not hold the chat turn open.
@@ -191,11 +191,40 @@ def product_from_node(node: dict) -> dict:
         "updated_at": node.get("updatedAt"),
         "cart_variant_id": cart_variant_id(node),
         # For the widget's carousel ("Only 3 left") and its product sheet, which
-        # fetches the options itself when opened (shopify_product_options.py)
+        # fetches the options itself when opened (the chat UI layer)
         "published": bool(node.get("publishedAt")),
         "tracks_inventory": node.get("tracksInventory"),
         "has_choices": node.get("hasOnlyDefaultVariant") is False,
     }
+
+
+def recent_orders(shop: ShopifyShop, email: str) -> Optional[List[Dict[str, Any]]]:
+    """The email's latest orders (exact email match), newest first, or None on failure.
+    For a proven email only (email_proof.py): it lists that address's orders."""
+    response = call_admin_api(shop, lambda token: requests.post(
+        shopify_admin_url(shop.shop_domain, "graphql.json"),
+        headers=admin_headers(token),
+        json={"query": ORDER_SEARCH_GRAPHQL,
+              "variables": {"query": f"email:{normalise_email(email)}", "first": RECENT_ORDERS}},
+        verify=settings.VERIFY_SSL_CERTIFICATES,
+        timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
+    ))
+    if response.status_code != 200 or "errors" in response.json():
+        logger.error(f"Recent orders search failed: {response.status_code}")
+        return None
+    edges = ((response.json().get("data") or {}).get("orders") or {}).get("edges") or []
+    orders = []
+    for edge in edges:
+        node = edge.get("node") or {}
+        if normalise_email(node.get("email")) != normalise_email(email):
+            continue
+        orders.append({
+            "order_number": node.get("name"),
+            "created_at": node.get("createdAt"),
+            "financial_status": node.get("displayFinancialStatus"),
+            "fulfillment_status": node.get("displayFulfillmentStatus"),
+        })
+    return orders
 
 
 def shop_for_agent(agent_id: Any, org_id: Any) -> Optional[ShopifyShop]:
@@ -647,93 +676,6 @@ class ShopifyTools(Toolkit):
         return (order_lookup_problem(customer_email, order_number)
                 or missing_from_chat(customer_email, order_number, self._customer_messages(),
                                      verified_email=email_proof.verified_email(self.session_id)))
-
-    def offer_email_check(self) -> None:
-        """Offer the email check and the visitor's own orders: the redesigned
-        widget only, and only where an email can be proven (email_proof.py)."""
-        if email_proof.available():
-            self.register(self.confirm_email)
-            self.register(self.list_my_orders)
-
-    def confirm_email(self) -> str:
-        """
-        Ask the customer to confirm their email address with a code, so you can
-        look up their orders without them typing order numbers and emails. Call it
-        when they want to see their orders or don't know their order number.
-
-        Returns:
-            str: JSON saying whether their email is already confirmed.
-        """
-        proven = email_proof.verified_email(self.session_id)
-        if proven:
-            return json.dumps({"confirmed": True, "message": "Their email is confirmed. Call list_my_orders."})
-        # Only a conversation that was offered the check may send a code.
-        if self.turn_events is None or not email_proof.offer(str(self.session_id)):
-            return json.dumps({"confirmed": False, "message": "Ask the customer for their order number and email."})
-        self.turn_events.add(EMAIL_CHECK_EVENT)
-        return json.dumps({"confirmed": False, "message": (
-            "The chat now shows the customer a box to confirm their email with a code. "
-            "Tell them to enter their email there. Do not ask them to type it in the chat.")})
-
-    def list_my_orders(self) -> str:
-        """
-        List the customer's recent orders, for an email they confirmed with a code
-        (confirm_email). Never takes an email from you.
-
-        Returns:
-            str: JSON with up to 5 recent orders: number, date and status.
-        """
-        try:
-            return self._list_my_orders()
-        except Exception as e:
-            logger.error(f"list_my_orders failed: {e}")
-            return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
-
-    def _list_my_orders(self) -> str:
-        email = email_proof.verified_email(self.session_id)
-        if not email:
-            return json.dumps({"success": False, "message": "Their email is not confirmed yet. Call confirm_email."})
-        # Only an address inert in Shopify's search syntax goes into the query
-        if order_lookup_problem(email, "1001"):
-            return json.dumps({"success": False, "message": ORDER_NOT_FOUND})
-        shop = self._get_shop_for_agent()
-        if not shop:
-            return json.dumps({"success": False, "message": "Shopify integration is not enabled for this agent"})
-        orders = self._recent_orders(shop, email)
-        if orders is None:
-            return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
-        if self.turn_events is not None and orders:
-            self.turn_events.add(RECENT_ORDERS_EVENT, {'orders': orders})
-        return json.dumps({"success": True, "orders": orders,
-                           "message": "No orders for this email." if not orders else
-                           "Ask which order they mean, or answer about the latest one."})
-
-    def _recent_orders(self, shop: ShopifyShop, email: str) -> Optional[List[Dict[str, Any]]]:
-        """The email's latest orders (exact email match), newest first, or None on failure."""
-        response = call_admin_api(shop, lambda token: requests.post(
-            shopify_admin_url(shop.shop_domain, "graphql.json"),
-            headers=admin_headers(token),
-            json={"query": ORDER_SEARCH_GRAPHQL,
-                  "variables": {"query": f"email:{normalise_email(email)}", "first": RECENT_ORDERS}},
-            verify=settings.VERIFY_SSL_CERTIFICATES,
-            timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
-        ))
-        if response.status_code != 200 or "errors" in response.json():
-            logger.error(f"Recent orders search failed: {response.status_code}")
-            return None
-        edges = ((response.json().get("data") or {}).get("orders") or {}).get("edges") or []
-        orders = []
-        for edge in edges:
-            node = edge.get("node") or {}
-            if normalise_email(node.get("email")) != normalise_email(email):
-                continue
-            orders.append({
-                "order_number": node.get("name"),
-                "created_at": node.get("createdAt"),
-                "financial_status": node.get("displayFinancialStatus"),
-                "fulfillment_status": node.get("displayFulfillmentStatus"),
-            })
-        return orders
 
     def _find_customer_orders(self, shop: ShopifyShop, customer_email: str, order_number: str) -> Dict[str, Any]:
         """The order with this number placed with this email. Shopify's search is fuzzy,
