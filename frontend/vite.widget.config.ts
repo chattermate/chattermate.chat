@@ -1,6 +1,7 @@
 import { defineConfig, transformWithEsbuild, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import { widgetExtensionPlugin } from './scripts/widget-ext'
 
 // Vite leaves an ES library build unminified in whitespace and comments, so a
 // bundler consuming it can still tree-shake. widget.js is never consumed: it is
@@ -27,6 +28,7 @@ const minifyFinishedBundle = (): Plugin => ({
 
 export default defineConfig({
   plugins: [
+    widgetExtensionPlugin(),
     minifyFinishedBundle(),
     vue({
       template: {

@@ -30,13 +30,12 @@ import SourceChips from './answer/SourceChips.vue'
 import LinkCard from './answer/LinkCard.vue'
 import AnswerActions from './answer/AnswerActions.vue'
 import FollowUpChips from './answer/FollowUpChips.vue'
-import StatusCard from './StatusCard.vue'
-import EmailCheckCard from './EmailCheckCard.vue'
 import { agentFace } from '../agent-face'
 import { renderMarkdown } from '../../markdown'
 import { decorateAnswerLinks, type AnswerSource } from '../../answer-links'
 import { hostOrigin } from '../../host-bridge'
-import { cardsOf, feedbackOf, followUpsOf } from '../answer-extras'
+import { feedbackOf, followUpsOf } from '../answer-extras'
+import { uiLayer } from '../../ui-layer'
 import { PANEL_COPY } from '../../copy'
 import type { WidgetMessage } from '../../../types/widget'
 
@@ -63,13 +62,8 @@ const answer = computed(() => {
     })
 })
 const files = computed(() => props.message.attachments ?? [])
-const cards = computed(() => (streaming.value ? [] : cardsOf(props.message)))
-// The email check shows once, on the latest reply that asked for it.
-const asksEmailCheck = computed(() => {
-    if (streaming.value || !inConversation.value || props.message.attributes?.email_check !== true) return false
-    const later = messages.value.slice(props.index + 1)
-    return !later.some(m => m.attributes?.email_check === true)
-})
+// What the chat UI layer draws under the text (status cards, the email check)
+const parts = uiLayer.answerParts ?? []
 const isLatest = computed(() => inConversation.value && props.index === messages.value.length - 1)
 const followUps = computed(() => (isLatest.value && !streaming.value ? followUpsOf(props.message) : []))
 // A tapped choice is a tap like a step's reply buttons: it sends, and every button
@@ -90,8 +84,7 @@ const answerText = () => body.value?.text() ?? ''
         </div>
         <AnswerBody ref="body" :html="answer.html" :busy="streaming" />
         <LinkCard v-if="answer.card && !streaming" :source="answer.card" class="cm-fade" />
-        <StatusCard v-for="(card, i) in cards" :key="card.id" :card="card" class="cm-enter" :style="{ '--cm-i': i }" />
-        <EmailCheckCard v-if="asksEmailCheck" class="cm-enter" />
+        <component :is="part" v-for="(part, i) in parts" :key="i" :message="message" :index="index" />
         <SourceChips v-if="sources.length" :sources="sources" />
         <AttachmentList v-if="files.length" :attachments="files" />
         <AnswerActions

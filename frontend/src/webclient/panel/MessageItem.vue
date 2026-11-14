@@ -15,7 +15,8 @@ limitations under the License.
 -->
 
 <script setup lang="ts">
-// Draws one message with the component for its kind (message-kind.ts). A message
+// Draws one message with the component for its kind (message-kind.ts, or the chat
+// UI layer's own, ui-layer/index.ts). A message
 // that arrived while the visitor watched rises in; history simply appears.
 import { computed, type Component } from 'vue'
 import { messageKind, type MessageKind } from './message-kind'
@@ -25,10 +26,10 @@ import HandoverCard from './messages/HandoverCard.vue'
 import HumanMessage from './messages/HumanMessage.vue'
 import JoinedDivider from './messages/JoinedDivider.vue'
 import FallbackMessage from './messages/FallbackMessage.vue'
-import ProductMessage from './messages/ProductMessage.vue'
 import RatingCard from './messages/RatingCard.vue'
 import FormCard from './messages/FormCard.vue'
 import UserInputCard from './messages/UserInputCard.vue'
+import { layerComponentFor } from '../ui-layer'
 import type { WidgetMessage } from '../../types/widget'
 
 const props = defineProps<{
@@ -45,14 +46,14 @@ const COMPONENT_FOR: Record<MessageKind, Component> = {
     human: HumanMessage,
     joined: JoinedDivider,
     system: JoinedDivider,
-    product: ProductMessage,
     rating: RatingCard,
     form: FormCard,
     userInput: UserInputCard,
     fallback: FallbackMessage,
 }
 
-const component = computed(() => COMPONENT_FOR[messageKind(props.message)])
+// A message the chat UI layer draws whole (a reply of products) is its; the rest the panel's
+const component = computed(() => layerComponentFor(props.message) ?? COMPONENT_FOR[messageKind(props.message)])
 </script>
 
 <template>

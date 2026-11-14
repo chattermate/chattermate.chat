@@ -36,10 +36,9 @@ import EmailCard from './EmailCard.vue'
 import FrontScreen from './screens/FrontScreen.vue'
 import ConversationEnded from './ConversationEnded.vue'
 import PreviewModal from './PreviewModal.vue'
-import ProductSheet from './ProductSheet.vue'
 import HistoryScreen from './history/HistoryScreen.vue'
 import PastConversation from './history/PastConversation.vue'
-import CartBar from './CartBar.vue'
+import { uiLayer } from '../ui-layer'
 import { usePanelVisibility } from '../../composables/usePanelVisibility'
 import { usePanelActivity, usePanelCascade, usePanelExpand } from '../../composables/usePanelHostMotion'
 import { postToHost } from '../host-bridge'
@@ -120,6 +119,9 @@ const showWorkflowScreen = computed(() =>
     (showLandingPage.value && !!landingPageData.value) || (showFullScreenForm.value && !!fullScreenFormData.value))
 // The composer stays beside the email card: a send waits for the email (useComposer).
 const showComposer = computed(() => !shouldShowNewConversationOption.value)
+// The chat UI layer's own: above the message box (the cart bar) and over the panel (the product sheet)
+const composerTop = uiLayer.composerTop ?? []
+const overlays = uiLayer.overlays ?? []
 
 // The start state stands in for the conversation while there is nothing at all to
 // show in it, for every chat style (the Ask Anything welcome included).
@@ -174,13 +176,15 @@ const rootStyle = computed(() => ({
                 </div>
                 <div class="cm-panel__bottom">
                     <ConversationEnded v-if="shouldShowNewConversationOption" />
-                    <CartBar v-if="showComposer && !history.showing" />
+                    <template v-if="showComposer && !history.showing">
+                        <component :is="part" v-for="(part, i) in composerTop" :key="i" />
+                    </template>
                     <Composer v-if="showComposer && !history.showing" ref="composer" />
                     <PanelFooter />
                 </div>
             </template>
             <PreviewModal />
-            <ProductSheet />
+            <component :is="overlay" v-for="(overlay, i) in overlays" :key="i" />
         </div>
     </div>
 </template>

@@ -16,6 +16,8 @@ limitations under the License.
 
 import { describe, expect, it } from 'vitest'
 import { isJoinedNote, messageKind } from '@/webclient/panel/message-kind'
+import { layerComponentFor } from '@/webclient/ui-layer'
+import ProductMessage from '@/webclient/panel/messages/ProductMessage.vue'
 import { agentFace, initialsOf } from '@/webclient/panel/agent-face'
 import type { WidgetMessage } from '@/types/widget'
 
@@ -31,15 +33,17 @@ describe('which component draws a message', () => {
         ['rating', 'rating'],
         ['form', 'form'],
         ['user_input', 'userInput'],
-        ['product', 'product'],
+        // A reply of products the chat UI layer does not draw is its text
+        ['product', 'answer'],
         ['something_new', 'fallback'],
     ])('%s → %s', (type, kind) => {
         expect(messageKind(message({ message_type: type }))).toBe(kind)
     })
 
-    it('draws a reply carrying products as a product message whatever its type', () => {
-        expect(messageKind(message({ message_type: 'bot', shopify_output: { products: [] } }))).toBe('product')
-        expect(messageKind(message({ message_type: 'agent', shopify_output: { products: [] } }))).toBe('product')
+    it('leaves a reply carrying products to the chat UI layer, whatever its type', () => {
+        expect(layerComponentFor(message({ message_type: 'bot', shopify_output: { products: [] } }))).toBe(ProductMessage)
+        expect(layerComponentFor(message({ message_type: 'agent', shopify_output: { products: [] } }))).toBe(ProductMessage)
+        expect(layerComponentFor(message({ message_type: 'bot' }))).toBeUndefined()
     })
 
     it('tells the takeover note from other system notes', () => {
