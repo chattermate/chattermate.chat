@@ -1,3 +1,17 @@
+# The widget bundle (widget.js / widget.css), built from source so the image serves
+# the widget its own code makes, with the chat UI layer when the enterprise module is
+# checked out (frontend/scripts/widget-ext.ts). The output is plain JavaScript, so it
+# builds once on the build machine's platform, whatever platforms the image targets.
+# BuildKit sets BUILDPLATFORM; the default is for the legacy builder only.
+ARG BUILDPLATFORM=linux/amd64
+FROM --platform=$BUILDPLATFORM node:22-slim AS widget
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm install --no-audit --no-fund
+COPY frontend/ .
+ENV CHATTERMATE_IMAGE_BUILD=1
+RUN npm run build:widgetdocker
+
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -34,6 +48,8 @@ COPY backend/alembic.ini .
 COPY backend/alembic ./alembic
 COPY backend/scripts ./scripts
 COPY backend/assets ./assets
+# Today's widget over the committed copy (see the widget stage above)
+COPY --from=widget /app/backend-assets/widget.js /app/backend-assets/widget.css ./assets/
 
 # Create required directories including cache directories
 RUN mkdir -p uploads/agents && \
