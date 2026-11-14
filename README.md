@@ -16,7 +16,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/images/inbox-dark.webp">
-    <img src=".github/images/inbox-light.webp" alt="ChatterMate shared inbox: AI and human agents answering customers from the web widget, WhatsApp, Messenger, Instagram and Telegram">
+    <img src=".github/images/inbox-light.webp" alt="ChatterMate shared inbox: views for waiting and AI-handled chats, a conversation a teammate took over from the AI with an internal note, and the customer details panel">
   </picture>
 </p>
 
@@ -75,6 +75,7 @@ ChatterMate is a **no-code AI customer support platform** that enables businesse
 | Feature | Description |
 |---------|-------------|
 | 🤝 **Smart Human Handoff** | Intelligent AI-to-human transfer with **business hours awareness**, real-time availability detection, and context-aware escalation messages. |
+| 📥 **Shared Inbox** | One inbox for every chat the AI and your team handle, across all channels: views for chats waiting for a person, yours, mentions and AI-handled chats, **internal notes with @mentions**, editing a reply you sent, keyboard shortcuts and a customer details panel. The hosted service adds snooze, saved replies, saved views and AI help with drafts and summaries. |
 | 🛍️ **Shopify & E-commerce Support** | Native **Shopify integration** ([App Store listing](https://apps.shopify.com/chattermate-chat)) — answer order, shipping, and product questions from store data. Works for any online store. |
 | 📝 **WordPress Plugin** | Official **WordPress plugin** ([download](https://github.com/chattermate/chattermate-wordpress-plugin/releases/latest/download/chattermate-chat.zip)) — add the chat widget to any WordPress site by entering your Widget ID. No theme edits required. |
 | 🧠 **Multi-Model AI Support** | Choose your AI provider — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **Mistral**, **xAI (Grok)**, **DeepSeek**, and **Groq** — with your own API key, or enter a custom model ID. Switch providers anytime without code changes. |
