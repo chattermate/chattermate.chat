@@ -18,6 +18,7 @@ message carries on in a new conversation,
 or, when the visitor's record went too, the widget is sent to authorize again.
 """
 import asyncio
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -291,3 +292,19 @@ async def test_a_visitor_merged_into_another_record_reconnects(db, socket, sio, 
 
     sio.disconnect.assert_awaited_once()
     assert sessions_of(db, test_customer.id) == []
+
+
+@pytest.mark.asyncio
+class TestLiveMessageTime:
+    async def test_the_inbox_gets_the_time_with_its_zone(self, db, socket, sio, test_user):
+        """An agent's browser reads a time without a zone as its own local time,
+        so a message that just arrived showed as hours old (or hours ahead)."""
+        session = db.query(SessionToAgent).filter(SessionToAgent.session_id == UUID(socket["session_id"])).one()
+        session.user_id = test_user.id
+        db.commit()
+
+        await send("is anyone there?")
+
+        [to_agent, to_room] = emitted(sio, "chat_reply")
+        for stamp in (to_agent["created_at"], to_room["timestamp"]):
+            assert datetime.fromisoformat(stamp).utcoffset() == timedelta(0)
