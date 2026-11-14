@@ -14,37 +14,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-"""Team notes on a conversation, with @-mentions, and snoozing it.
+"""Team notes on a conversation, with @-mentions.
 
 Mounted under /sessions with the takeover routes, and checked the same way
 (_load_manageable_session): permission, organization, then inbox visibility.
 """
 
-from datetime import datetime, timedelta, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.session_to_agent import _load_manageable_session, _require_may_change_hands
+from app.api.session_to_agent import _load_manageable_session
 from app.core.auth import get_current_user
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.database import get_db
 from app.models.notification import NotificationType
-from app.models.schemas.chat import ChatDetailResponse, ConversationNoteResponse, NoteCreate, SnoozeRequest
-from app.models.session_to_agent import SessionStatus
+from app.models.schemas.chat import ConversationNoteResponse, NoteCreate
 from app.models.user import User
-from app.repositories.chat import ChatRepository
 from app.repositories.conversation_notes import ConversationNoteRepository
-from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.agent_rooms import emit_to_org_inbox
 from app.services.notifications import notify_user
 
 logger = get_logger(__name__)
 router = APIRouter()
 
-# A snooze is for "later today", "tomorrow", "next week", not for parking a chat
-SNOOZE_MAX = timedelta(days=90)
 
 
 @router.post("/{session_id}/notes", response_model=ConversationNoteResponse, status_code=status.HTTP_201_CREATED)
@@ -100,53 +93,3 @@ async def add_note(
             await sio.emit('room_event', event, room=f"user_{user.id}", namespace='/agent')
 
     return next(n for n in repo.for_session(session.session_id) if n['id'] == note.id)
-
-
-async def _chat_detail(db: Session, session_id: str, current_user: User) -> ChatDetailResponse:
-    chat = await ChatRepository(db).get_chat_detail(session_id=session_id, org_id=current_user.organization_id)
-    if not chat:
-        raise HTTPException(status_code=500, detail="Failed to read the conversation back")
-    return ChatDetailResponse(**chat)
-
-
-@router.post("/{session_id}/snooze", response_model=ChatDetailResponse)
-async def snooze_chat(
-    session_id: str,
-    payload: SnoozeRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Take the conversation out of the inbox's views until `until`. It comes
-    back then, or as soon as the customer writes again."""
-    session = await _load_manageable_session(db, session_id, current_user)
-    if session.status == SessionStatus.CLOSED:
-        raise HTTPException(status_code=400, detail="This chat is closed")
-    _require_may_change_hands(session, current_user)
-    # Snoozing would take a waiting customer out of everyone's queue
-    if session.status == SessionStatus.TRANSFERRED and session.user_id is None:
-        raise HTTPException(status_code=400, detail="Someone is waiting for a person: assign the chat before snoozing it")
-
-    until = payload.until if payload.until.tzinfo else payload.until.replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    if until <= now:
-        raise HTTPException(status_code=422, detail="Snooze until a time in the future")
-    if until - now > SNOOZE_MAX:
-        raise HTTPException(status_code=422, detail="Snooze for 90 days at most")
-
-    if not SessionToAgentRepository(db).update_session(session.session_id, {'snoozed_until': until}):
-        raise HTTPException(status_code=500, detail="Failed to snooze the chat")
-    return await _chat_detail(db, session_id, current_user)
-
-
-@router.delete("/{session_id}/snooze", response_model=ChatDetailResponse)
-async def unsnooze_chat(
-    session_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Bring a snoozed conversation back into the inbox now."""
-    session = await _load_manageable_session(db, session_id, current_user)
-    if session.snoozed_until is not None:
-        if not SessionToAgentRepository(db).update_session(session.session_id, {'snoozed_until': None}):
-            raise HTTPException(status_code=500, detail="Failed to unsnooze the chat")
-    return await _chat_detail(db, session_id, current_user)

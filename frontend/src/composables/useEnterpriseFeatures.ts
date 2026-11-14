@@ -119,6 +119,16 @@ const moduleImports = {
   setupService: '/src/modules/enterprise/utils/setupService.ts',
   // The setup assistant docked beside the onboarding wizard (nothing in open source)
   setupAssistant: '/src/modules/enterprise/components/setup/SetupAssistantDock.vue',
+  // The inbox's paid tools (nothing in open source): Snooze in the thread's
+  // header and its notice above the messages, saved replies and Improve in the
+  // composer (they reach the draft through COMPOSER_HANDLE), and Refresh and
+  // the AI-drafted article on the handover summary
+  inboxThreadTools: '/src/modules/enterprise/components/inbox/InboxThreadTools.vue',
+  inboxThreadNotice: '/src/modules/enterprise/components/inbox/InboxThreadNotice.vue',
+  inboxComposerTools: '/src/modules/enterprise/components/inbox/InboxComposerTools.vue',
+  inboxSummaryTools: '/src/modules/enterprise/components/inbox/InboxSummaryTools.vue',
+  // The team's saved replies (settings page)
+  savedRepliesView: '/src/modules/enterprise/views/SavedRepliesView.vue',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */

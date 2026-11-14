@@ -1,17 +1,6 @@
-import { test, expect, notificationsFor, type ChatWidget, type FakeLlm, type TestAgent } from '@e2e'
+import { test, expect, askForAPerson, notificationsFor } from '@e2e'
 
 const SECRET = 'Reseller account, do not refund without finance'
-
-/** A named customer (the contact form follows a handover) waiting for the team */
-async function askForAPerson(agent: TestAgent, widget: ChatWidget, llm: FakeLlm): Promise<void> {
-  await llm.script(agent, (s) => s
-    .when(/human|person/i).handOver('Connecting you with a teammate.')
-    .otherwise().reply('Happy to help!'))
-  await widget.embed()
-  await widget.open()
-  await widget.send('I want to talk to a person')
-  await widget.shareContactDetails()
-}
 
 test.describe('inbox notes', () => {
   test.use({ agentSettings: { transferToHuman: true } })
@@ -45,35 +34,5 @@ test.describe('inbox notes', () => {
       .toContainEqual(expect.stringContaining('mentioned you'))
     const counts = await teammate.api.get<{ mentions: number }>('/chats/counts')
     expect(counts.mentions).toBeGreaterThanOrEqual(1)
-  })
-
-  test('a snoozed chat leaves Your inbox until the customer writes again @inbox', async ({ agent, widget, inbox, llm }) => {
-    await askForAPerson(agent, widget, llm)
-
-    await inbox.goto('/conversations?view=waiting')
-    await inbox.openConversationWith(widget.customer.name)
-    await inbox.takeOver()
-    await inbox.snooze('3 hours')
-
-    await inbox.openView('Your inbox')
-    await expect(inbox.conversation(widget.customer.name)).toBeHidden()
-    await inbox.openView('Snoozed')
-    await expect(inbox.conversation(widget.customer.name)).toBeVisible()
-
-    await widget.send('Hello? Still waiting')
-    await expect(async () => {
-      await inbox.openView('Your inbox')
-      await expect(inbox.conversation(widget.customer.name)).toBeVisible({ timeout: 2_000 })
-    }).toPass({ timeout: 20_000 })
-  })
-
-  test('a chat waiting for a person cannot be snoozed out of the queue @inbox', async ({ agent, widget, inbox, llm }) => {
-    await askForAPerson(agent, widget, llm)
-
-    await inbox.goto('/conversations?view=waiting')
-    await inbox.openConversationWith(widget.customer.name)
-    const actions = await inbox.moreActions()
-    expect(actions).toContain('Refresh conversation')
-    expect(actions.filter((label) => label.startsWith('Snooze'))).toEqual([])
   })
 })

@@ -16,7 +16,8 @@ limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
-import { nextTick, ref } from 'vue'
+import { defineComponent, h, inject, nextTick, ref } from 'vue'
+import { COMPOSER_HANDLE } from '@/components/inbox/composerHandle'
 import ThreadHeader from '@/components/inbox/ThreadHeader.vue'
 import ThreadBanner from '@/components/inbox/ThreadBanner.vue'
 import HandoverSummaryCard from '@/components/inbox/HandoverSummaryCard.vue'
@@ -153,6 +154,18 @@ describe('HandoverSummaryCard', () => {
     expect(wrapper.find('.handover-line').text()).toContain('Shop assistant handed over')
     expect(wrapper.find('.handover-line').text()).toContain('No answer in knowledge')
     expect(wrapper.find('.summary').text()).toBe('Wants a refund.')
+  })
+
+  it('puts its actions slot in place of the plain knowledge link, and shows a newer summary', () => {
+    const wrapper = mount(HandoverSummaryCard, {
+      props: { agentName: 'Shop assistant', summary: 'Wants a refund.', knowledgeLink: '/faq?question=Refund', latestSummary: 'Refund sent.' },
+      slots: { actions: () => h('button', { class: 'refresh' }, 'Refresh') },
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+    expect(wrapper.find('.refresh').exists()).toBe(true)
+    expect(wrapper.findComponent(RouterLinkStub).exists()).toBe(false)
+    expect(wrapper.find('.summary').text()).toBe('Refund sent.')
+    expect(wrapper.find('.card-title').text()).toContain('updated just now')
   })
 
   it('reads a summary of "- " lines as a list', () => {
@@ -338,6 +351,42 @@ describe('ThreadComposer', () => {
     await wrapper.find('.window-closed .btn').trigger('click')
     expect(wrapper.emitted('send-template')).toHaveLength(1)
     wrapper.unmount()
+  })
+})
+
+describe('ThreadComposer tools (#tools)', () => {
+  const Tool = defineComponent({
+    setup() {
+      const handle = inject(COMPOSER_HANDLE)!
+      handle.onKeydown((event) => {
+        if (event.key !== 'Enter' || handle.text.value !== '/x') return false
+        handle.text.value = 'Expanded reply'
+        return true
+      })
+      return () => h('button', { class: 'tool', onClick: () => { handle.text.value = 'From a tool' } }, 'tool')
+    },
+  })
+  const mountWithTool = (props: Record<string, unknown> = {}) =>
+    mount(ThreadComposer, {
+      props: {
+        modelValue: '', mode: 'reply', canReply: true, canTakeOver: false, canSend: true, hasFiles: false,
+        showTemplateNotice: false, teammates: [], 'onUpdate:modelValue': () => {}, ...props,
+      },
+      slots: { tools: () => h(Tool) },
+    })
+
+  it('lets a tool write the draft, and handle a key before the composer sends', async () => {
+    const wrapper = mountWithTool({ modelValue: '/x' })
+    await wrapper.find('textarea').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('send')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['Expanded reply'])
+
+    await wrapper.find('.tool').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['From a tool'])
+  })
+
+  it('shows no reply tools while writing a note', () => {
+    expect(mountWithTool({ mode: 'note' }).find('.tool').exists()).toBe(false)
   })
 })
 

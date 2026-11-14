@@ -240,11 +240,6 @@ class NoteCreate(BaseModel):
     mentions: List[UUID] = Field(default_factory=list, max_length=20)
 
 
-class SnoozeRequest(BaseModel):
-    """Hide the conversation from the inbox's views until then."""
-    until: datetime
-
-
 class ChatDetailResponse(BaseModel):
     customer: CustomerInfo
     agent: AgentInfo

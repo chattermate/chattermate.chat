@@ -32,6 +32,7 @@ import { useConversationChat } from '@/composables/useConversationChat'
 import { useConversationFiles } from '@/composables/useConversationFiles'
 import { useJiraTicket } from '@/composables/useJiraTicket'
 import { useVisualViewport } from '@/composables/useVisualViewport'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { chatHandler } from '@/utils/chatState'
 import { permissionChecks } from '@/utils/permissions'
 import { canAccessPath } from '@/router/routePermissions'
@@ -49,8 +50,7 @@ import ThreadNote from './ThreadNote.vue'
 import HandoverSummaryCard from './HandoverSummaryCard.vue'
 import { useComposerDrafts } from './composerDrafts'
 import { customerName } from './inboxPresentation'
-import { buildTimeline, handoverIndex, knowledgeDraft } from './threadContent'
-import { snoozeChoices } from './snooze'
+import { buildTimeline, faqEditorLink, handoverIndex, knowledgeDraft, type FaqDraft } from './threadContent'
 
 const props = defineProps<{
   chat: ChatDetail
@@ -203,17 +203,17 @@ async function addNote(body: string, mentions: string[]) {
   }
 }
 
-// ---- Snooze ----
-const snoozedUntil = computed(() => {
-  const until = props.chat.snoozed_until ? new Date(props.chat.snoozed_until) : null
-  return until && until > props.now ? until : null
-})
-const snoozedLabel = computed(() =>
-  snoozedUntil.value?.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) ?? ''
-)
-const snooze = (until: Date, label: string) =>
-  run(() => chatService.snooze(props.chat.session_id, until), `Snoozed until ${label}`)
-const unsnooze = () => run(() => chatService.unsnooze(props.chat.session_id), 'Back in the inbox')
+// ---- The enterprise module's tools (each renders nothing in open source) ----
+// Snooze in the header and its notice; saved replies and Improve in the
+// composer; Refresh and the AI-drafted article on the handover summary
+const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const InboxThreadTools = enterpriseComponent(moduleImports.inboxThreadTools)
+const InboxThreadNotice = enterpriseComponent(moduleImports.inboxThreadNotice)
+const InboxComposerTools = enterpriseComponent(moduleImports.inboxComposerTools)
+const InboxSummaryTools = enterpriseComponent(moduleImports.inboxSummaryTools)
+/** A Refresh's summary, for this conversation only */
+const latestSummary = ref<string | null>(null)
+const onChatUpdated = (updated: ChatDetail) => emit('chat-updated', updated)
 
 // ---- Closing ----
 const canClose = computed(() => holdsIt.value)
@@ -258,11 +258,6 @@ const moreActions = computed<ActionMenuItem[]>(() => {
   if (mayChangeHands.value && aiCapable.value && open && handler.value.kind !== 'ai') {
     items.push({ id: 'release', label: 'Hand back to AI' })
   }
-  // Not a chat waiting for a person: it would leave everyone's queue
-  if (mayChangeHands.value && open && handler.value.kind !== 'waiting') {
-    if (snoozedUntil.value) items.push({ id: 'unsnooze', label: 'Unsnooze', separated: true })
-    else snoozeChoices(props.now).forEach((choice, i) => items.push({ id: `snooze:${i}`, label: `Snooze · ${choice.label}`, separated: i === 0 }))
-  }
   items.push({ id: 'refresh', label: 'Refresh conversation', separated: items.length > 0 })
   return items
 })
@@ -274,11 +269,6 @@ function onAction(id: string) {
   else if (id === 'send-template') showTemplatePicker.value = true
   else if (id === 'route-to-team') void routeToTeam()
   else if (id === 'release') void releaseToAi()
-  else if (id === 'unsnooze') void unsnooze()
-  else if (id.startsWith('snooze:')) {
-    const choice = snoozeChoices(props.now)[Number(id.slice('snooze:'.length))]
-    if (choice) void snooze(choice.until, choice.label)
-  }
   else if (id === 'refresh') emit('refresh')
 }
 
@@ -299,15 +289,15 @@ const handoverAt = computed(() => handoverIndex(formattedMessages.value, props.c
 
 /** The help center editor with a question and its answer filled in, when the
  * conversation has both; nothing for someone who can't edit knowledge. */
-function faqLink(draft: { question: string; answer: string } | null): string | null {
-  if (!canEditKnowledge || !draft) return null
-  return `/faq?${new URLSearchParams({ question: draft.question, answer: draft.answer }).toString()}`
+function faqLink(draft: FaqDraft | null): string | null {
+  return canEditKnowledge && draft ? faqEditorLink(draft) : null
 }
 
 // The team answered what the AI couldn't: that answer, for the next customer
-const knowledgeLink = computed(() =>
-  faqLink(knowledgeDraft(formattedMessages.value, handoverAt.value, 'team'))
+const teamAnswer = computed<FaqDraft | null>(() =>
+  canEditKnowledge ? knowledgeDraft(formattedMessages.value, handoverAt.value, 'team') : null
 )
+const knowledgeLink = computed(() => faqLink(teamAnswer.value))
 
 // Each AI answer can be corrected: its question, and the answer to fix
 const correctionLinks = computed(() =>
@@ -339,6 +329,7 @@ onMounted(async () => {
   await refreshLinkedTicket()
 })
 watch(() => props.chat.session_id, () => {
+  latestSummary.value = null
   confirmingClose.value = false
   confirmingTakeover.value = false
   void refreshLinkedTicket()
@@ -362,7 +353,11 @@ defineExpose({ requestClose })
       @action="onAction"
       @toggle-details="emit('toggle-details')"
       @back="emit('back')"
-    />
+    >
+      <template v-if="hasEnterpriseModule" #tools>
+        <InboxThreadTools :chat="chat" :now="now" :may-change-hands="mayChangeHands" @chat-updated="onChatUpdated" />
+      </template>
+    </ThreadHeader>
 
     <ThreadBanner
       v-if="holdsIt"
@@ -375,10 +370,13 @@ defineExpose({ requestClose })
       @release="releaseToAi"
     />
 
-    <div v-if="snoozedUntil" class="snoozed" role="status">
-      <span>Snoozed until {{ snoozedLabel }}. It comes back then, or when the customer writes.</span>
-      <button v-if="mayChangeHands" type="button" class="snoozed-btn" :disabled="busy" @click="unsnooze">Unsnooze</button>
-    </div>
+    <InboxThreadNotice
+      v-if="hasEnterpriseModule"
+      :chat="chat"
+      :now="now"
+      :may-change-hands="mayChangeHands"
+      @chat-updated="onChatUpdated"
+    />
 
     <div ref="messagesContainer" class="messages" tabindex="0" aria-label="Messages">
       <template v-for="entry in timeline" :key="entry.key">
@@ -392,7 +390,17 @@ defineExpose({ requestClose })
           :summary="chat.transfer_description"
           :handed-over-at="chat.handed_over_at"
           :knowledge-link="knowledgeLink"
-        />
+          :latest-summary="latestSummary"
+        >
+          <template v-if="hasEnterpriseModule" #actions>
+            <InboxSummaryTools
+              :chat="chat"
+              :plain-draft="teamAnswer"
+              :can-manage="canManage"
+              @summary="latestSummary = $event"
+            />
+          </template>
+        </HandoverSummaryCard>
         <ThreadNote v-else-if="entry.kind === 'note'" :note="entry.note" :current-user-id="currentUserId" />
         <ThreadMessage
           v-else
@@ -440,6 +448,9 @@ defineExpose({ requestClose })
     >
       <template #attach>
         <FileUpload ref="fileUploadRef" :max-files="3" @files-uploaded="handleFilesUploaded" @error="handleFileUploadError" />
+      </template>
+      <template v-if="hasEnterpriseModule" #tools>
+        <InboxComposerTools :chat="chat" :can-manage="canManage" />
       </template>
     </ThreadComposer>
 
@@ -507,38 +518,8 @@ defineExpose({ requestClose })
   padding: 16px 24px;
 }
 
-.snoozed {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 6px 16px 6px 20px;
-  box-sizing: border-box;
-  border-bottom: 1px solid var(--o07);
-  background: var(--o04);
-  font-size: 13px;
-  color: var(--text3);
-}
 
-.snoozed span {
-  flex: 1;
-  min-width: 0;
-}
 
-.snoozed-btn {
-  flex-shrink: 0;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 1px solid var(--o10);
-  background: transparent;
-  color: var(--text2);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
 
 .day {
   display: flex;

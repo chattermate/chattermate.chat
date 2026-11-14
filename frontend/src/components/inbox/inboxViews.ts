@@ -78,6 +78,7 @@ const GROUPS: Array<{ heading: string | null; views: InboxViewKey[] }> = [
   { heading: null, views: ['mine', 'mentions', 'waiting', 'open', 'snoozed'] },
   { heading: 'AI agents', views: ['ai', 'resolved_by_ai', 'closed'] },
 ]
+// Snoozed shows once something is (snoozing is the enterprise module's)
 const SAVED_VIEWS: InboxViewKey[] = ['negative']
 
 export const DEFAULT_SELECTION: InboxSelection = { view: 'open', channel: null }
@@ -140,7 +141,10 @@ export function inboxViewGroups(counts: InboxCounts | null, selected?: InboxSele
     .map(([channel, count]) => channelItem(channel, count))
 
   return [
-    ...GROUPS.map(({ heading, views }) => ({ heading, items: views.map((v) => viewItem(v, counts)) })),
+    ...GROUPS.map(({ heading, views }) => ({
+      heading,
+      items: views.filter((v) => v !== 'snoozed' || counts?.snoozed || selected?.view === 'snoozed').map((v) => viewItem(v, counts)),
+    })),
     ...(channels.length ? [{ heading: 'Channels', items: channels }] : []),
     { heading: 'Saved views', items: SAVED_VIEWS.map((v) => viewItem(v, counts)) },
   ]

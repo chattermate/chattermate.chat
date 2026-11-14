@@ -4309,31 +4309,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sessions/{session_id}/snooze": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Snooze Chat
-         * @description Take the conversation out of the inbox's views until `until`. It comes
-         *     back then, or as soon as the customer writes again.
-         */
-        post: operations["snooze_chat_api_v1_sessions__session_id__snooze_post"];
-        /**
-         * Unsnooze Chat
-         * @description Bring a snoozed conversation back into the inbox now.
-         */
-        delete: operations["unsnooze_chat_api_v1_sessions__session_id__snooze_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/analytics/agent-performance": {
         parameters: {
             query?: never;
@@ -9196,17 +9171,6 @@ export interface components {
             label: string;
             /** Fields */
             fields: unknown[];
-        };
-        /**
-         * SnoozeRequest
-         * @description Hide the conversation from the inbox's views until then.
-         */
-        SnoozeRequest: {
-            /**
-             * Until
-             * Format: date-time
-             */
-            until: string;
         };
         /** Start */
         Start: {
@@ -19227,76 +19191,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationNoteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    snooze_chat_api_v1_sessions__session_id__snooze_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: {
-                access_token?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SnoozeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    unsnooze_chat_api_v1_sessions__session_id__snooze_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: {
-                access_token?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatDetailResponse"];
                 };
             };
             /** @description Validation Error */

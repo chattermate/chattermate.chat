@@ -20,12 +20,14 @@ limitations under the License.
  * once you hold the chat; otherwise the Reply tab offers to take it over).
  * Note writes to the team: amber, never sent to the customer, and "@" picks a
  * teammate to mention. Enter sends, Shift+Enter breaks the line. The attach
- * control comes from the parent (#attach), which owns the upload state.
+ * control comes from the parent (#attach), which owns the upload state; more
+ * reply tools (#tools) reach the draft through COMPOSER_HANDLE.
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, provide, ref, watch } from 'vue'
 import ActionMenu from '@/components/common/ActionMenu.vue'
 import { navIconSvg } from '@/components/layout/navIcons'
 import { matchMentionables, mentionQuery, mentionedIds, type Mentionable } from './mentions'
+import { COMPOSER_HANDLE } from './composerHandle'
 
 export type ComposerMode = 'reply' | 'note'
 
@@ -99,6 +101,17 @@ async function pick(person: Mentionable) {
 watch(message, (text) => { if (!text && isNote.value) picked.value = [] })
 watch(mode, () => { mention.value = null })
 
+// ---- Reply tools (#tools) ----
+const toolKeyHandlers = new Set<(event: KeyboardEvent) => boolean>()
+provide(COMPOSER_HANDLE, {
+  text: message,
+  input,
+  onKeydown(handler) {
+    toolKeyHandlers.add(handler)
+    return () => toolKeyHandlers.delete(handler)
+  },
+})
+
 function submit() {
   if (sendDisabled.value) return
   if (isNote.value) emit('send-note', message.value.trim(), mentionedIds(message.value, picked.value))
@@ -106,6 +119,9 @@ function submit() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+  if (!isNote.value) {
+    for (const handler of toolKeyHandlers) if (handler(event)) return
+  }
   if (suggestions.value.length) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
@@ -191,7 +207,10 @@ defineExpose({ focus: () => input.value?.focus() })
 
       <div class="bar">
         <div class="tools">
-          <slot v-if="!isNote" name="attach" />
+          <template v-if="!isNote">
+            <slot name="attach" />
+            <slot name="tools" />
+          </template>
         </div>
         <div class="send-group">
           <kbd aria-hidden="true">↵</kbd>
@@ -206,6 +225,7 @@ defineExpose({ focus: () => input.value?.focus() })
             <ActionMenu
               v-if="!isNote && canSend && (hasText || hasFiles)"
               label="More send options"
+              side="above"
               :items="[{ id: 'send-and-close', label: 'Send and close' }]"
               trigger-class="send-more"
               @select="emit('send-and-close')"
@@ -245,7 +265,9 @@ defineExpose({ focus: () => input.value?.focus() })
   flex: 1 1 240px;
 }
 
+/* Positioned: a tool's picker opens above the whole composer */
 .composer {
+  position: relative;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -381,6 +403,32 @@ defineExpose({ focus: () => input.value?.focus() })
   align-items: center;
   gap: 2px;
   min-width: 0;
+}
+
+/* A reply tool's button (class="tool"), in the #tools slot or a menu's trigger */
+.tools :deep(.tool) {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tools :deep(.tool:hover),
+.tools :deep(.tool[aria-expanded='true']) {
+  background: var(--o06);
+  color: var(--text);
+}
+
+.tools :deep(.tool:focus-visible) {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
 }
 
 .send-group {

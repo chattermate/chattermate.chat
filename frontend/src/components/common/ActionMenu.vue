@@ -39,8 +39,10 @@ withDefaults(defineProps<{
   items: ActionMenuItem[]
   /** Which edge of the trigger the menu lines up with */
   align?: 'start' | 'end'
+  /** Opens above the trigger: for one at the bottom of the screen (a composer's) */
+  side?: 'below' | 'above'
   triggerClass?: string
-}>(), { align: 'end', triggerClass: '' })
+}>(), { align: 'end', side: 'below', triggerClass: '' })
 
 const emit = defineEmits<{ (e: 'select', id: string): void }>()
 
@@ -73,7 +75,7 @@ function pick(id: string) {
       v-if="open"
       ref="menu"
       class="menu"
-      :class="`align-${align}`"
+      :class="[`align-${align}`, `side-${side}`]"
       role="menu"
       :aria-label="label"
       @keydown="onMenuKeydown"
@@ -120,6 +122,11 @@ function pick(id: string) {
   border: 1px solid var(--o10);
   background: var(--surface);
   box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.3));
+}
+
+.side-above {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .align-end {

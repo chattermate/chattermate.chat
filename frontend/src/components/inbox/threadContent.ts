@@ -16,6 +16,17 @@ limitations under the License.
 
 import type { ConversationNote, Message } from '@/types/chat'
 
+/** A help-center question and its answer, drawn from a conversation */
+export interface FaqDraft {
+  question: string
+  answer: string
+}
+
+/** The help center editor with a question and its answer filled in. */
+export function faqEditorLink(draft: FaqDraft): string {
+  return `/faq?${new URLSearchParams({ question: draft.question, answer: draft.answer }).toString()}`
+}
+
 /**
  * Where the handover summary goes in the thread: before the first message
  * written after the handover. Without a handover time (handed over before it
@@ -152,7 +163,7 @@ function teamAnswerFrom(messages: Draftable[], index: number): string | null {
  *   couldn't answer and what the team replied. Nothing until the team has.
  * - 'this': for the AI answer at \`index\`, its question and that answer, to correct.
  */
-export function knowledgeDraft(messages: Draftable[], index: number, source: 'team' | 'this'): { question: string; answer: string } | null {
+export function knowledgeDraft(messages: Draftable[], index: number, source: 'team' | 'this'): FaqDraft | null {
   const question = questionAt(messages, index)
   const answer = source === 'team' ? teamAnswerFrom(messages, index) : messages[index]?.message?.trim() ?? null
   if (!question || question.length < KNOWLEDGE_QUESTION_MIN) return null

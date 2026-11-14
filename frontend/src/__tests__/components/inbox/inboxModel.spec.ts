@@ -25,9 +25,8 @@ import {
 } from '@/components/inbox/inboxViews'
 import { avatarTone, customerName, rowChips, transferReasonLabel } from '@/components/inbox/inboxPresentation'
 import { elapsedLabel, minutesSince, waitDuration, WAITING_LATE_MINUTES } from '@/components/inbox/inboxTime'
-import { buildTimeline, dayLabel, handoverIndex, knowledgeDraft } from '@/components/inbox/threadContent'
+import { buildTimeline, dayLabel, faqEditorLink, handoverIndex, knowledgeDraft } from '@/components/inbox/threadContent'
 import { matchMentionables, mentionedIds, mentionParts, mentionQuery } from '@/components/inbox/mentions'
-import { snoozeChoices } from '@/components/inbox/snooze'
 import { channelGlyph, channelLabel } from '@/utils/channelGlyphs'
 import type { InboxCounts } from '@/types/chat'
 
@@ -310,18 +309,21 @@ describe('mentions', () => {
   })
 })
 
-describe('snooze choices', () => {
-  it('offers an hour, three hours, tomorrow and next Monday morning', () => {
-    const friday = new Date(2026, 10, 13, 16, 30)
-    const [hour, three, tomorrow, monday] = snoozeChoices(friday)
-    expect(hour.until.getTime() - friday.getTime()).toBe(3_600_000)
-    expect(three.until.getTime() - friday.getTime()).toBe(3 * 3_600_000)
-    expect([tomorrow.until.getDate(), tomorrow.until.getHours()]).toEqual([14, 9])
-    expect([monday.until.getDay(), monday.until.getDate(), monday.until.getHours()]).toEqual([1, 16, 9])
-  })
+describe('the Snoozed view', () => {
+  const items = (counts: Partial<InboxCounts> | null, selected?: { view: 'snoozed' | 'open'; channel: null }) =>
+    inboxViewGroups(counts as InboxCounts, selected)[0].items.map((i) => i.id)
 
-  it('makes next Monday a week away on a Monday', () => {
-    const monday = new Date(2026, 10, 16, 8)
-    expect(snoozeChoices(monday)[3].until.getDate()).toBe(23)
+  it('shows only once something is snoozed, or while it is the open view', () => {
+    expect(items({ snoozed: 0 })).not.toContain('snoozed')
+    expect(items(null)).not.toContain('snoozed')
+    expect(items({ snoozed: 2 })).toContain('snoozed')
+    expect(items({ snoozed: 0 }, { view: 'snoozed', channel: null })).toContain('snoozed')
+  })
+})
+
+describe('faqEditorLink', () => {
+  it('opens the help center editor with the question and answer filled in', () => {
+    expect(faqEditorLink({ question: 'Do you ship to Norway?', answer: 'Yes & fast' }))
+      .toBe('/faq?question=Do+you+ship+to+Norway%3F&answer=Yes+%26+fast')
   })
 })

@@ -17,6 +17,7 @@ import { AiConfigPage } from '../pages/ai-config.page'
 import { Dashboard } from '../pages/dashboard.page'
 import { HumanAgentsPage } from '../pages/human-agents.page'
 import { InboxPage } from '../pages/inbox.page'
+import { FaqPage } from '../pages/faq.page'
 import { KnowledgePage } from '../pages/knowledge.page'
 import { LoginPage } from '../pages/login.page'
 import { PeoplePage } from '../pages/people.page'
@@ -112,6 +113,9 @@ interface TestFixtures {
   handoverTeam: () => Promise<HandoverTeam>
   /** The handover team member's dashboard inbox, in a separate signed-in browser. */
   inbox: InboxPage
+  /** The admin's inbox (the test's own page): an admin may also edit the help center */
+  adminInbox: InboxPage
+  faqPage: FaqPage
   /**
    * A new user in the org (Agent role unless told otherwise), signed in through
    * the API on a request context of their own — the backend prefers a cookie over
@@ -279,6 +283,8 @@ export const test = base.extend<TestFixtures & Options, WorkerFixtures>({
 
   loginPage: async ({ page }, use) => use(new LoginPage(page)),
   dashboard: async ({ page }, use) => use(new Dashboard(page)),
+  adminInbox: async ({ page }, use) => use(new InboxPage(page)),
+  faqPage: async ({ page }, use) => use(new FaqPage(page)),
   sidebar: async ({ page }, use) => use(new Sidebar(page)),
   aiConfigPage: async ({ page }, use) => use(new AiConfigPage(page)),
   agentsPage: async ({ page }, use) => use(new AgentsPage(page)),

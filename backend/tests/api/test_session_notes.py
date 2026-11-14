@@ -256,96 +256,52 @@ class TestMentionsView:
         assert repo.get_inbox_counts(chat.organization_id, current_user_id=teammate.id)["mentions"] == 1
 
 
-class TestSnooze:
-    """Snooze is for a chat you hold: one waiting in the queue would drop out of
-    everyone's Waiting view while the customer still waits."""
+class TestSnoozedState:
+    """A snoozed chat (snoozed_until in the future) leaves the views until then,
+    and wakes when the customer writes. Snoozing it is the enterprise module's."""
 
     @pytest.fixture
-    def held(self, db, chat, me):
+    def snoozed(self, db, chat, me):
         chat.user_id = me.id
+        chat.snoozed_until = datetime.now(timezone.utc) + timedelta(hours=3)
         db.commit()
         return chat
 
-    def _snooze(self, client, chat, until):
-        return client.post(f"/api/v1/sessions/{chat.session_id}/snooze", json={"until": until.isoformat()})
-
-    def test_a_snoozed_chat_leaves_the_views_until_its_time(self, db, client, held, me):
-        until = datetime.now(timezone.utc) + timedelta(hours=3)
-        response = self._snooze(client, held, until)
-        assert response.status_code == 200
-        assert response.json()["snoozed_until"] is not None
+    def test_a_snoozed_chat_leaves_the_views_until_its_time(self, db, snoozed, me):
         repo = ChatRepository(db)
 
         def listed(view):
             return [str(r["session_id"]) for r in repo.get_recent_chats(
-                organization_id=held.organization_id, view=view, current_user_id=me.id)]
+                organization_id=snoozed.organization_id, view=view, current_user_id=me.id)]
 
         assert listed(InboxView.MINE) == []
         assert listed(InboxView.OPEN) == []
-        assert listed(InboxView.SNOOZED) == [str(held.session_id)]
-        counts = repo.get_inbox_counts(held.organization_id, current_user_id=me.id)
+        assert listed(InboxView.SNOOZED) == [str(snoozed.session_id)]
+        counts = repo.get_inbox_counts(snoozed.organization_id, current_user_id=me.id)
         assert (counts["assigned_to_me"], counts["open"], counts["snoozed"]) == (0, 0, 1)
 
-    def test_a_chat_waiting_for_a_person_cannot_be_snoozed(self, client, chat):
-        response = self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(hours=1))
-        assert response.status_code == 400
-        assert "assign the chat" in response.json()["detail"]
-
-    def test_a_chat_a_teammate_holds_is_theirs_to_snooze(self, db, client, chat, teammate, test_organization_id):
-        chat.user_id = teammate.id
+    def test_it_comes_back_once_the_time_has_passed(self, db, snoozed, me):
+        snoozed.snoozed_until = datetime.now(timezone.utc) - timedelta(minutes=1)
         db.commit()
-        scoped_role = _role_with(db, test_organization_id, "Sees all, manages own", "manage_assigned_chats", "view_all_chats")
-        colleague = _user(db, test_organization_id, scoped_role, "Colleague")
-        app.dependency_overrides[get_current_user] = lambda: colleague
-        response = self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(hours=1))
-        assert response.status_code == 403
+        rows = ChatRepository(db).get_recent_chats(
+            organization_id=snoozed.organization_id, view=InboxView.MINE, current_user_id=me.id)
+        assert [str(r["session_id"]) for r in rows] == [str(snoozed.session_id)]
 
-    def test_it_comes_back_once_the_time_has_passed(self, db, chat):
-        chat.snoozed_until = datetime.now(timezone.utc) - timedelta(minutes=1)
-        db.commit()
-        rows = ChatRepository(db).get_recent_chats(organization_id=chat.organization_id, view=InboxView.WAITING)
-        assert [str(r["session_id"]) for r in rows] == [str(chat.session_id)]
-
-    def test_the_customer_writing_again_wakes_it(self, db, client, held):
-        chat = held
-        self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(days=1))
+    def test_the_customer_writing_again_wakes_it(self, db, snoozed):
         ChatRepository(db).create_message({
-            'message': 'Hello?', 'message_type': 'user', 'session_id': str(chat.session_id),
-            'organization_id': str(chat.organization_id), 'agent_id': str(chat.agent_id),
-            'customer_id': str(chat.customer_id),
+            'message': 'Hello?', 'message_type': 'user', 'session_id': str(snoozed.session_id),
+            'organization_id': str(snoozed.organization_id), 'agent_id': str(snoozed.agent_id),
+            'customer_id': str(snoozed.customer_id),
         })
-        db.refresh(chat)
-        assert chat.snoozed_until is None
+        db.refresh(snoozed)
+        assert snoozed.snoozed_until is None
 
-    def test_a_reply_from_the_team_does_not_wake_it(self, db, client, held):
-        chat = held
-        self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(days=1))
+    def test_a_reply_from_the_team_does_not_wake_it(self, db, snoozed):
         ChatRepository(db).create_message({
-            'message': 'We are on it', 'message_type': 'agent', 'session_id': str(chat.session_id),
-            'organization_id': str(chat.organization_id), 'agent_id': str(chat.agent_id),
-            'customer_id': str(chat.customer_id),
+            'message': 'We are on it', 'message_type': 'agent', 'session_id': str(snoozed.session_id),
+            'organization_id': str(snoozed.organization_id), 'agent_id': str(snoozed.agent_id),
+            'customer_id': str(snoozed.customer_id),
         })
-        db.refresh(chat)
-        assert chat.snoozed_until is not None
+        db.refresh(snoozed)
+        assert snoozed.snoozed_until is not None
 
-    def test_unsnoozing_brings_it_back_now(self, db, client, held):
-        chat = held
-        self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(days=1))
-        response = client.delete(f"/api/v1/sessions/{chat.session_id}/snooze")
-        assert response.status_code == 200
-        assert response.json()["snoozed_until"] is None
-
-    @pytest.mark.parametrize("offset, detail", [
-        (timedelta(minutes=-5), "Snooze until a time in the future"),
-        (timedelta(days=91), "Snooze for 90 days at most"),
-    ])
-    def test_refuses_a_time_in_the_past_or_too_far_off(self, client, held, offset, detail):
-        response = self._snooze(client, held, datetime.now(timezone.utc) + offset)
-        assert response.status_code == 422
-        assert response.json()["detail"] == detail
-
-    def test_a_closed_chat_cannot_be_snoozed(self, db, client, chat):
-        chat.status = SessionStatus.CLOSED
-        db.commit()
-        response = self._snooze(client, chat, datetime.now(timezone.utc) + timedelta(hours=1))
-        assert response.status_code == 400

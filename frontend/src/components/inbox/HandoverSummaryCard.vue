@@ -17,7 +17,9 @@ limitations under the License.
 <script setup lang="ts">
 /**
  * Where the AI handed the conversation over, why, and its summary for whoever
- * picks it up. Only the team sees it. "Add the answer to knowledge" opens the
+ * picks it up. Only the team sees it. #actions holds more for the card (the
+ * enterprise module's Refresh and AI-drafted article); without it, "Add the
+ * answer to knowledge" opens the
  * help center editor with the customer's question filled in, so the next
  * customer who asks gets an answer.
  */
@@ -29,6 +31,8 @@ const props = defineProps<{
   agentName: string
   reason?: string | null
   summary?: string | null
+  /** A newer summary than the handover's (a Refresh in #actions), shown in its place */
+  latestSummary?: string | null
   handedOverAt?: string | null
   /** The editor with the question filled in; none when the viewer can't edit */
   knowledgeLink?: string | null
@@ -42,8 +46,9 @@ const time = computed(() =>
 )
 
 /** A summary written as "- point" lines reads as a list; anything else as text */
+const shown = computed(() => props.latestSummary || props.summary || '')
 const points = computed(() => {
-  const lines = (props.summary ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+  const lines = shown.value.split('\n').map((l) => l.trim()).filter(Boolean)
   const bulleted = lines.length > 1 && lines.every((l) => /^[-*•]\s+/.test(l))
   return bulleted ? lines.map((l) => l.replace(/^[-*•]\s+/, '')) : null
 })
@@ -58,19 +63,21 @@ const points = computed(() => {
       <template v-if="time"><span aria-hidden="true">·</span><span>{{ time }}</span></template>
     </p>
 
-    <section v-if="summary || knowledgeLink" class="card" aria-labelledby="handover-summary-title">
+    <section v-if="shown || knowledgeLink || $slots.actions" class="card" aria-labelledby="handover-summary-title">
       <h3 id="handover-summary-title" class="card-title">
         <span class="spark" aria-hidden="true" v-html="navIconSvg('sparkle', 13)"></span>
         Handover summary
-        <span class="private">· only your team sees this</span>
+        <span class="private">· {{ latestSummary ? 'updated just now' : 'only your team sees this' }}</span>
       </h3>
       <ul v-if="points" class="points">
         <li v-for="(point, index) in points" :key="index">{{ point }}</li>
       </ul>
-      <p v-else-if="summary" class="summary">{{ summary }}</p>
-      <div v-if="knowledgeLink">
-        <router-link :to="knowledgeLink" class="add-knowledge">Add the answer to knowledge</router-link>
-      </div>
+      <p v-else-if="shown" class="summary">{{ shown }}</p>
+      <slot name="actions">
+        <div v-if="knowledgeLink">
+          <router-link :to="knowledgeLink" class="add-knowledge">Add the answer to knowledge</router-link>
+        </div>
+      </slot>
     </section>
   </div>
 </template>

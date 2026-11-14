@@ -96,6 +96,9 @@ const assigneeLabel = computed(() =>
         <span class="assignee-name">{{ assigneeName }}</span>
       </span>
 
+      <!-- More tools for the conversation (the enterprise module's Snooze) -->
+      <slot name="tools" />
+
       <button
         v-if="canClose"
         type="button"

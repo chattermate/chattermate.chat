@@ -68,6 +68,16 @@ export class InboxPage {
     await this.searchBox.fill(text)
   }
 
+  /**
+   * Opens `view` narrowed to one customer, so a check that their chat is (or
+   * isn't) in it holds however many chats the shared test org has piled up
+   * past the first page.
+   */
+  async openViewFor(label: string, customerName: string): Promise<void> {
+    await this.openView(label)
+    await this.search(customerName)
+  }
+
   async takeOver(): Promise<void> {
     await step('Agent takes over the chat', async () => {
       await this.banner.getByRole('button', { name: 'Take over chat', exact: true }).click()
@@ -106,7 +116,7 @@ export class InboxPage {
     return this.page.getByRole('textbox', { name: 'Note for your team' })
   }
 
-  /** Leaves a note; \`mention\` is picked from the @ list after the text. */
+  /** Leaves a note; `mention` is picked from the @ list after the text. */
   async addNote(text: string, mention?: string): Promise<void> {
     await step(`Agent adds a note "${text}"`, async () => {
       if (!(await this.noteBox.isVisible())) await this.page.getByRole('tab', { name: 'Note' }).click()
@@ -121,7 +131,7 @@ export class InboxPage {
     })
   }
 
-  /** A note in the thread that carries \`text\` */
+  /** A note in the thread that carries `text` */
   note(text: string): Locator {
     return this.page.getByRole('note').filter({ hasText: text })
   }
@@ -136,12 +146,11 @@ export class InboxPage {
     return labels
   }
 
-  async snooze(choice: '1 hour' | '3 hours' | 'tomorrow 9:00' | 'next Monday 9:00'): Promise<void> {
-    await step(`Agent snoozes the chat for ${choice}`, async () => {
-      await this.page.getByRole('button', { name: 'More actions' }).click()
-      await this.page.getByRole('menuitem', { name: `Snooze · ${choice}` }).click()
-      await expect(this.page.getByRole('status').filter({ hasText: 'It comes back then' })).toBeVisible()
-    })
+  /** The app's toasts (vue-sonner renders each as a list item in its live region) */
+  /** The toast that says `text` */
+  toast(text: string): Locator {
+    // why CSS: sonner's toasts carry no role or name of their own
+    return this.page.locator('[data-sonner-toast]').filter({ hasText: text })
   }
 
   /** The handover summary the AI left for the team */
@@ -162,6 +171,14 @@ export class InboxPage {
       await this.messageInput.fill(text)
       await this.page.getByRole('button', { name: 'Send', exact: true }).click()
       await expect(this.page.locator('.message.agent .message-bubble').last()).toContainText(text)
+    })
+  }
+
+  /** Sends whatever is already in the reply box */
+  async sendTyped(): Promise<void> {
+    await step('Agent sends the reply', async () => {
+      await this.page.getByRole('button', { name: 'Send', exact: true }).click()
+      await expect(this.messageInput).toHaveValue('')
     })
   }
 

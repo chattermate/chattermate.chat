@@ -107,17 +107,7 @@ export const chatService = {
   },
 
   /** Out of the inbox's views until `until`, or until the customer writes again. */
-  async snooze(sessionId: string, until: Date): Promise<ChatDetail> {
-    const response = await api.post(`/sessions/${sessionId}/snooze`, { until: until.toISOString() })
-    emitter.emit('inbox-changed')
-    return response.data as ChatDetail
-  },
 
-  async unsnooze(sessionId: string): Promise<ChatDetail> {
-    const response = await api.delete(`/sessions/${sessionId}/snooze`)
-    emitter.emit('inbox-changed')
-    return response.data as ChatDetail
-  },
 
   async reassignChat(sessionId: string, toUserId: string) {
     const response = await api.post(`/sessions/${sessionId}/reassign`, null, { params: { to_user_id: toUserId } })
