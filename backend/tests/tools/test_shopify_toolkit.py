@@ -865,11 +865,12 @@ def test_search_returns_a_sold_out_product_and_tells_the_agent_it_is_sold_out(sh
         result = json.loads(shopify_tools.search_products("gift card"))
 
     assert "inventory_total" not in post.call_args.kwargs["json"]["variables"]["searchTerm"]
-    seen = {p["title"]: p["sold_out"] for p in result["shopify_output"]["products"]}
-    assert seen == {"Gift Card": True, "Board": False}
+    # What can be bought comes first
+    seen = [(p["title"], p["sold_out"]) for p in result["shopify_output"]["products"]]
+    assert seen == [("Board", False), ("Gift Card", True)]
     cached = json.loads(get_redis.return_value.setex.call_args.args[2])["products"]
     assert [(p["title"], p["sold_out"], p["cart_variant_id"]) for p in cached] == [
-        ("Gift Card", True, None), ("Board", False, "222")]
+        ("Board", False, "222"), ("Gift Card", True, None)]
 
 
 @pytest.mark.parametrize("call", [

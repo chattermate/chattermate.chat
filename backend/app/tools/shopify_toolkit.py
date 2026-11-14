@@ -165,7 +165,9 @@ def cart_variant_id(node: dict) -> Optional[str]:
 def is_sold_out(node: dict) -> bool:
     """Nothing of the product can be bought: its stock is tracked and gone, and
     none of the variants read is still on sale (a store that keeps selling at
-    zero stock keeps them on sale). Untracked stock never runs out."""
+    zero stock keeps them on sale). Untracked stock never runs out. Only the
+    variants search reads (two) are checked: a product whose later variant sells
+    at zero stock while the first two can't is taken as sold out."""
     if node.get("tracksInventory") is not True or (node.get("totalInventory") or 0) > 0:
         return False
     edges = (node.get("variants") or {}).get("edges") or []
@@ -530,8 +532,10 @@ class ShopifyTools(Toolkit):
             edges = products_data.get("edges", [])
             page_info = products_data.get("pageInfo", {})
             
-            products = [product_from_node(edge.get("node", {})) for edge in edges]
-            
+            # What can be bought first; sold-out ones after, in Shopify's order
+            products = sorted((product_from_node(edge.get("node", {})) for edge in edges),
+                              key=lambda product: product["sold_out"])
+
             # Check if search was successful
             if products:
                 # Try to cache products in Redis
