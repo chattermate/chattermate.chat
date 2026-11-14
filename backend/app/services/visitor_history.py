@@ -104,10 +104,11 @@ def link_proven_email(db: Session, socket_session: dict, email: str) -> int:
     conversation already linked to an email keeps it."""
     query = own_sessions(db, socket_session, other_browsers=False)
     current = _as_uuid(socket_session.get('session_id'))
-    if query is None or current is None:
+    key = email_proof.email_key(email, socket_session.get('org_id'))
+    if query is None or current is None or not key:
         return 0
     linked = query.filter(SessionToAgent.session_id == current, SessionToAgent.verified_email_key.is_(None)) \
-        .update({SessionToAgent.verified_email_key: email_proof.email_key(email, socket_session.get('org_id'))},
+        .update({SessionToAgent.verified_email_key: key},
                 synchronize_session=False)
     db.commit()
     return linked

@@ -1416,9 +1416,8 @@ Keep your responses concise and focused. Provide clear, actionable information i
         self.last_handover = handover_payload(response_content)
         if self.last_handover:
             extras["handover"] = self.last_handover
-        # The layer adds to what the agent produced; it never replaces it
-        self.last_ui_extras = {key: value for key, value in reply_ui.reply_extras(self.turn_events).items()
-                               if key not in extras and value}
+        # Only the layer's own keys (reply_ui.payload_keys): never the reply's
+        self.last_ui_extras = reply_ui.reply_extras(self.turn_events)
         extras.update(self.last_ui_extras)
         return extras
 

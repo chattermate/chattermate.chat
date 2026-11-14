@@ -71,17 +71,44 @@ class TestTurnEvents:
         assert events.of(TICKET_EVENT) == [{"number": "TKT-1", "status": "open"}]
 
 
+def _layer(extras=None, keys=("blocks",)):
+    layer = MagicMock()
+    layer.payload_keys = frozenset(keys)
+    layer.reply_extras.return_value = extras or {}
+    return layer
+
+
 class TestInstalledLayer:
     def test_an_installed_layer_draws_the_reply(self):
-        layer = MagicMock()
-        layer.reply_extras.return_value = {"blocks": [{"type": "x"}]}
+        layer = _layer({"blocks": [{"type": "x"}]})
         reply_ui.install(layer)
         events = TurnEvents()
         assert reply_ui.reply_extras(events) == {"blocks": [{"type": "x"}]}
         layer.reply_extras.assert_called_once_with(events)
 
+    def test_only_the_layers_own_keys_are_taken(self):
+        reply_ui.install(_layer({"blocks": [1], "cards": [2], "message": "hijacked", "sources": []},
+                                keys=("blocks", "message")))
+        assert reply_ui.reply_extras(TurnEvents()) == {"blocks": [1]}
+        # A layer can't claim a core key, whatever it declares
+        assert reply_ui.payload_keys() == frozenset({"blocks"})
+
+    def test_empty_values_are_left_out(self):
+        reply_ui.install(_layer({"blocks": []}))
+        assert reply_ui.reply_extras(TurnEvents()) == {}
+
+    def test_a_value_that_cannot_be_stored_leaves_the_reply_as_text(self):
+        reply_ui.install(_layer({"blocks": [object()]}))
+        assert reply_ui.reply_extras(TurnEvents()) == {}
+
+    def test_a_restored_message_gives_back_the_layers_keys_only(self):
+        from app.services.visitor_payload import visitor_attributes
+        reply_ui.install(_layer(keys=("blocks",)))
+        restored = visitor_attributes({"blocks": [1], "cards": [2], "transfer_reason": "note", "sources": []})
+        assert restored == {"blocks": [1], "sources": []}
+
     def test_a_failing_layer_leaves_the_reply_as_text(self):
-        layer = MagicMock()
+        layer = _layer()
         layer.reply_extras.side_effect = RuntimeError("boom")
         layer.add_shopify_tools.side_effect = RuntimeError("boom")
         reply_ui.install(layer)
@@ -93,7 +120,19 @@ class TestInstalledLayer:
 
     def test_load_without_a_layer_module_is_quiet(self, monkeypatch):
         monkeypatch.setattr(reply_ui, "LAYER_MODULE", "app.no_such_package.chat_ui")
+        error = MagicMock()
+        monkeypatch.setattr(reply_ui.logger, "error", error)
         assert reply_ui.load() is False
+        error.assert_not_called()
+
+    def test_load_without_the_layers_package_is_quiet(self, monkeypatch):
+        def missing(name, *args, **kwargs):
+            raise ModuleNotFoundError("No module named 'app.enterprise'", name="app.enterprise")
+        monkeypatch.setattr(reply_ui.importlib, "import_module", missing)
+        error = MagicMock()
+        monkeypatch.setattr(reply_ui.logger, "error", error)
+        assert reply_ui.load() is False
+        error.assert_not_called()
 
     def test_load_installs_the_layer_a_module_registers(self, monkeypatch):
         layer = MagicMock()
@@ -181,6 +220,15 @@ class TestEmailProof:
         assert email_proof._active() is BUILTIN_EMAIL_PROOF
         assert email_proof.verified_email("s1") == "j@acme.com"
         assert email_proof.mask("jane@acme.com") == "j•••@acme.com"
+
+    def test_the_builtin_check_forgets_and_takes_store_sign_ins(self, monkeypatch):
+        forget, accept = MagicMock(), MagicMock(return_value=True)
+        monkeypatch.setattr("app.services.email_check.forget", forget)
+        monkeypatch.setattr("app.api.widget_email_check.accept_store_sign_in", accept)
+        email_proof.forget("s1")
+        forget.assert_called_once_with("s1")
+        assert email_proof.accept_store_sign_in({"session_id": "s1"}, {"t": 1}) is True
+        accept.assert_called_once_with({"session_id": "s1"}, {"t": 1})
 
     def test_without_any_provider_nothing_is_proven(self, monkeypatch):
         monkeypatch.setattr(email_proof, "_fallback_provider", lambda: None)

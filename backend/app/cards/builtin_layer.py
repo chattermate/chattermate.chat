@@ -44,6 +44,8 @@ def _card(kind: str, data: Dict[str, Any], labels):
 
 
 class BuiltinLayer:
+    payload_keys = frozenset({'cards', 'email_check'})
+
     def reply_extras(self, events: TurnEvents) -> Dict[str, Any]:
         cards = TurnCards(labels_for(pick_language(events.languages)))
         for kind, data in events.all():

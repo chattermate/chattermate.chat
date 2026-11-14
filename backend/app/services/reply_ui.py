@@ -16,30 +16,41 @@ limitations under the License.
 The seam between a reply and the chat UI layer that draws more than its text.
 
 Tools record what happened in a turn as neutral events (an order was looked up,
-the visitor was asked to confirm their email). A chat UI layer, when one is
-installed, turns them into what the widget shows next to the reply. Without
-one, the reply's text is the whole answer, so a tool's own answer must always
-say what matters in words.
+the visitor was asked to confirm their email). A chat UI layer turns them into
+what the widget shows next to the reply, under payload keys it declares; the
+same keys are stored with the reply and restored with it (visitor_payload.py).
+Until the build installs a layer, the panel's built-in cards stand in
+(app/cards/builtin_layer.py). A tool's own answer must still say what matters in
+words: a channel or a client without the layer gets only the text.
 
 Nothing here may break a reply: a layer that fails is logged and the reply goes
 out as text.
 """
 
 import importlib
+import json
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-# What tools record. Each event's data is plain values a layer can rely on.
-ORDER_EVENT = 'order'                    # {'order': <the store's order record>}
+# What tools record, with the data each carries
+ORDER_EVENT = 'order'                    # {'order': <the Shopify order record, as ShopifyService.get_order returns it>}
 RECENT_ORDERS_EVENT = 'recent_orders'    # {'orders': [<order summaries>]}
 TICKET_EVENT = 'ticket'                  # {'number': 'TKT-12', 'status': 'open'}
 EMAIL_CHECK_EVENT = 'email_check'        # {}: the visitor is asked to prove their email
 
 # The module that installs a chat UI layer, when the build has one
 LAYER_MODULE = 'app.enterprise.chat_ui'
+
+# The reply's own keys, live and stored: a layer never writes these
+CORE_KEYS = frozenset({
+    'message', 'type', 'session_id', 'message_id', 'quick_replies', 'handover', 'sources',
+    'shopify_output', 'form_data', 'prompt_message', 'confirmation_message', 'request_rating',
+    'visitor_feedback', 'transfer_to_human', 'transfer_reason', 'transfer_description',
+    'end_chat', 'end_chat_reason', 'end_chat_description',
+})
 
 
 class TurnEvents:
@@ -67,9 +78,13 @@ class TurnEvents:
 
 
 class UILayer(Protocol):
+    # The payload keys the layer writes: the only ones taken from reply_extras,
+    # and the ones a restored message gives back to the widget
+    payload_keys: frozenset
+
     def reply_extras(self, events: TurnEvents) -> Dict[str, Any]:
-        """What the widget shows with this reply, by payload key. Stored with the
-        reply too, so a reload shows the same."""
+        """What the widget shows with this reply, by payload key. JSON values only:
+        stored with the reply too, so a reload shows the same."""
         ...
 
     def add_shopify_tools(self, toolkit: Any) -> None:
@@ -97,17 +112,23 @@ def _fallback_layer() -> Optional[UILayer]:
     return BUILTIN_LAYER
 
 
-def installed() -> bool:
-    """Whether replies can show more than text."""
-    return _active() is not None
+def payload_keys() -> frozenset:
+    """The keys the active layer writes on a reply (never a core key)."""
+    layer = _active()
+    return frozenset(getattr(layer, 'payload_keys', ()) or ()) - CORE_KEYS if layer is not None else frozenset()
 
 
 def reply_extras(events: Optional[TurnEvents]) -> Dict[str, Any]:
+    """What the layer draws for this turn: its own keys only, with values, as JSON."""
     layer = _active()
     if layer is None or events is None:
         return {}
     try:
-        return dict(layer.reply_extras(events) or {})
+        allowed = payload_keys()
+        extras = {key: value for key, value in dict(layer.reply_extras(events) or {}).items()
+                  if key in allowed and value}
+        # A value that can't be stored would lose the whole reply
+        return json.loads(json.dumps(extras))
     except Exception as e:
         logger.error(f"Chat UI layer failed on a reply; sending it as text: {e}")
         return {}

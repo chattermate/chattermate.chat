@@ -26,6 +26,8 @@ import json
 import logging
 from typing import Any, Mapping, Optional, Union
 
+from app.services import reply_ui
+
 logger = logging.getLogger(__name__)
 
 # Keys the widget reads from a restored message's attributes (WidgetBuilder.vue,
@@ -44,10 +46,6 @@ VISITOR_ATTRIBUTE_KEYS = frozenset({
     'quick_replies',
     'handover',
     'visitor_feedback',
-    # Status cards (order, ticket), shortened for the visitor before they are stored
-    'cards',
-    # The reply asks the visitor to prove their email (email_check.py)
-    'email_check',
 })
 
 GENERIC_ERROR = "Something went wrong. Please try again."
@@ -75,7 +73,9 @@ def _as_mapping(attributes: AttributesInput) -> Mapping[str, Any]:
 def visitor_attributes(attributes: AttributesInput) -> dict:
     """The part of a message's attributes the visitor may see."""
     source = _as_mapping(attributes)
-    return {key: value for key, value in source.items() if key in VISITOR_ATTRIBUTE_KEYS}
+    # And what the chat UI layer drew on the reply (reply_ui.py)
+    allowed = VISITOR_ATTRIBUTE_KEYS | reply_ui.payload_keys()
+    return {key: value for key, value in source.items() if key in allowed}
 
 
 def visitor_error(error: Optional[str], fallback: str = GENERIC_ERROR) -> str:
