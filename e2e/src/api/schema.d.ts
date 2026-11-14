@@ -8933,6 +8933,8 @@ export interface components {
             has_choices?: boolean | null;
             /** Sold Out */
             sold_out?: boolean | null;
+            /** Url */
+            url?: string | null;
         };
         /** ShopifyProductImage */
         ShopifyProductImage: {

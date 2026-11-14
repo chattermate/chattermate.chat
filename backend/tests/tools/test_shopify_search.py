@@ -16,7 +16,7 @@ limitations under the License.
 
 import pytest
 
-from app.tools.shopify_search import catalog_filters, match_singulars
+from app.tools.shopify_search import catalog_filters, match_singulars, singular_stems
 
 
 @pytest.mark.parametrize("query,expected", [
@@ -70,3 +70,16 @@ def test_operators_are_never_widened():
 ])
 def test_catalog_filters(min_price, max_price, vendor, expected):
     assert catalog_filters(min_price, max_price, vendor) == expected
+
+
+@pytest.mark.parametrize("query,stems", [
+    ("mugs", "mug"),
+    ("blue mugs", "blue mug"),
+    ("accessories", "accessor"),
+    ("boxes", "box"),
+    ("glass", "glass"),
+    ("tennis balls", "tennis ball"),
+    ("mugs AND cups", "mug AND cup"),
+])
+def test_singular_stems(query, stems):
+    assert singular_stems(query) == stems

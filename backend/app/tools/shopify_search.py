@@ -55,6 +55,24 @@ def match_singulars(query: str) -> str:
     return '"'.join(_PLURAL.sub(_widen, part) if i % 2 == 0 else part for i, part in enumerate(parts))
 
 
+def _stem(word: str) -> str:
+    """A plural word cut back to what its singular starts with: mugs -> mug,
+    boxes -> box, accessories -> accessor (matches accessory too)."""
+    lower = word.lower()
+    if lower.endswith("ies"):
+        return word[:-3]
+    if lower.endswith("es") and lower[:-2].endswith(_ES_AFTER):
+        return word[:-2]
+    return word[:-1]
+
+
+def singular_stems(query: str) -> str:
+    """The query with each plain plural word cut back to its singular's stem
+    ("blue mugs" -> "blue mug"), for a store search that matches text as written
+    (WooCommerce's), where a stem finds the singular and the plural alike."""
+    return _PLURAL.sub(lambda m: m.group(0) if m.group(0).upper() in _OPERATORS else _stem(m.group(0)), query)
+
+
 def _strip_quotes(value: str) -> str:
     return re.sub(r"[\\'\"]", "", value).strip()
 
