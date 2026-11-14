@@ -852,7 +852,7 @@ async def handle_widget_chat(sid, data):
             # Get session data to find assigned user
             session_data = session_repo.get_session(session_id)
             user_id = str(session_data.user_id) if session_data and session_data.user_id else None
-            timestamp = format_datetime(datetime.datetime.now())
+            timestamp = format_datetime(datetime.datetime.now(datetime.timezone.utc))
             
             attachments_data = await _client_attachments(uploaded_files)
 
@@ -911,7 +911,7 @@ async def handle_widget_chat(sid, data):
             # Get session data to find assigned user
             session_data = session_repo.get_session(session_id)
             user_id = str(session_data.user_id) if session_data and session_data.user_id else None
-            timestamp = format_datetime(datetime.datetime.now())
+            timestamp = format_datetime(datetime.datetime.now(datetime.timezone.utc))
             
             attachments_data = await _client_attachments(uploaded_files)
 
