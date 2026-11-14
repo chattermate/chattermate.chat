@@ -8931,6 +8931,8 @@ export interface components {
             tracks_inventory?: boolean | null;
             /** Has Choices */
             has_choices?: boolean | null;
+            /** Sold Out */
+            sold_out?: boolean | null;
         };
         /** ShopifyProductImage */
         ShopifyProductImage: {
