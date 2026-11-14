@@ -43,6 +43,16 @@ export type ExtensionId = keyof typeof EXTENSIONS
 
 const enterpriseAllowed = () => process.env.NO_ENTERPRISE !== '1'
 
+/**
+ * For the scripts that write the committed bundles (backend/assets/widget.js,
+ * public/webclient/chattermate.min.js): the public repo ships no chat UI layer,
+ * even when a developer has the enterprise module checked out. Only an image
+ * build (CHATTERMATE_IMAGE_BUILD=1, set by the Dockerfiles) bundles one.
+ */
+export function withoutLayerUnlessImageBuild(): void {
+  if (process.env.CHATTERMATE_IMAGE_BUILD !== '1') process.env.NO_ENTERPRISE = '1'
+}
+
 /** The file a virtual extension id resolves to in this build. */
 export function extensionFile(id: ExtensionId): string {
   const { enterprise, none } = EXTENSIONS[id]

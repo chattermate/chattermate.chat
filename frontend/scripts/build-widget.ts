@@ -1,4 +1,5 @@
 import { build } from 'vite'
+import { withoutLayerUnlessImageBuild } from './widget-ext'
 import { resolve } from 'path'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -15,6 +16,7 @@ const filesToKeep = ['widget.js', 'widget.css']
 async function buildWidget() {
   try {
     // Run the Vite build
+    withoutLayerUnlessImageBuild()
     await build({ configFile: config })
     console.log('Vite build completed')
 

@@ -1,4 +1,5 @@
 import { build } from 'vite'
+import { withoutLayerUnlessImageBuild } from './widget-ext'
 import { resolve } from 'path'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -19,6 +20,7 @@ async function buildWidgetDev() {
     process.env.NODE_ENV = 'development'
     
     // Run the Vite build
+    withoutLayerUnlessImageBuild()
     await build({ configFile: config })
     console.log('Vite build completed')
 
