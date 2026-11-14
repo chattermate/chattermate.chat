@@ -184,6 +184,9 @@ class ChannelAdapter(ABC):
     reports_delivery_status: ClassVar[bool] = False
     # The platform's cap on one text message, when it has one
     max_text_length: ClassVar[Optional[int]] = None
+    # Whether a sent message can be changed on the platform (edit_text), so
+    # its id is worth recording and the inbox offers Edit
+    supports_edit: ClassVar[bool] = False
 
     @property
     def supports_interactive(self) -> bool:
@@ -193,6 +196,11 @@ class ChannelAdapter(ABC):
         """What choices can be offered in this conversation; None where a tap
         couldn't come back to us. Default: the channel's limits."""
         return self.interactive_limits
+
+    async def edit_text(self, account: ChannelAccount, conversation: ChannelConversation,
+                        external_message_id: str, text: str) -> SendResult:
+        """Change the text of a message we sent (supports_edit platforms only)."""
+        return SendResult(ok=False, error=f"{self.channel_type} can't change a sent message")
 
     @abstractmethod
     async def verify_webhook(self, headers: dict, raw_body: bytes, account: Optional[ChannelAccount]) -> bool:

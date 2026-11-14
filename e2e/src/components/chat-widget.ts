@@ -687,6 +687,11 @@ export class ChatWidget {
     return this.agentMessages.last()
   }
 
+  /** The "Edited" mark under a person's reply they changed after sending */
+  get editedMarks(): Locator {
+    return this.messageLog.getByText('Edited', { exact: true })
+  }
+
   get customerMessages(): Locator {
     return this.messageLog.locator('.message.user-message .message-bubble')
   }

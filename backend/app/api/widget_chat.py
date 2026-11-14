@@ -1308,6 +1308,8 @@ async def handle_agent_message(sid, data):
         # Emit to widget clients
         response_payload = {
             'message': data['message'],
+            # The widget finds the message by it when it's edited
+            'message_id': created_message.id,
             'type': 'agent_message',
             'message_type': data.get('message_type', 'agent'),
             'end_chat': data.get('end_chat', False),

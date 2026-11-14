@@ -132,6 +132,7 @@ class TelegramAdapter(ChannelAdapter):
     # Choices go as an inline keyboard (buttons only)
     interactive_limits: ClassVar[Optional[InteractiveLimits]] = TELEGRAM_LIMITS
     max_text_length: ClassVar[Optional[int]] = MAX_MESSAGE_LENGTH
+    supports_edit: ClassVar[bool] = True
 
     async def verify_webhook(self, headers: dict, raw_body: bytes, account: Optional[ChannelAccount]) -> bool:
         """Telegram echoes the secret_token given to setWebhook on every request."""
@@ -258,6 +259,20 @@ class TelegramAdapter(ChannelAdapter):
             return SendResult(ok=True, external_message_id=str(data["result"].get("message_id", "")))
         except Exception as e:
             logger.error(f"Telegram send failed: {e}")
+            return SendResult(ok=False, error=str(e))
+
+    async def edit_text(self, account: ChannelAccount, conversation: ChannelConversation,
+                        external_message_id: str, text: str) -> SendResult:
+        try:
+            data = await _call_api(self._bot_token(account), "editMessageText", {
+                "chat_id": conversation.external_conversation_id,
+                "message_id": int(external_message_id), "text": text,
+            })
+            if not data.get("ok"):
+                return SendResult(ok=False, error=str(data.get("description") or "editMessageText failed"))
+            return SendResult(ok=True, external_message_id=external_message_id)
+        except Exception as e:
+            logger.error(f"Telegram edit failed: {e}")
             return SendResult(ok=False, error=str(e))
 
     def format_outbound(self, markdown: str) -> str:

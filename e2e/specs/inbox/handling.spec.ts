@@ -69,6 +69,24 @@ test.describe('handling a chat', () => {
     await expect(widget.messageLog).toContainText('We found your order after all.')
   })
 
+  test('a reply you just sent can be edited, and the customer sees the change @inbox', async ({ agent, widget, inbox, llm }) => {
+    await askForAPerson(agent, widget, llm)
+    await inbox.goto('/conversations?view=waiting')
+    await inbox.openConversationWith(widget.customer.name)
+    await inbox.takeOver()
+    await inbox.reply('Your refund is on its way.')
+    await expect(widget.lastAgentMessage()).toContainText('Your refund is on its way.')
+
+    await inbox.editReply('Your refund is on its way.', 'Your refund reaches you in 3 working days.')
+
+    await expect(widget.lastAgentMessage()).toHaveText('Your refund reaches you in 3 working days.')
+    await expect(widget.editedMarks).toHaveCount(1)
+    // Kept, as edited, for whoever opens the chat next
+    await inbox.page.reload()
+    await expect(inbox.agentMessage('Your refund reaches you in 3 working days.')).toContainText('Edited')
+    await expect(inbox.agentMessage('Your refund is on its way.')).toHaveCount(0)
+  })
+
   test('Send and close sends the reply, then closes once confirmed @inbox', async ({ agent, widget, inbox, llm }) => {
     await askForAPerson(agent, widget, llm)
     await inbox.goto('/conversations?view=waiting')

@@ -23,7 +23,7 @@ limitations under the License.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import type { ChatDetail, ConversationNote } from '@/types/chat'
+import type { ChatDetail, ConversationNote, Message } from '@/types/chat'
 import type { Teammate } from '@/services/users'
 import { chatService } from '@/services/chat'
 import { ticketService } from '@/services/tickets'
@@ -50,7 +50,7 @@ import ThreadNote from './ThreadNote.vue'
 import HandoverSummaryCard from './HandoverSummaryCard.vue'
 import { useComposerDrafts } from './composerDrafts'
 import { customerName } from './inboxPresentation'
-import { buildTimeline, faqEditorLink, handoverIndex, knowledgeDraft, type FaqDraft } from './threadContent'
+import { buildTimeline, canEditReply, faqEditorLink, handoverIndex, knowledgeDraft, type FaqDraft } from './threadContent'
 
 const props = defineProps<{
   chat: ChatDetail
@@ -97,6 +97,7 @@ const {
   handleTakeover,
   handleRouteToHuman,
   replaceChatFromProps,
+  applyEditedMessage,
   endChat,
   templateCanReopen,
   clearTemplateSuggestion,
@@ -237,6 +238,21 @@ const confirmClose = async () => {
 }
 // Held by you again, so you can reply; the customer isn't told
 const reopen = () => run(() => chatService.reopenChat(props.chat.session_id), 'Chat reopened')
+
+// ---- Editing a reply you sent ----
+// Yours, for a few minutes, where the channel can change a sent message
+const isEditable = (message: Message) =>
+  props.chat.status !== 'closed' && canEditReply(message, currentUserId, props.chat.message_edit_minutes, props.now)
+
+async function saveEdit(message: Message, text: string) {
+  if (typeof message.id !== 'number') return
+  try {
+    applyEditedMessage(await chatService.editMessage(props.chat.session_id, message.id, text))
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || 'The reply could not be changed. Try again.')
+    throw err
+  }
+}
 
 // ---- Tickets and templates ----
 const { jiraConnected, checkJiraStatus } = useJiraTicket()
@@ -416,6 +432,8 @@ defineExpose({ requestClose })
           :agent-name="agentName"
           :current-user-id="currentUserId"
           :correction-link="correctionLinks[entry.index]"
+          :editable="isEditable(formattedMessages[entry.index])"
+          :save-edit="(text: string) => saveEdit(formattedMessages[entry.index], text)"
           :is-image="isImageAttachment"
           :image-url="getImageUrl"
           :download-url="getDownloadUrl"

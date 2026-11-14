@@ -27,11 +27,13 @@ from app.models.user import User
 from app.models.session_to_agent import SessionStatus
 from app.core.auth import CHAT_MANAGE_PERMISSIONS, get_current_user, has_any_permission
 from app.database import get_db
+from app.models.chat_history import ChatHistory
 from app.services.agent_rooms import emit_to_org_inbox
+from app.services.message_edits import EditRefused, edit_sent_reply
 from app.services.chat_access import can_see_session, may_change_hands
 from app.services.chat_notifications import notify_chat_assigned
 from app.services.human_routing import notify_customer, route_session_to_human
-from app.models.schemas.chat import ChatDetailResponse, TransferReasonType
+from app.models.schemas.chat import ChatDetailResponse, Message, MessageEdit, TransferReasonType
 
 
 logger = get_logger(__name__)
@@ -282,6 +284,30 @@ async def reopen_chat(
     if not chat:
         raise HTTPException(status_code=500, detail="Failed to read the chat back")
     return ChatDetailResponse(**chat)
+
+
+@router.patch("/{session_id}/messages/{message_id}", response_model=Message)
+async def edit_sent_message(
+    session_id: str,
+    message_id: int,
+    payload: MessageEdit,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Change a reply you sent, for the customer too (message_edits.py says
+    which replies, for how long and on which channels)."""
+    session = await _load_manageable_session(db, session_id, current_user)
+    message = db.query(ChatHistory).filter(
+        ChatHistory.id == message_id, ChatHistory.session_id == session.session_id).first()
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    try:
+        edited = await edit_sent_reply(db, session, message, current_user, payload.message)
+    except EditRefused as refused:
+        raise HTTPException(status_code=refused.status_code, detail=refused.detail)
+    return Message(id=edited.id, message=edited.message, message_type=edited.message_type,
+                   created_at=edited.created_at, attributes=edited.attributes, user_id=edited.user_id,
+                   external_message_id=edited.external_message_id)
 
 
 @router.post("/{session_id}/reassign", response_model=ChatDetailResponse)

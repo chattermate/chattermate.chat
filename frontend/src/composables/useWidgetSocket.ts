@@ -301,6 +301,8 @@ export function useWidgetSocket({ panel = false }: { panel?: boolean } = {}) {
             if (data.type === 'agent_message') {
                 // Handle human agent messages
                 const agentMessage: any = {
+                    // Found by it when the person edits it (message_edited)
+                    ...(typeof data.message_id === 'number' ? { id: data.message_id } : {}),
                     message: data.message,
                     message_type: 'agent',
                     created_at: new Date().toISOString(),
@@ -397,6 +399,15 @@ export function useWidgetSocket({ panel = false }: { panel?: boolean } = {}) {
             if (onTakeoverCallback) {
                 onTakeoverCallback(data)
             }
+        })
+
+        // The person changed a reply they sent: the bubble shows the new text
+        socket.on('message_edited', (data: { message_id?: number; message?: string; edited_at?: string }) => {
+            if (typeof data?.message_id !== 'number' || typeof data.message !== 'string') return
+            const edited = messages.value.find((m) => m.id === data.message_id)
+            if (!edited) return
+            edited.message = data.message
+            edited.attributes = { ...(edited.attributes || {}), edited_at: data.edited_at }
         })
 
         socket.on('session_initialized', (data) => {

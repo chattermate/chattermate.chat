@@ -1081,3 +1081,169 @@ def test_reopen_another_organizations_chat_is_not_found(
         return other_org_user
     app.dependency_overrides[get_current_user] = override_get_current_user
     assert _reopen(client_with_error_mock, session).status_code == status.HTTP_404_NOT_FOUND
+
+
+# ---- Editing a sent reply ----
+
+def _sent_reply(db, session, author, text="Your refund is on its way", minutes_ago=2, **fields):
+    from datetime import timedelta, timezone
+    message = ChatHistory(message=text, message_type=fields.pop('message_type', 'agent'), session_id=session.session_id,
+                          organization_id=session.organization_id, agent_id=session.agent_id,
+                          customer_id=session.customer_id, user_id=author.id if author else None,
+                          created_at=datetime.now(timezone.utc) - timedelta(minutes=minutes_ago), **fields)
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    return message
+
+
+def _edit(client, session, message, text):
+    return client.patch(f"/api/v1/session-to-agent/{session.session_id}/messages/{message.id}", json={"message": text})
+
+
+@pytest.fixture
+def held_chat(db, create_chat_session, user_with_manage_chats_permission):
+    session = create_chat_session()
+    session.user_id = user_with_manage_chats_permission.id
+    db.commit()
+    return session
+
+
+@pytest.fixture
+def announced():
+    from unittest.mock import AsyncMock
+    with patch('app.services.message_edits.sio.emit', new=AsyncMock()) as widget, \
+         patch('app.services.message_edits.emit_to_org_inbox', new=AsyncMock()) as inbox:
+        yield widget, inbox
+
+
+def test_an_edited_web_reply_changes_for_the_customer_and_keeps_the_original(
+    client_with_error_mock, db, held_chat, user_with_manage_chats_permission, announced
+):
+    widget, inbox = announced
+    reply = _sent_reply(db, held_chat, user_with_manage_chats_permission)
+
+    response = _edit(client_with_error_mock, held_chat, reply, "  Your refund reaches you in 3 days  ")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["message"] == "Your refund reaches you in 3 days"
+    assert response.json()["attributes"]["edited_at"]
+    db.refresh(reply)
+    assert (reply.message, reply.original_message) == ("Your refund reaches you in 3 days", "Your refund is on its way")
+    sent = widget.await_args
+    assert sent.args[0] == 'message_edited'
+    assert sent.args[1]["message_id"] == reply.id and sent.args[1]["message"] == "Your refund reaches you in 3 days"
+    assert sent.kwargs == {'room': str(held_chat.session_id), 'namespace': '/widget'}
+    assert inbox.await_args.args[1] == {'type': 'message_edited', 'session_id': str(held_chat.session_id)}
+
+    # A second edit keeps the very first text
+    _edit(client_with_error_mock, held_chat, reply, "Refund sent")
+    db.refresh(reply)
+    assert (reply.message, reply.original_message) == ("Refund sent", "Your refund is on its way")
+
+
+def test_only_your_own_reply_can_be_edited(
+    client_with_error_mock, db, held_chat, user_with_manage_chats_permission, regular_user, announced
+):
+    teammate_reply = _sent_reply(db, held_chat, regular_user)
+    customer_message = _sent_reply(db, held_chat, None, text="Where is my refund?", message_type='user')
+    ai_reply = _sent_reply(db, held_chat, None, text="Let me check.", message_type='bot')
+    for message in (teammate_reply, customer_message, ai_reply):
+        response = _edit(client_with_error_mock, held_chat, message, "Changed")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.json()["detail"] == "You can only edit a reply you sent"
+        db.refresh(message)
+        assert message.original_message is None
+    announced[0].assert_not_awaited()
+
+
+def test_a_reply_can_be_edited_for_fifteen_minutes(
+    client_with_error_mock, db, held_chat, user_with_manage_chats_permission, announced
+):
+    old = _sent_reply(db, held_chat, user_with_manage_chats_permission, minutes_ago=16)
+    response = _edit(client_with_error_mock, held_chat, old, "Too late")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "Replies can be edited for 15 minutes after sending"
+
+
+def test_a_closed_chats_replies_stay_as_they_are(
+    client_with_error_mock, db, held_chat, user_with_manage_chats_permission, announced
+):
+    reply = _sent_reply(db, held_chat, user_with_manage_chats_permission)
+    held_chat.status = SessionStatus.CLOSED
+    db.commit()
+    assert _edit(client_with_error_mock, held_chat, reply, "Changed").json()["detail"] == "This chat is closed"
+
+
+def test_a_channel_that_cant_change_a_sent_message_refuses(
+    client_with_error_mock, db, held_chat, user_with_manage_chats_permission, announced
+):
+    held_chat.channel = 'whatsapp'
+    db.commit()
+    reply = _sent_reply(db, held_chat, user_with_manage_chats_permission, external_message_id='wamid.1')
+    response = _edit(client_with_error_mock, held_chat, reply, "Changed")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "This channel can't change a message once it's sent"
+
+
+class TestEditOnAChannelThatCan:
+    """Telegram, Slack: the platform's copy changes first; when it won't,
+    nothing changes."""
+
+    @pytest.fixture
+    def platform(self, db, held_chat):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, MagicMock
+        from app.channels.base import SendResult
+        held_chat.channel = 'telegram'
+        db.commit()
+        adapter = MagicMock(supports_edit=True, format_outbound=lambda text: text,
+                            edit_text=AsyncMock(return_value=SendResult(ok=True)))
+        conversation = SimpleNamespace(channel_account_id='acc')
+        account = SimpleNamespace(is_active=True)
+        with patch('app.services.message_edits.get_adapter', return_value=adapter), \
+             patch('app.services.message_edits.ChannelConversationRepository.get_by_session', return_value=conversation), \
+             patch('app.services.message_edits.ChannelAccountRepository.get_by_id', return_value=account):
+            yield SimpleNamespace(adapter=adapter, conversation=conversation, account=account)
+
+    def test_the_platforms_copy_changes(self, client_with_error_mock, db, held_chat,
+                                        user_with_manage_chats_permission, platform, announced):
+        reply = _sent_reply(db, held_chat, user_with_manage_chats_permission, external_message_id='77')
+        assert _edit(client_with_error_mock, held_chat, reply, "Fixed").status_code == status.HTTP_200_OK
+        platform.adapter.edit_text.assert_awaited_once_with(platform.account, platform.conversation, '77', "Fixed")
+
+    def test_when_the_platform_refuses_nothing_changes(self, client_with_error_mock, db, held_chat,
+                                                       user_with_manage_chats_permission, platform, announced):
+        from app.channels.base import SendResult
+        platform.adapter.edit_text.return_value = SendResult(ok=False, error="message can't be edited")
+        reply = _sent_reply(db, held_chat, user_with_manage_chats_permission, external_message_id='77')
+        response = _edit(client_with_error_mock, held_chat, reply, "Fixed")
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        db.refresh(reply)
+        assert (reply.message, reply.original_message) == ("Your refund is on its way", None)
+        announced[0].assert_not_awaited()
+
+    def test_a_reply_sent_before_its_id_was_kept_cant_change(self, client_with_error_mock, db, held_chat,
+                                                            user_with_manage_chats_permission, platform, announced):
+        reply = _sent_reply(db, held_chat, user_with_manage_chats_permission)
+        response = _edit(client_with_error_mock, held_chat, reply, "Fixed")
+        assert response.status_code == status.HTTP_409_CONFLICT
+        platform.adapter.edit_text.assert_not_awaited()
+
+
+def test_a_blank_edit_or_another_chats_message_is_refused(
+    client_with_error_mock, db, held_chat, create_chat_session, user_with_manage_chats_permission, announced
+):
+    reply = _sent_reply(db, held_chat, user_with_manage_chats_permission)
+    assert _edit(client_with_error_mock, held_chat, reply, "   ").status_code == 422
+    elsewhere = create_chat_session()
+    other = _sent_reply(db, elsewhere, user_with_manage_chats_permission)
+    assert _edit(client_with_error_mock, held_chat, other, "Changed").status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.parametrize("channel, minutes", [(None, 15), ('web', 15), ('telegram', 15), ('slack', 15),
+                                              ('whatsapp', None), ('messenger', None), ('instagram', None),
+                                              ('sms', None), ('email', None)])
+def test_which_channels_can_edit(channel, minutes):
+    from app.services.message_edits import edit_window_minutes
+    assert edit_window_minutes(channel) == minutes

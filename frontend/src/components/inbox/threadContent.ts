@@ -16,6 +16,25 @@ limitations under the License.
 
 import type { ConversationNote, Message } from '@/types/chat'
 
+/** A reply you sent: stored with your id, or just sent from this tab (no id back yet) */
+export function sentByMe(message: Pick<Message, 'message_type' | 'user_id' | 'client_id'>, currentUserId: string | null): boolean {
+  if (message.message_type !== 'agent' && message.message_type !== 'agent_message') return false
+  return message.user_id ? message.user_id === currentUserId : !!message.client_id
+}
+
+/**
+ * Whether you can still edit this reply: yours, stored (it has an id), and
+ * sent less than \`editMinutes\` ago. editMinutes is null where the channel
+ * can't change a sent message.
+ */
+export function canEditReply(
+  message: Pick<Message, 'id' | 'message_type' | 'user_id' | 'client_id' | 'created_at'>,
+  currentUserId: string | null, editMinutes: number | null | undefined, now: Date,
+): boolean {
+  if (editMinutes == null || typeof message.id !== 'number' || !sentByMe(message, currentUserId)) return false
+  return now.getTime() - Date.parse(message.created_at) < editMinutes * 60_000
+}
+
 /** A help-center question and its answer, drawn from a conversation */
 export interface FaqDraft {
   question: string
@@ -167,18 +186,40 @@ function teamAnswerFrom(messages: Draftable[], index: number): string | null {
   return parts.length ? parts.join('\n\n') : null
 }
 
-/**
- * A help center draft from the conversation, or null when it doesn't hold
- * enough to be worth one:
- * - 'team': from the handover (`index` = handoverIndex), what the team replied
- *   and the question it answers: the customer's last one before that reply,
- *   asked before the handover or after it. Nothing until the team has replied.
- * - 'this': for the AI answer at \`index\`, its question and that answer, to correct.
- */
-export function knowledgeDraft(messages: Draftable[], index: number, source: 'team' | 'this'): FaqDraft | null {
-  const question = questionAt(messages, source === 'team' ? firstTeamReply(messages, index) : index)
-  const answer = source === 'team' ? teamAnswerFrom(messages, index) : messages[index]?.message?.trim() ?? null
+/** The pair, trimmed to size, when both are worth publishing */
+function draftOf(question: string | null, answer: string | null): FaqDraft | null {
   if (!question || question.length < KNOWLEDGE_QUESTION_MIN) return null
   if (!answer || answer.length < KNOWLEDGE_ANSWER_MIN) return null
   return { question: question.slice(0, QUESTION_MAX), answer: answer.slice(0, ANSWER_MAX) }
+}
+
+/**
+ * The team's latest full answer from \`index\` on: each time they reply (until
+ * the customer writes again) is a candidate, and the last one worth publishing
+ * wins. A holding reply ("looking into it now") then the real answer gives the
+ * real answer.
+ */
+function latestTeamDraft(messages: Draftable[], index: number): FaqDraft | null {
+  let found: FaqDraft | null = null
+  for (let at = firstTeamReply(messages, index); at < messages.length;) {
+    found = draftOf(questionAt(messages, at), teamAnswerFrom(messages, at)) ?? found
+    let next = at
+    while (next < messages.length && messages[next].message_type !== 'user') next++
+    at = firstTeamReply(messages, next)
+  }
+  return found
+}
+
+/**
+ * A help center draft from the conversation, or null when it doesn't hold
+ * enough to be worth one:
+ * - 'team': from the handover (\`index\` = handoverIndex), the team's latest full
+ *   answer and the question it answers: the customer's last one before that
+ *   reply, asked before the handover or after it. Nothing until the team has
+ *   answered.
+ * - 'this': for the AI answer at \`index\`, its question and that answer, to correct.
+ */
+export function knowledgeDraft(messages: Draftable[], index: number, source: 'team' | 'this'): FaqDraft | null {
+  if (source === 'team') return latestTeamDraft(messages, index)
+  return draftOf(questionAt(messages, index), messages[index]?.message?.trim() ?? null)
 }

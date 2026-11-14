@@ -237,6 +237,55 @@ describe('ThreadMessage', () => {
     expect(mountMessage({ message_type: 'system', message: 'Chat ended' }).find('.system-line').text()).toBe('Chat ended')
     expect(mountMessage({ message_type: 'agent', user_id: 'me', attributes: { delivery_status: 'failed' } }).find('.delivery-failed').text()).toBe('Not delivered')
   })
+  describe('editing your reply', () => {
+    const mine = { message_type: 'agent', user_id: 'me', id: 5, message: 'Your refund is on its way' }
+
+    it('offers Edit only when it may be edited, and says Edited once it was', () => {
+      expect(mountMessage(mine, { editable: true, saveEdit: vi.fn() }).find('.edit-btn').text()).toBe('Edit')
+      expect(mountMessage(mine, { editable: false, saveEdit: vi.fn() }).find('.edit-btn').exists()).toBe(false)
+      expect(mountMessage({ ...mine, attributes: { edited_at: ago(1) } }).find('.edited').text()).toBe('Edited')
+      expect(mountMessage(mine).find('.edited').exists()).toBe(false)
+    })
+
+    it('edits in place: Enter saves, Escape puts it back', async () => {
+      const saveEdit = vi.fn().mockResolvedValue(undefined)
+      const wrapper = mountMessage(mine, { editable: true, saveEdit })
+      await wrapper.find('.edit-btn').trigger('click')
+      const box = wrapper.find('textarea')
+      expect(box.element.value).toBe('Your refund is on its way')
+      expect(wrapper.find('.edit-btn').exists()).toBe(false)
+
+      await box.trigger('keydown', { key: 'Escape' })
+      expect(wrapper.find('textarea').exists()).toBe(false)
+      expect(saveEdit).not.toHaveBeenCalled()
+
+      await wrapper.find('.edit-btn').trigger('click')
+      await wrapper.find('textarea').setValue('  Your refund reaches you in 3 days ')
+      await wrapper.find('textarea').trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      expect(saveEdit).toHaveBeenCalledWith('Your refund reaches you in 3 days')
+      expect(wrapper.find('textarea').exists()).toBe(false)
+    })
+
+    it('Shift+Enter breaks the line; unchanged text saves nothing; a refused save keeps the draft', async () => {
+      const saveEdit = vi.fn().mockRejectedValue(new Error('502'))
+      const wrapper = mountMessage(mine, { editable: true, saveEdit })
+      await wrapper.find('.edit-btn').trigger('click')
+      await wrapper.find('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+      expect(saveEdit).not.toHaveBeenCalled()
+
+      await wrapper.find('form').trigger('submit')
+      expect(saveEdit).not.toHaveBeenCalled()
+      expect(wrapper.find('textarea').exists()).toBe(false)
+
+      await wrapper.find('.edit-btn').trigger('click')
+      await wrapper.find('textarea').setValue('Changed')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(saveEdit).toHaveBeenCalledTimes(1)
+      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Changed')
+    })
+  })
 })
 
 describe('ActionMenu', () => {

@@ -4285,6 +4285,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Sent Message
+         * @description Change a reply you sent, for the customer too (message_edits.py says
+         *     which replies, for how long and on which channels).
+         */
+        patch: operations["edit_sent_message_api_v1_sessions__session_id__messages__message_id__patch"];
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/reassign": {
         parameters: {
             query?: never;
@@ -6424,6 +6445,8 @@ export interface components {
             title?: string | null;
             /** Snoozed Until */
             snoozed_until?: string | null;
+            /** Message Edit Minutes */
+            message_edit_minutes?: number | null;
             /**
              * Notes
              * @default []
@@ -8231,6 +8254,14 @@ export interface components {
             user_name?: string | null;
             /** Attachments */
             attachments?: unknown[] | null;
+        };
+        /**
+         * MessageEdit
+         * @description A sent reply's new text.
+         */
+        MessageEdit: {
+            /** Message */
+            message: string;
         };
         /** MessengerConnectRequest */
         MessengerConnectRequest: {
@@ -19173,6 +19204,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_sent_message_api_v1_sessions__session_id__messages__message_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                message_id: number;
+            };
+            cookie?: {
+                access_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
                 };
             };
             /** @description Validation Error */

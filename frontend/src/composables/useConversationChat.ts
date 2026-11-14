@@ -177,6 +177,14 @@ export function useConversationChat(
     chat.value = { ...newChat }
   }
 
+  /** A reply you edited, as the server stored it: here, and passed up */
+  const applyEditedMessage = (edited: Message) => {
+    const messages = chat.value.messages.map((m) =>
+      m.id === edited.id ? { ...m, message: edited.message, attributes: edited.attributes ?? m.attributes } : m)
+    chat.value = { ...chat.value, messages }
+    emit('chatUpdated', chat.value)
+  }
+
   const sendMessage = async () => {
     if (!newMessage.value.trim() || !canSendMessage.value) return
 
@@ -460,6 +468,7 @@ export function useConversationChat(
     handlerCaption,
     updateChat,
     replaceChatFromProps,
+    applyEditedMessage,
     handledByAI,
     endChat,
     templateCanReopen,

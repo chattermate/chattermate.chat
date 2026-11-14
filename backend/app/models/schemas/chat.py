@@ -145,6 +145,19 @@ class ShopifyOutputData(BaseModel):
         # Override json method to ensure proper serialization
         return self.dict()
 
+class MessageEdit(BaseModel):
+    """A sent reply's new text."""
+    message: str = Field(min_length=1, max_length=4000)
+
+    @field_validator('message')
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('A reply needs some text')
+        return value
+
+
 class Message(BaseModel):
     id: Optional[int] = None
     message: Optional[str] = None
@@ -259,6 +272,9 @@ class ChatDetailResponse(BaseModel):
     sentiment_label: Optional[str] = None
     title: Optional[str] = None
     snoozed_until: Optional[datetime] = None
+    # Minutes a person's sent reply stays editable on this channel; None: the
+    # channel can't change a sent message
+    message_edit_minutes: Optional[int] = None
     # The team's notes, kept apart from `messages` (what the customer saw)
     notes: List[ConversationNoteResponse] = []
     created_at: datetime

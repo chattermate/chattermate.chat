@@ -51,7 +51,9 @@ JSON = "json"
 # (table, primary key, columns, kind) — kind picks the "already encrypted" test and
 # the value transform, which is all that differs between text and JSONB columns.
 TARGETS = (
-    ("chat_history", "id", ("message",), TEXT),
+    # original_message: a person's reply before they edited it; written
+    # encrypted from the first row, listed so the guard test holds
+    ("chat_history", "id", ("message", "original_message"), TEXT),
     ("session_to_agents", "session_id",
      ("transfer_description", "end_chat_description", "ticket_summary",
       "ticket_description", "title"), TEXT),

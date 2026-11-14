@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 import api from './api'
-import type { Conversation, ChatDetail, ConversationNote, InboxCounts, InboxSort, InboxViewKey } from '@/types/chat'
+import type { Conversation, ChatDetail, ConversationNote, InboxCounts, InboxSort, InboxViewKey, Message } from '@/types/chat'
 import { isEmbeddedShopify } from '@/utils/shopifyEmbed'
 import emitter from '@/utils/emitter'
 
@@ -98,6 +98,12 @@ export const chatService = {
     const response = await api.post(`/sessions/${sessionId}/release`)
     emitter.emit('inbox-changed')
     return response.data as ChatDetail
+  },
+
+  /** Change a reply you sent; the customer's copy changes too. */
+  async editMessage(sessionId: string, messageId: number, message: string): Promise<Message> {
+    const response = await api.patch(`/sessions/${sessionId}/messages/${messageId}`, { message })
+    return response.data as Message
   },
 
   /** Open a closed chat again, held by you: you reply next. */

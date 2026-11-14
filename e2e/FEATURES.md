@@ -24,6 +24,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Inbox | Close asks first, tells the customer and files the chat under Closed; Send and close sends the reply, then closes once confirmed | `specs/inbox/handling.spec.ts` | P1 | ✅ |
 | Inbox | A half-written note never becomes the reply when the chat is taken over | `specs/inbox/handling.spec.ts` | P1 | ✅ |
 | Inbox | J/K move through the list, / finds, ? shows the shortcuts, E then Enter closes a chat you hold and moves on to the next (E on one you don't says why); a closed chat reopens as yours; on a phone the list and thread take turns | `specs/inbox/handling.spec.ts` | P2 | ✅ |
+| Inbox | Edit a reply you sent (15 minutes): the widget and Telegram show the new text marked Edited; WhatsApp and the other channels that can't change a sent message offer no Edit | `specs/inbox/handling.spec.ts`, `specs/channels/edits.spec.ts` | P1 | ✅ |
 | Setup and auth | Agent role is denied AI settings | `specs/auth/login.spec.ts` | P1 | ✅ |
 | Setup and auth | Sign-out, deactivation and a password change end sessions server-side; a refresh token is not an access token | `specs/auth/sessions.spec.ts` | P1 | ✅ |
 | Setup and auth | Single sign-on: a member signs in with Google Workspace, a Microsoft work account on a verified domain, or a personal Microsoft account; again on another device, and after the Google address changes | `specs/auth/sso.spec.ts` | P1 | ✅ |

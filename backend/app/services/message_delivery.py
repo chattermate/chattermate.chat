@@ -172,8 +172,9 @@ async def _record_delivery(db: Session, adapter: ChannelAdapter, account: Channe
         external_message_id = sent.result.external_message_id
         if adapter.reports_delivery_status and external_message_id:
             await record_sent(db, message_id, account.id, external_message_id)
-        elif sent.choices is not None and external_message_id:
-            # A tap is matched back to the message that offered it
+        elif external_message_id and (sent.choices is not None or adapter.supports_edit):
+            # A tap is matched back to the message that offered it; an edit
+            # changes the platform's copy by this id
             ChatRepository(db).set_external_message_id(message_id, external_message_id)
     except Exception as e:
         logger.error(f"Could not record delivery of message {message_id}: {e}")

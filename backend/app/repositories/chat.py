@@ -775,6 +775,9 @@ class ChatRepository:
         org_id: str | UUID
     ) -> Optional[dict]:
         """Get detailed chat information for a session"""
+        # Here, not at the top: the service delivers through this repository
+        from app.services.message_edits import edit_window_minutes
+
         if isinstance(session_id, str):
             session_id = UUID(session_id)
         if isinstance(org_id, str):
@@ -911,6 +914,8 @@ class ChatRepository:
             'sentiment_label': result.sentiment_label,
             'title': result.title,
             'snoozed_until': result.snoozed_until,
+            # Minutes a person's sent reply stays editable here; None: never
+            'message_edit_minutes': edit_window_minutes(result.channel),
             # The team's notes: never in `messages`, which is what the customer saw
             'notes': ConversationNoteRepository(self.db).for_session(result.session_id),
             'created_at': result.created_at,

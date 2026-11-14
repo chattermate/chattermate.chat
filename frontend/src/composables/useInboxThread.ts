@@ -42,7 +42,7 @@ interface RoomEvent {
 
 /** Room events that change a conversation (who holds it, a teammate's note):
  * the counts and rows refresh, and the open thread with them */
-const OWNERSHIP_EVENTS = new Set(['reassigned', 'reassigned_from_you', 'released_to_ai', 'note_added', 'reopened', 'closed'])
+const OWNERSHIP_EVENTS = new Set(['reassigned', 'reassigned_from_you', 'released_to_ai', 'note_added', 'reopened', 'closed', 'message_edited'])
 
 /** conversation_activity: a conversation got a message (any, from anyone). */
 interface ActivityEvent {

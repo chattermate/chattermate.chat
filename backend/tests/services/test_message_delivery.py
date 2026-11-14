@@ -189,6 +189,7 @@ def _channel_adapter(supports_interactive: bool):
     adapter.interactive_limits = WHATSAPP_LIMITS if supports_interactive else None
     adapter.reports_delivery_status = True
     adapter.max_text_length = 4096
+    adapter.supports_edit = False
     adapter.check_delivery_window.return_value = WindowStatus.OK
     adapter.format_outbound.side_effect = lambda t: t
     adapter.send_text = AsyncMock(return_value=SendResult(ok=True, external_message_id='wamid.TXT'))
@@ -337,6 +338,24 @@ async def test_channels_without_receipts_record_no_message_id(db, test_agent, te
 
     db.refresh(row)
     assert row.external_message_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_channel_that_can_edit_records_the_id_without_receipts(
+        db, test_agent, test_customer, test_organization, mock_sio, monkeypatch):
+    """Telegram and Slack send no receipts, but an edit changes the platform's
+    copy by this id."""
+    session, _ = make_channel_session(db, test_agent, test_customer, test_organization)
+    adapter = _channel_adapter(False)
+    adapter.reports_delivery_status = False
+    adapter.supports_edit = True
+    monkeypatch.setattr(message_delivery, "get_adapter", lambda c: adapter)
+    row = _bot_row(db, session, test_organization)
+
+    await deliver_to_customer(db, session, {'message': 'hi'}, message_id=row.id, source=MessageSource.HUMAN)
+
+    db.refresh(row)
+    assert row.external_message_id == 'wamid.TXT'
 
 
 @pytest.mark.asyncio

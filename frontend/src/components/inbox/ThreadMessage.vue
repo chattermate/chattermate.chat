@@ -20,7 +20,7 @@ limitations under the License.
  * the right in lime with an "AI" label; a person from the team on the right in
  * coral; system lines centred.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Message } from '@/types/chat'
 import { getInitials } from '@/utils/text'
 import { renderChatMarkdown } from '@/utils/chatMarkdown'
@@ -30,6 +30,8 @@ import MessageStatusTicks from '@/components/conversations/MessageStatusTicks.vu
 import QuickReplyChips from '@/components/conversations/QuickReplyChips.vue'
 import MessageTag from '@/components/conversations/MessageTag.vue'
 import VisitorFeedbackMark from '@/components/conversations/VisitorFeedbackMark.vue'
+import MessageEditor from './MessageEditor.vue'
+import { sentByMe } from './threadContent'
 
 type Attachment = NonNullable<Message['attachments']>[number]
 
@@ -44,7 +46,13 @@ const props = defineProps<{
   imageUrl: (fileUrl: string) => string
   downloadUrl: (fileUrl: string) => string
   fileSize: (bytes: number) => string
+  /** Your reply, still editable: Edit shows, and saves through \`saveEdit\` */
+  editable?: boolean
+  saveEdit?: (text: string) => Promise<void>
 }>()
+
+const editing = ref(false)
+const edited = computed(() => !!props.message.attributes?.edited_at)
 
 defineEmits<{ (e: 'view-product', productId: string): void }>()
 
@@ -63,10 +71,8 @@ const side = computed<Side>(() => SIDES[props.message.message_type] ?? 'system')
 const legacyClass = computed(() => ({ customer: 'user', ai: 'bot', team: 'agent', system: 'system' })[side.value])
 
 const teamLabel = computed(() => {
-  const { user_id: userId, user_name: userName, client_id: clientId } = props.message
-  // Yours: stored with your id, or just sent from this tab (no id back yet)
-  if ((userId && userId === props.currentUserId) || (!userId && clientId)) return 'You'
-  return userName || 'Teammate'
+  if (sentByMe(props.message, props.currentUserId)) return 'You'
+  return props.message.user_name || 'Teammate'
 })
 
 const products = computed(() => props.message.attributes?.shopify_output?.products ?? props.message.shopify_output?.products ?? [])
@@ -86,7 +92,13 @@ const attachments = computed<Attachment[]>(() => props.message.attachments ?? []
       </span>
       <span v-else-if="side === 'team'" class="who team-who">{{ teamLabel }}</span>
 
-      <div class="message-bubble">
+      <MessageEditor
+        v-if="editing && saveEdit"
+        :text="message.message || ''"
+        :save="saveEdit"
+        @done="editing = false"
+      />
+      <div v-else class="message-bubble">
         <template v-if="message.message_type === 'product' && products.length">
           <div class="markdown" v-html="renderChatMarkdown(message.message || '')"></div>
           <ul class="products">
@@ -134,6 +146,8 @@ const attachments = computed<Attachment[]>(() => props.message.attachments ?? []
         <VisitorFeedbackMark v-if="feedback" :value="feedback" />
         <span v-if="message.attributes?.delivery_status" class="delivery-failed">Not delivered</span>
         <router-link v-if="side === 'ai' && correctionLink" :to="correctionLink" class="correct">Correct this answer</router-link>
+        <span v-if="edited" class="edited">Edited</span>
+        <button v-if="editable && saveEdit && !editing" type="button" class="edit-btn" @click="editing = true">Edit</button>
       </span>
     </div>
   </div>
@@ -261,6 +275,25 @@ const attachments = computed<Attachment[]>(() => props.message.attachments ?? []
 
 .correct:hover {
   text-decoration: underline;
+}
+
+.edit-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-btn:hover {
+  text-decoration: underline;
+}
+
+.edit-btn:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 2px;
 }
 
 .products,

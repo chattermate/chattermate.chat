@@ -181,6 +181,8 @@ export interface ChatDetail {
   sentiment_label?: SentimentLabel | null
   title?: string | null
   snoozed_until?: string | null
+  /** Minutes your sent reply stays editable here; null: the channel can't change a sent message */
+  message_edit_minutes?: number | null
   /** The team's notes, apart from `messages` (what the customer saw) */
   notes?: ConversationNote[]
 }

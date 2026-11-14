@@ -67,6 +67,14 @@ export class TelegramBot {
     if (!response.ok()) throw new Error(`Telegram webhook → ${response.status()}: ${await response.text()}`)
   }
 
+  /** The bot's edits to messages it sent into `chatId`, oldest first. */
+  async editsIn(chatId: number): Promise<TelegramEdit[]> {
+    const calls = await this.externals.calls('telegram', 'editMessageText', { contains: `/bot${this.token}/` })
+    return calls
+      .filter((c) => c.status === 200 && String((c.body as TelegramEdit).chat_id) === String(chatId))
+      .map((c) => c.body as TelegramEdit)
+  }
+
   /** What the bot sent into `chatId`, with the message_id Telegram assigned each. */
   async messagesTo(chatId: number): Promise<Array<SendMessageBody & { message_id: number }>> {
     // Only what this bot sent: the Bot API puts the token in the path.
@@ -75,6 +83,13 @@ export class TelegramBot {
       .filter((c) => c.status === 200 && String((c.body as SendMessageBody).chat_id) === String(chatId))
       .map((c) => ({ ...(c.body as SendMessageBody), message_id: (c.response as { result: { message_id: number } }).result.message_id }))
   }
+}
+
+/** An editMessageText call: the bot changed a message it sent. */
+export interface TelegramEdit {
+  chat_id: number | string
+  message_id: number
+  text: string
 }
 
 export class TelegramChat {
@@ -97,6 +112,13 @@ export class TelegramChat {
         message: { message_id: this.messageId, date: Math.floor(Date.now() / 1000), chat: { ...user, type: 'private' }, from: user, text },
       })
     })
+  }
+
+  /** What the bot sent into this chat as it reads now: each message with its edits applied */
+  async currentReplies(): Promise<string[]> {
+    const sent = await this.bot.messagesTo(this.chatId)
+    const edits = await this.bot.editsIn(this.chatId)
+    return sent.map((m) => edits.filter((e) => e.message_id === m.message_id).at(-1)?.text ?? m.text)
   }
 
   /** Every message the bot has sent into this chat, oldest first. */

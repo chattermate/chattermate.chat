@@ -195,6 +195,23 @@ export class InboxPage {
     })
   }
 
+  /** The Edit action under one of your replies */
+  editButton(text: string): Locator {
+    return this.agentMessage(text).getByRole('button', { name: 'Edit' })
+  }
+
+  /** Edits a reply you sent: Enter saves */
+  async editReply(text: string, newText: string): Promise<void> {
+    await step(`Agent edits "${text}" to "${newText}"`, async () => {
+      await this.editButton(text).click()
+      const box = this.page.getByRole('textbox', { name: 'Edit your reply' })
+      await box.fill(newText)
+      await box.press('Enter')
+      await expect(box).toBeHidden()
+      await expect(this.agentMessage(newText)).toContainText('Edited')
+    })
+  }
+
   /** The open thread's heading: the customer's name */
   threadTitle(customerName: string): Locator {
     return this.page.getByRole('heading', { name: customerName })

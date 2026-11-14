@@ -415,3 +415,28 @@ class TestHomeWelcomeDelivery:
         api.assert_awaited_once()
         assert api.await_args[0][0] == "chat.postMessage"
         assert api.await_args[0][2].get("thread_ts") == "111.222"
+
+
+
+class TestSlackEdit:
+    @pytest.mark.asyncio
+    async def test_edit_updates_the_message_in_its_channel(self, adapter, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+        api = AsyncMock(return_value={"ok": True, "ts": "1712.5"})
+        monkeypatch.setattr("app.channels.slack.slack_api", api)
+        monkeypatch.setattr(adapter, "_access_token", lambda a: "tok")
+        conversation = MagicMock(external_conversation_id="C1:1700.1")
+
+        result = await adapter.edit_text(MagicMock(), conversation, "1712.5", "Fixed text")
+
+        assert adapter.supports_edit is True
+        assert result.ok
+        api.assert_awaited_once_with("chat.update", "tok", {"channel": "C1", "ts": "1712.5", "text": "Fixed text"})
+
+    @pytest.mark.asyncio
+    async def test_an_edit_slack_refuses_says_why(self, adapter, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+        monkeypatch.setattr("app.channels.slack.slack_api", AsyncMock(return_value={"ok": False, "error": "cant_update_message"}))
+        monkeypatch.setattr(adapter, "_access_token", lambda a: "tok")
+        result = await adapter.edit_text(MagicMock(), MagicMock(external_conversation_id="C1"), "1712.5", "x")
+        assert (result.ok, result.error) == (False, "cant_update_message")

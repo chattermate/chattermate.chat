@@ -25,7 +25,7 @@ import {
 } from '@/components/inbox/inboxViews'
 import { avatarTone, customerName, rowChips, transferReasonLabel } from '@/components/inbox/inboxPresentation'
 import { elapsedLabel, minutesSince, waitDuration, WAITING_LATE_MINUTES } from '@/components/inbox/inboxTime'
-import { buildTimeline, dayLabel, faqEditorLink, handoverIndex, knowledgeDraft } from '@/components/inbox/threadContent'
+import { buildTimeline, canEditReply, dayLabel, faqEditorLink, handoverIndex, knowledgeDraft, sentByMe } from '@/components/inbox/threadContent'
 import { matchMentionables, mentionedIds, mentionParts, mentionQuery } from '@/components/inbox/mentions'
 import { channelGlyph, channelLabel } from '@/utils/channelGlyphs'
 import type { InboxCounts } from '@/types/chat'
@@ -278,6 +278,24 @@ describe('knowledge drafts', () => {
     })
   })
 
+  it("takes the team's latest full answer, past a holding reply", () => {
+    const priya = [
+      { message_type: 'user', message: 'My card was charged but there is no order' },
+      { message_type: 'agent', message: "Hi Priya, I'm looking into it now." },
+      { message_type: 'user', message: 'Thanks, it was charged twice.' },
+      { message_type: 'agent', message: 'The payment provider charged you twice. The duplicate is refunded and reaches your card in 3 to 5 working days.' },
+    ]
+    expect(knowledgeDraft(priya, 1, 'team')).toEqual({
+      question: 'Thanks, it was charged twice.',
+      answer: 'The payment provider charged you twice. The duplicate is refunded and reaches your card in 3 to 5 working days.',
+    })
+    // The holding reply alone is no answer
+    expect(knowledgeDraft(priya.slice(0, 3), 1, 'team')).toBeNull()
+    // A later short reply doesn't replace the full one
+    expect(knowledgeDraft([...priya, { message_type: 'user', message: 'Great, thank you!' }, { message_type: 'agent', message: 'Anytime!' }], 1, 'team')?.answer)
+      .toContain('3 to 5 working days')
+  })
+
   it("drafts a correction from an AI answer and the question it answered", () => {
     expect(knowledgeDraft(thread, 1, 'this')).toEqual({
       question: 'Hi, can I return a jacket delivered to Berlin for a refund?',
@@ -339,5 +357,27 @@ describe('faqEditorLink', () => {
   it('opens the help center editor with the question and answer filled in', () => {
     expect(faqEditorLink({ question: 'Do you ship to Norway?', answer: 'Yes & fast' }))
       .toBe('/faq?question=Do+you+ship+to+Norway%3F&answer=Yes+%26+fast')
+  })
+})
+
+
+describe('editing a reply you sent', () => {
+  const NOW = new Date('2026-11-14T12:00:00Z')
+  const reply = (fields: Record<string, unknown> = {}) =>
+    ({ id: 5, message_type: 'agent', user_id: 'me', created_at: '2026-11-14T11:55:00Z', ...fields }) as never
+
+  it('is yours when stored with your id, or just sent from this tab', () => {
+    expect(sentByMe(reply(), 'me')).toBe(true)
+    expect(sentByMe(reply({ user_id: null, client_id: 'c1' }), 'me')).toBe(true)
+    expect(sentByMe(reply({ user_id: 'asha' }), 'me')).toBe(false)
+    expect(sentByMe(reply({ message_type: 'bot', user_id: null }), 'me')).toBe(false)
+  })
+
+  it('for the channel\'s minutes after sending, once stored, where the channel allows', () => {
+    expect(canEditReply(reply(), 'me', 15, NOW)).toBe(true)
+    expect(canEditReply(reply({ created_at: '2026-11-14T11:44:00Z' }), 'me', 15, NOW)).toBe(false)
+    expect(canEditReply(reply(), 'me', null, NOW)).toBe(false)
+    expect(canEditReply(reply({ id: undefined, user_id: null, client_id: 'c1' }), 'me', 15, NOW)).toBe(false)
+    expect(canEditReply(reply({ user_id: 'asha' }), 'me', 15, NOW)).toBe(false)
   })
 })

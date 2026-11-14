@@ -61,6 +61,10 @@
     font-size: 12.5px;
     font-weight: 600;
 }
+.chat-container.cm-surface.cm-ui-2 .cm-human__edited {
+    font-size: 11px;
+    color: var(--cm-muted);
+}
 .chat-container.cm-surface.cm-ui-2 .cm-human .message-bubble,
 .chat-container.cm-surface.cm-ui-2 .cm-typing {
     max-width: none;
