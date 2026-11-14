@@ -29,7 +29,10 @@ const router = {
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => router }))
 
 const chat = vi.hoisted(() => ({ getRecentChats: vi.fn(), getInboxCounts: vi.fn(), getChatDetail: vi.fn() }))
-vi.mock('@/services/chat', () => ({ chatService: chat, localDayStart: () => '2026-11-13T00:00:00.000Z' }))
+vi.mock('@/services/chat', async () => {
+  const { default: emitter } = await import('@/utils/emitter')
+  return { chatService: chat, localDayStart: () => '2026-11-13T00:00:00.000Z', inboxChanged: () => emitter.emit('inbox-changed') }
+})
 
 const socket = vi.hoisted(() => {
   const handlers: Record<string, (data: unknown) => void> = {}
@@ -503,6 +506,44 @@ describe('useInboxThread', () => {
     await vi.advanceTimersByTimeAsync(ACTIVITY_REFETCH_MS)
 
     expect(chat.getChatDetail).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it("refetches a chat a teammate holds: their replies aren't streamed to you", async () => {
+    vi.useFakeTimers()
+    chat.getChatDetail.mockResolvedValue({ session_id: 's1', user_id: 'asha', messages: [] })
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    chat.getChatDetail.mockClear()
+
+    socket.handlers.conversation_activity({ session_id: 's1' })
+    await vi.advanceTimersByTimeAsync(ACTIVITY_REFETCH_MS)
+
+    expect(chat.getChatDetail).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('keeps the newest copy when two refetches answer out of order', async () => {
+    const { result, wrapper } = host(() => useInboxThread())
+    chat.getChatDetail.mockResolvedValue({ session_id: 's1', user_id: null, messages: [] })
+    await result().open('s1')
+    let answerOld!: (v: unknown) => void
+    chat.getChatDetail
+      .mockReturnValueOnce(new Promise((resolve) => { answerOld = resolve }))
+      .mockResolvedValueOnce({ session_id: 's1', user_id: null, messages: [
+        { message: 'Hi', message_type: 'user', created_at: '2026-11-14T10:00:00Z' },
+        { message: 'Hello!', message_type: 'bot', created_at: '2026-11-14T10:00:01Z' },
+      ] })
+
+    const older = result().open('s1', true)
+    await result().open('s1', true)
+    answerOld({ session_id: 's1', user_id: null, messages: [
+      { message: 'Hi', message_type: 'user', created_at: '2026-11-14T10:00:00Z' },
+    ] })
+    await older
+
+    expect(result().chat.value?.messages.map((m) => m.message)).toEqual(['Hi', 'Hello!'])
+    expect(result().loadingChat.value).toBe(false)
     wrapper.unmount()
   })
 

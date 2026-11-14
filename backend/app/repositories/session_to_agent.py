@@ -360,8 +360,9 @@ class SessionToAgentRepository:
             session.status = SessionStatus.OPEN
             session.user_id = as_uuid(user_id)
             session.group_id = None
-            # Open again: no longer one of the day's closed chats
+            # Open again: no longer one of the day's closed chats, nor snoozed
             session.closed_at = None
+            session.snoozed_until = None
             self.db.commit()
             return True
         except Exception as e:
@@ -404,6 +405,8 @@ class SessionToAgentRepository:
             session.user_id = UUID(to_user_id)
             session.group_id = None
             session.status = SessionStatus.OPEN
+            # The new holder sees it now, not when someone else's snooze ends
+            session.snoozed_until = None
             session.updated_at = datetime.utcnow()
 
             self.db.commit()

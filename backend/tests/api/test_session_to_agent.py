@@ -1026,6 +1026,10 @@ def test_reopen_opens_a_closed_chat_held_by_whoever_reopened_it(
     db.commit()
     db.refresh(session)
     assert session.closed_at is not None
+    # Snoozed before it closed: reopened, it shows now
+    from datetime import timedelta, timezone
+    session.snoozed_until = datetime.now(timezone.utc) + timedelta(days=7)
+    db.commit()
 
     with patch('app.api.session_to_agent.emit_to_org_inbox', new=AsyncMock()) as announce, \
          patch('app.services.human_routing.deliver_to_customer', new=AsyncMock()) as deliver:
@@ -1035,8 +1039,8 @@ def test_reopen_opens_a_closed_chat_held_by_whoever_reopened_it(
     assert response.json()["status"] == "open"
     assert response.json()["user_id"] == str(user_with_manage_chats_permission.id)
     db.refresh(session)
-    assert (session.status, session.user_id, session.closed_at) == (
-        SessionStatus.OPEN, user_with_manage_chats_permission.id, None)
+    assert (session.status, session.user_id, session.closed_at, session.snoozed_until) == (
+        SessionStatus.OPEN, user_with_manage_chats_permission.id, None, None)
     announce.assert_awaited_once_with(
         'room_event', {'type': 'reopened', 'session_id': str(session.session_id)}, session.organization_id)
     deliver.assert_not_awaited()
@@ -1241,7 +1245,32 @@ def test_a_blank_edit_or_another_chats_message_is_refused(
     assert _edit(client_with_error_mock, held_chat, other, "Changed").status_code == status.HTTP_404_NOT_FOUND
 
 
-@pytest.mark.parametrize("channel, minutes", [(None, 15), ('web', 15), ('telegram', 15), ('slack', 15),
+def test_an_edit_is_cleaned_as_a_sent_reply_is(
+    client_with_error_mock, db, held_chat, user_with_manage_chats_permission, announced
+):
+    reply = _sent_reply(db, held_chat, user_with_manage_chats_permission)
+    response = _edit(client_with_error_mock, held_chat, reply, "Refund sent <script>alert(1)</script>")
+    assert response.status_code == status.HTTP_200_OK
+    db.refresh(reply)
+    assert "<script" not in reply.message and "Refund sent" in reply.message
+
+    unsafe = _edit(client_with_error_mock, held_chat, reply, "<script>alert(1)</script>")
+    assert unsafe.status_code == status.HTTP_400_BAD_REQUEST
+    db.refresh(reply)
+    assert "Refund sent" in reply.message
+
+
+def test_a_notice_sent_in_your_name_is_not_yours_to_edit(
+    client_with_error_mock, db, held_chat, user_with_manage_chats_permission, announced
+):
+    notice = _sent_reply(db, held_chat, user_with_manage_chats_permission,
+                         text="You're now connected with a member of our team.", attributes={'source': 'system'})
+    response = _edit(client_with_error_mock, held_chat, notice, "Changed")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    announced[0].assert_not_awaited()
+
+
+@pytest.mark.parametrize("channel, minutes", [(None, 15), ('web', 15), ('shopify', 15), ('telegram', 15), ('slack', 15),
                                               ('whatsapp', None), ('messenger', None), ('instagram', None),
                                               ('sms', None), ('email', None)])
 def test_which_channels_can_edit(channel, minutes):

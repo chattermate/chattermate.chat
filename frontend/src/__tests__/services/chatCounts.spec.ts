@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@/services/api', () => ({ default: api }))
 
-import { chatService } from '@/services/chat'
+import { chatService, inboxChanged } from '@/services/chat'
 import emitter from '@/utils/emitter'
 
 const counts = { open: 2, waiting_for_human: 1, assigned_to_me: 0, ai_handling: 1, negative: 0, resolved_by_ai_today: 0, channels: {} }
@@ -43,6 +43,23 @@ describe('chatService.getInboxCounts', () => {
     expect(api.get).toHaveBeenCalledWith('/chats/counts', { params: { today_start: expect.any(String) } })
     expect(heard).toHaveBeenCalledWith(counts)
     emitter.off('inbox-counts', heard)
+  })
+
+  it('asks again after a change, rather than share an answer from before it', async () => {
+    let answerOld!: (value: unknown) => void
+    api.get.mockReturnValueOnce(new Promise((resolve) => { answerOld = resolve }))
+      .mockResolvedValueOnce({ data: { ...counts, assigned_to_me: 1 } })
+
+    const before = chatService.getInboxCounts()
+    inboxChanged()
+    const after = chatService.getInboxCounts()
+    const alongside = chatService.getInboxCounts()
+    answerOld({ data: counts })
+
+    expect((await after).assigned_to_me).toBe(1)
+    expect((await alongside).assigned_to_me).toBe(1)
+    expect((await before).assigned_to_me).toBe(0)
+    expect(api.get).toHaveBeenCalledTimes(2)
   })
 
   it('asks again once the last answer is in, and after a failure', async () => {

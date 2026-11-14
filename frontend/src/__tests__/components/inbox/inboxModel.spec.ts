@@ -379,5 +379,7 @@ describe('editing a reply you sent', () => {
     expect(canEditReply(reply(), 'me', null, NOW)).toBe(false)
     expect(canEditReply(reply({ id: undefined, user_id: null, client_id: 'c1' }), 'me', 15, NOW)).toBe(false)
     expect(canEditReply(reply({ user_id: 'asha' }), 'me', 15, NOW)).toBe(false)
+    // The handover notice goes out in your name, but you didn't write it
+    expect(canEditReply(reply({ attributes: { source: 'system' } }), 'me', 15, NOW)).toBe(false)
   })
 })

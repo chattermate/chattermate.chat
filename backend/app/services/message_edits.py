@@ -32,6 +32,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.channels import get_adapter
+from app.channels.constants import MessageSource, is_widget_channel
 from app.core.logger import get_logger
 from app.core.socketio import sio
 from app.models.chat_history import ChatHistory
@@ -40,6 +41,7 @@ from app.models.user import User
 from app.repositories.channels import ChannelAccountRepository, ChannelConversationRepository
 from app.services.agent_rooms import emit_to_org_inbox
 from app.services.message_delivery import WEB_CHANNEL
+from app.utils.sanitize import sanitize_message
 
 logger = get_logger(__name__)
 
@@ -65,7 +67,7 @@ def edit_window_minutes(channel: Optional[str]) -> Optional[int]:
     """How long after sending a reply on this channel it can be edited; None
     where the customer's copy can't change (the inbox then offers no Edit)."""
     channel = _as_channel(channel)
-    if channel == WEB_CHANNEL:
+    if is_widget_channel(channel):
         return int(EDIT_WINDOW.total_seconds() // 60)
     adapter = get_adapter(channel)
     return int(EDIT_WINDOW.total_seconds() // 60) if adapter is not None and adapter.supports_edit else None
@@ -77,6 +79,9 @@ def _as_utc(moment: datetime) -> datetime:
 
 def _check(session: SessionToAgent, message: ChatHistory, user: User, now: datetime) -> None:
     if message.message_type != 'agent' or message.user_id != user.id:
+        raise EditRefused(403, "You can only edit a reply you sent")
+    # A notice sent in your name (the handover line) isn't a reply you wrote
+    if (message.attributes or {}).get('source') == MessageSource.SYSTEM.value:
         raise EditRefused(403, "You can only edit a reply you sent")
     if session.status == SessionStatus.CLOSED:
         raise EditRefused(400, "This chat is closed")
@@ -104,9 +109,13 @@ async def edit_sent_reply(db: Session, session: SessionToAgent, message: ChatHis
     """Change a person's sent reply everywhere it shows, or raise EditRefused."""
     now = datetime.now(timezone.utc)
     _check(session, message, user, now)
+    # The same rules as sending it (widget_chat's agent message)
+    text = sanitize_message(text)
+    if not text.strip():
+        raise EditRefused(400, "Your message contains unsafe content and cannot be sent.")
     if text == message.message:
         return message
-    if _channel(session) != WEB_CHANNEL:
+    if not is_widget_channel(_channel(session)):
         await _change_channel_copy(db, session, message, text)
 
     if message.original_message is None:

@@ -15,11 +15,10 @@ limitations under the License.
 */
 
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { chatService } from '@/services/chat'
+import { chatService, inboxChanged } from '@/services/chat'
 import { socketService } from '@/services/socket'
 import { userService } from '@/services/user'
 import type { ChatDetail, Message } from '@/types/chat'
-import emitter from '@/utils/emitter'
 
 /** chat_reply: a new message in a conversation this agent's room hears about. */
 export interface ChatReplyEvent {
@@ -129,6 +128,8 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
   const seen = new Set<string>()
   // Live replies for the conversation being opened, heard before its detail arrived
   let early: Message[] = []
+  // Only the latest load is shown: refetches overlap, and an older one may answer last
+  let latestLoad = 0
 
   /** Open a conversation; `force` refetches the open one (the AI's latest turns aren't streamed). */
   async function open(sessionId: string, force = false): Promise<void> {
@@ -143,10 +144,11 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     delete unread[sessionId]
     loadingChat.value = true
     if (chat.value?.session_id !== sessionId) early = []
+    const load = ++latestLoad
     try {
       const detail = await chatService.getChatDetail(sessionId)
-      // Another conversation was opened while this one loaded
-      if (selectedId.value !== sessionId) return
+      // Another conversation was opened, or this one refetched, while this loaded
+      if (load !== latestLoad || selectedId.value !== sessionId) return
       // Replies sent from here that the server had not confirmed by the time
       // the detail came back: read now, so one sent while it loaded counts
       const previous = chat.value?.session_id === sessionId ? chat.value.messages : []
@@ -155,7 +157,7 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     } catch (err) {
       console.error('Failed to load conversation:', err)
     } finally {
-      if (selectedId.value === sessionId) loadingChat.value = false
+      if (load === latestLoad && selectedId.value === sessionId) loadingChat.value = false
     }
   }
 
@@ -185,14 +187,14 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     onReply?.(data)
   }
 
-  // A message in a chat nobody holds: the AI's turns and the queue aren't
-  // streamed as chat_reply, so the open thread refetches. A chat a person
-  // holds streams its messages to them already.
+  // A message in a chat you don't hold: the AI's turns, the queue and a
+  // teammate's chat aren't streamed to you as chat_reply, so the open thread
+  // refetches. Your own chat streams its messages to you already.
   let activityTimer: ReturnType<typeof setTimeout> | null = null
   function handleActivity(data: ActivityEvent): void {
     const sessionId = data?.session_id
     if (!sessionId || sessionId !== selectedId.value) return
-    if (chat.value?.session_id === sessionId && chat.value.user_id) return
+    if (chat.value?.session_id === sessionId && chat.value.user_id && chat.value.user_id === userService.getUserId()) return
     if (activityTimer) clearTimeout(activityTimer)
     activityTimer = setTimeout(() => {
       activityTimer = null
@@ -207,7 +209,7 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     // Our own note is on screen already; refetching could drop a reply that
     // is still on its way to the server
     if (data.type === 'note_added' && data.author_id && data.author_id === userService.getUserId()) return
-    emitter.emit('inbox-changed')
+    inboxChanged()
     if (data.session_id && data.session_id === selectedId.value) void open(data.session_id, true)
   }
 

@@ -28,10 +28,12 @@ export function sentByMe(message: Pick<Message, 'message_type' | 'user_id' | 'cl
  * can't change a sent message.
  */
 export function canEditReply(
-  message: Pick<Message, 'id' | 'message_type' | 'user_id' | 'client_id' | 'created_at'>,
+  message: Pick<Message, 'id' | 'message_type' | 'user_id' | 'client_id' | 'created_at' | 'attributes'>,
   currentUserId: string | null, editMinutes: number | null | undefined, now: Date,
 ): boolean {
   if (editMinutes == null || typeof message.id !== 'number' || !sentByMe(message, currentUserId)) return false
+  // A notice sent in your name (the handover line) isn't a reply you wrote
+  if (message.attributes?.source === 'system') return false
   return now.getTime() - Date.parse(message.created_at) < editMinutes * 60_000
 }
 

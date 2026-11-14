@@ -21,6 +21,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # chat_history is written by every message: fail fast rather than queue them behind this
+    op.execute("SET LOCAL lock_timeout = '5s'")
     op.add_column('chat_history', sa.Column('original_message', sa.Text(), nullable=True))
 
 

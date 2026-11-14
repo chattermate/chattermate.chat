@@ -45,6 +45,15 @@ export function localDayStart(now = new Date()): string {
 }
 
 let inboxCountsInFlight: Promise<InboxCounts> | null = null
+// Bumped by each change: a counts request started before it can't answer for after it
+let inboxGeneration = 0
+let inFlightGeneration = -1
+
+/** Something changed the views' sizes: tell the inbox and the nav badge. */
+export function inboxChanged(): void {
+  inboxGeneration += 1
+  emitter.emit('inbox-changed')
+}
 
 export const chatService = {
   async getRecentChats(params?: ChatParams) {
@@ -62,14 +71,17 @@ export const chatService = {
    * inbox's instead of asking again.
    */
   getInboxCounts(): Promise<InboxCounts> {
-    inboxCountsInFlight ??= api
+    if (inboxCountsInFlight && inFlightGeneration === inboxGeneration) return inboxCountsInFlight
+    inFlightGeneration = inboxGeneration
+    const request: Promise<InboxCounts> = api
       .get<InboxCounts>('/chats/counts', { params: { today_start: localDayStart() } })
       .then((response) => {
         emitter.emit('inbox-counts', response.data)
         return response.data
       })
-      .finally(() => { inboxCountsInFlight = null })
-    return inboxCountsInFlight
+      .finally(() => { if (inboxCountsInFlight === request) inboxCountsInFlight = null })
+    inboxCountsInFlight = request
+    return request
   },
 
   async getChatDetail(sessionId: string) {
@@ -82,21 +94,21 @@ export const chatService = {
 
   async takeoverChat(sessionId: string): Promise<void> {
     const response = await api.post(`/sessions/${sessionId}/takeover`)
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data
   },
 
   /** Stop the AI on this chat and queue it for the team, without claiming it. */
   async routeToHuman(sessionId: string): Promise<ChatDetail> {
     const response = await api.post(`/sessions/${sessionId}/route-to-human`)
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data as ChatDetail
   },
 
   /** Give the chat back to the AI: nobody holds it and it leaves the queue. */
   async releaseToAi(sessionId: string): Promise<ChatDetail> {
     const response = await api.post(`/sessions/${sessionId}/release`)
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data as ChatDetail
   },
 
@@ -109,7 +121,7 @@ export const chatService = {
   /** Open a closed chat again, held by you: you reply next. */
   async reopenChat(sessionId: string): Promise<ChatDetail> {
     const response = await api.post(`/sessions/${sessionId}/reopen`)
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data as ChatDetail
   },
 
@@ -124,7 +136,7 @@ export const chatService = {
 
   async reassignChat(sessionId: string, toUserId: string) {
     const response = await api.post(`/sessions/${sessionId}/reassign`, null, { params: { to_user_id: toUserId } })
-    emitter.emit('inbox-changed')
+    inboxChanged()
     return response.data as ChatDetail
   }
 } 

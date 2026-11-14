@@ -48,7 +48,10 @@ vi.mock('@/composables/useEnterpriseFeatures', () => ({
 }))
 
 const chat = vi.hoisted(() => ({ getRecentChats: vi.fn(), getInboxCounts: vi.fn(), getChatDetail: vi.fn() }))
-vi.mock('@/services/chat', () => ({ chatService: chat, localDayStart: () => '2026-11-13T00:00:00.000Z' }))
+vi.mock('@/services/chat', async () => {
+  const { default: emitter } = await import('@/utils/emitter')
+  return { chatService: chat, localDayStart: () => '2026-11-13T00:00:00.000Z', inboxChanged: () => emitter.emit('inbox-changed') }
+})
 vi.mock('@/services/socket', () => ({
   socketService: { connect: vi.fn(), emit: vi.fn(), on: vi.fn(), off: vi.fn(), onReconnect: vi.fn(), offReconnect: vi.fn() },
 }))
