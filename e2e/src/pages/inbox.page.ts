@@ -188,10 +188,18 @@ export class InboxPage {
     })
   }
 
+  /** The open thread's heading: the customer's name */
+  threadTitle(customerName: string): Locator {
+    return this.page.getByRole('heading', { name: customerName })
+  }
+
+  get closeDialog(): Locator {
+    return this.page.getByRole('dialog', { name: 'Close this conversation?' })
+  }
+
   private async confirmClose(): Promise<void> {
-    const dialog = this.page.getByRole('dialog', { name: 'Close this conversation?' })
-    await dialog.getByRole('button', { name: 'Close conversation' }).click()
-    await expect(dialog).toBeHidden()
+    await this.closeDialog.getByRole('button', { name: 'Close conversation' }).click()
+    await expect(this.closeDialog).toBeHidden()
   }
 
   get shortcutsSheet(): Locator {

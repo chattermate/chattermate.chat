@@ -245,6 +245,11 @@ const countLabel = (item: InboxViewItem) => (item.count ? formatBadgeCount(item.
   position: relative;
 }
 
+/* Room for the actions an item carries (#item-actions) */
+.item:has(> .item-actions) .view {
+  padding-right: 34px;
+}
+
 .view {
   width: 100%;
   display: flex;

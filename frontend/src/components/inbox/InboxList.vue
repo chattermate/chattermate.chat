@@ -156,6 +156,8 @@ defineExpose({ focusSearch })
         </select>
         <span class="sort-chevron" aria-hidden="true" v-html="navIconSvg('chevronDown', 12)"></span>
       </label>
+      <!-- The enterprise module's: the selected saved view's menu, and New view -->
+      <slot name="view-actions" />
       <button
         v-if="canStartConversation"
         type="button"

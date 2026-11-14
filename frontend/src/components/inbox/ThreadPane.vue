@@ -220,6 +220,8 @@ const canClose = computed(() => holdsIt.value)
 const confirmingClose = ref(false)
 const requestClose = () => {
   if (canClose.value) confirmingClose.value = true
+  // E on a chat that isn't yours to close: say so rather than do nothing
+  else toast.info(props.chat.status === 'closed' ? 'This conversation is already closed' : 'Only the person handling this chat can close it')
 }
 // The reply goes now; closing still asks, as Close does
 const sendAndClose = async () => {
@@ -460,7 +462,7 @@ defineExpose({ requestClose })
       </p>
       <template #actions>
         <button type="button" class="modal-btn" @click="confirmingClose = false">Cancel</button>
-        <button type="button" class="modal-btn primary" @click="confirmClose">Close conversation</button>
+        <button type="button" class="modal-btn primary" data-autofocus @click="confirmClose">Close conversation</button>
       </template>
     </BaseModal>
 
@@ -471,7 +473,7 @@ defineExpose({ requestClose })
       </p>
       <template #actions>
         <button type="button" class="modal-btn" @click="confirmingTakeover = false">Cancel</button>
-        <button type="button" class="modal-btn primary" @click="confirmTakeover">Take over chat</button>
+        <button type="button" class="modal-btn primary" data-autofocus @click="confirmTakeover">Take over chat</button>
       </template>
     </BaseModal>
 

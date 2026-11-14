@@ -300,7 +300,17 @@ useInboxShortcuts({
         @restore-views="setViewsHidden(false)"
         @new-conversation="startingConversation = true"
         @open-nav="openNav?.()"
-      />
+      >
+        <template v-if="hasEnterpriseModule" #view-actions>
+          <InboxSavedViewMenu
+            v-if="isPreset(list.currentView.value)"
+            :item="list.currentView.value"
+            :state="list.state.value"
+            inline
+          />
+          <InboxNewView :state="list.state.value" compact @saved="list.markPreset" />
+        </template>
+      </InboxList>
     </div>
 
     <div class="pane-thread">

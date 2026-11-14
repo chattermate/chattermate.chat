@@ -104,6 +104,26 @@ test.describe('handling a chat', () => {
     await expect(inbox.shortcutsSheet).toBeVisible()
     await inbox.press('Escape')
     await expect(inbox.shortcutsSheet).toBeHidden()
+
+    // E asks, and Enter confirms: the open chat closes (once its thread is on screen)
+    await expect(inbox.threadTitle(second.customer.name)).toBeVisible()
+    await inbox.press('e')
+    await expect(inbox.closeDialog).toBeVisible()
+    await inbox.press('Enter')
+    await expect(inbox.closeDialog).toBeHidden()
+    await expect(second.lastAgentMessage()).toContainText('Thank you for contacting us')
+  })
+
+  test("E on a chat that isn't yours to close says so @inbox", async ({ agent, widget, inbox, llm }) => {
+    await askForAPerson(agent, widget, llm)
+    await inbox.goto('/conversations?view=waiting')
+    await inbox.openConversationWith(widget.customer.name)
+    // Out of the search box, where E is just a letter
+    await inbox.conversation(widget.customer.name).focus()
+
+    await inbox.press('e')
+    await expect(inbox.toast('Only the person handling this chat can close it')).toBeVisible()
+    await expect(inbox.closeDialog).toBeHidden()
   })
 
   test('on a phone the list and the thread take turns, and back returns to the list @inbox', async ({ agent, widget, inbox, llm }) => {
