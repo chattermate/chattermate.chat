@@ -221,6 +221,27 @@ def shop_for_agent(agent_id: Any, org_id: Any) -> Optional[ShopifyShop]:
         return None
 
 
+def recent_orders(shop: ShopifyShop, email: str, first: int = RECENT_ORDERS) -> Optional[List[Dict[str, Any]]]:
+    """The latest orders placed with exactly this email, newest first, flattened
+    (ShopifyTools._order_from_node); None when the store can't be read. The
+    caller vouches for the email: this never checks who is asking."""
+    response = call_admin_api(shop, lambda token: requests.post(
+        shopify_admin_url(shop.shop_domain, "graphql.json"),
+        headers=admin_headers(token),
+        json={"query": ORDER_SEARCH_GRAPHQL,
+              "variables": {"query": f"email:{normalise_email(email)}", "first": first}},
+        verify=settings.VERIFY_SSL_CERTIFICATES,
+        timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
+    ))
+    if response.status_code != 200 or "errors" in response.json():
+        logger.error(f"Recent orders search failed: {response.status_code}")
+        return None
+    edges = ((response.json().get("data") or {}).get("orders") or {}).get("edges") or []
+    # Shopify's search is fuzzy: keep only an exact email match
+    return [ShopifyTools._order_from_node(edge.get("node") or {}) for edge in edges
+            if normalise_email((edge.get("node") or {}).get("email")) == normalise_email(email)]
+
+
 class ShopifyTools(Toolkit):
     def __init__(self, agent_id: str, org_id: str, session_id: str):
         super().__init__(name="shopify_tools")
@@ -710,31 +731,16 @@ class ShopifyTools(Toolkit):
                            "Ask which order they mean, or answer about the latest one."})
 
     def _recent_orders(self, shop: ShopifyShop, email: str) -> Optional[List[Dict[str, Any]]]:
-        """The email's latest orders (exact email match), newest first, or None on failure."""
-        response = call_admin_api(shop, lambda token: requests.post(
-            shopify_admin_url(shop.shop_domain, "graphql.json"),
-            headers=admin_headers(token),
-            json={"query": ORDER_SEARCH_GRAPHQL,
-                  "variables": {"query": f"email:{normalise_email(email)}", "first": RECENT_ORDERS}},
-            verify=settings.VERIFY_SSL_CERTIFICATES,
-            timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
-        ))
-        if response.status_code != 200 or "errors" in response.json():
-            logger.error(f"Recent orders search failed: {response.status_code}")
+        """The email's latest orders, newest first, as the list card shows them; None on failure."""
+        orders = recent_orders(shop, email)
+        if orders is None:
             return None
-        edges = ((response.json().get("data") or {}).get("orders") or {}).get("edges") or []
-        orders = []
-        for edge in edges:
-            node = edge.get("node") or {}
-            if normalise_email(node.get("email")) != normalise_email(email):
-                continue
-            orders.append({
-                "order_number": node.get("name"),
-                "created_at": node.get("createdAt"),
-                "financial_status": node.get("displayFinancialStatus"),
-                "fulfillment_status": node.get("displayFulfillmentStatus"),
-            })
-        return orders
+        return [{
+            "order_number": order["name"],
+            "created_at": order["created_at"],
+            "financial_status": order["financial_status"],
+            "fulfillment_status": order["fulfillment_status"],
+        } for order in orders]
 
     def _find_customer_orders(self, shop: ShopifyShop, customer_email: str, order_number: str) -> Dict[str, Any]:
         """The order with this number placed with this email. Shopify's search is fuzzy,

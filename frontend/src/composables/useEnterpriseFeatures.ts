@@ -127,6 +127,10 @@ const moduleImports = {
   inboxThreadNotice: '/src/modules/enterprise/components/inbox/InboxThreadNotice.vue',
   inboxComposerTools: '/src/modules/enterprise/components/inbox/InboxComposerTools.vue',
   inboxSummaryTools: '/src/modules/enterprise/components/inbox/InboxSummaryTools.vue',
+  // The details panel's additions (nothing in open source): the customer's
+  // history beside their contact facts; Shopify orders and previous conversations
+  inboxCustomerFacts: '/src/modules/enterprise/components/inbox/InboxCustomerFacts.vue',
+  inboxDetailsSections: '/src/modules/enterprise/components/inbox/InboxDetailsSections.vue',
   // The team's saved replies (settings page)
   savedRepliesView: '/src/modules/enterprise/views/SavedRepliesView.vue',
 }

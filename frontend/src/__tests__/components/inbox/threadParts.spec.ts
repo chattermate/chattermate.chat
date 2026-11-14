@@ -35,6 +35,14 @@ vi.mock('@/utils/permissions', () => ({
   permissionChecks: { canViewTickets: () => false, canViewPeople: () => true },
 }))
 vi.mock('@/services/user', () => ({ userService: { getUserId: () => 'me' } }))
+// The open-source build: every enterprise slot renders nothing
+vi.mock('@/composables/useEnterpriseFeatures', () => ({
+  useEnterpriseFeatures: () => ({
+    hasEnterpriseModule: false,
+    moduleImports: {},
+    enterpriseComponent: () => ({ render: () => null }),
+  }),
+}))
 
 const NOW = new Date('2026-11-13T12:00:00Z')
 const ago = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString()
@@ -300,14 +308,13 @@ describe('DetailsPanel', () => {
     expect(wrapper.find('#details-conversation').isVisible()).toBe(false)
   })
 
-  it("lists the customer's other conversations and opens one", async () => {
+  it("leaves the customer's history and orders to the enterprise module", async () => {
     const wrapper = mountPanel()
     await flushPromises()
 
-    const items = wrapper.findAll('.history-item')
-    expect(items.map((i) => i.find('.history-title').text())).toEqual(['Where is my parcel?'])
-    await items[0].trigger('click')
-    expect(wrapper.emitted('open-conversation')).toEqual([['s0']])
+    expect(people.getPerson).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('Previous conversations')
+    expect(wrapper.text()).not.toContain('Shopify orders')
   })
 
   it('has a close button only as a drawer', async () => {

@@ -16,14 +16,15 @@ limitations under the License.
 
 <script setup lang="ts">
 /**
- * Beside the thread: who the customer is, the facts of this conversation, its
- * linked ticket, and their other conversations. Scrolls on its own; below
- * 1440px it opens over the thread as a drawer (InboxShell).
+ * Beside the thread: who the customer is, the facts of this conversation and
+ * its linked ticket. The enterprise module adds to it (customer history,
+ * Shopify orders, previous conversations); in open source those slots are
+ * empty. Scrolls on its own; below 1440px it opens over the thread as a
+ * drawer (InboxShell).
  */
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { ChatDetail } from '@/types/chat'
-import type { PersonConversation } from '@/types/people'
-import { peopleService } from '@/services/people'
+import { useEnterpriseFeatures } from '@/composables/useEnterpriseFeatures'
 import { userService } from '@/services/user'
 import { permissionChecks } from '@/utils/permissions'
 import { channelLabel } from '@/utils/channelGlyphs'
@@ -32,7 +33,8 @@ import { getInitials } from '@/utils/text'
 import { formatShortDate } from '@/utils/shortDate'
 import { navIconSvg } from '@/components/layout/navIcons'
 import LinkedTicketCard from '@/components/tickets/LinkedTicketCard.vue'
-import { avatarTone, customerName, transferReasonLabel } from './inboxPresentation'
+import DetailsFacts from './DetailsFacts.vue'
+import { avatarTone, customerName, transferReasonLabel, type DetailsFact } from './inboxPresentation'
 
 const props = defineProps<{
   chat: ChatDetail
@@ -47,7 +49,11 @@ const emit = defineEmits<{
 
 const currentUserId = userService.getUserId()
 const canViewTickets = permissionChecks.canViewTickets()
-const canViewPeople = permissionChecks.canViewPeople()
+
+// Each renders nothing in open source
+const { enterpriseComponent, moduleImports } = useEnterpriseFeatures()
+const InboxCustomerFacts = enterpriseComponent(moduleImports.inboxCustomerFacts)
+const InboxDetailsSections = enterpriseComponent(moduleImports.inboxDetailsSections)
 
 const name = computed(() => customerName(props.chat.customer))
 const contact = computed(() => {
@@ -57,7 +63,7 @@ const contact = computed(() => {
 
 /** Integrator-supplied fields (POST /generate-token custom_data), labelled */
 const customerFacts = computed(() => {
-  const facts: Array<{ label: string; value: string }> = []
+  const facts: DetailsFact[] = []
   if (props.chat.customer.phone) facts.push({ label: 'Phone', value: props.chat.customer.phone })
   const metaData = props.chat.customer.meta_data
   if (metaData && typeof metaData === 'object') {
@@ -76,7 +82,7 @@ const STATUS_LABELS: Record<string, string> = { ai: 'AI answering', waiting: 'Wa
 
 const conversationFacts = computed(() => {
   const handler = chatHandler(props.chat, currentUserId)
-  const facts: Array<{ label: string; value: string; tone?: string }> = [
+  const facts: DetailsFact[] = [
     { label: 'Status', value: STATUS_LABELS[handler.kind], tone: handler.kind },
     { label: 'AI agent', value: props.chat.agent.display_name || props.chat.agent.name },
   ]
@@ -100,27 +106,6 @@ function jumpToHandover() {
   document.getElementById('handover')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
-// ---- Their other conversations ----
-const previous = ref<PersonConversation[]>([])
-let lastCustomer: string | null = null
-
-async function loadPrevious(customerId: string) {
-  if (!canViewPeople || customerId === lastCustomer) return
-  lastCustomer = customerId
-  previous.value = []
-  try {
-    const person = await peopleService.getPerson(customerId)
-    if (lastCustomer === customerId) previous.value = person.conversations ?? []
-  } catch {
-    // A visitor the People list doesn't keep: no history to show
-  }
-}
-
-const otherConversations = computed(() =>
-  previous.value.filter((c) => c.session_id !== props.chat.session_id).slice(0, 5)
-)
-
-watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, { immediate: true })
 </script>
 
 <template>
@@ -136,12 +121,8 @@ watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, {
           <span aria-hidden="true" v-html="navIconSvg('close', 16)"></span>
         </button>
       </div>
-      <dl v-if="customerFacts.length" class="facts">
-        <div v-for="fact in customerFacts" :key="fact.label" class="fact">
-          <dt>{{ fact.label }}</dt>
-          <dd>{{ fact.value }}</dd>
-        </div>
-      </dl>
+      <DetailsFacts :facts="customerFacts" />
+      <InboxCustomerFacts :chat="chat" />
     </div>
 
     <section class="section">
@@ -158,12 +139,7 @@ watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, {
         </button>
       </h3>
       <div v-show="conversationOpen" id="details-conversation" class="section-body">
-        <dl class="facts">
-          <div v-for="fact in conversationFacts" :key="fact.label" class="fact">
-            <dt>{{ fact.label }}</dt>
-            <dd :class="fact.tone ? `tone-${fact.tone}` : undefined">{{ fact.value }}</dd>
-          </div>
-        </dl>
+        <DetailsFacts :facts="conversationFacts" />
         <button v-if="hasHandover" type="button" class="link-btn" @click="jumpToHandover">Jump to handover summary</button>
       </div>
     </section>
@@ -172,19 +148,7 @@ watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, {
       <LinkedTicketCard :session-id="chat.session_id" />
     </section>
 
-    <section v-if="otherConversations.length" class="section">
-      <h3 class="section-heading plain">Previous conversations · {{ otherConversations.length }}</h3>
-      <ul class="history">
-        <li v-for="conversation in otherConversations" :key="conversation.session_id">
-          <button type="button" class="history-item" @click="emit('open-conversation', conversation.session_id)">
-            <span class="history-title">{{ conversation.last_message || 'No messages' }}</span>
-            <span class="history-meta">
-              {{ [formatShortDate(conversation.created_at), conversation.agent_name, conversation.status].filter(Boolean).join(' · ') }}
-            </span>
-          </button>
-        </li>
-      </ul>
-    </section>
+    <InboxDetailsSections :chat="chat" @open-conversation="emit('open-conversation', $event)" />
   </aside>
 </template>
 
@@ -270,43 +234,6 @@ watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, {
   cursor: pointer;
 }
 
-.facts {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.fact {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12px;
-}
-
-.fact dt {
-  flex-shrink: 0;
-  color: var(--muted2);
-}
-
-.fact dd {
-  margin: 0;
-  min-width: 0;
-  color: var(--text2);
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-
-.tone-waiting {
-  color: var(--c-warn);
-  font-weight: 600;
-}
-
-.tone-ai {
-  color: var(--accent-ink);
-  font-weight: 600;
-}
-
 .section {
   display: flex;
   flex-direction: column;
@@ -328,8 +255,7 @@ watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, {
   margin: 0;
 }
 
-.section-toggle,
-.section-heading.plain {
+.section-toggle {
   width: 100%;
   display: flex;
   align-items: center;
@@ -345,10 +271,6 @@ watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
-}
-
-.section-heading.plain {
-  cursor: default;
 }
 
 .chevron {
@@ -378,45 +300,8 @@ watch(() => props.chat.customer.id, (id) => { if (id) void loadPrevious(id) }, {
   cursor: pointer;
 }
 
-.history {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.history-item {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 0;
-  border: 0;
-  border-top: 1px solid var(--o06);
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.history-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-meta {
-  font-size: 12px;
-  color: var(--muted2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .section-toggle:focus-visible,
 .link-btn:focus-visible,
-.history-item:focus-visible,
 .icon-btn:focus-visible {
   outline: 2px solid var(--accent-border);
   outline-offset: 2px;

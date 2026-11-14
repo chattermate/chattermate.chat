@@ -23,6 +23,14 @@ export function customerName(customer?: Partial<CustomerInfo> | null): string {
   return customer?.full_name || customer?.email || customer?.phone || 'Visitor'
 }
 
+/** A details panel row (DetailsFacts) */
+export interface DetailsFact {
+  label: string
+  value: string
+  /** waiting | ai | a sentiment: colours the value */
+  tone?: string
+}
+
 export type RowChipKind = 'ai' | 'person' | 'waiting' | 'closed' | 'negative' | 'snoozed'
 
 export interface RowChip {
