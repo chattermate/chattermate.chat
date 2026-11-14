@@ -18,6 +18,7 @@ import { build, type BuildOptions } from 'esbuild'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { compactLoaderCssPlugin } from './loader-css'
+import { loaderExtensionPlugin } from './widget-ext'
 
 // How the embed loader (chattermate.min.js) is bundled, shared by the prod and dev
 // builds and the e2e stack, so all three ship the same thing.
@@ -47,7 +48,7 @@ export function loaderBuildOptions({ outfile, apiUrl, nodeEnv, minify, sourcemap
       'process.env.NODE_ENV': JSON.stringify(nodeEnv),
       '__CHATTERMATE_API_URL__': JSON.stringify(apiUrl),
     },
-    plugins: [compactLoaderCssPlugin],
+    plugins: [compactLoaderCssPlugin, loaderExtensionPlugin],
     logLevel: 'warning',
   }
 }

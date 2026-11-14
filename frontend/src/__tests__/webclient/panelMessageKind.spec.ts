@@ -31,15 +31,11 @@ describe('which component draws a message', () => {
         ['rating', 'rating'],
         ['form', 'form'],
         ['user_input', 'userInput'],
-        ['product', 'product'],
+        // A reply of products the chat UI layer does not draw is its text
+        ['product', 'answer'],
         ['something_new', 'fallback'],
     ])('%s → %s', (type, kind) => {
         expect(messageKind(message({ message_type: type }))).toBe(kind)
-    })
-
-    it('draws a reply carrying products as a product message whatever its type', () => {
-        expect(messageKind(message({ message_type: 'bot', shopify_output: { products: [] } }))).toBe('product')
-        expect(messageKind(message({ message_type: 'agent', shopify_output: { products: [] } }))).toBe('product')
     })
 
     it('tells the takeover note from other system notes', () => {

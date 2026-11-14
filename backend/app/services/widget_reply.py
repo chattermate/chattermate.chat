@@ -30,8 +30,7 @@ from app.repositories.agent import AgentRepository
 from app.repositories.customer import CustomerRepository
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.services.contact_capture import build_handoff_contact_form
-from app.cards.labels import labels_for
-from app.cards.turn_cards import TurnCards
+from app.services.reply_ui import TurnEvents
 from app.services.widget_answers import follow_up_limits, widget_choices
 from app.services.host_prompt import host_prompt_context
 from app.services.lead_capture import record_lead_from_response
@@ -46,8 +45,8 @@ WIDGET_NAMESPACE = '/widget'
 # follow-up chips.
 PANEL_SESSION_KEY = 'panel'
 FOLLOW_UPS_SESSION_KEY = 'follow_ups'
-# The card language picked from the visitor's browser languages (app/cards/labels.py)
-LANGUAGE_SESSION_KEY = 'language'
+# The visitor's browser languages, most preferred first (visitor_language.py)
+LANGUAGES_SESSION_KEY = 'languages'
 # The earlier conversation's context for the agent (visitor_history.CONTINUED_KEY)
 CONTINUED_CONTEXT_KEY = 'continued_context'
 
@@ -91,7 +90,7 @@ def widget_agent_kwargs(session: dict, host_actions: Iterable[AgentAction] = (),
         ),
         host_action_functions=build_action_functions(actions) or None,
         choice_limits=choice_limits_for(session),
-        turn_cards=TurnCards(labels_for(session.get(LANGUAGE_SESSION_KEY))) if session.get(PANEL_SESSION_KEY) else None,
+        turn_events=TurnEvents(session.get(LANGUAGES_SESSION_KEY)) if session.get(PANEL_SESSION_KEY) else None,
     )
 
 
@@ -149,15 +148,13 @@ def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[
     """The visitor's copy of an AI reply. Notes for the team (transfer reason and
     description) stay on the stored message and are never sent. From the agent
     that wrote and stored it: the row id (the visitor's thumbs refer to it), the
-    handover card and the status cards, exactly as stored, so a reload shows the
-    same thing."""
+    handover card and what the chat UI layer drew (reply_ui.py), exactly as
+    stored, so a reload shows the same thing."""
     payload = {
         'message_id': getattr(chat_agent, 'last_bot_message_id', None),
         # The agent's choices or follow-ups (choice_limits_for), until answered
         'quick_replies': _shown_choices(response, limits),
         'handover': getattr(chat_agent, 'last_handover', None),
-        'cards': getattr(chat_agent, 'last_cards', None),
-        'email_check': bool(getattr(chat_agent, 'last_email_check', False)) or None,
         'message': response.message,
         'type': 'chat_response',
         'session_id': session_id,
@@ -181,6 +178,8 @@ def reply_payload(response: ChatResponse, session_id: str, chat_agent: Optional[
                 payload['shopify_output'] = shopify_output
             else:
                 logger.warning(f"Unexpected type for shopify_output: {type(shopify_output)}")
+    for key, value in (getattr(chat_agent, 'last_ui_extras', None) or {}).items():
+        payload.setdefault(key, value)
     return payload
 
 

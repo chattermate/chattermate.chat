@@ -1,4 +1,5 @@
 import { buildLoader } from './loader-build'
+import { withoutLayerUnlessImageBuild } from './widget-ext'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import * as dotenv from 'dotenv'
@@ -29,6 +30,7 @@ async function buildWebClientProd() {
 
     // Shared by the prod and dev builds and the e2e stack (loader-build.ts): esbuild, plus
     // the step that compacts the loader's template-literal CSS.
+    withoutLayerUnlessImageBuild()
     await buildLoader({
       outfile: resolve(dirname(__dirname), 'public/webclient/chattermate.min.js'),
       apiUrl,

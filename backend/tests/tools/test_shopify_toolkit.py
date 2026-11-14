@@ -17,7 +17,7 @@ limitations under the License.
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-from app.tools.shopify_toolkit import ShopifyTools, cart_variant_id, product_from_node
+from app.tools.shopify_toolkit import ShopifyTools, cart_variant_id, is_sold_out, product_from_node
 from agno.tools.function import Function, FunctionCall
 from app.tools.shopify_order_access import (
     EMAIL_REQUIRED,
@@ -25,11 +25,7 @@ from app.tools.shopify_order_access import (
     ORDER_NOT_FOUND,
     ORDER_NUMBER_REQUIRED,
 )
-from app.models.shopify import AgentShopifyConfig, ShopifyShop
-from app.models.organization import Organization
-from app.models.agent import Agent
-from uuid import UUID, uuid4
-import requests
+from uuid import UUID
 
 @pytest.fixture
 def mock_db():
@@ -547,16 +543,16 @@ def test_get_order_status_rechecks_the_full_record(shopify_tools, mock_shopify_s
     assert result == {"success": False, "message": ORDER_NOT_FOUND}
 
 
-def test_get_order_status_shows_the_order_card_only_for_the_owner(shopify_tools, mock_shopify_service):
-    from app.cards.turn_cards import TurnCards
-    shopify_tools.turn_cards = TurnCards()
+def test_get_order_status_records_the_order_only_for_the_owner(shopify_tools, mock_shopify_service):
+    from app.services.reply_ui import ORDER_EVENT, TurnEvents
+    shopify_tools.turn_events = TurnEvents()
     with patch("requests.post", return_value=_orders_response(_order_node())):
         shopify_tools.get_order_status(order_number="1001", customer_email="someone.else@example.com")
-    assert shopify_tools.turn_cards.payload() == []
+    assert shopify_tools.turn_events.all() == []
     with patch("requests.post", return_value=_orders_response(_order_node())):
         shopify_tools.get_order_status(order_number="1001", customer_email=OWNER_EMAIL)
-    [card] = shopify_tools.turn_cards.payload()
-    assert card["kind"] == "order" and card["title"].startswith("Order ")
+    [event] = shopify_tools.turn_events.of(ORDER_EVENT)
+    assert event["order"] == mock_shopify_service.get_order.return_value["order"]
 
 
 def test_get_order_status_guest_checkout(shopify_tools, mock_shopify_service):
@@ -817,7 +813,7 @@ def test_product_tools_ask_for_variants_and_cache_the_cart_variant(shopify_tools
 
     query = mock_post.call_args.kwargs["json"]["query"]
     # Cheap on purpose: Shopify charges a search for every variant it asks for,
-    # so the sheet reads options itself (shopify_product_options.py).
+    # so the sheet reads options itself (the chat UI layer).
     assert "variants(first: 2)" in query and "selectedOptions" not in query
     assert "hasOnlyDefaultVariant" in query and "tracksInventory" in query
     assert "publishedAt" in query
@@ -831,8 +827,62 @@ def test_search_products_sends_the_widened_query(shopify_tools):
     with patch("requests.post", return_value=response) as post:
         shopify_tools.search_products("backpacks")
     assert post.call_args.kwargs["json"]["variables"]["searchTerm"] == (
-        "((backpacks OR backpack*)) AND status:active AND inventory_total:>0"
+        "((backpacks OR backpack*)) AND status:active"
     )
+
+
+@pytest.mark.parametrize("node,sold_out", [
+    # Seen on the test store: a gift card with no stock left, which search used to hide
+    ({"tracksInventory": True, "totalInventory": 0, "variants": {"edges": [_variant(available=False)]}}, True),
+    ({"tracksInventory": True, "totalInventory": -2, "variants": {"edges": []}}, True),
+    ({"tracksInventory": True, "totalInventory": 3, "variants": {"edges": [_variant()]}}, False),
+    # The store keeps selling at zero stock: still on sale
+    ({"tracksInventory": True, "totalInventory": 0, "variants": {"edges": [_variant()]}}, False),
+    # One size left of two
+    ({"tracksInventory": True, "totalInventory": 0,
+      "variants": {"edges": [_variant("1", available=False), _variant("2")]}}, False),
+    # Untracked stock (digital goods, services) never runs out
+    ({"tracksInventory": False, "totalInventory": 0, "variants": {"edges": [_variant(available=False)]}}, False),
+    ({}, False),
+], ids=["no-stock", "negative-stock", "in-stock", "sells-at-zero", "one-size-left", "untracked", "no-data"])
+def test_a_product_is_sold_out_only_when_nothing_of_it_can_be_bought(node, sold_out):
+    assert is_sold_out(node) is sold_out
+    assert product_from_node({"id": "gid://shopify/Product/5", **node})["sold_out"] is sold_out
+
+
+def test_search_returns_a_sold_out_product_and_tells_the_agent_it_is_sold_out(shopify_tools):
+    gift_card = {"id": "gid://shopify/Product/9", "title": "Gift Card", "publishedAt": PUBLISHED,
+                 "tracksInventory": True, "totalInventory": 0,
+                 "variants": {"edges": [_variant(available=False)]}}
+    board = {"id": "gid://shopify/Product/10", "title": "Board", "publishedAt": PUBLISHED,
+             "tracksInventory": True, "totalInventory": 4, "variants": {"edges": [_variant("222")]}}
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"data": {"products": {
+        "edges": [{"node": gift_card}, {"node": board}], "pageInfo": {"hasNextPage": False}}}}
+
+    with patch("requests.post", return_value=response) as post, \
+         patch("app.tools.shopify_toolkit.get_redis") as get_redis:
+        result = json.loads(shopify_tools.search_products("gift card"))
+
+    assert "inventory_total" not in post.call_args.kwargs["json"]["variables"]["searchTerm"]
+    # What can be bought comes first
+    seen = [(p["title"], p["sold_out"]) for p in result["shopify_output"]["products"]]
+    assert seen == [("Board", False), ("Gift Card", True)]
+    cached = json.loads(get_redis.return_value.setex.call_args.args[2])["products"]
+    assert [(p["title"], p["sold_out"], p["cart_variant_id"]) for p in cached] == [
+        ("Board", False, "222"), ("Gift Card", True, None)]
+
+
+@pytest.mark.parametrize("call", [
+    lambda tools: tools.recommend_products(product_type="board"),
+    lambda tools: tools.recommend_products(),
+], ids=["recommend", "recent"])
+def test_recommendations_still_suggest_only_what_is_in_stock(shopify_tools, call):
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"data": {"products": {"edges": [], "pageInfo": {}}}}
+    with patch("requests.post", return_value=response) as post:
+        call(shopify_tools)
+    assert "inventory_total:>0" in json.dumps(post.call_args.kwargs["json"])
 
 
 @pytest.mark.parametrize("call", [
@@ -859,57 +909,12 @@ def test_product_tools_filter_only_on_what_the_customer_asked(shopify_tools, cal
 
 
 
-class TestEmailCheckTools:
-    """confirm_email and list_my_orders: the redesign's own-orders path."""
-
-    def test_offered_only_where_codes_can_be_kept(self, shopify_tools):
-        with patch("app.tools.shopify_toolkit.email_check.available", return_value=False):
-            shopify_tools.offer_email_check()
-        assert "confirm_email" not in shopify_tools.functions
-        with patch("app.tools.shopify_toolkit.email_check.available", return_value=True):
-            shopify_tools.offer_email_check()
-        assert {"confirm_email", "list_my_orders"} <= set(shopify_tools.functions)
-
-    def test_confirm_email_asks_for_the_check(self, shopify_tools):
-        from app.cards.turn_cards import TurnCards
-        shopify_tools.turn_cards = TurnCards()
-        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None), \
-             patch("app.tools.shopify_toolkit.email_check.offer", return_value=True) as offer:
-            result = json.loads(shopify_tools.confirm_email())
-        assert result["confirmed"] is False and shopify_tools.turn_cards.email_check is True
-        offer.assert_called_once_with("test_session_id")
-
-    def test_confirm_email_falls_back_when_the_check_cannot_be_offered(self, shopify_tools):
-        from app.cards.turn_cards import TurnCards
-        shopify_tools.turn_cards = TurnCards()
-        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None), \
-             patch("app.tools.shopify_toolkit.email_check.offer", return_value=False):
-            result = json.loads(shopify_tools.confirm_email())
-        assert "order number and email" in result["message"] and shopify_tools.turn_cards.email_check is False
-
-    def test_list_my_orders_needs_a_proven_email(self, shopify_tools):
-        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=None), \
-             patch("requests.post") as post:
-            result = json.loads(shopify_tools.list_my_orders())
-        assert result["success"] is False
-        post.assert_not_called()
-
-    def test_list_my_orders_lists_only_that_emails_orders(self, shopify_tools, mock_shopify_service):
-        from app.cards.turn_cards import TurnCards
-        shopify_tools.turn_cards = TurnCards()
-        response = _orders_response(_order_node("#1001"), _order_node("#1002", email="someone.else@example.com"))
-        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=OWNER_EMAIL), \
-             patch("requests.post", return_value=response) as post:
-            result = json.loads(shopify_tools.list_my_orders())
-        assert [o["order_number"] for o in result["orders"]] == ["#1001"]
-        assert _sent_search(post) == f"email:{OWNER_EMAIL}"
-        [card] = shopify_tools.turn_cards.payload()
-        assert card["title"] == "Your recent orders"
-        assert card["actions"][0]["value"] == "Where is my order #1001?"
+class TestProvenEmail:
+    """An email the conversation proved (email_proof.py) stands in for a typed one."""
 
     def test_a_proven_email_looks_up_an_order_without_being_typed(self, shopify_tools, mock_shopify_service):
         shopify_tools._customer_messages = lambda: ["Where is my order #1001?"]
-        with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=OWNER_EMAIL), \
+        with patch("app.tools.shopify_toolkit.email_proof.verified_email", return_value=OWNER_EMAIL), \
              patch("requests.post", return_value=_orders_response(_order_node())):
             result = json.loads(shopify_tools.get_order_status(order_number="#1001", customer_email=OWNER_EMAIL))
         assert result["success"] is True
@@ -917,7 +922,7 @@ class TestEmailCheckTools:
 
 def test_a_proven_email_stands_in_when_none_is_given(shopify_tools, mock_shopify_service):
     shopify_tools._customer_messages = lambda: ["Where is my order #1001?"]
-    with patch("app.tools.shopify_toolkit.email_check.verified_email", return_value=OWNER_EMAIL), \
+    with patch("app.tools.shopify_toolkit.email_proof.verified_email", return_value=OWNER_EMAIL), \
          patch("requests.post", return_value=_orders_response(_order_node())) as post:
         result = json.loads(shopify_tools.get_order_status(order_number="#1001"))
     assert result["success"] is True, result

@@ -21,6 +21,7 @@ import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { orbSvgDataUri } from '@/utils/orb'
 import { resolveUploadUrl } from '@/config/api'
+import { sourceLabel } from '@/utils/knowledgeSourceLabel'
 import { themeCssVars } from '@/webclient/widget-theme'
 import '@/webclient/widget-surface.css'
 import { widgetService } from '@/services/widget'
@@ -235,7 +236,7 @@ const formatMessage = (content: string) => sanitizeHtml(marked(content) as strin
     </div>
     <div v-else-if="noKnowledge" class="kb-note empty" role="status">
       <span>
-        <template v-if="failure">We couldn't read {{ failure.source }}. {{ failure.reason }}</template>
+        <template v-if="failure">We couldn't read {{ sourceLabel(failure.source) }}. {{ failure.reason }}</template>
         It hasn't learned anything about your business yet, so answers will be generic.
         <button type="button" class="kb-link" @click="emit('back')">Add your website or some text</button>
       </span>

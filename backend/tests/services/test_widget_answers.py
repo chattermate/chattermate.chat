@@ -28,7 +28,7 @@ from app.models.schemas.chat import ChannelChatResponse, ChatResponse
 from app.services.handover_payload import handover_payload
 from app.services.widget_answers import follow_up_limits, offers_follow_ups
 from app.services.widget_reply import (
-    FOLLOW_UPS_SESSION_KEY, LANGUAGE_SESSION_KEY, PANEL_SESSION_KEY, choice_limits_for, reply_payload, widget_agent_kwargs,
+    FOLLOW_UPS_SESSION_KEY, LANGUAGES_SESSION_KEY, PANEL_SESSION_KEY, choice_limits_for, reply_payload, widget_agent_kwargs,
 )
 
 
@@ -145,22 +145,22 @@ class TestAgentKwargs:
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
             kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True, FOLLOW_UPS_SESSION_KEY: True}))
         assert "step_reporter" not in kwargs
-        assert kwargs["turn_cards"] is not None
+        assert kwargs["turn_events"] is not None
         assert kwargs["choice_limits"] is WIDGET_FOLLOW_UP_LIMITS
 
     def test_another_client_gets_plain_replies(self):
         # The dashboard's onboarding test chat draws no cards or email check.
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
             kwargs = widget_agent_kwargs(self._session())
-        assert kwargs["turn_cards"] is None
+        assert kwargs["turn_events"] is None
         assert kwargs["choice_limits"] is None
 
-    def test_the_panels_cards_are_written_in_the_visitors_language(self):
+    def test_the_panels_turn_knows_the_visitors_languages(self):
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
-            kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True, LANGUAGE_SESSION_KEY: "de"}))
-        assert kwargs["turn_cards"].labels.language == "de"
+            kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True, LANGUAGES_SESSION_KEY: ["de-AT", "en"]}))
+        assert kwargs["turn_events"].languages == ["de-AT", "en"]
 
-    def test_a_session_from_before_languages_were_sent_gets_english_cards(self):
+    def test_a_session_from_before_languages_were_sent_has_none(self):
         with patch("app.services.widget_reply.decrypt_api_key", return_value="k"):
             kwargs = widget_agent_kwargs(self._session(**{PANEL_SESSION_KEY: True}))
-        assert kwargs["turn_cards"].labels.language == "en"
+        assert kwargs["turn_events"].languages == []

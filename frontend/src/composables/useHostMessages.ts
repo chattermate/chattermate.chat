@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { handleCartMessage } from '../webclient/shopify-cart'
+import { layerHostMessage } from '../webclient/ui-layer'
 import { postToHost } from '../webclient/host-bridge'
 import { hostSharesIdentity, isFramed, setHostPageUrl } from '../webclient/frame-session'
 import type { WidgetDisplay } from './useWidgetDisplay'
@@ -76,7 +76,7 @@ export function useHostMessages(handlers: HostMessageHandlers) {
         // widget; hostile sibling frames can reach this window via top.frames[i].
         if (event.source !== window.parent) return
         if (!event.data || typeof event.data.type !== 'string') return
-        if (handleCartMessage(event.data)) return
+        if (layerHostMessage(event.data)) return
         if (event.data.type === 'SCROLL_TO_BOTTOM') {
             handlers.scrollToBottom()
         }

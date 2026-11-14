@@ -111,7 +111,7 @@ const MAX_AVATARS = 3
     </div>
 
     <div class="tree__body">
-      <div v-for="source in sources" :key="source.id" class="src" role="group" :aria-label="source.name">
+      <div v-for="source in sources" :key="source.id" class="src" role="group" :aria-label="source.label">
         <div class="src__row">
           <button
             class="src__toggle"
@@ -128,7 +128,7 @@ const MAX_AVATARS = 3
             <span v-else class="chev-spacer"></span>
             <span class="src__glyph" :class="`src__glyph--${sourceGlyph(source.type).toLowerCase()}`">{{ sourceGlyph(source.type) }}</span>
             <span class="src__meta">
-              <span class="src__name" :title="source.name">{{ source.name }}</span>
+              <span class="src__name" :title="source.label">{{ source.label }}</span>
               <span class="src__count" :class="{ 'src__count--error': source.queued && statusOf(source) === 'error' }">
                 {{ countLabel(source) }}
               </span>

@@ -158,7 +158,7 @@ def identity_token(db: Session, query: Sequence[Tuple[str, str]]) -> Optional[di
 def store_verified_email(token_data: Optional[Mapping[str, Any]]) -> Optional[str]:
     """The email a signed-in store customer's conversation token carries, or None.
     Only identity_token sets the top-level source, and only for an email the store
-    verified, so this email counts as proved like a code (email_check.prove)."""
+    verified, so this email counts as proved like a code (email_proof.accept_store_sign_in)."""
     if not isinstance(token_data, Mapping) or token_data.get('source') != SOURCE:
         return None
     email = token_data.get('customer_email')

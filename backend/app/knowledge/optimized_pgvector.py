@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 from hashlib import md5
 
 from agno.document import Document
@@ -25,7 +25,7 @@ from agno.vectordb.pgvector.pgvector import PgVector
 from agno.vectordb.distance import Distance
 from agno.vectordb.pgvector.index import HNSW, Ivfflat
 from agno.vectordb.search import SearchType
-from sqlalchemy import delete, func, or_
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Engine
 
@@ -261,3 +261,19 @@ class OptimizedPgVector(PgVector):
         with self.Session() as sess, sess.begin():
             sess.execute(self._upsert_statement(records))
             sess.execute(stale)
+
+    def delete_pages_except(self, name: str, id_prefix: str, keep_page_ids: Set[str]) -> int:
+        """Delete the source's pages whose ids start with id_prefix, except
+        keep_page_ids (with all their chunks). Pages outside the prefix (added
+        by hand) are left alone. Returns the rows deleted."""
+        with self.Session() as sess, sess.begin():
+            ids = sess.execute(
+                select(self.table.c.id).where(
+                    self.table.c.name == name,
+                    func.left(self.table.c.id, len(id_prefix)) == id_prefix,
+                )
+            ).scalars().all()
+            gone = [row_id for row_id in ids if page_id_of(row_id) not in keep_page_ids]
+            if gone:
+                sess.execute(delete(self.table).where(self.table.c.name == name, self.table.c.id.in_(gone)))
+        return len(gone)

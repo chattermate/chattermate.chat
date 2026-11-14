@@ -23,11 +23,9 @@ import { useWidgetSocket } from './useWidgetSocket'
 import { useHostPrompt } from './useHostPrompt'
 import { useTypewriter } from './useTypewriter'
 import { useAnswerFeedback } from './useAnswerFeedback'
-import { useProductOptions } from './useProductOptions'
-import { useEmailCheck } from './useEmailCheck'
+import { setupLayer } from '../webclient/ui-layer'
 import { useConversationHistory } from './useConversationHistory'
 import { usePageSuggestions } from './usePageSuggestions'
-import { PANEL_COPY } from '../webclient/copy'
 import { useUnreadBadge } from './useUnreadBadge'
 import { useEmailGate } from './useEmailGate'
 import { useWidgetAuth } from './useWidgetAuth'
@@ -83,8 +81,6 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
 
     // The visitor's thumbs on replies.
     const { sendFeedback } = useAnswerFeedback({ messages, on: socket.on, emit: socket.emit })
-    // The product sheet's options, read from the shop when it opens.
-    const { requestProductOptions } = useProductOptions({ on: socket.on, emit: socket.emit })
     // "Your conversations": the visitor's own past chats. Continuing one from a chat
     // with messages starts a fresh chat first (newChat is set up below; only called later).
     const conversationHistory = useConversationHistory({
@@ -99,12 +95,12 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         on: socket.on, emit: socket.emit,
         active: computed(() => connectionStatus.value === 'connected' && messages.value.length === 0),
     })
-    // The email check: once confirmed, the visitor tells the agent so it can look up their
-    // orders; asked from the history screen, the list then shows their other browsers' chats.
-    const emailChecks = useEmailCheck({
+
+    // The chat UI layer's own socket traffic (ui-layer/index.ts)
+    setupLayer({
         on: socket.on, emit: socket.emit,
-        announce: () => composer.sendQuickAction(PANEL_COPY.emailConfirmedMessage),
-        onVerified: (purpose) => { if (purpose === 'history') conversationHistory.refreshConversations() },
+        sendAsVisitor: (text) => composer.sendQuickAction(text),
+        refreshHistory: () => conversationHistory.refreshConversations(),
     })
 
     // Page messages, in-app actions and journeys. A tapped text reply goes through
@@ -287,7 +283,7 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         minimizeWidget, ...styles, ...presentation,
         connectionStatus, errorMessage, showError,
         messages, loading, loadingHistory, hasStartedChat, humanAgent, displayText, isStreaming,
-        isRevealing, skipReveal, sendFeedback, requestProductOptions, ...emailChecks, ...conversationHistory, pageSuggestions, ...rating, ...files, ...newChat,
+        isRevealing, skipReveal, sendFeedback, ...conversationHistory, pageSuggestions, ...rating, ...files, ...newChat,
         awaitingEmail, awaitingHistory, hostCapabilities, historyAvailable,
         ...viewedParts({ display, auth, composer, hostPrompt, emailGate, workflow }),
     }

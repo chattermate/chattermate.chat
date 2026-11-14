@@ -583,6 +583,9 @@ export class ChatWidget {
     return this.messageLog.locator('.message.agent-message .message-bubble')
   }
 
+  // Product cards, the product sheet, the cart bar, status cards and the email check
+  // are the chat UI layer's: only a build with it (the enterprise suite) has them.
+
   /** One product's card in the chat. */
   productCard(title: string): Locator {
     return this.frame.getByRole('group', { name: title })

@@ -109,6 +109,17 @@ class TestTheSourceAppearsWithItsFirstPage:
         assert run.knowledge_id == source.id
         synced.assert_called_once()
 
+    def test_a_source_an_extension_reads_keeps_its_own_type(self, db, sessions, synced, test_organization):
+        run = _run(db, test_organization.id, source="shopify:shop.example")
+
+        SourceLearning(
+            run.id, run.organization_id, None, run.source, VECTOR_TABLE, VECTOR_SCHEMA,
+            source_type=SourceType.API,
+        ).first_page()
+
+        [source] = _sources(db, test_organization.id)
+        assert (source.source, source.source_type) == ("shopify:shop.example", SourceType.API)
+
     def test_setting_it_up_again_changes_nothing(self, db, sessions, synced, test_organization):
         agent = _agent(db, test_organization.id)
         learning = _learning(_run(db, test_organization.id, agent.id))

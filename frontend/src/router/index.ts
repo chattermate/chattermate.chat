@@ -186,6 +186,15 @@ const baseRoutes = [
     },
   },
   {
+    // The WordPress plugin's one-click connect: pick an agent, back to wp-admin.
+    path: '/connect/wordpress',
+    name: 'connect-wordpress',
+    component: () => import('@/views/ConnectWordPressView.vue'),
+    meta: {
+      requiresAuth: true,
+    },
+  },
+  {
     path: '/settings/user',
     name: 'user-settings',
     component: UserSettingsView,

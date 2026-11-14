@@ -110,21 +110,21 @@ describe('a message in the panel', () => {
     it.each([
         ['form', { message_type: 'form', attributes: { form_data: { title: 'Before we connect you', fields: [] } } }, 'form-message'],
         ['rating', { message_type: 'rating', message: '' }, 'rating-message'],
-        ['product', { message_type: 'product', message: 'Picks', shopify_output: { products: [] } }, 'product-message'],
         ['free-text question', { message_type: 'user_input', attributes: { prompt_message: 'Your order number?' } }, 'cm-question'],
     ])('draws a %s with its own card, keeping its class hook', (_name, message, hook) => {
         item(message as Record<string, unknown>)
         expect(wrapper!.classes()).toContain(hook)
     })
 
-    it('keeps a reply carrying products readable as a reply', () => {
+    it.each(['bot', 'product'])('reads a %s reply carrying products as its text without a chat UI layer', (type) => {
         item({
-            message_type: 'bot',
+            message_type: type,
             message: 'Here are two picks.',
             shopify_output: { products: [{ id: 'p1', title: 'Guji 250g', price: '14' }] },
         })
-        expect(wrapper!.classes()).toEqual(expect.arrayContaining(['message', 'agent-message', 'product-message']))
-        expect(wrapper!.get('.message-bubble').text()).toContain('Here are two picks.')
+        expect(wrapper!.classes()).toEqual(expect.arrayContaining(['message', 'agent-message', 'cm-answer']))
+        expect(wrapper!.classes()).not.toContain('product-message')
+        expect(wrapper!.text()).toContain('Here are two picks.')
     })
 
     it('never drops a message of an unknown kind', () => {

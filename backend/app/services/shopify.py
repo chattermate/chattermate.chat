@@ -1071,7 +1071,7 @@ class ShopifyService:
             
             fulfillments.append({
                 "status": fulfillment.get("status"),
-                # For the widget's order card (app/cards/order_card.py)
+                # For the order's status card (the chat UI layer)
                 "display_status": fulfillment.get("displayStatus"),
                 "estimated_delivery_at": fulfillment.get("estimatedDeliveryAt"),
                 "shipped_quantity": sum(int((e.get("node") or {}).get("quantity") or 0) for e in shipped_edges),

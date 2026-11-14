@@ -62,8 +62,9 @@ export function compactLoaderSource(source: string, fileName = 'loader.js'): str
     return out
 }
 
-/** The loader's own sources: chattermate.js and what it imports from src/webclient. */
-export const LOADER_SOURCES = /[\\/]src[\\/]webclient[\\/](?:loader[\\/])?[\w-]+\.(?:js|ts)$/
+/** The loader's own sources: chattermate.js and what it imports from src/webclient,
+ * and the chat UI layer's loader side (scripts/widget-ext.ts). */
+export const LOADER_SOURCES = /[\\/]src[\\/](?:webclient[\\/](?:loader[\\/])?|modules[\\/]enterprise[\\/]widget[\\/])[\w-]+\.(?:js|ts)$/
 
 /** An esbuild plugin applying compactLoaderSource to the loader's own sources. */
 export const compactLoaderCssPlugin = {

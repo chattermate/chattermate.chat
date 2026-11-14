@@ -22,11 +22,8 @@ from app.services.shopify_urls import shopify_admin_url
 from app.services.shopify_tokens import admin_headers, call_admin_api
 from app.repositories.chat import ChatRepository
 from app.tools.shopify_search import catalog_filters, match_singulars
-from app.repositories.session_to_agent import SessionToAgentRepository
 from app.database import SessionLocal
-from app.models.organization import Organization
-from app.models.agent import Agent
-from app.models.shopify import AgentShopifyConfig, ShopifyShop
+from app.models.shopify import ShopifyShop
 from app.repositories.shopify_shop_repository import ShopifyShopRepository
 from app.repositories.agent_shopify_config_repository import AgentShopifyConfigRepository
 from uuid import UUID
@@ -38,7 +35,6 @@ from app.core.redis import get_redis
 from app.tools.shopify_order_access import (
     MAX_ORDER_RESULTS,
     missing_from_chat,
-    normalise_email,
     ORDER_NOT_FOUND,
     build_order_search,
     order_belongs_to,
@@ -46,16 +42,12 @@ from app.tools.shopify_order_access import (
     order_number_matches,
 )
 
-from app.cards.order_card import order_card, recent_orders_card
-from app.services import email_check
-from app.cards.turn_cards import TurnCards
+from app.services import email_proof
+from app.services.reply_ui import ORDER_EVENT, TurnEvents
 logger = get_logger(__name__)
 
 # A slow store must not hold the chat turn open.
 ORDER_SEARCH_TIMEOUT_SECONDS = 20
-
-# How many of a confirmed email's orders list_my_orders shows
-RECENT_ORDERS = 5
 
 ORDER_SEARCH_GRAPHQL = """
 query SearchOrders($query: String, $first: Int!) {
@@ -151,6 +143,7 @@ def create_minimal_product(product: dict) -> dict:
         "vendor": product.get("vendor"),
         "product_type": product.get("product_type"),
         "total_inventory": product.get("total_inventory"),
+        "sold_out": product.get("sold_out", False),
         "tags": product.get("tags", [])
     }
 
@@ -167,6 +160,18 @@ def cart_variant_id(node: dict) -> Optional[str]:
     if not variant.get("id") or not variant.get("availableForSale"):
         return None
     return variant["id"].split("/")[-1]
+
+
+def is_sold_out(node: dict) -> bool:
+    """Nothing of the product can be bought: its stock is tracked and gone, and
+    none of the variants read is still on sale (a store that keeps selling at
+    zero stock keeps them on sale). Untracked stock never runs out. Only the
+    variants search reads (two) are checked: a product whose later variant sells
+    at zero stock while the first two can't is taken as sold out."""
+    if node.get("tracksInventory") is not True or (node.get("totalInventory") or 0) > 0:
+        return False
+    edges = (node.get("variants") or {}).get("edges") or []
+    return not any((edge.get("node") or {}).get("availableForSale") for edge in edges)
 
 
 def product_from_node(node: dict) -> dict:
@@ -192,10 +197,11 @@ def product_from_node(node: dict) -> dict:
         "updated_at": node.get("updatedAt"),
         "cart_variant_id": cart_variant_id(node),
         # For the widget's carousel ("Only 3 left") and its product sheet, which
-        # fetches the options itself when opened (shopify_product_options.py)
+        # fetches the options itself when opened (the chat UI layer)
         "published": bool(node.get("publishedAt")),
         "tracks_inventory": node.get("tracksInventory"),
         "has_choices": node.get("hasOnlyDefaultVariant") is False,
+        "sold_out": is_sold_out(node),
     }
 
 
@@ -221,27 +227,6 @@ def shop_for_agent(agent_id: Any, org_id: Any) -> Optional[ShopifyShop]:
         return None
 
 
-def recent_orders(shop: ShopifyShop, email: str, first: int = RECENT_ORDERS) -> Optional[List[Dict[str, Any]]]:
-    """The latest orders placed with exactly this email, newest first, flattened
-    (ShopifyTools._order_from_node); None when the store can't be read. The
-    caller vouches for the email: this never checks who is asking."""
-    response = call_admin_api(shop, lambda token: requests.post(
-        shopify_admin_url(shop.shop_domain, "graphql.json"),
-        headers=admin_headers(token),
-        json={"query": ORDER_SEARCH_GRAPHQL,
-              "variables": {"query": f"email:{normalise_email(email)}", "first": first}},
-        verify=settings.VERIFY_SSL_CERTIFICATES,
-        timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
-    ))
-    if response.status_code != 200 or "errors" in response.json():
-        logger.error(f"Recent orders search failed: {response.status_code}")
-        return None
-    edges = ((response.json().get("data") or {}).get("orders") or {}).get("edges") or []
-    # Shopify's search is fuzzy: keep only an exact email match
-    return [ShopifyTools._order_from_node(edge.get("node") or {}) for edge in edges
-            if normalise_email((edge.get("node") or {}).get("email")) == normalise_email(email)]
-
-
 class ShopifyTools(Toolkit):
     def __init__(self, agent_id: str, org_id: str, session_id: str):
         super().__init__(name="shopify_tools")
@@ -253,8 +238,8 @@ class ShopifyTools(Toolkit):
         # even if the LLM forgets to echo the key in its structured shopify_output.
         # Per-request instance, so this cannot leak across turns.
         self.has_cached_products: bool = False
-        # The reply's status cards (app/cards), set by the chat agent for the redesign.
-        self.turn_cards: Optional[TurnCards] = None
+        # What this turn's tools did, for a chat that shows more than text (reply_ui.py)
+        self.turn_events: Optional[TurnEvents] = None
 
         # Register the functions
         self.register(self.list_products)
@@ -427,6 +412,8 @@ class ShopifyTools(Toolkit):
         Search for products in the Shopify store using a query string with GraphQL.
         Supports Shopify's search syntax including field specifiers (e.g., 'title:snowboard', 'tag:beginner', 'product_type:skate'),
         operators ('AND', 'OR'), and suffix wildcards ('skate*'). Supports pagination using a cursor.
+        Sold-out products are included with "sold_out": true: tell the customer the store sells
+        it but it is sold out right now, and never offer it as available to buy.
 
         Args:
             query: The search query string using Shopify syntax.
@@ -498,10 +485,10 @@ class ShopifyTools(Toolkit):
             }
             """
             
-            # Add status:active filter to only return active products (exclude archived and draft)
-            # Add inventory_total:>0 to only return in-stock products
+            # Active products only (not archived or draft). Sold-out ones are kept,
+            # marked sold_out: "we don't sell that" is wrong when it's just out of stock
             filtered_query = " AND ".join([
-                f"({match_singulars(query)})", "status:active", "inventory_total:>0",
+                f"({match_singulars(query)})", "status:active",
                 *catalog_filters(min_price, max_price, vendor),
             ])
 
@@ -545,8 +532,10 @@ class ShopifyTools(Toolkit):
             edges = products_data.get("edges", [])
             page_info = products_data.get("pageInfo", {})
             
-            products = [product_from_node(edge.get("node", {})) for edge in edges]
-            
+            # What can be bought first; sold-out ones after, in Shopify's order
+            products = sorted((product_from_node(edge.get("node", {})) for edge in edges),
+                              key=lambda product: product["sold_out"])
+
             # Check if search was successful
             if products:
                 # Try to cache products in Redis
@@ -668,79 +657,7 @@ class ShopifyTools(Toolkit):
         """What to ask the customer before this lookup can run, or None when it can."""
         return (order_lookup_problem(customer_email, order_number)
                 or missing_from_chat(customer_email, order_number, self._customer_messages(),
-                                     verified_email=email_check.verified_email(self.session_id)))
-
-    def offer_email_check(self) -> None:
-        """Offer the email check and the visitor's own orders: the redesigned
-        widget only, and only where codes can be kept (Redis)."""
-        if email_check.available():
-            self.register(self.confirm_email)
-            self.register(self.list_my_orders)
-
-    def confirm_email(self) -> str:
-        """
-        Ask the customer to confirm their email address with a code, so you can
-        look up their orders without them typing order numbers and emails. Call it
-        when they want to see their orders or don't know their order number.
-
-        Returns:
-            str: JSON saying whether their email is already confirmed.
-        """
-        proven = email_check.verified_email(self.session_id)
-        if proven:
-            return json.dumps({"confirmed": True, "message": "Their email is confirmed. Call list_my_orders."})
-        # Only a conversation that was offered the check may send a code.
-        if self.turn_cards is None or not email_check.offer(str(self.session_id)):
-            return json.dumps({"confirmed": False, "message": "Ask the customer for their order number and email."})
-        self.turn_cards.email_check = True
-        return json.dumps({"confirmed": False, "message": (
-            "The chat now shows the customer a box to confirm their email with a code. "
-            "Tell them to enter their email there. Do not ask them to type it in the chat.")})
-
-    def list_my_orders(self) -> str:
-        """
-        List the customer's recent orders, for an email they confirmed with a code
-        (confirm_email). Never takes an email from you.
-
-        Returns:
-            str: JSON with up to 5 recent orders: number, date and status.
-        """
-        try:
-            return self._list_my_orders()
-        except Exception as e:
-            logger.error(f"list_my_orders failed: {e}")
-            return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
-
-    def _list_my_orders(self) -> str:
-        email = email_check.verified_email(self.session_id)
-        if not email:
-            return json.dumps({"success": False, "message": "Their email is not confirmed yet. Call confirm_email."})
-        # Only an address inert in Shopify's search syntax goes into the query
-        if order_lookup_problem(email, "1001"):
-            return json.dumps({"success": False, "message": ORDER_NOT_FOUND})
-        shop = self._get_shop_for_agent()
-        if not shop:
-            return json.dumps({"success": False, "message": "Shopify integration is not enabled for this agent"})
-        orders = self._recent_orders(shop, email)
-        if orders is None:
-            return json.dumps({"success": False, "message": "Couldn't reach the store's orders right now."})
-        if self.turn_cards is not None and orders:
-            self.turn_cards.add(recent_orders_card(orders, self.turn_cards.labels))
-        return json.dumps({"success": True, "orders": orders,
-                           "message": "No orders for this email." if not orders else
-                           "Ask which order they mean, or answer about the latest one."})
-
-    def _recent_orders(self, shop: ShopifyShop, email: str) -> Optional[List[Dict[str, Any]]]:
-        """The email's latest orders, newest first, as the list card shows them; None on failure."""
-        orders = recent_orders(shop, email)
-        if orders is None:
-            return None
-        return [{
-            "order_number": order["name"],
-            "created_at": order["created_at"],
-            "financial_status": order["financial_status"],
-            "fulfillment_status": order["fulfillment_status"],
-        } for order in orders]
+                                     verified_email=email_proof.verified_email(self.session_id)))
 
     def _find_customer_orders(self, shop: ShopifyShop, customer_email: str, order_number: str) -> Dict[str, Any]:
         """The order with this number placed with this email. Shopify's search is fuzzy,
@@ -863,7 +780,7 @@ class ShopifyTools(Toolkit):
         """
         try:
             # The email the customer proved with a code (confirm_email), when none was given
-            customer_email = customer_email or email_check.verified_email(self.session_id) or ""
+            customer_email = customer_email or email_proof.verified_email(self.session_id) or ""
             problem = self._lookup_problem(customer_email, order_number)
             if problem:
                 return json.dumps({"success": False, "message": problem, "requires_user_input": True})
@@ -891,8 +808,8 @@ class ShopifyTools(Toolkit):
             # The full record is fetched separately, so check ownership on it too.
             if not order_belongs_to(order, customer_email):
                 return json.dumps({"success": False, "message": ORDER_NOT_FOUND})
-            if self.turn_cards is not None:
-                self.turn_cards.add(order_card(order, self.turn_cards.labels))
+            if self.turn_events is not None:
+                self.turn_events.add(ORDER_EVENT, {'order': order})
 
             # Filter out cancelled fulfillments - only include active ones
             active_fulfillments = [
@@ -1271,7 +1188,7 @@ class ShopifyTools(Toolkit):
                 elif tags and not product_id:
                     recommendation_header = f"Here are products tagged with {tags}."
                 elif product_id:
-                    recommendation_header = f"Based on the product you viewed, you might like these options."
+                    recommendation_header = "Based on the product you viewed, you might like these options."
 
                 return json.dumps({
                     "success": True,

@@ -34,10 +34,9 @@ from app.api import widget_chat  # noqa: F401 - imported for side effects (socke
 from app.api import widget_actions  # noqa: F401 - registers the host-action socket handlers
 from app.api import widget_journeys  # noqa: F401 - registers the journey socket handlers
 from app.api import widget_feedback  # noqa: F401 - registers the answer-feedback socket handler
-from app.api import widget_products  # noqa: F401 - registers the product-sheet socket handler
-from app.api import widget_email_check  # noqa: F401 - registers the email-check socket handlers
 from app.api import widget_history  # noqa: F401 - registers the conversation-history socket handlers
 from app.api import widget_suggestions  # noqa: F401 - registers the page-suggestions socket handler
+from app.services import reply_ui
 from fastapi import FastAPI, BackgroundTasks
 from app.core.config import settings, verify_secret_configuration
 from app.core.encryption import verify_encryption_key
@@ -192,6 +191,9 @@ except ImportError as e:
         logger.error(f"Enterprise module present but failed to import: {e}")
     else:
         logger.info("Enterprise module not available - running in community edition mode")
+
+# The chat UI layer that draws more than a reply's text, when the build has one
+reply_ui.load()
 
 app.include_router(
     organizations.router,

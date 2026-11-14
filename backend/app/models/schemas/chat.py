@@ -98,6 +98,10 @@ class ShopifyProduct(BaseModel):
     published: Optional[bool] = Field(default=None)
     tracks_inventory: Optional[bool] = Field(default=None)
     has_choices: Optional[bool] = Field(default=None)
+    # The store sells it but none can be bought right now (shopify_toolkit.is_sold_out)
+    sold_out: Optional[bool] = Field(default=None)
+    # The product's own page, for a store whose links aren't /products/<handle>
+    url: Optional[str] = Field(default=None)
 
     class Config:
         json_encoders = {

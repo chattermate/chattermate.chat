@@ -359,7 +359,8 @@ async def test_a_site_is_read_with_its_pages_made_searchable_as_they_land(knowle
     await knowledge_manager._learn_site(queue_item, queue_repo, MagicMock(), 25)
 
     made.assert_called_once_with(
-        42, knowledge_manager.org_id, knowledge_manager.agent_id, SITE, "test_table", "test_schema"
+        42, knowledge_manager.org_id, knowledge_manager.agent_id, SITE, "test_table", "test_schema",
+        source_type=SourceType.WEBSITE,
     )
     assert kb.learning is learning
     kb.load.assert_called_once()

@@ -34,6 +34,11 @@ def test_lists_title_price_and_link():
     )
 
 
+@pytest.mark.parametrize("raw,shown", [("600.0", "600.00"), ("699.95", "699.95"), ("1200", "1200.00"), ("free", "free")])
+def test_the_price_reads_as_money(raw, shown):
+    assert f"• Board - INR {shown}\n" in with_product_list("x", output(product(price=raw, currency="INR")))
+
+
 def test_a_formatted_price_wins():
     assert "• Board - $99" in with_product_list("x", output(product(price_formatted="$99")))
 
@@ -66,3 +71,28 @@ def test_a_long_list_is_cut_to_fit_a_chat_message():
 ])
 def test_nothing_to_list_leaves_the_reply_alone(nothing):
     assert with_product_list("Hello", nothing) == "Hello"
+
+
+def test_a_sold_out_product_says_so():
+    text = with_product_list("x", output(product(title="Gift Card", sold_out=True), product(sold_out=False)))
+    assert "• Gift Card - USD 99.00 (sold out)\n" in text
+    assert "• Board - USD 99.00\n" in text
+
+
+def test_sold_out_reaches_the_widget_through_the_reply_schema():
+    """The widget's card says "Sold out" from this field: a schema without it
+    would drop it on the way."""
+    sent = output(product(sold_out=True)).model_dump()
+    assert sent["products"][0]["sold_out"] is True
+
+
+def test_the_store_link_wins_when_the_product_has_one():
+    text = with_product_list("x", output(product(url="https://shop.test/product/board/"), shop_domain="shop.test"))
+    assert "https://shop.test/product/board/" in text
+    assert "/products/board" not in text
+
+
+def test_only_a_web_link_is_written():
+    text = with_product_list("x", output(product(url="javascript:alert(1)")))
+    assert "javascript" not in text
+    assert "https://demo.myshopify.com/products/board" in text

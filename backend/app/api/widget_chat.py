@@ -69,14 +69,13 @@ from app.services.host_action_runtime import (
 )
 from app.services.ai_access import acknowledge_form, plan_allows_ai, tell_customer_ai_is_off, workflow_may_run
 from app.services.feature_gate import WORKFLOW_FEATURE, plan_feature_on
-from app.cards.labels import pick_language
-from app.services import email_check
-from app.api.widget_email_check import accept_store_sign_in
+from app.services import email_proof
+from app.services.visitor_language import preferred_languages
 from app.services.widget_answers import offers_follow_ups
 from app.services import widget_plan
 from app.services.widget_reply import (
     FOLLOW_UPS_SESSION_KEY,
-    LANGUAGE_SESSION_KEY,
+    LANGUAGES_SESSION_KEY,
     PANEL_SESSION_KEY,
     create_widget_agent,
     deliver_ai_reply,
@@ -449,7 +448,7 @@ async def widget_connect(sid, environ, auth):
             'page_url': str((auth or {}).get('page_url') or '')[:500] or None,
             # The widget panel's live steps and cards, and follow-up chips (widget_reply.py)
             PANEL_SESSION_KEY: (auth or {}).get('panel') is True,
-            LANGUAGE_SESSION_KEY: pick_language((auth or {}).get('languages')),
+            LANGUAGES_SESSION_KEY: preferred_languages((auth or {}).get('languages')),
             widget_plan.SESSION_KEY: plan,
             FOLLOW_UPS_SESSION_KEY: offers_follow_ups(agent) and plan[widget_plan.FOLLOW_UPS_FEATURE],
         }
@@ -466,7 +465,7 @@ async def widget_connect(sid, environ, auth):
 
         # A customer signed in to the Shopify store needs no email code
         try:
-            await asyncio.to_thread(accept_store_sign_in, session_data, token_data)
+            await asyncio.to_thread(email_proof.accept_store_sign_in, session_data, token_data)
         except Exception as e:
             logger.error(f"Store sign-in not accepted for {sid}: {e}")
         
@@ -1122,8 +1121,8 @@ async def handle_end_chat(sid, data):
                 return
 
             logger.info(f"Session {session_id} closed by client with reason: {reason}")
-            # A proven email ends with its conversation (email_check.py)
-            await asyncio.to_thread(email_check.forget, str(session_id))
+            # A proven email ends with its conversation (email_proof.py)
+            await asyncio.to_thread(email_proof.forget, str(session_id))
 
             # Confirm to client that chat has ended
             await sio.emit('chat_ended', {

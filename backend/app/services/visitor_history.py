@@ -38,7 +38,7 @@ from app.models.chat_history import ChatHistory
 from app.models.session_to_agent import ACTIVE_STATUSES, SessionToAgent
 from app.repositories.session_to_agent import SessionToAgentRepository
 from app.agents.guardrail_policy import visitor_data_block
-from app.services import email_check, widget_plan
+from app.services import email_proof, widget_plan
 from app.services.conversation_token import is_account_key, session_key_for_scope
 from app.services.file_storage import public_url
 from app.services.visitor_payload import visitor_message
@@ -64,9 +64,9 @@ def _as_uuid(value: Any) -> Optional[UUID]:
 
 
 def _proven_email(socket_session: dict) -> Optional[str]:
-    """The email this socket's conversation proved with a code (email_check.py), for
-    this customer, while the proof lasts."""
-    return email_check.verified_email(socket_session.get('session_id'), socket_session.get('customer_id'))
+    """The email this socket's conversation proved (email_proof.py), for this
+    customer, while the proof lasts."""
+    return email_proof.verified_email(socket_session.get('session_id'), socket_session.get('customer_id'))
 
 
 def _knows_customers(socket_session: dict) -> bool:
@@ -94,7 +94,7 @@ def own_sessions(db: Session, socket_session: dict, other_browsers: bool = True)
     proven = _proven_email(socket_session) if other_browsers and _knows_customers(socket_session) else None
     return SessionToAgentRepository(db).widget_sessions(
         customer_id, scope, agent_id, org_id, since=since,
-        verified_email_key=email_check.email_key(proven, org_id) if proven else None)
+        verified_email_key=email_proof.email_key(proven, org_id) if proven else None)
 
 
 def link_proven_email(db: Session, socket_session: dict, email: str) -> int:
@@ -104,10 +104,11 @@ def link_proven_email(db: Session, socket_session: dict, email: str) -> int:
     conversation already linked to an email keeps it."""
     query = own_sessions(db, socket_session, other_browsers=False)
     current = _as_uuid(socket_session.get('session_id'))
-    if query is None or current is None:
+    key = email_proof.email_key(email, socket_session.get('org_id'))
+    if query is None or current is None or not key:
         return 0
     linked = query.filter(SessionToAgent.session_id == current, SessionToAgent.verified_email_key.is_(None)) \
-        .update({SessionToAgent.verified_email_key: email_check.email_key(email, socket_session.get('org_id'))},
+        .update({SessionToAgent.verified_email_key: key},
                 synchronize_session=False)
     db.commit()
     return linked
@@ -120,8 +121,8 @@ def other_browsers(socket_session: dict) -> dict:
         return {'email': None, 'offer': False}
     proven = _proven_email(socket_session)
     if proven:
-        return {'email': email_check.mask(proven), 'offer': False}
-    return {'email': None, 'offer': email_check.available()}
+        return {'email': email_proof.mask(proven), 'offer': False}
+    return {'email': None, 'offer': email_proof.available()}
 
 
 def own_session(db: Session, socket_session: dict, session_id: Any) -> Optional[SessionToAgent]:

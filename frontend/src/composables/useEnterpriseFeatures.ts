@@ -69,6 +69,7 @@ type EnterpriseModule = {
   getSessionToken?: (app: any) => Promise<string>
   useShopifyIntegration?: (agentId: string) => any
   setupService?: { getProgress: () => Promise<{ step: string; agent_id: string | null; widget_id: string | null }> }
+  wordpressSites?: { connectToken: (widgetId: string, siteUrl: string, returnUrl: string) => Promise<string> }
 }
 
 // Create a mapping of module paths to their direct imports
@@ -138,6 +139,9 @@ const moduleImports = {
   inboxNewView: '/src/modules/enterprise/components/inbox/InboxNewView.vue',
   // The team's saved replies (settings page)
   savedRepliesView: '/src/modules/enterprise/views/SavedRepliesView.vue',
+  // WordPress connect: teach the agent the site through the plugin (nothing in open source)
+  wordpressLearnOption: '/src/modules/enterprise/components/wordpress/WordPressLearnOption.vue',
+  wordpressSites: '/src/modules/enterprise/utils/wordpressSites.ts',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */

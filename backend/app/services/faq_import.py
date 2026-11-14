@@ -73,6 +73,12 @@ def _soup_to_text(soup: BeautifulSoup) -> str:
     return text.strip()
 
 
+def html_to_text(html: str) -> str:
+    """An HTML fragment (a page or policy body) as clean text, blocks
+    separated by a blank line."""
+    return _soup_to_text(BeautifulSoup(html or "", "html.parser"))
+
+
 def fetch_page_text(url: str) -> str:
     """Fetch the page and reduce it to clean text. Static fetch first (every
     redirect hop SSRF-checked by safe_get); crawl4ai's headless browser as a
