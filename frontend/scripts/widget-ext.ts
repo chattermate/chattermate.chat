@@ -77,8 +77,7 @@ export function widgetExtensionPlugin(): VitePlugin {
 export const loaderExtensionPlugin: EsbuildPlugin = {
   name: 'chattermate-loader-extensions',
   setup(build) {
-    build.onResolve({ filter: /^virtual:cm-(widget|loader)-ext$/ }, args => ({
-      path: extensionFile(args.path as ExtensionId),
-    }))
+    // The loader's id only: the panel's layer is Vue, which the loader build can't bundle
+    build.onResolve({ filter: /^virtual:cm-loader-ext$/ }, () => ({ path: extensionFile('virtual:cm-loader-ext') }))
   },
 }

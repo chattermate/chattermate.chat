@@ -19,8 +19,9 @@ import type { WidgetMessage } from '../../types/widget'
 
 /**
  * A chat UI layer: what the panel draws beyond a reply's text (cards, commerce,
- * the email check). The build supplies at most one (ui-layer/index.ts); without
- * one, every reply is its text and nothing is lost.
+ * the email check). The build supplies at most one (ui-layer/index.ts), and it
+ * replaces the built-in one whole. Whatever a layer leaves out, the reply's text
+ * still says.
  *
  * Components get the panel's controller by inject(WIDGET_CTX), like the panel's own.
  */
@@ -39,6 +40,18 @@ export interface WidgetUiLayer {
     historyOthers?: Component
     /** A message from the embedding page the layer handles. Whether it was handled. */
     hostMessage?(data: Record<string, unknown>): boolean
+    /** Called once by a live widget (never the dashboard preview), for the layer's own socket traffic. */
+    setup?(host: WidgetUiLayerHost): void
+}
+
+/** What a live widget gives its layer. */
+export interface WidgetUiLayerHost {
+    on: (event: string, listener: (...args: any[]) => void) => void
+    emit: (event: string, data?: unknown) => void
+    /** Send a message as the visitor (and show it), as a tapped reply does. */
+    sendAsVisitor: (text: string) => void
+    /** Read the visitor's conversation list again (the history screen). */
+    refreshHistory: () => void
 }
 
 /** What the build's layer module exports: a layer, or null when the build has none. */

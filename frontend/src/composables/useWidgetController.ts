@@ -25,6 +25,7 @@ import { useTypewriter } from './useTypewriter'
 import { useAnswerFeedback } from './useAnswerFeedback'
 import { useProductOptions } from './useProductOptions'
 import { useEmailCheck } from './useEmailCheck'
+import { setupLayer } from '../webclient/ui-layer'
 import { useConversationHistory } from './useConversationHistory'
 import { usePageSuggestions } from './usePageSuggestions'
 import { PANEL_COPY } from '../webclient/copy'
@@ -105,6 +106,13 @@ export function useWidgetController(props: WidgetControllerProps): WidgetControl
         on: socket.on, emit: socket.emit,
         announce: () => composer.sendQuickAction(PANEL_COPY.emailConfirmedMessage),
         onVerified: (purpose) => { if (purpose === 'history') conversationHistory.refreshConversations() },
+    })
+
+    // The chat UI layer's own socket traffic (ui-layer/index.ts)
+    setupLayer({
+        on: socket.on, emit: socket.emit,
+        sendAsVisitor: (text) => composer.sendQuickAction(text),
+        refreshHistory: () => conversationHistory.refreshConversations(),
     })
 
     // Page messages, in-app actions and journeys. A tapped text reply goes through

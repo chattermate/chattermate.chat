@@ -24,10 +24,10 @@ limitations under the License.
 
 import installed from 'virtual:cm-widget-ext'
 import { BUILTIN_LAYER } from './builtin'
-import type { WidgetUiLayer } from './types'
+import type { WidgetUiLayer, WidgetUiLayerHost } from './types'
 import type { WidgetMessage } from '../../types/widget'
 
-export type { WidgetUiLayer } from './types'
+export type { WidgetUiLayer, WidgetUiLayerHost } from './types'
 
 export const uiLayer: WidgetUiLayer = installed ?? BUILTIN_LAYER
 
@@ -35,6 +35,15 @@ export const uiLayer: WidgetUiLayer = installed ?? BUILTIN_LAYER
 export function layerComponentFor(message: WidgetMessage) {
     const kind = uiLayer.messageKind?.(message)
     return kind ? uiLayer.messageComponents?.[kind] : undefined
+}
+
+/** Starts the layer's own socket traffic, for a live widget. A failing layer leaves the panel as text. */
+export function setupLayer(host: WidgetUiLayerHost): void {
+    try {
+        uiLayer.setup?.(host)
+    } catch (error) {
+        console.error('Chat UI layer failed to start', error)
+    }
 }
 
 /** Hands a message from the embedding page to the layer. Whether it took it. */

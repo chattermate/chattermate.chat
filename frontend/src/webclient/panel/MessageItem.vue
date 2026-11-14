@@ -16,8 +16,8 @@ limitations under the License.
 
 <script setup lang="ts">
 // Draws one message with the component for its kind (message-kind.ts, or the chat
-// UI layer's own, ui-layer/index.ts). A message
-// that arrived while the visitor watched rises in; history simply appears.
+// UI layer's own, ui-layer/index.ts). A message that arrived while the visitor
+// watched rises in; history simply appears.
 import { computed, type Component } from 'vue'
 import { messageKind, type MessageKind } from './message-kind'
 import UserBubble from './messages/UserBubble.vue'
