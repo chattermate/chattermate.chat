@@ -19,6 +19,8 @@ limitations under the License.
  * The inbox's views: yours, waiting for a person, all open, the AI's, each
  * channel, and saved ones, each with its count. Also where you go online or
  * offline and start a conversation, since the inbox has no page header.
+ * The enterprise module adds to it: a menu on each of its saved views
+ * (#item-actions) and "New view" under the list (#footer).
  */
 import { inject } from 'vue'
 import { AGENT_STATUS_KEY } from '@/composables/useAgentStatus'
@@ -87,7 +89,7 @@ const countLabel = (item: InboxViewItem) => (item.count ? formatBadgeCount(item.
     <div v-for="(group, index) in groups" :key="group.heading ?? index" class="group">
       <h2 v-if="group.heading" class="group-heading">{{ group.heading }}</h2>
       <ul class="group-items">
-        <li v-for="item in group.items" :key="item.id">
+        <li v-for="item in group.items" :key="item.id" class="item">
           <button
             type="button"
             class="view"
@@ -106,9 +108,12 @@ const countLabel = (item: InboxViewItem) => (item.count ? formatBadgeCount(item.
             <span class="label">{{ item.label }}</span>
             <span v-if="countLabel(item)" class="count" aria-hidden="true">{{ countLabel(item) }}</span>
           </button>
+          <slot name="item-actions" :item="item" />
         </li>
       </ul>
     </div>
+
+    <slot name="footer" />
   </nav>
 </template>
 
@@ -234,6 +239,10 @@ const countLabel = (item: InboxViewItem) => (item.count ? formatBadgeCount(item.
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.item {
+  position: relative;
 }
 
 .view {

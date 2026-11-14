@@ -111,6 +111,14 @@ export const FEATURE_GATES = {
     description: 'Saved replies are on the Starter plan and up: answer common questions in two keystrokes.',
     bullets: ['Type / to insert a reply', "Fills in the customer's name"],
   },
+  'inbox-views': {
+    feature: 'inbox_saved_views',
+    newFlag: true,
+    name: 'Saved views',
+    title: 'Unlock Saved Views',
+    description: 'Saved views are on the Starter plan and up: save the filters you use under a name, and share them with your team.',
+    bullets: ['One click back to your filters', 'Share a view with the team'],
+  },
   'inbox-ai': {
     feature: 'inbox_ai',
     newFlag: true,

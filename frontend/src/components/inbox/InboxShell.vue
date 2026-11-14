@@ -40,8 +40,9 @@ import InboxList from './InboxList.vue'
 import ThreadPane from './ThreadPane.vue'
 import DetailsPanel from './DetailsPanel.vue'
 import ShortcutsSheet from './ShortcutsSheet.vue'
-import { selectionId, type InboxViewItem } from './inboxViews'
+import { isPreset, type InboxViewItem } from './inboxViews'
 import { OPEN_NAV_KEY } from '@/components/layout/navDrawer'
+import { patchQuery } from '@/utils/patchQuery'
 
 /** Remembers that you folded the views pane away */
 const VIEWS_HIDDEN_KEY = 'cm-inbox-views-hidden'
@@ -53,6 +54,10 @@ const router = useRouter()
 const { isMobile, isTablet, isBelowWide } = useBreakpoint()
 const { hasEnterpriseModule, enterpriseComponent, moduleImports } = useEnterpriseFeatures()
 const PromoInboxCard = enterpriseComponent(moduleImports.promoUsageCard)
+// Saved views (nothing in open source): the loader, each one's menu, and New view
+const InboxSavedViews = enterpriseComponent(moduleImports.inboxSavedViews)
+const InboxSavedViewMenu = enterpriseComponent(moduleImports.inboxSavedViewMenu)
+const InboxNewView = enterpriseComponent(moduleImports.inboxNewView)
 
 const currentUserId = userService.getUserId()
 // Tablet widths hide the sidebar behind the header's menu button; the inbox has no header
@@ -121,7 +126,7 @@ const detailsOpen = computed(() => {
 function toggleDetails() {
   if (isMobile.value) {
     if (route.query.info === '1') router.back()
-    else void router.push({ query: { ...route.query, info: '1' } })
+    else void patchQuery(router, { info: '1' }, 'push')
   } else if (detailsOverlay.value) {
     detailsDrawerOpen.value = !detailsDrawerOpen.value
   } else {
@@ -144,10 +149,8 @@ const mobilePane = computed(() => {
 
 function openConversation(sessionId: string) {
   if (sessionId === sessionInUrl.value) return
-  const query = { ...route.query, session: sessionId, info: undefined }
   // Phones push, so back returns to the list; elsewhere the URL just follows
-  if (isMobile.value) void router.push({ query })
-  else void router.replace({ query })
+  void patchQuery(router, { session: sessionId, info: undefined }, isMobile.value ? 'push' : 'replace')
 }
 
 watch(sessionInUrl, (sessionId) => {
@@ -165,12 +168,13 @@ function backToList() {
   if (typeof previous === 'string' && previous.startsWith('/conversations') && !previous.includes('session=')) {
     router.back()
   } else {
-    void router.replace({ query: { ...route.query, session: undefined, info: undefined } })
+    void patchQuery(router, { session: undefined, info: undefined })
   }
 }
 
 function selectView(item: InboxViewItem) {
-  list.select(item.selection)
+  if (isPreset(item)) list.applyPreset(item)
+  else list.select(item.selection)
 }
 
 function onChatUpdated(chat: ChatDetail) {
@@ -248,12 +252,21 @@ useInboxShortcuts({
       v-if="showViewsPane"
       class="pane-views"
       :groups="list.viewGroups.value"
-      :selected-id="selectionId(list.selection.value)"
+      :selected-id="list.selectedId.value"
       :can-start-conversation="whatsappAccounts.length > 0"
       @select="selectView"
       @new-conversation="startingConversation = true"
       @hide="setViewsHidden(true)"
-    />
+    >
+      <template v-if="hasEnterpriseModule" #item-actions="{ item }">
+        <InboxSavedViewMenu v-if="isPreset(item)" :item="item" :state="list.state.value" />
+      </template>
+      <template v-if="hasEnterpriseModule" #footer>
+        <InboxNewView :state="list.state.value" @saved="list.markPreset" />
+      </template>
+    </InboxViews>
+    <!-- Loads the saved views into the list (the narrow view picker too) -->
+    <InboxSavedViews @update="list.setPresets" />
 
     <div class="pane-list">
       <PromoInboxCard v-if="isMobile && hasEnterpriseModule" compact class="promo" />

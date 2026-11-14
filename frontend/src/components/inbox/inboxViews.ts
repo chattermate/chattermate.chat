@@ -47,6 +47,33 @@ export interface InboxViewItem {
   empty: string
 }
 
+/**
+ * Everything the list shows, as one value: the view, its sort and search, and
+ * the AI agent / teammate filters. What a preset view (the enterprise
+ * module's saved views) brings back in one click.
+ */
+export interface InboxListState {
+  selection: InboxSelection
+  sort: InboxSort
+  search: string
+  agentId: string
+  assigneeId: string
+}
+
+/** A view that brings back a whole list state rather than a selection */
+export interface InboxPresetItem extends InboxViewItem {
+  preset: InboxListState
+}
+
+export const isPreset = (item: InboxViewItem): item is InboxPresetItem => 'preset' in item
+
+/** Two list states show the same conversations (a search's case and spaces aside). */
+export function sameListState(a: InboxListState, b: InboxListState): boolean {
+  return selectionId(a.selection) === selectionId(b.selection) && a.sort === b.sort
+    && a.search.trim().toLowerCase() === b.search.trim().toLowerCase()
+    && a.agentId === b.agentId && a.assigneeId === b.assigneeId
+}
+
 export interface InboxViewGroup {
   /** No heading for the first group */
   heading: string | null
@@ -133,7 +160,9 @@ function channelItem(channel: string, count: number): InboxViewItem {
  * open conversation, busiest first; the selected one stays even when it
  * empties, so the list under it doesn't jump away.
  */
-export function inboxViewGroups(counts: InboxCounts | null, selected?: InboxSelection): InboxViewGroup[] {
+export function inboxViewGroups(
+  counts: InboxCounts | null, selected?: InboxSelection, presets: InboxPresetItem[] = [],
+): InboxViewGroup[] {
   const channelCounts = { ...(counts?.channels ?? {}) }
   if (selected?.channel && !(selected.channel in channelCounts)) channelCounts[selected.channel] = 0
   const channels = Object.entries(channelCounts)
@@ -146,7 +175,7 @@ export function inboxViewGroups(counts: InboxCounts | null, selected?: InboxSele
       items: views.filter((v) => v !== 'snoozed' || counts?.snoozed || selected?.view === 'snoozed').map((v) => viewItem(v, counts)),
     })),
     ...(channels.length ? [{ heading: 'Channels', items: channels }] : []),
-    { heading: 'Saved views', items: SAVED_VIEWS.map((v) => viewItem(v, counts)) },
+    { heading: 'Saved views', items: [...SAVED_VIEWS.map((v) => viewItem(v, counts)), ...presets] },
   ]
 }
 

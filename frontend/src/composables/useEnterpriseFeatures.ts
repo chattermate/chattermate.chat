@@ -131,6 +131,11 @@ const moduleImports = {
   // history beside their contact facts; Shopify orders and previous conversations
   inboxCustomerFacts: '/src/modules/enterprise/components/inbox/InboxCustomerFacts.vue',
   inboxDetailsSections: '/src/modules/enterprise/components/inbox/InboxDetailsSections.vue',
+  // Saved views in the inbox's views pane (nothing in open source): the loader
+  // that hands them to the list, each one's menu, and "New view"
+  inboxSavedViews: '/src/modules/enterprise/components/inbox/InboxSavedViews.ts',
+  inboxSavedViewMenu: '/src/modules/enterprise/components/inbox/InboxSavedViewMenu.vue',
+  inboxNewView: '/src/modules/enterprise/components/inbox/InboxNewView.vue',
   // The team's saved replies (settings page)
   savedRepliesView: '/src/modules/enterprise/views/SavedRepliesView.vue',
 }

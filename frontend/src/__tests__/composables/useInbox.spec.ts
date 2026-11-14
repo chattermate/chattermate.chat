@@ -20,7 +20,12 @@ import { flushPromises, mount } from '@vue/test-utils'
 import emitter from '@/utils/emitter'
 
 const route = reactive<{ query: Record<string, unknown> }>({ query: {} })
-const router = { replace: vi.fn(({ query }) => { route.query = query }), push: vi.fn() }
+const router = {
+  replace: vi.fn(({ query }) => { route.query = query }),
+  push: vi.fn(),
+  // patchQuery reads the URL as the last change left it
+  currentRoute: { get value() { return route } },
+}
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => router }))
 
 const chat = vi.hoisted(() => ({ getRecentChats: vi.fn(), getInboxCounts: vi.fn(), getChatDetail: vi.fn() }))
@@ -106,6 +111,7 @@ describe('useInboxList', () => {
     expect(chat.getRecentChats).toHaveBeenLastCalledWith(expect.objectContaining({ view: 'waiting', sort: 'waiting_longest' }))
     expect(router.replace).toHaveBeenLastCalledWith({ query: { view: 'waiting' } })
     result().select({ view: 'open', channel: null })
+    await flushPromises()
     expect(router.replace).toHaveBeenLastCalledWith({ query: { view: undefined } })
     wrapper.unmount()
   })
@@ -229,6 +235,85 @@ describe('useInboxList', () => {
     expect(chat.getRecentChats).toHaveBeenLastCalledWith(expect.objectContaining({ agent_id: 'a1', user_id: 'u2' }))
     expect(result().narrowed.value).toBe(true)
     wrapper.unmount()
+  })
+
+  describe('presets (saved views)', () => {
+    const preset = (id: string, fields: Record<string, unknown> = {}) => ({
+      id, label: 'Refunds on WhatsApp', title: 'Refunds on WhatsApp', selection: { view: 'waiting', channel: 'whatsapp' },
+      count: null, tone: 'plain', empty: 'No conversations match this view.',
+      preset: { selection: { view: 'waiting', channel: 'whatsapp' }, sort: 'waiting_longest', search: 'refund', agentId: 'a1', assigneeId: '', ...fields },
+    }) as never
+
+    it('are listed under Saved views, after the built-in ones', async () => {
+      const { result, wrapper } = host(useInboxList)
+      result().setPresets([preset('saved:1')])
+      const saved = result().viewGroups.value.find((g) => g.heading === 'Saved views')
+      expect(saved?.items.map((i) => i.id)).toEqual(['negative', 'saved:1'])
+      wrapper.unmount()
+    })
+
+    it('bring back the whole list state, and stay selected while it holds', async () => {
+      const { result, wrapper } = host(useInboxList)
+      await flushPromises()
+      const item = preset('saved:1')
+      result().setPresets([item])
+      result().applyPreset(item)
+      await flushPromises()
+
+      expect(chat.getRecentChats).toHaveBeenLastCalledWith(expect.objectContaining({
+        view: 'waiting', channel: 'whatsapp', sort: 'waiting_longest', q: 'refund', agent_id: 'a1',
+      }))
+      expect(router.replace).toHaveBeenLastCalledWith({ query: { view: 'saved:1' } })
+      expect(result().selectedId.value).toBe('saved:1')
+      expect(result().currentView.value.title).toBe('Refunds on WhatsApp')
+
+      // A change of filter: the list no longer shows the view
+      result().search.value = 'exchange'
+      expect(result().selectedId.value).toBe('channel:whatsapp')
+      expect(result().currentView.value.id).toBe('channel:whatsapp')
+      wrapper.unmount()
+    })
+
+    it('a built-in view takes over from the preset', async () => {
+      const { result, wrapper } = host(useInboxList)
+      const item = preset('saved:1')
+      result().setPresets([item])
+      result().applyPreset(item)
+      result().select({ view: 'mine', channel: null })
+      expect(result().selectedId.value).toBe('mine')
+      expect(result().search.value).toBe('')
+      wrapper.unmount()
+    })
+
+    it('a link to one applies it once the presets arrive, and only then', async () => {
+      route.query = { view: 'saved:2' }
+      const { result, wrapper } = host(useInboxList)
+      await flushPromises()
+      expect(result().selectedId.value).toBe('open')
+
+      result().setPresets([preset('saved:1')])
+      expect(result().selectedId.value).toBe('open')
+      result().setPresets([preset('saved:1'), preset('saved:2', { search: 'late' })])
+      expect(result().selectedId.value).toBe('saved:2')
+      expect(result().search.value).toBe('late')
+      // A later refresh of the list doesn't snap back to it
+      result().select({ view: 'mine', channel: null })
+      result().setPresets([preset('saved:2')])
+      expect(result().selectedId.value).toBe('mine')
+      wrapper.unmount()
+    })
+
+    it('one just saved from the list is selected without reloading it', async () => {
+      const { result, wrapper } = host(useInboxList)
+      await flushPromises()
+      chat.getRecentChats.mockClear()
+      result().setPresets([preset('saved:3', { selection: { view: 'open', channel: null }, sort: 'newest', search: '', agentId: '' })])
+      result().markPreset('saved:3')
+      await flushPromises()
+      expect(result().selectedId.value).toBe('saved:3')
+      expect(chat.getRecentChats).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
   })
 
   it('patches a row in place', async () => {

@@ -23,6 +23,8 @@ const router = {
   replace: vi.fn(({ query }) => { route.query = query }),
   push: vi.fn(({ query }) => { route.query = query }),
   back: vi.fn(),
+  // patchQuery reads the URL as the last change left it
+  currentRoute: { get value() { return route } },
 }
 vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue-router')>()),

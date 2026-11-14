@@ -20,13 +20,17 @@ import { chatService, localDayStart } from '@/services/chat'
 import type { Conversation, InboxCounts, InboxSort } from '@/types/chat'
 import type { InboxFilterValues } from '@/components/inbox/InboxFilters.vue'
 import emitter from '@/utils/emitter'
+import { patchQuery } from '@/utils/patchQuery'
 import {
   DEFAULT_SELECTION,
   defaultSort,
   inboxViewGroups,
   parseSelection,
+  sameListState,
   selectedViewItem,
   selectionId,
+  type InboxListState,
+  type InboxPresetItem,
   type InboxSelection,
 } from '@/components/inbox/inboxViews'
 
@@ -48,6 +52,9 @@ export const LIST_REFRESH_EVERY = 4
  * every INBOX_POLL_MS while the tab is visible, and the first page with them
  * when they moved (or every LIST_REFRESH_EVERY polls). Both refresh at once
  * whenever a chat changes hands or gets a note ('inbox-changed').
+ *
+ * Presets (the enterprise module's saved views) bring back a whole list state
+ * at once; one stays selected while the list still shows what it saved.
  */
 export function useInboxList() {
   const route = useRoute()
@@ -67,8 +74,29 @@ export function useInboxList() {
   const error = ref('')
   const hasMore = ref(false)
 
-  const viewGroups = computed(() => inboxViewGroups(counts.value, selection.value))
-  const currentView = computed(() => selectedViewItem(viewGroups.value, selection.value))
+  const presets = ref<InboxPresetItem[]>([])
+  const activePresetId = ref<string | null>(null)
+  // A ?view= that names no built-in view: a preset, once the presets arrive
+  const linked = typeof route.query.view === 'string' ? route.query.view : null
+  let pendingPresetId = linked && selectionId(parseSelection(linked)) !== linked ? linked : null
+
+  const state = computed<InboxListState>(() => ({
+    selection: selection.value,
+    sort: sort.value,
+    search: search.value,
+    agentId: filters.value.agentId,
+    assigneeId: filters.value.assigneeId,
+  }))
+  /** The preset applied last, while the list still shows what it saved */
+  const activePreset = computed(() => {
+    const preset = presets.value.find((p) => p.id === activePresetId.value)
+    return preset && sameListState(preset.preset, state.value) ? preset : null
+  })
+
+  const viewGroups = computed(() => inboxViewGroups(counts.value, selection.value, presets.value))
+  const currentView = computed(() => activePreset.value ?? selectedViewItem(viewGroups.value, selection.value))
+  /** The views pane's selected item */
+  const selectedId = computed(() => activePreset.value?.id ?? selectionId(selection.value))
 
   // Each load bumps this; a response for an older one is dropped, so a slow
   // answer for the view you just left can't overwrite the one you're on.
@@ -161,15 +189,46 @@ export function useInboxList() {
     }
   }
 
+  function linkView(id: string): void {
+    const view = id === selectionId(DEFAULT_SELECTION) ? undefined : id
+    void patchQuery(router, { view })
+  }
+
   function select(next: InboxSelection): void {
+    activePresetId.value = null
     // A search left over from the last view would show "No conversations
     // match" beside the new view's count
     search.value = ''
     selection.value = next
     sort.value = defaultSort(next)
-    const id = selectionId(next)
-    const view = id === selectionId(DEFAULT_SELECTION) ? undefined : id
-    void router.replace({ query: { ...route.query, view } })
+    linkView(selectionId(next))
+  }
+
+  /** The list exactly as a preset saved it */
+  function applyPreset(item: InboxPresetItem): void {
+    const { preset } = item
+    selection.value = preset.selection
+    sort.value = preset.sort
+    search.value = preset.search
+    filters.value = { agentId: preset.agentId, assigneeId: preset.assigneeId }
+    activePresetId.value = item.id
+    linkView(item.id)
+  }
+
+  /** A preset that matches what the list shows now (one just saved from it) */
+  function markPreset(id: string): void {
+    activePresetId.value = id
+    linkView(id)
+  }
+
+  /** The presets to offer; a link to one (?view=) applies it once they arrive */
+  function setPresets(items: InboxPresetItem[]): void {
+    presets.value = items
+    const linkedPreset = pendingPresetId ? items.find((p) => p.id === pendingPresetId) : undefined
+    if (linkedPreset) {
+      pendingPresetId = null
+      applyPreset(linkedPreset)
+    }
   }
 
   /** A row's fields changed in the open thread (who holds it, its status). */
@@ -228,7 +287,12 @@ export function useInboxList() {
     hasMore,
     viewGroups,
     currentView,
+    state,
+    selectedId,
     select,
+    applyPreset,
+    markPreset,
+    setPresets,
     load,
     loadMore,
     refresh,
