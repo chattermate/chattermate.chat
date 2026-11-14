@@ -428,7 +428,7 @@ class ChatAgent(ChatAgentMCPMixin):
             # Growth plan's (widget_plan.py), drawn by the chat UI layer (reply_ui.py)
             plan = widget_plan.features(db, org_id, (MY_ORDERS_FEATURE, SHOP_IN_CHAT_FEATURE)) if org_id else {}
             self.offers_my_orders = plan.get(MY_ORDERS_FEATURE, False)
-            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False) and reply_ui.installed()
+            self.cards_add_to_cart = plan.get(SHOP_IN_CHAT_FEATURE, False) and self._shows_product_cards()
             if agent_id and org_id and session_id:
                 try:
                     shopify_config_repo = AgentShopifyConfigRepository(db)

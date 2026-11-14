@@ -53,9 +53,6 @@ logger = get_logger(__name__)
 # A slow store must not hold the chat turn open.
 ORDER_SEARCH_TIMEOUT_SECONDS = 20
 
-# How many of a confirmed email's orders list_my_orders shows
-RECENT_ORDERS = 5
-
 ORDER_SEARCH_GRAPHQL = """
 query SearchOrders($query: String, $first: Int!) {
   orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
@@ -196,35 +193,6 @@ def product_from_node(node: dict) -> dict:
         "tracks_inventory": node.get("tracksInventory"),
         "has_choices": node.get("hasOnlyDefaultVariant") is False,
     }
-
-
-def recent_orders(shop: ShopifyShop, email: str) -> Optional[List[Dict[str, Any]]]:
-    """The email's latest orders (exact email match), newest first, or None on failure.
-    For a proven email only (email_proof.py): it lists that address's orders."""
-    response = call_admin_api(shop, lambda token: requests.post(
-        shopify_admin_url(shop.shop_domain, "graphql.json"),
-        headers=admin_headers(token),
-        json={"query": ORDER_SEARCH_GRAPHQL,
-              "variables": {"query": f"email:{normalise_email(email)}", "first": RECENT_ORDERS}},
-        verify=settings.VERIFY_SSL_CERTIFICATES,
-        timeout=ORDER_SEARCH_TIMEOUT_SECONDS,
-    ))
-    if response.status_code != 200 or "errors" in response.json():
-        logger.error(f"Recent orders search failed: {response.status_code}")
-        return None
-    edges = ((response.json().get("data") or {}).get("orders") or {}).get("edges") or []
-    orders = []
-    for edge in edges:
-        node = edge.get("node") or {}
-        if normalise_email(node.get("email")) != normalise_email(email):
-            continue
-        orders.append({
-            "order_number": node.get("name"),
-            "created_at": node.get("createdAt"),
-            "financial_status": node.get("displayFinancialStatus"),
-            "fulfillment_status": node.get("displayFulfillmentStatus"),
-        })
-    return orders
 
 
 def shop_for_agent(agent_id: Any, org_id: Any) -> Optional[ShopifyShop]:

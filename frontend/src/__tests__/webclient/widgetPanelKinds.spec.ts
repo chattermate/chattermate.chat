@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/composables/useWidgetSocket', async () => (await import('./widgetHarness')).socketModule())
 
-import { mountWidget, postFromParent, resetSocket, settle, socket, socketCalls } from './widgetHarness'
+import { mountWidget, resetSocket, settle, socket, socketCalls } from './widgetHarness'
 
 const V2 = { customization_metadata: { widget_ui: { version: 2 } } }
 

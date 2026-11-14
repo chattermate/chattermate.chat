@@ -147,7 +147,7 @@ describe('touch targets', () => {
         const css = readFileSync(resolve(__dirname, '../../webclient/widget-panel.css'), 'utf8')
         const block = css.match(/@media \(pointer: coarse\), \(max-width: 480px\) \{([\s\S]*?)\n\}/)?.[1] ?? ''
         expect(block).toContain('min-height: 44px')
-        for (const control of ['.cm-icon-button', '.cm-send', '.cm-product__view', '.cm-attachments__link', '.cm-rating__option', '.cm-suggestion']) {
+        for (const control of ['.cm-icon-button', '.cm-send', '.cm-attachments__link', '.cm-rating__option', '.cm-suggestion']) {
             expect(block).toContain(control)
         }
     })

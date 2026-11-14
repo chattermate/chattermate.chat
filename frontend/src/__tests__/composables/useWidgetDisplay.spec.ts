@@ -55,14 +55,19 @@ describe('useWidgetDisplay', () => {
     })
 
     it.each([
-        ['a status card', { cards: [{ id: 'order-1' }] }],
         ['the handover card', { handover: { state: 'connecting' } }],
-        ['the email check', { email_check: true }],
     ])('hands the palette over to the chat panel for %s', async (_what, attributes) => {
         const display = setup('ASK_ANYTHING')
         display.messages.value = [{ message_type: 'bot', attributes } as DisplayMessage]
         await nextTick()
         expect(display.useAskAiPanel.value).toBe(false)
+    })
+
+    it('keeps the palette for status cards and the email check without a chat UI layer to draw them', async () => {
+        const display = setup('ASK_ANYTHING')
+        display.messages.value = [{ message_type: 'bot', attributes: { cards: [{ id: 'order-1' }], email_check: true } } as DisplayMessage]
+        await nextTick()
+        expect(display.useAskAiPanel.value).toBe(true)
     })
 
     it('keeps the palette for an answer with empty extras', async () => {

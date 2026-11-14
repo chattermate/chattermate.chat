@@ -393,6 +393,10 @@ class TestCartWording:
     def test_a_plan_with_shopping_in_the_chat(self, ui_layer):
         assert "from the product card or the store" in prompt_of(build_agent(shopify=True))
 
+    def test_a_channel_has_no_card_to_add_from(self, ui_layer):
+        prompt = prompt_of(build_agent(shopify=True, channel="telegram"))
+        assert "Customers add products themselves, from the store." in prompt
+
     def test_without_a_chat_ui_layer_there_is_no_card_to_add_from(self):
         prompt = prompt_of(build_agent(shopify=True))
         assert "Customers add products themselves, from the store." in prompt

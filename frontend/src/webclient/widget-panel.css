@@ -212,13 +212,11 @@
     .chat-container.cm-surface.cm-ui-2 .cm-primary,
     .chat-container.cm-surface.cm-ui-2 .cm-suggestion,
     .chat-container.cm-surface.cm-ui-2 .cm-rating__option,
-    .chat-container.cm-surface.cm-ui-2 .cm-product__view,
     .chat-container.cm-surface.cm-ui-2 .cm-attachments__link,
     .chat-container.cm-surface.cm-ui-2 .cm-attachments__thumb,
     .chat-container.cm-surface.cm-ui-2 .cm-staged__thumb,
     .chat-container.cm-surface.cm-ui-2 .cm-form__check,
-    .chat-container.cm-surface.cm-ui-2 .cm-new-messages,
-    .chat-container.cm-surface.cm-ui-2 .cm-cart-button {
+    .chat-container.cm-surface.cm-ui-2 .cm-new-messages {
         min-width: 44px;
         min-height: 44px;
     }

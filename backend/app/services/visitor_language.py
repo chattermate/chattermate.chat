@@ -20,8 +20,7 @@ session for whatever draws the reply in the visitor's language.
 
 from typing import Any, List
 
-# What a visitor may send: a few BCP 47 tags, each short (the card labels'
-# own picker, app/cards/labels.py, keeps the same bounds)
+# What a visitor may send: a few BCP 47 tags, each short
 MAX_PREFERENCES = 5
 MAX_TAG_LENGTH = 35
 

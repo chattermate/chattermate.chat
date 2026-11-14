@@ -13,9 +13,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Products as plain text, for channels with no product cards. The Shopify prompt
-keeps product details out of the reply because the widget shows them as cards,
-so on a channel the reply alone would announce products and show none.
+Products as plain text, wherever a reply has no product cards: channels, and the
+widget without a chat UI layer (reply_ui.py). The Shopify prompt keeps product
+details out of the reply because cards show them, so without cards the reply
+alone would announce products and show none.
 """
 
 from typing import Any, Optional
