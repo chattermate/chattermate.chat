@@ -44,6 +44,14 @@ interface RoomEvent {
  * the counts and rows refresh, and the open thread with them */
 const OWNERSHIP_EVENTS = new Set(['reassigned', 'reassigned_from_you', 'released_to_ai', 'note_added'])
 
+/** conversation_activity: a conversation got a message (any, from anyone). */
+interface ActivityEvent {
+  session_id?: string
+}
+
+/** Several messages in a moment (the customer's, then the AI's) make one refetch */
+export const ACTIVITY_REFETCH_MS = 250
+
 /** chat_reply's types, as stored messages spell them */
 const REPLY_TYPES: Record<string, string> = { user_message: 'user', agent_message: 'agent', bot_message: 'bot' }
 
@@ -176,6 +184,21 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     onReply?.(data)
   }
 
+  // A message in a chat nobody holds: the AI's turns and the queue aren't
+  // streamed as chat_reply, so the open thread refetches. A chat a person
+  // holds streams its messages to them already.
+  let activityTimer: ReturnType<typeof setTimeout> | null = null
+  function handleActivity(data: ActivityEvent): void {
+    const sessionId = data?.session_id
+    if (!sessionId || sessionId !== selectedId.value) return
+    if (chat.value?.session_id === sessionId && chat.value.user_id) return
+    if (activityTimer) clearTimeout(activityTimer)
+    activityTimer = setTimeout(() => {
+      activityTimer = null
+      if (selectedId.value === sessionId) void open(sessionId, true)
+    }, ACTIVITY_REFETCH_MS)
+  }
+
   // A teammate reassigned or released a chat: the views' counts and rows
   // change, and the open thread may no longer be ours to answer.
   function handleRoomEvent(data: RoomEvent): void {
@@ -195,11 +218,13 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
   function listen(): void {
     socketService.on('chat_reply', handleReply)
     socketService.on('room_event', handleRoomEvent)
+    socketService.on('conversation_activity', handleActivity)
   }
 
   function unlisten(): void {
     socketService.off('chat_reply', handleReply)
     socketService.off('room_event', handleRoomEvent)
+    socketService.off('conversation_activity', handleActivity)
   }
 
   function rejoin(): void {
@@ -222,6 +247,7 @@ export function useInboxThread(onReply?: (data: ChatReplyEvent) => void) {
     if (room) socketService.emit('leave_room', { session_id: room })
     unlisten()
     socketService.offReconnect(rejoin)
+    if (activityTimer) clearTimeout(activityTimer)
   })
 
   return { chat, selectedId, loadingChat, unread, open, close, update }

@@ -64,6 +64,23 @@ const thread = useInboxThread((reply) => {
   list.patchConversation(reply.session_id, { last_message: reply.message, updated_at: reply.created_at })
 })
 
+// The open thread refetches when the AI answers (its turns aren't streamed):
+// its row shows the same latest message rather than waiting for a poll
+watch(
+  () => {
+    const messages = thread.chat.value?.messages
+    return messages?.[messages.length - 1]
+  },
+  (last) => {
+    const sessionId = thread.chat.value?.session_id
+    const row = list.conversations.value.find((c) => c.session_id === sessionId)
+    // Only newer: opening a chat must not move its row's time back
+    if (sessionId && row && last?.message && Date.parse(last.created_at) > Date.parse(row.updated_at)) {
+      list.patchConversation(sessionId, { last_message: last.message, updated_at: last.created_at })
+    }
+  },
+)
+
 const listRef = ref<InstanceType<typeof InboxList> | null>(null)
 const threadRef = ref<InstanceType<typeof ThreadPane> | null>(null)
 

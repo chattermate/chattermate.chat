@@ -41,6 +41,7 @@ from app.api import widget_suggestions  # noqa: F401 - registers the page-sugges
 from fastapi import FastAPI, BackgroundTasks
 from app.core.config import settings, verify_secret_configuration
 from app.core.encryption import verify_encryption_key
+from app.services import conversation_activity
 from app.services.file_storage import PUBLIC_UPLOAD_FOLDERS
 from app.services.firebase import initialize_firebase
 from app.database import engine, Base
@@ -115,6 +116,8 @@ async def startup_event(api: FastAPI):
     custom lifespan was set. The module-level `app` is rebound to the Socket.IO
     ASGI wrapper below, so the instance has to be passed in."""
     configure_socketio(cors_origins)
+    # Messages stored from worker threads announce themselves on this loop
+    conversation_activity.bind_loop(asyncio.get_running_loop())
 
     # Channel extensions (e.g. an external-app integration) hook into message
     # handling; loaded explicitly so other entry points never pull them in.

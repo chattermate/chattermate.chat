@@ -42,7 +42,7 @@ vi.mock('@/services/socket', () => ({ socketService: socket }))
 vi.mock('@/services/user', () => ({ userService: { getUserId: () => 'me' } }))
 
 import { INBOX_PAGE_SIZE, INBOX_POLL_MS, LIST_REFRESH_EVERY, SEARCH_DEBOUNCE_MS, useInboxList } from '@/composables/useInboxList'
-import { keepPending, useInboxThread } from '@/composables/useInboxThread'
+import { ACTIVITY_REFETCH_MS, keepPending, useInboxThread } from '@/composables/useInboxThread'
 import { useInboxShortcuts } from '@/composables/useInboxShortcuts'
 
 const rows = (n: number, from = 0) => Array.from({ length: n }, (_, i) => ({ session_id: `s${from + i}` }))
@@ -357,6 +357,59 @@ describe('useInboxThread', () => {
     expect(changed).toHaveBeenCalledTimes(1)
     emitter.off('inbox-changed', changed)
     wrapper.unmount()
+  })
+
+  it('refetches the open chat nobody holds when it gets a message, once for a burst', async () => {
+    vi.useFakeTimers()
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    chat.getChatDetail.mockClear().mockResolvedValue({
+      session_id: 's1', user_id: null,
+      messages: [{ message: 'Hello! How can I help?', message_type: 'bot', created_at: '2026-11-14T10:00:00Z' }],
+    })
+
+    // The customer's message, then the AI's answer
+    socket.handlers.conversation_activity({ session_id: 's1' })
+    socket.handlers.conversation_activity({ session_id: 's1' })
+    // Another conversation: not open here
+    socket.handlers.conversation_activity({ session_id: 's2' })
+    socket.handlers.conversation_activity({})
+    await vi.advanceTimersByTimeAsync(ACTIVITY_REFETCH_MS)
+
+    expect(chat.getChatDetail).toHaveBeenCalledTimes(1)
+    expect(result().chat.value?.messages.map((m) => m.message)).toEqual(['Hello! How can I help?'])
+    expect(result().unread).toEqual({})
+    wrapper.unmount()
+  })
+
+  it('leaves a chat a person holds to its live replies', async () => {
+    vi.useFakeTimers()
+    chat.getChatDetail.mockResolvedValue({ session_id: 's1', user_id: 'me', messages: [] })
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    chat.getChatDetail.mockClear()
+
+    socket.handlers.conversation_activity({ session_id: 's1' })
+    await vi.advanceTimersByTimeAsync(ACTIVITY_REFETCH_MS)
+
+    expect(chat.getChatDetail).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('drops a pending refetch when another chat is opened, or the inbox closes', async () => {
+    vi.useFakeTimers()
+    const { result, wrapper } = host(() => useInboxThread())
+    await result().open('s1')
+    socket.handlers.conversation_activity({ session_id: 's1' })
+    await result().open('s2')
+    chat.getChatDetail.mockClear()
+    await vi.advanceTimersByTimeAsync(ACTIVITY_REFETCH_MS)
+    expect(chat.getChatDetail).not.toHaveBeenCalled()
+
+    socket.handlers.conversation_activity({ session_id: 's2' })
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(ACTIVITY_REFETCH_MS)
+    expect(chat.getChatDetail).not.toHaveBeenCalled()
   })
 
   it("joins the agent's own room for live replies, and leaves it", () => {

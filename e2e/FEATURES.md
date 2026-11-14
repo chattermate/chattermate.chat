@@ -16,6 +16,7 @@ One row per user journey. Every feature PR adds or updates its row and the spec 
 | Dashboard shell | Theme switch, online/offline from the header and the account menu, Inbox badge after a handover | `specs/shell/shell.spec.ts` | P2 | ✅ |
 | Inbox | A handed-over chat waits in Waiting for a human with the AI's reason and summary; taking it over pauses the AI and moves it to Your inbox | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | Hand back to AI: the customer is told and the AI answers the next message; the chat moves through the views (yours, AI handling, waiting again via Hand to my team) | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
+| Inbox | A chat open in the inbox that nobody holds (the AI answering, or waiting) shows the customer's messages and the AI's answers as they come, and its row with them | `specs/inbox/inbox.spec.ts` | P1 | ✅ |
 | Inbox | Below 1440px the details open over the thread and Escape closes them; search finds a customer by name or email | `specs/inbox/inbox.spec.ts` | P2 | ✅ |
 | Inbox | A note on a waiting chat needs no takeover and never reaches the customer's widget | `specs/inbox/notes.spec.ts` | P1 | ✅ |
 | Inbox | An @-mention notifies the teammate and lists the chat in their Mentions view | `specs/inbox/notes.spec.ts` | P2 | ✅ |
